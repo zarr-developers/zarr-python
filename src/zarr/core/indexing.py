@@ -578,7 +578,7 @@ class BasicIndexer(Indexer):
         shape: tuple[int, ...],
         chunk_grid: ChunkGrid,
     ) -> None:
-        dim_grids = chunk_grid.dimensions
+        dim_grids = chunk_grid._dimensions
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
 
@@ -905,7 +905,7 @@ class OrthogonalIndexer(Indexer):
     drop_axes: tuple[int, ...]
 
     def __init__(self, selection: Selection, shape: tuple[int, ...], chunk_grid: ChunkGrid) -> None:
-        dim_grids = chunk_grid.dimensions
+        dim_grids = chunk_grid._dimensions
 
         # handle ellipsis
         selection = replace_ellipsis(selection, shape)
@@ -1050,7 +1050,7 @@ class BlockIndexer(Indexer):
     def __init__(
         self, selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
-        dim_grids = chunk_grid.dimensions
+        dim_grids = chunk_grid._dimensions
 
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
@@ -1180,7 +1180,7 @@ class CoordinateIndexer(Indexer):
     def __init__(
         self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
-        dim_grids = chunk_grid.dimensions
+        dim_grids = chunk_grid._dimensions
 
         cdata_shape: tuple[int, ...]
         if shape == ():

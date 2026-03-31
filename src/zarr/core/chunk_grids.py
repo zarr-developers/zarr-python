@@ -303,14 +303,24 @@ class ChunkGrid:
     or VaryingDimension (per-chunk edge lengths with prefix sums).
     """
 
-    dimensions: tuple[DimensionGrid, ...]
+    _dimensions: tuple[DimensionGrid, ...]
     _is_regular: bool
 
     def __init__(self, *, dimensions: tuple[DimensionGrid, ...]) -> None:
-        object.__setattr__(self, "dimensions", dimensions)
+        object.__setattr__(self, "_dimensions", dimensions)
         object.__setattr__(
             self, "_is_regular", all(isinstance(d, FixedDimension) for d in dimensions)
         )
+
+    def __repr__(self) -> str:
+        sizes: list[str] = []
+        for d in self._dimensions:
+            if isinstance(d, FixedDimension):
+                sizes.append(str(d.size))
+            elif isinstance(d, VaryingDimension):
+                sizes.append(repr(tuple(d.edges)))
+        shape = tuple(d.extent for d in self._dimensions)
+        return f"ChunkGrid(chunk_sizes=({', '.join(sizes)}), array_shape={shape})"
 
     @classmethod
     def from_metadata(cls, metadata: ArrayMetadata) -> ChunkGrid:
@@ -381,7 +391,7 @@ class ChunkGrid:
 
     @property
     def ndim(self) -> int:
-        return len(self.dimensions)
+        return len(self._dimensions)
 
     @property
     def is_regular(self) -> bool:
@@ -390,7 +400,7 @@ class ChunkGrid:
     @property
     def grid_shape(self) -> tuple[int, ...]:
         """Number of chunks per dimension."""
-        return tuple(d.nchunks for d in self.dimensions)
+        return tuple(d.nchunks for d in self._dimensions)
 
     @property
     def chunk_shape(self) -> tuple[int, ...]:
@@ -400,7 +410,7 @@ class ChunkGrid:
                 "chunk_shape is only available for regular chunk grids. "
                 "Use grid[coords] for per-chunk sizes."
             )
-        return tuple(d.size for d in self.dimensions if isinstance(d, FixedDimension))
+        return tuple(d.size for d in self._dimensions if isinstance(d, FixedDimension))
 
     @property
     def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
@@ -416,7 +426,7 @@ class ChunkGrid:
             One inner tuple per dimension, each containing the data size
             of every chunk along that dimension.
         """
-        return tuple(tuple(d.data_size(i) for i in range(d.nchunks)) for d in self.dimensions)
+        return tuple(tuple(d.data_size(i) for i in range(d.nchunks)) for d in self._dimensions)
 
     # -- Collection interface --
 
@@ -431,7 +441,7 @@ class ChunkGrid:
             )
         slices: list[slice] = []
         codec_shape: list[int] = []
-        for dim, ix in zip(self.dimensions, coords, strict=True):
+        for dim, ix in zip(self._dimensions, coords, strict=True):
             if ix < 0 or ix >= dim.nchunks:
                 return None
             offset = dim.chunk_offset(ix)
@@ -441,7 +451,7 @@ class ChunkGrid:
 
     def __iter__(self) -> Iterator[ChunkSpec]:
         """Iterate all chunks, yielding ChunkSpec for each."""
-        for coords in itertools.product(*(range(d.nchunks) for d in self.dimensions)):
+        for coords in itertools.product(*(range(d.nchunks) for d in self._dimensions)):
             spec = self[coords]
             if spec is not None:
                 yield spec
@@ -499,7 +509,7 @@ class ChunkGrid:
                 yield spec.slices
 
     def get_nchunks(self) -> int:
-        return reduce(operator.mul, (d.nchunks for d in self.dimensions), 1)
+        return reduce(operator.mul, (d.nchunks for d in self._dimensions), 1)
 
     # -- Resize --
 
@@ -526,7 +536,7 @@ class ChunkGrid:
             )
         dims = tuple(
             dim.resize(new_extent)
-            for dim, new_extent in zip(self.dimensions, new_shape, strict=True)
+            for dim, new_extent in zip(self._dimensions, new_shape, strict=True)
         )
         return ChunkGrid(dimensions=dims)
 
