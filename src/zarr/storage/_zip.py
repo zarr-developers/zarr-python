@@ -134,6 +134,10 @@ class ZipStore(Store):
         many zip readers and wastes space.  Before closing, we keep only the
         *last* (most recent) entry for every filename so that the on-disk central
         directory is clean.
+
+        Both ``filelist`` and ``NameToInfo`` are computed upfront and then
+        swapped in together so that the ZipFile object is never left in an
+        inconsistent state if an exception occurs mid-update.
         """
         if self._zf.mode not in ("w", "a", "x"):
             return
@@ -143,8 +147,12 @@ class ZipStore(Store):
             if info.filename not in seen:
                 seen.add(info.filename)
                 deduped.append(info)
-        self._zf.filelist = list(reversed(deduped))
-        self._zf.NameToInfo = {info.filename: info for info in self._zf.filelist}
+        new_filelist = list(reversed(deduped))
+        new_name_to_info = {info.filename: info for info in new_filelist}
+        # Swap both attributes together; if anything above raised, the
+        # original filelist/NameToInfo are still intact.
+        self._zf.filelist = new_filelist
+        self._zf.NameToInfo = new_name_to_info
 
     async def clear(self) -> None:
         # docstring inherited
