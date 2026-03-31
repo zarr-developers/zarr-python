@@ -6,8 +6,8 @@ coverage:
         informational: true
     project:
       default:
-        target: 90%
-        threshold: 1%
+        target: auto
+        threshold: 0.1
         flags:
           - tests
 flags:
