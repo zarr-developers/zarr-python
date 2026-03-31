@@ -152,3 +152,28 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    def test_no_duplicate_entries_after_resize(self, tmp_path: Path) -> None:
+        # Regression test for https://github.com/zarr-developers/zarr-python/issues/3580
+        # Resizing an array (which rewrites zarr.json) used to leave duplicate
+        # filenames in the zip central directory.
+        zip_path = tmp_path / "data.zip"
+        store = ZipStore(zip_path, mode="w")
+        arr = zarr.create_array(store, shape=(5,), chunks=(5,), dtype="i4")
+        arr[:] = np.arange(5)
+
+        # Resize triggers metadata rewrite, producing a second zarr.json entry
+        arr.resize((10,))
+        arr[5:] = np.arange(5, 10)
+        store.close()
+
+        # Verify no duplicate filenames in the central directory
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = [info.filename for info in zf.infolist()]
+        assert len(names) == len(set(names)), f"Duplicate entries found: {names}"
+
+        # Verify data integrity
+        store2 = ZipStore(zip_path, mode="r")
+        arr2 = zarr.open_array(store2)
+        assert arr2.shape == (10,)
+        assert np.array_equal(arr2[:], np.arange(10))

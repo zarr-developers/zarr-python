@@ -122,7 +122,29 @@ class ZipStore(Store):
         # docstring inherited
         super().close()
         with self._lock:
+            self._dedup_central_directory()
             self._zf.close()
+
+    def _dedup_central_directory(self) -> None:
+        """Remove duplicate entries from the zip central directory.
+
+        When an array is resized or metadata is updated multiple times, ZipStore
+        writes a new entry for the same key each time (ZIP files are append-only).
+        This leaves duplicate filenames in the central directory, which confuses
+        many zip readers and wastes space.  Before closing, we keep only the
+        *last* (most recent) entry for every filename so that the on-disk central
+        directory is clean.
+        """
+        if not self._zf.mode in ("w", "a", "x"):
+            return
+        seen: set[str] = set()
+        deduped: list[zipfile.ZipInfo] = []
+        for info in reversed(self._zf.filelist):
+            if info.filename not in seen:
+                seen.add(info.filename)
+                deduped.append(info)
+        self._zf.filelist = list(reversed(deduped))
+        self._zf.NameToInfo = {info.filename: info for info in self._zf.filelist}
 
     async def clear(self) -> None:
         # docstring inherited
