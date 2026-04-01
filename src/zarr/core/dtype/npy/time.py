@@ -559,7 +559,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         This method provides a default value for the timedelta64 scalar, which is
         a 'Not-a-Time' (NaT) value.
         """
-        return np.timedelta64("NaT")
+        return np.timedelta64("NaT", self.unit)
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         """
