@@ -773,6 +773,10 @@ def create(
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
+    **kwargs
+    Additional keyword arguments passed through to
+    [`zarr.api.asynchronous.create`][].
+
     Returns
     -------
     z : Array
