@@ -545,7 +545,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         raise a TypeError.
         """
         if self._check_scalar(data):
-            if isinstance(data, np.timedelta64) and np.isnan(data):
+            if isinstance(data, np.timedelta64) and np.isnat(data):
                 return np.timedelta64("NaT", self.unit)
             return self._cast_scalar_unchecked(data)
         msg = (
