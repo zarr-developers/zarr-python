@@ -156,10 +156,6 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 dependency-groups = ["test"]
 
 [tool.hatch.envs.test.env-vars]
-# Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
-COV_CORE_SOURCE = "src"
-COV_CORE_CONFIG = ".coveragerc"
-COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.12", "3.13", "3.14"]
@@ -176,13 +172,23 @@ matrix.deps.dependency-groups = [
 ]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
-run = "run-coverage --no-cov --ignore tests/benchmarks"
+run-coverage = [
+    "coverage run --source=src -m pytest --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage xml",
+]
+run-coverage-html = [
+    "coverage run --source=src -m pytest {args:}",
+    "coverage html",
+]
+run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = [
+    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage xml",
+]
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
+serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -196,8 +202,11 @@ features = ["gpu"]
 python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
-run = "run-coverage --no-cov"
+run-coverage = [
+    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage xml",
+]
+run = "pytest -m gpu --ignore tests/benchmarks"
 
 [tool.hatch.envs.upstream]
 template = 'test'

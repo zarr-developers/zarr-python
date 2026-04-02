@@ -71,6 +71,7 @@ jobs:
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
@@ -110,6 +111,7 @@ jobs:
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   doctests:

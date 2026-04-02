@@ -67,20 +67,19 @@ CodecJSON = str | Mapping[str, object]
 
 
 @runtime_checkable
-class SupportsSyncCodec(Protocol):
+class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     """Protocol for codecs that support synchronous encode/decode.
 
-    Codecs implementing this protocol provide ``_decode_sync`` and ``_encode_sync``
+    Codecs implementing this protocol provide `_decode_sync` and `_encode_sync`
     methods that perform encoding/decoding without requiring an async event loop.
+
+    The type parameters mirror `BaseCodec`: `CI` is the decoded type and `CO` is
+    the encoded type.
     """
 
-    def _decode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer: ...
+    def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
 
-    def _encode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer | None: ...
+    def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
 
 
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
