@@ -78,7 +78,7 @@ jobs:
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests
