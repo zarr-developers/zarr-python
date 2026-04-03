@@ -1,12 +1,14 @@
 import itertools
 import json
 import numbers
+from collections.abc import Generator
 from typing import Any
 
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+import zarr
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")
@@ -30,6 +32,13 @@ from zarr.testing.strategies import (
     stores,
     zarr_formats,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_rectilinear_chunks() -> Generator[None, None, None]:
+    """Enable rectilinear chunks for all property tests since strategies may generate them."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        yield
 
 
 def deep_equal(a: Any, b: Any) -> bool:
