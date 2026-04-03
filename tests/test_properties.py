@@ -25,6 +25,7 @@ from zarr.testing.strategies import (
     array_metadata,
     arrays,
     basic_indices,
+    complex_rectilinear_arrays,
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
@@ -141,6 +142,16 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
     # TODO test async setitem?
+
+
+@pytest.mark.asyncio
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
+    nparray, zarray = data.draw(complex_rectilinear_arrays())
+    indexer = data.draw(basic_indices(shape=nparray.shape))
+    assert_array_equal(nparray[indexer], zarray[indexer])
 
 
 @pytest.mark.asyncio
