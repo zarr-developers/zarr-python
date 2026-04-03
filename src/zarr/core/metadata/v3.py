@@ -177,19 +177,21 @@ def parse_extra_fields(
 RectilinearDimSpecJSON = int | list[int | list[int]]
 
 
-class RegularChunkGridConfig(TypedDict):
+class RegularChunkGridMetadataConfig(TypedDict):
     chunk_shape: tuple[int, ...]
 
 
-class RectilinearChunkGridConfig(TypedDict):
+class RectilinearChunkGridMetadataConfig(TypedDict):
     kind: Literal["inline"]
     chunk_shapes: tuple[RectilinearDimSpecJSON, ...]
 
 
-RegularChunkGridJSON = NamedRequiredConfig[Literal["regular"], RegularChunkGridConfig]
-RectilinearChunkGridJSON = NamedRequiredConfig[Literal["rectilinear"], RectilinearChunkGridConfig]
-
-ChunkGridJSON = RegularChunkGridJSON | RectilinearChunkGridJSON
+RegularChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["regular"], RegularChunkGridMetadataConfig
+]
+RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["rectilinear"], RectilinearChunkGridMetadataConfig
+]
 
 
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
@@ -234,7 +236,7 @@ def _validate_chunk_shapes(
 
 
 @dataclass(frozen=True, kw_only=True)
-class RegularChunkGrid(Metadata):
+class RegularChunkGridMetadata(Metadata):
     """Metadata-only description of a regular chunk grid.
 
     Stores just the chunk shape — no array extent, no behavioral logic.
@@ -251,21 +253,21 @@ class RegularChunkGrid(Metadata):
     def ndim(self) -> int:
         return len(self.chunk_shape)
 
-    def to_dict(self) -> RegularChunkGridJSON:  # type: ignore[override]
+    def to_dict(self) -> RegularChunkGridMetadataJSON:  # type: ignore[override]
         return {
             "name": "regular",
             "configuration": {"chunk_shape": self.chunk_shape},
         }
 
     @classmethod
-    def from_dict(cls, data: RegularChunkGridJSON) -> Self:  # type: ignore[override]
+    def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
         return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
-class RectilinearChunkGrid(Metadata):
+class RectilinearChunkGridMetadata(Metadata):
     """Metadata-only description of a rectilinear chunk grid.
 
     Each element of ``chunk_shapes`` is either:
@@ -297,7 +299,7 @@ class RectilinearChunkGrid(Metadata):
     def ndim(self) -> int:
         return len(self.chunk_shapes)
 
-    def to_dict(self) -> RectilinearChunkGridJSON:  # type: ignore[override]
+    def to_dict(self) -> RectilinearChunkGridMetadataJSON:  # type: ignore[override]
         serialized_dims: list[RectilinearDimSpecJSON] = []
         for dim_spec in self.chunk_shapes:
             if isinstance(dim_spec, int):
@@ -320,8 +322,8 @@ class RectilinearChunkGrid(Metadata):
 
     def update_shape(
         self, old_shape: tuple[int, ...], new_shape: tuple[int, ...]
-    ) -> RectilinearChunkGrid:
-        """Return a new RectilinearChunkGrid with edges adjusted for *new_shape*.
+    ) -> RectilinearChunkGridMetadata:
+        """Return a new RectilinearChunkGridMetadata with edges adjusted for *new_shape*.
 
         - Bare-int dimensions stay as bare ints (they cover any extent).
         - Explicit-edge dimensions: if the new extent exceeds the sum of
@@ -340,10 +342,10 @@ class RectilinearChunkGrid(Metadata):
                     new_chunk_shapes.append((*dim_spec, new_ext - edge_sum))
                 else:
                     new_chunk_shapes.append(dim_spec)
-        return RectilinearChunkGrid(chunk_shapes=tuple(new_chunk_shapes))
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(new_chunk_shapes))
 
     @classmethod
-    def from_dict(cls, data: RectilinearChunkGridJSON) -> Self:  # type: ignore[override]
+    def from_dict(cls, data: RectilinearChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "rectilinear")  # validate name
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
@@ -363,7 +365,7 @@ class RectilinearChunkGrid(Metadata):
         return cls(chunk_shapes=tuple(parsed))
 
 
-ChunkGridMetadata = RegularChunkGrid | RectilinearChunkGrid
+ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
 def resolve_chunks(
@@ -373,8 +375,8 @@ def resolve_chunks(
 ) -> ChunkGridMetadata:
     """Construct a chunk grid from user-facing input (e.g. ``create_array(chunks=...)``).
 
-    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGrid``.
-    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGrid``
+    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGridMetadata``.
+    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGridMetadata``
     after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
 
     See Also
@@ -384,9 +386,9 @@ def resolve_chunks(
     from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
 
     if _is_rectilinear_chunks(chunks):
-        return RectilinearChunkGrid(chunk_shapes=tuple(tuple(c) for c in chunks))
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(c) for c in chunks))
 
-    return RegularChunkGrid(chunk_shape=normalize_chunks(chunks, shape, typesize))
+    return RegularChunkGridMetadata(chunk_shape=normalize_chunks(chunks, shape, typesize))
 
 
 def parse_chunk_grid(
@@ -398,14 +400,14 @@ def parse_chunk_grid(
     --------
     resolve_chunks : Construct a chunk grid from user-facing input.
     """
-    if isinstance(data, (RegularChunkGrid, RectilinearChunkGrid)):
+    if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data
 
     name, _ = parse_named_configuration(data)
     if name == "regular":
-        return RegularChunkGrid.from_dict(data)  # type: ignore[arg-type]
+        return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     if name == "rectilinear":
-        return RectilinearChunkGrid.from_dict(data)  # type: ignore[arg-type]
+        return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
 
 
@@ -499,7 +501,7 @@ class ArrayV3Metadata(Metadata):
     def _validate_metadata(self) -> None:
         if len(self.shape) != self.chunk_grid.ndim:
             raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
-        if isinstance(self.chunk_grid, RectilinearChunkGrid):
+        if isinstance(self.chunk_grid, RectilinearChunkGridMetadata):
             validate_rectilinear_edges(self.chunk_grid.chunk_shapes, self.shape)
         if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
             raise ValueError(
@@ -523,7 +525,7 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def chunks(self) -> tuple[int, ...]:
-        if not isinstance(self.chunk_grid, RegularChunkGrid):
+        if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
                 "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
@@ -541,7 +543,7 @@ class ArrayV3Metadata(Metadata):
         from zarr.codecs.sharding import ShardingCodec
 
         if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            if not isinstance(self.chunk_grid, RegularChunkGrid):
+            if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
                 msg = (
                     "The `shards` attribute is only defined for arrays using regular chunk grids. "
                     "This array has a rectilinear chunk grid. Use `write_chunk_sizes` for general access."
@@ -655,7 +657,7 @@ class ArrayV3Metadata(Metadata):
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         chunk_grid = self.chunk_grid
-        if isinstance(chunk_grid, RectilinearChunkGrid):
+        if isinstance(chunk_grid, RectilinearChunkGridMetadata):
             chunk_grid = chunk_grid.update_shape(self.shape, shape)
         return replace(self, shape=shape, chunk_grid=chunk_grid)
 

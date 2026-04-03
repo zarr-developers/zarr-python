@@ -120,8 +120,8 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
-    RectilinearChunkGrid,
-    RegularChunkGrid,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
     parse_node_type_array,
     resolve_chunks,
 )
@@ -4804,7 +4804,7 @@ async def init_array(
     # Detect rectilinear (nested list) chunks or shards, e.g. [[10, 20, 30], [25, 25]]
     from zarr.core.chunk_grids import _is_rectilinear_chunks
 
-    rectilinear_meta: RectilinearChunkGrid | None = None
+    rectilinear_meta: RectilinearChunkGridMetadata | None = None
     rectilinear_shards = _is_rectilinear_chunks(shards)
 
     if _is_rectilinear_chunks(chunks):
@@ -4816,7 +4816,7 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-        rectilinear_meta = RectilinearChunkGrid(
+        rectilinear_meta = RectilinearChunkGridMetadata(
             chunk_shapes=tuple(tuple(dim_edges) for dim_edges in chunks)
         )
         # Use first chunk size per dim as placeholder for _auto_partition
@@ -4833,7 +4833,7 @@ async def init_array(
     if _is_rectilinear_chunks(shards):
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-        rectilinear_meta = RectilinearChunkGrid(
+        rectilinear_meta = RectilinearChunkGridMetadata(
             chunk_shapes=tuple(tuple(dim_edges) for dim_edges in shards)
         )
         # Use first shard size per dim as placeholder for _auto_partition
@@ -4906,7 +4906,7 @@ async def init_array(
             if rectilinear_shards and rectilinear_meta is not None:
                 validation_grid: ChunkGridMetadata = rectilinear_meta
             else:
-                validation_grid = RegularChunkGrid(chunk_shape=shard_shape_parsed)
+                validation_grid = RegularChunkGridMetadata(chunk_shape=shard_shape_parsed)
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=zdtype,
@@ -4925,7 +4925,7 @@ async def init_array(
         if rectilinear_meta is not None:
             grid = rectilinear_meta
         else:
-            grid = RegularChunkGrid(chunk_shape=chunks_out)
+            grid = RegularChunkGridMetadata(chunk_shape=chunks_out)
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=zdtype,

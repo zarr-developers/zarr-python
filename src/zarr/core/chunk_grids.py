@@ -330,14 +330,14 @@ class ChunkGrid:
         For v3 metadata, dispatches on the chunk grid type.
         """
         from zarr.core.metadata import ArrayV2Metadata
-        from zarr.core.metadata.v3 import RectilinearChunkGrid, RegularChunkGrid
+        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 
         if isinstance(metadata, ArrayV2Metadata):
             return cls.from_sizes(metadata.shape, tuple(metadata.chunks))
         chunk_grid_meta = metadata.chunk_grid
-        if isinstance(chunk_grid_meta, RegularChunkGrid):
+        if isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             return cls.from_sizes(metadata.shape, tuple(chunk_grid_meta.chunk_shape))
-        elif isinstance(chunk_grid_meta, RectilinearChunkGrid):
+        elif isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
             return cls.from_sizes(metadata.shape, chunk_grid_meta.chunk_shapes)
         else:
             raise TypeError(f"Unknown chunk grid metadata type: {type(chunk_grid_meta)}")

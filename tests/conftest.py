@@ -37,7 +37,7 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGrid
+from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.testing.store import LatencyStore
@@ -379,7 +379,7 @@ def create_array_metadata(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGridMetadata(chunk_shape=shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed

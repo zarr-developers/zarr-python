@@ -23,11 +23,9 @@ from zarr.core.chunk_grids import (
 )
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.metadata.v3 import (
-    RectilinearChunkGrid,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
     parse_chunk_grid,
-)
-from zarr.core.metadata.v3 import (
-    RegularChunkGrid as RegularChunkGridMeta,
 )
 from zarr.errors import BoundsCheckError
 from zarr.storage import MemoryStore
@@ -105,8 +103,8 @@ def test_dimension_index_to_chunk_last_valid(
 @pytest.mark.parametrize(
     "action",
     [
-        lambda: RectilinearChunkGrid(chunk_shapes=((10, 20), (25, 25))),
-        lambda: RectilinearChunkGrid.from_dict(
+        lambda: RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25))),
+        lambda: RectilinearChunkGridMetadata.from_dict(
             {
                 "name": "rectilinear",
                 "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [50, 50]]},  # type: ignore[typeddict-item]
@@ -126,7 +124,7 @@ def test_rectilinear_feature_flag_blocked(action: Any) -> None:
 def test_rectilinear_feature_flag_enabled() -> None:
     """Rectilinear chunk grid construction succeeds when the feature flag is enabled"""
     with zarr.config.set({"array.rectilinear_chunks": True}):
-        grid = RectilinearChunkGrid(chunk_shapes=((10, 20), (25, 25)))
+        grid = RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25)))
         assert grid.ndim == 2
 
 
@@ -610,9 +608,9 @@ def test_serialization_error_non_regular_chunk_shape() -> None:
 
 
 def test_serialization_error_zero_extent_rectilinear() -> None:
-    """RectilinearChunkGrid rejects empty edge tuples."""
+    """RectilinearChunkGridMetadata rejects empty edge tuples."""
     with pytest.raises(ValueError, match="has no chunk edges"):
-        RectilinearChunkGrid(chunk_shapes=((),))
+        RectilinearChunkGridMetadata(chunk_shapes=((),))
 
 
 def test_serialization_unknown_name_parse() -> None:
@@ -908,8 +906,8 @@ def test_e2e_create_array(
 @pytest.mark.parametrize(
     ("shape", "chunks", "grid_type_name", "grid_name"),
     [
-        ((100, 200), (10, 20), "RegularChunkGrid", "regular"),
-        ((60, 100), [[10, 20, 30], [50, 50]], "RectilinearChunkGrid", "rectilinear"),
+        ((100, 200), (10, 20), "RegularChunkGridMetadata", "regular"),
+        ((60, 100), [[10, 20, 30], [50, 50]], "RectilinearChunkGridMetadata", "rectilinear"),
     ],
     ids=["regular", "rectilinear"],
 )
@@ -917,9 +915,17 @@ def test_e2e_chunk_grid_serializes(
     tmp_path: Path, shape: tuple[int, ...], chunks: Any, grid_type_name: str, grid_name: str
 ) -> None:
     """Array metadata serializes chunk_grid with the correct type and name"""
-    from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGrid, RegularChunkGrid
+    from zarr.core.metadata.v3 import (
+        ArrayV3Metadata,
+        RectilinearChunkGridMetadata,
+        RegularChunkGridMetadata,
+    )
 
-    grid_type = RegularChunkGrid if grid_type_name == "RegularChunkGrid" else RectilinearChunkGrid
+    grid_type = (
+        RegularChunkGridMetadata
+        if grid_type_name == "RegularChunkGridMetadata"
+        else RectilinearChunkGridMetadata
+    )
     arr = zarr.create_array(
         store=tmp_path / "arr.zarr",
         shape=shape,
@@ -936,7 +942,7 @@ def test_e2e_chunk_grid_serializes(
 
 def test_e2e_chunk_grid_name_roundtrip_preserves_rectilinear(tmp_path: Path) -> None:
     """A rectilinear grid with uniform edges stays 'rectilinear' through to_dict/from_dict."""
-    from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGrid
+    from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGridMetadata
 
     meta_dict: dict[str, Any] = {
         "zarr_format": 3,
@@ -952,7 +958,7 @@ def test_e2e_chunk_grid_name_roundtrip_preserves_rectilinear(tmp_path: Path) -> 
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
     }
     meta = ArrayV3Metadata.from_dict(meta_dict)
-    assert isinstance(meta.chunk_grid, RectilinearChunkGrid)
+    assert isinstance(meta.chunk_grid, RectilinearChunkGridMetadata)
     d = meta.to_dict()
     chunk_grid_dict = d["chunk_grid"]
     assert isinstance(chunk_grid_dict, dict)
@@ -961,7 +967,7 @@ def test_e2e_chunk_grid_name_roundtrip_preserves_rectilinear(tmp_path: Path) -> 
 
 def test_e2e_chunk_grid_name_regular_from_dict(tmp_path: Path) -> None:
     """A 'regular' chunk grid name is preserved through from_dict."""
-    from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGrid
+    from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 
     meta_dict: dict[str, Any] = {
         "zarr_format": 3,
@@ -977,7 +983,7 @@ def test_e2e_chunk_grid_name_regular_from_dict(tmp_path: Path) -> None:
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
     }
     meta = ArrayV3Metadata.from_dict(meta_dict)
-    assert isinstance(meta.chunk_grid, RegularChunkGrid)
+    assert isinstance(meta.chunk_grid, RegularChunkGridMetadata)
     d = meta.to_dict()
     chunk_grid_dict = d["chunk_grid"]
     assert isinstance(chunk_grid_dict, dict)
@@ -993,10 +999,10 @@ def test_sharding_accepts_rectilinear_outer_grid() -> None:
     """ShardingCodec.validate should not reject rectilinear outer grids."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGrid
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
-    grid_meta = RectilinearChunkGrid(chunk_shapes=((10, 20, 30), (50, 50)))
+    grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 30), (50, 50)))
 
     codec.validate(
         shape=(60, 100),
@@ -1009,10 +1015,10 @@ def test_sharding_rejects_non_divisible_rectilinear() -> None:
     """Rectilinear shard sizes not divisible by inner chunk_shape should raise."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGrid
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
-    grid_meta = RectilinearChunkGrid(chunk_shapes=((10, 20, 17), (50, 50)))
+    grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 17), (50, 50)))
 
     with pytest.raises(ValueError, match="divisible"):
         codec.validate(
@@ -1026,10 +1032,10 @@ def test_sharding_accepts_divisible_rectilinear() -> None:
     """Rectilinear shard sizes all divisible by inner chunk_shape should pass."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGrid
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
-    grid_meta = RectilinearChunkGrid(chunk_shapes=((10, 20, 30), (50, 50)))
+    grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 30), (50, 50)))
 
     codec.validate(
         shape=(60, 100),
@@ -1686,7 +1692,7 @@ def test_pipeline_parse_chunk_grid_regular_from_dict() -> None:
     """parse_chunk_grid constructs a regular grid from a metadata dict."""
     d: dict[str, Any] = {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
     meta = parse_chunk_grid(d)
-    assert isinstance(meta, RegularChunkGridMeta)
+    assert isinstance(meta, RegularChunkGridMetadata)
     g = ChunkGrid.from_sizes((100, 200), tuple(meta.chunk_shape))
     assert g.is_regular
     assert g.chunk_shape == (10, 20)
@@ -2558,7 +2564,7 @@ def test_iter_chunk_regions_rectilinear() -> None:
 
 
 # ---------------------------------------------------------------------------
-# RectilinearChunkGrid metadata object tests (already parametrized)
+# RectilinearChunkGridMetadata metadata object tests (already parametrized)
 # ---------------------------------------------------------------------------
 
 
@@ -2605,8 +2611,8 @@ def test_iter_chunk_regions_rectilinear() -> None:
 def test_rectilinear_from_dict(
     json_input: dict[str, Any], expected_chunk_shapes: tuple[int | tuple[int, ...], ...]
 ) -> None:
-    """RectilinearChunkGrid.from_dict correctly parses all spec forms."""
-    grid = RectilinearChunkGrid.from_dict(json_input)  # type: ignore[arg-type]
+    """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms."""
+    grid = RectilinearChunkGridMetadata.from_dict(json_input)  # type: ignore[arg-type]
     assert grid.chunk_shapes == expected_chunk_shapes
 
 
@@ -2624,8 +2630,8 @@ def test_rectilinear_to_dict(
     chunk_shapes: tuple[int | tuple[int, ...], ...],
     expected_json_shapes: list[Any],
 ) -> None:
-    """RectilinearChunkGrid.to_dict serializes back to spec-compliant JSON."""
-    grid = RectilinearChunkGrid(chunk_shapes=chunk_shapes)
+    """RectilinearChunkGridMetadata.to_dict serializes back to spec-compliant JSON."""
+    grid = RectilinearChunkGridMetadata(chunk_shapes=chunk_shapes)
     result = grid.to_dict()
     assert result["name"] == "rectilinear"
     assert result["configuration"]["kind"] == "inline"
@@ -2648,8 +2654,8 @@ def test_rectilinear_to_dict(
 )
 def test_rectilinear_roundtrip(json_input: dict[str, Any]) -> None:
     """from_dict -> to_dict -> from_dict produces the same grid."""
-    grid1 = RectilinearChunkGrid.from_dict(json_input)  # type: ignore[arg-type]
-    grid2 = RectilinearChunkGrid.from_dict(grid1.to_dict())
+    grid1 = RectilinearChunkGridMetadata.from_dict(json_input)  # type: ignore[arg-type]
+    grid2 = RectilinearChunkGridMetadata.from_dict(grid1.to_dict())
     assert grid1.chunk_shapes == grid2.chunk_shapes
 
 

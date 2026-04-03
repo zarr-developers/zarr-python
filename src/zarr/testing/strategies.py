@@ -18,7 +18,7 @@ from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import RegularChunkGrid
+from zarr.core.metadata.v3 import RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
@@ -160,7 +160,7 @@ def array_metadata(
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=RegularChunkGridMetadata(chunk_shape=chunk_shape),
             fill_value=fill_value,
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),

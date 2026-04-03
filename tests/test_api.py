@@ -282,14 +282,14 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
 
 def test_open_array_rectilinear_chunks(tmp_path: Path) -> None:
     """zarr.open with rectilinear (dask-style) chunks preserves the chunk grid."""
-    from zarr.core.metadata.v3 import RectilinearChunkGrid
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     chunks = ((3, 3, 4), (5, 5))
     with zarr.config.set({"array.rectilinear_chunks": True}):
         z = zarr.open(store=tmp_path, shape=(10, 10), dtype="float64", chunks=chunks, mode="w")
     assert isinstance(z, Array)
     assert z.shape == (10, 10)
-    assert isinstance(z.metadata.chunk_grid, RectilinearChunkGrid)
+    assert isinstance(z.metadata.chunk_grid, RectilinearChunkGridMetadata)
     assert z.read_chunk_sizes == ((3, 3, 4), (5, 5))
 
 
