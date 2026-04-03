@@ -87,7 +87,12 @@ class FixedDimension:
 
     @property
     def unique_edge_lengths(self) -> Iterable[int]:
-        """Distinct chunk edge lengths for this dimension."""
+        """Distinct chunk edge lengths for this dimension.
+
+        Used by shard validation to check that every unique edge length
+        is divisible by the inner chunk size. O(1) for fixed dimensions
+        since there is only one edge length.
+        """
         return (self.size,)
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
@@ -181,7 +186,12 @@ class VaryingDimension:
 
     @property
     def unique_edge_lengths(self) -> Iterable[int]:
-        """Distinct chunk edge lengths for this dimension (lazily deduplicated)."""
+        """Distinct chunk edge lengths for this dimension (lazily deduplicated).
+
+        Used by shard validation to check that every unique edge length
+        is divisible by the inner chunk size. Lazy deduplication avoids
+        materializing all edges for dimensions with many repeated sizes.
+        """
         seen: set[int] = set()
         for e in self.edges:
             if e not in seen:
