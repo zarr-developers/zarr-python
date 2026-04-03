@@ -137,6 +137,9 @@ class VaryingDimension:
     nchunks: int = field(init=False, repr=False)  # cached at construction
     ngridcells: int = field(init=False, repr=False)  # cached at construction
 
+    # TODO: with_extent/resize re-create VaryingDimension with the same edges,
+    # recomputing cumulative sums (O(n)) and nchunks (bisect). For long
+    # dimensions, add a fast path that reuses the existing cumulative tuple.
     def __init__(self, edges: Sequence[int], extent: int) -> None:
         edges_tuple = tuple(edges)
         if not edges_tuple:
