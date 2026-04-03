@@ -86,7 +86,7 @@ class FixedDimension:
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     @property
-    def unique_edge_lengths(self) -> Iterable[int]:
+    def _unique_edge_lengths(self) -> Iterable[int]:
         """Distinct chunk edge lengths for this dimension.
 
         Used by shard validation to check that every unique edge length
@@ -198,7 +198,7 @@ class VaryingDimension:
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
     @property
-    def unique_edge_lengths(self) -> Iterable[int]:
+    def _unique_edge_lengths(self) -> Iterable[int]:
         """Distinct chunk edge lengths for this dimension (lazily deduplicated).
 
         Used by shard validation to check that every unique edge length
@@ -265,7 +265,7 @@ class DimensionGrid(Protocol):
     def data_size(self, chunk_ix: int) -> int: ...
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
     @property
-    def unique_edge_lengths(self) -> Iterable[int]: ...
+    def _unique_edge_lengths(self) -> Iterable[int]: ...
     def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
     @property
