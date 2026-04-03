@@ -785,7 +785,6 @@ def _auto_partition(
 
 _DEPRECATED_NAMES = {
     "RegularChunkGrid": "RegularChunkGridMetadata",
-    "RectilinearChunkGrid": "RectilinearChunkGridMetadata",
 }
 
 
