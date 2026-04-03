@@ -2735,3 +2735,37 @@ def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
             a[tuple(sel)],
             err_msg=f"dim={dim}, block={block_ix}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility: import RegularChunkGrid from zarr.core.chunk_grids
+# ---------------------------------------------------------------------------
+# Downstream packages (tifffile, cubed, ismip-indexing) use this pattern:
+#   from zarr.core.chunk_grids import RegularChunkGrid
+#   RegularChunkGrid(chunk_shape=(...))
+
+
+def test_regular_chunk_grid_import_from_chunk_grids() -> None:
+    """RegularChunkGrid can be imported from zarr.core.chunk_grids with deprecation warning."""
+    with pytest.warns(DeprecationWarning, match="RegularChunkGrid"):
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+    assert RegularChunkGrid is RegularChunkGridMetadata
+
+
+def test_regular_chunk_grid_construction_from_chunk_grids() -> None:
+    """RegularChunkGrid(chunk_shape=...) works when imported from zarr.core.chunk_grids."""
+    with pytest.warns(DeprecationWarning, match="RegularChunkGrid"):
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+    grid = RegularChunkGrid(chunk_shape=(10, 20))
+    assert grid.chunk_shape == (10, 20)
+
+
+def test_regular_chunk_grid_isinstance_from_chunk_grids() -> None:
+    """isinstance check works for RegularChunkGrid imported from zarr.core.chunk_grids."""
+    with pytest.warns(DeprecationWarning, match="RegularChunkGrid"):
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+    grid = RegularChunkGrid(chunk_shape=(10, 20))
+    assert isinstance(grid, RegularChunkGrid)
