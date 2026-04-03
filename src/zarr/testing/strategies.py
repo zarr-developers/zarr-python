@@ -595,6 +595,51 @@ def key_ranges(
 
 
 @st.composite
+def complex_rectilinear_arrays(
+    draw: st.DrawFn,
+    *,
+    stores: st.SearchStrategy[StoreLike] = stores,
+    paths: st.SearchStrategy[str] = paths(),  # noqa: B008
+    array_names: st.SearchStrategy = array_names,
+    attrs: st.SearchStrategy = attrs,
+) -> tuple[npt.NDArray[Any], AnyArray]:
+    """Generate a rectilinear array with many small chunks.
+
+    The shape is derived from the chunk edges (5-10 chunks per dim,
+    sizes 1-5), exercising higher chunk counts than ``rectilinear_arrays``.
+    """
+    ndim = draw(st.integers(min_value=1, max_value=3))
+    nchunks = draw(st.integers(min_value=5, max_value=10))
+    dim_chunks = st.lists(st.integers(min_value=1, max_value=5), min_size=nchunks, max_size=nchunks)
+    chunk_shapes = draw(st.lists(dim_chunks, min_size=ndim, max_size=ndim))
+
+    shape = tuple(sum(dim) for dim in chunk_shapes)
+    nparray = draw(numpy_arrays(shapes=st.just(shape)))
+    dim_names = draw(dimension_names(ndim=ndim))
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+    attributes = draw(attrs)
+
+    store = draw(stores, label="store")
+    path = draw(paths, label="array parent")
+    name = draw(array_names, label="array name")
+    array_path = _dereference_path(path, name)
+
+    root = zarr.open_group(store, mode="w", zarr_format=3)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        a = root.create_array(
+            array_path,
+            shape=shape,
+            chunks=chunk_shapes,
+            dtype=nparray.dtype,
+            fill_value=fill_value,
+            dimension_names=dim_names,
+            attributes=attributes,
+        )
+    a[:] = nparray
+    return nparray, a
+
+
+@st.composite
 def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: bool = True) -> str:
     blockidx = draw(
         st.tuples(*tuple(st.integers(min_value=0, max_value=max(0, b - 1)) for b in numblocks))
