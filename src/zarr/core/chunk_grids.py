@@ -125,8 +125,11 @@ class FixedDimension:
 @dataclass(frozen=True)
 class VaryingDimension:
     """Explicit per-chunk sizes. The last chunk may extend past the array
-    extent, in which case ``data_size`` clips to the valid region while
-    ``chunk_size`` returns the full edge length for codec processing."""
+    extent (``extent < sum(edges)``), in which case ``data_size`` clips to
+    the valid region while ``chunk_size`` returns the full edge length for
+    codec processing. This underflow is allowed to match how regular grids
+    handle boundary chunks, and to support shrinking an array without
+    rewriting chunk edges (the spec allows trailing edges beyond the extent)."""
 
     edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
     cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
