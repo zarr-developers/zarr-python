@@ -117,6 +117,10 @@ class FixedDimension:
         """
         return FixedDimension(size=self.size, extent=new_extent)
 
+    @property
+    def _size_repr(self) -> str:
+        return str(self.size)
+
 
 @dataclass(frozen=True)
 class VaryingDimension:
@@ -231,6 +235,10 @@ class VaryingDimension:
         else:
             return VaryingDimension(self.edges, extent=new_extent)
 
+    @property
+    def _size_repr(self) -> str:
+        return repr(tuple(self.edges))
+
 
 @runtime_checkable
 class DimensionGrid(Protocol):
@@ -251,6 +259,8 @@ class DimensionGrid(Protocol):
     def unique_edge_lengths(self) -> Iterable[int]: ...
     def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
+    @property
+    def _size_repr(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -323,14 +333,9 @@ class ChunkGrid:
         )
 
     def __repr__(self) -> str:
-        sizes: list[str] = []
-        for d in self._dimensions:
-            if isinstance(d, FixedDimension):
-                sizes.append(str(d.size))
-            elif isinstance(d, VaryingDimension):
-                sizes.append(repr(tuple(d.edges)))
+        sizes = ", ".join(d._size_repr for d in self._dimensions)
         shape = tuple(d.extent for d in self._dimensions)
-        return f"ChunkGrid(chunk_sizes=({', '.join(sizes)}), array_shape={shape})"
+        return f"ChunkGrid(chunk_sizes=({sizes}), array_shape={shape})"
 
     @classmethod
     def from_metadata(cls, metadata: ArrayMetadata) -> ChunkGrid:
