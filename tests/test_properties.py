@@ -151,7 +151,7 @@ async def test_oindex(data: st.DataObject) -> None:
     zarray = data.draw(
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
-            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=2, max_side=20)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
         )
     )
     nparray = zarray[:]
