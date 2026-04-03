@@ -12,13 +12,10 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
     NamedTuple,
     Protocol,
-    TypeAlias,
     TypeGuard,
-    TypeVar,
     cast,
     runtime_checkable,
 )
@@ -27,7 +24,8 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import ceildiv, product
-from zarr.core.metadata import T_ArrayMetadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import (
     ArrayIndexError,
     BoundsCheckError,
@@ -79,7 +77,7 @@ class Indexer(Protocol):
     def __iter__(self) -> Iterator[ChunkProjection]: ...
 
 
-_ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
+type _ArrayIndexingOrder = Literal["lexicographic"]
 
 
 def _iter_grid(
@@ -209,7 +207,7 @@ def _iter_regions(
     # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
     ```
     """
-    grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
+    grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
@@ -520,9 +518,6 @@ def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
     return tuple(
         np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
     )
-
-
-T = TypeVar("T")
 
 
 def ensure_tuple(v: Any) -> SelectionNormalized:
@@ -966,15 +961,22 @@ class OrthogonalIndexer(Indexer):
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
-                # N.B., numpy doesn't support orthogonal indexing directly as yet,
-                # so need to work around via np.ix_. Also np.ix_ does not support a
-                # mixture of arrays and slices or integers, so need to convert slices
-                # and integers into ranges.
-                chunk_selection = ix_(chunk_selection, self.chunk_shape)
+                # NumPy can handle a single array-indexed dimension directly,
+                # which preserves full slices and avoids an
+                # unnecessary advanced-indexing copy. Integer-indexed
+                # dimensions still need the ix_ path for downstream squeezing.
+                # Example: we skip `ix_` for array[:, :, [1, 2, 3]]
+                n_array_dims = sum(isinstance(sel, np.ndarray) for sel in chunk_selection)
 
-                # special case for non-monotonic indices
-                if not is_basic_selection(out_selection):
-                    out_selection = ix_(out_selection, self.shape)
+                if n_array_dims > 1 or self.drop_axes:
+                    # N.B., numpy doesn't support orthogonal indexing directly
+                    # for multiple array-indexed dimensions, so we need to
+                    # convert the orthogonal selection into coordinate arrays.
+                    chunk_selection = ix_(chunk_selection, self.chunk_shape)
+
+                    # special case for non-monotonic indices
+                    if not is_basic_selection(out_selection):
+                        out_selection = ix_(out_selection, self.shape)
 
             is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
@@ -1009,7 +1011,7 @@ class OIndex:
 
 
 @dataclass(frozen=True)
-class AsyncOIndex(Generic[T_ArrayMetadata]):
+class AsyncOIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
@@ -1349,7 +1351,7 @@ class VIndex:
 
 
 @dataclass(frozen=True)
-class AsyncVIndex(Generic[T_ArrayMetadata]):
+class AsyncVIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
@@ -1512,54 +1514,48 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
         out.flags.writeable = False
         return out
 
-    # Optimization: Remove singleton dimensions to enable magic number usage
-    # for shapes like (1,1,32,32,32). Compute Morton on squeezed shape, then expand.
-    singleton_dims = tuple(i for i, s in enumerate(chunk_shape) if s == 1)
-    if singleton_dims:
-        squeezed_shape = tuple(s for s in chunk_shape if s != 1)
-        if squeezed_shape:
-            # Compute Morton order on squeezed shape, then expand singleton dims (always 0)
-            squeezed_order = np.asarray(_morton_order(squeezed_shape))
-            out = np.zeros((n_total, n_dims), dtype=np.intp)
-            squeezed_col = 0
-            for full_col in range(n_dims):
-                if chunk_shape[full_col] != 1:
-                    out[:, full_col] = squeezed_order[:, squeezed_col]
-                    squeezed_col += 1
-        else:
-            # All dimensions are singletons, just return the single point
-            out = np.zeros((1, n_dims), dtype=np.intp)
-        out.flags.writeable = False
-        return out
+    # Ceiling hypercube: smallest power-of-2 hypercube whose Morton codes span
+    # all valid coordinates in chunk_shape. (c-1).bit_length() gives the number
+    # of bits needed to index c values (0 for singleton dims). n_z = 2**total_bits
+    # is the size of this hypercube.
+    total_bits = sum((c - 1).bit_length() for c in chunk_shape)
+    n_z = 1 << total_bits if total_bits > 0 else 1
 
-    # Find the largest power-of-2 hypercube that fits within chunk_shape.
-    # Within this hypercube, Morton codes are guaranteed to be in bounds.
-    min_dim = min(chunk_shape)
-    if min_dim >= 1:
-        power = min_dim.bit_length() - 1  # floor(log2(min_dim))
-        hypercube_size = 1 << power  # 2^power
-        n_hypercube = hypercube_size**n_dims
+    # Decode all Morton codes in the ceiling hypercube, then filter to valid coords.
+    # This is fully vectorized. For shapes with n_z >> n_total (e.g. (33,33,33):
+    # n_z=262144, n_total=35937), consider the argsort strategy below.
+    order: npt.NDArray[np.intp]
+    if n_z <= 4 * n_total:
+        # Ceiling strategy: decode all n_z codes vectorized, filter in-bounds.
+        # Works well when the overgeneration ratio n_z/n_total is small (≤4).
+        z_values = np.arange(n_z, dtype=np.intp)
+        all_coords = decode_morton_vectorized(z_values, chunk_shape)
+        shape_arr = np.array(chunk_shape, dtype=np.intp)
+        valid_mask = np.all(all_coords < shape_arr, axis=1)
+        order = all_coords[valid_mask]
     else:
-        n_hypercube = 0
+        # Argsort strategy: enumerate all n_total valid coordinates directly,
+        # encode each to a Morton code, then sort by code. Avoids the 8x or
+        # larger overgeneration penalty for near-miss shapes like (33,33,33).
+        # Cost: O(n_total * bits) encode + O(n_total log n_total) sort,
+        # vs O(n_z * bits) = O(8 * n_total * bits) for ceiling.
+        grids = np.meshgrid(*[np.arange(c, dtype=np.intp) for c in chunk_shape], indexing="ij")
+        all_coords = np.stack([g.ravel() for g in grids], axis=1)
 
-    # Within the hypercube, no bounds checking needed - use vectorized decoding
-    if n_hypercube > 0:
-        z_values = np.arange(n_hypercube, dtype=np.intp)
-        order: npt.NDArray[np.intp] = decode_morton_vectorized(z_values, chunk_shape)
-    else:
-        order = np.empty((0, n_dims), dtype=np.intp)
+        # Encode all coordinates to Morton codes (vectorized).
+        bits_per_dim = tuple((c - 1).bit_length() for c in chunk_shape)
+        max_coord_bits = max(bits_per_dim)
+        z_codes = np.zeros(n_total, dtype=np.intp)
+        output_bit = 0
+        for coord_bit in range(max_coord_bits):
+            for dim in range(n_dims):
+                if coord_bit < bits_per_dim[dim]:
+                    z_codes |= ((all_coords[:, dim] >> coord_bit) & 1) << output_bit
+                    output_bit += 1
 
-    # For remaining elements outside the hypercube, bounds checking is needed
-    remaining: list[tuple[int, ...]] = []
-    i = n_hypercube
-    while len(order) + len(remaining) < n_total:
-        m = decode_morton(i, chunk_shape)
-        if all(x < y for x, y in zip(m, chunk_shape, strict=False)):
-            remaining.append(m)
-        i += 1
+        sort_idx: npt.NDArray[np.intp] = np.argsort(z_codes, kind="stable")
+        order = np.asarray(all_coords[sort_idx], dtype=np.intp)
 
-    if remaining:
-        order = np.vstack([order, np.array(remaining, dtype=np.intp)])
     order.flags.writeable = False
     return order
 

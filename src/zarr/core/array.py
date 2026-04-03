@@ -10,9 +10,7 @@ from logging import getLogger
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
-    TypeAlias,
     TypedDict,
     cast,
     overload,
@@ -52,7 +50,7 @@ from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    DimensionNames,
+    DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
@@ -106,7 +104,6 @@ from zarr.core.metadata import (
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
-    T_ArrayMetadata,
 )
 from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
@@ -119,6 +116,7 @@ from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
+    ChunkNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -279,7 +277,7 @@ async def get_array_metadata(
 
 
 @dataclass(frozen=True)
-class AsyncArray(Generic[T_ArrayMetadata]):
+class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     An asynchronous array class representing a chunked array stored in a Zarr store.
 
@@ -389,7 +387,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -417,7 +415,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -445,7 +443,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -479,7 +477,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -630,7 +628,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -742,7 +740,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV3Metadata:
         """
@@ -803,7 +801,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV3:
@@ -1235,24 +1233,28 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
         tuple[int, ...]
-            The shape of the chunk grid for this array.
+            The number of chunks along each dimension.
         """
         return self._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
         tuple[int, ...]
-            The shape of the chunk grid for this array.
+            The number of chunks along each dimension.
         """
         return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
 
@@ -1943,7 +1945,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array(Generic[T_ArrayMetadata]):
+class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     A Zarr array.
     """
@@ -1994,7 +1996,7 @@ class Array(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -2138,7 +2140,7 @@ class Array(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -2399,14 +2401,23 @@ class Array(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
         """
         return self.async_array._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The number of chunks along each dimension.
         """
         return self.async_array._chunk_grid_shape
 
@@ -4207,7 +4218,7 @@ async def _shards_initialized(
     )
 
 
-FiltersLike: TypeAlias = (
+type FiltersLike = (
     Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
     | Iterable[Numcodec]
@@ -4216,9 +4227,9 @@ FiltersLike: TypeAlias = (
     | None
 )
 # Union of acceptable types for users to pass in for both v2 and v3 compressors
-CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
+type CompressorLike = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
 
-CompressorsLike: TypeAlias = (
+type CompressorsLike = (
     Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
     | Mapping[str, JSON]
     | BytesBytesCodec
@@ -4226,7 +4237,7 @@ CompressorsLike: TypeAlias = (
     | Literal["auto"]
     | None
 )
-SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
@@ -4234,7 +4245,7 @@ class ShardsConfigParam(TypedDict):
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
+type ShardsLike = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
@@ -4253,7 +4264,7 @@ async def from_array(
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
@@ -4522,7 +4533,7 @@ async def init_array(
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
 ) -> AnyAsyncArray:
@@ -4738,7 +4749,7 @@ async def create_array(
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
@@ -4922,7 +4933,7 @@ def _parse_keep_array_attr(
     order: MemoryOrder | None,
     zarr_format: ZarrFormat | None,
     chunk_key_encoding: ChunkKeyEncodingLike | None,
-    dimension_names: DimensionNames,
+    dimension_names: DimensionNamesLike,
 ) -> tuple[
     tuple[int, ...] | Literal["auto"],
     ShardsLike | None,
@@ -4933,7 +4944,7 @@ def _parse_keep_array_attr(
     MemoryOrder | None,
     ZarrFormat,
     ChunkKeyEncodingLike | None,
-    DimensionNames,
+    DimensionNamesLike,
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
@@ -5600,7 +5611,8 @@ async def _get_selection(
             _config = replace(_config, order=order)
 
         # reading chunks and decoding them
-        await codec_pipeline.read(
+        indexed_chunks = list(indexer)
+        results = await codec_pipeline.read(
             [
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
@@ -5609,11 +5621,26 @@ async def _get_selection(
                     out_selection,
                     is_complete_chunk,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
             ],
             out_buffer,
             drop_axes=indexer.drop_axes,
         )
+        if _config.read_missing_chunks is False:
+            missing_info = []
+            for i, result in enumerate(results):
+                if result["status"] == "missing":
+                    coords = indexed_chunks[i][0]
+                    key = metadata.encode_chunk_key(coords)
+                    missing_info.append(f"  chunk '{key}' (grid position {coords})")
+            if missing_info:
+                chunks_str = "\n".join(missing_info)
+                raise ChunkNotFoundError(
+                    f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
+                    f"Set the 'array.read_missing_chunks' config to True to fill "
+                    f"missing chunks with the fill value.\n"
+                    f"Missing chunks:\n{chunks_str}"
+                )
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return out_buffer.as_scalar()
     return out_buffer.as_ndarray_like()

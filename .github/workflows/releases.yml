@@ -1,6 +1,18 @@
 name: Wheels
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
 
@@ -19,15 +31,15 @@ jobs:
       - uses: actions/setup-python@v6
         name: Install Python
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
-      - name: Install PyBuild
-        run: |
-          python -m pip install --upgrade pip
-          pip install hatch
+      - name: Install Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        with:
+          version: '1.16.5'
       - name: Build wheel and sdist
         run: hatch build
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: releases
           path: dist
@@ -47,16 +59,24 @@ jobs:
           ls dist
 
   upload_pypi:
-    needs: [build_artifacts]
+    needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    environment:
+      name: releases
+      url: https://pypi.org/p/zarr
+    permissions:
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/download-artifact@v7
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@v1.13.0
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
         with:
-          user: __token__
-          password: ${{ secrets.pypi_password }}
-          # To test: repository_url: https://test.pypi.org/legacy/
+          subject-path: dist/*
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0

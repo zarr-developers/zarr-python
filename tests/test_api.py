@@ -601,7 +601,6 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
 
 
 def test_tree() -> None:
-    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
@@ -1532,6 +1531,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     array = np.zeros(shape, dtype=dtype)
     store = zarr.storage.MemoryStore()
 
+    # ruff: disable[FURB171]
     if f in [zarr.full, zarr.full_like]:
         kwargs["fill_value"] = 0
     if f in [zarr.array]:
@@ -1540,6 +1540,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
         kwargs["a"] = array
     if f in [zarr.create_array]:
         kwargs["store"] = store
+    # ruff: enable[FURB171]
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)

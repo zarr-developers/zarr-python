@@ -114,6 +114,15 @@ The following sections provide details on breaking changes in Zarr-Python 3.
    - Use [`zarr.Group.require_array`][] in place of `zarr.Group.require_dataset`
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
+4. The `zarr.storage.init_group` low-level helper function has been removed. Use
+   [`zarr.open_group`][] or [`zarr.create_group`][] instead:
+
+   ```diff
+   - from zarr.storage import init_group
+   - init_group(store, overwrite=True, path="my/path")
+   + import zarr
+   + zarr.open_group(store, mode="w", path="my/path")
+   ```
 
 ### The Store class
 
@@ -198,32 +207,29 @@ after the 3.0.0 release. If features listed below are important to your use case
 of Zarr-Python, please open (or comment on) a
 [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/new).
 
-- The following functions / methods have not been ported to Zarr-Python 3 yet:
+The following functions / methods have not been ported to Zarr-Python 3 yet:
 
-  * `zarr.copy` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
-  * `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
-  * `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
-  * `zarr.Group.move` ([issue #2108](https://github.com/zarr-developers/zarr-python/issues/2108))
+- `zarr.copy` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+- `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+- `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+- `zarr.Group.move` ([issue #2108](https://github.com/zarr-developers/zarr-python/issues/2108))
 
-- The following features (corresponding to function arguments to functions in
+The following features (corresponding to function arguments to functions in
   `zarr`) have not been ported to Zarr-Python 3 yet. Using these features
   will raise a warning or a `NotImplementedError`:
 
-  * `cache_attrs`
-  * `cache_metadata`
-  * `chunk_store` ([issue #2495](https://github.com/zarr-developers/zarr-python/issues/2495))
-  * `meta_array`
-  * `object_codec` ([issue #2617](https://github.com/zarr-developers/zarr-python/issues/2617))
-  * `synchronizer` ([issue #1596](https://github.com/zarr-developers/zarr-python/issues/1596))
-  * `dimension_separator`
+- `cache_attrs`
+- `cache_metadata`
+- `chunk_store` ([issue #2495](https://github.com/zarr-developers/zarr-python/issues/2495))
+- `meta_array`
+- `object_codec` ([issue #2617](https://github.com/zarr-developers/zarr-python/issues/2617))
+- `synchronizer` ([issue #1596](https://github.com/zarr-developers/zarr-python/issues/1596))
+- `dimension_separator`
 
-- The following features that were supported by Zarr-Python 2 have not been ported
+The following features that were supported by Zarr-Python 2 have not been ported
   to Zarr-Python 3 yet:
 
-  * Structured arrays / dtypes ([issue #2134](https://github.com/zarr-developers/zarr-python/issues/2134))
-  * Fixed-length string dtypes ([issue #2347](https://github.com/zarr-developers/zarr-python/issues/2347))
-  * Datetime and timedelta dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
-  * Object dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
-  * Ragged arrays ([issue #2618](https://github.com/zarr-developers/zarr-python/issues/2618))
-  * Groups and Arrays do not implement `__enter__` and `__exit__` protocols ([issue #2619](https://github.com/zarr-developers/zarr-python/issues/2619))
-  * Default filters for object dtypes for Zarr format 2 arrays ([issue #2627](https://github.com/zarr-developers/zarr-python/issues/2627))
+- Object dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
+- Ragged arrays ([issue #2618](https://github.com/zarr-developers/zarr-python/issues/2618))
+- Groups and Arrays do not implement `__enter__` and `__exit__` protocols ([issue #2619](https://github.com/zarr-developers/zarr-python/issues/2619))
+- Default filters for object dtypes for Zarr format 2 arrays ([issue #2627](https://github.com/zarr-developers/zarr-python/issues/2627))

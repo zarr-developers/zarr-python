@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
@@ -39,10 +39,8 @@ __all__ = [
     "register_pipeline",
 ]
 
-T = TypeVar("T")
 
-
-class Registry(dict[str, type[T]], Generic[T]):
+class Registry[T](dict[str, type[T]]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []

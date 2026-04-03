@@ -6,11 +6,12 @@ import pytest
 from packaging.version import Version
 
 import zarr
+from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import BloscShuffle, Shuffle
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.dtype import UInt16
+from zarr.core.dtype import UInt16, get_data_type_from_native_dtype
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -110,3 +111,27 @@ async def test_typesize() -> None:
     else:
         expected_size = 10216
     assert size == expected_size, msg
+
+
+def test_blosc_codec_supports_sync() -> None:
+    assert isinstance(BloscCodec(), SupportsSyncCodec)
+
+
+def test_blosc_codec_sync_roundtrip() -> None:
+    codec = BloscCodec(typesize=8)
+    arr = np.arange(100, dtype="float64")
+    zdtype = get_data_type_from_native_dtype(arr.dtype)
+    spec = ArraySpec(
+        shape=arr.shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    buf = default_buffer_prototype().buffer.from_array_like(arr.view("B"))
+
+    encoded = codec._encode_sync(buf, spec)
+    assert encoded is not None
+    decoded = codec._decode_sync(encoded, spec)
+    result = np.frombuffer(decoded.as_numpy_array(), dtype="float64")
+    np.testing.assert_array_equal(arr, result)

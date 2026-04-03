@@ -2,6 +2,10 @@ name: Check changelog entries
 
 on:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check-changelogs:

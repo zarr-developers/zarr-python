@@ -158,12 +158,24 @@ print(f"Shape after second append: {z.shape}")
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
 
-We currently support two configuration options for arrays: `write_empty_chunks` and `order`.
+We currently support three configuration options for arrays: `write_empty_chunks`, `read_missing_chunks`, and `order`.
 
 | field | type | default | description |
 | - |     - | - | - |
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
+| `read_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
 | `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+
+!!! info
+    The Zarr V3 spec states that readers should interpret an uninitialized chunk as containing the
+    array's `fill_value`. By default, Zarr-Python follows this behavior: a missing chunk is treated
+    as uninitialized and filled with the array's `fill_value`. However, if you know that all chunks
+    have been written (i.e., are initialized), you may want to treat a missing chunk as an error. Set
+    `read_missing_chunks=False` to raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError] instead.
+
+!!! note
+    `write_empty_chunks=False` skips writing chunks that are entirely the array's fill value.
+    If `read_missing_chunks=False`, attempting to read these missing chunks will raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
 
 You can specify the configuration when you create an array with the `config` keyword argument.
 `config` can be passed as either a `dict` or an `ArrayConfig` object.
@@ -223,6 +235,13 @@ print(z.info_complete())
 
 If you don't specify a compressor, by default Zarr uses the Zstandard
 compressor.
+
+To create an array without any compression, set `compressors=None`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+print(f"Compressors: {z_no_compress.compressors}")
+```
 
 In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
 here is an array using Gzip compression, level 1:
