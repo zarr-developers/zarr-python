@@ -324,7 +324,7 @@ class ChunkGrid:
 
     @classmethod
     def from_metadata(cls, metadata: ArrayMetadata) -> ChunkGrid:
-        """Construct a behavioral ChunkGrid from array metadata.
+        """Construct a ChunkGrid from array metadata.
 
         For v2 metadata, builds from shape and chunks.
         For v3 metadata, dispatches on the chunk grid type.

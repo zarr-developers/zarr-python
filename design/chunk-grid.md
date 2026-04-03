@@ -200,7 +200,7 @@ arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))                      
 arr = zarr.create_array(shape=(60, 100), chunks=[[10, 20, 30], [25, 25, 25, 25]])   # rectilinear
 
 # ChunkGrid as a collection
-grid = arr._chunk_grid            # behavioral ChunkGrid (bound to array shape)
+grid = arr._chunk_grid            # ChunkGrid (bound to array shape)
 grid.grid_shape                   # (10, 10) — number of chunks per dimension
 grid.ndim                         # 2
 grid.is_regular                   # True if all dimensions are Fixed
@@ -274,7 +274,7 @@ When `extent < sum(edges)`, the dimension is always stored as `VaryingDimension`
 {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
 ```
 
-Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is combined with the chunk grid when constructing a behavioral `ChunkGrid` via `ChunkGrid.from_metadata()`.
+Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is combined with the chunk grid when constructing a `ChunkGrid` via `ChunkGrid.from_metadata()`.
 
 **The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`. Serialization and deserialization are handled by the metadata-layer chunk grid classes (`RegularChunkGridMetadata` and `RectilinearChunkGridMetadata` in `metadata/v3.py`), which provide `to_dict()` and `from_dict()` methods.
 
@@ -435,7 +435,7 @@ For `VaryingDimension`, `chunk_size == data_size` when `extent == sum(edges)`. W
 
 There is no known chunk grid outside the rectilinear family that retains the tessellation properties zarr-python assumes. A `match` on the grid name is sufficient.
 
-### Why a single behavioral class instead of RegularChunkGrid + RectilinearChunkGrid?
+### Why a single ChunkGrid class instead of RegularChunkGrid + RectilinearChunkGrid?
 
 [Discussed in #3534.](https://github.com/zarr-developers/zarr-python/pull/3534) @d-v-b argued that `RegularChunkGrid` is unnecessary since rectilinear is more general; @dcherian argued that downstream libraries need a fast way to detect regular grids without inspecting potentially millions of chunk edges (see [xarray#9808](https://github.com/pydata/xarray/pull/9808)).
 
@@ -489,16 +489,16 @@ A `TiledDimension` prototype was built ([commit 9c0f582](https://github.com/maxr
 
 ### Metadata / Array separation (partially implemented)
 
-An earlier design doc proposed decoupling `ChunkGrid` (behavioral) from `ArrayV3Metadata` (data), so that metadata would store only a plain dict and the array layer would construct the `ChunkGrid`.
+An earlier design doc proposed decoupling `ChunkGrid` (runtime) from `ArrayV3Metadata` (serialization), so that metadata would store only a plain dict and the array layer would construct the `ChunkGrid`.
 
 The current implementation partially realizes this separation:
 
 - **Metadata DTOs** (`RegularChunkGridMetadata`, `RectilinearChunkGridMetadata` in `metadata/v3.py`): Pure data, frozen dataclasses, no array shape. These live on `ArrayV3Metadata.chunk_grid` and represent only what goes into `zarr.json`.
-- **Behavioral `ChunkGrid`** (`chunk_grids.py`): Shape-bound, supports indexing, iteration, and chunk specs. Lives on `AsyncArray.chunk_grid`, constructed from metadata + `shape` via `ChunkGrid.from_metadata()`.
+- **`ChunkGrid`** (`chunk_grids.py`): Shape-bound, supports indexing, iteration, and chunk specs. Lives on `AsyncArray._chunk_grid`, constructed from metadata + `shape` via `ChunkGrid.from_metadata()`.
 
-This means `ArrayV3Metadata.chunk_grid` is now a `ChunkGridMetadata` (the DTO union type), **not** the behavioral `ChunkGrid`. Code that previously accessed behavioral methods on `metadata.chunk_grid` (e.g., `all_chunk_coords()`, `__getitem__`) must now use the behavioral grid from the array layer instead.
+This means `ArrayV3Metadata.chunk_grid` is now a `ChunkGridMetadata` (the DTO union type), **not** the runtime `ChunkGrid`. Code that previously accessed runtime methods on `metadata.chunk_grid` (e.g., `all_chunk_coords()`, `__getitem__`) must now use the grid from the array layer instead.
 
-The name controls serialization format; each metadata DTO class provides its own `to_dict()` method for serialization. The behavioral grid handles all runtime queries.
+The name controls serialization format; each metadata DTO class provides its own `to_dict()` method for serialization. The `ChunkGrid` handles all runtime queries.
 
 ## Prior art
 
@@ -527,7 +527,7 @@ The same shim exists for `RectilinearChunkGrid` → `RectilinearChunkGridMetadat
 |---|---|
 | `from zarr.core.chunk_grids import RegularChunkGrid` | `from zarr.core.metadata.v3 import RegularChunkGridMetadata` |
 | `from zarr.core.chunk_grids import RectilinearChunkGrid` | `from zarr.core.metadata.v3 import RectilinearChunkGridMetadata` |
-| `isinstance(cg, RegularChunkGrid)` | `isinstance(cg, RegularChunkGridMetadata)` or `cg.is_regular` on the behavioral grid |
+| `isinstance(cg, RegularChunkGrid)` | `isinstance(cg, RegularChunkGridMetadata)` or `cg.is_regular` on the `ChunkGrid` |
 | `isinstance(cg, RectilinearChunkGrid)` | `isinstance(cg, RectilinearChunkGridMetadata)` or `not cg.is_regular` |
 | `cg.chunk_shape` | `cg.chunk_shape` (unchanged on metadata objects) |
 | `cg.chunk_shapes` | `cg.chunk_shapes` (unchanged on metadata objects) |

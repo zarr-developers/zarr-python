@@ -2082,7 +2082,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def _chunk_grid(self) -> ChunkGrid:
-        """The behavioral chunk grid for this array, bound to the array's shape."""
+        """The chunk grid for this array, bound to the array's shape."""
         return self.async_array._chunk_grid
 
     @classmethod
@@ -5758,7 +5758,7 @@ def _get_chunk_spec(
     array_config: ArrayConfig,
     prototype: BufferPrototype,
 ) -> ArraySpec:
-    """Build an ArraySpec for a single chunk using the behavioral ChunkGrid."""
+    """Build an ArraySpec for a single chunk using the ChunkGrid."""
     spec = chunk_grid[chunk_coords]
     if spec is None:
         raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
@@ -5892,7 +5892,7 @@ async def _getitem(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     selection : BasicSelection
         A selection object specifying the subset of data to retrieve.
     prototype : BufferPrototype, optional
@@ -5941,7 +5941,7 @@ async def _get_orthogonal_selection(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     selection : OrthogonalSelection
         The orthogonal selection specification.
     out : NDBuffer | None, optional
@@ -5998,7 +5998,7 @@ async def _get_mask_selection(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     mask : MaskSelection
         The boolean mask specifying the selection.
     out : NDBuffer | None, optional
@@ -6055,7 +6055,7 @@ async def _get_coordinate_selection(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     selection : CoordinateSelection
         The coordinate selection specification.
     out : NDBuffer | None, optional
@@ -6117,7 +6117,7 @@ async def _set_selection(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     indexer : Indexer
         The indexer specifying the selection.
     value : npt.ArrayLike
@@ -6217,7 +6217,7 @@ async def _setitem(
     config : ArrayConfig
         The array configuration.
     chunk_grid : ChunkGrid
-        The behavioral chunk grid.
+        The chunk grid.
     selection : BasicSelection
         The selection defining the region of the array to set.
     value : npt.ArrayLike

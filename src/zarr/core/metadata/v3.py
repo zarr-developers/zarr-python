@@ -239,7 +239,7 @@ def _validate_chunk_shapes(
 class RegularChunkGridMetadata(Metadata):
     """Metadata-only description of a regular chunk grid.
 
-    Stores just the chunk shape — no array extent, no behavioral logic.
+    Stores just the chunk shape — no array extent, no runtime logic.
     This is what lives on ``ArrayV3Metadata.chunk_grid``.
     """
 
@@ -520,7 +520,7 @@ class ArrayV3Metadata(Metadata):
     def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         return self.data_type
 
-    # TODO: move these behavioral properties to the Array class.
+    # TODO: move these properties to the Array class.
     # They require knowledge of codecs (ShardingCodec) and don't belong on a metadata DTO.
 
     @property
