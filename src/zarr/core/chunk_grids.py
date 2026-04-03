@@ -137,9 +137,12 @@ class VaryingDimension:
     nchunks: int = field(init=False, repr=False)  # cached at construction
     ngridcells: int = field(init=False, repr=False)  # cached at construction
 
-    # TODO: with_extent/resize re-create VaryingDimension with the same edges,
-    # recomputing cumulative sums (O(n)) and nchunks (bisect). For long
-    # dimensions, add a fast path that reuses the existing cumulative tuple.
+    # TODO(perf): for long dimensions (O(million chunks)):
+    # - with_extent/resize recompute cumulative sums and nchunks from scratch;
+    #   add a fast path that reuses the existing cumulative tuple.
+    # - Consider storing cumulative as ndarray so bisect calls can use
+    #   np.searchsorted. Scalar lookups (chunk_offset, index_to_chunk)
+    #   would need benchmarking to confirm no regression.
     def __init__(self, edges: Sequence[int], extent: int) -> None:
         edges_tuple = tuple(edges)
         if not edges_tuple:
