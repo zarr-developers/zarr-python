@@ -172,14 +172,14 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run --source=src -m pytest -n auto --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest {args:}",
+    "coverage run --source=src -m pytest -n auto {args:}",
     "coverage html",
 ]
-run = "pytest --ignore tests/benchmarks"
+run = "pytest -n auto --ignore tests/benchmarks {args:}"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = [

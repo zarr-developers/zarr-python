@@ -93,7 +93,7 @@ def test_docstrings_match(callable_name: str) -> None:
             ),
         ),
     ],
-    ids=str,
+    ids=["store_path-create_array_group", "store_path-create", "array_params-create_array_dataset"],
 )
 def test_docstring_consistent_parameters(
     parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
