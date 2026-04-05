@@ -133,7 +133,8 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
-class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
+@pytest.mark.xdist_group(name="s3")
+class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):  # type: ignore[misc]
     store_cls = FsspecStore
     buffer_cls = cpu.Buffer
 
