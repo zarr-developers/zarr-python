@@ -24,6 +24,7 @@ from zarr.core.chunk_grids import (
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.metadata.v3 import (
     RectilinearChunkGridMetadata,
+    RectilinearChunkGridMetadataJSON,
     RegularChunkGridMetadata,
     parse_chunk_grid,
 )
@@ -546,13 +547,13 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
 
 def test_expand_rle_bare_integer_floats_accepted() -> None:
     """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-    result = expand_rle([10.0, 20.0])
+    result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
     assert result == [10, 20]
 
 
 def test_expand_rle_pair_with_float_count() -> None:
     """expand_rle accepts float repeat counts that are integer-valued"""
-    result = expand_rle([[10, 3.0]])
+    result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
     assert result == [10, 10, 10]
 
 
@@ -679,6 +680,7 @@ def test_spec_integer_shorthand_per_dimension() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [4, [1, 2, 3]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((6, 6), meta.chunk_shapes)
     assert _edges(g, 0) == (4, 4)
     assert _edges(g, 1) == (1, 2, 3)
@@ -691,6 +693,7 @@ def test_spec_mixed_rle_and_bare_integers() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [[[1, 3], 3]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((6,), meta.chunk_shapes)
     assert _edges(g, 0) == (1, 1, 1, 3)
 
@@ -702,6 +705,7 @@ def test_spec_overflow_chunks_allowed() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [[4, 4, 4]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((6,), meta.chunk_shapes)
     assert _edges(g, 0) == (4, 4, 4)
 
@@ -722,6 +726,7 @@ def test_spec_example() -> None:
         },
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((6, 6, 6, 6, 6), meta.chunk_shapes)
     assert _edges(g, 0) == (4, 4)
     assert _edges(g, 1) == (1, 2, 3)
@@ -774,6 +779,7 @@ def test_parse_chunk_grid_rectilinear_extent_mismatch_raises(
         "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     with pytest.raises(ValueError, match=match):
         ChunkGrid.from_sizes(array_shape, meta.chunk_shapes)
 
@@ -785,6 +791,7 @@ def test_parse_chunk_grid_rectilinear_extent_match_passes() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((60, 50), meta.chunk_shapes)
     assert g.grid_shape == (3, 2)
 
@@ -796,6 +803,7 @@ def test_parse_chunk_grid_rectilinear_ndim_mismatch_raises() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [[10, 20], [25, 25]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     with pytest.raises(ValueError, match="3 dimensions but chunk_sizes has 2"):
         ChunkGrid.from_sizes((30, 50, 100), meta.chunk_shapes)
 
@@ -807,6 +815,7 @@ def test_parse_chunk_grid_rectilinear_rle_extent_validated() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": [[[10, 5]], [[25, 2]]]},
     }
     meta = parse_chunk_grid(data)
+    assert isinstance(meta, RectilinearChunkGridMetadata)
     g = ChunkGrid.from_sizes((50, 50), meta.chunk_shapes)
     assert g.grid_shape == (5, 2)
     with pytest.raises(ValueError, match="extent 100 exceeds sum of edges 50"):
@@ -2717,7 +2726,8 @@ def test_iter_chunk_regions_rectilinear() -> None:
     ],
 )
 def test_rectilinear_from_dict(
-    json_input: dict[str, Any], expected_chunk_shapes: tuple[int | tuple[int, ...], ...]
+    json_input: RectilinearChunkGridMetadataJSON,
+    expected_chunk_shapes: tuple[int | tuple[int, ...], ...],
 ) -> None:
     """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms."""
     grid = RectilinearChunkGridMetadata.from_dict(json_input)
@@ -2760,7 +2770,7 @@ def test_rectilinear_to_dict(
         },
     ],
 )
-def test_rectilinear_roundtrip(json_input: dict[str, Any]) -> None:
+def test_rectilinear_roundtrip(json_input: RectilinearChunkGridMetadataJSON) -> None:
     """from_dict -> to_dict -> from_dict produces the same grid."""
     grid1 = RectilinearChunkGridMetadata.from_dict(json_input)
     grid2 = RectilinearChunkGridMetadata.from_dict(grid1.to_dict())

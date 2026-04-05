@@ -178,12 +178,12 @@ RectilinearDimSpecJSON = int | list[int | list[int]]
 
 
 class RegularChunkGridMetadataConfig(TypedDict):
-    chunk_shape: tuple[int, ...]
+    chunk_shape: Sequence[int]
 
 
 class RectilinearChunkGridMetadataConfig(TypedDict):
     kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpecJSON, ...]
+    chunk_shapes: Sequence[RectilinearDimSpecJSON]
 
 
 RegularChunkGridMetadataJSON = NamedRequiredConfig[
