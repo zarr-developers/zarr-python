@@ -786,27 +786,3 @@ def _auto_partition(
             _shards_out = cast("tuple[int, ...]", shard_shape)
 
     return _shards_out, _chunks_out
-
-
-# -- Backwards-compatibility shim --
-# Downstream packages (tifffile, cubed, ismip-indexing) import RegularChunkGrid
-# from this module. Emit a deprecation warning and redirect to the metadata class.
-
-_DEPRECATED_NAMES = {
-    "RegularChunkGrid": "RegularChunkGridMetadata",
-}
-
-
-def __getattr__(name: str) -> Any:
-    if name in _DEPRECATED_NAMES:
-        new_name = _DEPRECATED_NAMES[name]
-        import zarr.core.metadata.v3 as v3_mod
-
-        warnings.warn(
-            f"Importing {name} from zarr.core.chunk_grids is deprecated. "
-            f"Use zarr.core.metadata.v3.{new_name} instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return getattr(v3_mod, new_name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
