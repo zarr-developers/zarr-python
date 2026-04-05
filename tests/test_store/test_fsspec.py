@@ -134,7 +134,7 @@ async def test_basic() -> None:
 
 
 @pytest.mark.xdist_group(name="s3")
-class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):  # type: ignore[misc]
+class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     store_cls = FsspecStore
     buffer_cls = cpu.Buffer
 
