@@ -117,6 +117,7 @@ from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
+    ChunkNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -5610,7 +5611,8 @@ async def _get_selection(
             _config = replace(_config, order=order)
 
         # reading chunks and decoding them
-        await codec_pipeline.read(
+        indexed_chunks = list(indexer)
+        results = await codec_pipeline.read(
             [
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
@@ -5619,11 +5621,26 @@ async def _get_selection(
                     out_selection,
                     is_complete_chunk,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
             ],
             out_buffer,
             drop_axes=indexer.drop_axes,
         )
+        if _config.read_missing_chunks is False:
+            missing_info = []
+            for i, result in enumerate(results):
+                if result["status"] == "missing":
+                    coords = indexed_chunks[i][0]
+                    key = metadata.encode_chunk_key(coords)
+                    missing_info.append(f"  chunk '{key}' (grid position {coords})")
+            if missing_info:
+                chunks_str = "\n".join(missing_info)
+                raise ChunkNotFoundError(
+                    f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
+                    f"Set the 'array.read_missing_chunks' config to True to fill "
+                    f"missing chunks with the fill value.\n"
+                    f"Missing chunks:\n{chunks_str}"
+                )
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return out_buffer.as_scalar()
     return out_buffer.as_ndarray_like()
