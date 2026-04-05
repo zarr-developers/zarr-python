@@ -511,40 +511,167 @@ The name controls serialization format; each metadata DTO class provides its own
 
 ## Migration
 
-### Backwards compatibility
+### Public API compatibility
 
-A module-level `__getattr__` shim in `chunk_grids.py` preserves the common downstream import pattern. Importing the old names emits a `DeprecationWarning` and returns the renamed metadata class:
+The user-facing API is fully backward-compatible. Existing code that creates, opens, reads, and writes zarr arrays continues to work without changes:
+
+- `zarr.create_array`, `zarr.open`, `zarr.open_array`, `zarr.open_group` -- unchanged signatures. The `chunks` parameter type is *widened* (now also accepts nested sequences for rectilinear grids), but all existing call patterns still work.
+- `arr.chunks` -- returns `tuple[int, ...]` for regular arrays, same as before.
+- `arr.shape`, `arr.dtype`, `arr.ndim`, `arr.shards` -- unchanged.
+- Top-level `zarr` exports -- unchanged.
+- Rectilinear chunks are gated behind `zarr.config.set({'array.rectilinear_chunks': True})`, so they cannot be created accidentally.
+
+New additions (purely additive): `arr.read_chunk_sizes`, `arr.write_chunk_sizes`, `zarr.experimental.ChunkGrid`, `zarr.experimental.ChunkSpec`.
+
+The breaking changes discussed below are confined to **internal modules** (`zarr.core.chunk_grids`, `zarr.core.metadata.v3`, `zarr.core.indexing`) that downstream libraries like cubed and VirtualiZarr access directly.
+
+### Internal API compatibility trade-off analysis
+
+This section analyzes the internal breaking changes from the metadata/array separation and evaluates two strategies: (A) add backward-compatibility shims in zarr-python, vs. (B) require downstream packages to update. The baseline is **no shims at all**.
+
+#### What breaks without any shims
+
+Three API changes affect downstream code:
+
+1. **`RegularChunkGrid` class removed from `zarr.core.chunk_grids`.** On `main`, `RegularChunkGrid` is defined in `chunk_grids.py` as a `Metadata` subclass. This branch replaces it with `RegularChunkGridMetadata` in `metadata/v3.py`. Without a shim, `from zarr.core.chunk_grids import RegularChunkGrid` raises `ImportError`.
+
+2. **`RegularChunkGrid` no longer available from `zarr.core.metadata.v3`.** On `main`, `v3.py` imports `RegularChunkGrid` from `chunk_grids.py` for internal use. VirtualiZarr imports it from this location (`from zarr.core.metadata.v3 import RegularChunkGrid`). Without the internal import, this raises `ImportError`.
+
+3. **`OrthogonalIndexer` constructor expects `ChunkGrid`, not `RegularChunkGrid`/`RegularChunkGridMetadata`.** Even if the import shims above resolve to `RegularChunkGridMetadata`, the indexer constructors access `chunk_grid._dimensions`, which only exists on the runtime `ChunkGrid` class. Cubed constructs `OrthogonalIndexer(selection, shape, RegularChunkGrid(chunk_shape=chunks))` directly.
+
+#### Downstream impact without shims
+
+**VirtualiZarr** (5 line changes across 2 files):
 
 ```python
-from zarr.core.chunk_grids import RegularChunkGrid  # DeprecationWarning, returns RegularChunkGridMetadata
+# manifests/array.py (line 6): import
+- from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGrid
++ from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 
-grid = RegularChunkGrid(chunk_shape=(10, 20))        # works — same as RegularChunkGridMetadata(...)
-isinstance(grid, RegularChunkGrid)                    # True — RegularChunkGrid is RegularChunkGridMetadata
+# manifests/array.py (line 53): isinstance check
+- if not isinstance(_metadata.chunk_grid, RegularChunkGrid):
++ if not isinstance(_metadata.chunk_grid, RegularChunkGridMetadata):
+
+# parsers/zarr.py (line 16): import
+- from zarr.core.chunk_grids import RegularChunkGrid
++ from zarr.core.metadata.v3 import RegularChunkGridMetadata
+
+# parsers/zarr.py (line 270): isinstance check
+- if not isinstance(array_v3_metadata.chunk_grid, RegularChunkGrid):
++ if not isinstance(array_v3_metadata.chunk_grid, RegularChunkGridMetadata):
+
+# parsers/zarr.py (line 390): cast
+- cast(RegularChunkGrid, metadata.chunk_grid).chunk_shape
++ cast(RegularChunkGridMetadata, metadata.chunk_grid).chunk_shape
 ```
 
-The same shim exists for `RectilinearChunkGrid` → `RectilinearChunkGridMetadata`.
+The `manifests/array.py` import is from `zarr.core.metadata.v3` (never a documented export; VirtualiZarr relied on a transitive import). The `parsers/zarr.py` import is from `zarr.core.chunk_grids` (the canonical location on `main`). Both are straightforward renames. The `.chunk_shape` attribute is unchanged on the new class.
+
+If VirtualiZarr needs to support both old and new zarr-python, a version-conditional import adds ~5 more lines.
+
+**Cubed** (3 line changes in 1 file):
+
+```python
+# core/ops.py (lines 626-631)
+def _create_zarr_indexer(selection, shape, chunks):
+    if zarr.__version__[0] == "3":
+-       from zarr.core.chunk_grids import RegularChunkGrid
++       from zarr.core.chunk_grids import ChunkGrid
+        from zarr.core.indexing import OrthogonalIndexer
+-       return OrthogonalIndexer(selection, shape, RegularChunkGrid(chunk_shape=chunks))
++       return OrthogonalIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
+```
+
+Note that `ChunkGrid` is *not* a renamed class. `RegularChunkGrid(chunk_shape=chunks)` took only chunk sizes; `ChunkGrid.from_sizes(shape, chunks)` also requires the array shape. The `shape` parameter is already available at this call site.
+
+If cubed needs to support both old and new zarr-python:
+
+```python
+def _create_zarr_indexer(selection, shape, chunks):
+    if zarr.__version__[0] == "3":
+        from zarr.core.indexing import OrthogonalIndexer
+        try:
+            from zarr.core.chunk_grids import ChunkGrid
+            return OrthogonalIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
+        except ImportError:
+            from zarr.core.chunk_grids import RegularChunkGrid
+            return OrthogonalIndexer(selection, shape, RegularChunkGrid(chunk_shape=chunks))
+    else:
+        from zarr.indexing import OrthogonalIndexer
+        return OrthogonalIndexer(selection, ZarrArrayIndexingAdaptor(shape, chunks))
+```
+
+#### What shims can cover
+
+**Shim 1: `__getattr__` in `chunk_grids.py`** (~15 lines)
+
+Maps `RegularChunkGrid` to `RegularChunkGridMetadata` with a deprecation warning. Covers:
+- The `from zarr.core.chunk_grids import RegularChunkGrid` import pattern (used by cubed and VirtualiZarr's `parsers/zarr.py`)
+- `isinstance(x, RegularChunkGrid)` checks (because the name resolves to the actual class)
+- `RegularChunkGrid(chunk_shape=(...))` construction (because `RegularChunkGridMetadata` accepts the same arguments)
+
+Does **not** cover: passing the result to `OrthogonalIndexer`, because `RegularChunkGridMetadata` lacks `._dimensions`.
+
+**Shim 2: `__getattr__` in `metadata/v3.py`** (~12 lines)
+
+Same pattern, covers VirtualiZarr's import from `zarr.core.metadata.v3`. Mirrors Shim 1 for a different import path.
+
+**Shim 3: Auto-coerce `ChunkGridMetadata` in indexer constructors** (~30 lines)
+
+A helper function + 1-line insertion in each of `BasicIndexer`, `OrthogonalIndexer`, `CoordinateIndexer`, and `MaskIndexer`:
+
+```python
+def _resolve_chunk_grid(chunk_grid, shape):
+    """Coerce ChunkGridMetadata to runtime ChunkGrid if needed."""
+    from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
+    from zarr.core.metadata.v3 import ChunkGridMetadata
+    if isinstance(chunk_grid, _ChunkGrid):
+        return chunk_grid
+    if isinstance(chunk_grid, ChunkGridMetadata):
+        warnings.warn(
+            "Passing ChunkGridMetadata to indexers is deprecated. "
+            "Use ChunkGrid.from_sizes() instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+        if hasattr(chunk_grid, "chunk_shape"):
+            return _ChunkGrid.from_sizes(shape, tuple(chunk_grid.chunk_shape))
+        return _ChunkGrid.from_sizes(shape, chunk_grid.chunk_shapes)
+    raise TypeError(f"Expected ChunkGrid or ChunkGridMetadata, got {type(chunk_grid)}")
+```
+
+This covers cubed's `OrthogonalIndexer(selection, shape, RegularChunkGrid(...))` pattern end-to-end (combined with Shim 1).
+
+#### Comparison
+
+| | No shims | Shims 1+2 only | Shims 1+2+3 |
+|---|---|---|---|
+| **zarr-python additions** | 0 lines | ~27 lines | ~57 lines |
+| **VirtualiZarr changes** | 5 lines | 0 lines | 0 lines |
+| **Cubed changes** | 3 lines | 3 lines | 0 lines |
+| **Maintenance burden** | None | Low (deprecation shims are well-understood) | Medium (indexer coercion blurs metadata/runtime boundary) |
+| **API clarity** | Clean (metadata DTOs and runtime types are distinct) | Good (old names redirect to new names) | Weaker (indexers implicitly accept two type families) |
+
+With Shims 1+2 only, VirtualiZarr's `manifests/array.py` import from `zarr.core.metadata.v3` is covered by Shim 2, and the `parsers/zarr.py` import from `zarr.core.chunk_grids` is covered by Shim 1. The `isinstance` checks work because both shims resolve to `RegularChunkGridMetadata`. The `cast` works because `.chunk_shape` is unchanged. So VirtualiZarr needs 0 changes with Shims 1+2. The 3 lines for cubed remain because Shim 1 resolves the import but `OrthogonalIndexer` still needs a runtime `ChunkGrid`.
 
 ### Downstream migration
 
-| Old pattern | New pattern |
+Migration from `main` (where only `RegularChunkGrid` and the abstract `ChunkGrid` ABC exist):
+
+| Old pattern (on `main`) | New pattern |
 |---|---|
 | `from zarr.core.chunk_grids import RegularChunkGrid` | `from zarr.core.metadata.v3 import RegularChunkGridMetadata` |
-| `from zarr.core.chunk_grids import RectilinearChunkGrid` | `from zarr.core.metadata.v3 import RectilinearChunkGridMetadata` |
-| `isinstance(cg, RegularChunkGrid)` | `isinstance(cg, RegularChunkGridMetadata)` or `cg.is_regular` on the `ChunkGrid` |
-| `isinstance(cg, RectilinearChunkGrid)` | `isinstance(cg, RectilinearChunkGridMetadata)` or `not cg.is_regular` |
-| `cg.chunk_shape` | `cg.chunk_shape` (unchanged on metadata objects) |
-| `cg.chunk_shapes` | `cg.chunk_shapes` (unchanged on metadata objects) |
-| Feature detection via class import | Version check or `hasattr(ChunkGrid, 'is_regular')` |
+| `from zarr.core.chunk_grids import ChunkGrid` (ABC) | `from zarr.core.chunk_grids import ChunkGrid` (concrete class, different API) |
+| `isinstance(cg, RegularChunkGrid)` | `isinstance(cg, RegularChunkGridMetadata)` or `grid.is_regular` on the runtime `ChunkGrid` |
+| `cg.chunk_shape` on `RegularChunkGrid` | `cg.chunk_shape` on `RegularChunkGridMetadata` (unchanged) |
+| `ChunkGrid.from_dict(data)` | `parse_chunk_grid(data)` from `zarr.core.metadata.v3` |
+| `chunk_grid.all_chunk_coords(array_shape)` | `chunk_grid.all_chunk_coords()` (shape now stored in grid) |
+| `chunk_grid.get_nchunks(array_shape)` | `chunk_grid.get_nchunks()` (shape now stored in grid) |
 
-**[xarray#10880](https://github.com/pydata/xarray/pull/10880):** Replace `isinstance` checks with `.is_regular`. Write path simplifies with `chunks=[[...]]` API.
+During the earlier [#3534](https://github.com/zarr-developers/zarr-python/pull/3534) effort (which used separate `RegularChunkGrid`/`RectilinearChunkGrid` classes), downstream PRs and issues were opened to explore compatibility:
 
-**[VirtualiZarr#877](https://github.com/zarr-developers/VirtualiZarr/pull/877):** Drop vendored `_is_nested_sequence`. Replace `isinstance` checks.
+- xarray ([#10880](https://github.com/pydata/xarray/pull/10880)), VirtualiZarr ([#877](https://github.com/zarr-developers/VirtualiZarr/pull/877)), Icechunk ([#1338](https://github.com/earth-mover/icechunk/issues/1338)), cubed ([#876](https://github.com/cubed-dev/cubed/issues/876))
 
-**[Icechunk#1338](https://github.com/earth-mover/icechunk/issues/1338):** Minimal impact — format changes driven by spec, not class hierarchy.
-
-**[cubed#876](https://github.com/cubed-dev/cubed/issues/876):** Switch store creation to `ChunkGrid` API. @tomwhite confirmed in #3534 that rechunking with variable-sized intermediate chunks works.
-
-**HEALPix use case:** @tinaok demonstrated in #3534 that variable-chunked arrays arise naturally when grouping HEALPix cells by parent pixel — the chunk sizes come from `np.unique(parents, return_counts=True)`.
+These target #3534's API, not this branch's unified `ChunkGrid` design. New downstream POC branches for this design are linked in [Proofs of concepts](#proofs-of-concepts).
 
 ### Credits
 
