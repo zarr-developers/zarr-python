@@ -139,6 +139,31 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert isinstance(group := zipped["foo"], Group)
         assert list(group.keys()) == list(group.keys())
 
+    async def test_list_without_explicit_open(self, tmp_path: Path) -> None:
+        # ZipStore.list(), list_dir(), and exists() should auto-open
+        # the zip file just like _get() and _set() do.
+        zip_path = tmp_path / "data.zip"
+        zarr_path = tmp_path / "foo.zarr"
+        root = zarr.open_group(store=zarr_path, mode="w")
+        root["x"] = np.array([1, 2, 3])
+        shutil.make_archive(str(zarr_path), "zip", zarr_path)
+        shutil.move(str(zarr_path) + ".zip", zip_path)
+
+        store = ZipStore(zip_path, mode="r")
+        assert not store._is_open
+
+        keys = [k async for k in store.list()]
+        assert len(keys) > 0
+
+        store2 = ZipStore(zip_path, mode="r")
+        assert not store2._is_open
+        assert await store2.exists(keys[0])
+
+        store3 = ZipStore(zip_path, mode="r")
+        assert not store3._is_open
+        dir_keys = [k async for k in store3.list_dir("")]
+        assert len(dir_keys) > 0
+
     async def test_move(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin.zip"
         destination = tmp_path / "some_folder" / "destination.zip"
