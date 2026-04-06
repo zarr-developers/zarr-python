@@ -209,19 +209,19 @@ def test_array_name_properties_with_group(
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("specifiy_fill_value", [True, False])
+@pytest.mark.parametrize("specify_fill_value", [True, False])
 @pytest.mark.parametrize(
     "zdtype", zdtype_examples, ids=tuple(str(type(v)) for v in zdtype_examples)
 )
 def test_array_fill_value_default(
-    store: MemoryStore, specifiy_fill_value: bool, zdtype: ZDType[Any, Any]
+    store: MemoryStore, specify_fill_value: bool, zdtype: ZDType[Any, Any]
 ) -> None:
     """
     Test that creating an array with the fill_value parameter set to None, or unspecified,
     results in the expected fill_value attribute of the array, i.e. the default value of the dtype
     """
     shape = (10,)
-    if specifiy_fill_value:
+    if specify_fill_value:
         arr = zarr.create_array(
             store=store,
             shape=shape,
