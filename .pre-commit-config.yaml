@@ -11,13 +11,13 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
+    rev: v0.15.4
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
       - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.1
     hooks:
       - id: codespell
         args: ["-L", "fo,ihs,kake,te", "-S", "fixture"]
@@ -28,7 +28,7 @@ repos:
         exclude: mkdocs.yml
       - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.0
+    rev: v1.19.1
     hooks:
       - id: mypy
         files: src|tests
@@ -47,7 +47,7 @@ repos:
           - hypothesis
           - s3fs
   - repo: https://github.com/scientific-python/cookie
-    rev: 2026.04.04
+    rev: 2026.03.02
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/numpy/numpydoc
