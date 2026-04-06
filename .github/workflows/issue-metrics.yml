@@ -33,7 +33,7 @@ jobs:
         echo "last_month=$first_day..$last_day" >> "$GITHUB_ENV"
 
     - name: Run issue-metrics tool
-      uses: github/issue-metrics@67526e7bd8100b870f10b1c120780a8375777b43 # v3.25.5
+      uses: github/issue-metrics@7bee6e691468e996f6701b0638a5238b1490014e # v4.2.1
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SEARCH_QUERY: 'repo:zarr-developers/zarr-python is:issue created:${{ env.last_month }} -reason:"not planned"'
