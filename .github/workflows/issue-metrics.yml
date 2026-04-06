@@ -7,13 +7,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: issue metrics
     runs-on: ubuntu-latest
     permissions:
-      issues: write
-      pull-requests: read
+      issues: write # Required to create the metrics report issue
+      pull-requests: read # Required to read PR metrics
     steps:
     - name: Get dates for last month
       shell: bash
@@ -29,13 +33,13 @@ jobs:
         echo "last_month=$first_day..$last_day" >> "$GITHUB_ENV"
 
     - name: Run issue-metrics tool
-      uses: github/issue-metrics@v3
+      uses: github/issue-metrics@67526e7bd8100b870f10b1c120780a8375777b43 # v3.25.5
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SEARCH_QUERY: 'repo:zarr-developers/zarr-python is:issue created:${{ env.last_month }} -reason:"not planned"'
 
     - name: Create issue
-      uses: peter-evans/create-issue-from-file@v6
+      uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
       with:
         title: Monthly issue metrics report
         token: ${{ secrets.GITHUB_TOKEN }}

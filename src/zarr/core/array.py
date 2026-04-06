@@ -2930,6 +2930,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__]
 
         """
+        # Converting a zarr Array to numpy here avoids a SyncError that occurs when
+        # value.__getitem__ is called inside the async codec pipeline (which already
+        # runs within a running event loop).  np.asarray triggers Array.__array__,
+        # which reads the data synchronously before we enter the async context.
+        if isinstance(value, Array):
+            value = np.asarray(value)
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[cast("CoordinateSelection | MaskSelection", selection)] = value
