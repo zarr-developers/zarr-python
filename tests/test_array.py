@@ -1853,24 +1853,21 @@ def test_roundtrip_numcodecs() -> None:
 
     # Create the array with the correct codecs
     root = zarr.group(store)
-    warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        root.create_array(
-            "test",
-            shape=(720, 1440),
-            chunks=(720, 1440),
-            dtype="float64",
-            compressors=compressors,  # type: ignore[arg-type]
-            filters=filters,  # type: ignore[arg-type]
-            fill_value=-9.99,
-            dimension_names=["lat", "lon"],
-        )
+    root.create_array(
+        "test",
+        shape=(720, 1440),
+        chunks=(720, 1440),
+        dtype="float64",
+        compressors=compressors,  # type: ignore[arg-type]
+        filters=filters,  # type: ignore[arg-type]
+        fill_value=-9.99,
+        dimension_names=["lat", "lon"],
+    )
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        metadata = root["test"].metadata.to_dict()
+    metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
 
@@ -2259,9 +2256,34 @@ def test_create_array_with_data_num_gets(
         data = zarr.zeros(shape, dtype="int64")
 
     zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
-    # one get for the metadata and one per shard.
-    # Note: we don't actually need one get per shard, but this is the current behavior
-    assert store.counter["get"] == 1 + num_shards
+    # One get for the metadata; full-shard writes should not read shard payloads.
+    assert store.counter["get"] == 1
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_gets"),
+    [(slice(None), 0), (slice(1, 9), 1)],
+)
+def test_shard_write_num_gets(selection: slice, expected_gets: int) -> None:
+    """
+    Test that partial-shard writes read the existing data and full-shard writes don't.
+    """
+    store = LoggingStore(store=MemoryStore())
+    arr = zarr.create_array(
+        store,
+        shape=(10,),
+        chunks=(1,),
+        shards=(10,),
+        dtype="int64",
+        fill_value=-1,
+    )
+    arr[:] = 0
+
+    store.counter.clear()
+
+    arr[selection] = 1
+
+    assert store.counter["get"] == expected_gets
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])

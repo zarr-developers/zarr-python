@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,16 +32,22 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "GetResult",
     "SupportsSyncCodec",
 ]
 
-CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
-CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
-TName = TypeVar("TName", bound=str, covariant=True)
+class GetResult(TypedDict):
+    """Metadata about a store get operation."""
+
+    status: Literal["present", "missing"]
 
 
-class CodecJSON_V2(TypedDict, Generic[TName]):
+type CodecInput = NDBuffer | Buffer
+type CodecOutput = NDBuffer | Buffer
+
+
+class CodecJSON_V2[TName: str](TypedDict):
     """The JSON representation of a codec for Zarr V2"""
 
     id: ReadOnly[TName]
@@ -61,23 +67,22 @@ CodecJSON = str | Mapping[str, object]
 
 
 @runtime_checkable
-class SupportsSyncCodec(Protocol):
+class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     """Protocol for codecs that support synchronous encode/decode.
 
-    Codecs implementing this protocol provide ``_decode_sync`` and ``_encode_sync``
+    Codecs implementing this protocol provide `_decode_sync` and `_encode_sync`
     methods that perform encoding/decoding without requiring an async event loop.
+
+    The type parameters mirror `BaseCodec`: `CI` is the decoded type and `CO` is
+    the encoded type.
     """
 
-    def _decode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer: ...
+    def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
 
-    def _encode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer | None: ...
+    def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
 
 
-class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
+class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
     """Generic base class for codecs.
 
     Codecs can be registered via zarr.codecs.registry.
@@ -155,13 +160,13 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
             The array chunk grid
         """
 
-    async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
+    async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
         raise NotImplementedError  # pragma: no cover
 
     async def decode(
         self,
-        chunks_and_specs: Iterable[tuple[CodecOutput | None, ArraySpec]],
-    ) -> Iterable[CodecInput | None]:
+        chunks_and_specs: Iterable[tuple[CO | None, ArraySpec]],
+    ) -> Iterable[CI | None]:
         """Decodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
@@ -172,25 +177,23 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Returns
         -------
-        Iterable[CodecInput | None]
+        Iterable[CI | None]
         """
         return await _batching_helper(self._decode_single, chunks_and_specs)
 
-    async def _encode_single(
-        self, chunk_data: CodecInput, chunk_spec: ArraySpec
-    ) -> CodecOutput | None:
+    async def _encode_single(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None:
         raise NotImplementedError  # pragma: no cover
 
     async def encode(
         self,
-        chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
-    ) -> Iterable[CodecOutput | None]:
+        chunks_and_specs: Iterable[tuple[CI | None, ArraySpec]],
+    ) -> Iterable[CO | None]:
         """Encodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[CodecInput | None, ArraySpec]]
+        chunks_and_specs : Iterable[tuple[CI | None, ArraySpec]]
             Ordered set of to-be-encoded chunks with their accompanying chunk spec.
 
         Returns
@@ -433,13 +436,13 @@ class CodecPipeline:
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[GetResult, ...]:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be fetched.
             The second slice selection determines where in the output array the chunk data will be written.
@@ -451,6 +454,11 @@ class CodecPipeline:
             ``out``) to the fill value for the array.
 
         out : NDBuffer
+
+        Returns
+        -------
+        tuple[GetResult, ...]
+            One result per chunk in ``batch_info``.
         """
         ...
 
@@ -467,7 +475,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be encoded.
             The second slice selection determines where in the value array the chunk data is located.
@@ -478,10 +486,10 @@ class CodecPipeline:
         ...
 
 
-async def _batching_helper(
-    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
-    batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
-) -> list[CodecOutput | None]:
+async def _batching_helper[CI: CodecInput, CO: CodecOutput](
+    func: Callable[[CI, ArraySpec], Awaitable[CO | None]],
+    batch_info: Iterable[tuple[CI | None, ArraySpec]],
+) -> list[CO | None]:
     return await concurrent_map(
         list(batch_info),
         _noop_for_none(func),
@@ -489,10 +497,10 @@ async def _batching_helper(
     )
 
 
-def _noop_for_none(
-    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
-) -> Callable[[CodecInput | None, ArraySpec], Awaitable[CodecOutput | None]]:
-    async def wrap(chunk: CodecInput | None, chunk_spec: ArraySpec) -> CodecOutput | None:
+def _noop_for_none[CI: CodecInput, CO: CodecOutput](
+    func: Callable[[CI, ArraySpec], Awaitable[CO | None]],
+) -> Callable[[CI | None, ArraySpec], Awaitable[CO | None]]:
+    async def wrap(chunk: CI | None, chunk_spec: ArraySpec) -> CO | None:
         if chunk is None:
             return None
         return await func(chunk, chunk_spec)
