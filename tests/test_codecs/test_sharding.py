@@ -1,6 +1,6 @@
 import pickle
 import re
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -13,12 +13,15 @@ from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
+    BytesCodec,
+    Crc32cCodec,
     ShardingCodec,
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
+from zarr.codecs.sharding import SubchunkWriteOrder, _ShardReader
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.storage import StorePath, ZipStore
+from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -555,3 +558,132 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
+
+
+async def stored_data_and_get_order(
+    codec: ShardingCodec, chunks_per_shard: tuple[int, ...]
+) -> list[tuple[int, ...]]:
+    shard_shape = tuple(c * s for c, s in zip(chunks_per_shard, codec.chunk_shape, strict=True))
+    store = MemoryStore()
+    arr = zarr.create_array(
+        StorePath(store),
+        shape=shard_shape,
+        dtype="uint8",
+        chunks=shard_shape,
+        serializer=codec,
+        filters=None,
+        compressors=None,
+        fill_value=0,
+    )
+
+    arr[:] = np.arange(np.prod(shard_shape), dtype="uint8").reshape(shard_shape)
+
+    shard_buf = await store.get("c/0/0", prototype=default_buffer_prototype())
+    if shard_buf is None:
+        raise RuntimeError("data write failed")
+    index = (await _ShardReader.from_bytes(shard_buf, codec, chunks_per_shard)).index
+    offset_to_coord: dict[int, tuple[int, ...]] = dict(
+        zip(
+            index.get_chunk_slices_vectorized(np.array(list(np.ndindex(chunks_per_shard))))[
+                0
+            ],  # start
+            list(np.ndindex(chunks_per_shard)),  # coord
+            strict=True,
+        )
+    )
+
+    # The physical write order is recovered by sorting coordinates by start offset.
+    return [coord for _, coord in sorted(offset_to_coord.items())]
+
+
+@pytest.mark.parametrize(
+    "subchunk_write_order",
+    get_args(SubchunkWriteOrder),
+)
+async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
+    """Subchunks must be physically laid out in the shard in the order specified by
+    ``subchunk_write_order``.  We verify this by decoding the shard index and sorting
+    the chunk coordinates by their byte offset."""
+    # Use a non-square chunks_per_shard so all three orderings are distinguishable.
+    chunks_per_shard = (3, 2)
+    chunk_shape = (4, 4)
+    seed = 0
+    codec = ShardingCodec(
+        chunk_shape=chunk_shape,
+        codecs=[BytesCodec()],
+        index_codecs=[BytesCodec(), Crc32cCodec()],
+        index_location=ShardingCodecIndexLocation.end,
+        subchunk_write_order=subchunk_write_order,
+        rng=np.random.default_rng(seed=seed),
+    )
+
+    actual_order = await stored_data_and_get_order(codec, chunks_per_shard)
+    if subchunk_write_order != "unordered":
+        expected_order = list(codec._subchunk_order_iter(chunks_per_shard, subchunk_write_order))
+        assert actual_order == expected_order
+    else:
+        same_order_same_seed = list(
+            ShardingCodec(
+                chunk_shape=chunk_shape,
+                codecs=[BytesCodec()],
+                index_codecs=[BytesCodec(), Crc32cCodec()],
+                index_location=ShardingCodecIndexLocation.end,
+                subchunk_write_order=subchunk_write_order,
+                rng=np.random.default_rng(seed=seed),
+            )._subchunk_order_iter(chunks_per_shard, subchunk_write_order)
+        )
+        assert actual_order == same_order_same_seed
+
+
+async def test_unordered_can_be_seeded() -> None:
+    orders = []
+    chunks_per_shard = (3, 2)
+    chunk_shape = (4, 4)
+    seed = 0
+    for _ in range(4):
+        codec = ShardingCodec(
+            chunk_shape=chunk_shape,
+            codecs=[BytesCodec()],
+            index_codecs=[BytesCodec(), Crc32cCodec()],
+            index_location=ShardingCodecIndexLocation.end,
+            subchunk_write_order="unordered",
+            rng=np.random.default_rng(seed=seed),
+        )
+        orders.append(await stored_data_and_get_order(codec, chunks_per_shard))
+    assert all(orders[0] == o for o in orders)
+
+
+@pytest.mark.parametrize(
+    "subchunk_write_order",
+    get_args(SubchunkWriteOrder),
+)
+@pytest.mark.parametrize("do_partial", [True, False], ids=["partial", "complete"])
+def test_subchunk_write_order_roundtrip(
+    subchunk_write_order: SubchunkWriteOrder, do_partial: bool
+) -> None:
+    """Data written with any ``subchunk_write_order`` must round-trip correctly."""
+    chunks_per_shard = (3, 2)
+    chunk_shape = (4, 4)
+    shard_shape = tuple(c * s for c, s in zip(chunks_per_shard, chunk_shape, strict=True))
+    data = np.arange(np.prod(shard_shape), dtype="uint16").reshape(shard_shape)
+    arr = zarr.create_array(
+        StorePath(MemoryStore()),
+        shape=shard_shape,
+        dtype=data.dtype,
+        chunks=shard_shape,
+        serializer=ShardingCodec(
+            chunk_shape=chunk_shape,
+            codecs=[BytesCodec()],
+            subchunk_write_order=subchunk_write_order,
+        ),
+        filters=None,
+        compressors=None,
+        fill_value=0,
+    )
+    if do_partial:
+        sub_data = data[: (shard_shape[0] // 2)]
+        arr[: (shard_shape[0] // 2)] = data[: (shard_shape[0] // 2)]
+        data = np.vstack([sub_data, np.zeros_like(sub_data)])
+    else:
+        arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)

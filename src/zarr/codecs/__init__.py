@@ -27,7 +27,7 @@ from zarr.codecs.numcodecs import (
     Zlib,
     Zstd,
 )
-from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation, SubchunkWriteOrder
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
@@ -43,6 +43,7 @@ __all__ = [
     "GzipCodec",
     "ShardingCodec",
     "ShardingCodecIndexLocation",
+    "SubchunkWriteOrder",
     "TransposeCodec",
     "VLenBytesCodec",
     "VLenUTF8Codec",
