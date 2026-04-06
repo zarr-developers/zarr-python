@@ -44,6 +44,9 @@ pytestmark = [
     pytest.mark.filterwarnings(
         "ignore:Exception ignored in.*finalize object.*:pytest.PytestUnraisableExceptionWarning"
     ),
+    # All S3 tests share a module-scoped moto server on a fixed port,
+    # so they must run on a single xdist worker to avoid port conflicts.
+    pytest.mark.xdist_group(name="s3"),
 ]
 
 fsspec = pytest.importorskip("fsspec")
@@ -133,7 +136,6 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
-@pytest.mark.xdist_group(name="s3")
 class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     store_cls = FsspecStore
     buffer_cls = cpu.Buffer
