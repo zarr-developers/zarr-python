@@ -69,6 +69,7 @@ remote = [
 gpu = [
     "cupy-cuda12x",
 ]
+cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -189,6 +190,16 @@ run-hypothesis = [
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
+
+[tool.hatch.envs.cast-value]
+template = "test"
+features = ["cast-value-rs"]
+
+[[tool.hatch.envs.cast-value.matrix]]
+python = ["3.12"]
+
+[tool.hatch.envs.cast-value.scripts]
+run = "pytest tests/test_codecs/test_cast_value.py {args:}"
 
 [tool.hatch.envs.gputest]
 template = "test"
