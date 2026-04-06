@@ -23,7 +23,7 @@ type.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -35,6 +35,7 @@ from typing import (
 )
 
 import numpy as np
+from zarr_interfaces.data_type.v1 import ZDType as _ZDTypeBase
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -49,7 +50,7 @@ type TBaseDType = np.dtype[np.generic]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
+class ZDType[DType: TBaseDType, Scalar: TBaseScalar](_ZDTypeBase[DType, Scalar]):
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
@@ -65,6 +66,12 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
     # this class will create a native data type
     dtype_cls: ClassVar[type[TBaseDType]]
     _zarr_v3_name: ClassVar[str]
+
+    @classmethod
+    def __subclasshook__(cls, C: type) -> bool:
+        if cls is ZDType:
+            return _ZDTypeBase in C.__mro__
+        return NotImplemented
 
     @classmethod
     def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[DType]:

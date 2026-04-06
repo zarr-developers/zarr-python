@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr-interfaces"
+version = "0.1.0"
+description = "Interface definitions (ABCs and protocols) for zarr codecs and data types"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2",
+]
+
+[project.urls]
+homepage = "https://github.com/zarr-developers/zarr-python"
