@@ -114,6 +114,15 @@ The following sections provide details on breaking changes in Zarr-Python 3.
    - Use [`zarr.Group.require_array`][] in place of `zarr.Group.require_dataset`
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
+4. The `zarr.storage.init_group` low-level helper function has been removed. Use
+   [`zarr.open_group`][] or [`zarr.create_group`][] instead:
+
+   ```diff
+   - from zarr.storage import init_group
+   - init_group(store, overwrite=True, path="my/path")
+   + import zarr
+   + zarr.open_group(store, mode="w", path="my/path")
+   ```
 
 ### The Store class
 

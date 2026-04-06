@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_COLOR: 3
 
@@ -19,6 +23,9 @@ jobs:
 
   hypothesis:
     name: Slow Hypothesis Tests
+    environment:
+      name: codecov-upload
+      deployment: false
     runs-on: "ubuntu-latest"
     defaults:
       run:
@@ -30,16 +37,20 @@ jobs:
         dependency-set: ["optional"]
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
     - name: Set HYPOTHESIS_PROFILE based on trigger
+      env:
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+        if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
           echo "HYPOTHESIS_PROFILE=nightly" >> $GITHUB_ENV
         else
           echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
         fi
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -48,13 +59,15 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
@@ -64,23 +77,26 @@ jobs:
     - name: Run slow Hypothesis tests
       if: success()
       id: status
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-hypothesis
+        hatch env run --env "$HATCH_ENV" run-hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory
       id: save-hypothesis-cache
       if: always() && steps.status.outcome != 'skipped'
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
     - name: Generate and publish the report
@@ -89,7 +105,7 @@ jobs:
         && steps.status.outcome == 'failure'
         && github.event_name == 'schedule'
         && github.repository_owner == 'zarr-developers'
-      uses: scientific-python/issue-from-pytest-log-action@v1
+      uses: scientific-python/issue-from-pytest-log-action@8e905db353437cda1d6a773de245343fbfc940dd # v1.5.0
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"
