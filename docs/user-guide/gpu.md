@@ -35,6 +35,9 @@ assert isinstance(z[:10, :10], cp.ndarray)
 Note that the arrays returned by reads are of type `cupy.ndarray` rather than
 NumPy arrays.
 
+For supported codecs, data will be decoded using the GPU via the [nvcomp] library.
+See [runtime-configuration][config-runtime-configuration] for more. Issues and feature requests for NVIDIA nvCOMP can be reported on the nvcomp [issue tracker].
+
 `zarr.config.enable_gpu()` returns a [donfig](https://donfig.readthedocs.io/en/latest/)
 `ConfigSet`, which can be used as a context manager to enable GPU support for a
 limited scope:
@@ -50,8 +53,5 @@ Under the hood, `enable_gpu()` selects the GPU-backed buffer classes
 `ndbuffer` configuration keys. See [Custom array buffers](extending.md#custom-array-buffers)
 for more on Zarr's buffer classes, including how to implement your own.
 
-For supported codecs, data will be decoded using the GPU via the
-[nvcomp](https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html) library.
-See [Runtime configuration](config.md) for more. Issues and feature requests for
-NVIDIA nvCOMP can be reported in the
-[nvcomp issue tracker](https://github.com/NVIDIA/CUDALibrarySamples/issues).
+[nvcomp]: https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html
+[issue tracker]: https://github.com/NVIDIA/CUDALibrarySamples/issues
