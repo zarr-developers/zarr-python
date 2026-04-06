@@ -413,6 +413,7 @@ addopts = [
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
     "-ra", "--strict-config", "--strict-markers",
+    "--dist", "loadgroup",
 ]
 filterwarnings = [
     "error",
