@@ -1176,9 +1176,7 @@ async def test_asyncgroup_create_array(
     assert subnode.store_path.store == store
     assert subnode.shape == shape
     assert subnode.dtype == dtype
-    # todo: fix the type annotation of array.metadata.chunk_grid so that we get some autocomplete
-    # here.
-    assert subnode.metadata.chunk_grid.chunk_shape == chunk_shape
+    assert subnode._chunk_grid.chunk_shape == chunk_shape
     assert subnode.metadata.zarr_format == zarr_format
 
 
