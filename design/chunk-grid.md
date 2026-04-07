@@ -29,9 +29,9 @@ Prior iterations on the chunk grid design were based on the Zarr V3 spec's defin
 
 ## Goals
 
-1. **Follow the zarr extension proposal.** The implementation should conform to the [rectilinear chunk grid spec](https://github.com/zarr-developers/zarr-extensions/pull/25), not innovate on the metadata format.
+1. **Follow the zarr extension proposal.** The implementation should conform to the [rectilinear chunk grid spec](https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear), not innovate on the metadata format.
 2. **Minimize changes to the public API.** Users creating regular arrays should see no difference. Rectilinear is additive.
-3. **Maintain backwards compatibility.** Existing code using `.chunks`, `isinstance` checks, or importing `RegularChunkGrid`/`RectilinearChunkGrid` from `zarr.core.chunk_grids` should continue to work (with deprecation warnings where appropriate).
+3. **Maintain backwards compatibility.** Existing code using `.chunks`, `isinstance` checks, or importing `RegularChunkGrid`/`RectilinearChunkGrid` from `zarr.core.chunk_grids` should continue to work where practical (with deprecation warnings where appropriate). Internal code paths/imports may be broken with justification.
 4. **Design for future iteration.** The internal architecture should allow refactoring (e.g., metadata/array separation, new dimension types) without breaking the public API.
 5. **Minimize downstream changes.** xarray, VirtualiZarr, Icechunk, Cubed, etc. should need minimal updates.
 6. **Minimize time to stable release.** Ship behind a feature flag, stabilize through real-world usage, promote to stable API.
