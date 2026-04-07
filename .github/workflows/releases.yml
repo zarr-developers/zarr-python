@@ -1,6 +1,9 @@
 name: Wheels
 
 on:
+  release:
+    types:
+      - published
   push:
     branches: [main]
   pull_request:
@@ -64,7 +67,7 @@ jobs:
     name: Upload to PyPI
     needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     environment:
       name: releases
       url: https://pypi.org/p/zarr
