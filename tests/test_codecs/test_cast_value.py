@@ -279,3 +279,27 @@ def test_combined_with_scale_offset() -> None:
     arr[:] = data
     result = arr[:]
     np.testing.assert_array_almost_equal(result, data, decimal=1)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input={"encode": [("NaN", 0)]},
+            expected={"encode": {"NaN": 0}},
+        ),
+        Expect(
+            input={"encode": [("NaN", 0)], "decode": [(0, "NaN")]},
+            expected={"encode": {"NaN": 0}, "decode": {0: "NaN"}},
+        ),
+        Expect(
+            input={"encode": {"NaN": 0}},
+            expected={"encode": {"NaN": 0}},
+        ),
+    ],
+    ids=["encode-only", "both-directions", "already-normalized"],
+)
+def test_parse_scalar_map(case: Expect[Any, Any]) -> None:
+    from zarr.codecs.cast_value import parse_scalar_map
+
+    assert parse_scalar_map(case.input) == case.expected

@@ -10,8 +10,9 @@ logic. Install it with: ``pip install cast-value-rs``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
 import numpy as np
 
@@ -20,8 +21,7 @@ from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype import get_data_type_from_json
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
-    from typing import Any, NotRequired, Self, TypedDict
+    from typing import NotRequired, Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
@@ -32,8 +32,6 @@ if TYPE_CHECKING:
         encode: NotRequired[list[tuple[object, object]]]
         decode: NotRequired[list[tuple[object, object]]]
 
-    # Pre-parsed scalar map entry: (source_scalar, target_scalar)
-    ScalarMapEntry = tuple[np.integer[Any] | np.floating[Any], np.integer[Any] | np.floating[Any]]
 
 RoundingMode = Literal[
     "nearest-even",
@@ -46,86 +44,45 @@ RoundingMode = Literal[
 OutOfRangeMode = Literal["clamp", "wrap"]
 
 
-# ---------------------------------------------------------------------------
-# Scalar-map parsing helpers
-# ---------------------------------------------------------------------------
-
-
-def _extract_raw_map(data: ScalarMapJSON | None, direction: str) -> dict[str, str] | None:
-    """Extract raw string mapping from scalar_map JSON for 'encode' or 'decode'."""
-    if data is None:
-        return None
-    raw: dict[str, str] = {}
-    pairs: list[tuple[object, object]] = data.get(direction, [])  # type: ignore[assignment]
-    for src, tgt in pairs:
-        raw[str(src)] = str(tgt)
-    return raw or None
-
-
-def _parse_map_entries(
-    mapping: Mapping[str, str],
-    src_dtype: ZDType[TBaseDType, TBaseScalar],
-    tgt_dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[ScalarMapEntry, ...]:
-    """Pre-parse a scalar map dict into a tuple of (src, tgt) pairs.
-
-    Each entry's source value is deserialized using ``src_dtype`` and its target
-    value using ``tgt_dtype``, preserving full precision for both data types.
+class ScalarMap(TypedDict):
     """
-    entries: list[ScalarMapEntry] = [
-        (
-            src_dtype.from_json_scalar(src_str, zarr_format=3),  # type: ignore[misc]
-            tgt_dtype.from_json_scalar(tgt_str, zarr_format=3),
-        )
-        for src_str, tgt_str in mapping.items()
-    ]
-    return tuple(entries)
+    The normalized, in-memory form of a scalar map.
+    """
+
+    encode: NotRequired[Mapping[str | float | int, str | float | int]]
+    decode: NotRequired[Mapping[str | float | int, str | float | int]]
+
+
+def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
+    """
+    Parse a scalar map into its normalized dict-of-dicts form.
+
+    Accepts either the JSON form (lists of tuples) or an already-normalized form
+    (dicts). For example, ``{"encode": [("NaN", 0)]}`` becomes
+    ``{"encode": {"NaN": 0}}``.
+    """
+    result: ScalarMap = {}
+    for direction in ("encode", "decode"):
+        if direction in obj:
+            entries = obj[direction]
+            if entries is not None:
+                if isinstance(entries, Mapping):
+                    result[direction] = entries
+                else:
+                    result[direction] = dict(entries)  # type: ignore[arg-type]
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Backend: cast-value-rs (optional)
+# Backend: cast-value-rs
 # ---------------------------------------------------------------------------
 
 try:
-    from cast_value_rs import cast_array as _rs_cast_array
+    from cast_value_rs import cast_array as cast_array_rs
 
     _HAS_RUST_BACKEND = True
 except ModuleNotFoundError:
     _HAS_RUST_BACKEND = False
-
-
-def _dtype_to_str(dtype: np.dtype) -> str:  # type: ignore[type-arg]
-    return dtype.name
-
-
-def _convert_scalar_map(
-    entries: Iterable[ScalarMapEntry] | None,
-) -> list[tuple[int | float, int | float]] | None:
-    if entries is None:
-        return None
-    result: list[tuple[int | float, int | float]] = []
-    for src, tgt in entries:
-        src_py: int | float = int(src) if isinstance(src, np.integer) else float(src)
-        tgt_py: int | float = int(tgt) if isinstance(tgt, np.integer) else float(tgt)
-        result.append((src_py, tgt_py))
-    return result
-
-
-def _cast_array_rs(
-    arr: np.ndarray,  # type: ignore[type-arg]
-    *,
-    target_dtype: np.dtype,  # type: ignore[type-arg]
-    rounding: RoundingMode,
-    out_of_range: OutOfRangeMode | None,
-    scalar_map_entries: Iterable[ScalarMapEntry] | None,
-) -> np.ndarray:  # type: ignore[type-arg]
-    return _rs_cast_array(  # type: ignore[no-any-return]
-        arr=arr,
-        target_dtype=_dtype_to_str(target_dtype),
-        rounding_mode=rounding,
-        out_of_range_mode=out_of_range,
-        scalar_map_entries=_convert_scalar_map(scalar_map_entries),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +123,7 @@ class CastValue(ArrayArrayCodec):
     dtype: ZDType[TBaseDType, TBaseScalar]
     rounding: RoundingMode
     out_of_range: OutOfRangeMode | None
-    scalar_map: ScalarMapJSON | None
+    scalar_map: ScalarMap | None
 
     def __init__(
         self,
@@ -174,7 +131,7 @@ class CastValue(ArrayArrayCodec):
         data_type: str | ZDType[TBaseDType, TBaseScalar],
         rounding: RoundingMode = "nearest-even",
         out_of_range: OutOfRangeMode | None = None,
-        scalar_map: ScalarMapJSON | None = None,
+        scalar_map: ScalarMapJSON | ScalarMap | None = None,
     ) -> None:
         if isinstance(data_type, str):
             zdtype = get_data_type_from_json(data_type, zarr_format=3)
@@ -183,7 +140,11 @@ class CastValue(ArrayArrayCodec):
         object.__setattr__(self, "dtype", zdtype)
         object.__setattr__(self, "rounding", rounding)
         object.__setattr__(self, "out_of_range", out_of_range)
-        object.__setattr__(self, "scalar_map", scalar_map)
+        if scalar_map is not None:
+            parsed = parse_scalar_map(scalar_map)
+        else:
+            parsed = None
+        object.__setattr__(self, "scalar_map", parsed)
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
@@ -199,7 +160,11 @@ class CastValue(ArrayArrayCodec):
         if self.out_of_range is not None:
             config["out_of_range"] = self.out_of_range
         if self.scalar_map is not None:
-            config["scalar_map"] = cast("JSON", self.scalar_map)
+            json_map: dict[str, list[tuple[object, object]]] = {}
+            for direction in ("encode", "decode"):
+                if direction in self.scalar_map:
+                    json_map[direction] = [(k, v) for k, v in self.scalar_map[direction].items()]
+            config["scalar_map"] = cast("JSON", json_map)
         return {"name": "cast_value", "configuration": config}
 
     def validate(
@@ -225,20 +190,31 @@ class CastValue(ArrayArrayCodec):
         arr: np.ndarray,  # type: ignore[type-arg]
         *,
         target_dtype: np.dtype,  # type: ignore[type-arg]
-        scalar_map_entries: Iterable[ScalarMapEntry] | None,
+        scalar_map: Mapping[str | float | int, str | float | int] | None,
     ) -> np.ndarray:  # type: ignore[type-arg]
         if not _HAS_RUST_BACKEND:
             raise ImportError(
                 "The cast_value codec requires the 'cast-value-rs' package. "
                 "Install it with: pip install cast-value-rs"
             )
-        return _cast_array_rs(
+        scalar_map_entries: dict[float, float] | None = None
+        if scalar_map is not None:
+            scalar_map_entries = {float(k): float(v) for k, v in scalar_map.items()}
+        return cast_array_rs(  # type: ignore[no-any-return]
             arr,
             target_dtype=target_dtype,
-            rounding=self.rounding,
-            out_of_range=self.out_of_range,
+            rounding_mode=self.rounding,
+            out_of_range_mode=self.out_of_range,
             scalar_map_entries=scalar_map_entries,
         )
+
+    def _get_scalar_map(
+        self, direction: str
+    ) -> Mapping[str | float | int, str | float | int] | None:
+        """Extract the encode or decode mapping from scalar_map, or None."""
+        if self.scalar_map is None:
+            return None
+        return self.scalar_map.get(direction)  # type: ignore[return-value]
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """
@@ -251,13 +227,8 @@ class CastValue(ArrayArrayCodec):
         fill = chunk_spec.fill_value
         fill_arr = np.array([fill], dtype=source_native)
 
-        encode_raw = _extract_raw_map(self.scalar_map, "encode")
-        encode_entries = (
-            _parse_map_entries(encode_raw, chunk_spec.dtype, self.dtype) if encode_raw else None
-        )
-
         new_fill_arr = self._do_cast(
-            fill_arr, target_dtype=target_native, scalar_map_entries=encode_entries
+            fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
         )
         new_fill = target_native.type(new_fill_arr[0])
 
@@ -271,13 +242,8 @@ class CastValue(ArrayArrayCodec):
         arr = chunk_array.as_ndarray_like()
         target_native = self.dtype.to_native_dtype()
 
-        encode_raw = _extract_raw_map(self.scalar_map, "encode")
-        encode_entries = (
-            _parse_map_entries(encode_raw, _chunk_spec.dtype, self.dtype) if encode_raw else None
-        )
-
         result = self._do_cast(
-            np.asarray(arr), target_dtype=target_native, scalar_map_entries=encode_entries
+            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
         )
         return chunk_array.__class__.from_ndarray_like(result)
 
@@ -296,13 +262,8 @@ class CastValue(ArrayArrayCodec):
         arr = chunk_array.as_ndarray_like()
         target_native = chunk_spec.dtype.to_native_dtype()
 
-        decode_raw = _extract_raw_map(self.scalar_map, "decode")
-        decode_entries = (
-            _parse_map_entries(decode_raw, self.dtype, chunk_spec.dtype) if decode_raw else None
-        )
-
         result = self._do_cast(
-            np.asarray(arr), target_dtype=target_native, scalar_map_entries=decode_entries
+            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("decode")
         )
         return chunk_array.__class__.from_ndarray_like(result)
 
