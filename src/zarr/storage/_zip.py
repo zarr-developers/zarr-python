@@ -136,24 +136,22 @@ class ZipStore(Store):
         *last* (most recent) entry for every filename so that the on-disk central
         directory is clean.
 
-        Both ``filelist`` and ``NameToInfo`` are computed upfront and then
-        swapped in together so that the ZipFile object is never left in an
-        inconsistent state if an exception occurs mid-update.
+        ``NameToInfo`` is already a ``{filename: latest_ZipInfo}`` mapping because
+        each ``writestr``/``write`` call does ``NameToInfo[name] = zinfo``, so
+        later writes overwrite earlier ones.  We therefore only need to rebuild
+        ``filelist`` from the values of ``NameToInfo``; ``NameToInfo`` itself
+        requires no update.
+
+        The new list is computed before being assigned so that the ZipFile object
+        is never left in an inconsistent state if an exception is raised.
         """
         if self._zf.mode not in ("w", "a", "x"):
             return
-        seen: set[str] = set()
-        deduped: list[zipfile.ZipInfo] = []
-        for info in reversed(self._zf.filelist):
-            if info.filename not in seen:
-                seen.add(info.filename)
-                deduped.append(info)
-        new_filelist = list(reversed(deduped))
-        new_name_to_info = {info.filename: info for info in new_filelist}
-        # Swap both attributes together; if anything above raised, the
-        # original filelist/NameToInfo are still intact.
-        self._zf.filelist = new_filelist
-        self._zf.NameToInfo = new_name_to_info
+        # namelist() and getinfo() are public API.
+        # dict.fromkeys preserves first-seen order while deduplicating names;
+        # getinfo() returns the latest ZipInfo for each name (NameToInfo[name]).
+        unique_names = dict.fromkeys(self._zf.namelist())
+        self._zf.filelist = [self._zf.getinfo(name) for name in unique_names]
 
     async def clear(self) -> None:
         # docstring inherited
