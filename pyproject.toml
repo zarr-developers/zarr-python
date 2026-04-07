@@ -158,6 +158,7 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 dependency-groups = ["test"]
 
 [tool.hatch.envs.test.env-vars]
+COVERAGE_PROCESS_START = "pyproject.toml"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.12", "3.13", "3.14"]
@@ -175,12 +176,12 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage combine",
     "coverage xml",
 ]
 run-coverage-html = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks {args:}",
     "coverage combine",
     "coverage html",
 ]
@@ -188,7 +189,7 @@ run = "pytest -n auto --dist loadgroup --ignore tests/benchmarks {args:}"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -nauto --dist loadgroup --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage run -m pytest -nauto --dist loadgroup --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage combine",
     "coverage xml",
 ]
