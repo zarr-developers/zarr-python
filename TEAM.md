@@ -10,6 +10,7 @@
 - @dstansby (David Stansby)
 - @dcherian (Deepak Cherian)
 - @TomAugspurger (Tom Augspurger)
+- @maxrjones (Max Jones)
 
 ## Emeritus core-developers
 - @alimanfoo (Alistair Miles)
