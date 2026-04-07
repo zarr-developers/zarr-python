@@ -110,7 +110,7 @@ remote-tests = [
 docs = [
     # Doc building
     "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1",
+    "mkdocs>=1.6.1,<2",
     "mkdocstrings>=0.29.1",
     "mkdocstrings-python>=1.16.10",
     "mike>=2.1.3",
@@ -261,6 +261,10 @@ installer = "uv"
 [tool.hatch.envs.docs]
 features = ['remote']
 dependency-groups = ['docs']
+
+[tool.hatch.envs.docs.env-vars]
+DISABLE_MKDOCS_2_WARNING = "true"
+NO_MKDOCS_2_WARNING = "true"
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve --watch src"
