@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
@@ -13,13 +14,13 @@ from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
-    from typing import Self
+    from typing import Any, Self
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.indexing import SelectorTuple
+    from zarr.core.indexing import ChunkProjection, SelectorTuple
     from zarr.core.metadata import ArrayMetadata
 
 __all__ = [
@@ -33,6 +34,9 @@ __all__ = [
     "CodecOutput",
     "CodecPipeline",
     "GetResult",
+    "PreparedWrite",
+    "SupportsChunkCodec",
+    "SupportsChunkPacking",
     "SupportsSyncCodec",
 ]
 
@@ -80,6 +84,116 @@ class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
 
     def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
+
+
+class SupportsChunkCodec(Protocol):
+    """Protocol for objects that can decode/encode whole chunks synchronously.
+
+    `ChunkTransform` satisfies this protocol.
+    """
+
+    array_spec: ArraySpec
+
+    def decode_chunk(self, chunk_bytes: Buffer) -> NDBuffer: ...
+
+    def encode_chunk(self, chunk_array: NDBuffer) -> Buffer | None: ...
+
+
+class SupportsChunkPacking(Protocol):
+    """Protocol for codecs that can pack/unpack inner chunks into a storage blob
+    and manage the prepare/finalize IO lifecycle.
+
+    `BytesCodec` and `ShardingCodec` implement this protocol. The pipeline
+    uses it to separate IO (prepare/finalize) from compute (encode/decode),
+    enabling the compute phase to run in a thread pool.
+
+    The lifecycle is:
+
+    1. **Prepare**: fetch existing bytes from the store (if partial write),
+       unpack into per-inner-chunk buffers → `PreparedWrite`
+    2. **Compute**: iterate `PreparedWrite.indexer`, decode each inner chunk,
+       merge new data, re-encode, update `PreparedWrite.chunk_dict`
+    3. **Finalize**: pack `chunk_dict` back into a blob and write to store
+    """
+
+    @property
+    def inner_codec_chain(self) -> SupportsChunkCodec | None:
+        """The codec chain for inner chunks, or `None` to use the pipeline's."""
+        ...
+
+    def unpack_chunks(
+        self,
+        raw: Buffer | None,
+        chunk_spec: ArraySpec,
+    ) -> dict[tuple[int, ...], Buffer | None]:
+        """Unpack a storage blob into per-inner-chunk encoded buffers."""
+        ...
+
+    def pack_chunks(
+        self,
+        chunk_dict: dict[tuple[int, ...], Buffer | None],
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        """Pack per-inner-chunk encoded buffers into a single storage blob."""
+        ...
+
+    def prepare_read_sync(
+        self,
+        byte_getter: Any,
+        chunk_selection: SelectorTuple,
+        codec_chain: SupportsChunkCodec,
+    ) -> NDBuffer | None:
+        """Fetch and decode a chunk synchronously, returning the selected region."""
+        ...
+
+    def prepare_write_sync(
+        self,
+        byte_setter: Any,
+        codec_chain: SupportsChunkCodec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        replace: bool,
+    ) -> PreparedWrite:
+        """Prepare a synchronous write: fetch existing data if needed, unpack."""
+        ...
+
+    def finalize_write_sync(
+        self,
+        prepared: PreparedWrite,
+        chunk_spec: ArraySpec,
+        byte_setter: Any,
+    ) -> None:
+        """Pack the prepared chunk data and write it to the store."""
+        ...
+
+    async def prepare_read(
+        self,
+        byte_getter: Any,
+        chunk_selection: SelectorTuple,
+        codec_chain: SupportsChunkCodec,
+    ) -> NDBuffer | None:
+        """Async variant of `prepare_read_sync`."""
+        ...
+
+    async def prepare_write(
+        self,
+        byte_setter: Any,
+        codec_chain: SupportsChunkCodec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        replace: bool,
+    ) -> PreparedWrite:
+        """Async variant of `prepare_write_sync`."""
+        ...
+
+    async def finalize_write(
+        self,
+        prepared: PreparedWrite,
+        chunk_spec: ArraySpec,
+        byte_setter: Any,
+    ) -> None:
+        """Async variant of `finalize_write_sync`."""
+        ...
 
 
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
@@ -205,6 +319,37 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
 
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
+
+
+@dataclass
+class PreparedWrite:
+    """Intermediate state between reading existing data and writing new data.
+
+    Created by `prepare_write_sync` / `prepare_write`, consumed by
+    `finalize_write_sync` / `finalize_write`. The compute phase sits
+    in between: iterate over `indexer`, decode the corresponding entry
+    in `chunk_dict`, merge new data, re-encode, and store the result
+    back into `chunk_dict`.
+
+    Attributes
+    ----------
+    chunk_dict : dict[tuple[int, ...], Buffer | None]
+        Per-inner-chunk encoded bytes, keyed by chunk coordinates.
+        For a regular array this is `{(0,): <bytes>}`. For a sharded
+        array it contains one entry per inner chunk in the shard,
+        including chunks not being modified (they pass through
+        unchanged). `None` means the chunk did not exist on disk.
+    indexer : list[ChunkProjection]
+        The inner chunks to modify. Each entry's `chunk_coords`
+        corresponds to a key in `chunk_dict`. `chunk_selection`
+        identifies the region within that inner chunk, and
+        `out_selection` identifies the corresponding region in the
+        source value array. This is a subset of `chunk_dict`'s keys
+        — untouched chunks are not listed.
+    """
+
+    chunk_dict: dict[tuple[int, ...], Buffer | None]
+    indexer: list[ChunkProjection]
 
 
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):

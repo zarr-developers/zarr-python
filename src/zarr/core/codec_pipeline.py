@@ -118,7 +118,7 @@ class ChunkTransform:
             bb_sync.append(bb_codec)
         self._bb_codecs = tuple(bb_sync)
 
-    def decode(
+    def decode_chunk(
         self,
         chunk_bytes: Buffer,
     ) -> NDBuffer:
@@ -137,7 +137,7 @@ class ChunkTransform:
 
         return chunk_array
 
-    def encode(
+    def encode_chunk(
         self,
         chunk_array: NDBuffer,
     ) -> Buffer | None:

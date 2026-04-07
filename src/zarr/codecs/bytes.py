@@ -5,15 +5,16 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, PreparedWrite, SupportsChunkCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
 
 if TYPE_CHECKING:
-    from typing import Self
+    from typing import Any, Self
 
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.indexing import SelectorTuple
 
 
 class Endian(Enum):
@@ -125,3 +126,114 @@ class BytesCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
+
+    # -- SupportsChunkPacking --
+
+    @property
+    def inner_codec_chain(self) -> SupportsChunkCodec | None:
+        """Returns `None` — the pipeline should use its own codec chain."""
+        return None
+
+    def unpack_chunks(
+        self,
+        raw: Buffer | None,
+        chunk_spec: ArraySpec,
+    ) -> dict[tuple[int, ...], Buffer | None]:
+        """Single chunk keyed at `(0,)`."""
+        return {(0,): raw}
+
+    def pack_chunks(
+        self,
+        chunk_dict: dict[tuple[int, ...], Buffer | None],
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        """Return the single chunk's bytes."""
+        return chunk_dict.get((0,))
+
+    def prepare_read_sync(
+        self,
+        byte_getter: Any,
+        chunk_selection: SelectorTuple,
+        codec_chain: SupportsChunkCodec,
+    ) -> NDBuffer | None:
+        """Fetch, decode, and return the selected region synchronously."""
+        raw = byte_getter.get_sync(prototype=codec_chain.array_spec.prototype)
+        if raw is None:
+            return None
+        chunk_array = codec_chain.decode_chunk(raw)
+        return chunk_array[chunk_selection]
+
+    def prepare_write_sync(
+        self,
+        byte_setter: Any,
+        codec_chain: SupportsChunkCodec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        replace: bool,
+    ) -> PreparedWrite:
+        """Fetch existing data if needed, unpack, return `PreparedWrite`."""
+        from zarr.core.indexing import ChunkProjection
+
+        existing: Buffer | None = None
+        if not replace:
+            existing = byte_setter.get_sync(prototype=codec_chain.array_spec.prototype)
+        chunk_dict = self.unpack_chunks(existing, codec_chain.array_spec)
+        indexer = [ChunkProjection((0,), chunk_selection, out_selection, replace)]  # type: ignore[arg-type]
+        return PreparedWrite(chunk_dict=chunk_dict, indexer=indexer)
+
+    def finalize_write_sync(
+        self,
+        prepared: PreparedWrite,
+        chunk_spec: ArraySpec,
+        byte_setter: Any,
+    ) -> None:
+        """Pack and write to store, or delete if empty."""
+        blob = self.pack_chunks(prepared.chunk_dict, chunk_spec)
+        if blob is None:
+            byte_setter.delete_sync()
+        else:
+            byte_setter.set_sync(blob)
+
+    async def prepare_read(
+        self,
+        byte_getter: Any,
+        chunk_selection: SelectorTuple,
+        codec_chain: SupportsChunkCodec,
+    ) -> NDBuffer | None:
+        """Async variant of `prepare_read_sync`."""
+        raw = await byte_getter.get(prototype=codec_chain.array_spec.prototype)
+        if raw is None:
+            return None
+        chunk_array = codec_chain.decode_chunk(raw)
+        return chunk_array[chunk_selection]
+
+    async def prepare_write(
+        self,
+        byte_setter: Any,
+        codec_chain: SupportsChunkCodec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        replace: bool,
+    ) -> PreparedWrite:
+        """Async variant of `prepare_write_sync`."""
+        from zarr.core.indexing import ChunkProjection
+
+        existing: Buffer | None = None
+        if not replace:
+            existing = await byte_setter.get(prototype=codec_chain.array_spec.prototype)
+        chunk_dict = self.unpack_chunks(existing, codec_chain.array_spec)
+        indexer = [ChunkProjection((0,), chunk_selection, out_selection, replace)]  # type: ignore[arg-type]
+        return PreparedWrite(chunk_dict=chunk_dict, indexer=indexer)
+
+    async def finalize_write(
+        self,
+        prepared: PreparedWrite,
+        chunk_spec: ArraySpec,
+        byte_setter: Any,
+    ) -> None:
+        """Async variant of `finalize_write_sync`."""
+        blob = self.pack_chunks(prepared.chunk_dict, chunk_spec)
+        if blob is None:
+            await byte_setter.delete()
+        else:
+            await byte_setter.set(blob)

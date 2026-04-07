@@ -99,9 +99,9 @@ def test_encode_decode_roundtrip(
     chain = ChunkTransform(codecs=codecs, array_spec=spec)
     nd_buf = _make_nd_buffer(arr)
 
-    encoded = chain.encode(nd_buf)
+    encoded = chain.encode_chunk(nd_buf)
     assert encoded is not None
-    decoded = chain.decode(encoded)
+    decoded = chain.decode_chunk(encoded)
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
 
@@ -142,4 +142,4 @@ def test_encode_returns_none_propagation() -> None:
     )
     arr = np.arange(12, dtype="float64").reshape(3, 4)
     nd_buf = _make_nd_buffer(arr)
-    assert chain.encode(nd_buf) is None
+    assert chain.encode_chunk(nd_buf) is None
