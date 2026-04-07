@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class ScaleOffset(ArrayArrayCodec):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         native = dtype.to_native_dtype()
         if not np.issubdtype(native, np.integer) and not np.issubdtype(native, np.floating):

@@ -8,8 +8,16 @@ import pytest
 
 from zarr.codecs.cast_value import CastValue
 
-# These tests require cast-value-rs. Skip the entire module if not installed.
-pytest.importorskip("cast_value_rs")
+try:
+    import cast_value_rs  # noqa: F401
+
+    _HAS_CAST_VALUE_RS = True
+except ModuleNotFoundError:
+    _HAS_CAST_VALUE_RS = False
+
+requires_cast_value_rs = pytest.mark.skipif(
+    not _HAS_CAST_VALUE_RS, reason="cast-value-rs not installed"
+)
 
 
 @dataclass(frozen=True)
@@ -96,11 +104,22 @@ def test_from_dict(case: Expect[dict[str, Any], tuple[str, str, str | None]]) ->
     assert codec.out_of_range == out_of_range
 
 
-def test_serialization_roundtrip() -> None:
+@pytest.mark.parametrize(
+    "codec",
+    [
+        CastValue(data_type="int16", rounding="towards-zero", out_of_range="clamp"),
+        CastValue(
+            data_type="uint8",
+            out_of_range="clamp",
+            scalar_map={"encode": [("NaN", 0)], "decode": [(0, "NaN")]},
+        ),
+    ],
+    ids=["no-scalar-map", "with-scalar-map"],
+)
+def test_serialization_roundtrip(codec: CastValue) -> None:
     """to_dict followed by from_dict produces an equal codec."""
-    original = CastValue(data_type="int16", rounding="towards-zero", out_of_range="clamp")
-    restored = CastValue.from_dict(original.to_dict())
-    assert original == restored
+    restored = CastValue.from_dict(codec.to_dict())
+    assert codec == restored
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +187,7 @@ def test_zero_itemsize_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
+@requires_cast_value_rs
 @pytest.mark.parametrize(
     "case",
     [
@@ -200,6 +220,7 @@ def test_encode_decode_roundtrip(
     np.testing.assert_array_equal(arr[:], case.expected)
 
 
+@requires_cast_value_rs
 @pytest.mark.parametrize(
     "case",
     [
@@ -229,6 +250,7 @@ def test_float_to_int_rounding(
     np.testing.assert_array_equal(arr[:], case.expected)
 
 
+@requires_cast_value_rs
 @pytest.mark.parametrize(
     "case",
     [
@@ -258,6 +280,123 @@ def test_out_of_range_clamp(
     np.testing.assert_array_equal(arr[:], case.expected)
 
 
+def test_compute_encoded_size() -> None:
+    """compute_encoded_size correctly scales byte length by itemsize ratio."""
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.dtype import get_data_type_from_json
+
+    codec = CastValue(data_type="int16")
+    spec = ArraySpec(
+        shape=(10,),
+        dtype=get_data_type_from_json("float64", zarr_format=3),
+        fill_value=0,
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    # 10 float64 elements = 80 bytes -> 10 int16 elements = 20 bytes
+    assert codec.compute_encoded_size(80, spec) == 20
+
+
+@requires_cast_value_rs
+def test_scalar_map_encode_decode_roundtrip() -> None:
+    """Scalar map entries are applied during encode and decode."""
+    import zarr
+
+    data = np.array([1.0, float("nan"), 3.0], dtype="float64")
+    arr = zarr.create_array(
+        store={},
+        shape=data.shape,
+        dtype="float64",
+        chunks=data.shape,
+        filters=[
+            CastValue(
+                data_type="int32",
+                rounding="nearest-even",
+                out_of_range="clamp",
+                scalar_map={"encode": [("NaN", -999)], "decode": [(-999, "NaN")]},
+            ),
+        ],
+        compressors=None,
+        fill_value=1,
+    )
+    arr[:] = data
+    result = np.asarray(arr[:])
+    np.testing.assert_equal(result[0], 1.0)
+    np.testing.assert_equal(result[2], 3.0)
+    assert np.isnan(result[1])
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input={
+                "dtype": "int32",
+                "target": "int8",
+                "scalar_map": {"encode": [("NaN", 0)]},
+            },
+            msg="NaN.*not representable in integer dtype",
+            exception_cls=ValueError,
+        ),
+        ExpectErr(
+            input={
+                "dtype": "int32",
+                "target": "float64",
+                "scalar_map": {"decode": [(0, "NaN")]},
+            },
+            msg="NaN.*not representable in integer dtype",
+            exception_cls=ValueError,
+        ),
+        ExpectErr(
+            input={
+                "dtype": "float64",
+                "target": "int8",
+                "scalar_map": {"encode": [("NaN", 999)]},
+            },
+            msg="out of range",
+            exception_cls=ValueError,
+        ),
+        ExpectErr(
+            input={
+                "dtype": "float64",
+                "target": "int8",
+                "scalar_map": {"encode": [("NaN", 1.5)]},
+            },
+            msg="not an integer",
+            exception_cls=ValueError,
+        ),
+    ],
+    ids=[
+        "nan-key-for-int-source",
+        "nan-value-for-int-decode-target",
+        "encode-value-out-of-range",
+        "encode-value-not-integer",
+    ],
+)
+def test_scalar_map_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
+    """Invalid scalar_map entries are rejected at array creation."""
+    import zarr
+
+    with pytest.raises(case.exception_cls, match=case.msg):
+        zarr.create_array(
+            store={},
+            shape=(10,),
+            dtype=case.input["dtype"],
+            chunks=(10,),
+            filters=[
+                CastValue(
+                    data_type=case.input["target"],
+                    out_of_range="clamp",
+                    scalar_map=case.input["scalar_map"],
+                )
+            ],
+            compressors=None,
+            fill_value=0,
+        )
+
+
+@requires_cast_value_rs
 def test_combined_with_scale_offset() -> None:
     """scale_offset followed by cast_value compresses float64 into int16 and round-trips."""
     import zarr

@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
     class ScalarMapJSON(TypedDict):
         encode: NotRequired[list[tuple[object, object]]]
@@ -83,6 +83,35 @@ try:
     _HAS_RUST_BACKEND = True
 except ModuleNotFoundError:
     _HAS_RUST_BACKEND = False
+
+
+def _check_scalar_representable(
+    value: str | float,
+    dtype: np.dtype,  # type: ignore[type-arg]
+    direction: str,
+    role: str,
+) -> None:
+    """Raise ``ValueError`` if *value* cannot be represented in *dtype*."""
+    fval = float(value)
+    is_integer_dtype = np.issubdtype(dtype, np.integer)
+    if np.isnan(fval) and is_integer_dtype:
+        raise ValueError(
+            f"scalar_map {direction} {role} {value!r} is NaN, "
+            f"which is not representable in integer dtype {dtype}."
+        )
+    if is_integer_dtype:
+        info = np.iinfo(dtype)
+        ival = int(fval)
+        if float(ival) != fval:
+            raise ValueError(
+                f"scalar_map {direction} {role} {value!r} is not an integer, "
+                f"which is required for integer dtype {dtype}."
+            )
+        if ival < info.min or ival > info.max:
+            raise ValueError(
+                f"scalar_map {direction} {role} {value!r} is out of range "
+                f"for dtype {dtype} [{info.min}, {info.max}]."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +201,7 @@ class CastValue(ArrayArrayCodec):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         source_native = dtype.to_native_dtype()
         target_native = self.dtype.to_native_dtype()
@@ -184,6 +213,30 @@ class CastValue(ArrayArrayCodec):
                 )
         if self.out_of_range == "wrap" and not np.issubdtype(target_native, np.integer):
             raise ValueError("out_of_range='wrap' is only valid for integer target types.")
+
+        if self.scalar_map is not None:
+            self._validate_scalar_map(source_native, target_native)
+
+    def _validate_scalar_map(
+        self,
+        source_native: np.dtype,  # type: ignore[type-arg]
+        target_native: np.dtype,  # type: ignore[type-arg]
+    ) -> None:
+        """Validate that scalar map entries are compatible with source/target dtypes."""
+        assert self.scalar_map is not None
+        # For encode: keys are source values, values are target values.
+        # For decode: keys are target values, values are source values.
+        direction_dtypes = {
+            "encode": (source_native, target_native),
+            "decode": (target_native, source_native),
+        }
+        for direction, (key_dtype, val_dtype) in direction_dtypes.items():
+            if direction not in self.scalar_map:
+                continue
+            sub_map = self.scalar_map[direction]  # type: ignore[literal-required]
+            for k, v in sub_map.items():
+                _check_scalar_representable(k, key_dtype, direction, "key")
+                _check_scalar_representable(v, val_dtype, direction, "value")
 
     def _do_cast(
         self,
@@ -197,9 +250,12 @@ class CastValue(ArrayArrayCodec):
                 "The cast_value codec requires the 'cast-value-rs' package. "
                 "Install it with: pip install cast-value-rs"
             )
-        scalar_map_entries: dict[float, float] | None = None
+        scalar_map_entries: dict[float | int, float | int] | None = None
         if scalar_map is not None:
-            scalar_map_entries = {float(k): float(v) for k, v in scalar_map.items()}
+            src_dtype = arr.dtype
+            to_src = int if np.issubdtype(src_dtype, np.integer) else float
+            to_tgt = int if np.issubdtype(target_dtype, np.integer) else float
+            scalar_map_entries = {to_src(k): to_tgt(v) for k, v in scalar_map.items()}
         return cast_array_rs(  # type: ignore[no-any-return]
             arr,
             target_dtype=target_dtype,
