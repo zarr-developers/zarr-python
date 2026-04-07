@@ -141,6 +141,8 @@ exclude_also = [
 ]
 
 [tool.coverage.run]
+parallel = true
+source = ["src"]
 omit = [
     "bench/compress_normal.py",
     "src/zarr/testing/conftest.py",  # only for downstream projects
@@ -173,18 +175,21 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest -n auto --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage combine",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest -n auto --ignore tests/benchmarks {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --ignore tests/benchmarks {args:}",
+    "coverage combine",
     "coverage html",
 ]
 run = "pytest -n auto --ignore tests/benchmarks {args:}"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage combine",
     "coverage xml",
 ]
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
