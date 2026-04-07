@@ -114,6 +114,7 @@ docs = [
     "mkdocstrings>=0.29.1",
     "mkdocstrings-python>=1.16.10",
     "mike>=2.1.3",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
     "griffe-inherited-docstrings",
@@ -172,11 +173,11 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest -n auto --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run --source=src -m pytest -n auto --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest -n auto {args:}",
+    "coverage run --source=src -m pytest -n auto --ignore tests/benchmarks {args:}",
     "coverage html",
 ]
 run = "pytest -n auto --ignore tests/benchmarks {args:}"
