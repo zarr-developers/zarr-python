@@ -99,6 +99,7 @@ class SupportsChunkCodec(Protocol):
     def encode_chunk(self, chunk_array: NDBuffer) -> Buffer | None: ...
 
 
+@runtime_checkable
 class SupportsChunkPacking(Protocol):
     """Protocol for codecs that can pack/unpack inner chunks into a storage blob
     and manage the prepare/finalize IO lifecycle.
