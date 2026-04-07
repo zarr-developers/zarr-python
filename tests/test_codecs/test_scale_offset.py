@@ -89,10 +89,16 @@ def test_serialization_roundtrip() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(input={"offset": "bad"}, msg="offset must be a number", exception_cls=TypeError),
-        ExpectErr(input={"scale": [1, 2]}, msg="scale must be a number", exception_cls=TypeError),
+        ExpectErr(
+            input={"offset": [1, 2]},
+            msg="offset must be a number or string",
+            exception_cls=TypeError,
+        ),
+        ExpectErr(
+            input={"scale": [1, 2]}, msg="scale must be a number or string", exception_cls=TypeError
+        ),
     ],
-    ids=["string-offset", "list-scale"],
+    ids=["list-offset", "list-scale"],
 )
 def test_construction_rejects_non_numeric(case: ExpectErr[dict[str, Any]]) -> None:
     """Non-numeric offset or scale is rejected at construction time."""
@@ -196,6 +202,43 @@ def test_rejects_complex_dtype() -> None:
             dtype="complex128",
             chunks=(10,),
             filters=[ScaleOffset(offset=1, scale=2)],
+            compressors=None,
+            fill_value=0,
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input={"dtype": "int32", "offset": 1.5, "scale": 1},
+            msg="offset value 1.5 is not representable",
+            exception_cls=ValueError,
+        ),
+        ExpectErr(
+            input={"dtype": "int32", "offset": 0, "scale": 0.5},
+            msg="scale value 0.5 is not representable",
+            exception_cls=ValueError,
+        ),
+        ExpectErr(
+            input={"dtype": "int16", "offset": "NaN", "scale": 1},
+            msg="offset value 'NaN' is not representable",
+            exception_cls=ValueError,
+        ),
+    ],
+    ids=["float-offset-for-int", "float-scale-for-int", "nan-offset-for-int"],
+)
+def test_rejects_unrepresentable_scale_offset(case: ExpectErr[dict[str, Any]]) -> None:
+    """Scale/offset values that can't be represented in the array dtype are rejected."""
+    import zarr
+
+    with pytest.raises(case.exception_cls, match=case.msg):
+        zarr.create_array(
+            store={},
+            shape=(10,),
+            dtype=case.input["dtype"],
+            chunks=(10,),
+            filters=[ScaleOffset(offset=case.input["offset"], scale=case.input["scale"])],
             compressors=None,
             fill_value=0,
         )

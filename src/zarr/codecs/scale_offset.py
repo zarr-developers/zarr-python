@@ -36,14 +36,14 @@ class ScaleOffset(ArrayArrayCodec):
 
     is_fixed_size = True
 
-    offset: int | float
-    scale: int | float
+    offset: int | float | str
+    scale: int | float | str
 
     def __init__(self, *, offset: object = 0, scale: object = 1) -> None:
-        if not isinstance(offset, int | float):
-            raise TypeError(f"offset must be a number, got {type(offset).__name__}")
-        if not isinstance(scale, int | float):
-            raise TypeError(f"scale must be a number, got {type(scale).__name__}")
+        if not isinstance(offset, int | float | str):
+            raise TypeError(f"offset must be a number or string, got {type(offset).__name__}")
+        if not isinstance(scale, int | float | str):
+            raise TypeError(f"scale must be a number or string, got {type(scale).__name__}")
         object.__setattr__(self, "offset", offset)
         object.__setattr__(self, "scale", scale)
 
@@ -78,25 +78,38 @@ class ScaleOffset(ArrayArrayCodec):
                 f"scale_offset codec only supports integer and floating-point data types. "
                 f"Got {dtype}."
             )
+        for name, value in [("offset", self.offset), ("scale", self.scale)]:
+            try:
+                dtype.from_json_scalar(value, zarr_format=3)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"scale_offset {name} value {value!r} is not representable in dtype {native}."
+                ) from e
+
+    def _to_scalar(self, value: float | str, dtype: ZDType[TBaseDType, TBaseScalar]) -> TBaseScalar:
+        """Convert a JSON-form value to a numpy scalar using the given dtype."""
+        return dtype.from_json_scalar(value, zarr_format=3)
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        native_dtype = chunk_spec.dtype.to_native_dtype()
+        zdtype = chunk_spec.dtype
         fill = chunk_spec.fill_value
-        new_fill = (native_dtype.type(fill) - native_dtype.type(self.offset)) * native_dtype.type(  # type: ignore[operator]
-            self.scale
-        )
+        offset = self._to_scalar(self.offset, zdtype)
+        scale = self._to_scalar(self.scale, zdtype)
+        new_fill = (zdtype.to_native_dtype().type(fill) - offset) * scale  # type: ignore[operator]
         return replace(chunk_spec, fill_value=new_fill)
 
     def _decode_sync(
         self,
         chunk_array: NDBuffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> NDBuffer:
         arr = chunk_array.as_ndarray_like()
+        offset = self._to_scalar(self.offset, chunk_spec.dtype)
+        scale = self._to_scalar(self.scale, chunk_spec.dtype)
         if np.issubdtype(arr.dtype, np.integer):
-            result = (arr // arr.dtype.type(self.scale)) + arr.dtype.type(self.offset)
+            result = (arr // scale) + offset  # type: ignore[operator]
         else:
-            result = (arr / arr.dtype.type(self.scale)) + arr.dtype.type(self.offset)
+            result = (arr / scale) + offset  # type: ignore[operator]
         if result.dtype != arr.dtype:
             raise ValueError(
                 f"scale_offset decode changed dtype from {arr.dtype} to {result.dtype}. "
@@ -114,10 +127,12 @@ class ScaleOffset(ArrayArrayCodec):
     def _encode_sync(
         self,
         chunk_array: NDBuffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
         arr = chunk_array.as_ndarray_like()
-        result = (arr - arr.dtype.type(self.offset)) * arr.dtype.type(self.scale)
+        offset = self._to_scalar(self.offset, chunk_spec.dtype)
+        scale = self._to_scalar(self.scale, chunk_spec.dtype)
+        result = (arr - offset) * scale  # type: ignore[operator]
         if result.dtype != arr.dtype:
             raise ValueError(
                 f"scale_offset encode changed dtype from {arr.dtype} to {result.dtype}. "
