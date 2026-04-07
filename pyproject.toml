@@ -208,7 +208,8 @@ python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage combine",
     "coverage xml",
 ]
 run = "pytest -m gpu --ignore tests/benchmarks"
