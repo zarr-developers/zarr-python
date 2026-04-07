@@ -175,24 +175,24 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage combine",
     "coverage xml",
 ]
 run-coverage-html = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --ignore tests/benchmarks {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -n auto --dist loadgroup --ignore tests/benchmarks {args:}",
     "coverage combine",
     "coverage html",
 ]
-run = "pytest -n auto --ignore tests/benchmarks {args:}"
+run = "pytest -n auto --dist loadgroup --ignore tests/benchmarks {args:}"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = [
-    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "COVERAGE_PROCESS_START=pyproject.toml coverage run -m pytest -nauto --dist loadgroup --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage combine",
     "coverage xml",
 ]
-run-benchmark = "pytest -p no:xdist --benchmark-enable tests/benchmarks"
+run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
 
@@ -420,7 +420,6 @@ addopts = [
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
     "-ra", "--strict-config", "--strict-markers",
-    "--dist", "loadgroup",
 ]
 filterwarnings = [
     "error",
