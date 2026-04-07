@@ -192,7 +192,7 @@ run-hypothesis = [
     "coverage combine",
     "coverage xml",
 ]
-run-benchmark = "pytest --benchmark-enable tests/benchmarks"
+run-benchmark = "pytest -p no:xdist --benchmark-enable tests/benchmarks"
 serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
 
