@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
@@ -246,7 +246,7 @@ class BatchedCodecPipeline(CodecPipeline):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
@@ -1020,7 +1020,7 @@ class PhasedCodecPipeline(CodecPipeline):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         for codec in self.codecs:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
@@ -1113,7 +1113,7 @@ class PhasedCodecPipeline(CodecPipeline):
         shard data before merging. For reads, ``_read_shard_selective`` is
         preferred since it fetches only the needed inner chunks.
         """
-        from zarr.core.chunk_grids import RegularChunkGrid
+        from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
         from zarr.core.indexing import BasicIndexer
 
         chunk_dict = layout.unpack_blob(blob)
@@ -1127,7 +1127,7 @@ class PhasedCodecPipeline(CodecPipeline):
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_spec.shape),
             shape=shard_spec.shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=layout.inner_chunk_shape),
+            chunk_grid=_ChunkGrid.from_sizes(shard_spec.shape, layout.inner_chunk_shape),
         )
 
         for chunk_coords, chunk_selection, out_selection, _ in indexer:
@@ -1208,7 +1208,7 @@ class PhasedCodecPipeline(CodecPipeline):
         and re-encoded. Untouched chunks pass through as raw bytes.
         """
         from zarr.core.buffer import default_buffer_prototype
-        from zarr.core.chunk_grids import RegularChunkGrid
+        from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
         from zarr.core.indexing import get_indexer
 
         # Unpack existing shard into chunk mapping (no decode — just index parse + byte slicing)
@@ -1221,7 +1221,7 @@ class PhasedCodecPipeline(CodecPipeline):
         indexer = get_indexer(
             chunk_selection,
             shape=shard_spec.shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=layout.inner_chunk_shape),
+            chunk_grid=_ChunkGrid.from_sizes(shard_spec.shape, layout.inner_chunk_shape),
         )
 
         inner_spec = ArraySpec(
@@ -1307,7 +1307,7 @@ class PhasedCodecPipeline(CodecPipeline):
         3. Fetch only those inner chunks (byte-range reads)
         4. Decode and assemble (pure compute)
         """
-        from zarr.core.chunk_grids import RegularChunkGrid
+        from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
         from zarr.core.indexing import get_indexer
 
         # Phase 1: fetch index
@@ -1320,7 +1320,7 @@ class PhasedCodecPipeline(CodecPipeline):
             get_indexer(
                 chunk_selection,
                 shape=shard_spec.shape,
-                chunk_grid=RegularChunkGrid(chunk_shape=layout.inner_chunk_shape),
+                chunk_grid=_ChunkGrid.from_sizes(shard_spec.shape, layout.inner_chunk_shape),
             )
         )
         needed_coords = {coords for coords, *_ in indexer}
@@ -1459,7 +1459,7 @@ class PhasedCodecPipeline(CodecPipeline):
         layout: ShardLayout,
     ) -> NDBuffer | None:
         """Sync variant of _read_shard_selective."""
-        from zarr.core.chunk_grids import RegularChunkGrid
+        from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
         from zarr.core.indexing import get_indexer
 
         index = layout.fetch_index_sync(byte_getter)
@@ -1470,7 +1470,7 @@ class PhasedCodecPipeline(CodecPipeline):
             get_indexer(
                 chunk_selection,
                 shape=shard_spec.shape,
-                chunk_grid=RegularChunkGrid(chunk_shape=layout.inner_chunk_shape),
+                chunk_grid=_ChunkGrid.from_sizes(shard_spec.shape, layout.inner_chunk_shape),
             )
         )
         needed_coords = {coords for coords, *_ in indexer}

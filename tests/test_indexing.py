@@ -1254,8 +1254,8 @@ def test_get_block_selection_1d(store: StorePath) -> None:
         _test_get_block_selection(a, z, selection, expected_idx)
 
     bad_selections = block_selections_1d_bad + [
-        z.metadata.chunk_grid.get_nchunks(z.shape) + 1,  # out of bounds
-        -(z.metadata.chunk_grid.get_nchunks(z.shape) + 1),  # out of bounds
+        z._chunk_grid.get_nchunks() + 1,  # out of bounds
+        -(z._chunk_grid.get_nchunks() + 1),  # out of bounds
     ]
 
     for selection_bad in bad_selections:
@@ -1968,9 +1968,11 @@ def test_indexing_with_zarr_array(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("shape", [(0, 2, 3), (0), (3, 0)])
+@pytest.mark.parametrize("shape", [(0, 2, 3), (0,), (3, 0)])
 def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
-    z = zarr.create_array(store=store, shape=shape, chunks=shape, zarr_format=3, dtype="f8")
+    # Chunk sizes must be >= 1 per spec; use 1 for zero-extent dimensions.
+    chunks = tuple(max(1, s) for s in shape)
+    z = zarr.create_array(store=store, shape=shape, chunks=chunks, zarr_format=3, dtype="f8")
     z[...] = 42
     assert_array_equal(z[...], np.zeros(shape, dtype="f8"))
 

@@ -34,8 +34,7 @@ from zarr.core.buffer import (
     default_buffer_prototype,
     numpy_buffer_prototype,
 )
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.core.codec_pipeline import ChunkTransform
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import (
     ShapeLike,
     parse_enum,
@@ -54,7 +53,12 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata.v3 import parse_codecs
+from zarr.core.metadata.v3 import (
+    ChunkGridMetadata,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
+    parse_codecs,
+)
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
 from zarr.storage._utils import _normalize_byte_range_index
 
@@ -395,26 +399,30 @@ class ShardingCodec(
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
-        if not isinstance(chunk_grid, RegularChunkGrid):
-            raise TypeError("Sharding is only compatible with regular chunk grids.")
-        if not all(
-            s % c == 0
-            for s, c in zip(
-                chunk_grid.chunk_shape,
-                self.chunk_shape,
-                strict=False,
+        if isinstance(chunk_grid, RegularChunkGridMetadata):
+            edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
+        elif isinstance(chunk_grid, RectilinearChunkGridMetadata):
+            edges_per_dim = tuple(
+                (s,) if isinstance(s, int) else s for s in chunk_grid.chunk_shapes
             )
-        ):
-            raise ValueError(
-                f"The array's `chunk_shape` (got {chunk_grid.chunk_shape}) "
-                f"needs to be divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
+        else:
+            raise TypeError(
+                f"Sharding is only compatible with regular and rectilinear chunk grids, "
+                f"got {type(chunk_grid)}"
             )
+        for i, (edges, inner) in enumerate(zip(edges_per_dim, self.chunk_shape, strict=False)):
+            for edge in set(edges):
+                if edge % inner != 0:
+                    raise ValueError(
+                        f"Chunk edge length {edge} in dimension {i} is not "
+                        f"divisible by the shard's inner chunk size {inner}."
+                    )
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """Build a ChunkTransform for inner codecs, bound to the inner chunk spec."""
@@ -424,8 +432,10 @@ class ShardingCodec(
         evolved = tuple(c.evolve_from_array_spec(array_spec=chunk_spec) for c in self.codecs)
         return ChunkTransform(codecs=evolved, array_spec=chunk_spec)
 
-    def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> ChunkTransform:
+    def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> Any:
         """Build a ChunkTransform for index codecs."""
+        from zarr.core.codec_pipeline import ChunkTransform
+
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         evolved = tuple(c.evolve_from_array_spec(array_spec=index_spec) for c in self.index_codecs)
         return ChunkTransform(codecs=evolved, array_spec=index_spec)
@@ -442,7 +452,7 @@ class ShardingCodec(
         """Encode shard index synchronously using ChunkTransform."""
         index_transform = self._get_index_chunk_transform(index.chunks_per_shard)
         index_nd = get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths)
-        result = index_transform.encode_chunk(index_nd)
+        result: Buffer | None = index_transform.encode_chunk(index_nd)
         assert result is not None
         return result
 
@@ -476,7 +486,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
         )
 
         out = chunk_spec.prototype.nd_buffer.empty(
@@ -515,7 +525,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=self.chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
         )
 
         shard_builder: dict[tuple[int, ...], Buffer | None] = dict.fromkeys(
@@ -581,7 +591,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
         )
 
         # setup output array
@@ -627,7 +637,7 @@ class ShardingCodec(
         indexer = get_indexer(
             selection,
             shape=shard_shape,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
         )
 
         # setup output array
@@ -702,7 +712,7 @@ class ShardingCodec(
             BasicIndexer(
                 tuple(slice(0, s) for s in shard_shape),
                 shape=shard_shape,
-                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
 
@@ -742,7 +752,9 @@ class ShardingCodec(
 
         indexer = list(
             get_indexer(
-                selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
+                selection,
+                shape=shard_shape,
+                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
 
