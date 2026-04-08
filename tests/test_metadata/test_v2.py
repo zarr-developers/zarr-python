@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-    from zarr.core.common import JSON
+    from zarr.types import JSON
 
 
 def test_parse_zarr_format_valid() -> None:

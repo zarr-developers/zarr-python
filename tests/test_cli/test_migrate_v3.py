@@ -17,12 +17,11 @@ from zarr.codecs.numcodecs import LZMA, Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
-from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.int import UInt8, UInt16
 from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage._local import LocalStore
-from zarr.types import AnyArray
+from zarr.types import JSON, AnyArray, ZarrFormat
 
 typer_testing = pytest.importorskip(
     "typer.testing", reason="optional cli dependencies aren't installed"
