@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import zarr
+from zarr.core.array import _get_chunk_spec
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore
@@ -42,7 +43,7 @@ async def test_read_returns_get_results(
     indexer = BasicIndexer(
         read_slice,
         shape=metadata.shape,
-        chunk_grid=metadata.chunk_grid,
+        chunk_grid=async_arr._chunk_grid,
     )
 
     out_buffer = prototype.nd_buffer.empty(
@@ -55,7 +56,7 @@ async def test_read_returns_get_results(
         [
             (
                 async_arr.store_path / metadata.encode_chunk_key(chunk_coords),
-                metadata.get_chunk_spec(chunk_coords, config, prototype=prototype),
+                _get_chunk_spec(metadata, async_arr._chunk_grid, chunk_coords, config, prototype),
                 chunk_selection,
                 out_selection,
                 is_complete_chunk,
