@@ -1,30 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, NotRequired, TypedDict, TypeGuard, cast
-
-from zarr.abc.metadata import Metadata
-from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
-from zarr.core.dtype.common import check_dtype_spec_v3
-
-if TYPE_CHECKING:
-    from typing import Self
-
-    from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import JSON
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
-
-
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, TypeGuard, cast
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.metadata import Metadata
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -33,15 +17,29 @@ from zarr.core.chunk_key_encodings import (
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
+    ChunksLike,
     DimensionNamesLike,
     NamedConfig,
+    NamedRequiredConfig,
+    compress_rle,
+    expand_rle,
     parse_named_configuration,
     parse_shapelike,
+    validate_rectilinear_edges,
+    validate_rectilinear_kind,
 )
 from zarr.core.config import config
+from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
+from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
+
+if TYPE_CHECKING:
+    from typing import Self
+
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -174,6 +172,245 @@ def parse_extra_fields(
         return dict(data)
 
 
+# JSON type for a single dimension's rectilinear spec:
+# bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
+RectilinearDimSpecJSON = int | list[int | list[int]]
+
+
+class RegularChunkGridMetadataConfig(TypedDict):
+    chunk_shape: Sequence[int]
+
+
+class RectilinearChunkGridMetadataConfig(TypedDict):
+    kind: Literal["inline"]
+    chunk_shapes: Sequence[RectilinearDimSpecJSON]
+
+
+RegularChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["regular"], RegularChunkGridMetadataConfig
+]
+RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["rectilinear"], RectilinearChunkGridMetadataConfig
+]
+
+
+def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
+    """Validate and normalize a regular chunk shape.
+
+    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
+    a sequence of bare ints (one per dimension), each of which must be >= 1.
+    """
+    result = _validate_chunk_shapes(tuple(chunk_shape))
+    # Regular grids only have bare ints — cast is safe after validation
+    return cast(tuple[int, ...], result)
+
+
+def _validate_chunk_shapes(
+    chunk_shapes: Sequence[int | Sequence[int]],
+) -> tuple[int | tuple[int, ...], ...]:
+    """Validate per-dimension chunk specifications.
+
+    Each element is either a bare ``int`` (regular step size, must be >= 1)
+    or a sequence of explicit edge lengths (all must be >= 1, non-empty).
+    """
+    result: list[int | tuple[int, ...]] = []
+    for dim_idx, dim_spec in enumerate(chunk_shapes):
+        if isinstance(dim_spec, int):
+            if dim_spec < 1:
+                raise ValueError(
+                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
+                )
+            result.append(dim_spec)
+        else:
+            edges = tuple(dim_spec)
+            if not edges:
+                raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+            bad = [i for i, e in enumerate(edges) if e < 1]
+            if bad:
+                raise ValueError(
+                    f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
+                    f"{[edges[i] for i in bad]}"
+                )
+            result.append(edges)
+    return tuple(result)
+
+
+@dataclass(frozen=True, kw_only=True)
+class RegularChunkGridMetadata(Metadata):
+    """Metadata-only description of a regular chunk grid.
+
+    Stores just the chunk shape — no array extent, no runtime logic.
+    This is what lives on ``ArrayV3Metadata.chunk_grid``.
+    """
+
+    chunk_shape: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        chunk_shape_parsed = _parse_chunk_shape(self.chunk_shape)
+        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
+
+    @property
+    def ndim(self) -> int:
+        return len(self.chunk_shape)
+
+    def to_dict(self) -> RegularChunkGridMetadataJSON:  # type: ignore[override]
+        return {
+            "name": "regular",
+            "configuration": {"chunk_shape": self.chunk_shape},
+        }
+
+    @classmethod
+    def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
+        parse_named_configuration(data, "regular")  # validate name
+        configuration = data["configuration"]
+        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+
+
+@dataclass(frozen=True, kw_only=True)
+class RectilinearChunkGridMetadata(Metadata):
+    """Metadata-only description of a rectilinear chunk grid.
+
+    Each element of ``chunk_shapes`` is either:
+
+    - A bare ``int`` — a regular step size that repeats to cover the axis
+      (the spec's single-integer shorthand).
+    - A ``tuple[int, ...]`` — explicit per-chunk edge lengths (already
+      expanded from any RLE encoding).
+
+    This distinction matters for faithful round-tripping: a bare int
+    serializes back as a bare int, while a single-element tuple serializes
+    as a list.
+    """
+
+    chunk_shapes: tuple[int | tuple[int, ...], ...]
+
+    def __post_init__(self) -> None:
+        from zarr.core.config import config
+
+        if not config.get("array.rectilinear_chunks"):
+            raise ValueError(
+                "Rectilinear chunk grids are experimental and disabled by default. "
+                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
+                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
+            )
+        object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
+
+    @property
+    def ndim(self) -> int:
+        return len(self.chunk_shapes)
+
+    def to_dict(self) -> RectilinearChunkGridMetadataJSON:  # type: ignore[override]
+        serialized_dims: list[RectilinearDimSpecJSON] = []
+        for dim_spec in self.chunk_shapes:
+            if isinstance(dim_spec, int):
+                # Bare int shorthand — serialize as-is
+                serialized_dims.append(dim_spec)
+            else:
+                rle = compress_rle(dim_spec)
+                # Use RLE only if it's actually shorter
+                if len(rle) < len(dim_spec):
+                    serialized_dims.append(rle)
+                else:
+                    serialized_dims.append(list(dim_spec))
+        return {
+            "name": "rectilinear",
+            "configuration": {
+                "kind": "inline",
+                "chunk_shapes": tuple(serialized_dims),
+            },
+        }
+
+    def update_shape(
+        self, old_shape: tuple[int, ...], new_shape: tuple[int, ...]
+    ) -> RectilinearChunkGridMetadata:
+        """Return a new RectilinearChunkGridMetadata with edges adjusted for *new_shape*.
+
+        - Bare-int dimensions stay as bare ints (they cover any extent).
+        - Explicit-edge dimensions: if the new extent exceeds the sum of
+          edges, a new chunk is appended to cover the additional extent.
+          Otherwise edges are kept as-is (the spec allows trailing edges
+          beyond the array extent).
+        """
+        new_chunk_shapes: list[int | tuple[int, ...]] = []
+        for dim_spec, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
+            if isinstance(dim_spec, int):
+                # Bare int covers any extent — no change needed
+                new_chunk_shapes.append(dim_spec)
+            else:
+                edge_sum = sum(dim_spec)
+                if new_ext > edge_sum:
+                    new_chunk_shapes.append((*dim_spec, new_ext - edge_sum))
+                else:
+                    new_chunk_shapes.append(dim_spec)
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(new_chunk_shapes))
+
+    @classmethod
+    def from_dict(cls, data: RectilinearChunkGridMetadataJSON) -> Self:  # type: ignore[override]
+        parse_named_configuration(data, "rectilinear")  # validate name
+        configuration = data["configuration"]
+        validate_rectilinear_kind(configuration.get("kind"))
+        raw_shapes = configuration["chunk_shapes"]
+        parsed: list[int | tuple[int, ...]] = []
+        for dim_spec in raw_shapes:
+            if isinstance(dim_spec, int):
+                if dim_spec < 1:
+                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
+                parsed.append(dim_spec)
+            elif isinstance(dim_spec, list):
+                parsed.append(tuple(expand_rle(dim_spec)))
+            else:
+                raise TypeError(
+                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
+                )
+        return cls(chunk_shapes=tuple(parsed))
+
+
+ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
+
+
+def resolve_chunks(
+    chunks: ChunksLike,
+    shape: tuple[int, ...],
+    typesize: int,
+) -> ChunkGridMetadata:
+    """Construct a chunk grid from user-facing input (e.g. ``create_array(chunks=...)``).
+
+    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGridMetadata``.
+    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGridMetadata``
+    after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
+
+    See Also
+    --------
+    parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
+    """
+    from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
+
+    if _is_rectilinear_chunks(chunks):
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(c) for c in chunks))
+
+    return RegularChunkGridMetadata(chunk_shape=normalize_chunks(chunks, shape, typesize))
+
+
+def parse_chunk_grid(
+    data: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
+) -> ChunkGridMetadata:
+    """Deserialize a chunk grid from stored JSON metadata or pass through an existing instance.
+
+    See Also
+    --------
+    resolve_chunks : Construct a chunk grid from user-facing input.
+    """
+    if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
+        return data
+
+    name, _ = parse_named_configuration(data)
+    if name == "regular":
+        return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
+    if name == "rectilinear":
+        return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
+    raise ValueError(f"Unknown chunk grid name: {name!r}")
+
+
 class ArrayMetadataJSON_V3(TypedDict):
     """
     A typed dictionary model for zarr v3 metadata.
@@ -199,7 +436,7 @@ ARRAY_METADATA_KEYS = set(ArrayMetadataJSON_V3.__annotations__.keys())
 class ArrayV3Metadata(Metadata):
     shape: tuple[int, ...]
     data_type: ZDType[TBaseDType, TBaseScalar]
-    chunk_grid: ChunkGrid
+    chunk_grid: ChunkGridMetadata
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: tuple[Codec, ...]
@@ -215,7 +452,7 @@ class ArrayV3Metadata(Metadata):
         *,
         shape: Iterable[int],
         data_type: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
+        chunk_grid: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
         codecs: Iterable[Codec | dict[str, JSON] | NamedConfig[str, Any] | str],
@@ -229,7 +466,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
+        chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
@@ -262,12 +499,10 @@ class ArrayV3Metadata(Metadata):
         self._validate_metadata()
 
     def _validate_metadata(self) -> None:
-        if isinstance(self.chunk_grid, RegularChunkGrid) and len(self.shape) != len(
-            self.chunk_grid.chunk_shape
-        ):
-            raise ValueError(
-                "`chunk_shape` and `shape` need to have the same number of dimensions."
-            )
+        if len(self.shape) != self.chunk_grid.ndim:
+            raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
+        if isinstance(self.chunk_grid, RectilinearChunkGridMetadata):
+            validate_rectilinear_edges(self.chunk_grid.chunk_shapes, self.shape)
         if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
             raise ValueError(
                 "`dimension_names` and `shape` need to have the same number of dimensions."
@@ -285,62 +520,45 @@ class ArrayV3Metadata(Metadata):
     def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         return self.data_type
 
+    # TODO: move these properties to the Array class.
+    # They require knowledge of codecs (ShardingCodec) and don't belong on a metadata DTO.
+
     @property
     def chunks(self) -> tuple[int, ...]:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
-            from zarr.codecs.sharding import ShardingCodec
+        if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
+            msg = (
+                "The `chunks` attribute is only defined for arrays using regular chunk grids. "
+                "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
+            )
+            raise NotImplementedError(msg)
 
-            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-                sharding_codec = self.codecs[0]
-                assert isinstance(sharding_codec, ShardingCodec)  # for mypy
-                return sharding_codec.chunk_shape
-            else:
-                return self.chunk_grid.chunk_shape
+        from zarr.codecs.sharding import ShardingCodec
 
-        msg = (
-            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
-        )
-        raise NotImplementedError(msg)
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0].chunk_shape
+        return self.chunk_grid.chunk_shape
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
-            from zarr.codecs.sharding import ShardingCodec
+        from zarr.codecs.sharding import ShardingCodec
 
-            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-                return self.chunk_grid.chunk_shape
-            else:
-                return None
-
-        msg = (
-            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
-        )
-        raise NotImplementedError(msg)
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
+                msg = (
+                    "The `shards` attribute is only defined for arrays using regular chunk grids. "
+                    "This array has a rectilinear chunk grid. Use `write_chunk_sizes` for general access."
+                )
+                raise NotImplementedError(msg)
+            return self.chunk_grid.chunk_shape
+        return None
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
-            from zarr.codecs.sharding import ShardingCodec
+        from zarr.codecs.sharding import ShardingCodec
 
-            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-                return self.codecs[0].codecs
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0].codecs
         return self.codecs
-
-    def get_chunk_spec(
-        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
-    ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
-        return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
-            dtype=self.dtype,
-            fill_value=self.fill_value,
-            config=array_config,
-            prototype=prototype,
-        )
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
@@ -415,6 +633,8 @@ class ArrayV3Metadata(Metadata):
         extra_fields = out_dict.pop("extra_fields")
         out_dict = out_dict | extra_fields  # type: ignore[operator]
 
+        out_dict["chunk_grid"] = self.chunk_grid.to_dict()
+
         out_dict["fill_value"] = self.data_type.to_json_scalar(
             self.fill_value, zarr_format=self.zarr_format
         )
@@ -436,7 +656,10 @@ class ArrayV3Metadata(Metadata):
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
-        return replace(self, shape=shape)
+        chunk_grid = self.chunk_grid
+        if isinstance(chunk_grid, RectilinearChunkGridMetadata):
+            chunk_grid = chunk_grid.update_shape(self.shape, shape)
+        return replace(self, shape=shape, chunk_grid=chunk_grid)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)

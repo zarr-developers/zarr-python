@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import importlib
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
@@ -14,6 +15,15 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
+
+
+if importlib.util.find_spec("upath"):
+    from upath.core import UPath
+else:
+
+    class UPath:  # type: ignore[no-redef]
+        pass
+
 
 P = ParamSpec("P")
 T_co = TypeVar("T_co", covariant=True)
@@ -44,7 +54,7 @@ class ConcurrencyLimiter:
         return sem if sem is not None else contextlib.nullcontext()
 
 
-def with_concurrency_limit(
+def with_concurrency_limit[**P, T_co](
     func: Callable[P, Coroutine[Any, Any, T_co]],
 ) -> Callable[P, Coroutine[Any, Any, T_co]]:
     """Decorator that applies a semaphore-based concurrency limit to an async method.
@@ -86,7 +96,8 @@ def normalize_path(path: str | bytes | Path | None) -> str:
         result = str(path, "ascii")
 
     # handle pathlib.Path
-    elif isinstance(path, Path):
+
+    elif isinstance(path, Path | UPath):
         result = str(path)
 
     elif isinstance(path, str):
@@ -221,10 +232,7 @@ def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
     return tuple(path_map.keys())
 
 
-T = TypeVar("T")
-
-
-def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
+def _normalize_path_keys[T](data: Mapping[str, T]) -> dict[str, T]:
     """
     Normalize the keys of the input dict according to the normalization scheme used for zarr node
     paths. If any two keys in the input normalize to the same value, raise a ValueError.

@@ -30,7 +30,9 @@ Configuration options include the following:
 - Default Zarr format `default_zarr_version`
 - Default array order in memory `array.order`
 - Whether empty chunks are written to storage `array.write_empty_chunks`
-- Threading options, e.g. `threading.max_workers`
+- Enable experimental rectilinear chunks `array.rectilinear_chunks`
+- Whether missing chunks are filled with the array's fill value on read `array.read_missing_chunks` (default `True`). Set to `False` to raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError] instead.
+- Threading options, e.g.`threading.max_workers`.
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See GPU support for more.
 

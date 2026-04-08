@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -16,11 +16,7 @@ if TYPE_CHECKING:
 __all__ = ["StoreConcurrencyTests"]
 
 
-S = TypeVar("S", bound="Store")
-B = TypeVar("B", bound="Buffer")
-
-
-class StoreConcurrencyTests(Generic[S, B]):
+class StoreConcurrencyTests[S: Store, B: Buffer]:
     """Base class for testing store concurrency limiting behavior.
 
     This mixin provides tests for verifying that stores correctly implement

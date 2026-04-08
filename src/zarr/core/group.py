@@ -9,7 +9,7 @@ import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -40,6 +40,7 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
+    ChunksLike,
     DimensionNamesLike,
     NodeType,
     ShapeLike,
@@ -82,8 +83,6 @@ if TYPE_CHECKING:
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 logger = logging.getLogger("zarr.group")
-
-DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -806,7 +805,7 @@ class AsyncGroup:
             self.metadata.consolidated_metadata.metadata.pop(key, None)
             await self._save_metadata()
 
-    async def get(
+    async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
     ) -> AnyAsyncArray | AsyncGroup | DefaultT | None:
         """Obtain a group member, returning default if not found.
@@ -1022,7 +1021,7 @@ class AsyncGroup:
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: ChunksLike | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -1918,7 +1917,9 @@ class Group(SyncMixin):
         else:
             return Group(obj)
 
-    def get(self, path: str, default: DefaultT | None = None) -> AnyArray | Group | DefaultT | None:
+    def get[DefaultT](
+        self, path: str, default: DefaultT | None = None
+    ) -> AnyArray | Group | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters
@@ -2470,7 +2471,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: ChunksLike | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2614,7 +2615,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: ChunksLike | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -3012,7 +3013,7 @@ class Group(SyncMixin):
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: ChunksLike | Literal["auto"] = "auto",
         shards: tuple[int, ...] | Literal["auto"] | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",

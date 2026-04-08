@@ -190,9 +190,8 @@ scenarios.
 
 ### Concurrent I/O operations
 
-Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
-Concurrency is controlled at the **store level** — each store instance can have its own concurrency
-limit, set via the `concurrency_limit` parameter when creating the store.
+For latency-sensitve storage backends like HTTP and cloud object storage, Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
+Concurrency is controlled at the **store level**. Many of the stores defined in `zarr-python` accept a concurrency limit on construction via the `concurrency_limit` parameter.
 
 ```python
 import zarr
@@ -215,7 +214,27 @@ Lower concurrency values may be beneficial when:
 - Memory is constrained (each concurrent operation requires buffer space)
 - Using Zarr within a parallel computing framework (see below)
 
-Set `concurrency_limit=None` to disable the concurrency limit entirely.
+### Thread pool size (`threading.max_workers`)
+
+When synchronous Zarr code calls async operations internally, Zarr uses a
+`ThreadPoolExecutor` to run those coroutines. The `threading.max_workers`
+configuration option controls the maximum number of worker threads in that pool.
+By default it is `None`, which lets Python choose the pool size (typically
+`min(32, os.cpu_count() + 4)`).
+
+You can set it explicitly when you want more predictable resource usage:
+
+```python
+import zarr
+
+zarr.config.set({'threading.max_workers': 8})
+```
+
+Reducing this value can help avoid overloading the event loop when Zarr is used
+inside a parallel computing framework such as Dask that already manages its own
+thread pool (see the Dask section below). Increasing it may improve throughput
+in CPU-bound workloads where many synchronous-to-async dispatches happen
+concurrently.
 
 ### Using Zarr with Dask
 
