@@ -1073,17 +1073,13 @@ def test_auto_partition_auto_shards(
     where there are 8 or more chunks.
     """
     dtype = np.dtype("uint8")
-    with pytest.warns(
-        ZarrUserWarning,
-        match="Automatic shard shape inference is experimental and may change without notice.",
-    ):
-        with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
-            auto_shards, _ = _auto_partition(
-                array_shape=array_shape,
-                chunk_shape=chunk_shape,
-                shard_shape="auto",
-                item_size=dtype.itemsize,
-            )
+    with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
+        auto_shards, _ = _auto_partition(
+            array_shape=array_shape,
+            chunk_shape=chunk_shape,
+            shard_shape="auto",
+            item_size=dtype.itemsize,
+        )
     assert auto_shards == expected_shards
 
 
@@ -1091,17 +1087,13 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     """
     Test that automatically picking a shard size and a chunk size gives roughly 1MiB chunks.
     """
-    with pytest.warns(
-        ZarrUserWarning,
-        match="Automatic shard shape inference is experimental and may change without notice.",
-    ):
-        with zarr.config.set({"array.target_shard_size_bytes": 10_000_000}):
-            _, chunk_shape = _auto_partition(
-                array_shape=(10_000_000,),
-                chunk_shape="auto",
-                shard_shape="auto",
-                item_size=1,
-            )
+    with zarr.config.set({"array.target_shard_size_bytes": 10_000_000}):
+        _, chunk_shape = _auto_partition(
+            array_shape=(10_000_000,),
+            chunk_shape="auto",
+            shard_shape="auto",
+            item_size=1,
+        )
     assert chunk_shape == (625000,)
 
 

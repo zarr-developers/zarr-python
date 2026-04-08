@@ -756,13 +756,15 @@ def _auto_partition(
             _chunks_out = chunk_shape
 
         if shard_shape == "auto":
-            warnings.warn(
-                "Automatic shard shape inference is experimental and may change without notice.",
-                ZarrUserWarning,
-                stacklevel=2,
-            )
             _shards_out = ()
             target_shard_size_bytes = zarr.config.get("array.target_shard_size_bytes", None)
+            if target_shard_size_bytes is None:
+                warnings.warn(
+                    "Automatic shard shape inference is experimental and may change without notice."
+                    "To set a target uncompressed shard size, use zarr.config.array.target_shard_size_bytes.",
+                    ZarrUserWarning,
+                    stacklevel=2,
+                )
             num_chunks_per_shard_axis = (
                 _guess_num_chunks_per_axis_shard(
                     chunk_shape=_chunks_out,
