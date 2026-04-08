@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
@@ -42,17 +43,47 @@ class ArrayConfig:
         The memory layout of the arrays returned when reading data from the store.
     write_empty_chunks : bool
         If True, empty chunks will be written to the store.
+    read_missing_chunks : bool, default is True
+        If True, missing chunks will be filled with the array's fill value on read.
+        If False, reading missing chunks will raise a ``ChunkNotFoundError``.
+    codec_classes : Mapping[str, object] | None, default is None
+        A codec name : codec class mapping that defines the codec classes available
+        for this array. Defaults to `None`, in which case a default collection of codecs
+        is retrieved from the global config object.
+    data_type_classes : set[ZDType] | None, default is None.
+        A set of data type classes to use
+        A data type identi
+
+    Attributes
+    ----------
+    order : MemoryOrder
+        The memory layout of the arrays returned when reading data from the store.
+    write_empty_chunks : bool
+        If True, empty chunks will be written to the store.
     read_missing_chunks : bool
         If True, missing chunks will be filled with the array's fill value on read.
         If False, reading missing chunks will raise a ``ChunkNotFoundError``.
+    codec_classes : Mapping[str, object]
+        A codec name : codec class mapping that defines the codec classes available
+        for this array.
+    data_type_clas
     """
 
     order: MemoryOrder
     write_empty_chunks: bool
     read_missing_chunks: bool
+    codec_classes: Mapping[str, object]
+    data_type_classes: set[ZDType[Any, Any]]
+    codec_pipeline_class: object
 
     def __init__(
-        self, order: MemoryOrder, write_empty_chunks: bool, *, read_missing_chunks: bool = True
+        self,
+        order: MemoryOrder,
+        write_empty_chunks: bool,
+        *,
+        read_missing_chunks: bool = True,
+        codec_class_map: Mapping[str, object] | None = None,
+        codec_pipeline_class: object | None = None,
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
