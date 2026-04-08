@@ -22,12 +22,12 @@ def _create_array(
     chunks: tuple[int, ...] | None = None,
     codecs: tuple[Any, ...] = (BytesCodec(),),
     fill_value: object = 0,
-) -> zarr.Array:
+) -> zarr.Array[Any]:
     """Create a zarr array using PhasedCodecPipeline."""
     if chunks is None:
         chunks = shape
 
-    pipeline = PhasedCodecPipeline.from_codecs(codecs)
+    _ = PhasedCodecPipeline.from_codecs(codecs)
 
     return zarr.create_array(
         StorePath(MemoryStore()),

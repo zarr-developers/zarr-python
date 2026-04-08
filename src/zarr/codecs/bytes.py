@@ -127,7 +127,7 @@ class BytesCodec(ArrayBytesCodec):
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
 
-    # -- SupportsChunkPacking --
+    # -- SupportsChunkMapping --
 
     @property
     def inner_codec_chain(self) -> SupportsChunkCodec | None:

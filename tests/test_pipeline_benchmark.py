@@ -6,12 +6,11 @@ Run with: hatch run test.py3.12-minimal:pytest tests/test_pipeline_benchmark.py 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
-from zarr.abc.codec import Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.sharding import ShardingCodec
@@ -22,6 +21,9 @@ from zarr.core.codec_pipeline import BatchedCodecPipeline, PhasedCodecPipeline
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
+
+if TYPE_CHECKING:
+    from zarr.abc.codec import Codec
 
 
 class PipelineKind(Enum):
@@ -78,7 +80,7 @@ def _make_pipeline(
         evolved_codecs = tuple(c.evolve_from_array_spec(array_spec=spec) for c in pipeline)
         return BatchedCodecPipeline.from_codecs(evolved_codecs)
     else:  # phased_async, phased_sync, phased_sync_threaded
-        pipeline = PhasedCodecPipeline.from_codecs(codecs)
+        pipeline = PhasedCodecPipeline.from_codecs(codecs)  # type: ignore[assignment]
         return pipeline.evolve_from_array_spec(spec)
 
 
@@ -145,9 +147,12 @@ def test_pipeline(
     """1 MB per chunk, parametrized over pipeline, compressor, serializer, and chunk count."""
     codecs = _build_codecs(compressor, serializer)
 
-    # Sync paths require SupportsChunkPacking for the BytesCodec-level IO
-    # ShardingCodec now has _decode_sync/_encode_sync but not SupportsChunkPacking
-    if serializer == "sharding" and kind in (PipelineKind.phased_sync, PipelineKind.phased_sync_threaded):
+    # Sync paths require SupportsChunkMapping for the BytesCodec-level IO
+    # ShardingCodec now has _decode_sync/_encode_sync but not SupportsChunkMapping
+    if serializer == "sharding" and kind in (
+        PipelineKind.phased_sync,
+        PipelineKind.phased_sync_threaded,
+    ):
         pytest.skip("Sync IO path not yet implemented for ShardingCodec")
 
     # Threading only helps with multiple chunks

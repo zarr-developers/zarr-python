@@ -36,7 +36,7 @@ __all__ = [
     "GetResult",
     "PreparedWrite",
     "SupportsChunkCodec",
-    "SupportsChunkPacking",
+    "SupportsChunkMapping",
     "SupportsSyncCodec",
 ]
 
@@ -100,21 +100,26 @@ class SupportsChunkCodec(Protocol):
 
 
 @runtime_checkable
-class SupportsChunkPacking(Protocol):
-    """Protocol for codecs that can pack/unpack inner chunks into a storage blob
-    and manage the prepare/finalize IO lifecycle.
+class SupportsChunkMapping(Protocol):
+    """Protocol for codecs that expose their stored data as a mapping
+    from chunk coordinates to encoded buffers.
 
-    `BytesCodec` and `ShardingCodec` implement this protocol. The pipeline
-    uses it to separate IO (prepare/finalize) from compute (encode/decode),
-    enabling the compute phase to run in a thread pool.
+    A single store key holds a blob. This protocol defines how to
+    interpret that blob as a ``dict[tuple[int, ...], Buffer | None]`` —
+    a mapping from inner-chunk coordinates to their encoded bytes.
 
-    The lifecycle is:
+    For a non-sharded codec (``BytesCodec``), the mapping is trivial:
+    one entry at ``(0,)`` containing the entire blob. For a sharded
+    codec, the mapping has one entry per inner chunk, derived from the
+    shard index embedded in the blob. The pipeline doesn't need to know
+    which case it's dealing with — it operates on the mapping uniformly.
 
-    1. **Prepare**: fetch existing bytes from the store (if partial write),
-       unpack into per-inner-chunk buffers → `PreparedWrite`
-    2. **Compute**: iterate `PreparedWrite.indexer`, decode each inner chunk,
-       merge new data, re-encode, update `PreparedWrite.chunk_dict`
-    3. **Finalize**: pack `chunk_dict` back into a blob and write to store
+    This abstraction enables the three-phase IO/compute/IO pattern:
+
+    1. **IO**: fetch the blob from the store.
+    2. **Compute**: unpack the blob into the chunk mapping, decode/merge/
+       re-encode entries, pack back into a blob. All pure compute.
+    3. **IO**: write the blob to the store.
     """
 
     @property

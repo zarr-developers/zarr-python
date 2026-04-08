@@ -35,6 +35,7 @@ from zarr.core.buffer import (
     numpy_buffer_prototype,
 )
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.codec_pipeline import ChunkTransform
 from zarr.core.common import (
     ShapeLike,
     parse_enum,
@@ -423,10 +424,8 @@ class ShardingCodec(
         evolved = tuple(c.evolve_from_array_spec(array_spec=chunk_spec) for c in self.codecs)
         return ChunkTransform(codecs=evolved, array_spec=chunk_spec)
 
-    def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> Any:
+    def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> ChunkTransform:
         """Build a ChunkTransform for index codecs."""
-        from zarr.core.codec_pipeline import ChunkTransform
-
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         evolved = tuple(c.evolve_from_array_spec(array_spec=index_spec) for c in self.index_codecs)
         return ChunkTransform(codecs=evolved, array_spec=index_spec)
@@ -523,7 +522,7 @@ class ShardingCodec(
             morton_order_iter(chunks_per_shard)
         )
 
-        for chunk_coords, chunk_selection, out_selection, _ in indexer:
+        for chunk_coords, _chunk_selection, out_selection, _ in indexer:
             chunk_array = shard_array[out_selection]
             encoded = inner_transform.encode_chunk(chunk_array)
             shard_builder[chunk_coords] = encoded

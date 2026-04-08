@@ -205,7 +205,17 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_codecs(metadata.codecs)
+        pipeline = get_pipeline_class().from_codecs(metadata.codecs)
+        # PhasedCodecPipeline needs evolve_from_array_spec to build its
+        # ChunkTransform and ShardLayout. BatchedCodecPipeline does not.
+        if hasattr(pipeline, "chunk_transform") and pipeline.chunk_transform is None:
+            chunk_spec = metadata.get_chunk_spec(
+                (0,) * len(metadata.shape),
+                ArrayConfig.from_dict({}),
+                default_buffer_prototype(),
+            )
+            pipeline = pipeline.evolve_from_array_spec(chunk_spec)
+        return pipeline
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
         return get_pipeline_class().from_codecs([v2_codec])
