@@ -234,10 +234,15 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
         if hasattr(pipeline, "chunk_transform") and pipeline.chunk_transform is None:
             from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
+            # Use the regular chunk shape if available, otherwise use a
+            # placeholder shape. The ChunkTransform is shape-agnostic —
+            # the actual chunk shape is passed per-call at decode/encode time.
             if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
                 chunk_shape = metadata.chunk_grid.chunk_shape
             else:
-                chunk_shape = metadata.shape  # fallback for rectilinear
+                # Rectilinear: use a 1-element shape per dimension as placeholder.
+                # Only dtype/fill_value/config matter for codec evolution.
+                chunk_shape = (1,) * len(metadata.shape)
             chunk_spec = ArraySpec(
                 shape=chunk_shape,
                 dtype=metadata.data_type,

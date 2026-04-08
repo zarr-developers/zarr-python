@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any
 from warnings import warn
@@ -122,47 +122,78 @@ class ChunkTransform:
             bb_sync.append(bb_codec)
         self._bb_codecs = tuple(bb_sync)
 
+    def _spec_for_shape(self, shape: tuple[int, ...]) -> ArraySpec:
+        """Build an ArraySpec with the given shape, inheriting dtype/fill/config/prototype."""
+        if shape == self._ab_spec.shape:
+            return self._ab_spec
+        return replace(self._ab_spec, shape=shape)
+
     def decode_chunk(
         self,
         chunk_bytes: Buffer,
+        chunk_shape: tuple[int, ...] | None = None,
     ) -> NDBuffer:
         """Decode a single chunk through the full codec chain, synchronously.
 
         Pure compute -- no IO.
+
+        Parameters
+        ----------
+        chunk_bytes : Buffer
+            The encoded chunk bytes.
+        chunk_shape : tuple[int, ...] or None
+            The shape of this chunk. If None, uses the shape from the
+            ArraySpec provided at construction. Required for rectilinear
+            grids where chunks have different shapes.
         """
+        spec = self._ab_spec if chunk_shape is None else self._spec_for_shape(chunk_shape)
+
         data: Buffer = chunk_bytes
         for bb_codec in reversed(self._bb_codecs):
-            data = bb_codec._decode_sync(data, self._ab_spec)
+            data = bb_codec._decode_sync(data, spec)
 
-        chunk_array: NDBuffer = self._ab_codec._decode_sync(data, self._ab_spec)
+        chunk_array: NDBuffer = self._ab_codec._decode_sync(data, spec)
 
-        for aa_codec, spec in reversed(self._aa_codecs):
-            chunk_array = aa_codec._decode_sync(chunk_array, spec)
+        for aa_codec, aa_spec in reversed(self._aa_codecs):
+            aa_spec_resolved = aa_spec if chunk_shape is None else self._spec_for_shape(chunk_shape)
+            chunk_array = aa_codec._decode_sync(chunk_array, aa_spec_resolved)
 
         return chunk_array
 
     def encode_chunk(
         self,
         chunk_array: NDBuffer,
+        chunk_shape: tuple[int, ...] | None = None,
     ) -> Buffer | None:
         """Encode a single chunk through the full codec chain, synchronously.
 
         Pure compute -- no IO.
+
+        Parameters
+        ----------
+        chunk_array : NDBuffer
+            The chunk data to encode.
+        chunk_shape : tuple[int, ...] or None
+            The shape of this chunk. If None, uses the shape from the
+            ArraySpec provided at construction.
         """
+        spec = self._ab_spec if chunk_shape is None else self._spec_for_shape(chunk_shape)
+
         aa_data: NDBuffer = chunk_array
-        for aa_codec, spec in self._aa_codecs:
-            aa_result = aa_codec._encode_sync(aa_data, spec)
+        for aa_codec, aa_spec in self._aa_codecs:
+            aa_spec_resolved = aa_spec if chunk_shape is None else self._spec_for_shape(chunk_shape)
+            aa_result = aa_codec._encode_sync(aa_data, aa_spec_resolved)
             if aa_result is None:
                 return None
             aa_data = aa_result
 
-        ab_result = self._ab_codec._encode_sync(aa_data, self._ab_spec)
+        ab_result = self._ab_codec._encode_sync(aa_data, spec)
         if ab_result is None:
             return None
 
         bb_data: Buffer = ab_result
         for bb_codec in self._bb_codecs:
-            bb_result = bb_codec._encode_sync(bb_data, self._ab_spec)
+            bb_result = bb_codec._encode_sync(bb_data, spec)
             if bb_result is None:
                 return None
             bb_data = bb_result
@@ -1104,7 +1135,7 @@ class PhasedCodecPipeline(CodecPipeline):
             return self._decode_shard(raw, chunk_spec, self.shard_layout)
 
         assert self.chunk_transform is not None
-        return self.chunk_transform.decode_chunk(raw)
+        return self.chunk_transform.decode_chunk(raw, chunk_shape=chunk_spec.shape)
 
     def _decode_shard(self, blob: Buffer, shard_spec: ArraySpec, layout: ShardLayout) -> NDBuffer:
         """Decode a full shard blob into a shard-shaped array. Pure compute.
@@ -1163,14 +1194,18 @@ class PhasedCodecPipeline(CodecPipeline):
 
         assert self.chunk_transform is not None
 
+        chunk_shape = chunk_spec.shape
+
         if existing is not None:
-            chunk_array: NDBuffer | None = self.chunk_transform.decode_chunk(existing)
+            chunk_array: NDBuffer | None = self.chunk_transform.decode_chunk(
+                existing, chunk_shape=chunk_shape
+            )
         else:
             chunk_array = None
 
         if chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
-                shape=chunk_spec.shape,
+                shape=chunk_shape,
                 dtype=chunk_spec.dtype.to_native_dtype(),
                 fill_value=fill_value_or_default(chunk_spec),
             )
@@ -1188,7 +1223,7 @@ class PhasedCodecPipeline(CodecPipeline):
                 chunk_value = chunk_value[item]
         chunk_array[chunk_selection] = chunk_value
 
-        return self.chunk_transform.encode_chunk(chunk_array)
+        return self.chunk_transform.encode_chunk(chunk_array, chunk_shape=chunk_shape)
 
     def _transform_write_shard(
         self,
