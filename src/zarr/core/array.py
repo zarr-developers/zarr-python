@@ -28,7 +28,13 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
+from zarr.core.array_spec import (
+    ArrayConfig,
+    ArrayConfigLike,
+    ArraySpec,
+    ArraySpecConfig,
+    parse_array_config,
+)
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -197,13 +203,13 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
+def parse_array_metadata(data: object, config: ArrayConfig) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
-        return data
+        return data.with_config(config)
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
-            meta_out = ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data, config=config)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
                     f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
@@ -212,7 +218,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
                 raise ValueError(msg)
             return meta_out
         elif zarr_format == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return ArrayV2Metadata.from_dict(data, config=config)
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
     raise TypeError  # pragma: no cover
@@ -353,8 +359,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None:
-        metadata_parsed = parse_array_metadata(metadata)
         config_parsed = parse_array_config(config)
+        metadata_parsed = parse_array_metadata(metadata, config=config_parsed)
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
@@ -5769,11 +5775,16 @@ def _get_chunk_spec(
     spec = chunk_grid[chunk_coords]
     if spec is None:
         raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
+    spec_config = ArraySpecConfig(
+        order=array_config.order,
+        read_missing_chunks=array_config.read_missing_chunks,
+        write_empty_chunks=array_config.write_empty_chunks,
+    )
     return ArraySpec(
         shape=spec.codec_shape,
         dtype=metadata.dtype,
         fill_value=metadata.fill_value,
-        config=array_config,
+        config=spec_config,
         prototype=prototype,
     )
 

@@ -11,7 +11,7 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArraySpec, ArraySpecConfig
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
 from zarr.core.codec_pipeline import ChunkTransform
 from zarr.core.dtype import get_data_type_from_native_dtype
@@ -38,7 +38,7 @@ def _make_array_spec(shape: tuple[int, ...], dtype: np.dtype[np.generic]) -> Arr
         shape=shape,
         dtype=zdtype,
         fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
+        config=ArraySpecConfig(order="C", write_empty_chunks=True),
         prototype=default_buffer_prototype(),
     )
 

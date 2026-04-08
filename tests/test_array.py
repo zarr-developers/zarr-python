@@ -44,7 +44,7 @@ from zarr.core.array import (
     default_filters_v2,
     default_serializer_v3,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+from zarr.core.array_spec import ArrayConfig, ArrayConfigRequest
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
@@ -2287,13 +2287,13 @@ def test_shard_write_num_gets(selection: slice, expected_gets: int) -> None:
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
-def test_with_config(config: ArrayConfigParams) -> None:
+def test_with_config(config: ArrayConfigRequest) -> None:
     """
     Test that `AsyncArray.with_config` and `Array.with_config` create a copy of the source
     array with a new runtime configuration.
     """
     # the config we start with
-    source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
+    source_config: ArrayConfigRequest = {"write_empty_chunks": False, "order": "F"}
     source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
 
     new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
@@ -2321,3 +2321,18 @@ def test_with_config_polymorphism() -> None:
     arr_source_config_dict = arr.with_config(source_config_dict)
 
     assert arr_source_config.config == arr_source_config_dict.config
+
+
+def test_array_config_specify_codecs() -> None:
+    """
+    Test that we can use the array config to define the codec classes available to the array
+    """
+
+    class FakeGzipCodec(GzipCodec): ...
+
+    store = {}
+    arr = zarr.create_array(store, shape=(1,), dtype="uint8", compressors=GzipCodec())
+    arr_2 = arr.with_config(
+        {"codec_class_map": {**arr.config.codec_class_map, "gzip": FakeGzipCodec}}
+    )
+    assert isinstance(arr_2.compressors[0], FakeGzipCodec)

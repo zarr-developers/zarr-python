@@ -9,7 +9,7 @@ import zarr
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import BloscShuffle, Shuffle
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArraySpec, ArraySpecConfig
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt16, get_data_type_from_native_dtype
 from zarr.storage import MemoryStore, StorePath
@@ -125,7 +125,7 @@ def test_blosc_codec_sync_roundtrip() -> None:
         shape=arr.shape,
         dtype=zdtype,
         fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
+        config=ArraySpecConfig(order="C", write_empty_chunks=True),
         prototype=default_buffer_prototype(),
     )
     buf = default_buffer_prototype().buffer.from_array_like(arr.view("B"))

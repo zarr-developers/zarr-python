@@ -26,7 +26,7 @@ from zarr.abc.store import (
 )
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArraySpec, ArraySpecConfig, parse_codec_class_map
 from zarr.core.buffer import (
     Buffer,
     BufferPrototype,
@@ -319,10 +319,13 @@ class ShardingCodec(
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        codec_class_map: Mapping[str, type[Codec]] | None = None,
     ) -> None:
+        if codec_class_map is None:
+            codec_class_map = parse_codec_class_map(None)
         chunk_shape_parsed = parse_shapelike(chunk_shape)
-        codecs_parsed = parse_codecs(codecs)
-        index_codecs_parsed = parse_codecs(index_codecs)
+        codecs_parsed = parse_codecs(codecs, codec_class_map=codec_class_map)
+        index_codecs_parsed = parse_codecs(index_codecs, codec_class_map=codec_class_map)
         index_location_parsed = parse_index_location(index_location)
 
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
@@ -737,7 +740,7 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=UInt64(endianness="little"),
             fill_value=MAX_UINT_64,
-            config=ArrayConfig(
+            config=ArraySpecConfig(
                 order="C", write_empty_chunks=False
             ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
             prototype=default_buffer_prototype(),

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
 
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -14,13 +14,35 @@ from zarr.core.common import (
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from typing import NotRequired
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
+class CodecPipelineRequest(TypedDict):
+    """
+    A dictionary model of a request for a codec pipeline.
+    """
+
+    class_path: str
+    options: NotRequired[dict[str, object]]
+
+
 class ArrayConfigParams(TypedDict):
+    """
+    A TypedDict model of the attributes of an ArrayConfig class.
+    """
+
+    order: MemoryOrder
+    write_empty_chunks: bool
+    read_missing_chunks: bool
+    codec_class_map: Mapping[str, object]
+    codec_pipeline_class: CodecPipelineRequest
+
+
+class ArrayConfigRequest(TypedDict):
     """
     A TypedDict model of the attributes of an ArrayConfig class, but with no required fields.
     This allows for partial construction of an ArrayConfig, with the assumption that the unset
@@ -30,6 +52,29 @@ class ArrayConfigParams(TypedDict):
     order: NotRequired[MemoryOrder]
     write_empty_chunks: NotRequired[bool]
     read_missing_chunks: NotRequired[bool]
+    codec_class_map: NotRequired[
+        Mapping[str, type[ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec]]
+    ]
+    codec_pipeline_class: NotRequired[CodecPipelineRequest]
+
+
+ArrayConfigKeys = Literal[
+    "order", "write_empty_chunks", "read_missing_chunks", "codec_class_map", "codec_pipeline_class"
+]
+
+ARRAY_CONFIG_PARAMS_KEYS: Final[set[str]] = {
+    "order",
+    "write_empty_chunks",
+    "read_missing_chunks",
+    "codec_class_map",
+    "codec_pipeline_class",
+}
+ARRAY_CONFIG_PARAMS_KEYS_STATIC: Final[set[str]] = {
+    "order",
+    "write_empty_chunks",
+    "read_missing_chunks",
+}
+"""The keys of the ArrayConfigParams object that are static and retrievable from the config"""
 
 
 @dataclass(frozen=True)
@@ -46,13 +91,14 @@ class ArrayConfig:
     read_missing_chunks : bool, default is True
         If True, missing chunks will be filled with the array's fill value on read.
         If False, reading missing chunks will raise a ``ChunkNotFoundError``.
-    codec_classes : Mapping[str, object] | None, default is None
-        A codec name : codec class mapping that defines the codec classes available
-        for this array. Defaults to `None`, in which case a default collection of codecs
+    codec_class_map : Mapping[str, object] | None, default is None
+        A request for a codec name : codec class mapping that defines the codec classes available
+        for array creation. Defaults to `None`, in which case a default collection of codecs
         is retrieved from the global config object.
-    data_type_classes : set[ZDType] | None, default is None.
-        A set of data type classes to use
-        A data type identi
+    codec_pipeline_class : CodecPipelineRequest | None, default = None
+        A request for a codec pipeline class to be used for orchestrating chunk encoding and
+        decoding. Defaults to `None`, in which case the default codec pipeline request
+        is retrieved from information in the global config object.
 
     Attributes
     ----------
@@ -63,18 +109,19 @@ class ArrayConfig:
     read_missing_chunks : bool
         If True, missing chunks will be filled with the array's fill value on read.
         If False, reading missing chunks will raise a ``ChunkNotFoundError``.
-    codec_classes : Mapping[str, object]
+    codec_class_map : Mapping[str, object]
         A codec name : codec class mapping that defines the codec classes available
-        for this array.
-    data_type_clas
+        for array creation.
+    codec_pipeline_class : CodecPipelineRequest
+        A request for a pipeline class that will be used for orchestrating chunk encoding and
+        decoding.
     """
 
     order: MemoryOrder
     write_empty_chunks: bool
     read_missing_chunks: bool
-    codec_classes: Mapping[str, object]
-    data_type_classes: set[ZDType[Any, Any]]
-    codec_pipeline_class: object
+    codec_class_map: Mapping[str, type[Codec]]
+    codec_pipeline_class: CodecPipelineRequest
 
     def __init__(
         self,
@@ -82,31 +129,42 @@ class ArrayConfig:
         write_empty_chunks: bool,
         *,
         read_missing_chunks: bool = True,
-        codec_class_map: Mapping[str, object] | None = None,
-        codec_pipeline_class: object | None = None,
+        codec_class_map: Mapping[str, type[ArrayBytesCodec | ArrayArrayCodec | BytesBytesCodec]]
+        | None = None,
+        codec_pipeline_class: CodecPipelineRequest | None = None,
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
         read_missing_chunks_parsed = parse_bool(read_missing_chunks)
+        codec_class_map_parsed = parse_codec_class_map(codec_class_map)
+        codec_pipeline_class_parsed = parse_codec_pipeline_class(codec_pipeline_class)
 
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
         object.__setattr__(self, "read_missing_chunks", read_missing_chunks_parsed)
+        object.__setattr__(self, "codec_class_map", codec_class_map_parsed)
+        object.__setattr__(self, "codec_pipeline_class", codec_pipeline_class_parsed)
 
     @classmethod
-    def from_dict(cls, data: ArrayConfigParams) -> Self:
+    def from_dict(cls, data: ArrayConfigRequest) -> Self:
         """
         Create an ArrayConfig from a dict. The keys of that dict are a subset of the
         attributes of the ArrayConfig class. Any keys missing from that dict will be set to the
         the values in the ``array`` namespace of ``zarr.config``.
         """
-        kwargs_out: ArrayConfigParams = {}
+        kwargs_out: ArrayConfigRequest = {}
         for f in fields(ArrayConfig):
             field_name = cast(
-                "Literal['order', 'write_empty_chunks', 'read_missing_chunks']", f.name
+                "Literal['order', 'write_empty_chunks', 'read_missing_chunks', 'codec_class_map', 'codec_pipeline_class']",
+                f.name,
             )
             if field_name not in data:
-                kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
+                if field_name in ARRAY_CONFIG_PARAMS_KEYS_STATIC:
+                    kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
+                elif field_name == "codec_class_map":
+                    kwargs_out["codec_class_map"] = parse_codec_class_map(None)
+                elif field_name == "codec_pipeline_class":
+                    kwargs_out["codec_pipeline_class"] = parse_codec_pipeline_class(None)
             else:
                 kwargs_out[field_name] = data[field_name]
         return cls(**kwargs_out)
@@ -119,10 +177,76 @@ class ArrayConfig:
             "order": self.order,
             "write_empty_chunks": self.write_empty_chunks,
             "read_missing_chunks": self.read_missing_chunks,
+            "codec_class_map": self.codec_class_map,
+            "codec_pipeline_class": self.codec_pipeline_class,
         }
 
 
-ArrayConfigLike = ArrayConfig | ArrayConfigParams
+ArrayConfigLike = ArrayConfig | ArrayConfigRequest
+
+
+def _import_by_name(path: str) -> object | type:
+    """
+    Import an object by its fully qualified name.
+    """
+    import importlib
+
+    parts = path.split(".")
+
+    # Try progressively shorter module paths
+    for i in range(len(parts), 0, -1):
+        module_path = ".".join(parts[:i])
+        try:
+            module = importlib.import_module(module_path)
+            break
+        except ModuleNotFoundError:
+            continue
+    else:
+        raise ImportError(f"Could not import any module from '{path}'")
+
+    obj = module
+    for attr in parts[i:]:
+        try:
+            obj = getattr(obj, attr)
+        except AttributeError as e:
+            raise ImportError(f"Attribute '{attr}' not found in '{obj}'") from e
+    return obj
+
+
+def parse_codec_pipeline_class(obj: CodecPipelineRequest | None) -> CodecPipelineRequest:
+    if obj is None:
+        config_entry: dict[str, str | int] = zarr_config.get("codec_pipeline")
+        if "path" not in config_entry:
+            msg = (
+                "The codec_pipeline field in the global config is malformed. "
+                "Expected 'path' key was not found."
+            )
+            raise KeyError(msg)
+        else:
+            path = config_entry["path"]
+        options = {"batch_size": config_entry.get("batch_size", 1)}
+        return {"class_path": path, "options": options}
+    return obj
+
+
+def parse_codec_class_map(obj: Mapping[str, type[Codec]] | None) -> Mapping[str, type[Codec]]:
+    """
+    Convert a request for a codec class map into an actual Mapping[str, type[Codec]].
+    If the input is `None`, then we look up the list of codecs from the registry, where they
+    are stored as fully qualified class names. We must resolve these names to concrete classes
+    before inserting them into the returned mapping.
+    """
+    if obj is None:
+        name_map: dict[str, str] = zarr_config.get("codecs", {})
+        out: dict[str, type[Codec]] = {}
+        for key, value in name_map.items():
+            maybe_cls = _import_by_name(value)
+            if not issubclass(maybe_cls, Codec):
+                msg = f"Expected a subclass of `Codec`, got {maybe_cls}"
+                raise TypeError(msg)
+            out[key] = maybe_cls
+        return out
+    return obj
 
 
 def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
@@ -138,11 +262,18 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 
 
 @dataclass(frozen=True)
+class ArraySpecConfig:
+    order: MemoryOrder
+    write_empty_chunks: bool
+    read_missing_chunks: bool = False
+
+
+@dataclass(frozen=True)
 class ArraySpec:
     shape: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: Any
-    config: ArrayConfig
+    config: ArraySpecConfig
     prototype: BufferPrototype
 
     def __init__(
@@ -150,12 +281,12 @@ class ArraySpec:
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         fill_value: Any,
-        config: ArrayConfig,
+        config: ArraySpecConfig,
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
         fill_value_parsed = parse_fill_value(fill_value)
-
+        assert isinstance(config, ArraySpecConfig)
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype)
         object.__setattr__(self, "fill_value", fill_value_parsed)

@@ -5,7 +5,7 @@ import zarr
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArraySpec, ArraySpecConfig
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage import StorePath
@@ -41,7 +41,7 @@ def test_zstd_codec_sync_roundtrip() -> None:
         shape=arr.shape,
         dtype=zdtype,
         fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
+        config=ArraySpecConfig(order="C", write_empty_chunks=True),
         prototype=default_buffer_prototype(),
     )
     buf = default_buffer_prototype().buffer.from_array_like(arr.view("B"))
