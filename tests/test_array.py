@@ -6,6 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
+from contextlib import nullcontext
 from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -1073,13 +1074,21 @@ def test_auto_partition_auto_shards(
     where there are 8 or more chunks.
     """
     dtype = np.dtype("uint8")
-    with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
-        auto_shards, _ = _auto_partition(
-            array_shape=array_shape,
-            chunk_shape=chunk_shape,
-            shard_shape="auto",
-            item_size=dtype.itemsize,
+    with (
+        pytest.warns(
+            ZarrUserWarning,
+            match="Automatic shard shape inference is experimental and may change without notice.",
         )
+        if target_shard_size_bytes is None
+        else nullcontext()
+    ):
+        with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
+            auto_shards, _ = _auto_partition(
+                array_shape=array_shape,
+                chunk_shape=chunk_shape,
+                shard_shape="auto",
+                item_size=dtype.itemsize,
+            )
     assert auto_shards == expected_shards
 
 
