@@ -81,7 +81,7 @@ class ScaleOffset(ArrayArrayCodec):
         for name, value in [("offset", self.offset), ("scale", self.scale)]:
             try:
                 dtype.from_json_scalar(value, zarr_format=3)
-            except (TypeError, ValueError) as e:
+            except (TypeError, ValueError, OverflowError) as e:
                 raise ValueError(
                     f"scale_offset {name} value {value!r} is not representable in dtype {native}."
                 ) from e

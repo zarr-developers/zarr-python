@@ -1,30 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pytest
 
+from tests.test_codecs.conftest import Expect, ExpectErr
 from zarr.codecs.scale_offset import ScaleOffset
-
-
-@dataclass(frozen=True)
-class Expect[TIn, TOut]:
-    """Model an input and an expected output value for a test case."""
-
-    input: TIn
-    expected: TOut
-
-
-@dataclass(frozen=True)
-class ExpectErr[TIn]:
-    """Model an input and an expected error message for a test case."""
-
-    input: TIn
-    msg: str
-    exception_cls: type[Exception]
-
 
 # ---------------------------------------------------------------------------
 # Serialization

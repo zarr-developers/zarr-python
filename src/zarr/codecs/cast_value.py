@@ -44,13 +44,13 @@ RoundingMode = Literal[
 OutOfRangeMode = Literal["clamp", "wrap"]
 
 
-class ScalarMap(TypedDict):
+class ScalarMap(TypedDict, total=False):
     """
     The normalized, in-memory form of a scalar map.
     """
 
-    encode: NotRequired[Mapping[str | float | int, str | float | int]]
-    decode: NotRequired[Mapping[str | float | int, str | float | int]]
+    encode: Mapping[str | float | int, str | float | int]
+    decode: Mapping[str | float | int, str | float | int]
 
 
 def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
@@ -85,33 +85,18 @@ except ModuleNotFoundError:
     _HAS_RUST_BACKEND = False
 
 
-def _check_scalar_representable(
-    value: str | float,
-    dtype: np.dtype,  # type: ignore[type-arg]
-    direction: str,
-    role: str,
+def _check_representable(
+    value: JSON,
+    zdtype: ZDType[TBaseDType, TBaseScalar],
+    label: str,
 ) -> None:
-    """Raise ``ValueError`` if *value* cannot be represented in *dtype*."""
-    fval = float(value)
-    is_integer_dtype = np.issubdtype(dtype, np.integer)
-    if np.isnan(fval) and is_integer_dtype:
+    """Raise ``ValueError`` if *value* cannot be parsed by *zdtype*."""
+    try:
+        zdtype.from_json_scalar(value, zarr_format=3)
+    except (TypeError, ValueError, OverflowError) as e:
         raise ValueError(
-            f"scalar_map {direction} {role} {value!r} is NaN, "
-            f"which is not representable in integer dtype {dtype}."
-        )
-    if is_integer_dtype:
-        info = np.iinfo(dtype)
-        ival = int(fval)
-        if float(ival) != fval:
-            raise ValueError(
-                f"scalar_map {direction} {role} {value!r} is not an integer, "
-                f"which is required for integer dtype {dtype}."
-            )
-        if ival < info.min or ival > info.max:
-            raise ValueError(
-                f"scalar_map {direction} {role} {value!r} is out of range "
-                f"for dtype {dtype} [{info.min}, {info.max}]."
-            )
+            f"{label} {value!r} is not representable in dtype {zdtype.to_native_dtype()}."
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -215,28 +200,30 @@ class CastValue(ArrayArrayCodec):
             raise ValueError("out_of_range='wrap' is only valid for integer target types.")
 
         if self.scalar_map is not None:
-            self._validate_scalar_map(source_native, target_native)
+            self._validate_scalar_map(dtype, self.dtype)
 
     def _validate_scalar_map(
         self,
-        source_native: np.dtype,  # type: ignore[type-arg]
-        target_native: np.dtype,  # type: ignore[type-arg]
+        source_zdtype: ZDType[TBaseDType, TBaseScalar],
+        target_zdtype: ZDType[TBaseDType, TBaseScalar],
     ) -> None:
         """Validate that scalar map entries are compatible with source/target dtypes."""
         assert self.scalar_map is not None
         # For encode: keys are source values, values are target values.
         # For decode: keys are target values, values are source values.
-        direction_dtypes = {
-            "encode": (source_native, target_native),
-            "decode": (target_native, source_native),
+        direction_dtypes: dict[
+            str, tuple[ZDType[TBaseDType, TBaseScalar], ZDType[TBaseDType, TBaseScalar]]
+        ] = {
+            "encode": (source_zdtype, target_zdtype),
+            "decode": (target_zdtype, source_zdtype),
         }
-        for direction, (key_dtype, val_dtype) in direction_dtypes.items():
+        for direction, (key_zdtype, val_zdtype) in direction_dtypes.items():
             if direction not in self.scalar_map:
                 continue
             sub_map = self.scalar_map[direction]  # type: ignore[literal-required]
             for k, v in sub_map.items():
-                _check_scalar_representable(k, key_dtype, direction, "key")
-                _check_scalar_representable(v, val_dtype, direction, "value")
+                _check_representable(k, key_zdtype, f"scalar_map {direction} key")
+                _check_representable(v, val_zdtype, f"scalar_map {direction} value")
 
     def _do_cast(
         self,

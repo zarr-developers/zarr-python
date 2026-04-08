@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pytest
 
+from tests.test_codecs.conftest import Expect, ExpectErr
 from zarr.codecs.cast_value import CastValue
 
 try:
@@ -18,23 +18,6 @@ except ModuleNotFoundError:
 requires_cast_value_rs = pytest.mark.skipif(
     not _HAS_CAST_VALUE_RS, reason="cast-value-rs not installed"
 )
-
-
-@dataclass(frozen=True)
-class Expect[TIn, TOut]:
-    """Model an input and an expected output value for a test case."""
-
-    input: TIn
-    expected: TOut
-
-
-@dataclass(frozen=True)
-class ExpectErr[TIn]:
-    """Model an input and an expected error message for a test case."""
-
-    input: TIn
-    msg: str
-    exception_cls: type[Exception]
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +319,7 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 0)]},
             },
-            msg="NaN.*not representable in integer dtype",
+            msg="not representable in dtype int32",
             exception_cls=ValueError,
         ),
         ExpectErr(
@@ -345,7 +328,7 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
                 "target": "float64",
                 "scalar_map": {"decode": [(0, "NaN")]},
             },
-            msg="NaN.*not representable in integer dtype",
+            msg="not representable in dtype int32",
             exception_cls=ValueError,
         ),
         ExpectErr(
@@ -354,7 +337,7 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 999)]},
             },
-            msg="out of range",
+            msg="not representable in dtype int8",
             exception_cls=ValueError,
         ),
         ExpectErr(
@@ -363,7 +346,7 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 1.5)]},
             },
-            msg="not an integer",
+            msg="not representable in dtype int8",
             exception_cls=ValueError,
         ),
     ],
