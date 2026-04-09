@@ -18,8 +18,8 @@ assignees: ''
 
 - [ ] Check [SPEC 0](https://scientific-python.org/specs/spec-0000/#support-window) to see if the minimum supported version of Python or NumPy needs bumping.
 - [ ] Verify that the latest CI workflows on `main` are passing: [Tests](https://github.com/zarr-developers/zarr-python/actions/workflows/test.yml), [GPU Tests](https://github.com/zarr-developers/zarr-python/actions/workflows/gpu_test.yml), [Hypothesis](https://github.com/zarr-developers/zarr-python/actions/workflows/hypothesis.yaml), [Docs](https://github.com/zarr-developers/zarr-python/actions/workflows/docs.yml), [Lint](https://github.com/zarr-developers/zarr-python/actions/workflows/lint.yml), [Wheels](https://github.com/zarr-developers/zarr-python/actions/workflows/releases.yml).
-- [ ] Run the ["Downstream" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) and verify Xarray and numcodecs tests pass.
-- [ ] Run the ["Prepare release" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) with the target version. This will build the changelog and open a release PR.
+- [ ] Run the ["Prepare release" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) with the target version. This will build the changelog and open a release PR with the `run-downstream` label.
+- [ ] Verify that the [downstream tests](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) (triggered automatically by the `run-downstream` label) pass on the release PR.
 - [ ] Review the release PR and verify the changelog in `docs/release-notes.md` looks correct.
 - [ ] Merge the release PR.
 
