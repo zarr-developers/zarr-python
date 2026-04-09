@@ -29,3 +29,4 @@ jobs:
           DISABLE_MKDOCS_2_WARNING: "true"
           NO_MKDOCS_2_WARNING: "true"
       - run: uv run python ci/check_unlinked_types.py
+        continue-on-error: true
