@@ -450,15 +450,3 @@ def test_deprecated_config(key: str) -> None:
     with pytest.raises(ValueError):
         with zarr.config.set({key: "foo"}):
             pass
-
-
-def test_async_concurrency_config_warns() -> None:
-    """Test that setting async.concurrency emits a warning directing users to per-store config."""
-    with pytest.warns(UserWarning, match="async.concurrency.*no effect"):
-        with zarr.config.set({"async.concurrency": 20}):
-            pass
-
-    # Also test the kwarg form
-    with pytest.warns(UserWarning, match="async.concurrency.*no effect"):
-        with zarr.config.set(async__concurrency=20):
-            pass

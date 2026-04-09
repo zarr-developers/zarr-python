@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import warnings
 from contextlib import suppress
@@ -18,7 +17,6 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
-from zarr.storage._utils import ConcurrencyLimiter, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -69,7 +67,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     return AsyncFileSystemWrapper(fs, asynchronous=True)
 
 
-class FsspecStore(Store, ConcurrencyLimiter):
+class FsspecStore(Store):
     """
     Store for remote data based on FSSpec.
 
@@ -84,9 +82,6 @@ class FsspecStore(Store, ConcurrencyLimiter):
         filesystem scheme.
     allowed_exceptions : tuple[type[Exception], ...]
         When fetching data, these cases will be deemed to correspond to missing keys.
-    concurrency_limit : int, optional
-        Maximum number of concurrent I/O operations. Default is 50.
-        Set to None for unlimited concurrency.
 
     Attributes
     ----------
@@ -130,10 +125,8 @@ class FsspecStore(Store, ConcurrencyLimiter):
         read_only: bool = False,
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-        concurrency_limit: int | None = 50,
     ) -> None:
-        Store.__init__(self, read_only=read_only)
-        ConcurrencyLimiter.__init__(self, concurrency_limit)
+        super().__init__(read_only=read_only)
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
@@ -259,7 +252,6 @@ class FsspecStore(Store, ConcurrencyLimiter):
             path=self.path,
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
-            concurrency_limit=self.concurrency_limit,
         )
 
     async def clear(self) -> None:
@@ -282,7 +274,6 @@ class FsspecStore(Store, ConcurrencyLimiter):
             and self.fs == other.fs
         )
 
-    @with_concurrency_limit
     async def get(
         self,
         key: str,
@@ -325,7 +316,6 @@ class FsspecStore(Store, ConcurrencyLimiter):
         else:
             return value
 
-    @with_concurrency_limit
     async def set(
         self,
         key: str,
@@ -346,24 +336,6 @@ class FsspecStore(Store, ConcurrencyLimiter):
             raise NotImplementedError
         await self.fs._pipe_file(path, value.to_bytes())
 
-    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
-        # Override to avoid deadlock from calling decorated set() method
-        if not self._is_open:
-            await self._open()
-        self._check_writable()
-
-        async def _set_with_limit(key: str, value: Buffer) -> None:
-            if not isinstance(value, Buffer):
-                raise TypeError(
-                    f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-                )
-            path = _dereference_path(self.path, key)
-            async with self._limit():
-                await self.fs._pipe_file(path, value.to_bytes())
-
-        await asyncio.gather(*[_set_with_limit(key, value) for key, value in values])
-
-    @with_concurrency_limit
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()

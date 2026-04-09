@@ -190,29 +190,7 @@ scenarios.
 
 ### Concurrent I/O operations
 
-For latency-sensitve storage backends like HTTP and cloud object storage, Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
-Concurrency is controlled at the **store level**. Many of the stores defined in `zarr-python` accept a concurrency limit on construction via the `concurrency_limit` parameter.
-
-```python
-import zarr
-
-# Local filesystem store with custom concurrency limit
-store = zarr.storage.LocalStore("data/my_array.zarr", concurrency_limit=64)
-
-# Remote store with higher concurrency for network I/O
-from obstore.store import S3Store
-store = zarr.storage.ObjectStore(S3Store.from_url("s3://bucket/path"), concurrency_limit=128)
-```
-
-Higher concurrency values can improve throughput when:
-- Working with remote storage (e.g., S3, GCS) where network latency is high
-- Reading/writing many small chunks in parallel
-- The storage backend can handle many concurrent requests
-
-Lower concurrency values may be beneficial when:
-- Working with local storage with limited I/O bandwidth
-- Memory is constrained (each concurrent operation requires buffer space)
-- Using Zarr within a parallel computing framework (see below)
+For latency-sensitive storage backends like HTTP and cloud object storage, Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks. Zarr does not impose its own concurrency limits — storage backends are expected to manage their own concurrency constraints (e.g., connection pool sizes, rate limits). If you need to limit concurrency for a particular backend, configure it at the storage layer (e.g., via fsspec or obstore options).
 
 ### Thread pool size (`threading.max_workers`)
 
@@ -238,32 +216,21 @@ concurrently.
 
 ### Using Zarr with Dask
 
-[Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and the store's concurrency limit.
+[Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's internal thread pool.
 
-**Important**: When using many Dask threads, you may need to reduce the store's `concurrency_limit` and Zarr's `threading.max_workers` setting to avoid creating too many concurrent operations. The total number of concurrent I/O operations can be roughly estimated as:
-
-```
-total_concurrency ≈ dask_threads × store_concurrency_limit
-```
-
-For example, if you're running Dask with 10 threads and a store concurrency limit of 64, you could potentially have up to 640 concurrent operations, which may overwhelm your storage system or cause memory issues.
-
-**Recommendation**: When using Dask with many threads, configure concurrency settings:
+**Recommendation**: When using Dask with many threads, reduce Zarr's internal thread pool to avoid thread contention:
 
 ```python
 import zarr
 import dask.array as da
 
-# Create store with reduced concurrency limit for Dask workloads
-store = zarr.storage.LocalStore("data/large_array.zarr", concurrency_limit=4)
-
-# Also limit Zarr's internal thread pool
+# Limit Zarr's internal thread pool
 zarr.config.set({
     'threading.max_workers': 4,  # Limit Zarr's internal thread pool
 })
 
 # Open Zarr array
-z = zarr.open_array(store=store, mode='r')
+z = zarr.open_array("data/large_array.zarr", mode='r')
 
 # Create Dask array from Zarr array
 arr = da.from_array(z, chunks=z.chunks)
@@ -271,13 +238,6 @@ arr = da.from_array(z, chunks=z.chunks)
 # Process with Dask
 result = arr.mean(axis=0).compute()
 ```
-
-**Configuration guidelines for Dask workloads**:
-
-- `concurrency_limit` (per-store): Controls the maximum number of concurrent async I/O operations for a given store. Start with a lower value (e.g., 4-8) when using many Dask threads.
-- `threading.max_workers` (global config): Controls Zarr's internal thread pool size for blocking operations (defaults to CPU count). Reduce this to avoid thread contention with Dask's scheduler.
-
-You may need to experiment with different values to find the optimal balance for your workload. Monitor your system's resource usage and adjust these settings based on whether your storage system or CPU is the bottleneck.
 
 ### Thread safety and process safety
 

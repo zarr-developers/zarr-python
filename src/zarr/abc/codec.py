@@ -246,7 +246,6 @@ class ArrayBytesCodecPartialDecodeMixin:
         -------
         Iterable[NDBuffer | None]
         """
-        # Store handles concurrency limiting internally
         return await asyncio.gather(*[self._decode_partial_single(*info) for info in batch_info])
 
 
@@ -280,7 +279,6 @@ class ArrayBytesCodecPartialEncodeMixin:
             The ByteSetter is used to write the necessary bytes and fetch bytes for existing chunk data.
             The chunk spec contains information about the chunk.
         """
-        # Store handles concurrency limiting internally
         await asyncio.gather(*[self._encode_partial_single(*info) for info in batch_info])
 
 
