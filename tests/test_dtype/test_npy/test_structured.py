@@ -15,7 +15,6 @@ from zarr.core.dtype import (
     Structured,
     UInt8,
 )
-from zarr.core.dtype.common import DataTypeValidationError
 
 
 class TestStruct(BaseTestZDType):

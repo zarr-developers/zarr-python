@@ -470,7 +470,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             return cast("np.void", np.array([as_bytes]).view(dtype)[0])
         raise TypeError(f"Invalid type: {data}. Expected a string.")
 
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str | dict[str, JSON]:
         """
         Convert a scalar to a JSON-serializable string representation.
 
@@ -483,9 +483,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         Returns
         -------
-        str
+        str | dict[str, JSON]
             A string representation of the scalar, which is a base64-encoded
-            string of the bytes that make up the scalar.
+            string of the bytes that make up the scalar. Subclasses may return
+            a dict for V3 format.
         """
         return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
 
@@ -500,6 +501,20 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             The size of a single scalar in bytes.
         """
         return self.to_native_dtype().itemsize
+
+    def has_multi_byte_fields(self) -> bool:
+        """
+        Check if this structured dtype has any fields with item_size > 1.
+
+        Returns
+        -------
+        bool
+            True if any field has item_size > 1, False otherwise.
+        """
+        return any(
+            isinstance(field_dtype, HasItemSize) and field_dtype.item_size > 1
+            for _, field_dtype in self.fields
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -552,7 +567,8 @@ class Struct(Structured):
                     f_name = field["name"]
                     f_dtype = field["data_type"]
                 else:
-                    f_name, f_dtype = field
+                    # Legacy tuple-style field format from "structured" dtype
+                    f_name, f_dtype = field  # type: ignore[unreachable]
                 parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
             return cls(fields=tuple(parsed_fields))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
@@ -648,17 +664,3 @@ class Struct(Structured):
                 scalar[field_name], zarr_format=zarr_format
             )
         return result
-
-    def has_multi_byte_fields(self) -> bool:
-        """
-        Check if this structured dtype has any fields with item_size > 1.
-
-        Returns
-        -------
-        bool
-            True if any field has item_size > 1, False otherwise.
-        """
-        return any(
-            isinstance(field_dtype, HasItemSize) and field_dtype.item_size > 1
-            for _, field_dtype in self.fields
-        )
