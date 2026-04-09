@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
 
 import numpy as np
 
@@ -51,6 +51,36 @@ class ScalarMap(TypedDict, total=False):
 
     encode: Mapping[str | float | int, str | float | int]
     decode: Mapping[str | float | int, str | float | int]
+
+
+PERMITTED_DATA_TYPE_NAMES: Final[set[str]] = {
+    "int2",
+    "int4",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "int64uint2",
+    "uint4",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "uint64float4_e2m1fn",
+    "float6_e2m3fn",
+    "float6_e3m2fn",
+    "float8_e3m4",
+    "float8_e4m3",
+    "float8_e4m3b11fnuz",
+    "float8_e4m3fnuz",
+    "float8_e5m2",
+    "float8_e5m2fnuz",
+    "float8_e8m0fnu",
+    "bfloat16",
+    "float16",
+    "float32",
+    "float64",
+}
 
 
 def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
@@ -151,6 +181,12 @@ class CastValue(ArrayArrayCodec):
             zdtype = get_data_type_from_json(data_type, zarr_format=3)
         else:
             zdtype = data_type
+        if zdtype.to_json(zarr_format=3) not in PERMITTED_DATA_TYPE_NAMES:
+            raise ValueError(
+                f"Invalid target data type {data_type!r}. "
+                f"cast_value codec only supports integer and floating-point data types. "
+                f"Got {zdtype}."
+            )
         object.__setattr__(self, "dtype", zdtype)
         object.__setattr__(self, "rounding", rounding)
         object.__setattr__(self, "out_of_range", out_of_range)
@@ -188,14 +224,13 @@ class CastValue(ArrayArrayCodec):
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
     ) -> None:
-        source_native = dtype.to_native_dtype()
-        target_native = self.dtype.to_native_dtype()
-        for label, dt in [("source", source_native), ("target", target_native)]:
-            if not np.issubdtype(dt, np.integer) and not np.issubdtype(dt, np.floating):
-                raise ValueError(
-                    f"The cast_value codec only supports integer and floating-point data types. "
-                    f"Got {label} dtype {dt}."
-                )
+        target_name = dtype.to_json(zarr_format=3)
+        if target_name not in PERMITTED_DATA_TYPE_NAMES:
+            raise ValueError(
+                f"The cast_value codec only supports integer and floating-point data types. "
+                f"Got dtype {target_name}."
+            )
+        target_native = dtype.to_native_dtype()
         if self.out_of_range == "wrap" and not np.issubdtype(target_native, np.integer):
             raise ValueError("out_of_range='wrap' is only valid for integer target types.")
 
@@ -318,6 +353,12 @@ class CastValue(ArrayArrayCodec):
         return self._decode_sync(chunk_data, chunk_spec)
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        dtype_name = chunk_spec.dtype.to_json(zarr_format=3)
+        if dtype_name not in PERMITTED_DATA_TYPE_NAMES:
+            raise ValueError(
+                "cast_value codec only supports fixed-size integer and floating-point data types. "
+                f"Got source dtype: {chunk_spec.dtype}."
+            )
         source_itemsize = chunk_spec.dtype.to_native_dtype().itemsize
         target_itemsize = self.dtype.to_native_dtype().itemsize
         if source_itemsize == 0 or target_itemsize == 0:

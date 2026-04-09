@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+import zarr
 from tests.test_codecs.conftest import Expect, ExpectErr
 from zarr.codecs.cast_value import CastValue
 
@@ -119,7 +120,7 @@ def test_serialization_roundtrip(codec: CastValue) -> None:
             exception_cls=ValueError,
         ),
         ExpectErr(
-            input={"dtype": "int32", "target": "float32", "out_of_range": "wrap"},
+            input={"dtype": "float32", "target": "int32", "out_of_range": "wrap"},
             msg="only valid for integer",
             exception_cls=ValueError,
         ),
@@ -128,8 +129,6 @@ def test_serialization_roundtrip(codec: CastValue) -> None:
 )
 def test_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
     """Invalid dtype or out_of_range combinations are rejected at array creation."""
-    import zarr
-
     with pytest.raises(case.exception_cls, match=case.msg):
         zarr.create_array(
             store={},
@@ -161,7 +160,7 @@ def test_zero_itemsize_raises() -> None:
         config=ArrayConfig(order="C", write_empty_chunks=True),
         prototype=default_buffer_prototype(),
     )
-    with pytest.raises(ValueError, match="fixed-size data types"):
+    with pytest.raises(ValueError, match="fixed-size integer and floating-point data types"):
         codec.compute_encoded_size(100, spec)
 
 
