@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, cast
+
+from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.core.common import (
