@@ -341,7 +341,7 @@ def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> N
     from zarr.registry import Registry
 
     # to make sure the codec is always unknown (not sure if that's necessary)
-    monkeypatch.setattr(zarr.registry, "__codec_registries", defaultdict(Registry))
+    monkeypatch.setattr(zarr.registry, "_codec_registries", defaultdict(Registry))
 
     codecs = [{"name": "unknown"}]
     with pytest.raises(UnknownCodecError):
