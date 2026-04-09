@@ -1369,6 +1369,7 @@ def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Open an array using file-mode-like semantics.
@@ -1388,6 +1389,8 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike
+        Declaration of the runtime configuration for the array.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1405,6 +1408,7 @@ def open_array(
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
+                config=config,
                 **kwargs,
             )
         )

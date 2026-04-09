@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -30,7 +30,7 @@ class CodecPipelineRequest(TypedDict):
     options: NotRequired[dict[str, object]]
 
 
-class ArrayConfigParams(TypedDict):
+class ArrayConfigParams(TypedDict, closed=True):  # type: ignore[call-arg]
     """
     A TypedDict model of the attributes of an ArrayConfig class.
     """
@@ -38,11 +38,11 @@ class ArrayConfigParams(TypedDict):
     order: MemoryOrder
     write_empty_chunks: bool
     read_missing_chunks: bool
-    codec_class_map: Mapping[str, object]
-    codec_pipeline_class: CodecPipelineRequest
+    codec_class_map: Mapping[str, type[ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec]]
+    codec_pipeline_class: type[CodecPipeline]
 
 
-class ArrayConfigRequest(TypedDict):
+class ArrayConfigRequest(TypedDict, closed=True):  # type: ignore[call-arg]
     """
     A TypedDict model of the attributes of an ArrayConfig class, but with no required fields.
     This allows for partial construction of an ArrayConfig, with the assumption that the unset
@@ -55,7 +55,7 @@ class ArrayConfigRequest(TypedDict):
     codec_class_map: NotRequired[
         Mapping[str, type[ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec]]
     ]
-    codec_pipeline_class: NotRequired[CodecPipelineRequest]
+    codec_pipeline_class: NotRequired[type[CodecPipeline]]
 
 
 ArrayConfigKeys = Literal[
@@ -112,8 +112,8 @@ class ArrayConfig:
     codec_class_map : Mapping[str, object]
         A codec name : codec class mapping that defines the codec classes available
         for array creation.
-    codec_pipeline_class : CodecPipelineRequest
-        A request for a pipeline class that will be used for orchestrating chunk encoding and
+    codec_pipeline_class : type[CodecPipeline]
+        A codec pipeline class that will be used for orchestrating chunk encoding and
         decoding.
     """
 
@@ -121,7 +121,7 @@ class ArrayConfig:
     write_empty_chunks: bool
     read_missing_chunks: bool
     codec_class_map: Mapping[str, type[Codec]]
-    codec_pipeline_class: CodecPipelineRequest
+    codec_pipeline_class: type[CodecPipeline]
 
     def __init__(
         self,
@@ -131,7 +131,7 @@ class ArrayConfig:
         read_missing_chunks: bool = True,
         codec_class_map: Mapping[str, type[ArrayBytesCodec | ArrayArrayCodec | BytesBytesCodec]]
         | None = None,
-        codec_pipeline_class: CodecPipelineRequest | None = None,
+        codec_pipeline_class: type[CodecPipeline] | None = None,
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
@@ -213,19 +213,16 @@ def _import_by_name(path: str) -> object | type:
     return obj
 
 
-def parse_codec_pipeline_class(obj: CodecPipelineRequest | None) -> CodecPipelineRequest:
+def parse_codec_pipeline_class(obj: type[CodecPipeline] | None) -> type[CodecPipeline]:
     if obj is None:
-        config_entry: dict[str, str | int] = zarr_config.get("codec_pipeline")
+        config_entry: dict[str, str] = zarr_config.get("codec_pipeline")
         if "path" not in config_entry:
             msg = (
                 "The codec_pipeline field in the global config is malformed. "
                 "Expected 'path' key was not found."
             )
             raise KeyError(msg)
-        else:
-            path = config_entry["path"]
-        options = {"batch_size": config_entry.get("batch_size", 1)}
-        return {"class_path": path, "options": options}
+        return _import_by_name(config_entry["path"])  # type: ignore[return-value]
     return obj
 
 
@@ -241,6 +238,9 @@ def parse_codec_class_map(obj: Mapping[str, type[Codec]] | None) -> Mapping[str,
         out: dict[str, type[Codec]] = {}
         for key, value in name_map.items():
             maybe_cls = _import_by_name(value)
+            if not isinstance(maybe_cls, type):
+                msg = f"Expected a type, got {maybe_cls}"
+                raise TypeError(msg)
             if not issubclass(maybe_cls, Codec):
                 msg = f"Expected a subclass of `Codec`, got {maybe_cls}"
                 raise TypeError(msg)

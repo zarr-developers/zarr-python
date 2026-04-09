@@ -203,13 +203,13 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def parse_array_metadata(data: object, config: ArrayConfig) -> ArrayMetadata:
-    if isinstance(data, ArrayMetadata):
-        return data.with_config(config)
+def parse_array_metadata(data: object, codec_class_map: Mapping[str, type[Codec]]) -> ArrayMetadata:
+    if isinstance(data, ArrayV3Metadata):
+        return type(data).from_dict(data.to_dict(), codec_class_map=codec_class_map)
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
-            meta_out = ArrayV3Metadata.from_dict(data, config=config)
+            meta_out = ArrayV3Metadata.from_dict(data, codec_class_map=codec_class_map)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
                     f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
@@ -218,26 +218,37 @@ def parse_array_metadata(data: object, config: ArrayConfig) -> ArrayMetadata:
                 raise ValueError(msg)
             return meta_out
         elif zarr_format == 2:
-            return ArrayV2Metadata.from_dict(data, config=config)
+            return ArrayV2Metadata.from_dict(data)
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
     raise TypeError  # pragma: no cover
 
 
-def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
+def create_codec_pipeline(
+    metadata: ArrayMetadata,
+    *,
+    store: Store | None = None,
+    config: ArrayConfig | None = None,
+) -> CodecPipeline:
+    pipeline_class: type[CodecPipeline]
+    if config is not None:
+        pipeline_class = config.codec_pipeline_class
+    else:
+        pipeline_class = get_pipeline_class()
+
     if store is not None:
         try:
-            return get_pipeline_class().from_array_metadata_and_store(
+            return pipeline_class.from_array_metadata_and_store(
                 array_metadata=metadata, store=store
             )
         except NotImplementedError:
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_codecs(metadata.codecs)
+        return pipeline_class.from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
-        return get_pipeline_class().from_codecs([v2_codec])
+        return pipeline_class.from_codecs([v2_codec])
     raise TypeError  # pragma: no cover
 
 
@@ -360,7 +371,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         config: ArrayConfigLike | None = None,
     ) -> None:
         config_parsed = parse_array_config(config)
-        metadata_parsed = parse_array_metadata(metadata, config=config_parsed)
+        metadata_parsed = parse_array_metadata(
+            metadata, codec_class_map=config_parsed.codec_class_map
+        )
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
@@ -369,7 +382,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         object.__setattr__(
             self,
             "codec_pipeline",
-            create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
+            create_codec_pipeline(
+                metadata=metadata_parsed, store=store_path.store, config=config_parsed
+            ),
         )
 
     # this overload defines the function signature when zarr_format is 2
@@ -785,6 +800,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
+        codec_class_map: Mapping[str, type[Codec]] | None = None,
     ) -> ArrayV3Metadata:
         """Create an instance of ArrayV3Metadata."""
         filters: tuple[ArrayArrayCodec, ...]
@@ -822,6 +838,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             codecs=codecs_parsed,  # type: ignore[arg-type]
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
+            codec_class_map=codec_class_map,
         )
 
     @classmethod
@@ -869,6 +886,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             codecs=codecs,
             dimension_names=dimension_names,
             attributes=attributes,
+            codec_class_map=config.codec_class_map,
         )
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
@@ -993,7 +1011,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ValueError
             If the dictionary data is invalid or incompatible with either Zarr format 2 or 3 array creation.
         """
-        metadata = parse_array_metadata(data)
+        from zarr.core.array_spec import parse_codec_class_map
+
+        metadata = parse_array_metadata(data, codec_class_map=parse_codec_class_map(None))
         return cls(metadata=metadata, store_path=store_path)
 
     @classmethod
@@ -1001,6 +1021,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
+        config: ArrayConfigLike | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -1013,6 +1035,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
+        config : ArrayConfigLike | None, (default is None)
+            Runtime configuration for the array.
 
         Returns
         -------
@@ -1044,7 +1068,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict, config=config)
 
     @property
     def store(self) -> Store:
@@ -4710,7 +4734,7 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None = None,
+    config: ArrayConfig | None = None,
 ) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
@@ -4948,6 +4972,7 @@ async def init_array(
             codecs=codecs_out,
             dimension_names=dimension_names,
             attributes=attributes,
+            codec_class_map=config.codec_class_map if config is not None else None,
         )
 
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
@@ -5145,7 +5170,7 @@ async def create_array(
             chunk_key_encoding=chunk_key_encoding,
             dimension_names=dimension_names,
             overwrite=overwrite,
-            config=config,
+            config=parse_array_config(config),
         )
 
 

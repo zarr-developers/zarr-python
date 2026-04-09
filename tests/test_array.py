@@ -44,10 +44,11 @@ from zarr.core.array import (
     default_filters_v2,
     default_serializer_v3,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigRequest
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, ArrayConfigRequest
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
@@ -2314,11 +2315,11 @@ def test_with_config_polymorphism() -> None:
     objects.
     """
     source_config: ArrayConfig = ArrayConfig.from_dict({"write_empty_chunks": False, "order": "F"})
-    source_config_dict = source_config.to_dict()
+    source_config_dict: ArrayConfigParams = source_config.to_dict()
 
     arr = zarr.create_array({}, shape=(1,), dtype="uint8")
     arr_source_config = arr.with_config(source_config)
-    arr_source_config_dict = arr.with_config(source_config_dict)
+    arr_source_config_dict = arr.with_config(source_config_dict)  # type: ignore[arg-type]
 
     assert arr_source_config.config == arr_source_config_dict.config
 
@@ -2330,9 +2331,29 @@ def test_array_config_specify_codecs() -> None:
 
     class FakeGzipCodec(GzipCodec): ...
 
-    store = {}
+    store = {}  # type: ignore[var-annotated]
     arr = zarr.create_array(store, shape=(1,), dtype="uint8", compressors=GzipCodec())
-    arr_2 = arr.with_config(
-        {"codec_class_map": {**arr.config.codec_class_map, "gzip": FakeGzipCodec}}
-    )
+    new_config: ArrayConfigRequest = {
+        "codec_class_map": {**arr.config.codec_class_map, "gzip": FakeGzipCodec}
+    }
+    arr_2 = arr.with_config(new_config)
     assert isinstance(arr_2.compressors[0], FakeGzipCodec)
+
+    arr_3 = zarr.open_array(store=store, config=new_config)
+    assert isinstance(arr_3.compressors[0], FakeGzipCodec)
+
+
+def test_aray_config_specify_codecpipeline() -> None:
+    """
+    Test that we can use the array configuration to open an array with a different codec pipeline
+    """
+    store = {}  # type: ignore[var-annotated]
+
+    class FakeCodecPipeline(BatchedCodecPipeline): ...
+
+    arr = zarr.create_array(
+        store, shape=(1,), dtype="uint8", config={"codec_pipeline_class": FakeCodecPipeline}
+    )
+    assert isinstance(arr.async_array.codec_pipeline, FakeCodecPipeline)
+    arr_2 = arr.with_config({"codec_pipeline_class": BatchedCodecPipeline})
+    assert isinstance(arr_2.async_array.codec_pipeline, BatchedCodecPipeline)

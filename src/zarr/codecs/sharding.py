@@ -348,9 +348,16 @@ class ShardingCodec(
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
+        codec_class_map = parse_codec_class_map(None)
         object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
-        object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
-        object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
+        object.__setattr__(
+            self, "codecs", parse_codecs(config["codecs"], codec_class_map=codec_class_map)
+        )
+        object.__setattr__(
+            self,
+            "index_codecs",
+            parse_codecs(config["index_codecs"], codec_class_map=codec_class_map),
+        )
         object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
 
         # Use instance-local lru_cache to avoid memory leaks

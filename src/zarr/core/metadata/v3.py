@@ -459,14 +459,14 @@ class ArrayV3Metadata(Metadata):
         dimension_names: DimensionNamesLike,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
-        _config: ArrayConfig | None = None,
+        codec_class_map: Mapping[str, type[Codec]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
-        # generate a new default config if _config is `None`
-        if _config is None:
-            _config = ArrayConfig.from_dict({})
+        from zarr.core.array_spec import parse_codec_class_map
+
+        codec_class_map_parsed = parse_codec_class_map(codec_class_map)
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
@@ -474,7 +474,7 @@ class ArrayV3Metadata(Metadata):
         # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.cast_scalar(fill_value)
         attributes_parsed = parse_attributes(attributes)
-        codecs_parsed_partial = parse_codecs(codecs, _config.codec_class_map)
+        codecs_parsed_partial = parse_codecs(codecs, codec_class_map_parsed)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
         extra_fields_parsed = parse_extra_fields(extra_fields)
         array_spec = ArraySpec(
@@ -482,7 +482,7 @@ class ArrayV3Metadata(Metadata):
             dtype=data_type,
             fill_value=fill_value_parsed,
             config=ArraySpecConfig(
-                write_empty_chunks=_config.write_empty_chunks, order=_config.order
+                write_empty_chunks=False, order="C"
             ),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
@@ -499,7 +499,6 @@ class ArrayV3Metadata(Metadata):
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "storage_transformers", storage_transformers_parsed)
         object.__setattr__(self, "extra_fields", extra_fields_parsed)
-        object.__setattr__(self, "_config", _config)
 
         self._validate_metadata()
 
@@ -578,7 +577,9 @@ class ArrayV3Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON], *, config: ArrayConfig | None = None) -> Self:
+    def from_dict(
+        cls, data: dict[str, JSON], *, codec_class_map: Mapping[str, type[Codec]] | None = None
+    ) -> Self:
         # make a copy because we are modifying the dict
         _data = data.copy()
 
@@ -631,7 +632,7 @@ class ArrayV3Metadata(Metadata):
             data_type=data_type,
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
-            _config=config,
+            codec_class_map=codec_class_map,
         )
 
     def to_dict(self) -> dict[str, JSON]:
@@ -674,4 +675,7 @@ class ArrayV3Metadata(Metadata):
         """
         Return a copy of this metadata with a new configuration object.
         """
-        return type(self).from_dict(self.to_dict(), config=config)
+        return type(self).from_dict(
+            self.to_dict(),
+            codec_class_map=config.codec_class_map if config is not None else None,
+        )
