@@ -140,11 +140,61 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _check_native_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
-        return False
+        """
+        Check that this dtype is a numpy structured dtype
+
+        Parameters
+        ----------
+        dtype : np.dtypes.DTypeLike
+            The dtype to check.
+
+        Returns
+        -------
+        TypeGuard[np.dtypes.VoidDType]
+            True if the dtype matches, False otherwise.
+        """
+        return isinstance(dtype, cls.dtype_cls) and dtype.fields is not None
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
-        raise DataTypeValidationError(f"Use 'Struct' for native dtype matching. Got: {dtype}")
+        """
+        Create a Structured ZDType from a native NumPy data type.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The native data type.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not an instance of np.dtypes.VoidDType with a non-null
+            ``fields`` attribute.
+
+        Notes
+        -----
+        This method attempts to resolve the fields of the structured dtype using the data type
+        registry.
+        """
+        from zarr.core.dtype import get_data_type_from_native_dtype
+
+        fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
+        if cls._check_native_dtype(dtype):
+            # fields of a structured numpy dtype are either 2-tuples or 3-tuples. we only
+            # care about the first element in either case.
+            for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]
+                dtype_wrapped = get_data_type_from_native_dtype(dtype_instance)
+                fields.append((key, dtype_wrapped))
+
+            return cls(fields=tuple(fields))
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
 
     def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
         """
@@ -221,9 +271,13 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        # avoid circular import
         from zarr.core.dtype import get_data_type_from_json
 
         if cls._check_json_v2(data):
+            # structured dtypes are constructed directly from a list of lists
+            # note that we do not handle the object codec here! this will prevent structured
+            # dtypes from containing object dtypes.
             return cls(
                 fields=tuple(  # type: ignore[misc]
                     (  # type: ignore[misc]
@@ -245,14 +299,12 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
-            parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-            for field in meta_fields:
-                if isinstance(field, dict):
-                    msg = f"Invalid field format for 'structured' dtype. Expected [name, dtype] tuple, got {field!r}"
-                    raise DataTypeValidationError(msg)
-                f_name, f_dtype = field
-                parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
-            return cls(fields=tuple(parsed_fields))
+            return cls(
+                fields=tuple(
+                    (f_name, get_data_type_from_json(f_dtype, zarr_format=3))  # type: ignore[misc]
+                    for f_name, f_dtype in meta_fields
+                )
+            )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
@@ -301,6 +353,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[StructuredScalarLike]:
+        # TODO: implement something more precise here!
         """
         Check that the input is a valid scalar value for this structured data type.
 
@@ -397,6 +450,146 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         Parameters
         ----------
         data : JSON
+            The JSON-serializable value.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        np.void
+            The NumPy structured scalar.
+
+        Raises
+        ------
+        TypeError
+            If the input is not a base64-encoded string.
+        """
+        if check_json_str(data):
+            as_bytes = bytes_from_json(data, zarr_format=zarr_format)
+            dtype = self.to_native_dtype()
+            return cast("np.void", np.array([as_bytes]).view(dtype)[0])
+        raise TypeError(f"Invalid type: {data}. Expected a string.")
+
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        """
+        Convert a scalar to a JSON-serializable string representation.
+
+        Parameters
+        ----------
+        data : object
+            The scalar to convert.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            A string representation of the scalar, which is a base64-encoded
+            string of the bytes that make up the scalar.
+        """
+        return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
+
+    @property
+    def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
+        return self.to_native_dtype().itemsize
+
+
+@dataclass(frozen=True, kw_only=True)
+class Struct(Structured):
+    """
+    A Zarr data type for arrays containing structured scalars, AKA "record arrays".
+
+    Wraps the NumPy `np.dtypes.VoidDType` if the data type has fields. Scalars for this data
+    type are instances of `np.void`, with a ``fields`` attribute.
+
+    This is the canonical data type registered for structured arrays. It reads both
+    the canonical ``"struct"`` format (object-style fields) and the legacy ``"structured"``
+    format (tuple-style fields), but always writes the canonical ``"struct"`` format.
+
+    Attributes
+    ----------
+    fields : Sequence[tuple[str, ZDType]]
+        The fields of the structured dtype.
+
+    References
+    ----------
+    The Zarr V3 specification for this data type is defined in the zarr-extensions repository:
+    https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/struct
+
+    The Zarr V2 data type specification can be found [here](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
+    """
+
+    _zarr_v3_name: ClassVar[Literal["struct"]] = "struct"  # type: ignore[assignment]
+
+    @classmethod
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[StructJSON_V3]:  # type: ignore[override]
+        return (
+            isinstance(data, dict)
+            and set(data.keys()) == {"name", "configuration"}
+            and data["name"] in ("struct", "structured")
+            and isinstance(data["configuration"], dict)
+            and set(data["configuration"].keys()) == {"fields"}
+        )
+
+    @classmethod
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        from zarr.core.dtype import get_data_type_from_json
+
+        if cls._check_json_v3(data):
+            config = data["configuration"]
+            meta_fields = config["fields"]
+            parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
+            for field in meta_fields:
+                if isinstance(field, dict):
+                    f_name = field["name"]
+                    f_dtype = field["data_type"]
+                else:
+                    f_name, f_dtype = field
+                parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
+            return cls(fields=tuple(parsed_fields))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
+
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> StructuredJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> StructJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> StructuredJSON_V2 | StructJSON_V3:
+        if zarr_format == 2:
+            fields_v2 = [
+                [f_name, f_dtype.to_json(zarr_format=zarr_format)["name"]]
+                for f_name, f_dtype in self.fields
+            ]
+            return {"name": fields_v2, "object_codec_id": None}
+        elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
+            fields_v3 = [
+                {"name": f_name, "data_type": f_dtype.to_json(zarr_format=zarr_format)}
+                for f_name, f_dtype in self.fields
+            ]
+            return cast(
+                "StructJSON_V3",
+                {"name": self._zarr_v3_name, "configuration": {"fields": fields_v3}},
+            )
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
+        """
+        Read a JSON-serializable value as a NumPy structured scalar.
+
+        Parameters
+        ----------
+        data : JSON
             The JSON-serializable value. Can be either:
             - A dict mapping field names to values (primary format for V3)
             - A base64-encoded string (legacy format, for backward compatibility)
@@ -456,18 +649,6 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             )
         return result
 
-    @property
-    def item_size(self) -> int:
-        """
-        The size of a single scalar in bytes.
-
-        Returns
-        -------
-        int
-            The size of a single scalar in bytes.
-        """
-        return self.to_native_dtype().itemsize
-
     def has_multi_byte_fields(self) -> bool:
         """
         Check if this structured dtype has any fields with item_size > 1.
@@ -481,140 +662,3 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             isinstance(field_dtype, HasItemSize) and field_dtype.item_size > 1
             for _, field_dtype in self.fields
         )
-
-
-@dataclass(frozen=True, kw_only=True)
-class Struct(Structured):
-    """
-    A Zarr data type for arrays containing structured scalars, AKA "record arrays".
-
-    Wraps the NumPy `np.dtypes.VoidDType` if the data type has fields. Scalars for this data
-    type are instances of `np.void`, with a ``fields`` attribute.
-
-    This class handles the canonical "struct" format with object-style field definitions.
-    For the legacy "structured" format, see ``Structured``.
-
-    Attributes
-    ----------
-    fields : Sequence[tuple[str, ZDType]]
-        The fields of the structured dtype.
-
-    References
-    ----------
-    The Zarr V3 specification for this data type is defined in the zarr-extensions repository:
-    https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/struct
-
-    The Zarr V2 data type specification can be found [here](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
-    """
-
-    _zarr_v3_name: ClassVar[Literal["struct"]] = "struct"  # type: ignore[assignment]
-
-    @classmethod
-    def _check_native_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
-        """
-        Check that this dtype is a numpy structured dtype.
-
-        Parameters
-        ----------
-        dtype : np.dtypes.DTypeLike
-            The dtype to check.
-
-        Returns
-        -------
-        TypeGuard[np.dtypes.VoidDType]
-            True if the dtype matches, False otherwise.
-        """
-        return isinstance(dtype, cls.dtype_cls) and dtype.fields is not None
-
-    @classmethod
-    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
-        """
-        Create a Struct ZDType from a native NumPy data type.
-
-        Parameters
-        ----------
-        dtype : TBaseDType
-            The native data type.
-
-        Returns
-        -------
-        Self
-            An instance of this data type.
-
-        Raises
-        ------
-        DataTypeValidationError
-            If the input data type is not an instance of np.dtypes.VoidDType with a non-null
-            ``fields`` attribute.
-
-        Notes
-        -----
-        This method attempts to resolve the fields of the structured dtype using the data type
-        registry.
-        """
-        from zarr.core.dtype import get_data_type_from_native_dtype
-
-        fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-        if cls._check_native_dtype(dtype):
-            for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]
-                dtype_wrapped = get_data_type_from_native_dtype(dtype_instance)
-                fields.append((key, dtype_wrapped))
-
-            return cls(fields=tuple(fields))
-        raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
-        )
-
-    @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[StructJSON_V3]:  # type: ignore[override]
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and set(data["configuration"].keys()) == {"fields"}
-        )
-
-    @classmethod
-    def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
-
-        if cls._check_json_v3(data):
-            config = data["configuration"]
-            meta_fields = config["fields"]
-            parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-            for field in meta_fields:
-                if not isinstance(field, dict):
-                    msg = f"Invalid field format for 'struct' dtype. Expected object with 'name' and 'data_type' keys, got {field!r}"  # type: ignore[unreachable]
-                    raise DataTypeValidationError(msg)
-                f_name = field["name"]
-                f_dtype = field["data_type"]
-                parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
-            return cls(fields=tuple(parsed_fields))
-        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
-    @overload  # type: ignore[override]
-    def to_json(self, zarr_format: Literal[2]) -> StructuredJSON_V2: ...
-
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> StructJSON_V3: ...
-
-    def to_json(self, zarr_format: ZarrFormat) -> StructuredJSON_V2 | StructJSON_V3:
-        if zarr_format == 2:
-            fields_v2 = [
-                [f_name, f_dtype.to_json(zarr_format=zarr_format)["name"]]
-                for f_name, f_dtype in self.fields
-            ]
-            return {"name": fields_v2, "object_codec_id": None}
-        elif zarr_format == 3:
-            v3_unstable_dtype_warning(self)
-            fields_v3 = [
-                {"name": f_name, "data_type": f_dtype.to_json(zarr_format=zarr_format)}
-                for f_name, f_dtype in self.fields
-            ]
-            return cast(
-                "StructJSON_V3",
-                {"name": self._zarr_v3_name, "configuration": {"fields": fields_v3}},
-            )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover

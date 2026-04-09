@@ -150,20 +150,6 @@ class TestStructured:
         assert dtype.fields[0][0] == "field1"
         assert dtype.fields[1][0] == "field2"
 
-    def test_structured_rejects_object_format(self) -> None:
-        """Test that 'structured' dtype rejects the new object field format."""
-        json_v3 = {
-            "name": "structured",
-            "configuration": {
-                "fields": [
-                    {"name": "field1", "data_type": "int32"},
-                    {"name": "field2", "data_type": "float64"},
-                ]
-            },
-        }
-        with pytest.raises(DataTypeValidationError, match="Invalid field format for 'structured'"):
-            Structured.from_json(json_v3, zarr_format=3)
-
     @pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
     def test_structured_writes_tuple_format(self) -> None:
         """Test that 'structured' writes the tuple field format."""
@@ -171,11 +157,6 @@ class TestStructured:
         json_v3 = dtype.to_json(zarr_format=3)
         assert json_v3["name"] == "structured"
         assert json_v3["configuration"]["fields"][0] == ["field1", "int32"]
-
-    def test_structured_no_native_dtype_matching(self) -> None:
-        dtype = np.dtype([("field1", np.int32), ("field2", np.float64)])
-        with pytest.raises(DataTypeValidationError, match="Use 'Struct' for native dtype matching"):
-            Structured.from_native_dtype(dtype)
 
 
 def test_invalid_size() -> None:
@@ -194,8 +175,8 @@ def test_struct_name_is_primary() -> None:
     assert json_v3["name"] == "struct"
 
 
-def test_struct_rejects_tuple_format() -> None:
-    """Test that 'struct' dtype rejects the legacy tuple field format."""
+def test_struct_reads_legacy_tuple_format() -> None:
+    """Test that 'struct' dtype reads the legacy tuple field format."""
     json_v3 = {
         "name": "struct",
         "configuration": {
@@ -205,8 +186,27 @@ def test_struct_rejects_tuple_format() -> None:
             ]
         },
     }
-    with pytest.raises(DataTypeValidationError, match="Invalid field format for 'struct'"):
-        Struct.from_json(json_v3, zarr_format=3)
+    dtype = Struct.from_json(json_v3, zarr_format=3)
+    assert isinstance(dtype, Struct)
+    assert dtype.fields[0][0] == "field1"
+    assert dtype.fields[1][0] == "field2"
+
+
+def test_struct_reads_canonical_object_format() -> None:
+    """Test that 'struct' dtype reads the new object field format."""
+    json_v3 = {
+        "name": "struct",
+        "configuration": {
+            "fields": [
+                {"name": "field1", "data_type": "int32"},
+                {"name": "field2", "data_type": "float64"},
+            ]
+        },
+    }
+    dtype = Struct.from_json(json_v3, zarr_format=3)
+    assert isinstance(dtype, Struct)
+    assert dtype.fields[0][0] == "field1"
+    assert dtype.fields[1][0] == "field2"
 
 
 def test_fill_value_dict_form() -> None:

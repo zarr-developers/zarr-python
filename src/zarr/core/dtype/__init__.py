@@ -163,10 +163,6 @@ for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType
     data_type_registry.register(dtype._zarr_v3_name, dtype)  # type: ignore[arg-type]
 
-# Register Structured for reading legacy "structured" format JSON, but don't include it in
-# ANY_DTYPE since it doesn't support native dtype matching (use Struct instead).
-data_type_registry.register(Structured._zarr_v3_name, Structured)
-
 
 # TODO: find a better name for this function
 def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, TBaseScalar]:
