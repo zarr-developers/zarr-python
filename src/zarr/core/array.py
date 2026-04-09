@@ -128,6 +128,7 @@ from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
+    parse_codecs,
     parse_node_type_array,
     resolve_chunks,
 )
@@ -205,7 +206,10 @@ def _chunk_sizes_from_shape(
 
 def parse_array_metadata(data: object, codec_class_map: Mapping[str, type[Codec]]) -> ArrayMetadata:
     if isinstance(data, ArrayV3Metadata):
-        return type(data).from_dict(data.to_dict(), codec_class_map=codec_class_map)
+        new_codecs = parse_codecs(
+            [c.to_dict() for c in data.codecs], codec_class_map=codec_class_map
+        )
+        return replace(data, codecs=new_codecs)
     elif isinstance(data, ArrayV2Metadata):
         # V2 arrays get their codecs from numcodecs, for now. the codec class map is not used.
         return data
