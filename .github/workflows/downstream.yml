@@ -71,6 +71,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: zarr-developers/numcodecs
+          fetch-depth: 0
           path: numcodecs
           persist-credentials: false
 
@@ -78,12 +79,14 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
       - name: Install numcodecs with test-zarr-main group
         working-directory: numcodecs
         run: |
-          pip install uv
-          uv pip install --group dev
-          uv sync --no-build-isolation --group test-zarr-main
+          uv sync --group dev --group test-zarr-main
+          uv pip install --no-build-isolation -e .
 
       - name: Override zarr-python with branch version
         working-directory: numcodecs
