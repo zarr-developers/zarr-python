@@ -206,6 +206,8 @@ def _chunk_sizes_from_shape(
 def parse_array_metadata(data: object, codec_class_map: Mapping[str, type[Codec]]) -> ArrayMetadata:
     if isinstance(data, ArrayV3Metadata):
         return type(data).from_dict(data.to_dict(), codec_class_map=codec_class_map)
+    elif isinstance(data, ArrayV2Metadata):
+        return data
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
