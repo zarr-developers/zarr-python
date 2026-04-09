@@ -207,6 +207,7 @@ def parse_array_metadata(data: object, codec_class_map: Mapping[str, type[Codec]
     if isinstance(data, ArrayV3Metadata):
         return type(data).from_dict(data.to_dict(), codec_class_map=codec_class_map)
     elif isinstance(data, ArrayV2Metadata):
+        # V2 arrays get their codecs from numcodecs, for now. the codec class map is not used.
         return data
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
