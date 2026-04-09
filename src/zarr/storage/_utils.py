@@ -6,7 +6,7 @@ import functools
 import importlib
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
@@ -27,6 +27,12 @@ else:
 
 P = ParamSpec("P")
 T_co = TypeVar("T_co", covariant=True)
+
+
+class HasConcurrencyLimit(Protocol):
+    """Protocol for objects that support semaphore-based concurrency limiting."""
+
+    def _limit(self) -> asyncio.Semaphore | contextlib.nullcontext[None]: ...
 
 
 class ConcurrencyLimiter:
@@ -82,8 +88,8 @@ def with_concurrency_limit[**P, T_co](
 
     @functools.wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T_co:
-        self = args[0]
-        async with self._limit():  # type: ignore[attr-defined]
+        self: HasConcurrencyLimit = args[0]  # type: ignore[assignment]
+        async with self._limit():
             return await func(*args, **kwargs)
 
     return wrapper
