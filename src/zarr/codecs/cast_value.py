@@ -53,6 +53,7 @@ class ScalarMap(TypedDict, total=False):
     decode: Mapping[str | float | int, str | float | int]
 
 
+# see https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value
 PERMITTED_DATA_TYPE_NAMES: Final[set[str]] = {
     "int2",
     "int4",
