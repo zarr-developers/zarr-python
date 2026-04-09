@@ -73,4 +73,5 @@ jobs:
             - [ ] Downstream tests pass (see [downstream workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml))
             - [ ] Merge this PR, then [draft a GitHub Release](https://github.com/zarr-developers/zarr-python/releases/new) targeting `${{ inputs.target_branch }}` with tag `v${{ inputs.version }}`
           commit-message: "chore: build changelog for v${{ inputs.version }}"
+          labels: run-downstream
           delete-branch: true

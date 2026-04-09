@@ -2,6 +2,8 @@ name: Downstream
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
@@ -13,6 +15,7 @@ concurrency:
 jobs:
   xarray:
     name: Xarray zarr backend tests
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
@@ -55,6 +58,7 @@ jobs:
 
   numcodecs:
     name: numcodecs zarr3 codec tests
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
