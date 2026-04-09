@@ -16,9 +16,8 @@ assignees: ''
 
 **Before release**:
 
-- [ ] Make sure the release branch (e.g., `3.1.x`) is up to date with any backports.
 - [ ] Make sure that all pull requests which will be included in the release have been properly documented as changelog files in the [`changes/` directory](https://github.com/zarr-developers/zarr-python/tree/main/changes).
-- [ ] Run ``towncrier build --version x.y.z`` to create the changelog, and commit the result to the release branch.
+- [ ] Run ``towncrier build --version x.y.z`` to create the changelog, and commit the result to `main`.
 - [ ] Check [SPEC 0](https://scientific-python.org/specs/spec-0000/#support-window) to see if the minimum supported version of Python or NumPy needs bumping.
 - [ ] Check to ensure that:
   - [ ] Deprecated workarounds/codes/tests are removed. Run `grep "# TODO" **/*.py` to find all potential TODOs.
@@ -42,7 +41,7 @@ assignees: ''
 - [ ] Go to https://github.com/zarr-developers/zarr-python/releases.
   - [ ] Click "Draft a new release".
   - [ ] Choose a version number prefixed with a `v` (e.g. `v0.0.0`). For pre-releases, include the appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
-  - [ ] Set the target branch to the release branch (e.g., `3.1.x`)
+  - [ ] Set the target to `main`.
   - [ ] Set the description of the release to: `See release notes https://zarr.readthedocs.io/en/stable/release-notes.html#release-0-0-0`, replacing the correct version numbers. For pre-release versions, the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
   - [ ] Click on "Generate release notes" to auto-fill the description.
   - [ ] Make a release by clicking the 'Publish Release' button, this will automatically create a tag too.
@@ -57,3 +56,18 @@ assignees: ''
 ---
 
 - [ ] Party :tada:
+
+---
+
+<details>
+<summary><strong>Releasing from a branch other than main</strong></summary>
+
+In rare cases (e.g. patch releases for an older minor version), you may need to release from a dedicated release branch (e.g. `3.1.x`):
+
+- Create the release branch from the appropriate tag if it doesn't already exist.
+- Cherry-pick or backport the necessary commits onto the branch.
+- Run `towncrier build --version x.y.z` and commit the result to the release branch instead of `main`.
+- When drafting the GitHub Release, set the target to the release branch instead of `main`.
+- After the release, ensure any relevant changelog updates are also reflected on `main`.
+
+</details>
