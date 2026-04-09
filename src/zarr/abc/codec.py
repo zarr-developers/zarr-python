@@ -14,7 +14,7 @@ from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
-    from typing import Any, Self
+    from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
@@ -36,7 +36,6 @@ __all__ = [
     "GetResult",
     "PreparedWrite",
     "SupportsChunkCodec",
-    "SupportsChunkMapping",
     "SupportsSyncCodec",
 ]
 
@@ -89,117 +88,20 @@ class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
 class SupportsChunkCodec(Protocol):
     """Protocol for objects that can decode/encode whole chunks synchronously.
 
-    `ChunkTransform` satisfies this protocol.
+    `ChunkTransform` satisfies this protocol. The ``chunk_shape`` parameter
+    allows decoding/encoding chunks of different shapes (e.g. rectilinear
+    grids) without rebuilding the transform.
     """
 
     array_spec: ArraySpec
 
-    def decode_chunk(self, chunk_bytes: Buffer) -> NDBuffer: ...
+    def decode_chunk(
+        self, chunk_bytes: Buffer, chunk_shape: tuple[int, ...] | None = None
+    ) -> NDBuffer: ...
 
-    def encode_chunk(self, chunk_array: NDBuffer) -> Buffer | None: ...
-
-
-@runtime_checkable
-class SupportsChunkMapping(Protocol):
-    """Protocol for codecs that expose their stored data as a mapping
-    from chunk coordinates to encoded buffers.
-
-    A single store key holds a blob. This protocol defines how to
-    interpret that blob as a ``dict[tuple[int, ...], Buffer | None]`` —
-    a mapping from inner-chunk coordinates to their encoded bytes.
-
-    For a non-sharded codec (``BytesCodec``), the mapping is trivial:
-    one entry at ``(0,)`` containing the entire blob. For a sharded
-    codec, the mapping has one entry per inner chunk, derived from the
-    shard index embedded in the blob. The pipeline doesn't need to know
-    which case it's dealing with — it operates on the mapping uniformly.
-
-    This abstraction enables the three-phase IO/compute/IO pattern:
-
-    1. **IO**: fetch the blob from the store.
-    2. **Compute**: unpack the blob into the chunk mapping, decode/merge/
-       re-encode entries, pack back into a blob. All pure compute.
-    3. **IO**: write the blob to the store.
-    """
-
-    @property
-    def inner_codec_chain(self) -> SupportsChunkCodec | None:
-        """The codec chain for inner chunks, or `None` to use the pipeline's."""
-        ...
-
-    def unpack_chunks(
-        self,
-        raw: Buffer | None,
-        chunk_spec: ArraySpec,
-    ) -> dict[tuple[int, ...], Buffer | None]:
-        """Unpack a storage blob into per-inner-chunk encoded buffers."""
-        ...
-
-    def pack_chunks(
-        self,
-        chunk_dict: dict[tuple[int, ...], Buffer | None],
-        chunk_spec: ArraySpec,
-    ) -> Buffer | None:
-        """Pack per-inner-chunk encoded buffers into a single storage blob."""
-        ...
-
-    def prepare_read_sync(
-        self,
-        byte_getter: Any,
-        chunk_selection: SelectorTuple,
-        codec_chain: SupportsChunkCodec,
-    ) -> NDBuffer | None:
-        """Fetch and decode a chunk synchronously, returning the selected region."""
-        ...
-
-    def prepare_write_sync(
-        self,
-        byte_setter: Any,
-        codec_chain: SupportsChunkCodec,
-        chunk_selection: SelectorTuple,
-        out_selection: SelectorTuple,
-        replace: bool,
-    ) -> PreparedWrite:
-        """Prepare a synchronous write: fetch existing data if needed, unpack."""
-        ...
-
-    def finalize_write_sync(
-        self,
-        prepared: PreparedWrite,
-        chunk_spec: ArraySpec,
-        byte_setter: Any,
-    ) -> None:
-        """Pack the prepared chunk data and write it to the store."""
-        ...
-
-    async def prepare_read(
-        self,
-        byte_getter: Any,
-        chunk_selection: SelectorTuple,
-        codec_chain: SupportsChunkCodec,
-    ) -> NDBuffer | None:
-        """Async variant of `prepare_read_sync`."""
-        ...
-
-    async def prepare_write(
-        self,
-        byte_setter: Any,
-        codec_chain: SupportsChunkCodec,
-        chunk_selection: SelectorTuple,
-        out_selection: SelectorTuple,
-        replace: bool,
-    ) -> PreparedWrite:
-        """Async variant of `prepare_write_sync`."""
-        ...
-
-    async def finalize_write(
-        self,
-        prepared: PreparedWrite,
-        chunk_spec: ArraySpec,
-        byte_setter: Any,
-    ) -> None:
-        """Async variant of `finalize_write_sync`."""
-        ...
+    def encode_chunk(
+        self, chunk_array: NDBuffer, chunk_shape: tuple[int, ...] | None = None
+    ) -> Buffer | None: ...
 
 
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):

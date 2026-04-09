@@ -229,29 +229,23 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
 
     if isinstance(metadata, ArrayV3Metadata):
         pipeline = get_pipeline_class().from_codecs(metadata.codecs)
-        # PhasedCodecPipeline needs evolve_from_array_spec to build its
-        # ChunkTransform and ShardLayout. BatchedCodecPipeline does not.
-        if hasattr(pipeline, "chunk_transform") and pipeline.chunk_transform is None:
-            from zarr.core.metadata.v3 import RegularChunkGridMetadata
+        from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
-            # Use the regular chunk shape if available, otherwise use a
-            # placeholder shape. The ChunkTransform is shape-agnostic —
-            # the actual chunk shape is passed per-call at decode/encode time.
-            if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
-                chunk_shape = metadata.chunk_grid.chunk_shape
-            else:
-                # Rectilinear: use a 1-element shape per dimension as placeholder.
-                # Only dtype/fill_value/config matter for codec evolution.
-                chunk_shape = (1,) * len(metadata.shape)
-            chunk_spec = ArraySpec(
-                shape=chunk_shape,
-                dtype=metadata.data_type,
-                fill_value=metadata.fill_value,
-                config=ArrayConfig.from_dict({}),
-                prototype=default_buffer_prototype(),
-            )
-            pipeline = pipeline.evolve_from_array_spec(chunk_spec)
-        return pipeline
+        # Use the regular chunk shape if available, otherwise use a
+        # placeholder. The ChunkTransform is shape-agnostic — the actual
+        # chunk shape is passed per-call at decode/encode time.
+        if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
+            chunk_shape = metadata.chunk_grid.chunk_shape
+        else:
+            chunk_shape = (1,) * len(metadata.shape)
+        chunk_spec = ArraySpec(
+            shape=chunk_shape,
+            dtype=metadata.data_type,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
         return get_pipeline_class().from_codecs([v2_codec])

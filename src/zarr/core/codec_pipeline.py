@@ -656,11 +656,13 @@ def codecs_from_list(
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     from zarr.codecs.sharding import ShardingCodec
 
+    codecs = tuple(codecs)  # materialize to avoid generator consumption issues
+
     array_array: tuple[ArrayArrayCodec, ...] = ()
     array_bytes_maybe: ArrayBytesCodec | None = None
     bytes_bytes: tuple[BytesBytesCodec, ...] = ()
 
-    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(tuple(codecs)) > 1:
+    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
         warn(
             "Combining a `sharding_indexed` codec disables partial reads and "
             "writes, which may lead to inefficient performance.",
