@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Self, cast
 
 from typing_extensions import TypedDict
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -19,6 +18,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import NotRequired
 
+    from zarr.abc.codec import (
+        ArrayArrayCodec,
+        ArrayBytesCodec,
+        BytesBytesCodec,
+        Codec,
+        CodecPipeline,
+    )
     from zarr.core.buffer import BufferPrototype
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -187,67 +193,24 @@ class ArrayConfig:
 ArrayConfigLike = ArrayConfig | ArrayConfigRequest
 
 
-def _import_by_name(path: str) -> object | type:
-    """
-    Import an object by its fully qualified name.
-    """
-    import importlib
-
-    parts = path.split(".")
-
-    # Try progressively shorter module paths
-    for i in range(len(parts), 0, -1):
-        module_path = ".".join(parts[:i])
-        try:
-            module = importlib.import_module(module_path)
-            break
-        except ModuleNotFoundError:
-            continue
-    else:
-        raise ImportError(f"Could not import any module from '{path}'")
-
-    obj = module
-    for attr in parts[i:]:
-        try:
-            obj = getattr(obj, attr)
-        except AttributeError as e:
-            raise ImportError(f"Attribute '{attr}' not found in '{obj}'") from e
-    return obj
-
-
 def parse_codec_pipeline_class(obj: type[CodecPipeline] | None) -> type[CodecPipeline]:
     if obj is None:
-        config_entry: dict[str, str] = zarr_config.get("codec_pipeline")
-        if "path" not in config_entry:
-            msg = (
-                "The codec_pipeline field in the global config is malformed. "
-                "Expected 'path' key was not found."
-            )
-            raise KeyError(msg)
-        return _import_by_name(config_entry["path"])  # type: ignore[return-value]
+        from zarr.registry import get_pipeline_class
+
+        return get_pipeline_class()
     return obj
 
 
 def parse_codec_class_map(obj: Mapping[str, type[Codec]] | None) -> Mapping[str, type[Codec]]:
     """
     Convert a request for a codec class map into an actual Mapping[str, type[Codec]].
-    If the input is `None`, then we look up the list of codecs from the registry, where they
-    are stored as fully qualified class names. We must resolve these names to concrete classes
-    before inserting them into the returned mapping.
+    If the input is `None`, build the map from the codec registry.
     """
     if obj is None:
+        from zarr.registry import get_codec_class
+
         name_map: dict[str, str] = zarr_config.get("codecs", {})
-        out: dict[str, type[Codec]] = {}
-        for key, value in name_map.items():
-            maybe_cls = _import_by_name(value)
-            if not isinstance(maybe_cls, type):
-                msg = f"Expected a type, got {maybe_cls}"
-                raise TypeError(msg)
-            if not issubclass(maybe_cls, Codec):
-                msg = f"Expected a subclass of `Codec`, got {maybe_cls}"
-                raise TypeError(msg)
-            out[key] = maybe_cls
-        return out
+        return {key: get_codec_class(key) for key in name_map}
     return obj
 
 
