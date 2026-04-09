@@ -82,7 +82,8 @@ jobs:
         working-directory: numcodecs
         run: |
           pip install uv
-          uv sync --group test-zarr-main
+          uv pip install --group dev
+          uv sync --no-build-isolation --group test-zarr-main
 
       - name: Override zarr-python with branch version
         working-directory: numcodecs
