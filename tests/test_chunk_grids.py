@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from zarr.core.chunk_grids import _guess_regular_chunks, normalize_chunks
+from zarr.core.chunk_grids import _guess_regular_chunks, normalize_chunks_nd
 
 
 @pytest.mark.parametrize(
@@ -23,41 +23,39 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
 @pytest.mark.parametrize(
     ("chunks", "shape", "typesize", "expected"),
     [
-        ((10,), (100,), 1, (10,)),
-        ([10], (100,), 1, (10,)),
-        (10, (100,), 1, (10,)),
-        ((10, 10), (100, 10), 1, (10, 10)),
-        (10, (100, 10), 1, (10, 10)),
-        ((10, None), (100, 10), 1, (10, 10)),
-        (30, (100, 20, 10), 1, (30, 30, 30)),
-        ((30,), (100, 20, 10), 1, (30, 20, 10)),
-        ((30, None), (100, 20, 10), 1, (30, 20, 10)),
-        ((30, None, None), (100, 20, 10), 1, (30, 20, 10)),
-        ((30, 20, None), (100, 20, 10), 1, (30, 20, 10)),
-        ((30, 20, 10), (100, 20, 10), 1, (30, 20, 10)),
-        # dask-style chunks (uniform with optional smaller final chunk)
-        (((100, 100, 100), (50, 50)), (300, 100), 1, (100, 50)),
-        (((100, 100, 50),), (250,), 1, (100,)),
-        (((100,),), (100,), 1, (100,)),
-        # auto chunking
-        (None, (100,), 1, (100,)),
-        (-1, (100,), 1, (100,)),
-        ((30, -1, None), (100, 20, 10), 1, (30, 20, 10)),
+        # 1D cases
+        ((10,), (100,), 1, ((10,) * 10,)),
+        ([10], (100,), 1, ((10,) * 10,)),
+        (10, (100,), 1, ((10,) * 10,)),
+        # 2D cases
+        ((10, 10), (100, 10), 1, ((10,) * 10, (10,))),
+        (10, (100, 10), 1, ((10,) * 10, (10,))),
+        ((10, None), (100, 10), 1, ((10,) * 10, (10,))),
+        # 3D cases
+        (30, (100, 20, 10), 1, ((30, 30, 30, 30), (30,), (30,))),
+        ((30,), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
+        ((30, None), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
+        ((30, None, None), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
+        ((30, 20, None), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
+        ((30, 20, 10), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
+        # dask-style chunks (explicit per-chunk sizes)
+        (((100, 100, 100), (50, 50)), (300, 100), 1, ((100, 100, 100), (50, 50))),
+        (((100, 100, 50),), (250,), 1, ((100, 100, 50),)),
+        (((100,),), (100,), 1, ((100,),)),
+        # auto chunking / sentinel values
+        (None, (100,), 1, ((100,),)),
+        (-1, (100,), 1, ((100,),)),
+        ((30, -1, None), (100, 20, 10), 1, ((30, 30, 30, 30), (20,), (10,))),
     ],
 )
 def test_normalize_chunks(
-    chunks: Any, shape: tuple[int, ...], typesize: int, expected: tuple[int, ...]
+    chunks: Any, shape: tuple[int, ...], typesize: int, expected: tuple[tuple[int, ...], ...]
 ) -> None:
-    assert expected == normalize_chunks(chunks, shape, typesize)
+    assert expected == normalize_chunks_nd(chunks, shape, typesize)
 
 
 def test_normalize_chunks_errors() -> None:
     with pytest.raises(ValueError):
-        normalize_chunks("foo", (100,), 1)
+        normalize_chunks_nd("foo", (100,), 1)
     with pytest.raises(ValueError):
-        normalize_chunks((100, 10), (100,), 1)
-    # dask-style irregular chunks should raise
-    with pytest.raises(ValueError, match="Irregular chunk sizes"):
-        normalize_chunks(((10, 20, 30),), (60,), 1)
-    with pytest.raises(ValueError, match="Irregular chunk sizes"):
-        normalize_chunks(((100, 100), (10, 20)), (200, 30), 1)
+        normalize_chunks_nd((100, 10), (100,), 1)

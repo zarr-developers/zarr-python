@@ -368,7 +368,31 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def resolve_chunks(
+def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
+    """Check if a single dimension's chunk sizes represent a regular grid.
+
+    A regular dimension has either all chunks the same size, or all
+    but the last chunk the same size with the last chunk smaller
+    (boundary chunk).
+    """
+    unique = set(dim_chunks)
+    if len(unique) == 1:
+        return True
+    if len(unique) == 2:
+        return (
+            len(dim_chunks) > 1
+            and all(c == dim_chunks[0] for c in dim_chunks[:-1])
+            and dim_chunks[-1] < dim_chunks[0]
+        )
+    return False
+
+
+def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
+    """Check if an N-dimensional chunk specification represents a regular grid."""
+    return all(is_regular_1d(d) for d in chunks)
+
+
+def create_chunk_grid_metadata(
     chunks: ChunksLike,
     shape: tuple[int, ...],
     typesize: int,
@@ -383,12 +407,17 @@ def resolve_chunks(
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
+    from zarr.core.chunk_grids import normalize_chunks_nd
 
-    if _is_rectilinear_chunks(chunks):
-        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(c) for c in chunks))
+    # Normalize all input forms to the canonical intermediate:
+    # tuple[tuple[int, ...], ...] — one tuple of explicit chunk sizes per dimension.
+    normalized = normalize_chunks_nd(chunks, shape, typesize)
 
-    return RegularChunkGridMetadata(chunk_shape=normalize_chunks(chunks, shape, typesize))
+    if is_regular_nd(normalized):
+        chunk_shape = tuple(dim_chunks[0] for dim_chunks in normalized)
+        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
+    else:
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(normalized))
 
 
 def parse_chunk_grid(
@@ -398,7 +427,7 @@ def parse_chunk_grid(
 
     See Also
     --------
-    resolve_chunks : Construct a chunk grid from user-facing input.
+    create_chunk_grid_metadata : Construct a chunk grid from user-facing input.
     """
     if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data

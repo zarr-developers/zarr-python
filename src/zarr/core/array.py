@@ -41,7 +41,7 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     ChunkGrid,
     _auto_partition,
-    normalize_chunks,
+    normalize_chunks_nd,
 )
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -122,8 +122,8 @@ from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
+    create_chunk_grid_metadata,
     parse_node_type_array,
-    resolve_chunks,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -704,7 +704,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            chunk_grid = resolve_chunks(_raw_chunks, shape, item_size)
+            chunk_grid = create_chunk_grid_metadata(_raw_chunks, shape, item_size)
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
@@ -735,10 +735,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            if chunks:
-                _chunks = normalize_chunks(chunks, shape, item_size)
-            else:
-                _chunks = normalize_chunks(chunk_shape, shape, item_size)
+            _raw = chunks or chunk_shape
+            _chunks_nd = normalize_chunks_nd(_raw, shape, item_size)
+            # V2 only supports regular chunks — extract the uniform size per dimension
+            _chunks = tuple(dim[0] for dim in _chunks_nd)
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -4829,9 +4829,11 @@ async def init_array(
         # Use first chunk size per dim as placeholder for _auto_partition
         chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(dim_edges[0] for dim_edges in chunks)
     else:
-        # Normalize scalar int to per-dimension tuple (e.g. chunks=100000 for a 1D array)
+        # Normalize scalar int and -1 sentinel to per-dimension tuple
         if isinstance(chunks, int):
             chunks = tuple(chunks for _ in shape_parsed)
+        if isinstance(chunks, tuple) and any(c == -1 for c in chunks if isinstance(c, int)):
+            chunks = tuple(s if c == -1 else c for c, s in zip(chunks, shape_parsed, strict=True))
         chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
 
     # Handle rectilinear shards: shards=[[60, 40, 20], [50, 50]]
@@ -4932,7 +4934,7 @@ async def init_array(
         if rectilinear_meta is not None:
             grid = rectilinear_meta
         else:
-            grid = RegularChunkGridMetadata(chunk_shape=chunks_out)
+            grid = create_chunk_grid_metadata(chunks_out, shape_parsed, item_size)
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=zdtype,

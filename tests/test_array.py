@@ -2321,3 +2321,44 @@ def test_with_config_polymorphism() -> None:
     arr_source_config_dict = arr.with_config(source_config_dict)
 
     assert arr_source_config.config == arr_source_config_dict.config
+
+
+@pytest.mark.parametrize(
+    ("chunk_input", "expected"),
+    [
+        (-1, ((10,),)),
+        ((-1,), ((10,),)),
+        ((10,), ((10,),)),
+        ((5,), ((5, 5),)),
+        ((3,), ((3, 3, 3, 1),)),
+    ],
+    ids=["scalar-neg1", "tuple-neg1", "exact", "half", "remainder"],
+)
+async def test_create_array_chunks_1d(
+    chunk_input: int | tuple[int, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Test that chunk normalization produces the expected chunk sizes for 1D arrays."""
+    arr = await create_array(store={}, shape=(10,), chunks=chunk_input, dtype="uint8")
+    assert arr.write_chunk_sizes == expected
+
+
+@pytest.mark.parametrize(
+    ("chunk_input", "expected"),
+    [
+        (-1, ((10,), (12,), (15,))),
+        ((3, 4, 5), ((3, 3, 3, 1), (4, 4, 4), (5, 5, 5))),
+        ((-1, 4, -1), ((10,), (4, 4, 4), (15,))),
+        ((10, 12, 15), ((10,), (12,), (15,))),
+        ((7, 3, 2), ((7, 3), (3, 3, 3, 3), (2, 2, 2, 2, 2, 2, 2, 1))),
+    ],
+    ids=["all-neg1", "mixed", "neg1-middle", "exact", "remainder"],
+)
+async def test_create_array_chunks_3d(
+    chunk_input: int | tuple[int, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Test that chunk normalization produces the expected chunk sizes for 3D arrays."""
+    shape = (10, 12, 15)
+    arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
+    assert arr.write_chunk_sizes == expected
