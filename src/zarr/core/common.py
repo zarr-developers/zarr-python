@@ -37,6 +37,7 @@ ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
+ChunksLike = ShapeLike | Sequence[Sequence[int]] | None
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
@@ -241,3 +242,89 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
+    """Expand a mixed array of bare integers and RLE pairs.
+
+    Per the rectilinear chunk grid spec, each element can be:
+    - a bare integer (an explicit edge length)
+    - a two-element array ``[value, count]`` (run-length encoded)
+    """
+    result: list[int] = []
+    for item in data:
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            val = int(item)
+            if val < 1:
+                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
+            result.append(val)
+        elif isinstance(item, list) and len(item) == 2:
+            size, count = int(item[0]), int(item[1])
+            if size < 1:
+                raise ValueError(f"Chunk edge length must be >= 1, got {size}")
+            if count < 1:
+                raise ValueError(f"RLE repeat count must be >= 1, got {count}")
+            result.extend([size] * count)
+        else:
+            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+    return result
+
+
+def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
+    """Compress chunk sizes to mixed RLE format per the rectilinear spec.
+
+    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
+    length 1 are emitted as bare integers::
+
+        [10, 10, 10, 5] -> [[10, 3], 5]
+    """
+    if not sizes:
+        return []
+    result: list[int | list[int]] = []
+    current = sizes[0]
+    count = 1
+    for s in sizes[1:]:
+        if s == current:
+            count += 1
+        else:
+            result.append([current, count] if count > 1 else current)
+            current = s
+            count = 1
+    result.append([current, count] if count > 1 else current)
+    return result
+
+
+def validate_rectilinear_kind(kind: str | None) -> None:
+    """Validate the ``kind`` field of a rectilinear chunk grid configuration.
+
+    The rectilinear spec requires ``kind: "inline"``.
+    """
+    if kind is None:
+        raise ValueError(
+            "Rectilinear chunk grid configuration requires a 'kind' field. "
+            "Only 'inline' is currently supported."
+        )
+    if kind != "inline":
+        raise ValueError(
+            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
+            "Only 'inline' is currently supported."
+        )
+
+
+def validate_rectilinear_edges(
+    chunk_shapes: Sequence[int | Sequence[int]], array_shape: Sequence[int]
+) -> None:
+    """Validate that rectilinear chunk edges cover the array extent per dimension.
+
+    Bare-int dimensions (regular step) always cover any extent, so they are
+    skipped. Explicit edge lists must sum to at least the array extent.
+    """
+    for i, (dim_spec, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
+        if isinstance(dim_spec, int):
+            continue
+        edge_sum = sum(dim_spec)
+        if edge_sum < extent:
+            raise ValueError(
+                f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
+                f"but array shape extent is {extent} (edge sum must be >= extent)"
+            )

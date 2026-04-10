@@ -111,10 +111,11 @@ remote-tests = [
 docs = [
     # Doc building
     "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1",
+    "mkdocs>=1.6.1,<2",
     "mkdocstrings>=0.29.1",
     "mkdocstrings-python>=1.16.10",
     "mike>=2.1.3",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
     "griffe-inherited-docstrings",
@@ -173,11 +174,11 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest {args:}",
+    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
     "coverage html",
 ]
 run = "pytest --ignore tests/benchmarks"
@@ -254,6 +255,10 @@ installer = "uv"
 [tool.hatch.envs.docs]
 features = ['remote']
 dependency-groups = ['docs']
+
+[tool.hatch.envs.docs.env-vars]
+DISABLE_MKDOCS_2_WARNING = "true"
+NO_MKDOCS_2_WARNING = "true"
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve --watch src"
