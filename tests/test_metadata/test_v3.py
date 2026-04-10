@@ -189,7 +189,7 @@ _FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
 def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) -> None:
     """from_dict(d).to_dict() produces the expected output, including codec evolution."""
     d = minimal_metadata_dict_v3(**case.input)
-    m = ArrayV3Metadata.from_dict(d)
+    m = ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
     assert m.to_dict() == case.output
 
 
@@ -219,7 +219,7 @@ def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> Non
     """from_dict rejects invalid metadata documents."""
     d = minimal_metadata_dict_v3(**case.input)
     with pytest.raises(case.exception, match=case.msg):
-        ArrayV3Metadata.from_dict(d)
+        ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -259,7 +259,7 @@ def test_init_extra_fields_collision() -> None:
             codecs=({"name": "bytes", "configuration": {"endian": "little"}},),
             attributes={},
             dimension_names=None,
-            extra_fields=extra_fields,
+            extra_fields=extra_fields,  # type: ignore[arg-type]
         )
 
 
