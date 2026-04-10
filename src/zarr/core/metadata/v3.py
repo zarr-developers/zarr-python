@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+
+from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
@@ -136,10 +138,11 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
-class AllowedExtraField(TypedDict):
+class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
     This class models allowed extra fields in array metadata.
-    They are ignored by Zarr Python.
+    They must have ``must_understand`` set to ``False``, and may contain
+    arbitrary additional JSON data.
     """
 
     must_understand: Literal[False]
@@ -411,25 +414,43 @@ def parse_chunk_grid(
     raise ValueError(f"Unknown chunk grid name: {name!r}")
 
 
-class ArrayMetadataJSON_V3(TypedDict):
+class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
     """
-    A typed dictionary model for zarr v3 metadata.
+    A typed dictionary model for zarr v3 array metadata.
+
+    Extra keys are permitted if they conform to ``AllowedExtraField``
+    (i.e. they are mappings with ``must_understand: false``).
     """
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: str | NamedConfig[str, Mapping[str, object]]
+    data_type: str | NamedConfig[str, Mapping[str, JSON]]
     shape: tuple[int, ...]
-    chunk_grid: NamedConfig[str, Mapping[str, object]]
-    chunk_key_encoding: NamedConfig[str, Mapping[str, object]]
-    fill_value: object
-    codecs: tuple[str | NamedConfig[str, Mapping[str, object]], ...]
+    chunk_grid: str | NamedConfig[str, Mapping[str, JSON]]
+    chunk_key_encoding: str | NamedConfig[str, Mapping[str, JSON]]
+    fill_value: JSON
+    codecs: tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]
     attributes: NotRequired[Mapping[str, JSON]]
-    storage_transformers: NotRequired[tuple[NamedConfig[str, Mapping[str, object]], ...]]
+    storage_transformers: NotRequired[tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]]
     dimension_names: NotRequired[tuple[str | None]]
 
 
-ARRAY_METADATA_KEYS = set(ArrayMetadataJSON_V3.__annotations__.keys())
+"""
+The names of the fields of the array metadata document defined in the zarr V3 spec.
+"""
+ARRAY_METADATA_KEYS: Final[set[str]] = {
+    "zarr_format",
+    "node_type",
+    "data_type",
+    "shape",
+    "chunk_grid",
+    "chunk_key_encoding",
+    "fill_value",
+    "codecs",
+    "attributes",
+    "storage_transformers",
+    "dimension_names",
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -617,8 +638,8 @@ class ArrayV3Metadata(Metadata):
 
         return cls(
             shape=_data_typed["shape"],
-            chunk_grid=_data_typed["chunk_grid"],
-            chunk_key_encoding=_data_typed["chunk_key_encoding"],
+            chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
+            chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
             attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
