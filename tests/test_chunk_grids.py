@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from zarr.core.chunk_grids import _guess_chunks, normalize_chunks
+from zarr.core.chunk_grids import _guess_regular_chunks, normalize_chunks
 
 
 @pytest.mark.parametrize(
@@ -11,7 +11,7 @@ from zarr.core.chunk_grids import _guess_chunks, normalize_chunks
 )
 @pytest.mark.parametrize("itemsize", [1, 2, 4])
 def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
-    chunks = _guess_chunks(shape, itemsize)
+    chunks = _guess_regular_chunks(shape, itemsize)
     chunk_size = np.prod(chunks) * itemsize
     assert isinstance(chunks, tuple)
     assert len(chunks) == len(shape)

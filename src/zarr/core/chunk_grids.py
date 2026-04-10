@@ -565,7 +565,7 @@ class ChunkGrid:
         return ChunkGrid(dimensions=dims)
 
 
-def _guess_chunks(
+def _guess_regular_chunks(
     shape: tuple[int, ...] | int,
     typesize: int,
     *,
@@ -649,7 +649,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
 
     # handle auto-chunking
     if chunks is None or chunks is True:
-        return _guess_chunks(shape, typesize)
+        return _guess_regular_chunks(shape, typesize)
 
     # handle no chunking
     if chunks is False:
@@ -745,13 +745,13 @@ def _auto_partition(
     if shard_shape is None:
         _shards_out: None | tuple[int, ...] = None
         if chunk_shape == "auto":
-            _chunks_out = _guess_chunks(array_shape, item_size)
+            _chunks_out = _guess_regular_chunks(array_shape, item_size)
         else:
             _chunks_out = chunk_shape
     else:
         if chunk_shape == "auto":
             # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1048576)
+            _chunks_out = _guess_regular_chunks(array_shape, item_size, max_bytes=1048576)
         else:
             _chunks_out = chunk_shape
 
