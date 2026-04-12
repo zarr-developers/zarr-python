@@ -17,7 +17,6 @@ from zarr.core.chunk_key_encodings import (
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
-    ChunksLike,
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunksTuple
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
@@ -375,16 +375,14 @@ def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
     but the last chunk the same size with the last chunk smaller
     (boundary chunk).
     """
-    unique = set(dim_chunks)
-    if len(unique) == 1:
+    if len(dim_chunks) <= 1:
         return True
-    if len(unique) == 2:
-        return (
-            len(dim_chunks) > 1
-            and all(c == dim_chunks[0] for c in dim_chunks[:-1])
-            and dim_chunks[-1] < dim_chunks[0]
-        )
-    return False
+    first = dim_chunks[0]
+    for c in dim_chunks[1:-1]:
+        if c != first:
+            return False
+    # Last chunk must be the same size or a smaller boundary chunk
+    return dim_chunks[-1] <= first
 
 
 def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
@@ -393,31 +391,30 @@ def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
 
 
 def create_chunk_grid_metadata(
-    chunks: ChunksLike,
-    shape: tuple[int, ...],
-    typesize: int,
+    chunks: ChunksTuple,
 ) -> ChunkGridMetadata:
-    """Construct a chunk grid from user-facing input (e.g. ``create_array(chunks=...)``).
+    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
 
-    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGridMetadata``.
-    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGridMetadata``
-    after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
+    Regular chunks produce a `RegularChunkGridMetadata`.
+    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+
+    Parameters
+    ----------
+    chunks : ChunksTuple
+        Normalized chunk specification, as returned by
+        `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    from zarr.core.chunk_grids import normalize_chunks_nd
-
-    # Normalize all input forms to the canonical intermediate:
-    # tuple[tuple[int, ...], ...] — one tuple of explicit chunk sizes per dimension.
-    normalized = normalize_chunks_nd(chunks, shape, typesize)
-
-    if is_regular_nd(normalized):
-        chunk_shape = tuple(dim_chunks[0] for dim_chunks in normalized)
+    if is_regular_nd(chunks):
+        # If we know the chunks specification is regular, then we can take the first
+        # chunk size for each dimension as the chunk shape.
+        chunk_shape = tuple(dim_chunks[0] for dim_chunks in chunks)
         return RegularChunkGridMetadata(chunk_shape=chunk_shape)
     else:
-        return RectilinearChunkGridMetadata(chunk_shapes=tuple(normalized))
+        return RectilinearChunkGridMetadata(chunk_shapes=chunks)
 
 
 def parse_chunk_grid(

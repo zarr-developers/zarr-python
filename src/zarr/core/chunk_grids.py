@@ -8,7 +8,16 @@ import operator
 import warnings
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    NamedTuple,
+    NewType,
+    Protocol,
+    TypeGuard,
+    cast,
+    runtime_checkable,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +35,36 @@ if TYPE_CHECKING:
 
     from zarr.core.array import ShardsLike
     from zarr.core.metadata import ArrayMetadata
+
+SHARDED_INNER_CHUNK_MAX_BYTES: int = 1048576
+"""Target ceiling in bytes for the auto-chunking heuristic when sharding is active (1 MiB).
+
+Only used when `chunks="auto"` and `shards` is not `None`. Explicit chunk sizes
+are not affected by this value.
+"""
+
+ChunksTuple = NewType("ChunksTuple", tuple[tuple[int, ...], ...])
+"""Normalized chunk specification: one tuple of chunk sizes per dimension.
+
+Produced exclusively by `normalize_chunks_nd` and `guess_chunks`.
+Consumers should use this type to ensure they receive validated,
+canonical chunk specifications rather than raw user input.
+"""
+
+
+class ResolvedChunking(NamedTuple):
+    """Result of resolving user `chunks`/`shards` into grid metadata inputs.
+
+    outer_chunks
+        Chunk sizes for the chunk grid metadata.  When sharding is active
+        these are the shard sizes; otherwise they are the user's chunk sizes.
+    inner_chunks
+        Sub-chunk sizes inside each shard (passed to `ShardingCodec`).
+        `None` when sharding is not active.
+    """
+
+    outer_chunks: ChunksTuple
+    inner_chunks: ChunksTuple | None
 
 
 @dataclass(frozen=True)
@@ -646,7 +685,7 @@ def normalize_chunks_1d(chunks: int | None | Iterable[int], span: int) -> tuple[
     Normalize a one-dimensional chunk specification into a tuple of logical
     chunk sizes that cover the span.
 
-    ``None`` and ``-1`` both mean "one chunk covering the entire span."
+    `None` and `-1` both mean "one chunk covering the entire span."
     For an integer chunk size, all chunks are uniform — the last chunk may
     overhang the span. The actual data extent of each chunk is determined
     by the chunk grid at runtime, not by this function.
@@ -670,20 +709,27 @@ def normalize_chunks_1d(chunks: int | None | Iterable[int], span: int) -> tuple[
 
 
 def normalize_chunks_nd(
-    chunks: Any, shape: tuple[int, ...], typesize: int
-) -> tuple[tuple[int, ...], ...]:
+    chunks: Any,
+    shape: tuple[int, ...],
+) -> ChunksTuple:
     """
-    Normalize an n-dimensional chunk specification into a tuple of per-dimension
-    logical chunk size tuples that cover the shape.
+    Normalize a chunk specification into a `ChunksTuple`.
+
+    This is a mechanical transformation — no heuristics, no guessing.
+    Handles scalar ints, -1 sentinels, None per-dimension, short specs
+    (padded with None), and explicit per-chunk size lists.
+
+    For auto-chunking, use `guess_chunks` which returns a
+    `ChunksTuple` directly.
     """
-    # handle auto-chunking
-    if chunks is None or chunks is True:
-        guessed = _guess_regular_chunks(shape, typesize)
-        return tuple(normalize_chunks_1d(c, span=s) for c, s in zip(guessed, shape, strict=True))
+    if chunks is None:
+        raise ValueError(
+            "normalize_chunks_nd does not accept None. Use guess_chunks() for auto-chunking."
+        )
 
     # handle no chunking
     if chunks is False:
-        return tuple((s,) for s in shape)
+        return ChunksTuple(tuple((s,) for s in shape))
 
     # handle 1D convenience form
     if isinstance(chunks, numbers.Integral):
@@ -696,7 +742,36 @@ def normalize_chunks_nd(
     # pad short specs with None (meaning "use span") for remaining dimensions
     padded = tuple(chunks) + (None,) * (len(shape) - len(chunks))
 
-    return tuple(normalize_chunks_1d(c, span=s) for c, s in zip(padded, shape, strict=True))
+    return ChunksTuple(
+        tuple(normalize_chunks_1d(c, span=s) for c, s in zip(padded, shape, strict=True))
+    )
+
+
+def guess_chunks(
+    shape: tuple[int, ...], typesize: int, *, max_bytes: int | None = None
+) -> ChunksTuple:
+    """
+    Heuristically determine chunk sizes for an array.
+
+    This is the policy function — it makes opinionated choices about
+    chunk sizes based on array shape and element size, and returns a
+    normalized `ChunksTuple`.
+
+    Parameters
+    ----------
+    shape : tuple[int, ...]
+        Array shape.
+    typesize : int
+        Size of one element in bytes.
+    max_bytes : int or None
+        Target maximum chunk size in bytes. If None, uses the default
+        heuristic from `_guess_regular_chunks`.
+    """
+    if max_bytes is not None:
+        flat = _guess_regular_chunks(shape, typesize, max_bytes=max_bytes)
+    else:
+        flat = _guess_regular_chunks(shape, typesize)
+    return normalize_chunks_nd(flat, shape)
 
 
 def _guess_num_chunks_per_axis_shard(
@@ -736,62 +811,76 @@ def _guess_num_chunks_per_axis_shard(
     return chunks_per_shard
 
 
-def _auto_partition(
+def resolve_outer_and_inner_chunks(
     *,
     array_shape: tuple[int, ...],
-    chunk_shape: tuple[int, ...] | Literal["auto"],
+    chunks: ChunksTuple,
     shard_shape: ShardsLike | None,
     item_size: int,
-) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
-    """
-    Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
-    If `shard_shape` is `None` and the chunk_shape is "auto", the chunks will be set heuristically based
-    on the dtype and shape of the array.
-    If `shard_shape` is "auto", then the shard shape will be set heuristically from the dtype and shape
-    of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
-    given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
+) -> ResolvedChunking:
+    """Resolve user `chunks`/`shards` into outer and inner chunk specs.
+
+    Parameters
+    ----------
+    array_shape
+        The array shape.
+    chunks
+        Normalized chunk specification (the user's `chunks=`).
+    shard_shape
+        Raw shard specification (the user's `shards=`).
+        `None` means no sharding, `"auto"` triggers heuristic inference,
+        a nested sequence is treated as rectilinear shard boundaries,
+        and anything else is used as a regular shard shape.
+    item_size
+        Element size in bytes.
+
+    Returns
+    -------
+    ResolvedChunking
+        `outer_chunks` is the `ChunksTuple` for chunk grid
+        metadata.  `inner_chunks` is the `ChunksTuple` for
+        `ShardingCodec`, or `None` when sharding is not active.
     """
     if shard_shape is None:
-        _shards_out: None | tuple[int, ...] = None
-        if chunk_shape == "auto":
-            _chunks_out = _guess_regular_chunks(array_shape, item_size)
-        else:
-            _chunks_out = chunk_shape
+        return ResolvedChunking(outer_chunks=chunks, inner_chunks=None)
+
+    # Rectilinear shards: normalize the nested sequence directly.
+    if _is_rectilinear_chunks(shard_shape):
+        outer = normalize_chunks_nd(shard_shape, array_shape)
+        return ResolvedChunking(outer_chunks=outer, inner_chunks=chunks)
+
+    # Extract the flat chunk shape (first size per dimension) for arithmetic.
+    chunk_shape_flat = tuple(dim[0] for dim in chunks)
+
+    if shard_shape == "auto":
+        warnings.warn(
+            "Automatic shard shape inference is experimental and may change without notice.",
+            ZarrUserWarning,
+            stacklevel=2,
+        )
+        _shards_out: tuple[int, ...] = ()
+        target_shard_size_bytes = zarr.config.get("array.target_shard_size_bytes", None)
+        num_chunks_per_shard_axis = (
+            _guess_num_chunks_per_axis_shard(
+                chunk_shape=chunk_shape_flat,
+                item_size=item_size,
+                max_bytes=target_shard_size_bytes,
+                array_shape=array_shape,
+            )
+            if (has_auto_shard := (target_shard_size_bytes is not None))
+            else 2
+        )
+        for a_shape, c_shape in zip(array_shape, chunk_shape_flat, strict=True):
+            can_shard_axis = a_shape // c_shape > 8 if not has_auto_shard else True
+            if can_shard_axis:
+                _shards_out += (c_shape * num_chunks_per_shard_axis,)
+            else:
+                _shards_out += (c_shape,)
+        shard_flat = _shards_out
+    elif isinstance(shard_shape, dict):
+        shard_flat = tuple(shard_shape["shape"])
     else:
-        if chunk_shape == "auto":
-            # aim for a 1MiB chunk
-            _chunks_out = _guess_regular_chunks(array_shape, item_size, max_bytes=1048576)
-        else:
-            _chunks_out = chunk_shape
+        shard_flat = cast("tuple[int, ...]", shard_shape)
 
-        if shard_shape == "auto":
-            warnings.warn(
-                "Automatic shard shape inference is experimental and may change without notice.",
-                ZarrUserWarning,
-                stacklevel=2,
-            )
-            _shards_out = ()
-            target_shard_size_bytes = zarr.config.get("array.target_shard_size_bytes", None)
-            num_chunks_per_shard_axis = (
-                _guess_num_chunks_per_axis_shard(
-                    chunk_shape=_chunks_out,
-                    item_size=item_size,
-                    max_bytes=target_shard_size_bytes,
-                    array_shape=array_shape,
-                )
-                if (has_auto_shard := (target_shard_size_bytes is not None))
-                else 2
-            )
-            for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
-                # The previous heuristic was `a_shape // c_shape > 8` and now, with target_shard_size_bytes, we only check that the shard size is less than the array size.
-                can_shard_axis = a_shape // c_shape > 8 if not has_auto_shard else True
-                if can_shard_axis:
-                    _shards_out += (c_shape * num_chunks_per_shard_axis,)
-                else:
-                    _shards_out += (c_shape,)
-        elif isinstance(shard_shape, dict):
-            _shards_out = tuple(shard_shape["shape"])
-        else:
-            _shards_out = cast("tuple[int, ...]", shard_shape)
-
-    return _shards_out, _chunks_out
+    outer = normalize_chunks_nd(shard_flat, array_shape)
+    return ResolvedChunking(outer_chunks=outer, inner_chunks=chunks)
