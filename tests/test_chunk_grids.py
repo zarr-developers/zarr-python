@@ -34,13 +34,11 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         # 2D cases
         ((10, 10), (100, 10), ((10,) * 10, (10,))),
         (10, (100, 10), ((10,) * 10, (10,))),
-        ((10, None), (100, 10), ((10,) * 10, (10,))),
+        ((10, -1), (100, 10), ((10,) * 10, (10,))),
         # 3D cases
         (30, (100, 20, 10), ((30, 30, 30, 30), (30,), (30,))),
-        ((30,), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
-        ((30, None), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
-        ((30, None, None), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
-        ((30, 20, None), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
+        ((30, -1, -1), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
+        ((30, 20, -1), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
         ((30, 20, 10), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
         # dask-style chunks (explicit per-chunk sizes)
         (((100, 100, 100), (50, 50)), (300, 100), ((100, 100, 100), (50, 50))),
@@ -51,7 +49,6 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         (False, (100, 50), ((100,), (50,))),
         # sentinel values
         (-1, (100,), ((100,),)),
-        ((30, -1, None), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
         # zero-length dimensions preserve the declared chunk size
         (10, (0,), ((10,),)),
         ((5, 10), (0, 100), ((5,), (10,) * 10)),
@@ -97,5 +94,7 @@ def test_normalize_chunks_errors() -> None:
         normalize_chunks_nd(None, (100,))
     with pytest.raises(ValueError):
         normalize_chunks_nd("foo", (100,))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dimensions"):
         normalize_chunks_nd((100, 10), (100,))
+    with pytest.raises(ValueError, match="dimensions"):
+        normalize_chunks_nd((10,), (100, 100))

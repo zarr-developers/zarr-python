@@ -680,17 +680,17 @@ def _guess_regular_chunks(
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks_1d(chunks: int | None | Iterable[int], span: int) -> tuple[int, ...]:
+def normalize_chunks_1d(chunks: int | Iterable[int], span: int) -> tuple[int, ...]:
     """
     Normalize a one-dimensional chunk specification into a tuple of logical
     chunk sizes that cover the span.
 
-    `None` and `-1` both mean "one chunk covering the entire span."
+    `-1` means "one chunk covering the entire span."
     For an integer chunk size, all chunks are uniform — the last chunk may
     overhang the span. The actual data extent of each chunk is determined
     by the chunk grid at runtime, not by this function.
     """
-    if chunks is None or chunks == -1:
+    if chunks == -1:
         return (span,)
     if isinstance(chunks, int):
         if chunks <= 0:
@@ -738,14 +738,13 @@ def normalize_chunks_nd(
         chunks = tuple(int(chunks) for _ in shape)
 
     # handle bad dimensionality
-    if len(chunks) > len(shape):
-        raise ValueError("too many dimensions in chunks")
-
-    # pad short specs with None (meaning "use span") for remaining dimensions
-    padded = tuple(chunks) + (None,) * (len(shape) - len(chunks))
+    if len(chunks) != len(shape):
+        raise ValueError(
+            f"chunks has {len(chunks)} dimensions but shape has {len(shape)} dimensions"
+        )
 
     return ChunksTuple(
-        tuple(normalize_chunks_1d(c, span=s) for c, s in zip(padded, shape, strict=True))
+        tuple(normalize_chunks_1d(c, span=s) for c, s in zip(chunks, shape, strict=True))
     )
 
 
