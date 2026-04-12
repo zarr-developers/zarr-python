@@ -89,6 +89,21 @@ def test_resolve_outer_and_inner_chunks(
     assert result.inner_chunks == expected_inner
 
 
+def test_normalize_chunks_1d_errors() -> None:
+    from zarr.core.chunk_grids import normalize_chunks_1d
+
+    with pytest.raises(ValueError, match="Chunk size must be positive"):
+        normalize_chunks_1d(0, 100)
+    with pytest.raises(ValueError, match="Chunk size must be positive"):
+        normalize_chunks_1d(-2, 100)
+    with pytest.raises(ValueError, match="must not be empty"):
+        normalize_chunks_1d([], 100)
+    with pytest.raises(ValueError, match="must be positive"):
+        normalize_chunks_1d([10, -1, 10], 100)
+    with pytest.raises(ValueError, match="do not sum to span"):
+        normalize_chunks_1d([10, 20], 100)
+
+
 def test_normalize_chunks_errors() -> None:
     with pytest.raises(ValueError, match="does not accept None"):
         normalize_chunks_nd(None, (100,))
