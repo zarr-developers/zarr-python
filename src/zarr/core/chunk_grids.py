@@ -695,6 +695,8 @@ def normalize_chunks_1d(chunks: int | None | Iterable[int], span: int) -> tuple[
     if isinstance(chunks, int):
         if chunks <= 0:
             raise ValueError(f"Chunk size must be positive, got {chunks}")
+        if span == 0:
+            return (chunks,)
         n = ceildiv(span, chunks)
         return tuple(chunks for _ in range(n))
     else:

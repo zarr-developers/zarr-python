@@ -45,6 +45,10 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         # sentinel values
         (-1, (100,), ((100,),)),
         ((30, -1, None), (100, 20, 10), ((30, 30, 30, 30), (20,), (10,))),
+        # zero-length dimensions preserve the declared chunk size
+        (10, (0,), ((10,),)),
+        ((5, 10), (0, 100), ((5,), (10,) * 10)),
+        ((5, 10), (20, 0), ((5, 5, 5, 5), (10,))),
     ],
 )
 def test_normalize_chunks(
