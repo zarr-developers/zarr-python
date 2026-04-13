@@ -709,13 +709,11 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
     assert new_group.attrs == new_attrs
 
 
-@pytest.mark.parametrize("method", ["create_array", "array"])
 @pytest.mark.parametrize("name", ["a", "/a"])
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
-    method: Literal["create_array", "array"],
     name: str,
 ) -> None:
     """
@@ -726,33 +724,13 @@ def test_group_create_array(
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    if method == "create_array":
-        array = group.create_array(name=name, shape=shape, dtype=dtype)
-        array[:] = data
-    elif method == "array":
-        with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-            with pytest.warns(
-                ZarrUserWarning,
-                match="The `compressor` argument is deprecated. Use `compressors` instead.",
-            ):
-                array = group.array(name=name, data=data, shape=shape, dtype=dtype)
-    else:
-        raise AssertionError
+    array = group.create_array(name=name, shape=shape, dtype=dtype)
+    array[:] = data
 
     if not overwrite:
-        if method == "create_array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                a = group.create_array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
-        elif method == "array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-                    with pytest.warns(
-                        ZarrUserWarning,
-                        match="The `compressor` argument is deprecated. Use `compressors` instead.",
-                    ):
-                        a = group.array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
+        with pytest.raises(ContainsArrayError):  # noqa: PT012
+            a = group.create_array(name=name, shape=shape, dtype=dtype)
+            a[:] = data
 
     assert array.path == normalize_path(name)
     assert array.name == "/" + array.path
