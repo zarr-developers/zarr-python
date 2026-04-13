@@ -44,7 +44,6 @@ from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
     MetadataValidationError,
-    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -1341,38 +1340,6 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     # no names
     no_group = await root.require_groups()
     assert no_group == ()
-
-
-def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None:
-    """Check that deprecated create_dataset method allows input data.
-
-    See https://github.com/zarr-developers/zarr-python/issues/2631.
-    """
-    root = Group.from_store(store=store, zarr_format=zarr_format)
-    arr = np.random.random((5, 5))
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        data = root.create_dataset("random", data=arr, shape=arr.shape)
-    np.testing.assert_array_equal(np.asarray(data), arr)
-
-
-async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
-    assert foo.shape == (10,)
-
-    with (
-        pytest.raises(ContainsArrayError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("foo", shape=(100,), dtype="int8")
-
-    _ = await root.create_group("bar")
-    with (
-        pytest.raises(ContainsGroupError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
 async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:

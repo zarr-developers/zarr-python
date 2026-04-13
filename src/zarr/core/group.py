@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
@@ -56,7 +55,6 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
-    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -1161,78 +1159,6 @@ class AsyncGroup:
             write_data=write_data,
         )
 
-    @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
-    async def create_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyAsyncArray:
-        """Create an array.
-
-        !!! warning "Deprecated"
-            `AsyncGroup.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `AsyncGroup.create_array` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.AsyncGroup.require_dataset][] method.
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs : dict
-            Additional arguments passed to [zarr.AsyncGroup.create_array][].
-
-        Returns
-        -------
-        a : AsyncArray
-        """
-        data = kwargs.pop("data", None)
-        # create_dataset in zarr 2.x requires shape but not dtype if data is
-        # provided. Allow this configuration by inferring dtype from data if
-        # necessary and passing it to create_array
-        if "dtype" not in kwargs and data is not None:
-            kwargs["dtype"] = data.dtype
-        array = await self.create_array(name, shape=shape, **kwargs)
-        if data is not None:
-            await array.setitem(slice(None), data)
-        return array
-
-    @deprecated("Use AsyncGroup.require_array instead.", category=ZarrDeprecationWarning)
-    async def require_dataset(
-        self,
-        name: str,
-        *,
-        shape: tuple[int, ...],
-        dtype: npt.DTypeLike = None,
-        exact: bool = False,
-        **kwargs: Any,
-    ) -> AnyAsyncArray:
-        """Obtain an array, creating if it doesn't exist.
-
-        !!! warning "Deprecated"
-            `AsyncGroup.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `AsyncGroup.require_dataset` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.AsyncGroup.create_dataset][] method.
-
-        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        shape : int or tuple of ints
-            Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
-        exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
-            `dtype` can be cast from array dtype.
-
-        Returns
-        -------
-        a : AsyncArray
-        """
-        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
-
     async def require_array(
         self,
         name: str,
@@ -1244,7 +1170,7 @@ class AsyncGroup:
     ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
 
-        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
+        Other `kwargs` are as per [zarr.AsyncGroup.create_array][].
 
         Parameters
         ----------
@@ -2760,57 +2686,6 @@ class Group(SyncMixin):
                 )
             )
         )
-
-    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
-    def create_dataset(self, name: str, **kwargs: Any) -> AnyArray:
-        """Create an array.
-
-        !!! warning "Deprecated"
-            `Group.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `Group.create_array` instead.
-
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.Group.require_dataset][] method.
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs : dict
-            Additional arguments passed to [zarr.Group.create_array][]
-
-        Returns
-        -------
-        a : Array
-        """
-        return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
-
-    @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
-    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
-        """Obtain an array, creating if it doesn't exist.
-
-        !!! warning "Deprecated"
-            `Group.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `Group.require_array` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.Group.create_dataset][] method.
-
-        Other `kwargs` are as per [zarr.Group.create_dataset][].
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs :
-            See [zarr.Group.create_dataset][].
-
-        Returns
-        -------
-        a : Array
-        """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
     def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
