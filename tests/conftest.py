@@ -339,7 +339,7 @@ def create_array_metadata(
         )
     else:
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
-    outer_chunks, inner_chunks = resolve_outer_and_inner_chunks(
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=shape_parsed,
         chunks=chunks_normalized,
         shard_shape=shards,
@@ -377,8 +377,8 @@ def create_array_metadata(
 
         sub_codecs: tuple[Codec, ...] = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
-        if inner_chunks is not None:
-            inner_chunks_flat = tuple(dim[0] for dim in inner_chunks)
+        if inner is not None:
+            inner_chunks_flat = tuple(dim[0] for dim in inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))

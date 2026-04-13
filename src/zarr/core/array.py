@@ -4840,8 +4840,8 @@ async def init_array(
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
-    # inner_chunks (sub-chunks for ShardingCodec, None if no sharding)
-    outer_chunks, inner_chunks = resolve_outer_and_inner_chunks(
+    # inner (sub-chunk structure for ShardingCodec, None if no sharding)
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=shape_parsed,
         chunks=chunks_normalized,
         shard_shape=shards,
@@ -4850,7 +4850,7 @@ async def init_array(
 
     meta: ArrayV2Metadata | ArrayV3Metadata
     if zarr_format == 2:
-        if inner_chunks is not None:
+        if inner is not None:
             msg = (
                 "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. "
                 f"Got `shard_shape={shards}` instead."
@@ -4892,8 +4892,8 @@ async def init_array(
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
         grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
-        if inner_chunks is not None:
-            inner_chunks_flat = tuple(dim[0] for dim in inner_chunks)
+        if inner is not None:
+            inner_chunks_flat = tuple(dim[0] for dim in inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))

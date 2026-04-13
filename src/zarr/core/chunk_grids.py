@@ -58,13 +58,15 @@ class ResolvedChunking(NamedTuple):
     outer_chunks
         Chunk sizes for the chunk grid metadata.  When sharding is active
         these are the shard sizes; otherwise they are the user's chunk sizes.
-    inner_chunks
-        Sub-chunk sizes inside each shard (passed to `ShardingCodec`).
-        `None` when sharding is not active.
+    inner
+        Recursive sub-structure inside each chunk.  `None` means the chunk is
+        opaque (no sharding).  When present, `inner.outer_chunks` gives the
+        sub-chunk sizes passed to `ShardingCodec`, and `inner.inner` gives
+        the next level of nesting (for nested sharding), or `None`.
     """
 
     outer_chunks: ChunksTuple
-    inner_chunks: ChunksTuple | None
+    inner: ResolvedChunking | None = None
 
 
 @dataclass(frozen=True)
@@ -839,16 +841,16 @@ def resolve_outer_and_inner_chunks(
     -------
     ResolvedChunking
         `outer_chunks` is the `ChunksTuple` for chunk grid
-        metadata.  `inner_chunks` is the `ChunksTuple` for
-        `ShardingCodec`, or `None` when sharding is not active.
+        metadata.  `inner` holds the sub-chunk structure for
+        `ShardingCodec`, or is `None` when sharding is not active.
     """
     if shard_shape is None:
-        return ResolvedChunking(outer_chunks=chunks, inner_chunks=None)
+        return ResolvedChunking(outer_chunks=chunks)
 
     # Rectilinear shards: normalize the nested sequence directly.
     if _is_rectilinear_chunks(shard_shape):
         outer = normalize_chunks_nd(shard_shape, array_shape)
-        return ResolvedChunking(outer_chunks=outer, inner_chunks=chunks)
+        return ResolvedChunking(outer_chunks=outer, inner=ResolvedChunking(outer_chunks=chunks))
 
     # Extract the flat chunk shape (first size per dimension) for arithmetic.
     chunk_shape_flat = tuple(dim[0] for dim in chunks)
@@ -884,4 +886,4 @@ def resolve_outer_and_inner_chunks(
         shard_flat = cast("tuple[int, ...]", shard_shape)
 
     outer = normalize_chunks_nd(shard_flat, array_shape)
-    return ResolvedChunking(outer_chunks=outer, inner_chunks=chunks)
+    return ResolvedChunking(outer_chunks=outer, inner=ResolvedChunking(outer_chunks=chunks))

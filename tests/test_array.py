@@ -1112,13 +1112,13 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
         match="Automatic shard shape inference is experimental and may change without notice.",
     ):
         with zarr.config.set({"array.target_shard_size_bytes": 10_000_000}):
-            outer_chunks, inner_chunks = resolve_outer_and_inner_chunks(
+            outer_chunks, inner = resolve_outer_and_inner_chunks(
                 array_shape=array_shape,
                 chunks=chunks_normalized,
                 shard_shape="auto",
                 item_size=item_size,
             )
-    assert inner_chunks is not None
+    assert inner is not None
     shard_shape = tuple(dim[0] for dim in outer_chunks)
     # Shard dimensions must be multiples of chunk dimensions
     assert all(s % c == 0 for s, c in zip(shard_shape, chunk_shape, strict=True))

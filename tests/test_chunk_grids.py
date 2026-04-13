@@ -62,7 +62,7 @@ def test_normalize_chunks(
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "chunks_input", "shard_shape", "expected_outer", "expected_inner"),
+    ("array_shape", "chunks_input", "shard_shape", "expected_outer", "expected_inner_outer"),
     [
         # no sharding: outer = chunks, inner = None
         ((100,), (10,), None, ((10,) * 10,), None),
@@ -79,14 +79,39 @@ def test_resolve_outer_and_inner_chunks(
     chunks_input: tuple[int, ...],
     shard_shape: Any,
     expected_outer: tuple[tuple[int, ...], ...],
-    expected_inner: tuple[tuple[int, ...], ...] | None,
+    expected_inner_outer: tuple[tuple[int, ...], ...] | None,
 ) -> None:
     chunks = normalize_chunks_nd(chunks_input, array_shape)
-    result = resolve_outer_and_inner_chunks(
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=array_shape, chunks=chunks, shard_shape=shard_shape, item_size=1
     )
-    assert result.outer_chunks == expected_outer
-    assert result.inner_chunks == expected_inner
+    assert outer_chunks == expected_outer
+    if expected_inner_outer is None:
+        assert inner is None
+    else:
+        assert inner is not None
+        assert inner.outer_chunks == expected_inner_outer
+        assert inner.inner is None
+
+
+def test_resolved_chunking_nested() -> None:
+    """Test that ResolvedChunking supports recursive nesting for nested sharding."""
+    from zarr.core.chunk_grids import ResolvedChunking
+
+    leaf = normalize_chunks_nd((5, 5), (100, 100))
+    mid = ResolvedChunking(
+        outer_chunks=normalize_chunks_nd((25, 25), (100, 100)),
+        inner=ResolvedChunking(outer_chunks=leaf),
+    )
+    top = ResolvedChunking(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
+
+    # Three levels: top -> mid -> leaf
+    assert top.outer_chunks == ((50, 50), (50, 50))
+    assert top.inner is not None
+    assert top.inner.outer_chunks == ((25,) * 4, (25,) * 4)
+    assert top.inner.inner is not None
+    assert top.inner.inner.outer_chunks == ((5,) * 20, (5,) * 20)
+    assert top.inner.inner.inner is None
 
 
 def test_normalize_chunks_1d_errors() -> None:
