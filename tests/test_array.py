@@ -44,10 +44,11 @@ from zarr.core.array import (
     default_filters_v2,
     default_serializer_v3,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, ArrayConfigRequest
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
@@ -2287,13 +2288,13 @@ def test_shard_write_num_gets(selection: slice, expected_gets: int) -> None:
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
-def test_with_config(config: ArrayConfigParams) -> None:
+def test_with_config(config: ArrayConfigRequest) -> None:
     """
     Test that `AsyncArray.with_config` and `Array.with_config` create a copy of the source
     array with a new runtime configuration.
     """
     # the config we start with
-    source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
+    source_config: ArrayConfigRequest = {"write_empty_chunks": False, "order": "F"}
     source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
 
     new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
@@ -2314,10 +2315,45 @@ def test_with_config_polymorphism() -> None:
     objects.
     """
     source_config: ArrayConfig = ArrayConfig.from_dict({"write_empty_chunks": False, "order": "F"})
-    source_config_dict = source_config.to_dict()
+    source_config_dict: ArrayConfigParams = source_config.to_dict()
 
     arr = zarr.create_array({}, shape=(1,), dtype="uint8")
     arr_source_config = arr.with_config(source_config)
-    arr_source_config_dict = arr.with_config(source_config_dict)
+    arr_source_config_dict = arr.with_config(source_config_dict)  # type: ignore[arg-type]
 
     assert arr_source_config.config == arr_source_config_dict.config
+
+
+def test_array_config_specify_codecs() -> None:
+    """
+    Test that we can use the array config to define the codec classes available to the array
+    """
+
+    class FakeGzipCodec(GzipCodec): ...
+
+    store = {}  # type: ignore[var-annotated]
+    arr = zarr.create_array(store, shape=(1,), dtype="uint8", compressors=GzipCodec())
+    new_config: ArrayConfigRequest = {
+        "codec_class_map": {**arr.config.codec_class_map, "gzip": FakeGzipCodec}
+    }
+    arr_2 = arr.with_config(new_config)
+    assert isinstance(arr_2.compressors[0], FakeGzipCodec)
+
+    arr_3 = zarr.open_array(store=store, config=new_config)
+    assert isinstance(arr_3.compressors[0], FakeGzipCodec)
+
+
+def test_aray_config_specify_codecpipeline() -> None:
+    """
+    Test that we can use the array configuration to open an array with a different codec pipeline
+    """
+    store = {}  # type: ignore[var-annotated]
+
+    class FakeCodecPipeline(BatchedCodecPipeline): ...
+
+    arr = zarr.create_array(
+        store, shape=(1,), dtype="uint8", config={"codec_pipeline_class": FakeCodecPipeline}
+    )
+    assert isinstance(arr.async_array.codec_pipeline, FakeCodecPipeline)
+    arr_2 = arr.with_config({"codec_pipeline_class": BatchedCodecPipeline})
+    assert isinstance(arr_2.async_array.codec_pipeline, BatchedCodecPipeline)

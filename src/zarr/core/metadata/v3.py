@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, TypeGuar
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec, ArraySpecConfig
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -33,7 +33,6 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
-from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
     from typing import Self
@@ -56,7 +55,7 @@ def parse_node_type_array(data: object) -> Literal["array"]:
     raise NodeTypeValidationError(msg)
 
 
-def parse_codecs(data: object) -> tuple[Codec, ...]:
+def parse_codecs(data: object, codec_class_map: Mapping[str, type[Codec]]) -> tuple[Codec, ...]:
     out: tuple[Codec, ...] = ()
 
     if not isinstance(data, Iterable):
@@ -71,7 +70,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
             try:
-                out += (get_codec_class(name_parsed).from_dict(c),)
+                out += (codec_class_map[name_parsed].from_dict(c),)
             except KeyError as e:
                 raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
@@ -460,11 +459,14 @@ class ArrayV3Metadata(Metadata):
         dimension_names: DimensionNamesLike,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
+        codec_class_map: Mapping[str, type[Codec]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
+        from zarr.core.array_spec import parse_codec_class_map
 
+        codec_class_map_parsed = parse_codec_class_map(codec_class_map)
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
@@ -472,14 +474,16 @@ class ArrayV3Metadata(Metadata):
         # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.cast_scalar(fill_value)
         attributes_parsed = parse_attributes(attributes)
-        codecs_parsed_partial = parse_codecs(codecs)
+        codecs_parsed_partial = parse_codecs(codecs, codec_class_map_parsed)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
         extra_fields_parsed = parse_extra_fields(extra_fields)
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type,
             fill_value=fill_value_parsed,
-            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
+            config=ArraySpecConfig(
+                write_empty_chunks=False, order="C"
+            ),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
@@ -573,7 +577,9 @@ class ArrayV3Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(
+        cls, data: dict[str, JSON], *, codec_class_map: Mapping[str, type[Codec]] | None = None
+    ) -> Self:
         # make a copy because we are modifying the dict
         _data = data.copy()
 
@@ -626,6 +632,7 @@ class ArrayV3Metadata(Metadata):
             data_type=data_type,
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
+            codec_class_map=codec_class_map,
         )
 
     def to_dict(self) -> dict[str, JSON]:
@@ -663,3 +670,12 @@ class ArrayV3Metadata(Metadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
+
+    def with_config(self, config: ArrayConfig | None) -> Self:
+        """
+        Return a copy of this metadata with a new configuration object.
+        """
+        return type(self).from_dict(
+            self.to_dict(),
+            codec_class_map=config.codec_class_map if config is not None else None,
+        )

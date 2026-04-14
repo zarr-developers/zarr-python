@@ -1242,6 +1242,7 @@ async def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AnyAsyncArray:
     """Open an array using file-mode-like semantics.
@@ -1261,6 +1262,8 @@ async def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike
+        Declaration of the runtime configuration for the array.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1279,7 +1282,7 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format, config=config)
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)

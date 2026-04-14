@@ -345,7 +345,7 @@ def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> N
 
     codecs = [{"name": "unknown"}]
     with pytest.raises(UnknownCodecError):
-        parse_codecs(codecs)
+        parse_codecs(codecs, codec_class_map={})
 
 
 @pytest.mark.parametrize(

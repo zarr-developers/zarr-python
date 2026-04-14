@@ -30,7 +30,7 @@ from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
 
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec, ArraySpecConfig
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
     JSON,
@@ -242,11 +242,16 @@ class ArrayV2Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
+        spec_config = ArraySpecConfig(
+            order=array_config.order,
+            read_missing_chunks=array_config.read_missing_chunks,
+            write_empty_chunks=array_config.write_empty_chunks,
+        )
         return ArraySpec(
             shape=self.chunks,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            config=array_config,
+            config=spec_config,
             prototype=prototype,
         )
 
