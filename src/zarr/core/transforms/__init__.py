@@ -16,6 +16,15 @@ Key types:
 
 from zarr.core.transforms.composition import compose
 from zarr.core.transforms.domain import IndexDomain
+from zarr.core.transforms.json import (
+    IndexDomainJSON,
+    IndexTransformJSON,
+    OutputIndexMapJSON,
+    index_domain_from_json,
+    index_domain_to_json,
+    index_transform_from_json,
+    index_transform_to_json,
+)
 from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr.core.transforms.transform import IndexTransform
 
@@ -24,7 +33,14 @@ __all__ = [
     "ConstantMap",
     "DimensionMap",
     "IndexDomain",
+    "IndexDomainJSON",
     "IndexTransform",
+    "IndexTransformJSON",
     "OutputIndexMap",
+    "OutputIndexMapJSON",
     "compose",
+    "index_domain_from_json",
+    "index_domain_to_json",
+    "index_transform_from_json",
+    "index_transform_to_json",
 ]
