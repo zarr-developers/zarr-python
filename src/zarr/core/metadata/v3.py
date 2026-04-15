@@ -432,7 +432,7 @@ class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: i
     codecs: tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]
     attributes: NotRequired[Mapping[str, JSON]]
     storage_transformers: NotRequired[tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]]
-    dimension_names: NotRequired[tuple[str | None]]
+    dimension_names: NotRequired[tuple[str | None, ...]]
 
 
 """
