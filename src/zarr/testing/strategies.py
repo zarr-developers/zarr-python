@@ -1,7 +1,6 @@
 import math
 import sys
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -297,31 +296,28 @@ def arrays(
     # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
     # - v2 -> flat tuple of ints
     chunks_param: tuple[int, ...] | list[list[int]]
-    use_rectilinear = False
     if zarr_format == 3 and chunk_grid_meta is not None:
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
             chunks_param = [
                 list(dim) if isinstance(dim, tuple) else [dim]
                 for dim in chunk_grid_meta.chunk_shapes
             ]
-            use_rectilinear = True
         else:
             chunks_param = chunk_grid_meta.chunk_shape
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-    with zarr.config.set({"array.rectilinear_chunks": True}) if use_rectilinear else nullcontext():
-        a = root.create_array(
-            array_path,
-            shape=nparray.shape,
-            chunks=chunks_param,
-            shards=shard_shape,
-            dtype=nparray.dtype,
-            attributes=attributes,
-            # compressor=compressor,  # FIXME
-            fill_value=fill_value,
-            dimension_names=dim_names,
-        )
+    a = root.create_array(
+        array_path,
+        shape=nparray.shape,
+        chunks=chunks_param,
+        shards=shard_shape,
+        dtype=nparray.dtype,
+        attributes=attributes,
+        # compressor=compressor,  # FIXME
+        fill_value=fill_value,
+        dimension_names=dim_names,
+    )
 
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
@@ -426,6 +422,7 @@ def chunk_grids(
     draw: st.DrawFn, *, shape: tuple[int, ...]
 ) -> RegularChunkGridMetadata | RectilinearChunkGridMetadata:
     """Generate either a RegularChunkGridMetadata or RectilinearChunkGridMetadata.
+    Depending on whether the config is set (WARN: look here if we get a flaky error)
 
     This allows property tests to exercise both chunk grid types.
     """
@@ -435,11 +432,10 @@ def chunk_grids(
         event("using RegularChunkGridMetadata (zero-sized dimensions)")
         return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
 
-    if draw(st.booleans()):
+    if zarr.config.get("array.rectilinear_chunks") and draw(st.booleans()):
         chunks = draw(rectilinear_chunks(shape=shape))
         event("using RectilinearChunkGridMetadata")
-        with zarr.config.set({"array.rectilinear_chunks": True}):
-            return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(dim) for dim in chunks))
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(dim) for dim in chunks))
     else:
         event("using RegularChunkGridMetadata")
         return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
