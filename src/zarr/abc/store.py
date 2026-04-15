@@ -22,6 +22,7 @@ __all__ = [
     "Store",
     "SupportsDeleteSync",
     "SupportsGetSync",
+    "SupportsSetRange",
     "SupportsSetSync",
     "SupportsSyncStore",
     "set_or_delete",
@@ -707,6 +708,15 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SupportsSetRange(Protocol):
+    """Protocol for stores that support writing to a byte range within an existing value."""
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None: ...
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None: ...
 
 
 @runtime_checkable
