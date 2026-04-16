@@ -10,8 +10,10 @@ import time
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
+import hypothesis.strategies as st
 import numpy as np
 import pytest
+from hypothesis import example, given
 from numcodecs import Blosc
 
 import zarr
@@ -50,7 +52,9 @@ from zarr.errors import (
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
+from zarr.testing.models import ArrayNode, GroupNode
 from zarr.testing.store import LatencyStore
+from zarr.testing.strategies import trees
 
 from .conftest import meta_from_array, parse_store
 
@@ -672,6 +676,38 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     assert sorted(group.arrays(), key=operator.itemgetter(0)) == expected_arrays
     assert sorted(group.array_keys()) == expected_array_keys
     assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
+
+
+@given(
+    tree=trees(),
+    consolidate=st.booleans(),
+    zarr_format=st.sampled_from([2, 3]),
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata:zarr.errors.ZarrUserWarning")
+def test_groups_and_arrays_split_children(
+    tree: GroupNode, consolidate: bool, zarr_format: ZarrFormat
+) -> None:
+    # When a group contains both sub-groups and arrays, `group.groups()` must
+    # return exactly the sub-groups, and `group.arrays()` exactly the arrays —
+    # no leakage between them. Tests this across random hierarchies where
+    # sibling names may share prefixes (e.g. "foo" alongside "foo-bar").
+    store = MemoryStore()
+    tree.materialize(store, zarr_format=zarr_format)
+    group = zarr.open_group(store)
+    if consolidate:
+        group = zarr.consolidate_metadata(store)
+
+    expected_groups = {
+        name for name, c in tree.children.items() if isinstance(c, GroupNode)
+    }
+    expected_arrays = {
+        name for name, c in tree.children.items() if isinstance(c, ArrayNode)
+    }
+
+    assert set(group.group_keys()) == expected_groups
+    assert set(group.array_keys()) == expected_arrays
+    assert {name for name, _ in group.groups()} == expected_groups
+    assert {name for name, _ in group.arrays()} == expected_arrays
 
 
 def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
@@ -1312,6 +1348,32 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
         # test depth<0
         with pytest.raises(ValueError, match="max_depth"):
             await group.nmembers(max_depth=-1)
+
+
+group_members_async_example = GroupNode(
+    children={
+        "a0": ArrayNode(shape=(1,), dtype=np.dtype("uint8")),
+        "g0": GroupNode(
+            children={
+                "a1": ArrayNode(shape=(1,), dtype=np.dtype("uint8")),
+                "g1": GroupNode(
+                    children={
+                        "a2": ArrayNode(shape=(1,), dtype=np.dtype("uint8")),
+                        "g2": GroupNode(),
+                    }
+                ),
+            }
+        ),
+    }
+)
+
+
+@example(tree=group_members_async_example)
+@given(tree=trees())
+def test_group_members_tree_roundtrip(tree: GroupNode) -> None:
+    store = MemoryStore()
+    tree.materialize(store)
+    assert GroupNode.from_store(store) == tree
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
