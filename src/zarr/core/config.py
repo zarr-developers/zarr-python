@@ -100,7 +100,7 @@ config = Config(
                 "target_shard_size_bytes": None,
                 "rectilinear_chunks": False,
             },
-            "async": {"concurrency": 10, "timeout": None},
+            "async": {"timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {

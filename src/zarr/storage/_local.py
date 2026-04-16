@@ -19,12 +19,12 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
@@ -110,14 +110,19 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
-        super().__init__(read_only=read_only)
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        read_only: bool = False,
+    ) -> None:
         if isinstance(root, str):
             root = Path(root)
         if not isinstance(root, Path):
             raise TypeError(
                 f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
+        super().__init__(read_only=read_only)
         self.root = root
 
     def with_read_only(self, read_only: bool = False) -> Self:
@@ -262,12 +267,9 @@ class LocalStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        args = []
-        for key, byte_range in key_ranges:
-            assert isinstance(key, str)
-            path = self.root / key
-            args.append((_get, path, prototype, byte_range))
-        return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
+        return await asyncio.gather(
+            *[self.get(key, prototype, byte_range) for key, byte_range in key_ranges]
+        )
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited

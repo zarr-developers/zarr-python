@@ -190,32 +190,7 @@ scenarios.
 
 ### Concurrent I/O operations
 
-Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
-The level of concurrency is controlled by the `async.concurrency` configuration setting, which
-determines the maximum number of concurrent I/O operations.
-
-The default value is 10, which is a conservative value. You may get improved performance by tuning
-the concurrency limit. You can adjust this value based on your specific needs:
-
-```python
-import zarr
-
-# Set concurrency for the current session
-zarr.config.set({'async.concurrency': 128})
-
-# Or use environment variable
-# export ZARR_ASYNC_CONCURRENCY=128
-```
-
-Higher concurrency values can improve throughput when:
-- Working with remote storage (e.g., S3, GCS) where network latency is high
-- Reading/writing many small chunks in parallel
-- The storage backend can handle many concurrent requests
-
-Lower concurrency values may be beneficial when:
-- Working with local storage with limited I/O bandwidth
-- Memory is constrained (each concurrent operation requires buffer space)
-- Using Zarr within a parallel computing framework (see below)
+For latency-sensitive storage backends like HTTP and cloud object storage, Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks. Zarr does not impose its own concurrency limits — storage backends are expected to manage their own concurrency constraints (e.g., connection pool sizes, rate limits). If you need to limit concurrency for a particular backend, configure it at the storage layer (e.g., via fsspec or obstore options).
 
 ### Thread pool size (`threading.max_workers`)
 
@@ -241,30 +216,21 @@ concurrently.
 
 ### Using Zarr with Dask
 
-[Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's concurrency settings.
+[Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's internal thread pool.
 
-**Important**: When using many Dask threads, you may need to reduce both Zarr's `async.concurrency` and `threading.max_workers` settings to avoid creating too many concurrent operations. The total number of concurrent I/O operations can be roughly estimated as:
-
-```
-total_concurrency ≈ dask_threads × zarr_async_concurrency
-```
-
-For example, if you're running Dask with 10 threads and Zarr's default concurrency of 64, you could potentially have up to 640 concurrent operations, which may overwhelm your storage system or cause memory issues.
-
-**Recommendation**: When using Dask with many threads, configure Zarr's concurrency settings:
+**Recommendation**: When using Dask with many threads, reduce Zarr's internal thread pool to avoid thread contention:
 
 ```python
 import zarr
 import dask.array as da
 
-# If using Dask with many threads (e.g., 8-16), reduce Zarr's concurrency settings
+# Limit Zarr's internal thread pool
 zarr.config.set({
-    'async.concurrency': 4,      # Limit concurrent async operations
     'threading.max_workers': 4,  # Limit Zarr's internal thread pool
 })
 
 # Open Zarr array
-z = zarr.open_array('data/large_array.zarr', mode='r')
+z = zarr.open_array("data/large_array.zarr", mode='r')
 
 # Create Dask array from Zarr array
 arr = da.from_array(z, chunks=z.chunks)
@@ -272,13 +238,6 @@ arr = da.from_array(z, chunks=z.chunks)
 # Process with Dask
 result = arr.mean(axis=0).compute()
 ```
-
-**Configuration guidelines for Dask workloads**:
-
-- `async.concurrency`: Controls the maximum number of concurrent async I/O operations. Start with a lower value (e.g., 4-8) when using many Dask threads.
-- `threading.max_workers`: Controls Zarr's internal thread pool size for blocking operations (defaults to CPU count). Reduce this to avoid thread contention with Dask's scheduler.
-
-You may need to experiment with different values to find the optimal balance for your workload. Monitor your system's resource usage and adjust these settings based on whether your storage system or CPU is the bottleneck.
 
 ### Thread safety and process safety
 

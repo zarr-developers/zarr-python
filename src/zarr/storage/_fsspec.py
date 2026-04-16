@@ -121,6 +121,7 @@ class FsspecStore(Store):
     def __init__(
         self,
         fs: AsyncFileSystem,
+        *,
         read_only: bool = False,
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,

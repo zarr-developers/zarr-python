@@ -3,15 +3,6 @@ from __future__ import annotations
 import importlib
 import re
 from pathlib import Path
-
-if importlib.util.find_spec("upath"):
-    from upath.core import UPath
-else:
-
-    class UPath:  # type: ignore[no-redef]
-        pass
-
-
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
@@ -21,6 +12,14 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
+
+
+if importlib.util.find_spec("upath"):
+    from upath.core import UPath
+else:
+
+    class UPath:  # type: ignore[no-redef]
+        pass
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:
