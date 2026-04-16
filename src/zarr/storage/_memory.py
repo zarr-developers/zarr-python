@@ -11,7 +11,7 @@ from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import (
-    _dereference_path,
+    _join_paths,
     _normalize_byte_range_index,
     normalize_path,
     parse_store_url,
@@ -700,7 +700,7 @@ class ManagedMemoryStore(MemoryStore):
         self.path = normalize_path(path)
 
     def __str__(self) -> str:
-        return _dereference_path(f"memory://{self._name}", self.path)
+        return _join_paths([f"memory://{self._name}", self.path])
 
     def __repr__(self) -> str:
         return f"ManagedMemoryStore('{self}')"
@@ -792,7 +792,7 @@ class ManagedMemoryStore(MemoryStore):
     ) -> Buffer | None:
         # docstring inherited
         return await super().get(
-            _dereference_path(self.path, key), prototype=prototype, byte_range=byte_range
+            _join_paths([self.path, key]), prototype=prototype, byte_range=byte_range
         )
 
     async def get_partial_values(
@@ -801,26 +801,24 @@ class ManagedMemoryStore(MemoryStore):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        key_ranges = [
-            (_dereference_path(self.path, key), byte_range) for key, byte_range in key_ranges
-        ]
+        key_ranges = [(_join_paths([self.path, key]), byte_range) for key, byte_range in key_ranges]
         return await super().get_partial_values(prototype, key_ranges)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        return await super().exists(_dereference_path(self.path, key))
+        return await super().exists(_join_paths([self.path, key]))
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
-        return await super().set(_dereference_path(self.path, key), value, byte_range=byte_range)
+        return await super().set(_join_paths([self.path, key]), value, byte_range=byte_range)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
-        return await super().set_if_not_exists(_dereference_path(self.path, key), value)
+        return await super().set_if_not_exists(_join_paths([self.path, key]), value)
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        return await super().delete(_dereference_path(self.path, key))
+        return await super().delete(_join_paths([self.path, key]))
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
@@ -831,8 +829,8 @@ class ManagedMemoryStore(MemoryStore):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        # Don't use _dereference_path here because it strips trailing slashes,
-        # which would break prefix matching (e.g., "fo/" vs "foo/")
+        # Manual concatenation instead of _join_paths because we need "path/"
+        # as the prefix when prefix is empty (to list all keys under self.path)
         full_prefix = f"{self.path}/{prefix}" if self.path else prefix
         path_prefix = self.path + "/" if self.path else ""
         async for key in super().list_prefix(full_prefix):
@@ -840,7 +838,7 @@ class ManagedMemoryStore(MemoryStore):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        full_prefix = _dereference_path(self.path, prefix)
+        full_prefix = _join_paths([self.path, prefix])
         async for key in super().list_dir(full_prefix):
             yield key
 

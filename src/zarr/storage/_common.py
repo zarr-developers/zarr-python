@@ -24,7 +24,7 @@ from zarr.core.common import (
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._utils import _dereference_path, normalize_path, parse_store_url
+from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -255,10 +255,10 @@ class StorePath:
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
-        return self.__class__(self.store, _dereference_path(self.path, other))
+        return self.__class__(self.store, _join_paths([self.path, other]))
 
     def __str__(self) -> str:
-        return _dereference_path(str(self.store), self.path)
+        return _join_paths([str(self.store), self.path])
 
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, '{self}')"
