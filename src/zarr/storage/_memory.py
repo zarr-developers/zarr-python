@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import weakref
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
@@ -559,9 +560,13 @@ class _ManagedStoreDictRegistry:
             weakref.WeakValueDictionary()
         )
         self._counter = 0
+        self._lock = threading.Lock()
 
     def _generate_name(self) -> str:
-        """Generate a unique name for a store."""
+        """Generate a unique name for a store.
+
+        Must be called while holding `self._lock`.
+        """
         name = str(self._counter)
         self._counter += 1
         return name
@@ -569,6 +574,9 @@ class _ManagedStoreDictRegistry:
     def get_or_create(self, name: str | None = None) -> tuple[_ManagedStoreDict, str]:
         """
         Get an existing managed dict by name, or create a new one.
+
+        Thread-safe: uses a lock to prevent TOCTOU races between
+        checking for an existing entry and inserting a new one.
 
         Parameters
         ----------
@@ -587,21 +595,22 @@ class _ManagedStoreDictRegistry:
         ValueError
             If the name contains '/' characters.
         """
-        if name is None:
-            name = self._generate_name()
-        elif "/" in name:
-            raise ValueError(
-                f"Store name cannot contain '/': {name!r}. "
-                "Use the 'path' parameter to specify a path within the store."
-            )
+        with self._lock:
+            if name is None:
+                name = self._generate_name()
+            elif "/" in name:
+                raise ValueError(
+                    f"Store name cannot contain '/': {name!r}. "
+                    "Use the 'path' parameter to specify a path within the store."
+                )
 
-        existing = self._registry.get(name)
-        if existing is not None:
-            return existing, name
+            existing = self._registry.get(name)
+            if existing is not None:
+                return existing, name
 
-        store_dict = _ManagedStoreDict()
-        self._registry[name] = store_dict
-        return store_dict, name
+            store_dict = _ManagedStoreDict()
+            self._registry[name] = store_dict
+            return store_dict, name
 
     def get(self, name: str) -> _ManagedStoreDict | None:
         """
@@ -681,7 +690,9 @@ class ManagedMemoryStore(MemoryStore):
 
     def __init__(self, name: str | None = None, *, path: str = "", read_only: bool = False) -> None:
         # Skip MemoryStore.__init__ and call Store.__init__ directly
-        # because we need to set up _store_dict differently
+        # because we manage _store_dict via the registry, not via a user-supplied
+        # MutableMapping.  If MemoryStore.__init__ ever adds logic beyond setting
+        # _store_dict, that logic must be replicated here.
         Store.__init__(self, read_only=read_only)
 
         # Get or create a managed dict from the registry
@@ -760,15 +771,14 @@ class ManagedMemoryStore(MemoryStore):
         parsed = parse_store_url(url)
         if parsed.scheme != "memory":
             raise ValueError(
-                f"Memory store not found for URL '{url}'. "
-                "The store may have been garbage collected or the URL is invalid."
+                f"Expected a 'memory://' URL, got scheme {parsed.scheme!r} in '{url}'."
             )
         name = parsed.name or ""
         managed_dict = _managed_store_dict_registry.get(name)
         if managed_dict is None:
             raise ValueError(
                 f"Memory store not found for URL '{url}'. "
-                "The store may have been garbage collected or the URL is invalid."
+                "The store may have been garbage collected."
             )
         return cls._from_managed_dict(managed_dict, name, path=parsed.path, read_only=read_only)
 
@@ -861,15 +871,14 @@ class ManagedMemoryStore(MemoryStore):
         )
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        """Restore state after unpickling."""
-        # The __reduce__ method returns (cls, (name,), state)
-        # Python calls cls(name) then __setstate__(state)
-        # But __init__ already set up _store_dict and _name from the registry
-        # We just need to restore path and read_only
-        self.path = normalize_path(state.get("path", ""))
-        self._read_only = state.get("read_only", False)
+        """Restore state after unpickling.
 
-        # Check for cross-process usage - fail fast at unpickle time
+        The pickle protocol calls ``cls(name)`` (via ``__reduce__``'s args)
+        then ``__setstate__(state)``.  ``__init__`` already set up
+        ``_store_dict`` and ``_name`` from the registry — we just restore
+        path and read_only here.
+        """
+        # Check for cross-process usage first, before mutating state
         created_pid = state.get("created_pid")
         if created_pid is not None and created_pid != os.getpid():
             raise RuntimeError(
@@ -879,3 +888,8 @@ class ManagedMemoryStore(MemoryStore):
                 "their backing dict is not serialized. Use a persistent store (e.g., "
                 "LocalStore, ZipStore) for cross-process data sharing."
             )
+
+        self.path = normalize_path(state.get("path", ""))
+        # Use the Store-level _read_only attribute directly because
+        # Store.__init__ was already called by __init__ during unpickling
+        self._read_only = state.get("read_only", False)

@@ -22,7 +22,7 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     _parse_chunk_key_encoding,
 )
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
+from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import (
     JSON,
     DimensionNamesLike,
@@ -37,7 +37,7 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.testing.store import LatencyStore
@@ -56,6 +56,25 @@ if TYPE_CHECKING:
         V2ChunkKeyEncoding,
     )
     from zarr.core.dtype.wrapper import ZDType
+
+
+@dataclass
+class Expect[TIn, TOut]:
+    """A test case with explicit input, expected output, and a human-readable id."""
+
+    input: TIn
+    output: TOut
+    id: str
+
+
+@dataclass
+class ExpectFail[TIn]:
+    """A test case that should raise an exception."""
+
+    input: TIn
+    exception: type[Exception]
+    id: str
+    msg: str | None = None
 
 
 async def parse_store(
@@ -379,7 +398,7 @@ def create_array_metadata(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGridMetadata(chunk_shape=shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed
@@ -390,7 +409,7 @@ def create_array_metadata(
         return ArrayV3Metadata(
             shape=shape_parsed,
             data_type=dtype_parsed,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks_out}},
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value,
             codecs=codecs_out,

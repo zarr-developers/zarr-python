@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from zarr.types import AnyArray, AnyAsyncArray
 
     # TODO: this type could use some more thought
-    ArrayLike: TypeAlias = AnyAsyncArray | AnyArray | npt.NDArray[Any]
+    type ArrayLike = AnyAsyncArray | AnyArray | npt.NDArray[Any]
     PathLike = str
 
 __all__ = [
@@ -359,8 +359,8 @@ async def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to [`zarr.creation.open_array`][] or
-        [`open_group`][zarr.api.asynchronous.open_group].
+        Additional parameters are passed through to `zarr.open_array` or
+        `zarr.open_group`.
 
     Returns
     -------

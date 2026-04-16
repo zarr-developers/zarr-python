@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
+        ChunksLike,
         DimensionNamesLike,
         MemoryOrder,
         ShapeLike,
@@ -205,8 +206,8 @@ def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to [`zarr.creation.open_array`][] or
-        [`open_group`][zarr.api.asynchronous.open_group].
+        Additional parameters are passed through to `zarr.open_array` or
+        `zarr.open_group`.
 
     Returns
     -------
@@ -822,7 +823,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -858,9 +859,13 @@ def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Literal["auto"], default="auto"
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
         If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+        A nested list of per-dimension edge sizes creates a rectilinear grid.
+        Rectilinear chunk grids are experimental and must be explicitly enabled
+        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        feature is stabilizing.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
@@ -993,7 +998,7 @@ def from_array(
     data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
+    chunks: ChunksLike | Literal["auto", "keep"] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -1025,13 +1030,17 @@ def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : tuple[int, ...] or "auto" or "keep", optional
+    chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-        - tuple[int, ...]: A tuple of integers representing the chunk shape.
+        - "keep": Retain the chunk grid of the data array if it is a zarr Array.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
+        - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
+          Rectilinear chunk grids are experimental and must be explicitly enabled
+          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : tuple[int, ...], optional

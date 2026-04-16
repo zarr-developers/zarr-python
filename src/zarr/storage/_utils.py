@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import importlib
 import re
-import sys
 from pathlib import Path, PureWindowsPath
-from typing import TYPE_CHECKING, NamedTuple, TypeVar
 from urllib.parse import urlparse
+
+if importlib.util.find_spec("upath"):
+    from upath.core import UPath
+else:
+
+    class UPath:  # type: ignore[no-redef]
+        pass
+
+
+import sys
+from typing import TYPE_CHECKING, NamedTuple
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
@@ -65,6 +75,10 @@ def parse_store_url(url: str) -> ParsedStoreUrl:
 
     >>> parse_store_url("/local/path")
     ParsedStoreUrl(scheme='', name=None, path='/local/path', raw='/local/path')
+
+    Note that ``memory://name/path`` and ``memory:///path`` are different:
+    the first has ``name="name"`` and ``path="path"``, while the second has
+    ``name=None`` and ``path="/path"`` (no host component between ``//`` and ``/``).
     """
     # On Windows, bare paths like "C:\foo" or "C:/foo" cause urlparse to
     # misinterpret the drive letter as a URL scheme.  Detect this early and
@@ -95,7 +109,8 @@ def normalize_path(path: str | bytes | Path | None) -> str:
         result = str(path, "ascii")
 
     # handle pathlib.Path
-    elif isinstance(path, Path):
+
+    elif isinstance(path, Path | UPath):
         result = str(path)
 
     elif isinstance(path, str):
@@ -257,10 +272,7 @@ def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
     return tuple(path_map.keys())
 
 
-T = TypeVar("T")
-
-
-def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
+def _normalize_path_keys[T](data: Mapping[str, T]) -> dict[str, T]:
     """
     Normalize the keys of the input dict according to the normalization scheme used for zarr node
     paths. If any two keys in the input normalize to the same value, raise a ValueError.

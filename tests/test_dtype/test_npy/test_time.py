@@ -115,7 +115,7 @@ class TestTimeDelta64(_TestTimeBase):
 
     cast_value_params = (
         (TimeDelta64(unit="ns", scale_factor=1), "1", np.timedelta64(1, "ns")),
-        (TimeDelta64(unit="ns", scale_factor=1), "NaT", np.timedelta64("NaT")),
+        (TimeDelta64(unit="ns", scale_factor=1), "NaT", np.timedelta64("NaT", "ns")),
     )
     invalid_scalar_params = (
         (TimeDelta64(unit="Y", scale_factor=1), 1.3),
@@ -146,6 +146,12 @@ def test_time_scale_factor_too_low() -> None:
         DateTime64(scale_factor=scale_factor)
     with pytest.raises(ValueError, match=msg):
         TimeDelta64(scale_factor=scale_factor)
+
+
+def test_default_is_NaT() -> None:
+    np.testing.assert_equal(
+        TimeDelta64(unit="ns", scale_factor=1).default_scalar(), np.timedelta64("NaT", "ns")
+    )
 
 
 def test_time_scale_factor_too_high() -> None:

@@ -7,7 +7,7 @@ ci:
 default_stages: [pre-commit, pre-push]
 
 default_language_version:
-  python: python3.11
+  python: python3.12
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -38,7 +38,7 @@ repos:
           - donfig
           - numcodecs
           - google-crc32c>=1.5
-          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
+          - numpy==2.1 # https://github.com/zarr-developers/zarr-python/issues/3780 + https://github.com/zarr-developers/zarr-python/issues/3688
           - typing_extensions
           - universal-pathlib
           - obstore>=0.5.1
@@ -63,6 +63,10 @@ repos:
         entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
         types: [python]
         files: ^(src|tests)/
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.23.1
+    hooks:
+      - id: zizmor
   - repo: https://github.com/twisted/towncrier
     rev: 25.8.0
     hooks:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import (
     ByteRequest,
@@ -284,7 +284,7 @@ class StorePath:
         return False
 
 
-StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -330,13 +330,12 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
+    # Parse URL early so we can reuse the result for both validation and routing
+    parsed = parse_store_url(store_like) if isinstance(store_like, str) else None
+
     # Check if storage_options is valid for this store_like
     if storage_options is not None:
-        is_fsspec_uri = False
-        if isinstance(store_like, str):
-            parsed = parse_store_url(store_like)
-            # fsspec URIs have a scheme that's not memory, file, or empty
-            is_fsspec_uri = parsed.scheme not in ("", "memory", "file")
+        is_fsspec_uri = parsed is not None and parsed.scheme not in ("", "memory", "file")
         if not is_fsspec_uri:
             raise TypeError(
                 "'storage_options' was provided but unused. "
@@ -369,15 +368,13 @@ async def make_store(
         # Create a new LocalStore
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
-    elif isinstance(store_like, str):
-        parsed = parse_store_url(store_like)
-
+    elif isinstance(store_like, str) and parsed is not None:
         if parsed.scheme == "memory":
             # Create or get a ManagedMemoryStore
             return ManagedMemoryStore(name=parsed.name, path=parsed.path, read_only=_read_only)
         elif parsed.scheme == "file" or not parsed.scheme:
-            # Local filesystem path
-            return await make_store(Path(store_like), mode=mode, storage_options=storage_options)
+            # Local filesystem path — use parsed.path to strip the file:// scheme
+            return await make_store(Path(parsed.path), mode=mode, storage_options=storage_options)
         else:
             # Assume fsspec can handle it (s3://, gs://, http://, etc.)
             return FsspecStore.from_url(
@@ -451,20 +448,6 @@ async def make_store_path(
         raise ValueError(
             "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
         )
-
-    elif isinstance(store_like, str):
-        parsed = parse_store_url(store_like)
-        if parsed.scheme == "memory":
-            # Handle memory:// URLs specially - the path in the URL becomes part of the store
-            _read_only = mode == "r"
-            memory_store = ManagedMemoryStore(
-                name=parsed.name, path=parsed.path, read_only=_read_only
-            )
-            return await StorePath.open(memory_store, path=path_normalized, mode=mode)
-        else:
-            # Fall through to make_store for other URL types
-            store = await make_store(store_like, mode=mode, storage_options=storage_options)
-            return await StorePath.open(store, path=path_normalized, mode=mode)
 
     else:
         store = await make_store(store_like, mode=mode, storage_options=storage_options)

@@ -393,7 +393,7 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
 
     def test_from_url_not_memory_scheme(self) -> None:
         """Test that from_url raises ValueError for non-memory URLs."""
-        with pytest.raises(ValueError, match="Memory store not found"):
+        with pytest.raises(ValueError, match="Expected a 'memory://' URL"):
             ManagedMemoryStore.from_url("file:///tmp/test")
 
     def test_named_store(self) -> None:

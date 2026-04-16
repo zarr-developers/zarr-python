@@ -157,12 +157,24 @@ print(f"Shape after second append: {z.shape}")
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
 
-We currently support two configuration options for arrays: `write_empty_chunks` and `order`.
+We currently support three configuration options for arrays: `write_empty_chunks`, `read_missing_chunks`, and `order`.
 
 | field | type | default | description |
 | - |     - | - | - |
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
+| `read_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
 | `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+
+!!! info
+    The Zarr V3 spec states that readers should interpret an uninitialized chunk as containing the
+    array's `fill_value`. By default, Zarr-Python follows this behavior: a missing chunk is treated
+    as uninitialized and filled with the array's `fill_value`. However, if you know that all chunks
+    have been written (i.e., are initialized), you may want to treat a missing chunk as an error. Set
+    `read_missing_chunks=False` to raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError] instead.
+
+!!! note
+    `write_empty_chunks=False` skips writing chunks that are entirely the array's fill value.
+    If `read_missing_chunks=False`, attempting to read these missing chunks will raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
 
 You can specify the configuration when you create an array with the `config` keyword argument.
 `config` can be passed as either a `dict` or an `ArrayConfig` object.
@@ -597,6 +609,171 @@ print(a.info_complete())
 In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is used.
 This means that `10*10` chunks are stored in each shard, and there are `10*10` shards in total.
 Without the `shards` argument, there would be 10,000 chunks stored as individual files.
+
+## Rectilinear (variable) chunk grids
+
+!!! warning "Experimental"
+    Rectilinear chunk grids are an experimental feature and may change in
+    future releases. This feature is expected to stabilize in Zarr version 3.3.
+
+    Because the feature is still stabilizing, it is disabled by default and
+    must be explicitly enabled:
+
+    ```python
+    import zarr
+    zarr.config.set({"array.rectilinear_chunks": True})
+    ```
+
+    Or via the environment variable `ZARR_ARRAY__RECTILINEAR_CHUNKS=True`.
+
+    The examples below assume this config has been set.
+
+By default, Zarr arrays use a regular chunk grid where every chunk along a
+given dimension has the same size (except possibly the final boundary chunk).
+Rectilinear chunk grids allow each chunk along a dimension to have a different
+size. This is useful when the natural partitioning of the data is not uniform —
+for example, satellite swaths of varying width, time series with irregular
+intervals, or spatial tiles of different extents.
+
+### Creating arrays with rectilinear chunks
+
+To create an array with rectilinear chunks, pass a nested list to the `chunks`
+parameter where each inner list gives the chunk sizes along one dimension:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+zarr.config.set({"array.rectilinear_chunks": True})
+z = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(60, 100),
+    chunks=[[10, 20, 30], [50, 50]],
+    dtype='int32',
+)
+print(z.info)
+```
+
+In this example the first dimension is split into three chunks of sizes 10, 20,
+and 30, while the second dimension is split into two equal chunks of size 50.
+
+### Reading and writing data
+
+Rectilinear arrays support the same indexing interface as regular arrays.
+Reads and writes that cross chunk boundaries of different sizes are handled
+automatically:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+import numpy as np
+data = np.arange(60 * 100, dtype='int32').reshape(60, 100)
+z[:] = data
+# Read a slice that spans the first two chunks (sizes 10 and 20) along axis 0
+print(z[5:25, 0:5])
+```
+
+### Inspecting chunk sizes
+
+The `.write_chunk_sizes` property returns the actual data size of each storage
+chunk along every dimension. It works for both regular and rectilinear arrays
+and returns a tuple of tuples (matching the dask `Array.chunks` convention).
+When sharding is used, `.read_chunk_sizes` returns the inner chunk sizes instead:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+print(z.write_chunk_sizes)
+```
+
+For regular arrays, this includes the boundary chunk:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z_regular = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(100, 80),
+    chunks=(30, 40),
+    dtype='int32',
+)
+print(z_regular.write_chunk_sizes)
+```
+
+Note that the `.chunks` property is only available for regular chunk grids. For
+rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
+
+### Resizing and appending
+
+Rectilinear arrays can be resized. When growing past the current edge sum, a
+new chunk is appended covering the additional extent. When shrinking, the chunk
+edges are preserved and the extent is re-bound (chunks beyond the new extent
+simply become inactive):
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(30,),
+    chunks=[[10, 20]],
+    dtype='float64',
+)
+z[:] = np.arange(30, dtype='float64')
+print(f"Before resize: chunk_sizes={z.write_chunk_sizes}")
+z.resize((50,))
+print(f"After resize:  chunk_sizes={z.write_chunk_sizes}")
+```
+
+The `append` method also works with rectilinear arrays:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z.append(np.arange(10, dtype='float64'))
+print(f"After append:  shape={z.shape}, chunk_sizes={z.write_chunk_sizes}")
+```
+
+### Compressors and filters
+
+Rectilinear arrays work with all codecs — compressors, filters, and checksums.
+Since each chunk may have a different size, the codec pipeline processes each
+chunk independently:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(60, 100),
+    chunks=[[10, 20, 30], [50, 50]],
+    dtype='float64',
+    filters=[zarr.codecs.TransposeCodec(order=(1, 0))],
+    compressors=[zarr.codecs.BloscCodec(cname='zstd', clevel=3)],
+)
+z[:] = np.arange(60 * 100, dtype='float64').reshape(60, 100)
+np.testing.assert_array_equal(z[:], np.arange(60 * 100, dtype='float64').reshape(60, 100))
+print("Roundtrip OK")
+```
+
+### Rectilinear shard boundaries
+
+Rectilinear chunk grids can also be used for shard boundaries when combined
+with sharding. In this case, the outer grid (shards) is rectilinear while the
+inner chunks remain regular. Each shard dimension must be divisible by the
+corresponding inner chunk size:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(120, 100),
+    chunks=(10, 10),
+    shards=[[60, 40, 20], [50, 50]],
+    dtype='int32',
+)
+z[:] = np.arange(120 * 100, dtype='int32').reshape(120, 100)
+print(z[50:70, 40:60])
+```
+
+Note that rectilinear inner chunks with sharding are not supported — only the
+shard boundaries can be rectilinear.
+
+### Metadata format
+
+Rectilinear chunk grid metadata uses run-length encoding (RLE) for compact
+serialization. When reading metadata, both bare integers and `[value, count]`
+pairs are accepted:
+
+- `[10, 20, 30]` — three chunks with explicit sizes
+- `[[10, 3]]` — three chunks of size 10 (RLE shorthand)
+- `[[10, 3], 5]` — three chunks of size 10, then one chunk of size 5
+
+When writing, Zarr automatically compresses repeated values into RLE format.
 
 ## Missing features in 3.0
 

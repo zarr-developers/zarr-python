@@ -1,6 +1,9 @@
 name: Wheels
 
 on:
+  release:
+    types:
+      - published
   push:
     branches: [main]
   pull_request:
@@ -23,15 +26,16 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         name: Install Python
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install Hatch
         uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
@@ -39,16 +43,17 @@ jobs:
           version: '1.16.5'
       - name: Build wheel and sdist
         run: hatch build
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: releases
           path: dist
 
   test_dist_pypi:
+    name: Test distribution artifacts
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: releases
           path: dist
@@ -59,24 +64,25 @@ jobs:
           ls dist
 
   upload_pypi:
+    name: Upload to PyPI
     needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     environment:
       name: releases
       url: https://pypi.org/p/zarr
     permissions:
-      id-token: write
-      attestations: write
-      artifact-metadata: write
+      id-token: write # Required for OIDC trusted publishing to PyPI
+      attestations: write # Required for artifact attestation
+      artifact-metadata: write # Required for artifact attestation metadata
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: releases
           path: dist
       - name: Generate artifact attestation
-        uses: actions/attest@v4
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-path: dist/*
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.13.0
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
