@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from zarr.storage._utils import ParsedStoreUrl, parse_store_url
+from tests.conftest import Expect, ExpectFail
+from zarr.storage._utils import ParsedStoreUrl, _dereference_path, parse_store_url
 
 
 class TestParseStoreUrl:
@@ -95,3 +96,47 @@ class TestParseStoreUrl:
             result = parse_store_url(url)
         # urlparse interprets the drive letter as a scheme
         assert result.scheme == "c"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=("root", "path"), output="root/path", id="basic"),
+        Expect(input=("root", ""), output="root", id="empty_path"),
+        Expect(input=("", "path"), output="path", id="empty_root"),
+        Expect(input=("", ""), output="", id="both_empty"),
+        Expect(input=("root/", "path"), output="root/path", id="root_trailing_slash"),
+        Expect(input=("root//", "path"), output="root/path", id="root_multiple_trailing_slashes"),
+        Expect(input=("root", "path/"), output="root/path", id="path_trailing_slash"),
+        Expect(input=("a/b", "c/d"), output="a/b/c/d", id="nested"),
+        Expect(input=("memory://store", "key"), output="memory://store/key", id="url_root"),
+    ],
+    ids=lambda case: case.id,
+)
+def test_dereference_path(case: Expect[tuple[str, str], str]) -> None:
+    """
+    Test the normal behavior of _dereference_path
+    """
+    root, path = case.input
+    assert _dereference_path(root, path) == case.output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input=(1, "path"), exception=TypeError, msg="root=.*not a string", id="root_not_str"
+        ),
+        ExpectFail(
+            input=("root", 1), exception=TypeError, msg="path=.*not a string", id="path_not_str"
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_dereference_path_errors(case: ExpectFail[tuple[object, object]]) -> None:
+    """
+    Test that _dereference_path raises TypeError for non-string inputs.
+    """
+    root, path = case.input
+    with pytest.raises(case.exception, match=case.msg):
+        _dereference_path(root, path)  # type: ignore[arg-type]
