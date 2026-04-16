@@ -422,7 +422,10 @@ def chunk_grids(
     draw: st.DrawFn, *, shape: tuple[int, ...]
 ) -> RegularChunkGridMetadata | RectilinearChunkGridMetadata:
     """Generate either a RegularChunkGridMetadata or RectilinearChunkGridMetadata.
-    Depending on whether the config is set (WARN: look here if we get a flaky error)
+
+    This strategy depends on the global state of the config having rectilinear chunk grids enabled or not.
+    This means that it may be a possible source of a hypothesis FlakyStrategy error due dependence
+    on global state. However, in practice this seems unlikely to happen.
 
     This allows property tests to exercise both chunk grid types.
     """
