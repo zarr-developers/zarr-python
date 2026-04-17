@@ -107,11 +107,11 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 1. Disallow direct construction - use [`zarr.open_group`][] or [`zarr.create_group`][]
    instead of directly constructing the `zarr.Group` class.
-2. Most of the h5py compatibility methods are deprecated and will issue warnings if used.
-   The following functions are drop in replacements that have the same signature and functionality:
+2. The h5py compatibility methods `create_dataset` and `require_dataset` have been removed.
+   Use the following replacements:
 
-   - Use [`zarr.Group.create_array`][] in place of `zarr.Group.create_dataset`
-   - Use [`zarr.Group.require_array`][] in place of `zarr.Group.require_dataset`
+   - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
+   - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
 4. The `zarr.storage.init_group` low-level helper function has been removed. Use
