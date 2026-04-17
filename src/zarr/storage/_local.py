@@ -16,6 +16,7 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
+    SupportsSetRange,
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
@@ -77,6 +78,13 @@ def _atomic_write(
         raise
 
 
+def _put_range(path: Path, value: Buffer, start: int) -> None:
+    """Write bytes at a specific offset within an existing file."""
+    with path.open("r+b") as f:
+        f.seek(start)
+        f.write(value.as_numpy_array().tobytes())
+
+
 def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     # write takes any object supporting the buffer protocol
@@ -85,7 +93,7 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
-class LocalStore(Store):
+class LocalStore(Store, SupportsSetRange):
     """
     Store for the local file system.
 
@@ -291,6 +299,19 @@ class LocalStore(Store):
             )
         path = self.root / key
         await asyncio.to_thread(_put, path, value, exclusive=exclusive)
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        if not self._is_open:
+            await self._open()
+        self._check_writable()
+        path = self.root / key
+        await asyncio.to_thread(_put_range, path, value, start)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        self._ensure_open_sync()
+        self._check_writable()
+        path = self.root / key
+        _put_range(path, value, start)
 
     async def delete(self, key: str) -> None:
         """

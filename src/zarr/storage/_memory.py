@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import ByteRequest, Store, SupportsSetRange
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
-class MemoryStore(Store):
+class MemoryStore(Store, SupportsSetRange):
     """
     Store for local memory.
 
@@ -185,6 +185,26 @@ class MemoryStore(Store):
             del self._store_dict[key]
         except KeyError:
             logger.debug("Key %s does not exist.", key)
+
+    def _set_range_impl(self, key: str, value: Buffer, start: int) -> None:
+        buf = self._store_dict[key]
+        target = buf.as_numpy_array()
+        if not target.flags.writeable:
+            target = target.copy()
+            self._store_dict[key] = buf.__class__(target)
+        source = value.as_numpy_array()
+        target[start : start + len(source)] = source
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        self._check_writable()
+        await self._ensure_open()
+        self._set_range_impl(key, value, start)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        self._set_range_impl(key, value, start)
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
