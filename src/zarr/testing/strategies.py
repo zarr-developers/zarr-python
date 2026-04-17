@@ -23,9 +23,21 @@ from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
 from zarr.storage._utils import normalize_path
+from zarr.testing.models import ArrayNode, GroupNode, Node
 from zarr.types import AnyArray
 
 TrueOrFalse = Literal[True, False]
+
+
+def default_fs_case_insensitive() -> bool:
+    """Return whether the current platform defaults to a case-insensitive filesystem.
+
+    macOS APFS and Windows NTFS are case-insensitive by default; Linux
+    filesystems are typically case-sensitive. Used as the default for the
+    ``trees()`` strategy so sibling names won't collide when the tree is
+    materialized into a filesystem-backed store.
+    """
+    return sys.platform in ("darwin", "win32")
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -645,3 +657,220 @@ def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: 
     )
     subset_slicer = slice(draw(st.integers(min_value=0, max_value=ndim))) if subset else slice(None)
     return "/".join(map(str, blockidx[subset_slicer]))
+
+
+# ---------------------------------------------------------------------------
+# Name strategies — pool-based derivation for prefix collisions
+# ---------------------------------------------------------------------------
+
+# Short affix drawn from the zarr key alphabet for prefix/suffix collisions.
+affix = st.text(zarr_key_chars, min_size=1, max_size=3)
+separators = st.sampled_from(["_", "-", "."])
+
+
+def similar_name(
+    non_sibling_names: set[str],
+    sibling_names: set[str],
+    *,
+    case_insensitive: bool | None = None,
+) -> st.SearchStrategy[str]:
+    """Strategy that picks a name similar to existing ones, for prefix collisions.
+
+    Either an affixed variant of a sibling name (e.g. ``"foo"`` → ``"foo-bar"``)
+    or an exact copy of a non-sibling (e.g. cousin) name.
+
+    Parameters
+    ----------
+    non_sibling_names : set[str]
+        Names from elsewhere in the tree (cousins, ancestors, etc.).
+        These may be reused exactly as the generated name.
+    sibling_names : set[str]
+        Names of nodes at the same level as the one being generated.
+        These are used as bases for affixed variants (prefix/suffix collisions).
+    case_insensitive : bool | None
+        If ``True``, produced names will not differ from ``sibling_names``
+        only in letter case. Required when the target store backs onto a
+        case-insensitive filesystem (macOS APFS, Windows NTFS default),
+        where ``foo`` and ``FOO`` resolve to the same path. Defaults to the
+        current platform's filesystem behavior when ``None``.
+
+    Examples
+    --------
+    Given a tree like::
+
+        /
+        ├── alpha/
+        │   ├── x
+        │   └── y
+        └── beta/
+            ├── z
+            └── ?   ← generating a new name here
+
+    ``sibling_names = {"z"}``, ``non_sibling_names = {"alpha", "x", "y", "beta"}``.
+    The strategy might produce ``"z_0"`` (affixed sibling) or ``"x"`` (reused cousin).
+    or ``beta`` or a new random name entirely.
+    """
+    if case_insensitive is None:
+        case_insensitive = default_fs_case_insensitive()
+    siblings = sorted(sibling_names)
+    non_siblings = sorted(non_sibling_names - sibling_names)
+
+    strategies = []
+    if bool(siblings):
+        # if there are any named siblings we can affix a sibling name
+        # choosing to not affix all names in the tree (e.g. cousin names) because
+        # that doesn't seem likely to bring a bug, and would expand the search space.
+        strategies.append(
+            st.sampled_from(siblings).flatmap(
+                lambda base: st.one_of(
+                    separators.flatmap(lambda sep: affix.map(lambda afx: base + sep + afx)),
+                    separators.flatmap(lambda sep: affix.map(lambda afx: afx + sep + base)),
+                )
+            )
+        )
+    if bool(non_siblings):
+        strategies.append(st.sampled_from(non_siblings))
+    key = str.casefold if case_insensitive else (lambda n: n)
+    forbidden = {key(n) for n in sibling_names}
+    return st.one_of(*strategies).filter(lambda name: key(name) not in forbidden)
+
+
+@st.composite
+def unique_sibling_names(
+    draw: st.DrawFn,
+    existing_names: set[str],
+    num_names: int,
+    existing_siblings: set[str] | None = None,
+    *,
+    case_insensitive: bool | None = None,
+) -> list[str]:
+    """Draw *num_names* unique names, biased toward collisions with existing ones.
+
+    Parameters
+    ----------
+    existing_names : set[str]
+        All names already present in the tree. Used to generate
+        similar-looking candidates (affixed siblings, reused cousins).
+    num_names : int
+        Number of unique names to generate.
+    existing_siblings : set[str] | None
+        Names already present at the destination that must not be reused.
+        Used by valid_moves to avoid collisions with existing children.
+
+    Returns
+    -------
+    list[str]
+        The generated names, unique among themselves and not in existing_siblings.
+    """
+    if case_insensitive is None:
+        case_insensitive = default_fs_case_insensitive()
+    generated_names: set[str] = set()
+    already_taken = existing_siblings or set()
+    key = str.casefold if case_insensitive else (lambda n: n)
+
+    for _ in range(num_names):
+        excluded = generated_names | already_taken
+        forbidden = {key(n) for n in excluded}
+        # Filter the whole strategy — similar_name can produce collisions.
+        generated_names.add(
+            draw(
+                (
+                    st.one_of(
+                        node_names,
+                        similar_name(
+                            existing_names, excluded, case_insensitive=case_insensitive
+                        ),
+                    )
+                    if bool(existing_names) | bool(generated_names)
+                    else node_names
+                ).filter(
+                    lambda name_, f=forbidden, k=key: k(name_) not in f  # type: ignore[misc]
+                )
+            )
+        )
+    return list(generated_names)
+
+
+# ---------------------------------------------------------------------------
+# Tree skeleton + naming
+# ---------------------------------------------------------------------------
+
+
+def skeletons(*, max_leaves: int = 50, max_children: int = 4) -> st.SearchStrategy[GroupNode]:
+    """Unnamed tree skeletons via st.recursive.
+
+    Always returns a GroupNode (the root group). Child names are placeholder
+    indices ("0", "1", ...); real names are assigned later by ``trees``.
+    """
+    leaves = st.just(ArrayNode(shape=(1,), dtype=np.dtype("i4")))
+
+    def extend(children: st.SearchStrategy[Node]) -> st.SearchStrategy[GroupNode]:
+        return st.lists(children, min_size=1, max_size=max_children).map(
+            lambda child_list: GroupNode(
+                children={str(i): child for i, child in enumerate(child_list)}
+            )
+        )
+
+    # Wrap in extend so the top level is always a GroupNode (the root group).
+    return extend(st.recursive(leaves, extend, max_leaves=max_leaves))
+
+
+@st.composite
+def trees(
+    draw: st.DrawFn,
+    *,
+    max_leaves: st.SearchStrategy[int] = st.integers(min_value=5, max_value=50),  # noqa: B008
+    max_children: st.SearchStrategy[int] = st.integers(min_value=1, max_value=4),  # noqa: B008
+    case_insensitive: bool | None = None,
+) -> GroupNode:
+    """Strategy producing a GroupNode tree descriptor.
+
+    Uses st.recursive for the tree structure (good structural shrinking)
+    and @composite for name assignment (pool-based prefix collisions).
+
+    Parameters
+    ----------
+    case_insensitive : bool | None
+        If ``True``, sibling names will not differ only in letter case, so
+        the tree can be materialized into a store backed by a case-insensitive
+        filesystem (macOS APFS, Windows NTFS default), where ``foo`` and
+        ``FOO`` resolve to the same path. Defaults to the current platform's
+        filesystem behavior when ``None``.
+
+    Examples
+    --------
+    >>> @given(tree=trees())
+    ... def test_something(tree):
+    ...     reference = tree.materialize(zarr.storage.MemoryStore())
+    ...     under_test = tree.materialize(my_icechunk_store())
+    ...     # compare...
+    """
+    if case_insensitive is None:
+        case_insensitive = default_fs_case_insensitive()
+
+    def rebuild_with_names(
+        group: GroupNode, existing_names: set[str]
+    ) -> tuple[GroupNode, set[str]]:
+        new_names = draw(
+            unique_sibling_names(
+                existing_names,
+                num_names=len(group.children),
+                case_insensitive=case_insensitive,
+            )
+        )
+        existing_names = existing_names | set(new_names)
+        children: dict[str, Node] = {}
+        for name, child in zip(new_names, group.children.values(), strict=True):
+            if isinstance(child, GroupNode):
+                child, existing_names = rebuild_with_names(child, existing_names)
+            children[name] = child
+        return GroupNode(children=children), existing_names
+
+    # Two-step generation: first draw the tree structure (skeletons uses
+    # st.recursive which gives good structural shrinking), then assign real
+    # names via @composite (which allows pool-based derivation for realistic
+    # prefix collisions). Doing both in one step would sacrifice either
+    # structural shrinking or name similarity.
+    skeleton = draw(skeletons(max_leaves=draw(max_leaves), max_children=draw(max_children)))
+    result, _ = rebuild_with_names(skeleton, set())
+    return result
