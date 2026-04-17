@@ -45,7 +45,7 @@ from zarr.registry import get_numcodec
 if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
 
 CODEC_PREFIX = "numcodecs."
 
@@ -132,52 +132,62 @@ class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
-        return await asyncio.to_thread(
-            as_numpy_array_wrapper,
-            self._codec.decode,
-            chunk_data,
-            chunk_spec.prototype,
-        )
+    def _decode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return as_numpy_array_wrapper(self._codec.decode, chunk_data, chunk_spec.prototype)
 
-    def _encode(self, chunk_data: Buffer, prototype: BufferPrototype) -> Buffer:
+    def _encode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         encoded = self._codec.encode(chunk_data.as_array_like())
         if isinstance(encoded, np.ndarray):  # Required for checksum codecs
-            return prototype.buffer.from_bytes(encoded.tobytes())
-        return prototype.buffer.from_bytes(encoded)
+            return chunk_spec.prototype.buffer.from_bytes(encoded.tobytes())
+        return chunk_spec.prototype.buffer.from_bytes(encoded)
+
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
 
     async def _encode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
-        return await asyncio.to_thread(self._encode, chunk_data, chunk_spec.prototype)
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.decode, chunk_ndarray)
+        out = self._codec.decode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _encode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+        out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
+
+    async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_bytes = chunk_data.to_bytes()
-        out = await asyncio.to_thread(self._codec.decode, chunk_bytes)
+        out = self._codec.decode(chunk_bytes)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+    def _encode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+        out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.buffer.from_bytes(out)
+
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 # bytes-to-bytes codecs
