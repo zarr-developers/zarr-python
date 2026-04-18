@@ -16,6 +16,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.storage._utils import _normalize_prefix
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -265,6 +266,7 @@ class ZipStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        prefix = _normalize_prefix(prefix)
         async for key in self.list():
             if key.startswith(prefix):
                 yield key

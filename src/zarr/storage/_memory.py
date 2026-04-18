@@ -7,7 +7,7 @@ from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
-from zarr.storage._utils import _normalize_byte_range_index
+from zarr.storage._utils import _normalize_byte_range_index, _normalize_prefix
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
@@ -194,6 +194,7 @@ class MemoryStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         # note: we materialize all dict keys into a list here so we can mutate the dict in-place (e.g. in delete_prefix)
+        prefix = _normalize_prefix(prefix)
         for key in list(self._store_dict):
             if key.startswith(prefix):
                 yield key

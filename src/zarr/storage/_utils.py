@@ -23,6 +23,17 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
+def _normalize_prefix(prefix: str) -> str:
+    """Normalize a store prefix to ensure it has a trailing slash.
+
+    This ensures that prefix matching uses directory-like semantics,
+    so that e.g. prefix "a" does not match keys under "a_extra/".
+    """
+    if prefix != "" and not prefix.endswith("/"):
+        return prefix + "/"
+    return prefix
+
+
 def normalize_path(path: str | bytes | Path | None) -> str:
     if path is None:
         result = ""
