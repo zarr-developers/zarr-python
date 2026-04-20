@@ -43,8 +43,8 @@ Only used when `chunks="auto"` and `shards` is not `None`. Explicit chunk sizes
 are not affected by this value.
 """
 
-ChunksTuple = NewType("ChunksTuple", tuple[tuple[int, ...], ...])
-"""Normalized chunk specification: one tuple of chunk sizes per dimension.
+ChunksTuple = NewType("ChunksTuple", tuple[np.ndarray[tuple[int], np.dtype[np.int64]], ...])
+"""Normalized chunk specification: one 1D int64 array of chunk sizes per dimension.
 
 Produced exclusively by `normalize_chunks_nd` and `guess_chunks`.
 Consumers should use this type to ensure they receive validated,
@@ -682,9 +682,11 @@ def _guess_regular_chunks(
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks_1d(chunks: int | Iterable[int], span: int) -> tuple[int, ...]:
+def normalize_chunks_1d(
+    chunks: int | Iterable[int], span: int
+) -> np.ndarray[tuple[int], np.dtype[np.int64]]:
     """
-    Normalize a one-dimensional chunk specification into a tuple of logical
+    Normalize a one-dimensional chunk specification into a 1D int64 array of
     chunk sizes that cover the span.
 
     `-1` means "one chunk covering the entire span."
@@ -693,14 +695,14 @@ def normalize_chunks_1d(chunks: int | Iterable[int], span: int) -> tuple[int, ..
     by the chunk grid at runtime, not by this function.
     """
     if chunks == -1:
-        return (span,)
+        return np.array([span], dtype=np.int64)
     if isinstance(chunks, int):
         if chunks <= 0:
             raise ValueError(f"Chunk size must be positive, got {chunks}")
         if span == 0:
-            return (chunks,)
+            return np.array([chunks], dtype=np.int64)
         n = ceildiv(span, chunks)
-        return tuple(chunks for _ in range(n))
+        return np.full(n, chunks, dtype=np.int64)
     else:
         chunk_list = list(chunks)
         if not chunk_list:
@@ -709,7 +711,7 @@ def normalize_chunks_1d(chunks: int | Iterable[int], span: int) -> tuple[int, ..
             raise ValueError(f"All chunk sizes must be positive, got {chunk_list}")
         if sum(chunk_list) != span:
             raise ValueError(f"Chunk sizes {chunk_list} do not sum to span {span}")
-        return tuple(chunk_list)
+        return np.asarray(chunk_list, dtype=np.int64)
 
 
 def normalize_chunks_nd(
@@ -733,7 +735,7 @@ def normalize_chunks_nd(
 
     # handle no chunking
     if chunks is False:
-        return ChunksTuple(tuple((s,) for s in shape))
+        return ChunksTuple(tuple(np.array([s], dtype=np.int64) for s in shape))
 
     # handle 1D convenience form
     if isinstance(chunks, numbers.Integral):
@@ -853,7 +855,7 @@ def resolve_outer_and_inner_chunks(
         return ResolvedChunking(outer_chunks=outer, inner=ResolvedChunking(outer_chunks=chunks))
 
     # Extract the flat chunk shape (first size per dimension) for arithmetic.
-    chunk_shape_flat = tuple(dim[0] for dim in chunks)
+    chunk_shape_flat = tuple(int(dim[0]) for dim in chunks)
 
     if shard_shape == "auto":
         warnings.warn(
