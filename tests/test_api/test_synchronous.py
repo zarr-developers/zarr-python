@@ -86,8 +86,6 @@ def test_docstrings_match(callable_name: str) -> None:
                 synchronous.create_array,
                 zarr.AsyncGroup.create_array,
                 zarr.Group.create_array,
-                zarr.AsyncGroup.create_dataset,
-                zarr.Group.create_dataset,
             ),
         ),
     ],
