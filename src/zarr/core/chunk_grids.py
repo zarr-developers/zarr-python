@@ -52,7 +52,7 @@ canonical chunk specifications rather than raw user input.
 """
 
 
-class ResolvedChunking(NamedTuple):
+class ChunkLayout(NamedTuple):
     """Result of resolving user `chunks`/`shards` into grid metadata inputs.
 
     outer_chunks
@@ -66,7 +66,7 @@ class ResolvedChunking(NamedTuple):
     """
 
     outer_chunks: ChunksTuple
-    inner: ResolvedChunking | None = None
+    inner: ChunkLayout | None = None
 
 
 @dataclass(frozen=True)
@@ -822,7 +822,7 @@ def resolve_outer_and_inner_chunks(
     chunks: ChunksTuple,
     shard_shape: ShardsLike | None,
     item_size: int,
-) -> ResolvedChunking:
+) -> ChunkLayout:
     """Resolve user `chunks`/`shards` into outer and inner chunk specs.
 
     Parameters
@@ -841,18 +841,18 @@ def resolve_outer_and_inner_chunks(
 
     Returns
     -------
-    ResolvedChunking
+    ChunkLayout
         `outer_chunks` is the `ChunksTuple` for chunk grid
         metadata.  `inner` holds the sub-chunk structure for
         `ShardingCodec`, or is `None` when sharding is not active.
     """
     if shard_shape is None:
-        return ResolvedChunking(outer_chunks=chunks)
+        return ChunkLayout(outer_chunks=chunks)
 
     # Rectilinear shards: normalize the nested sequence directly.
     if _is_rectilinear_chunks(shard_shape):
         outer = normalize_chunks_nd(shard_shape, array_shape)
-        return ResolvedChunking(outer_chunks=outer, inner=ResolvedChunking(outer_chunks=chunks))
+        return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
 
     # Extract the flat chunk shape (first size per dimension) for arithmetic.
     chunk_shape_flat = tuple(int(dim[0]) for dim in chunks)
@@ -888,4 +888,4 @@ def resolve_outer_and_inner_chunks(
         shard_flat = cast("tuple[int, ...]", shard_shape)
 
     outer = normalize_chunks_nd(shard_flat, array_shape)
-    return ResolvedChunking(outer_chunks=outer, inner=ResolvedChunking(outer_chunks=chunks))
+    return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))

@@ -106,16 +106,16 @@ def test_resolve_outer_and_inner_chunks(
         assert inner.inner is None
 
 
-def test_resolved_chunking_nested() -> None:
-    """Test that ResolvedChunking supports recursive nesting for nested sharding."""
-    from zarr.core.chunk_grids import ResolvedChunking
+def test_chunk_layout_nested() -> None:
+    """Test that ChunkLayout supports recursive nesting for nested sharding."""
+    from zarr.core.chunk_grids import ChunkLayout
 
     leaf = normalize_chunks_nd((5, 5), (100, 100))
-    mid = ResolvedChunking(
+    mid = ChunkLayout(
         outer_chunks=normalize_chunks_nd((25, 25), (100, 100)),
-        inner=ResolvedChunking(outer_chunks=leaf),
+        inner=ChunkLayout(outer_chunks=leaf),
     )
-    top = ResolvedChunking(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
+    top = ChunkLayout(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
 
     # Three levels: top -> mid -> leaf
     _assert_chunks_equal(top.outer_chunks, ((50, 50), (50, 50)))
