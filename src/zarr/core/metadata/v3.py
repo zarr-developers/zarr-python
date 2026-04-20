@@ -411,17 +411,13 @@ def create_chunk_grid_metadata(
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    # Convert arrays to tuples of ints for downstream functions that expect Sequence[int].
-    chunks_as_tuples: tuple[tuple[int, ...], ...] = tuple(
-        tuple(int(c) for c in dim) for dim in chunks
-    )
-    if is_regular_nd(chunks_as_tuples):
+    if is_regular_nd(chunks):
         # If we know the chunks specification is regular, then we can take the first
         # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(dim_chunks[0] for dim_chunks in chunks_as_tuples)
+        chunk_shape = tuple(dim_chunks[0] for dim_chunks in chunks)
         return RegularChunkGridMetadata(chunk_shape=chunk_shape)
     else:
-        return RectilinearChunkGridMetadata(chunk_shapes=chunks_as_tuples)
+        return RectilinearChunkGridMetadata(chunk_shapes=chunks)
 
 
 def parse_chunk_grid(
