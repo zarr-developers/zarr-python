@@ -70,7 +70,7 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
 def test_normalize_chunks(
     chunks: Any, shape: tuple[int, ...], expected: tuple[tuple[int, ...], ...]
 ) -> None:
-    assert expected == normalize_chunks_nd(chunks, shape)
+    _assert_chunks_equal(normalize_chunks_nd(chunks, shape), expected)
 
 
 @pytest.mark.parametrize(
@@ -97,12 +97,12 @@ def test_resolve_outer_and_inner_chunks(
     outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=array_shape, chunks=chunks, shard_shape=shard_shape, item_size=1
     )
-    assert outer_chunks == expected_outer
+    _assert_chunks_equal(outer_chunks, expected_outer)
     if expected_inner_outer is None:
         assert inner is None
     else:
         assert inner is not None
-        assert inner.outer_chunks == expected_inner_outer
+        _assert_chunks_equal(inner.outer_chunks, expected_inner_outer)
         assert inner.inner is None
 
 
@@ -118,11 +118,11 @@ def test_resolved_chunking_nested() -> None:
     top = ResolvedChunking(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
 
     # Three levels: top -> mid -> leaf
-    assert top.outer_chunks == ((50, 50), (50, 50))
+    _assert_chunks_equal(top.outer_chunks, ((50, 50), (50, 50)))
     assert top.inner is not None
-    assert top.inner.outer_chunks == ((25,) * 4, (25,) * 4)
+    _assert_chunks_equal(top.inner.outer_chunks, ((25,) * 4, (25,) * 4))
     assert top.inner.inner is not None
-    assert top.inner.inner.outer_chunks == ((5,) * 20, (5,) * 20)
+    _assert_chunks_equal(top.inner.inner.outer_chunks, ((5,) * 20, (5,) * 20))
     assert top.inner.inner.inner is None
 
 
@@ -150,3 +150,36 @@ def test_normalize_chunks_errors() -> None:
         normalize_chunks_nd((100, 10), (100,))
     with pytest.raises(ValueError, match="dimensions"):
         normalize_chunks_nd((10,), (100, 100))
+
+
+def test_normalize_chunks_1d_uniform_returns_int64_array() -> None:
+    """The uniform-chunks branch must return a 1D int64 array — this is the
+    representation that enables O(1) construction via np.full."""
+    from zarr.core.chunk_grids import normalize_chunks_1d
+
+    result = normalize_chunks_1d(1000, 100_000)
+    assert isinstance(result, np.ndarray)
+    assert result.dtype == np.int64
+    assert result.ndim == 1
+    assert result.shape == (100,)
+    assert (result == 1000).all()
+
+
+def test_normalize_chunks_1d_explicit_list_returns_int64_array() -> None:
+    """The explicit-per-chunk branch must also produce an int64 array."""
+    from zarr.core.chunk_grids import normalize_chunks_1d
+
+    result = normalize_chunks_1d([10, 20, 30, 40], 100)
+    assert isinstance(result, np.ndarray)
+    assert result.dtype == np.int64
+    assert result.tolist() == [10, 20, 30, 40]
+
+
+def test_normalize_chunks_1d_full_span_returns_int64_array() -> None:
+    """The -1 sentinel branch must also produce an int64 array."""
+    from zarr.core.chunk_grids import normalize_chunks_1d
+
+    result = normalize_chunks_1d(-1, 100)
+    assert isinstance(result, np.ndarray)
+    assert result.dtype == np.int64
+    assert result.tolist() == [100]
