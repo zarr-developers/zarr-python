@@ -39,6 +39,8 @@ from zarr.registry import get_codec_class
 if TYPE_CHECKING:
     from typing import Self
 
+    import numpy as np
+
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunksTuple
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
@@ -371,7 +373,9 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
+def is_regular_1d(
+    dim_chunks: Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
+) -> bool:
     """Check if a single dimension's chunk sizes represent a regular grid.
 
     A regular dimension has either all chunks the same size, or all
@@ -388,7 +392,9 @@ def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
     return dim_chunks[-1] <= first
 
 
-def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
+def is_regular_nd(
+    chunks: Iterable[Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]]],
+) -> bool:
     """Check if an N-dimensional chunk specification represents a regular grid."""
     return all(is_regular_1d(d) for d in chunks)
 
@@ -414,10 +420,12 @@ def create_chunk_grid_metadata(
     if is_regular_nd(chunks):
         # If we know the chunks specification is regular, then we can take the first
         # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(dim_chunks[0] for dim_chunks in chunks)
+        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
         return RegularChunkGridMetadata(chunk_shape=chunk_shape)
     else:
-        return RectilinearChunkGridMetadata(chunk_shapes=chunks)
+        return RectilinearChunkGridMetadata(
+            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
+        )
 
 
 def parse_chunk_grid(
