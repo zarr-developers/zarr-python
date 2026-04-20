@@ -10,6 +10,18 @@ from zarr.core.chunk_grids import (
 )
 
 
+def _assert_chunks_equal(
+    actual: tuple[Any, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Compare a ChunksTuple (tuple of np.int64 arrays) against a tuple of int tuples."""
+    assert len(actual) == len(expected), f"axis count mismatch: {len(actual)} vs {len(expected)}"
+    for axis, (a, e) in enumerate(zip(actual, expected, strict=True)):
+        assert np.array_equal(a, np.asarray(e, dtype=np.int64)), (
+            f"axis {axis}: {list(a)} != {list(e)}"
+        )
+
+
 @pytest.mark.parametrize(
     "shape", [(0,), (0,) * 2, (1, 2, 0, 4, 5), (10, 0), (10,), (100,) * 3, (1000000,), (10000,) * 2]
 )
