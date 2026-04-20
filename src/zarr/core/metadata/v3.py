@@ -5,6 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
+import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -38,8 +39,6 @@ from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
     from typing import Self
-
-    import numpy as np
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunksTuple
@@ -385,6 +384,9 @@ def is_regular_1d(
     if len(dim_chunks) <= 1:
         return True
     first = dim_chunks[0]
+    if isinstance(dim_chunks, np.ndarray):
+        # Vectorized comparison avoids per-element Python iteration over int64 arrays.
+        return bool((dim_chunks[1:-1] == first).all() and dim_chunks[-1] <= first)
     for c in dim_chunks[1:-1]:
         if c != first:
             return False
