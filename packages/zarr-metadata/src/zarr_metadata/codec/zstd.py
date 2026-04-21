@@ -1,5 +1,5 @@
 """
-Zstandard codec configuration.
+Zstandard codec types.
 
 See https://github.com/zarr-developers/zarr-specs/pull/256 (unmerged at
 time of writing; the configuration shape below reflects the proposed
@@ -7,8 +7,6 @@ specification).
 """
 
 from typing import Literal, TypedDict
-
-from zarr_metadata.common import NamedRequiredConfig
 
 ZstdCodecName = Literal["zstd"]
 """The ``name`` field value of a ``zstd`` codec envelope."""
@@ -25,8 +23,11 @@ class ZstdCodecConfiguration(TypedDict):
     checksum: bool
 
 
-ZstdCodec = NamedRequiredConfig[ZstdCodecName, ZstdCodecConfiguration]
-"""Full ``zstd`` codec named-config envelope."""
+class ZstdCodec(TypedDict):
+    """Full ``zstd`` codec named-config envelope."""
+
+    name: ZstdCodecName
+    configuration: ZstdCodecConfiguration
 
 
 __all__ = [

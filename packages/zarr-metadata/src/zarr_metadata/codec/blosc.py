@@ -1,42 +1,23 @@
 """
-Blosc codec configuration types (Zarr v3 spec + numcodecs/v2 form).
+Blosc codec types.
+
+See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
-from typing import Literal, NotRequired, TypedDict
-
-from zarr_metadata.common import NamedRequiredConfig
+from typing import Literal, TypedDict
 
 BloscCodecName = Literal["blosc"]
 """The ``name`` field value of a ``blosc`` codec envelope."""
 
 Shuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-"""Blosc shuffle mode names (v3 spec)."""
+"""Blosc shuffle mode names."""
 
 CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """Blosc compressor identifiers."""
 
 
-class BloscCodecConfigurationNumcodecs(TypedDict):
-    """
-    Blosc configuration for Zarr v2 / numcodecs-flavored callers.
-
-    ``shuffle`` is an integer code (the numcodecs convention) rather than
-    a named literal.
-    """
-
-    cname: CName
-    clevel: int
-    shuffle: int
-    blocksize: int
-    typesize: NotRequired[int]
-
-
-class BloscCodecConfigurationV1(TypedDict):
-    """
-    Blosc configuration for Zarr v3 spec (version 1 of the blosc codec).
-
-    ``shuffle`` is a named string literal.
-    """
+class BloscCodecConfiguration(TypedDict):
+    """Configuration for the Zarr v3 ``blosc`` codec."""
 
     cname: CName
     clevel: int
@@ -45,18 +26,16 @@ class BloscCodecConfigurationV1(TypedDict):
     typesize: int
 
 
-BloscCodecConfiguration = BloscCodecConfigurationV1 | BloscCodecConfigurationNumcodecs
-"""Any supported blosc configuration shape."""
+class BloscCodec(TypedDict):
+    """Full ``blosc`` codec named-config envelope."""
 
-BloscCodec = NamedRequiredConfig[BloscCodecName, BloscCodecConfiguration]
-"""Full ``blosc`` codec named-config envelope."""
+    name: BloscCodecName
+    configuration: BloscCodecConfiguration
 
 
 __all__ = [
     "BloscCodec",
     "BloscCodecConfiguration",
-    "BloscCodecConfigurationNumcodecs",
-    "BloscCodecConfigurationV1",
     "BloscCodecName",
     "CName",
     "Shuffle",

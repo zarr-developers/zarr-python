@@ -4,20 +4,32 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
 
 import numcodecs
-from zarr_metadata.codec.blosc import (
-    BloscCodecConfigurationNumcodecs as BloscConfigV2,
-    BloscCodecConfigurationV1 as BloscConfigV3,
-)
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from zarr_metadata.codec.blosc import BloscCodecConfiguration as BloscConfigV3
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
+
+
+class BloscConfigV2(TypedDict):
+    """Blosc configuration in the numcodecs/v2 form.
+
+    ``shuffle`` is an integer code (the numcodecs convention) rather than
+    a named literal as in v3.
+    """
+
+    cname: Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
+    clevel: int
+    shuffle: int
+    blocksize: int
+    typesize: NotRequired[int]
+
 
 if TYPE_CHECKING:
     from typing import Self

@@ -1,5 +1,5 @@
 """
-CRC32C codec.
+CRC32C codec types.
 
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/crc32c/index.html
 
@@ -7,22 +7,23 @@ The CRC32C codec has no configuration fields, so the envelope's
 ``configuration`` key is absent.
 """
 
-from collections.abc import Mapping
-from typing import Literal
+from typing import Literal, NotRequired, TypedDict
 
-from zarr_metadata.common import NamedConfig
+from zarr_metadata.common import JSON
 
 Crc32cCodecName = Literal["crc32c"]
 """The ``name`` field value of a ``crc32c`` codec envelope."""
 
 
-Crc32cCodec = NamedConfig[Crc32cCodecName, Mapping[str, object]]
-"""``crc32c`` codec named-config envelope.
+class Crc32cCodec(TypedDict):
+    """``crc32c`` codec named-config envelope.
 
-Per spec, the CRC32C codec has no configuration fields, so the
-``configuration`` key is optional and, if present, should be an empty
-mapping.
-"""
+    Per spec the codec has no configuration fields. ``configuration`` is
+    optional and, if present, should be an empty mapping.
+    """
+
+    name: Crc32cCodecName
+    configuration: NotRequired[dict[str, JSON]]
 
 
 __all__ = [

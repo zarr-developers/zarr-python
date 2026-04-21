@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from zarr_metadata.codec.blosc import BloscCodec, BloscCodecConfigurationV1
+    from zarr_metadata.codec.blosc import BloscCodec, BloscCodecConfiguration
     from zarr_metadata.codec.bytes import BytesCodec, BytesCodecConfiguration
     from zarr_metadata.codec.crc32c import Crc32cCodec
     from zarr_metadata.codec.gzip import GzipCodec, GzipCodecConfiguration
@@ -104,7 +104,7 @@ def test_regular_chunk_grid_envelope() -> None:
 
 
 def test_blosc_config_v1() -> None:
-    cfg: BloscCodecConfigurationV1 = {
+    cfg: BloscCodecConfiguration = {
         "cname": "zstd",
         "clevel": 5,
         "shuffle": "shuffle",
