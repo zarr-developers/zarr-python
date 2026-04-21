@@ -3,7 +3,9 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, cast
+
+from zarr_metadata.v2.array import ArrayMetadataV2 as ArrayV2MetadataDict  # noqa: TC002
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -41,15 +43,6 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
-
-
-class ArrayV2MetadataDict(TypedDict):
-    """
-    A typed dictionary model for Zarr format 2 metadata.
-    """
-
-    zarr_format: Literal[2]
-    attributes: dict[str, JSON]
 
 
 # Union of acceptable types for v2 compressors
