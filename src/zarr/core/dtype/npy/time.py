@@ -14,7 +14,7 @@ from typing import (
 )
 
 import numpy as np
-from zarr_metadata.dtype.numpy_datetime64 import (
+from zarr_metadata.v3.dtype.numpy_datetime64 import (
     NumpyDatetime64Configuration as TimeConfig,
 )
 

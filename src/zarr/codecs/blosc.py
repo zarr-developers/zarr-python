@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
-from zarr_metadata.codec.blosc import BloscCodecConfiguration as BloscConfigV3
+from zarr_metadata.v3.codec.blosc import BloscCodecConfiguration as BloscConfigV3
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper

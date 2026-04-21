@@ -5,12 +5,15 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
+from zarr_metadata.v3.codec import Codec as _CodecJSON
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
-from zarr_metadata.codec import Codec as CodecJSON  # noqa: TC002
+
+# Legacy alias preserved for zarr.core internal call sites.
+type CodecJSON = _CodecJSON
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
@@ -31,6 +34,7 @@ __all__ = [
     "BaseCodec",
     "BytesBytesCodec",
     "CodecInput",
+    "CodecJSON",
     "CodecOutput",
     "CodecPipeline",
     "GetResult",

@@ -12,16 +12,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from zarr_metadata.codec.blosc import BloscCodec, BloscCodecConfiguration
-    from zarr_metadata.codec.bytes import BytesCodec, BytesCodecConfiguration
-    from zarr_metadata.codec.crc32c import Crc32cCodec
-    from zarr_metadata.codec.gzip import GzipCodec, GzipCodecConfiguration
-    from zarr_metadata.codec.sharding import ShardingCodec, ShardingCodecConfiguration
-    from zarr_metadata.codec.transpose import TransposeCodec, TransposeCodecConfiguration
-    from zarr_metadata.codec.zstd import ZstdCodec, ZstdCodecConfiguration
-    from zarr_metadata.dtype.numpy_datetime64 import NumpyDatetime64
-    from zarr_metadata.dtype.numpy_timedelta64 import NumpyTimedelta64
-    from zarr_metadata.dtype.struct import Struct
     from zarr_metadata.v2.array import ArrayMetadataV2
     from zarr_metadata.v2.codec import NumcodecsConfig
     from zarr_metadata.v2.group import GroupMetadataV2
@@ -30,7 +20,17 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
     from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncoding
     from zarr_metadata.v3.chunk_key_encoding.v2 import V2ChunkKeyEncoding
+    from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
+    from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
+    from zarr_metadata.v3.codec.crc32c import Crc32cCodec
+    from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecConfiguration
+    from zarr_metadata.v3.codec.sharding import ShardingCodec, ShardingCodecConfiguration
+    from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
+    from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
     from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
+    from zarr_metadata.v3.dtype.numpy_datetime64 import NumpyDatetime64
+    from zarr_metadata.v3.dtype.numpy_timedelta64 import NumpyTimedelta64
+    from zarr_metadata.v3.dtype.struct import Struct
     from zarr_metadata.v3.group import GroupMetadataV3
 
 
@@ -270,13 +270,13 @@ def test_blosc_codec_metadata() -> None:
 
 def test_codec_name_constants() -> None:
     """Final constants carry the same string values as the Literal types."""
-    from zarr_metadata.codec.blosc import BLOSC_CODEC_NAME
-    from zarr_metadata.codec.bytes import BYTES_CODEC_NAME
-    from zarr_metadata.codec.crc32c import CRC32C_CODEC_NAME
-    from zarr_metadata.codec.gzip import GZIP_CODEC_NAME
-    from zarr_metadata.codec.sharding import SHARDING_CODEC_NAME
-    from zarr_metadata.codec.transpose import TRANSPOSE_CODEC_NAME
-    from zarr_metadata.codec.zstd import ZSTD_CODEC_NAME
+    from zarr_metadata.v3.codec.blosc import BLOSC_CODEC_NAME
+    from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
+    from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC_NAME
+    from zarr_metadata.v3.codec.gzip import GZIP_CODEC_NAME
+    from zarr_metadata.v3.codec.sharding import SHARDING_CODEC_NAME
+    from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC_NAME
+    from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME
 
     assert BLOSC_CODEC_NAME == "blosc"
     assert BYTES_CODEC_NAME == "bytes"
@@ -289,7 +289,7 @@ def test_codec_name_constants() -> None:
 
 def test_blosc_enum_value_constants() -> None:
     """Blosc shuffle and cname constants can be used as codec config values."""
-    from zarr_metadata.codec.blosc import (
+    from zarr_metadata.v3.codec.blosc import (
         BLOSC_CNAME_ZSTD,
         BLOSC_SHUFFLE_BITSHUFFLE,
     )
@@ -306,7 +306,7 @@ def test_blosc_enum_value_constants() -> None:
 
 
 def test_bytes_endian_constants() -> None:
-    from zarr_metadata.codec.bytes import BYTES_ENDIAN_BIG, BYTES_ENDIAN_LITTLE
+    from zarr_metadata.v3.codec.bytes import BYTES_ENDIAN_BIG, BYTES_ENDIAN_LITTLE
 
     cfg_little: BytesCodecConfiguration = {"endian": BYTES_ENDIAN_LITTLE}
     cfg_big: BytesCodecConfiguration = {"endian": BYTES_ENDIAN_BIG}
@@ -315,7 +315,7 @@ def test_bytes_endian_constants() -> None:
 
 
 def test_sharding_index_location_constants() -> None:
-    from zarr_metadata.codec.sharding import (
+    from zarr_metadata.v3.codec.sharding import (
         SHARDING_INDEX_LOCATION_END,
         SHARDING_INDEX_LOCATION_START,
     )
@@ -337,11 +337,11 @@ def test_sharding_index_location_constants() -> None:
 
 
 def test_primitive_dtype_names() -> None:
-    from zarr_metadata.dtype.bool import BOOL_DTYPE_NAME
-    from zarr_metadata.dtype.complex128 import COMPLEX128_DTYPE_NAME
-    from zarr_metadata.dtype.float32 import FLOAT32_DTYPE_NAME
-    from zarr_metadata.dtype.int32 import INT32_DTYPE_NAME
-    from zarr_metadata.dtype.uint64 import UINT64_DTYPE_NAME
+    from zarr_metadata.v3.dtype.bool import BOOL_DTYPE_NAME
+    from zarr_metadata.v3.dtype.complex128 import COMPLEX128_DTYPE_NAME
+    from zarr_metadata.v3.dtype.float32 import FLOAT32_DTYPE_NAME
+    from zarr_metadata.v3.dtype.int32 import INT32_DTYPE_NAME
+    from zarr_metadata.v3.dtype.uint64 import UINT64_DTYPE_NAME
 
     assert BOOL_DTYPE_NAME == "bool"
     assert INT32_DTYPE_NAME == "int32"
@@ -401,7 +401,7 @@ def test_struct_dtype_metadata_nested() -> None:
 
 
 def test_hex_float16_validator() -> None:
-    from zarr_metadata.dtype.float16 import hex_float16
+    from zarr_metadata.v3.dtype.float16 import hex_float16
 
     assert hex_float16("0x7c00") == "0x7c00"
     with pytest.raises(ValueError):
@@ -413,7 +413,7 @@ def test_hex_float16_validator() -> None:
 
 
 def test_hex_float32_validator() -> None:
-    from zarr_metadata.dtype.float32 import hex_float32
+    from zarr_metadata.v3.dtype.float32 import hex_float32
 
     assert hex_float32("0x7fc00000") == "0x7fc00000"
     with pytest.raises(ValueError):
@@ -423,7 +423,7 @@ def test_hex_float32_validator() -> None:
 
 
 def test_hex_float64_validator() -> None:
-    from zarr_metadata.dtype.float64 import hex_float64
+    from zarr_metadata.v3.dtype.float64 import hex_float64
 
     assert hex_float64("0x7ff8000000000000") == "0x7ff8000000000000"
     with pytest.raises(ValueError):
@@ -433,7 +433,7 @@ def test_hex_float64_validator() -> None:
 
 
 def test_base64_bytes_validator() -> None:
-    from zarr_metadata.dtype.bytes import base64_bytes
+    from zarr_metadata.v3.dtype.bytes import base64_bytes
 
     assert base64_bytes("SGVsbG8=") == "SGVsbG8="
     assert base64_bytes("") == ""
@@ -446,7 +446,7 @@ def test_base64_bytes_validator() -> None:
 
 
 def test_raw_bytes_dtype_name_validator() -> None:
-    from zarr_metadata.dtype.raw import raw_bytes_dtype_name
+    from zarr_metadata.v3.dtype.raw import raw_bytes_dtype_name
 
     assert raw_bytes_dtype_name("r8") == "r8"
     assert raw_bytes_dtype_name("r16") == "r16"

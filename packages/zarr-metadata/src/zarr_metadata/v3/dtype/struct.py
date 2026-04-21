@@ -10,7 +10,7 @@ from typing import Final, Literal, TypedDict
 from typing_extensions import ReadOnly
 
 from zarr_metadata.common import JSON
-from zarr_metadata.dtype import DType
+from zarr_metadata.v3.dtype import DType
 
 STRUCT_DTYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""

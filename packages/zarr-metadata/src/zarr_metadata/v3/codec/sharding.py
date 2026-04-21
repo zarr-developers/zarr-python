@@ -6,7 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 
 from typing import Final, Literal, NotRequired, TypedDict
 
-from zarr_metadata.codec import Codec
+from zarr_metadata.v3.codec import Codec
 
 SHARDING_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
