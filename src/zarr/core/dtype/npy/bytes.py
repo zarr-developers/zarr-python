@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import re
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
+from typing import ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
@@ -20,30 +20,9 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr_metadata.dtype.bytes import FixedLengthBytesConfig as FixedLengthBytesConfig  # noqa: TC002
 
 BytesLike = np.bytes_ | str | bytes | int
-
-
-class FixedLengthBytesConfig(TypedDict):
-    """
-    A configuration for a data type that takes a ``length_bytes`` parameter.
-
-    Attributes
-    ----------
-
-    length_bytes : int
-        The length in bytes of the data associated with this configuration.
-
-    Examples
-    --------
-    ```python
-    {
-        "length_bytes": 12
-    }
-    ```
-    """
-
-    length_bytes: int
 
 
 class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
