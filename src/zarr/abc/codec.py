@@ -10,6 +10,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
+from zarr_metadata.codec import Codec as CodecJSON  # noqa: TC002
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
@@ -59,11 +60,6 @@ def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
 
 CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 """The JSON representation of a codec for Zarr V3."""
-
-# The widest type we will *accept* for a codec JSON
-# This covers v2 and v3
-CodecJSON = str | Mapping[str, object]
-"""The widest type of JSON-like input that could specify a codec."""
 
 
 @runtime_checkable
