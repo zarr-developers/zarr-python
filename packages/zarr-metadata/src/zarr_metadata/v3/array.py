@@ -25,12 +25,15 @@ RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
 
 MetadataField = str | NamedConfig[str, Mapping[str, JSON]]
 """A string or a {name: str, configuration: {...}} key value pair"""
+
+
 class RegularChunkGridConfig(TypedDict):
     """
     Configuration body of a regular chunk grid.
 
     See #SPEC_URL
     """
+
     chunk_shape: tuple[int, ...]
 
 
@@ -40,18 +43,21 @@ class RectilinearChunkGridConfig(TypedDict):
 
     See #SPEC_URL
     """
+
     kind: Literal["inline"]
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
 
 class RegularChunkGrid(TypedDict):
     """Regular chunk grid named-config envelope."""
+
     name: Literal["regular"]
-    configuration: NotRequired[RegularChunkGridConfig]
+    configuration: RegularChunkGridConfig
 
 
 class RectilinearChunkGrid(TypedDict):
     """Rectilinear chunk grid named-config envelope."""
+
     name: Literal["rectilinear"]
     configuration: RectilinearChunkGridConfig
 

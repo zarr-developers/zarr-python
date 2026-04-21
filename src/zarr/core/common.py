@@ -211,12 +211,16 @@ def _default_zarr_format() -> ZarrFormat:
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
 
 
-def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
+def expand_rle(data: Sequence[int | Sequence[int]]) -> list[int]:
     """Expand a mixed array of bare integers and RLE pairs.
 
     Per the rectilinear chunk grid spec, each element can be:
     - a bare integer (an explicit edge length)
     - a two-element array ``[value, count]`` (run-length encoded)
+
+    Accepts both list and tuple forms of the RLE pair so the same routine
+    can decode JSON-parsed input (lists) and internally-constructed input
+    (tuples).
     """
     result: list[int] = []
     for item in data:
@@ -225,7 +229,7 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
             if val < 1:
                 raise ValueError(f"Chunk edge length must be >= 1, got {val}")
             result.append(val)
-        elif isinstance(item, list) and len(item) == 2:
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
             size, count = int(item[0]), int(item[1])
             if size < 1:
                 raise ValueError(f"Chunk edge length must be >= 1, got {size}")
@@ -237,27 +241,30 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
     return result
 
 
-def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
+def compress_rle(sizes: Sequence[int]) -> list[int | tuple[int, int]]:
     """Compress chunk sizes to mixed RLE format per the rectilinear spec.
 
-    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
+    Runs of length > 1 are emitted as ``(value, count)`` 2-tuples; runs of
     length 1 are emitted as bare integers::
 
-        [10, 10, 10, 5] -> [[10, 3], 5]
+        [10, 10, 10, 5] -> [(10, 3), 5]
+
+    The 2-tuple shape mirrors the spec's "exactly two elements" constraint
+    on RLE pairs.
     """
     if not sizes:
         return []
-    result: list[int | list[int]] = []
+    result: list[int | tuple[int, int]] = []
     current = sizes[0]
     count = 1
     for s in sizes[1:]:
         if s == current:
             count += 1
         else:
-            result.append([current, count] if count > 1 else current)
+            result.append((current, count) if count > 1 else current)
             current = s
             count = 1
-    result.append([current, count] if count > 1 else current)
+    result.append((current, count) if count > 1 else current)
     return result
 
 

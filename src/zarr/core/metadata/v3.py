@@ -309,9 +309,9 @@ class RectilinearChunkGridMetadata(Metadata):
                 rle = compress_rle(dim_spec)
                 # Use RLE only if it's actually shorter
                 if len(rle) < len(dim_spec):
-                    serialized_dims.append(rle)
+                    serialized_dims.append(tuple(rle))
                 else:
-                    serialized_dims.append(list(dim_spec))
+                    serialized_dims.append(tuple(dim_spec))
         return {
             "name": "rectilinear",
             "configuration": {
@@ -356,7 +356,7 @@ class RectilinearChunkGridMetadata(Metadata):
                 if dim_spec < 1:
                     raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
                 parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
+            elif isinstance(dim_spec, (list, tuple)):
                 parsed.append(tuple(expand_rle(dim_spec)))
             else:
                 raise TypeError(
