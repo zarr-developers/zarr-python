@@ -38,6 +38,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.13',
     'donfig>=0.8',
+    'zarr-metadata>=0.1, <0.2',
 ]
 
 dynamic = [
@@ -471,3 +472,6 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
+
+[tool.uv.sources]
+zarr-metadata = { path = "packages/zarr-metadata", editable = true }
