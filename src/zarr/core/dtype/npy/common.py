@@ -18,6 +18,7 @@ from typing import (
 )
 
 import numpy as np
+from zarr_metadata.dtype.time import DateTimeUnit as DateTimeUnit
 
 from zarr.core.dtype.common import (
     ENDIANNESS_STR,
@@ -33,9 +34,6 @@ if TYPE_CHECKING:
 IntLike = SupportsInt | SupportsIndex | bytes | str
 FloatLike = SupportsIndex | SupportsFloat | bytes | str
 ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | None
-DateTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
-]
 DATETIME_UNIT: Final = (
     "Y",
     "M",

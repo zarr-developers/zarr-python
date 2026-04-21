@@ -7,7 +7,7 @@ from typing import Literal, TypedDict
 from typing_extensions import ReadOnly
 
 DateTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "ns", "ps", "fs", "as", "generic"
+    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
 ]
 """Time unit codes used by numpy.datetime64 / numpy.timedelta64."""
 

@@ -12,10 +12,14 @@ from typing import (
 )
 
 from typing_extensions import ReadOnly
+from zarr_metadata.dtype import DType
 
 from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
-from zarr_metadata.dtype import DType as DTypeJSON  # noqa: TC002
+
+# This is a wider type than our standard JSON type because we need
+# to work with typeddict objects which are assignable to Mapping[str, object]
+DTypeJSON = DType
 
 EndiannessStr = Literal["little", "big"]
 ENDIANNESS_STR: Final = "little", "big"

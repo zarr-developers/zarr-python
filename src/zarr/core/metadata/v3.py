@@ -3,16 +3,18 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, cast
 
 from zarr_metadata.v3.array import (
     AllowedExtraField as AllowedExtraField,
-    ArrayMetadataV3 as ArrayMetadataJSON_V3,
-    RectilinearChunkGrid as RectilinearChunkGridMetadataJSON,
-    RectilinearChunkGridConfig as RectilinearChunkGridMetadataConfig,  # noqa: F401
-    RectilinearDimSpec as RectilinearDimSpecJSON,
-    RegularChunkGrid as RegularChunkGridMetadataJSON,
-    RegularChunkGridConfig as RegularChunkGridMetadataConfig,  # noqa: F401
+)
+from zarr_metadata.v3.array import (
+    ArrayMetadataV3,
+    RectilinearChunkGrid,
+    RectilinearChunkGridConfig,
+    RectilinearDimSpec,
+    RegularChunkGrid,
+    RegularChunkGridConfig,
 )
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -43,6 +45,26 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
+
+# Legacy aliases preserved for zarr.core internal call sites.
+# Using explicit `TypeAlias` rather than the `type` keyword so that runtime
+# introspection (e.g. `.__annotations__` on the underlying TypedDict) works.
+ArrayMetadataJSON_V3: TypeAlias = ArrayMetadataV3  # noqa: UP040
+RectilinearChunkGridMetadataJSON: TypeAlias = RectilinearChunkGrid  # noqa: UP040
+RectilinearChunkGridMetadataConfig: TypeAlias = RectilinearChunkGridConfig  # noqa: UP040
+RectilinearDimSpecJSON: TypeAlias = RectilinearDimSpec  # noqa: UP040
+RegularChunkGridMetadataJSON: TypeAlias = RegularChunkGrid  # noqa: UP040
+RegularChunkGridMetadataConfig: TypeAlias = RegularChunkGridConfig  # noqa: UP040
+
+__all__ = [
+    "AllowedExtraField",
+    "ArrayMetadataJSON_V3",
+    "RectilinearChunkGridMetadataConfig",
+    "RectilinearChunkGridMetadataJSON",
+    "RectilinearDimSpecJSON",
+    "RegularChunkGridMetadataConfig",
+    "RegularChunkGridMetadataJSON",
+]
 
 if TYPE_CHECKING:
     from typing import Self

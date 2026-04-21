@@ -3,9 +3,9 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
-from zarr_metadata.v2.array import ArrayMetadataV2 as ArrayV2MetadataDict  # noqa: TC002
+from zarr_metadata.v2.array import ArrayMetadataV2
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -44,6 +44,10 @@ from zarr.core.common import (
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
+# Legacy alias preserved for zarr.core internal call sites.
+# Using explicit `TypeAlias` rather than the `type` keyword so that runtime
+# introspection (e.g. `.__annotations__` on the underlying TypedDict) works.
+ArrayV2MetadataDict: TypeAlias = ArrayMetadataV2  # noqa: UP040
 
 # Union of acceptable types for v2 compressors
 type CompressorLikev2 = dict[str, JSON] | Numcodec | None
