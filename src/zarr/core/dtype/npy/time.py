@@ -7,7 +7,6 @@ from typing import (
     ClassVar,
     Literal,
     Self,
-    TypedDict,
     TypeGuard,
     cast,
     get_args,
@@ -15,7 +14,6 @@ from typing import (
 )
 
 import numpy as np
-from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -34,6 +32,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr_metadata.dtype.time import TimeConfig as TimeConfig  # noqa: TC002
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -87,28 +86,6 @@ def check_json_time(data: JSON) -> TypeGuard[Literal["NaT"] | int]:
     or an integer.
     """
     return check_json_int(data) or data == "NaT"
-
-
-class TimeConfig(TypedDict):
-    """
-    The configuration for the numpy.timedelta64 or numpy.datetime64 data type in Zarr V3.
-
-    Attributes
-    ----------
-    unit : ReadOnly[DateTimeUnit]
-        A string encoding a unit of time.
-    scale_factor : ReadOnly[int]
-        A scale factor.
-
-    Examples
-    --------
-    ```python
-    {"unit": "ms", "scale_factor": 1}
-    ```
-    """
-
-    unit: ReadOnly[DateTimeUnit]
-    scale_factor: ReadOnly[int]
 
 
 class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
