@@ -132,14 +132,97 @@ def test_codec_imports() -> None:
 
 def test_dtype_imports() -> None:
     from zarr_metadata.dtype import DType
-    from zarr_metadata.dtype.bytes import FixedLengthBytesConfig
-    from zarr_metadata.dtype.string import LengthBytesConfig
-    from zarr_metadata.dtype.time import DateTimeUnit, TimeConfig
+    from zarr_metadata.dtype.bytes import (
+        BYTES_DTYPE_NAME,
+        NULL_TERMINATED_BYTES_DTYPE_NAME,
+        BytesDTypeName,
+        FixedLengthBytesConfig,
+        NullTerminatedBytes,
+        NullTerminatedBytesDTypeName,
+    )
+    from zarr_metadata.dtype.primitive import (
+        BOOL_DTYPE_NAME,
+        COMPLEX64_DTYPE_NAME,
+        COMPLEX128_DTYPE_NAME,
+        FLOAT16_DTYPE_NAME,
+        FLOAT32_DTYPE_NAME,
+        FLOAT64_DTYPE_NAME,
+        INT8_DTYPE_NAME,
+        INT16_DTYPE_NAME,
+        INT32_DTYPE_NAME,
+        INT64_DTYPE_NAME,
+        UINT8_DTYPE_NAME,
+        UINT16_DTYPE_NAME,
+        UINT32_DTYPE_NAME,
+        UINT64_DTYPE_NAME,
+        PrimitiveDTypeName,
+    )
+    from zarr_metadata.dtype.string import (
+        FIXED_LENGTH_UTF32_DTYPE_NAME,
+        STRING_DTYPE_NAME,
+        FixedLengthUtf32,
+        FixedLengthUtf32DTypeName,
+        LengthBytesConfig,
+        StringDTypeName,
+    )
+    from zarr_metadata.dtype.struct import (
+        STRUCT_DTYPE_NAME,
+        Struct,
+        StructConfig,
+        StructDTypeName,
+        StructField,
+    )
+    from zarr_metadata.dtype.time import (
+        NUMPY_DATETIME64_DTYPE_NAME,
+        NUMPY_TIMEDELTA64_DTYPE_NAME,
+        DateTimeUnit,
+        NumpyDatetime64,
+        NumpyDatetime64DTypeName,
+        NumpyTimedelta64,
+        NumpyTimedelta64DTypeName,
+        TimeConfig,
+    )
 
     _ = (
         DType,
-        FixedLengthBytesConfig,
-        LengthBytesConfig,
+        BOOL_DTYPE_NAME,
+        BYTES_DTYPE_NAME,
+        BytesDTypeName,
+        COMPLEX64_DTYPE_NAME,
+        COMPLEX128_DTYPE_NAME,
         DateTimeUnit,
+        FIXED_LENGTH_UTF32_DTYPE_NAME,
+        FLOAT16_DTYPE_NAME,
+        FLOAT32_DTYPE_NAME,
+        FLOAT64_DTYPE_NAME,
+        FixedLengthBytesConfig,
+        FixedLengthUtf32,
+        FixedLengthUtf32DTypeName,
+        INT8_DTYPE_NAME,
+        INT16_DTYPE_NAME,
+        INT32_DTYPE_NAME,
+        INT64_DTYPE_NAME,
+        LengthBytesConfig,
+        NULL_TERMINATED_BYTES_DTYPE_NAME,
+        NUMPY_DATETIME64_DTYPE_NAME,
+        NUMPY_TIMEDELTA64_DTYPE_NAME,
+        NullTerminatedBytes,
+        NullTerminatedBytesDTypeName,
+        NumpyDatetime64,
+        NumpyDatetime64DTypeName,
+        NumpyTimedelta64,
+        NumpyTimedelta64DTypeName,
+        PrimitiveDTypeName,
+        STRING_DTYPE_NAME,
+        STRUCT_DTYPE_NAME,
+        StringDTypeName,
+        Struct,
+        StructConfig,
+        StructDTypeName,
+        StructField,
         TimeConfig,
+        UINT8_DTYPE_NAME,
+        UINT16_DTYPE_NAME,
+        UINT32_DTYPE_NAME,
+        UINT64_DTYPE_NAME,
     )

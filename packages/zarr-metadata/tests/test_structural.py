@@ -17,9 +17,10 @@ if TYPE_CHECKING:
     from zarr_metadata.codec.sharding import ShardingCodec, ShardingCodecConfiguration
     from zarr_metadata.codec.transpose import TransposeCodec, TransposeCodecConfiguration
     from zarr_metadata.codec.zstd import ZstdCodec, ZstdCodecConfiguration
-    from zarr_metadata.dtype.bytes import FixedLengthBytesConfig
-    from zarr_metadata.dtype.string import LengthBytesConfig
-    from zarr_metadata.dtype.time import TimeConfig
+    from zarr_metadata.dtype.bytes import FixedLengthBytesConfig, NullTerminatedBytes
+    from zarr_metadata.dtype.string import FixedLengthUtf32, LengthBytesConfig
+    from zarr_metadata.dtype.struct import Struct
+    from zarr_metadata.dtype.time import NumpyDatetime64, NumpyTimedelta64, TimeConfig
     from zarr_metadata.v2.array import ArrayMetadataV2
     from zarr_metadata.v2.codec import NumcodecsConfig
     from zarr_metadata.v2.group import GroupMetadataV2
@@ -310,3 +311,86 @@ def test_sharding_index_location_constants() -> None:
     }
     assert cfg_end["index_location"] == "end"
     assert cfg_start["index_location"] == "start"
+
+
+def test_primitive_dtype_names() -> None:
+    from zarr_metadata.dtype.primitive import (
+        BOOL_DTYPE_NAME,
+        COMPLEX128_DTYPE_NAME,
+        FLOAT32_DTYPE_NAME,
+        INT32_DTYPE_NAME,
+        UINT64_DTYPE_NAME,
+    )
+
+    assert BOOL_DTYPE_NAME == "bool"
+    assert INT32_DTYPE_NAME == "int32"
+    assert UINT64_DTYPE_NAME == "uint64"
+    assert FLOAT32_DTYPE_NAME == "float32"
+    assert COMPLEX128_DTYPE_NAME == "complex128"
+
+
+def test_null_terminated_bytes_dtype_metadata() -> None:
+    dtype: NullTerminatedBytes = {
+        "name": "null_terminated_bytes",
+        "configuration": {"length_bytes": 16},
+    }
+    assert dtype["name"] == "null_terminated_bytes"
+    assert dtype["configuration"]["length_bytes"] == 16
+
+
+def test_fixed_length_utf32_dtype_metadata() -> None:
+    dtype: FixedLengthUtf32 = {
+        "name": "fixed_length_utf32",
+        "configuration": {"length_bytes": 32},
+    }
+    assert dtype["name"] == "fixed_length_utf32"
+
+
+def test_numpy_datetime64_dtype_metadata() -> None:
+    dtype: NumpyDatetime64 = {
+        "name": "numpy.datetime64",
+        "configuration": {"unit": "ns", "scale_factor": 1},
+    }
+    assert dtype["name"] == "numpy.datetime64"
+
+
+def test_numpy_timedelta64_dtype_metadata() -> None:
+    dtype: NumpyTimedelta64 = {
+        "name": "numpy.timedelta64",
+        "configuration": {"unit": "s", "scale_factor": 1},
+    }
+    assert dtype["name"] == "numpy.timedelta64"
+
+
+def test_struct_dtype_metadata() -> None:
+    dtype: Struct = {
+        "name": "struct",
+        "configuration": {
+            "fields": (
+                {"name": "x", "data_type": "float32"},
+                {"name": "y", "data_type": "float32"},
+            ),
+        },
+    }
+    assert dtype["name"] == "struct"
+    assert len(dtype["configuration"]["fields"]) == 2
+
+
+def test_struct_dtype_metadata_nested() -> None:
+    """Struct fields can hold envelope data types, including another struct."""
+    inner: Struct = {
+        "name": "struct",
+        "configuration": {
+            "fields": ({"name": "r", "data_type": "uint8"},),
+        },
+    }
+    outer: Struct = {
+        "name": "struct",
+        "configuration": {
+            "fields": (
+                {"name": "coord", "data_type": "float64"},
+                {"name": "color", "data_type": inner},
+            ),
+        },
+    }
+    assert outer["configuration"]["fields"][1]["name"] == "color"

@@ -23,9 +23,7 @@ class BytesCodecConfiguration(TypedDict):
     """
     Configuration for the Zarr v3 `bytes` codec.
 
-    The `endian` field is required for multi-byte data types and absent
-    for single-byte types. Consumers that always expect a value must
-    tolerate its absence.
+    The `endian` field is required for multi-byte data types.
     """
 
     endian: NotRequired[Endian]
