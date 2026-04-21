@@ -27,8 +27,10 @@ nav:
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
       - user-guide/experimental.md
+      - user-guide/glossary.md
   - Examples:
       - user-guide/examples/custom_dtype.md
+      - user-guide/examples/rectilinear_chunks.ipynb
   - API Reference:
       - api/zarr/index.md
       - api/zarr/array.md
@@ -41,11 +43,11 @@ nav:
       - api/zarr/codecs.md
       - api/zarr/codecs/numcodecs.md
       - api/zarr/config.md
-      - api/zarr/convenience.md
       - api/zarr/errors.md
       - api/zarr/metadata.md
       - api/zarr/registry.md
       - api/zarr/storage.md
+      - api/zarr/experimental.md
       - ABC:
         - api/zarr/abc/index.md
         - api/zarr/abc/buffer.md
@@ -69,9 +71,6 @@ nav:
         - api/zarr/testing/store.md
         - api/zarr/testing/strategies.md
         - api/zarr/testing/utils.md
-      - deprecated:
-        - Convenience sub-module: api/zarr/deprecated/convenience.md
-        - Creation sub-module: api/zarr/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
@@ -83,6 +82,7 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
 
   palette:
     # Light mode
@@ -129,6 +129,11 @@ extra_css:
 plugins:
   - autorefs
   - search
+  - mkdocs-jupyter:
+      include: ["docs/user-guide/examples/*.ipynb"]
+      execute: false
+      ignore_h1_titles: true
+      show_input: true
   - markdown-exec
   - mkdocstrings:
       enable_inventory: true
@@ -212,8 +217,6 @@ plugins:
         'developers/contributing.html.md': 'contributing.md'
         'developers/index.html.md': 'contributing.md'
         'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
-        'api/zarr/creation.md': 'api/zarr/deprecated/creation.md'
-        'api/zarr/codecs/numcodecs.md': 'api/zarr/deprecated/creation.md'
         'api.md': 'api/zarr/index.md'
         'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
 

@@ -309,12 +309,13 @@ def test_from_dict_extra_fields() -> None:
 
 
 def test_zstd_checksum() -> None:
+    compressor_config: dict[str, JSON] = {"id": "zstd", "level": 5, "checksum": False}
     arr = zarr.create_array(
         {},
         shape=(10,),
         chunks=(10,),
         dtype="int32",
-        compressors={"id": "zstd", "level": 5, "checksum": False},
+        compressors=compressor_config,
         zarr_format=2,
     )
     metadata = json.loads(

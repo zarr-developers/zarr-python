@@ -1,5 +1,5 @@
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Literal, cast
 
 import typer
@@ -24,18 +24,18 @@ def _set_logging_level(*, verbose: bool) -> None:
     zarr.set_format("%(message)s")
 
 
-class CLIZarrFormat(str, Enum):
+class CLIZarrFormat(StrEnum):
     v2 = "v2"
     v3 = "v3"
 
 
-class CLIZarrFormatV3(str, Enum):
+class CLIZarrFormatV3(StrEnum):
     """Limit CLI choice to only v3"""
 
     v3 = "v3"
 
 
-@app.command()  # type: ignore[misc]
+@app.command()  # type: ignore[untyped-decorator]
 def migrate(
     zarr_format: Annotated[
         CLIZarrFormatV3,
@@ -120,7 +120,7 @@ def migrate(
         sync(migrate_metadata.remove_metadata(write_store, 2, force=False, dry_run=dry_run))
 
 
-@app.command()  # type: ignore[misc]
+@app.command()  # type: ignore[untyped-decorator]
 def remove_metadata(
     zarr_format: Annotated[
         CLIZarrFormat,
@@ -168,7 +168,7 @@ def remove_metadata(
     )
 
 
-@app.callback()  # type: ignore[misc]
+@app.callback()  # type: ignore[untyped-decorator]
 def main(
     verbose: Annotated[
         bool,

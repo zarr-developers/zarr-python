@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -13,6 +13,8 @@ from zarr.abc.codec import (
     BytesBytesCodec,
     Codec,
     CodecPipeline,
+    GetResult,
+    SupportsSyncCodec,
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
@@ -27,14 +29,11 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-
-T = TypeVar("T")
-U = TypeVar("U")
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
-def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
+def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
     out0: list[T] = []
     out1: list[U] = []
     for item0, item1 in iterable:
@@ -43,7 +42,7 @@ def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
     return (out0, out1)
 
 
-def batched(iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
+def batched[T](iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
     if n < 1:
         raise ValueError("n must be at least one")
     it = iter(iterable)
@@ -66,6 +65,111 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         return chunk_spec.dtype.default_scalar()
     else:
         return fill_value
+
+
+@dataclass(slots=True, kw_only=True)
+class ChunkTransform:
+    """A synchronous codec chain bound to an ArraySpec.
+
+    Provides `encode` and `decode` for pure-compute codec operations
+    (no IO, no threading, no batching).
+
+    All codecs must implement `SupportsSyncCodec`. Construction will
+    raise `TypeError` if any codec does not.
+    """
+
+    codecs: tuple[Codec, ...]
+    array_spec: ArraySpec
+
+    # (sync codec, input_spec) pairs in pipeline order.
+    _aa_codecs: tuple[tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ArraySpec], ...] = field(
+        init=False, repr=False, compare=False
+    )
+    _ab_codec: SupportsSyncCodec[NDBuffer, Buffer] = field(init=False, repr=False, compare=False)
+    _ab_spec: ArraySpec = field(init=False, repr=False, compare=False)
+    _bb_codecs: tuple[SupportsSyncCodec[Buffer, Buffer], ...] = field(
+        init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        non_sync = [c for c in self.codecs if not isinstance(c, SupportsSyncCodec)]
+        if non_sync:
+            names = ", ".join(type(c).__name__ for c in non_sync)
+            raise TypeError(
+                f"All codecs must implement SupportsSyncCodec. The following do not: {names}"
+            )
+
+        aa, ab, bb = codecs_from_list(list(self.codecs))
+
+        aa_codecs: list[tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ArraySpec]] = []
+        spec = self.array_spec
+        for aa_codec in aa:
+            assert isinstance(aa_codec, SupportsSyncCodec)
+            aa_codecs.append((aa_codec, spec))
+            spec = aa_codec.resolve_metadata(spec)
+
+        self._aa_codecs = tuple(aa_codecs)
+        assert isinstance(ab, SupportsSyncCodec)
+        self._ab_codec = ab
+        self._ab_spec = spec
+        bb_sync: list[SupportsSyncCodec[Buffer, Buffer]] = []
+        for bb_codec in bb:
+            assert isinstance(bb_codec, SupportsSyncCodec)
+            bb_sync.append(bb_codec)
+        self._bb_codecs = tuple(bb_sync)
+
+    def decode(
+        self,
+        chunk_bytes: Buffer,
+    ) -> NDBuffer:
+        """Decode a single chunk through the full codec chain, synchronously.
+
+        Pure compute -- no IO.
+        """
+        data: Buffer = chunk_bytes
+        for bb_codec in reversed(self._bb_codecs):
+            data = bb_codec._decode_sync(data, self._ab_spec)
+
+        chunk_array: NDBuffer = self._ab_codec._decode_sync(data, self._ab_spec)
+
+        for aa_codec, spec in reversed(self._aa_codecs):
+            chunk_array = aa_codec._decode_sync(chunk_array, spec)
+
+        return chunk_array
+
+    def encode(
+        self,
+        chunk_array: NDBuffer,
+    ) -> Buffer | None:
+        """Encode a single chunk through the full codec chain, synchronously.
+
+        Pure compute -- no IO.
+        """
+        aa_data: NDBuffer = chunk_array
+        for aa_codec, spec in self._aa_codecs:
+            aa_result = aa_codec._encode_sync(aa_data, spec)
+            if aa_result is None:
+                return None
+            aa_data = aa_result
+
+        ab_result = self._ab_codec._encode_sync(aa_data, self._ab_spec)
+        if ab_result is None:
+            return None
+
+        bb_data: Buffer = ab_result
+        for bb_codec in self._bb_codecs:
+            bb_result = bb_codec._encode_sync(bb_data, self._ab_spec)
+            if bb_result is None:
+                return None
+            bb_data = bb_result
+
+        return bb_data
+
+    def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
+        for codec in self.codecs:
+            byte_length = codec.compute_encoded_size(byte_length, array_spec)
+            array_spec = codec.resolve_metadata(array_spec)
+        return byte_length
 
 
 @dataclass(frozen=True)
@@ -138,7 +242,7 @@ class BatchedCodecPipeline(CodecPipeline):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
@@ -251,24 +355,34 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[GetResult, ...]:
+        results: list[GetResult] = []
         if self.supports_partial_decode:
+            batch_info_list = list(batch_info)
             chunk_array_batch = await self.decode_partial_batch(
                 [
                     (byte_getter, chunk_selection, chunk_spec)
-                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
+                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info_list
                 ]
             )
             for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
-                chunk_array_batch, batch_info, strict=False
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
+                    if drop_axes:
+                        chunk_array = chunk_array.squeeze(axis=drop_axes)
                     out[out_selection] = chunk_array
+                    results.append(GetResult(status="present"))
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
         else:
+            batch_info_list = list(batch_info)
             chunk_bytes_batch = await concurrent_map(
-                [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
+                [
+                    (byte_getter, array_spec.prototype)
+                    for byte_getter, array_spec, *_ in batch_info_list
+                ],
                 lambda byte_getter, prototype: byte_getter.get(prototype),
                 config.get("async.concurrency"),
             )
@@ -276,20 +390,23 @@ class BatchedCodecPipeline(CodecPipeline):
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, *_) in zip(
-                        chunk_bytes_batch, batch_info, strict=False
+                        chunk_bytes_batch, batch_info_list, strict=False
                     )
                 ],
             )
             for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
-                chunk_array_batch, batch_info, strict=False
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
-                    if drop_axes != ():
+                    if drop_axes:
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
+                    results.append(GetResult(status="present"))
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
+        return tuple(results)
 
     def _merge_chunk_array(
         self,
@@ -324,7 +441,7 @@ class BatchedCodecPipeline(CodecPipeline):
         else:
             chunk_value = value[out_selection]
             # handle missing singleton dimensions
-            if drop_axes != ():
+            if drop_axes:
                 item = tuple(
                     None  # equivalent to np.newaxis
                     if idx in drop_axes
@@ -469,8 +586,8 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
-        await concurrent_map(
+    ) -> tuple[GetResult, ...]:
+        batch_results = await concurrent_map(
             [
                 (single_batch_info, out, drop_axes)
                 for single_batch_info in batched(batch_info, self.batch_size)
@@ -478,6 +595,10 @@ class BatchedCodecPipeline(CodecPipeline):
             self.read_batch,
             config.get("async.concurrency"),
         )
+        results: list[GetResult] = []
+        for batch in batch_results:
+            results.extend(batch)
+        return tuple(results)
 
     async def write(
         self,

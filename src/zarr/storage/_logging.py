@@ -6,7 +6,7 @@ import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
@@ -19,10 +19,8 @@ if TYPE_CHECKING:
 
     counter: defaultdict[str, int]
 
-T_Store = TypeVar("T_Store", bound=Store)
 
-
-class LoggingStore(WrapperStore[T_Store]):
+class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
     """
     Store that logs all calls to another wrapped store.
 
@@ -76,6 +74,9 @@ class LoggingStore(WrapperStore[T_Store]):
             logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         )
         return handler
+
+    def _with_store(self, store: T_Store) -> Self:
+        return type(self)(store=store, log_level=self.log_level, log_handler=self.log_handler)
 
     @contextmanager
     def log(self, hint: Any = "") -> Generator[None, None, None]:

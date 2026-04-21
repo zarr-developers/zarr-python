@@ -1,11 +1,14 @@
+import itertools
 import json
 import numbers
+from collections.abc import Generator
 from typing import Any
 
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+import zarr
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")
@@ -22,12 +25,21 @@ from zarr.testing.strategies import (
     array_metadata,
     arrays,
     basic_indices,
+    complex_rectilinear_arrays,
     numpy_arrays,
     orthogonal_indices,
+    rectilinear_arrays,
     simple_arrays,
     stores,
     zarr_formats,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_rectilinear_chunks() -> Generator[None, None, None]:
+    """Enable rectilinear chunks for all property tests since strategies may generate them."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        yield
 
 
 def deep_equal(a: Any, b: Any) -> bool:
@@ -60,7 +72,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     if isinstance(a, np.ndarray) and isinstance(b, np.ndarray):
         if a.shape != b.shape:
             return False
-        return all(deep_equal(x, y) for x, y in zip(a.flat, b.flat, strict=False))
+        return all(itertools.starmap(deep_equal, zip(a.flat, b.flat, strict=False)))
 
     if isinstance(a, dict) and isinstance(b, dict):
         if set(a.keys()) != set(b.keys()):
@@ -70,7 +82,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         if len(a) != len(b):
             return False
-        return all(deep_equal(x, y) for x, y in zip(a, b, strict=False))
+        return all(itertools.starmap(deep_equal, zip(a, b, strict=False)))
 
     return a == b
 
@@ -110,7 +122,7 @@ def test_array_creates_implicit_groups(array):
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(simple_arrays())
+    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
 
@@ -133,11 +145,26 @@ async def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @pytest.mark.asyncio
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
+    nparray, zarray = data.draw(complex_rectilinear_arrays())
+    indexer = data.draw(basic_indices(shape=nparray.shape))
+    assert_array_equal(nparray[indexer], zarray[indexer])
+
+
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
 
@@ -169,7 +196,12 @@ async def test_oindex(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     indexer = data.draw(
         npst.integer_array_indices(

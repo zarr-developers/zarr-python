@@ -232,7 +232,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
     arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
     assert isinstance(arr2, zarr.Array)
 
-    assert arr2.async_array._config.write_empty_chunks is True
+    assert arr2.async_array.config.write_empty_chunks is True
 
     arr2[0:5] = np.zeros(5)
     assert arr2.nchunks_initialized == 1
@@ -278,6 +278,19 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     # path not found
     with pytest.raises(FileNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
+
+
+def test_open_array_rectilinear_chunks(tmp_path: Path) -> None:
+    """zarr.open with rectilinear (dask-style) chunks preserves the chunk grid."""
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
+
+    chunks = ((3, 3, 4), (5, 5))
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        z = zarr.open(store=tmp_path, shape=(10, 10), dtype="float64", chunks=chunks, mode="w")
+    assert isinstance(z, Array)
+    assert z.shape == (10, 10)
+    assert isinstance(z.metadata.chunk_grid, RectilinearChunkGridMetadata)
+    assert z.read_chunk_sizes == ((3, 3, 4), (5, 5))
 
 
 @pytest.mark.asyncio
@@ -599,7 +612,6 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
 
 
 def test_tree() -> None:
-    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
@@ -1529,6 +1541,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     array = np.zeros(shape, dtype=dtype)
     store = zarr.storage.MemoryStore()
 
+    # ruff: disable[FURB171]
     if f in [zarr.full, zarr.full_like]:
         kwargs["fill_value"] = 0
     if f in [zarr.array]:
@@ -1537,6 +1550,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
         kwargs["a"] = array
     if f in [zarr.create_array]:
         kwargs["store"] = store
+    # ruff: enable[FURB171]
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)

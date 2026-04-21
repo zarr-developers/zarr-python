@@ -13,25 +13,29 @@ on:
 env:
   LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
-
+    name: py=${{ matrix.python-version }}
+    environment:
+      name: codecov-upload
+      deployment: false
     runs-on: gpu-runner
     strategy:
       matrix:
-        python-version: ['3.11']
-        numpy-version: ['2.2']
-        dependency-set: ["minimal"]
+        python-version: ['3.12']
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
     # - name: cuda-toolkit
     #   uses: Jimver/cuda-toolkit@v0.2.16
     #   id: cuda-toolkit
@@ -51,24 +55,29 @@ jobs:
         echo $LD_LIBRARY_PATH
         nvcc -V
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
-    - name: Install Hatch and CuPy
-      run: |
-        python -m pip install --upgrade pip
-        pip install hatch
+    - name: Install Hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env create gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env run --env gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage-gpu
+        hatch env run --env "$HATCH_ENV" run-coverage
 
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: gpu
         verbose: true # optional (default = false)

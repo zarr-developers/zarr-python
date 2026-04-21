@@ -3,9 +3,15 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    Store,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
+)
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -228,6 +234,37 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        if not isinstance(self.store, SupportsGetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        if not isinstance(self.store, SupportsSetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
+        self.store.set_sync(self.path, value)
+
+    def delete_sync(self) -> None:
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        if not isinstance(self.store, SupportsDeleteSync):
+            raise TypeError(
+                f"Store {type(self.store).__name__} does not support synchronous delete."
+            )
+        self.store.delete_sync(self.path)
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
@@ -259,7 +296,7 @@ class StorePath:
         return False
 
 
-StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -311,7 +348,7 @@ async def make_store(
     ):
         raise TypeError(
             "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+            "'storage_options' is only used when the store is passed as an FSSpec URI string.",
         )
 
     assert mode in (None, "r", "r+", "a", "w", "w-")
@@ -341,7 +378,7 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
-        # Either a FSSpec URI or a local filesystem path
+        # Either an FSSpec URI or a local filesystem path
         if _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
@@ -409,7 +446,7 @@ async def make_store_path(
         if storage_options:
             raise TypeError(
                 "'storage_options' was provided but unused. "
-                "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+                "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
         return store_like / path_normalized
 
