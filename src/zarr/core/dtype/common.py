@@ -15,6 +15,7 @@ from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
+from zarr_metadata.dtype import DType as DTypeJSON  # noqa: TC002
 
 EndiannessStr = Literal["little", "big"]
 ENDIANNESS_STR: Final = "little", "big"
@@ -28,10 +29,6 @@ JSONFloatV3 = float | SpecialFloatStrings | str
 ObjectCodecID = Literal["vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2"]
 # These are the ids of the known object codecs for zarr v2.
 OBJECT_CODEC_IDS: Final = ("vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2")
-
-# This is a wider type than our standard JSON type because we need
-# to work with typeddict objects which are assignable to Mapping[str, object]
-DTypeJSON = str | int | float | Sequence["DTypeJSON"] | None | Mapping[str, object]
 
 # The DTypeJSON_V2 type exists because ZDType.from_json takes a single argument, which must contain
 # all the information necessary to decode the data type. Zarr v2 supports multiple distinct
