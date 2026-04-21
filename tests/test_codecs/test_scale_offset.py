@@ -5,8 +5,11 @@ from typing import Any
 import numpy as np
 import pytest
 
+import zarr
 from tests.test_codecs.conftest import Expect, ExpectErr
-from zarr.codecs.scale_offset import ScaleOffset
+from zarr.codecs.scale_offset import ScaleOffset, _decode, _encode
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.storage._memory import MemoryStore
 
 # ---------------------------------------------------------------------------
 # Serialization
@@ -279,7 +282,6 @@ def test_rejects_zero_scale() -> None:
 )
 def test_rejects_unrepresentable_scale_offset(case: ExpectErr[dict[str, Any]]) -> None:
     """Scale/offset values that can't be represented in the array dtype are rejected."""
-    import zarr
 
     with pytest.raises(case.exception_cls, match=case.msg):
         zarr.create_array(
@@ -295,7 +297,6 @@ def test_rejects_unrepresentable_scale_offset(case: ExpectErr[dict[str, Any]]) -
 
 def test_dtype_preservation() -> None:
     """Integer scale/offset arithmetic preserves the array dtype when division is exact."""
-    import zarr
 
     arr = zarr.create_array(
         store={},
@@ -312,11 +313,8 @@ def test_dtype_preservation() -> None:
     np.testing.assert_array_equal(arr[:], data)
 
 
-def test_integer_decode_rejects_non_exact_division() -> None:
+async def test_integer_decode_rejects_non_exact_division() -> None:
     """Decoding an integer array raises when the stored value isn't divisible by scale."""
-    import zarr
-    from zarr.storage import MemoryStore
-
     store = MemoryStore()
     arr = zarr.create_array(
         store=store,
@@ -329,20 +327,15 @@ def test_integer_decode_rejects_non_exact_division() -> None:
     )
     # Write raw encoded bytes directly so we can inject a value that isn't divisible by scale.
     # Array layout: int8 [2, 3, 4]; 3 % 2 != 0, so decode must fail.
-    import asyncio
-
-    from zarr.core.buffer import default_buffer_prototype
 
     buf = default_buffer_prototype().buffer.from_bytes(np.array([2, 3, 4], dtype="int8").tobytes())
-    asyncio.run(arr.store_path.store.set("c/0", buf))
+    await arr.store_path.store.set("c/0", buf)
     with pytest.raises(ValueError, match="non-zero remainder"):
         arr[:]
 
 
 def test_encode_rejects_signed_integer_overflow() -> None:
     """Encoding raises when (value - offset) * scale exceeds the target integer range."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=(3,),
@@ -359,8 +352,6 @@ def test_encode_rejects_signed_integer_overflow() -> None:
 
 def test_encode_rejects_unsigned_integer_underflow() -> None:
     """Encoding raises when value - offset underflows an unsigned dtype."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=(3,),
@@ -377,8 +368,6 @@ def test_encode_rejects_unsigned_integer_underflow() -> None:
 
 def test_float32_dtype_preserved() -> None:
     """float32 arrays survive encode+decode without being promoted to float64."""
-    from zarr.codecs.scale_offset import _decode, _encode
-
     arr = np.arange(100, dtype="float32")
     offset = np.float32(5.0)
     scale = np.float32(0.25)
@@ -390,8 +379,6 @@ def test_float32_dtype_preserved() -> None:
 
 def test_float_encode_rejects_wider_scalar() -> None:
     """A float64 scalar passed with a float32 array must not silently widen the result."""
-    from zarr.codecs.scale_offset import _encode
-
     arr = np.arange(10, dtype="float32")
     # A numpy float64 scalar (not a Python float — NEP 50 exempts those) mixed with a
     # float32 ndarray promotes to float64. The codec must reject that.
@@ -401,21 +388,13 @@ def test_float_encode_rejects_wider_scalar() -> None:
 
 def test_float_decode_rejects_wider_scalar() -> None:
     """A float64 scalar passed with a float32 array must not silently widen on decode."""
-    from zarr.codecs.scale_offset import _decode
-
     arr = np.arange(10, dtype="float32")
     with pytest.raises(ValueError, match="changed dtype from float32 to float64"):
         _decode(arr, np.float64(5.0), np.float64(0.25), scale_repr=0.25)
 
 
-def test_decode_rejects_integer_overflow_on_offset_add() -> None:
+async def test_decode_rejects_integer_overflow_on_offset_add() -> None:
     """Decoding raises when quotient + offset overflows the target integer dtype."""
-    import asyncio
-
-    import zarr
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.storage import MemoryStore
-
     store = MemoryStore()
     arr = zarr.create_array(
         store=store,
@@ -430,6 +409,6 @@ def test_decode_rejects_integer_overflow_on_offset_add() -> None:
     buf = default_buffer_prototype().buffer.from_bytes(
         np.array([0, 50, 100], dtype="int8").tobytes()
     )
-    asyncio.run(arr.store_path.store.set("c/0", buf))
+    await arr.store_path.store.set("c/0", buf)
     with pytest.raises(ValueError, match="outside the range of dtype int8"):
         arr[:]
