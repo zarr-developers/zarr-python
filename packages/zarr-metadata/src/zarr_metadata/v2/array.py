@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr_metadata.common import JSON
     from zarr_metadata.v2.codec import NumcodecsConfig
 
@@ -35,6 +33,7 @@ prefix character of the string; parsing it out is a caller concern, not
 part of this type.
 """
 
+
 class ArrayMetadataV2(TypedDict):
     """
     Zarr v2 array metadata document (the `.zarray` content).
@@ -51,7 +50,6 @@ class ArrayMetadataV2(TypedDict):
     order: Literal["C", "F"]
     filters: tuple[NumcodecsConfig, ...] | None
     dimension_separator: NotRequired[Literal[".", "/"]]
-
 
 
 __all__ = [

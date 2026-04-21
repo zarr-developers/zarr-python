@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from zarr_metadata.common import JSON
-    from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
 
 from zarr_metadata.v3.array import AllowedExtraField
 
@@ -25,7 +24,6 @@ class GroupMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSON]]
-    consolidated_metadata: NotRequired[ConsolidatedMetadataV3]
 
 
 __all__ = [
