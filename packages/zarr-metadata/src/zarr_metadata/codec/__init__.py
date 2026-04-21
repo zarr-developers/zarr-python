@@ -1,0 +1,1 @@
+"""Zarr codec metadata types."""
