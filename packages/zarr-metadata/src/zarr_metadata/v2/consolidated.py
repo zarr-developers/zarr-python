@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, TypedDict
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata import JSON
+    from zarr_metadata.common import JSON
+
+    from .array import ArrayMetadataV2
+    from .group import GroupMetadataV2
+
 
 
 class ConsolidatedMetadataV2(TypedDict):
@@ -26,7 +30,7 @@ class ConsolidatedMetadataV2(TypedDict):
     """
 
     zarr_consolidated_format: int
-    metadata: Mapping[str, JSON]
+    metadata: Mapping[str, GroupMetadataV2 | ArrayMetadataV2 | JSON]
 
 
 __all__ = [

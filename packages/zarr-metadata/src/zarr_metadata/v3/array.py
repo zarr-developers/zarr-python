@@ -5,7 +5,7 @@ from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata import JSON, NamedConfig, NamedRequiredConfig
+from zarr_metadata.common import JSON, NamedConfig
 
 
 class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
@@ -21,31 +21,39 @@ class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
 
 # JSON type for a single dimension's rectilinear spec:
 # bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
-RectilinearDimSpec = int | list[int | list[int]]
+RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
 
-
+MetadataField = str | NamedConfig[str, Mapping[str, JSON]]
+"""A string or a {name: str, configuration: {...}} key value pair"""
 class RegularChunkGridConfig(TypedDict):
     """
     Configuration body of a regular chunk grid.
-    """
 
+    See #SPEC_URL
+    """
     chunk_shape: tuple[int, ...]
 
 
 class RectilinearChunkGridConfig(TypedDict):
     """
     Configuration body of a rectilinear chunk grid.
-    """
 
+    See #SPEC_URL
+    """
     kind: Literal["inline"]
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
 
-RegularChunkGrid = NamedRequiredConfig[Literal["regular"], RegularChunkGridConfig]
-"""Regular chunk grid named-config envelope."""
+class RegularChunkGrid(TypedDict):
+    """Regular chunk grid named-config envelope."""
+    name: Literal["regular"]
+    configuration: NotRequired[RegularChunkGridConfig]
 
-RectilinearChunkGrid = NamedRequiredConfig[Literal["rectilinear"], RectilinearChunkGridConfig]
-"""Rectilinear chunk grid named-config envelope."""
+
+class RectilinearChunkGrid(TypedDict):
+    """Rectilinear chunk grid named-config envelope."""
+    name: Literal["rectilinear"]
+    configuration: RectilinearChunkGridConfig
 
 
 class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
@@ -57,14 +65,14 @@ class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: str | NamedConfig[str, Mapping[str, JSON]]
+    data_type: MetadataField
     shape: tuple[int, ...]
-    chunk_grid: str | NamedConfig[str, Mapping[str, JSON]]
-    chunk_key_encoding: str | NamedConfig[str, Mapping[str, JSON]]
+    chunk_grid: MetadataField
+    chunk_key_encoding: MetadataField
     fill_value: JSON
-    codecs: tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]
+    codecs: tuple[MetadataField, ...]
     attributes: NotRequired[Mapping[str, JSON]]
-    storage_transformers: NotRequired[tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]]
+    storage_transformers: NotRequired[tuple[MetadataField, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 

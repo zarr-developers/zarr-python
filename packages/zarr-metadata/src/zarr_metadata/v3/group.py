@@ -9,7 +9,7 @@ from typing_extensions import TypedDict
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata import JSON
+    from zarr_metadata.common import JSON
     from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
 
 from zarr_metadata.v3.array import AllowedExtraField
