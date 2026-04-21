@@ -28,9 +28,9 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
     from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
     from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
-    from zarr_metadata.v3.dtype.numpy_datetime64 import NumpyDatetime64
-    from zarr_metadata.v3.dtype.numpy_timedelta64 import NumpyTimedelta64
-    from zarr_metadata.v3.dtype.struct import Struct
+    from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyDatetime64
+    from zarr_metadata.v3.data_type.numpy_timedelta64 import NumpyTimedelta64
+    from zarr_metadata.v3.data_type.struct import Struct
     from zarr_metadata.v3.group import GroupMetadataV3
 
 
@@ -337,11 +337,11 @@ def test_sharding_index_location_constants() -> None:
 
 
 def test_primitive_dtype_names() -> None:
-    from zarr_metadata.v3.dtype.bool import BOOL_DTYPE_NAME
-    from zarr_metadata.v3.dtype.complex128 import COMPLEX128_DTYPE_NAME
-    from zarr_metadata.v3.dtype.float32 import FLOAT32_DTYPE_NAME
-    from zarr_metadata.v3.dtype.int32 import INT32_DTYPE_NAME
-    from zarr_metadata.v3.dtype.uint64 import UINT64_DTYPE_NAME
+    from zarr_metadata.v3.data_type.bool import BOOL_DTYPE_NAME
+    from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DTYPE_NAME
+    from zarr_metadata.v3.data_type.float32 import FLOAT32_DTYPE_NAME
+    from zarr_metadata.v3.data_type.int32 import INT32_DTYPE_NAME
+    from zarr_metadata.v3.data_type.uint64 import UINT64_DTYPE_NAME
 
     assert BOOL_DTYPE_NAME == "bool"
     assert INT32_DTYPE_NAME == "int32"
@@ -401,7 +401,7 @@ def test_struct_dtype_metadata_nested() -> None:
 
 
 def test_hex_float16_validator() -> None:
-    from zarr_metadata.v3.dtype.float16 import hex_float16
+    from zarr_metadata.v3.data_type.float16 import hex_float16
 
     assert hex_float16("0x7c00") == "0x7c00"
     with pytest.raises(ValueError):
@@ -413,7 +413,7 @@ def test_hex_float16_validator() -> None:
 
 
 def test_hex_float32_validator() -> None:
-    from zarr_metadata.v3.dtype.float32 import hex_float32
+    from zarr_metadata.v3.data_type.float32 import hex_float32
 
     assert hex_float32("0x7fc00000") == "0x7fc00000"
     with pytest.raises(ValueError):
@@ -423,7 +423,7 @@ def test_hex_float32_validator() -> None:
 
 
 def test_hex_float64_validator() -> None:
-    from zarr_metadata.v3.dtype.float64 import hex_float64
+    from zarr_metadata.v3.data_type.float64 import hex_float64
 
     assert hex_float64("0x7ff8000000000000") == "0x7ff8000000000000"
     with pytest.raises(ValueError):
@@ -433,7 +433,7 @@ def test_hex_float64_validator() -> None:
 
 
 def test_base64_bytes_validator() -> None:
-    from zarr_metadata.v3.dtype.bytes import base64_bytes
+    from zarr_metadata.v3.data_type.bytes import base64_bytes
 
     assert base64_bytes("SGVsbG8=") == "SGVsbG8="
     assert base64_bytes("") == ""
@@ -446,7 +446,7 @@ def test_base64_bytes_validator() -> None:
 
 
 def test_raw_bytes_dtype_name_validator() -> None:
-    from zarr_metadata.v3.dtype.raw import raw_bytes_dtype_name
+    from zarr_metadata.v3.data_type.raw import raw_bytes_dtype_name
 
     assert raw_bytes_dtype_name("r8") == "r8"
     assert raw_bytes_dtype_name("r16") == "r16"

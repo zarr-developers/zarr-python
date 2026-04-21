@@ -12,7 +12,7 @@ from typing import (
 )
 
 from typing_extensions import ReadOnly
-from zarr_metadata.v3.dtype import DType
+from zarr_metadata.v3.data_type import DType
 
 from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning

@@ -179,59 +179,63 @@ def test_codec_imports() -> None:
 
 
 def test_dtype_imports() -> None:
-    from zarr_metadata.v3.dtype import DType
-    from zarr_metadata.v3.dtype.bool import BOOL_DTYPE_NAME, BoolDTypeName, BoolFillValue
-    from zarr_metadata.v3.dtype.bytes import BYTES_DTYPE_NAME, BytesDTypeName, BytesFillValue
-    from zarr_metadata.v3.dtype.complex64 import (
+    from zarr_metadata.v3.data_type import DType
+    from zarr_metadata.v3.data_type.bool import BOOL_DTYPE_NAME, BoolDTypeName, BoolFillValue
+    from zarr_metadata.v3.data_type.bytes import BYTES_DTYPE_NAME, BytesDTypeName, BytesFillValue
+    from zarr_metadata.v3.data_type.complex64 import (
         COMPLEX64_DTYPE_NAME,
         Complex64Component,
         Complex64DTypeName,
         Complex64FillValue,
     )
-    from zarr_metadata.v3.dtype.complex128 import (
+    from zarr_metadata.v3.data_type.complex128 import (
         COMPLEX128_DTYPE_NAME,
         Complex128Component,
         Complex128DTypeName,
         Complex128FillValue,
     )
-    from zarr_metadata.v3.dtype.float16 import (
+    from zarr_metadata.v3.data_type.float16 import (
         FLOAT16_DTYPE_NAME,
         Float16DTypeName,
         Float16FillValue,
         Float16SpecialFillValue,
     )
-    from zarr_metadata.v3.dtype.float32 import (
+    from zarr_metadata.v3.data_type.float32 import (
         FLOAT32_DTYPE_NAME,
         Float32DTypeName,
         Float32FillValue,
         Float32SpecialFillValue,
     )
-    from zarr_metadata.v3.dtype.float64 import (
+    from zarr_metadata.v3.data_type.float64 import (
         FLOAT64_DTYPE_NAME,
         Float64DTypeName,
         Float64FillValue,
         Float64SpecialFillValue,
     )
-    from zarr_metadata.v3.dtype.int8 import INT8_DTYPE_NAME, Int8DTypeName, Int8FillValue
-    from zarr_metadata.v3.dtype.int16 import INT16_DTYPE_NAME, Int16DTypeName, Int16FillValue
-    from zarr_metadata.v3.dtype.int32 import INT32_DTYPE_NAME, Int32DTypeName, Int32FillValue
-    from zarr_metadata.v3.dtype.int64 import INT64_DTYPE_NAME, Int64DTypeName, Int64FillValue
-    from zarr_metadata.v3.dtype.numpy_datetime64 import (
+    from zarr_metadata.v3.data_type.int8 import INT8_DTYPE_NAME, Int8DTypeName, Int8FillValue
+    from zarr_metadata.v3.data_type.int16 import INT16_DTYPE_NAME, Int16DTypeName, Int16FillValue
+    from zarr_metadata.v3.data_type.int32 import INT32_DTYPE_NAME, Int32DTypeName, Int32FillValue
+    from zarr_metadata.v3.data_type.int64 import INT64_DTYPE_NAME, Int64DTypeName, Int64FillValue
+    from zarr_metadata.v3.data_type.numpy_datetime64 import (
         NUMPY_DATETIME64_DTYPE_NAME,
         NumpyDatetime64,
         NumpyDatetime64Configuration,
         NumpyDatetime64DTypeName,
         NumpyDatetime64FillValue,
     )
-    from zarr_metadata.v3.dtype.numpy_timedelta64 import (
+    from zarr_metadata.v3.data_type.numpy_timedelta64 import (
         NUMPY_TIMEDELTA64_DTYPE_NAME,
         NumpyTimedelta64,
         NumpyTimedelta64Configuration,
         NumpyTimedelta64DTypeName,
         NumpyTimedelta64FillValue,
     )
-    from zarr_metadata.v3.dtype.string import STRING_DTYPE_NAME, StringDTypeName, StringFillValue
-    from zarr_metadata.v3.dtype.struct import (
+    from zarr_metadata.v3.data_type.string import (
+        STRING_DTYPE_NAME,
+        StringDTypeName,
+        StringFillValue,
+    )
+    from zarr_metadata.v3.data_type.struct import (
         STRUCT_DTYPE_NAME,
         Struct,
         StructConfiguration,
@@ -239,10 +243,22 @@ def test_dtype_imports() -> None:
         StructField,
         StructFillValue,
     )
-    from zarr_metadata.v3.dtype.uint8 import UINT8_DTYPE_NAME, Uint8DTypeName, Uint8FillValue
-    from zarr_metadata.v3.dtype.uint16 import UINT16_DTYPE_NAME, Uint16DTypeName, Uint16FillValue
-    from zarr_metadata.v3.dtype.uint32 import UINT32_DTYPE_NAME, Uint32DTypeName, Uint32FillValue
-    from zarr_metadata.v3.dtype.uint64 import UINT64_DTYPE_NAME, Uint64DTypeName, Uint64FillValue
+    from zarr_metadata.v3.data_type.uint8 import UINT8_DTYPE_NAME, Uint8DTypeName, Uint8FillValue
+    from zarr_metadata.v3.data_type.uint16 import (
+        UINT16_DTYPE_NAME,
+        Uint16DTypeName,
+        Uint16FillValue,
+    )
+    from zarr_metadata.v3.data_type.uint32 import (
+        UINT32_DTYPE_NAME,
+        Uint32DTypeName,
+        Uint32FillValue,
+    )
+    from zarr_metadata.v3.data_type.uint64 import (
+        UINT64_DTYPE_NAME,
+        Uint64DTypeName,
+        Uint64FillValue,
+    )
 
     _ = (
         DType,

@@ -3,7 +3,7 @@ Top-level cross-version primitives for Zarr metadata.
 
 Version-specific types live under `zarr_metadata.v2` and `zarr_metadata.v3`.
 Codec and dtype spec types live under `zarr_metadata.v3.codec` and
-`zarr_metadata.v3.dtype`.
+`zarr_metadata.v3.data_type`.
 """
 
 from collections.abc import Mapping, Sequence

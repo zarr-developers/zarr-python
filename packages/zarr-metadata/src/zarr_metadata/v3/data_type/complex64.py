@@ -6,7 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3.dtype.float32 import Float32FillValue
+from zarr_metadata.v3.data_type.float32 import Float32FillValue
 
 COMPLEX64_DTYPE_NAME: Final = "complex64"
 """The `data_type` value for the `complex64` type."""
