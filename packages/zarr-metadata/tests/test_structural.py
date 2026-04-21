@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from zarr_metadata.dtype.string import LengthBytesConfig
     from zarr_metadata.dtype.time import TimeConfig
     from zarr_metadata.v2.array import ArrayMetadataV2
+    from zarr_metadata.v2.codec import NumcodecsConfig
     from zarr_metadata.v2.group import GroupMetadataV2
     from zarr_metadata.v3.array import ArrayMetadataV3, RegularChunkGrid
     from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
@@ -69,7 +70,7 @@ def test_array_metadata_v2_structured_dtype() -> None:
         "chunks": (10,),
         "dtype": [
             {"fieldname": "a", "datatype": "<i4"},
-            {"fieldname": "b", "datatype": "<f8", "shape": [3]},
+            {"fieldname": "b", "datatype": "<f8", "shape": (3,)},
         ],
     }
     assert isinstance(meta["dtype"], list)
@@ -83,7 +84,7 @@ def test_group_metadata_v2_minimal() -> None:
 def test_regular_chunk_grid_envelope() -> None:
     grid: RegularChunkGrid = {
         "name": "regular",
-        "configuration": {"chunk_shape": [10, 10]},
+        "configuration": {"chunk_shape": (10, 10)},
     }
     assert grid["name"] == "regular"
 
@@ -112,3 +113,24 @@ def test_fixed_length_bytes_config() -> None:
 def test_time_config() -> None:
     cfg: TimeConfig = {"unit": "ns", "scale_factor": 1}
     assert cfg["unit"] == "ns"
+
+
+def test_numcodecs_config_minimal() -> None:
+    cfg: NumcodecsConfig = {"id": "zstd"}
+    assert cfg["id"] == "zstd"
+
+
+def test_array_metadata_v2_with_compressor_and_filters() -> None:
+    compressor: NumcodecsConfig = {"id": "zstd"}
+    filter0: NumcodecsConfig = {"id": "delta"}
+    meta: ArrayMetadataV2 = {
+        "zarr_format": 2,
+        "shape": (100,),
+        "chunks": (10,),
+        "dtype": "<f4",
+        "compressor": compressor,
+        "filters": (filter0,),
+    }
+    compressor_val = meta["compressor"]
+    assert compressor_val is not None
+    assert compressor_val["id"] == "zstd"

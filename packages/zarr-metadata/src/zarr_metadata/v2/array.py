@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
     from zarr_metadata import JSON
+    from zarr_metadata.v2.codec import NumcodecsConfig
 
 
 class DataTypeV2Structured(TypedDict):
@@ -20,7 +21,7 @@ class DataTypeV2Structured(TypedDict):
 
     fieldname: str
     datatype: str
-    shape: NotRequired[Sequence[int]]
+    shape: NotRequired[tuple[int, ...]]
 
 
 DataTypeV2 = str | list[DataTypeV2Structured]
@@ -44,13 +45,13 @@ class ArrayMetadataV2(TypedDict):
     """
 
     zarr_format: Literal[2]
-    shape: Sequence[int]
-    chunks: Sequence[int]
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
     dtype: DataTypeV2
-    compressor: NotRequired[Mapping[str, JSON] | None]
+    compressor: NotRequired[NumcodecsConfig | None]
     fill_value: NotRequired[JSON]
     order: NotRequired[Literal["C", "F"]]
-    filters: NotRequired[Sequence[Mapping[str, JSON]] | None]
+    filters: NotRequired[tuple[NumcodecsConfig, ...] | None]
     dimension_separator: NotRequired[Literal[".", "/"]]
     attributes: NotRequired[Mapping[str, JSON]]
 

@@ -1,6 +1,6 @@
 """Zarr v3 array metadata types."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
@@ -29,7 +29,7 @@ class RegularChunkGridConfig(TypedDict):
     Configuration body of a regular chunk grid.
     """
 
-    chunk_shape: Sequence[int]
+    chunk_shape: tuple[int, ...]
 
 
 class RectilinearChunkGridConfig(TypedDict):
@@ -38,7 +38,7 @@ class RectilinearChunkGridConfig(TypedDict):
     """
 
     kind: Literal["inline"]
-    chunk_shapes: Sequence[RectilinearDimSpec]
+    chunk_shapes: tuple[RectilinearDimSpec, ...]
 
 
 RegularChunkGrid = NamedRequiredConfig[Literal["regular"], RegularChunkGridConfig]
