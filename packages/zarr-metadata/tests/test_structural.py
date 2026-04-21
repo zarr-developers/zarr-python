@@ -10,7 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from zarr_metadata.codec.blosc import BloscCodecConfigurationV1
+    from zarr_metadata.codec.blosc import BloscCodec, BloscCodecConfigurationV1
+    from zarr_metadata.codec.bytes import BytesCodec, BytesCodecConfiguration
+    from zarr_metadata.codec.crc32c import Crc32cCodec
+    from zarr_metadata.codec.gzip import GzipCodec, GzipCodecConfiguration
+    from zarr_metadata.codec.sharding import ShardingCodec, ShardingCodecConfiguration
+    from zarr_metadata.codec.transpose import TransposeCodec, TransposeCodecConfiguration
+    from zarr_metadata.codec.zstd import ZstdCodec, ZstdCodecConfiguration
     from zarr_metadata.dtype.bytes import FixedLengthBytesConfig
     from zarr_metadata.dtype.string import LengthBytesConfig
     from zarr_metadata.dtype.time import TimeConfig
@@ -59,6 +65,10 @@ def test_array_metadata_v2_simple_dtype() -> None:
         "shape": (100, 100),
         "chunks": (10, 10),
         "dtype": "<f4",
+        "compressor": None,
+        "fill_value": 0,
+        "order": "C",
+        "filters": None,
     }
     assert meta["dtype"] == "<f4"
 
@@ -68,12 +78,16 @@ def test_array_metadata_v2_structured_dtype() -> None:
         "zarr_format": 2,
         "shape": (100,),
         "chunks": (10,),
-        "dtype": [
+        "dtype": (
             {"fieldname": "a", "datatype": "<i4"},
             {"fieldname": "b", "datatype": "<f8", "shape": (3,)},
-        ],
+        ),
+        "compressor": None,
+        "fill_value": 0,
+        "order": "C",
+        "filters": None,
     }
-    assert isinstance(meta["dtype"], list)
+    assert isinstance(meta["dtype"], tuple)
 
 
 def test_group_metadata_v2_minimal() -> None:
@@ -129,8 +143,102 @@ def test_array_metadata_v2_with_compressor_and_filters() -> None:
         "chunks": (10,),
         "dtype": "<f4",
         "compressor": compressor,
+        "fill_value": 0,
+        "order": "C",
         "filters": (filter0,),
     }
     compressor_val = meta["compressor"]
     assert compressor_val is not None
     assert compressor_val["id"] == "zstd"
+
+
+def test_bytes_codec_config() -> None:
+    cfg: BytesCodecConfiguration = {"endian": "little"}
+    assert cfg["endian"] == "little"
+
+
+def test_bytes_codec_config_no_endian() -> None:
+    cfg: BytesCodecConfiguration = {}
+    assert cfg == {}
+
+
+def test_gzip_codec_config() -> None:
+    cfg: GzipCodecConfiguration = {"level": 5}
+    assert cfg["level"] == 5
+
+
+def test_zstd_codec_config() -> None:
+    cfg: ZstdCodecConfiguration = {"level": 3, "checksum": False}
+    assert cfg["level"] == 3
+
+
+def test_transpose_codec_config() -> None:
+    cfg: TransposeCodecConfiguration = {"order": (1, 0, 2)}
+    assert cfg["order"] == (1, 0, 2)
+
+
+def test_sharding_codec_config() -> None:
+    cfg: ShardingCodecConfiguration = {
+        "chunk_shape": (16, 16),
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "index_codecs": (
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "crc32c"},
+        ),
+        "index_location": "end",
+    }
+    assert cfg["chunk_shape"] == (16, 16)
+
+
+def test_bytes_codec_envelope() -> None:
+    codec: BytesCodec = {"name": "bytes", "configuration": {"endian": "little"}}
+    assert codec["name"] == "bytes"
+
+
+def test_gzip_codec_envelope() -> None:
+    codec: GzipCodec = {"name": "gzip", "configuration": {"level": 5}}
+    assert codec["name"] == "gzip"
+
+
+def test_zstd_codec_envelope() -> None:
+    codec: ZstdCodec = {
+        "name": "zstd",
+        "configuration": {"level": 3, "checksum": False},
+    }
+    assert codec["name"] == "zstd"
+
+
+def test_transpose_codec_envelope() -> None:
+    codec: TransposeCodec = {"name": "transpose", "configuration": {"order": (1, 0)}}
+    assert codec["name"] == "transpose"
+
+
+def test_sharding_codec_envelope() -> None:
+    codec: ShardingCodec = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": (16, 16),
+            "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+            "index_codecs": ({"name": "crc32c"},),
+        },
+    }
+    assert codec["name"] == "sharding_indexed"
+
+
+def test_crc32c_codec_envelope() -> None:
+    codec: Crc32cCodec = {"name": "crc32c"}
+    assert codec["name"] == "crc32c"
+
+
+def test_blosc_codec_envelope() -> None:
+    codec: BloscCodec = {
+        "name": "blosc",
+        "configuration": {
+            "cname": "zstd",
+            "clevel": 5,
+            "shuffle": "shuffle",
+            "blocksize": 0,
+            "typesize": 4,
+        },
+    }
+    assert codec["name"] == "blosc"

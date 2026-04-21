@@ -31,7 +31,7 @@ class RegularChunkGridConfig(TypedDict):
     """
     Configuration body of a regular chunk grid.
 
-    See #SPEC_URL
+    See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
     """
 
     chunk_shape: tuple[int, ...]
@@ -41,7 +41,7 @@ class RectilinearChunkGridConfig(TypedDict):
     """
     Configuration body of a rectilinear chunk grid.
 
-    See #SPEC_URL
+    See https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear
     """
 
     kind: Literal["inline"]
@@ -49,14 +49,14 @@ class RectilinearChunkGridConfig(TypedDict):
 
 
 class RegularChunkGrid(TypedDict):
-    """Regular chunk grid named-config envelope."""
+    """Regular chunk grid named-config container."""
 
     name: Literal["regular"]
     configuration: RegularChunkGridConfig
 
 
 class RectilinearChunkGrid(TypedDict):
-    """Rectilinear chunk grid named-config envelope."""
+    """Rectilinear chunk grid named-config container."""
 
     name: Literal["rectilinear"]
     configuration: RectilinearChunkGridConfig
@@ -66,7 +66,9 @@ class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore
     """
     Zarr v3 array metadata document (the ``zarr.json`` content for an array).
 
-    Extra keys are permitted if they conform to ``AllowedExtraField``.
+    Extra keys are permitted if they conform to `AllowedExtraField`.
+
+    See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """
 
     zarr_format: Literal[3]

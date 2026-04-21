@@ -4,6 +4,11 @@ Blosc codec configuration types (Zarr v3 spec + numcodecs/v2 form).
 
 from typing import Literal, NotRequired, TypedDict
 
+from zarr_metadata.common import NamedRequiredConfig
+
+BloscCodecName = Literal["blosc"]
+"""The ``name`` field value of a ``blosc`` codec envelope."""
+
 Shuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 """Blosc shuffle mode names (v3 spec)."""
 
@@ -43,11 +48,16 @@ class BloscCodecConfigurationV1(TypedDict):
 BloscCodecConfiguration = BloscCodecConfigurationV1 | BloscCodecConfigurationNumcodecs
 """Any supported blosc configuration shape."""
 
+BloscCodec = NamedRequiredConfig[BloscCodecName, BloscCodecConfiguration]
+"""Full ``blosc`` codec named-config envelope."""
+
 
 __all__ = [
+    "BloscCodec",
     "BloscCodecConfiguration",
     "BloscCodecConfigurationNumcodecs",
     "BloscCodecConfigurationV1",
+    "BloscCodecName",
     "CName",
     "Shuffle",
 ]
