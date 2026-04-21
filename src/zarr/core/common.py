@@ -5,7 +5,7 @@ import functools
 import math
 import operator
 import warnings
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from enum import Enum
 from itertools import starmap
 from typing import (
@@ -13,14 +13,14 @@ from typing import (
     Any,
     Final,
     Literal,
-    NotRequired,
-    TypedDict,
     cast,
     overload,
 )
 
 import numpy as np
-from typing_extensions import ReadOnly
+from zarr_metadata import JSON as JSON  # noqa: TC002
+from zarr_metadata import NamedConfig as NamedConfig  # noqa: TC002
+from zarr_metadata import NamedRequiredConfig as NamedRequiredConfig
 
 from zarr.core.config import config as zarr_config
 from zarr.errors import ZarrRuntimeWarning
@@ -42,44 +42,11 @@ ChunksLike = ShapeLike | Sequence[Sequence[int]] | None
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNamesLike = Iterable[str | None] | None
 DimensionNames = DimensionNamesLike  # for backwards compatibility
-
-
-class NamedConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
-    """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is an optional mapping of string keys to values, e.g. another typed dictionary or a JSON object.
-
-    This class is generic with two type parameters: the type of the name (``TName``) and the type of
-    the configuration (``TConfig``).
-    """
-
-    name: ReadOnly[TName]
-    """The name of the object."""
-
-    configuration: NotRequired[ReadOnly[TConfig]]
-    """The configuration of the object. Not required."""
-
-
-class NamedRequiredConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
-    """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
-
-    This class is generic with two type parameters: the type of the name (``TName``) and the type of
-    the configuration (``TConfig``).
-    """
-
-    name: ReadOnly[TName]
-    """The name of the object."""
-
-    configuration: ReadOnly[TConfig]
-    """The configuration of the object."""
 
 
 def product(tup: tuple[int, ...]) -> int:
