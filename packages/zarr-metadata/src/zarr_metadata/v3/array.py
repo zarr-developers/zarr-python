@@ -19,47 +19,8 @@ class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     must_understand: Literal[False]
 
 
-# JSON type for a single dimension's rectilinear spec:
-# bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
-RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
-
 MetadataField = str | NamedConfig[str, Mapping[str, JSON]]
-"""A string or a {name: str, configuration: {...}} key value pair"""
-
-
-class RegularChunkGridConfig(TypedDict):
-    """
-    Configuration body of a regular chunk grid.
-
-    See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
-    """
-
-    chunk_shape: tuple[int, ...]
-
-
-class RectilinearChunkGridConfig(TypedDict):
-    """
-    Configuration body of a rectilinear chunk grid.
-
-    See https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear
-    """
-
-    kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpec, ...]
-
-
-class RegularChunkGrid(TypedDict):
-    """Regular chunk grid metadata."""
-
-    name: Literal["regular"]
-    configuration: RegularChunkGridConfig
-
-
-class RectilinearChunkGrid(TypedDict):
-    """Rectilinear chunk grid metadata."""
-
-    name: Literal["rectilinear"]
-    configuration: RectilinearChunkGridConfig
+"""A string or a {name: str, configuration: {...}} key value pair."""
 
 
 class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
@@ -87,9 +48,5 @@ class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore
 __all__ = [
     "AllowedExtraField",
     "ArrayMetadataV3",
-    "RectilinearChunkGrid",
-    "RectilinearChunkGridConfig",
-    "RectilinearDimSpec",
-    "RegularChunkGrid",
-    "RegularChunkGridConfig",
+    "MetadataField",
 ]

@@ -55,11 +55,7 @@ def test_v3_imports() -> None:
         ArrayMetadataV3,
         ConsolidatedMetadataV3,
         GroupMetadataV3,
-        RectilinearChunkGrid,
-        RectilinearChunkGridConfig,
-        RectilinearDimSpec,
-        RegularChunkGrid,
-        RegularChunkGridConfig,
+        MetadataField,
     )
 
     _ = (
@@ -67,11 +63,63 @@ def test_v3_imports() -> None:
         ArrayMetadataV3,
         ConsolidatedMetadataV3,
         GroupMetadataV3,
+        MetadataField,
+    )
+
+
+def test_v3_chunk_grid_imports() -> None:
+    from zarr_metadata.v3.chunk_grid.rectilinear import (
+        RECTILINEAR_CHUNK_GRID_NAME,
         RectilinearChunkGrid,
-        RectilinearChunkGridConfig,
+        RectilinearChunkGridConfiguration,
+        RectilinearChunkGridName,
+        RectilinearDimSpec,
+    )
+    from zarr_metadata.v3.chunk_grid.regular import (
+        REGULAR_CHUNK_GRID_NAME,
+        RegularChunkGrid,
+        RegularChunkGridConfiguration,
+        RegularChunkGridName,
+    )
+
+    _ = (
+        RECTILINEAR_CHUNK_GRID_NAME,
+        REGULAR_CHUNK_GRID_NAME,
+        RectilinearChunkGrid,
+        RectilinearChunkGridConfiguration,
+        RectilinearChunkGridName,
         RectilinearDimSpec,
         RegularChunkGrid,
-        RegularChunkGridConfig,
+        RegularChunkGridConfiguration,
+        RegularChunkGridName,
+    )
+
+
+def test_v3_chunk_key_encoding_imports() -> None:
+    from zarr_metadata.v3.chunk_key_encoding import ChunkKeySeparator
+    from zarr_metadata.v3.chunk_key_encoding.default import (
+        DEFAULT_CHUNK_KEY_ENCODING_NAME,
+        DefaultChunkKeyEncoding,
+        DefaultChunkKeyEncodingConfiguration,
+        DefaultChunkKeyEncodingName,
+    )
+    from zarr_metadata.v3.chunk_key_encoding.v2 import (
+        V2_CHUNK_KEY_ENCODING_NAME,
+        V2ChunkKeyEncoding,
+        V2ChunkKeyEncodingConfiguration,
+        V2ChunkKeyEncodingName,
+    )
+
+    _ = (
+        ChunkKeySeparator,
+        DEFAULT_CHUNK_KEY_ENCODING_NAME,
+        DefaultChunkKeyEncoding,
+        DefaultChunkKeyEncodingConfiguration,
+        DefaultChunkKeyEncodingName,
+        V2_CHUNK_KEY_ENCODING_NAME,
+        V2ChunkKeyEncoding,
+        V2ChunkKeyEncodingConfiguration,
+        V2ChunkKeyEncodingName,
     )
 
 

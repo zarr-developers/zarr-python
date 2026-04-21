@@ -25,7 +25,11 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.array import ArrayMetadataV2
     from zarr_metadata.v2.codec import NumcodecsConfig
     from zarr_metadata.v2.group import GroupMetadataV2
-    from zarr_metadata.v3.array import ArrayMetadataV3, RegularChunkGrid
+    from zarr_metadata.v3.array import ArrayMetadataV3
+    from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
+    from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
+    from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncoding
+    from zarr_metadata.v3.chunk_key_encoding.v2 import V2ChunkKeyEncoding
     from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
     from zarr_metadata.v3.group import GroupMetadataV3
 
@@ -103,6 +107,39 @@ def test_regular_chunk_grid_metadata() -> None:
         "configuration": {"chunk_shape": (10, 10)},
     }
     assert grid["name"] == "regular"
+
+
+def test_rectilinear_chunk_grid_metadata() -> None:
+    grid: RectilinearChunkGrid = {
+        "name": "rectilinear",
+        "configuration": {
+            "kind": "inline",
+            "chunk_shapes": (
+                (10, (5, 3), 7),  # mixed: bare ints and a [value, count] RLE pair
+                100,  # uniform shorthand
+            ),
+        },
+    }
+    assert grid["name"] == "rectilinear"
+
+
+def test_default_chunk_key_encoding_metadata() -> None:
+    enc: DefaultChunkKeyEncoding = {
+        "name": "default",
+        "configuration": {"separator": "/"},
+    }
+    assert enc["name"] == "default"
+
+    minimal: DefaultChunkKeyEncoding = {"name": "default"}  # configuration optional
+    assert minimal["name"] == "default"
+
+
+def test_v2_chunk_key_encoding_metadata() -> None:
+    enc: V2ChunkKeyEncoding = {
+        "name": "v2",
+        "configuration": {"separator": "."},
+    }
+    assert enc["name"] == "v2"
 
 
 def test_blosc_config_v1() -> None:

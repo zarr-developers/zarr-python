@@ -8,13 +8,19 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, cas
 from zarr_metadata.v3.array import (
     AllowedExtraField as AllowedExtraField,
 )
-from zarr_metadata.v3.array import (
-    ArrayMetadataV3,
+from zarr_metadata.v3.array import ArrayMetadataV3
+from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
-    RectilinearChunkGridConfig,
     RectilinearDimSpec,
+)
+from zarr_metadata.v3.chunk_grid.rectilinear import (
+    RectilinearChunkGridConfiguration as RectilinearChunkGridConfig,
+)
+from zarr_metadata.v3.chunk_grid.regular import (
     RegularChunkGrid,
-    RegularChunkGridConfig,
+)
+from zarr_metadata.v3.chunk_grid.regular import (
+    RegularChunkGridConfiguration as RegularChunkGridConfig,
 )
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
