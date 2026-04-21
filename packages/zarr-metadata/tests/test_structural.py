@@ -95,7 +95,7 @@ def test_group_metadata_v2_minimal() -> None:
     assert meta["zarr_format"] == 2
 
 
-def test_regular_chunk_grid_envelope() -> None:
+def test_regular_chunk_grid_metadata() -> None:
     grid: RegularChunkGrid = {
         "name": "regular",
         "configuration": {"chunk_shape": (10, 10)},
@@ -190,17 +190,17 @@ def test_sharding_codec_config() -> None:
     assert cfg["chunk_shape"] == (16, 16)
 
 
-def test_bytes_codec_envelope() -> None:
+def test_bytes_codec_metadata() -> None:
     codec: BytesCodec = {"name": "bytes", "configuration": {"endian": "little"}}
     assert codec["name"] == "bytes"
 
 
-def test_gzip_codec_envelope() -> None:
+def test_gzip_codec_metadata() -> None:
     codec: GzipCodec = {"name": "gzip", "configuration": {"level": 5}}
     assert codec["name"] == "gzip"
 
 
-def test_zstd_codec_envelope() -> None:
+def test_zstd_codec_metadata() -> None:
     codec: ZstdCodec = {
         "name": "zstd",
         "configuration": {"level": 3, "checksum": False},
@@ -208,12 +208,12 @@ def test_zstd_codec_envelope() -> None:
     assert codec["name"] == "zstd"
 
 
-def test_transpose_codec_envelope() -> None:
+def test_transpose_codec_metadata() -> None:
     codec: TransposeCodec = {"name": "transpose", "configuration": {"order": (1, 0)}}
     assert codec["name"] == "transpose"
 
 
-def test_sharding_codec_envelope() -> None:
+def test_sharding_codec_metadata() -> None:
     codec: ShardingCodec = {
         "name": "sharding_indexed",
         "configuration": {
@@ -225,12 +225,12 @@ def test_sharding_codec_envelope() -> None:
     assert codec["name"] == "sharding_indexed"
 
 
-def test_crc32c_codec_envelope() -> None:
+def test_crc32c_codec_metadata() -> None:
     codec: Crc32cCodec = {"name": "crc32c"}
     assert codec["name"] == "crc32c"
 
 
-def test_blosc_codec_envelope() -> None:
+def test_blosc_codec_metadata() -> None:
     codec: BloscCodec = {
         "name": "blosc",
         "configuration": {

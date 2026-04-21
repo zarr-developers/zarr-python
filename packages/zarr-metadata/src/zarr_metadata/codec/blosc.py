@@ -7,16 +7,16 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 from typing import Final, Literal, TypedDict
 
 BLOSC_CODEC_NAME: Final = "blosc"
-"""The ``name`` field value of a ``blosc`` codec envelope."""
+"""The ``name`` field value of the ``blosc`` codec."""
 
 BloscCodecName = Literal["blosc"]
-"""Literal type of the ``name`` field of a ``blosc`` codec envelope."""
+"""Literal type of the ``name`` field of the ``blosc`` codec."""
 
 BLOSC_SHUFFLE_NOSHUFFLE: Final = "noshuffle"
 BLOSC_SHUFFLE_SHUFFLE: Final = "shuffle"
 BLOSC_SHUFFLE_BITSHUFFLE: Final = "bitshuffle"
 
-Shuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
+BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 """Blosc shuffle mode names."""
 
 BLOSC_CNAME_LZ4: Final = "lz4"
@@ -26,22 +26,22 @@ BLOSC_CNAME_SNAPPY: Final = "snappy"
 BLOSC_CNAME_ZLIB: Final = "zlib"
 BLOSC_CNAME_ZSTD: Final = "zstd"
 
-CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
+BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """Blosc compressor identifiers."""
 
 
 class BloscCodecConfiguration(TypedDict):
     """Configuration for the Zarr v3 ``blosc`` codec."""
 
-    cname: CName
+    cname: BloscCName
     clevel: int
-    shuffle: Shuffle
+    shuffle: BloscShuffle
     blocksize: int
     typesize: int
 
 
 class BloscCodec(TypedDict):
-    """Full ``blosc`` codec named-config envelope."""
+    """``blosc`` codec metadata."""
 
     name: BloscCodecName
     configuration: BloscCodecConfiguration
@@ -58,9 +58,9 @@ __all__ = [
     "BLOSC_SHUFFLE_BITSHUFFLE",
     "BLOSC_SHUFFLE_NOSHUFFLE",
     "BLOSC_SHUFFLE_SHUFFLE",
+    "BloscCName",
     "BloscCodec",
     "BloscCodecConfiguration",
     "BloscCodecName",
-    "CName",
-    "Shuffle",
+    "BloscShuffle",
 ]

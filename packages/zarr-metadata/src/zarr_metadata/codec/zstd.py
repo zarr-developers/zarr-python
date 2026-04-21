@@ -9,10 +9,10 @@ specification).
 from typing import Final, Literal, TypedDict
 
 ZSTD_CODEC_NAME: Final = "zstd"
-"""The ``name`` field value of a ``zstd`` codec envelope."""
+"""The ``name`` field value of the ``zstd`` codec."""
 
 ZstdCodecName = Literal["zstd"]
-"""Literal type of the ``name`` field of a ``zstd`` codec envelope."""
+"""Literal type of the ``name`` field of the ``zstd`` codec."""
 
 
 class ZstdCodecConfiguration(TypedDict):
@@ -27,7 +27,7 @@ class ZstdCodecConfiguration(TypedDict):
 
 
 class ZstdCodec(TypedDict):
-    """Full ``zstd`` codec named-config envelope."""
+    """``zstd`` codec metadata."""
 
     name: ZstdCodecName
     configuration: ZstdCodecConfiguration

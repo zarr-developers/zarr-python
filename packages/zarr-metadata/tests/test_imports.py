@@ -78,11 +78,11 @@ def test_v3_imports() -> None:
 def test_codec_imports() -> None:
     from zarr_metadata.codec import Codec
     from zarr_metadata.codec.blosc import (
+        BloscCName,
         BloscCodec,
         BloscCodecConfiguration,
         BloscCodecName,
-        CName,
-        Shuffle,
+        BloscShuffle,
     )
     from zarr_metadata.codec.bytes import (
         BytesCodec,
@@ -111,7 +111,7 @@ def test_codec_imports() -> None:
         BytesCodec,
         BytesCodecConfiguration,
         BytesCodecName,
-        CName,
+        BloscCName,
         Crc32cCodec,
         Crc32cCodecName,
         GzipCodec,
@@ -120,7 +120,7 @@ def test_codec_imports() -> None:
         ShardingCodec,
         ShardingCodecConfiguration,
         ShardingCodecName,
-        Shuffle,
+        BloscShuffle,
         TransposeCodec,
         TransposeCodecConfiguration,
         TransposeCodecName,

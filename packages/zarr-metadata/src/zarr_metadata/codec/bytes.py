@@ -7,10 +7,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 from typing import Final, Literal, NotRequired, TypedDict
 
 BYTES_CODEC_NAME: Final = "bytes"
-"""The ``name`` field value of a ``bytes`` codec envelope."""
+"""The ``name`` field value of the ``bytes`` codec."""
 
 BytesCodecName = Literal["bytes"]
-"""Literal type of the ``name`` field of a ``bytes`` codec envelope."""
+"""Literal type of the ``name`` field of the ``bytes`` codec."""
 
 BYTES_ENDIAN_LITTLE: Final = "little"
 BYTES_ENDIAN_BIG: Final = "big"
@@ -32,7 +32,7 @@ class BytesCodecConfiguration(TypedDict):
 
 
 class BytesCodec(TypedDict):
-    """Full ``bytes`` codec named-config envelope."""
+    """``bytes`` codec metadata."""
 
     name: BytesCodecName
     configuration: BytesCodecConfiguration

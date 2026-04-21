@@ -49,14 +49,14 @@ class RectilinearChunkGridConfig(TypedDict):
 
 
 class RegularChunkGrid(TypedDict):
-    """Regular chunk grid named-config container."""
+    """Regular chunk grid metadata."""
 
     name: Literal["regular"]
     configuration: RegularChunkGridConfig
 
 
 class RectilinearChunkGrid(TypedDict):
-    """Rectilinear chunk grid named-config container."""
+    """Rectilinear chunk grid metadata."""
 
     name: Literal["rectilinear"]
     configuration: RectilinearChunkGridConfig

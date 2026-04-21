@@ -9,10 +9,10 @@ from typing import Final, Literal, NotRequired, TypedDict
 from zarr_metadata.codec import Codec
 
 SHARDING_CODEC_NAME: Final = "sharding_indexed"
-"""The ``name`` field value of a ``sharding_indexed`` codec envelope."""
+"""The ``name`` field value of the ``sharding_indexed`` codec."""
 
 ShardingCodecName = Literal["sharding_indexed"]
-"""Literal type of the ``name`` field of a ``sharding_indexed`` codec envelope."""
+"""Literal type of the ``name`` field of the ``sharding_indexed`` codec."""
 
 SHARDING_INDEX_LOCATION_START: Final = "start"
 SHARDING_INDEX_LOCATION_END: Final = "end"
@@ -44,7 +44,7 @@ class ShardingCodecConfiguration(TypedDict):
 
 
 class ShardingCodec(TypedDict):
-    """Full ``sharding_indexed`` codec named-config envelope."""
+    """``sharding_indexed`` codec metadata."""
 
     name: ShardingCodecName
     configuration: ShardingCodecConfiguration
