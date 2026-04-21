@@ -7,10 +7,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 from typing import Final, Literal, NotRequired, TypedDict
 
 BYTES_CODEC_NAME: Final = "bytes"
-"""The ``name`` field value of the ``bytes`` codec."""
+"""The `name` field value of the `bytes` codec."""
 
 BytesCodecName = Literal["bytes"]
-"""Literal type of the ``name`` field of the ``bytes`` codec."""
+"""Literal type of the `name` field of the `bytes` codec."""
 
 BYTES_ENDIAN_LITTLE: Final = "little"
 BYTES_ENDIAN_BIG: Final = "big"
@@ -21,9 +21,9 @@ Endian = Literal["little", "big"]
 
 class BytesCodecConfiguration(TypedDict):
     """
-    Configuration for the Zarr v3 ``bytes`` codec.
+    Configuration for the Zarr v3 `bytes` codec.
 
-    The ``endian`` field is required for multi-byte data types and absent
+    The `endian` field is required for multi-byte data types and absent
     for single-byte types. Consumers that always expect a value must
     tolerate its absence.
     """
@@ -32,7 +32,7 @@ class BytesCodecConfiguration(TypedDict):
 
 
 class BytesCodec(TypedDict):
-    """``bytes`` codec metadata."""
+    """`bytes` codec metadata."""
 
     name: BytesCodecName
     configuration: BytesCodecConfiguration

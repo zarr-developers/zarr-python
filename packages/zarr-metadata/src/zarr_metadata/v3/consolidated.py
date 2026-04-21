@@ -15,7 +15,7 @@ class ConsolidatedMetadataV3(TypedDict):
     """
     Inline consolidated metadata embedded in a v3 group.
 
-    The ``metadata`` map contains only v3 array and group entries - v2
+    The `metadata` map contains only v3 array and group entries - v2
     entries are excluded by design. Mixing v2 entries into a v3
     consolidated metadata document is invalid per spec.
     """

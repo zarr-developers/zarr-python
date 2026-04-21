@@ -12,7 +12,7 @@ class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
     Extra field on a v3 array metadata document.
 
-    Extras must include ``must_understand: false`` and may carry arbitrary
+    Extras must include `must_understand: false` and may carry arbitrary
     additional JSON data.
     """
 
@@ -64,7 +64,7 @@ class RectilinearChunkGrid(TypedDict):
 
 class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
     """
-    Zarr v3 array metadata document (the ``zarr.json`` content for an array).
+    Zarr v3 array metadata document (the `zarr.json` content for an array).
 
     Extra keys are permitted if they conform to `AllowedExtraField`.
 

@@ -7,10 +7,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 from typing import Final, Literal, TypedDict
 
 BLOSC_CODEC_NAME: Final = "blosc"
-"""The ``name`` field value of the ``blosc`` codec."""
+"""The `name` field value of the `blosc` codec."""
 
 BloscCodecName = Literal["blosc"]
-"""Literal type of the ``name`` field of the ``blosc`` codec."""
+"""Literal type of the `name` field of the `blosc` codec."""
 
 BLOSC_SHUFFLE_NOSHUFFLE: Final = "noshuffle"
 BLOSC_SHUFFLE_SHUFFLE: Final = "shuffle"
@@ -31,7 +31,7 @@ BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 
 
 class BloscCodecConfiguration(TypedDict):
-    """Configuration for the Zarr v3 ``blosc`` codec."""
+    """Configuration for the Zarr v3 `blosc` codec."""
 
     cname: BloscCName
     clevel: int
@@ -41,7 +41,7 @@ class BloscCodecConfiguration(TypedDict):
 
 
 class BloscCodec(TypedDict):
-    """``blosc`` codec metadata."""
+    """`blosc` codec metadata."""
 
     name: BloscCodecName
     configuration: BloscCodecConfiguration

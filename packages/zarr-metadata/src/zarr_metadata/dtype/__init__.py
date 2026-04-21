@@ -10,7 +10,7 @@ DType = str | int | float | Sequence["DType"] | None | Mapping[str, object]
 """
 The widest JSON-like shape that can specify a Zarr data type.
 
-See ``zarr_metadata.dtype.string``, ``.bytes``, and ``.time`` for specific
+See `zarr_metadata.dtype.string`, `.bytes`, and `.time` for specific
 per-dtype configuration TypedDicts.
 """
 

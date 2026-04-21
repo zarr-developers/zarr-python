@@ -27,7 +27,7 @@ class DataTypeV2Structured(TypedDict):
 DataTypeV2 = str | tuple[DataTypeV2Structured, ...]
 """The v2 dtype representation.
 
-Simple dtypes are numpy-style strings (e.g. ``"<f8"``, ``"|S10"``).
+Simple dtypes are numpy-style strings (e.g. `"<f8"`, `"|S10"`).
 Structured dtypes are lists of field records. Endianness is encoded in the
 prefix character of the string; parsing it out is a caller concern, not
 part of this type.

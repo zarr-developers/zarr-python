@@ -16,9 +16,9 @@ from zarr_metadata.v3.array import AllowedExtraField
 
 class GroupMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
     """
-    Zarr v3 group metadata document (the ``zarr.json`` content for a group).
+    Zarr v3 group metadata document (the `zarr.json` content for a group).
 
-    Extra keys are permitted if they conform to ``AllowedExtraField``.
+    Extra keys are permitted if they conform to `AllowedExtraField`.
     """
 
     zarr_format: Literal[3]
