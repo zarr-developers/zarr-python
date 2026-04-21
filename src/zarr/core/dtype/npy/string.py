@@ -8,7 +8,6 @@ from typing import (
     Literal,
     Protocol,
     Self,
-    TypedDict,
     TypeGuard,
     overload,
     runtime_checkable,
@@ -34,6 +33,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import ZDType
+from zarr_metadata.dtype.string import LengthBytesConfig as LengthBytesConfig  # noqa: TC002
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -45,19 +45,6 @@ _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 @runtime_checkable
 class SupportsStr(Protocol):
     def __str__(self) -> str: ...
-
-
-class LengthBytesConfig(TypedDict):
-    """
-    Configuration for a fixed-length string data type in Zarr V3.
-
-    Attributes
-    ----------
-    length_bytes : int
-        The length in bytes of the data associated with this configuration.
-    """
-
-    length_bytes: int
 
 
 class FixedLengthUTF32JSON_V2(DTypeConfig_V2[str, None]):
