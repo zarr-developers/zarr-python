@@ -7,12 +7,15 @@ The CRC32C codec has no configuration fields, so the envelope's
 ``configuration`` key is absent.
 """
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 
 from zarr_metadata.common import JSON
 
-Crc32cCodecName = Literal["crc32c"]
+CRC32C_CODEC_NAME: Final = "crc32c"
 """The ``name`` field value of a ``crc32c`` codec envelope."""
+
+Crc32cCodecName = Literal["crc32c"]
+"""Literal type of the ``name`` field of a ``crc32c`` codec envelope."""
 
 
 class Crc32cCodec(TypedDict):
@@ -27,6 +30,7 @@ class Crc32cCodec(TypedDict):
 
 
 __all__ = [
+    "CRC32C_CODEC_NAME",
     "Crc32cCodec",
     "Crc32cCodecName",
 ]

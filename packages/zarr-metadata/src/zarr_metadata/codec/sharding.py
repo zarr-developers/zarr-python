@@ -4,12 +4,21 @@ Sharding codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 
 from zarr_metadata.codec import Codec
 
-ShardingCodecName = Literal["sharding_indexed"]
+SHARDING_CODEC_NAME: Final = "sharding_indexed"
 """The ``name`` field value of a ``sharding_indexed`` codec envelope."""
+
+ShardingCodecName = Literal["sharding_indexed"]
+"""Literal type of the ``name`` field of a ``sharding_indexed`` codec envelope."""
+
+SHARDING_INDEX_LOCATION_START: Final = "start"
+SHARDING_INDEX_LOCATION_END: Final = "end"
+
+IndexLocation = Literal["start", "end"]
+"""Position of the shard index within the encoded shard."""
 
 
 class ShardingCodecConfiguration(TypedDict):
@@ -31,7 +40,7 @@ class ShardingCodecConfiguration(TypedDict):
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
-    index_location: NotRequired[Literal["start", "end"]]
+    index_location: NotRequired[IndexLocation]
 
 
 class ShardingCodec(TypedDict):
@@ -42,6 +51,10 @@ class ShardingCodec(TypedDict):
 
 
 __all__ = [
+    "SHARDING_CODEC_NAME",
+    "SHARDING_INDEX_LOCATION_END",
+    "SHARDING_INDEX_LOCATION_START",
+    "IndexLocation",
     "ShardingCodec",
     "ShardingCodecConfiguration",
     "ShardingCodecName",

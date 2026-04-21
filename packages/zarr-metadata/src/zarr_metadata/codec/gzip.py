@@ -4,10 +4,13 @@ Gzip codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
+
+GZIP_CODEC_NAME: Final = "gzip"
+"""The ``name`` field value of a ``gzip`` codec envelope."""
 
 GzipCodecName = Literal["gzip"]
-"""The ``name`` field value of a ``gzip`` codec envelope."""
+"""Literal type of the ``name`` field of a ``gzip`` codec envelope."""
 
 
 class GzipCodecConfiguration(TypedDict):
@@ -30,6 +33,7 @@ class GzipCodec(TypedDict):
 
 
 __all__ = [
+    "GZIP_CODEC_NAME",
     "GzipCodec",
     "GzipCodecConfiguration",
     "GzipCodecName",

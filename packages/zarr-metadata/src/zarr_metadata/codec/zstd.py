@@ -6,10 +6,13 @@ time of writing; the configuration shape below reflects the proposed
 specification).
 """
 
-from typing import Literal, TypedDict
+from typing import Final, Literal, TypedDict
+
+ZSTD_CODEC_NAME: Final = "zstd"
+"""The ``name`` field value of a ``zstd`` codec envelope."""
 
 ZstdCodecName = Literal["zstd"]
-"""The ``name`` field value of a ``zstd`` codec envelope."""
+"""Literal type of the ``name`` field of a ``zstd`` codec envelope."""
 
 
 class ZstdCodecConfiguration(TypedDict):
@@ -31,6 +34,7 @@ class ZstdCodec(TypedDict):
 
 
 __all__ = [
+    "ZSTD_CODEC_NAME",
     "ZstdCodec",
     "ZstdCodecConfiguration",
     "ZstdCodecName",

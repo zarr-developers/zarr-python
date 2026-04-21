@@ -4,10 +4,13 @@ Transpose codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 """
 
-from typing import Literal, TypedDict
+from typing import Final, Literal, TypedDict
+
+TRANSPOSE_CODEC_NAME: Final = "transpose"
+"""The ``name`` field value of a ``transpose`` codec envelope."""
 
 TransposeCodecName = Literal["transpose"]
-"""The ``name`` field value of a ``transpose`` codec envelope."""
+"""Literal type of the ``name`` field of a ``transpose`` codec envelope."""
 
 
 class TransposeCodecConfiguration(TypedDict):
@@ -29,6 +32,7 @@ class TransposeCodec(TypedDict):
 
 
 __all__ = [
+    "TRANSPOSE_CODEC_NAME",
     "TransposeCodec",
     "TransposeCodecConfiguration",
     "TransposeCodecName",

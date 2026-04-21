@@ -242,3 +242,71 @@ def test_blosc_codec_envelope() -> None:
         },
     }
     assert codec["name"] == "blosc"
+
+
+def test_codec_name_constants() -> None:
+    """Final constants carry the same string values as the Literal types."""
+    from zarr_metadata.codec.blosc import BLOSC_CODEC_NAME
+    from zarr_metadata.codec.bytes import BYTES_CODEC_NAME
+    from zarr_metadata.codec.crc32c import CRC32C_CODEC_NAME
+    from zarr_metadata.codec.gzip import GZIP_CODEC_NAME
+    from zarr_metadata.codec.sharding import SHARDING_CODEC_NAME
+    from zarr_metadata.codec.transpose import TRANSPOSE_CODEC_NAME
+    from zarr_metadata.codec.zstd import ZSTD_CODEC_NAME
+
+    assert BLOSC_CODEC_NAME == "blosc"
+    assert BYTES_CODEC_NAME == "bytes"
+    assert CRC32C_CODEC_NAME == "crc32c"
+    assert GZIP_CODEC_NAME == "gzip"
+    assert SHARDING_CODEC_NAME == "sharding_indexed"
+    assert TRANSPOSE_CODEC_NAME == "transpose"
+    assert ZSTD_CODEC_NAME == "zstd"
+
+
+def test_blosc_enum_value_constants() -> None:
+    """Blosc shuffle and cname constants can be used as codec config values."""
+    from zarr_metadata.codec.blosc import (
+        BLOSC_CNAME_ZSTD,
+        BLOSC_SHUFFLE_BITSHUFFLE,
+    )
+
+    cfg: BloscCodecConfiguration = {
+        "cname": BLOSC_CNAME_ZSTD,
+        "clevel": 5,
+        "shuffle": BLOSC_SHUFFLE_BITSHUFFLE,
+        "blocksize": 0,
+        "typesize": 4,
+    }
+    assert cfg["cname"] == "zstd"
+    assert cfg["shuffle"] == "bitshuffle"
+
+
+def test_bytes_endian_constants() -> None:
+    from zarr_metadata.codec.bytes import BYTES_ENDIAN_BIG, BYTES_ENDIAN_LITTLE
+
+    cfg_little: BytesCodecConfiguration = {"endian": BYTES_ENDIAN_LITTLE}
+    cfg_big: BytesCodecConfiguration = {"endian": BYTES_ENDIAN_BIG}
+    assert cfg_little["endian"] == "little"
+    assert cfg_big["endian"] == "big"
+
+
+def test_sharding_index_location_constants() -> None:
+    from zarr_metadata.codec.sharding import (
+        SHARDING_INDEX_LOCATION_END,
+        SHARDING_INDEX_LOCATION_START,
+    )
+
+    cfg_end: ShardingCodecConfiguration = {
+        "chunk_shape": (16, 16),
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "index_codecs": ({"name": "crc32c"},),
+        "index_location": SHARDING_INDEX_LOCATION_END,
+    }
+    cfg_start: ShardingCodecConfiguration = {
+        "chunk_shape": (16, 16),
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "index_codecs": ({"name": "crc32c"},),
+        "index_location": SHARDING_INDEX_LOCATION_START,
+    }
+    assert cfg_end["index_location"] == "end"
+    assert cfg_start["index_location"] == "start"

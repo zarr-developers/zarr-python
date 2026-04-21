@@ -4,10 +4,19 @@ Bytes codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 """
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
+
+BYTES_CODEC_NAME: Final = "bytes"
+"""The ``name`` field value of a ``bytes`` codec envelope."""
 
 BytesCodecName = Literal["bytes"]
-"""The ``name`` field value of a ``bytes`` codec envelope."""
+"""Literal type of the ``name`` field of a ``bytes`` codec envelope."""
+
+BYTES_ENDIAN_LITTLE: Final = "little"
+BYTES_ENDIAN_BIG: Final = "big"
+
+Endian = Literal["little", "big"]
+"""Byte order of multi-byte numeric data."""
 
 
 class BytesCodecConfiguration(TypedDict):
@@ -19,7 +28,7 @@ class BytesCodecConfiguration(TypedDict):
     tolerate its absence.
     """
 
-    endian: NotRequired[Literal["little", "big"]]
+    endian: NotRequired[Endian]
 
 
 class BytesCodec(TypedDict):
@@ -30,7 +39,11 @@ class BytesCodec(TypedDict):
 
 
 __all__ = [
+    "BYTES_CODEC_NAME",
+    "BYTES_ENDIAN_BIG",
+    "BYTES_ENDIAN_LITTLE",
     "BytesCodec",
     "BytesCodecConfiguration",
     "BytesCodecName",
+    "Endian",
 ]
