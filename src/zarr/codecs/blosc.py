@@ -4,9 +4,13 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Final, Literal
 
 import numcodecs
+from zarr_metadata.codec.blosc import (
+    BloscCodecConfigurationNumcodecs as BloscConfigV2,
+    BloscCodecConfigurationV1 as BloscConfigV3,
+)
 from numcodecs.blosc import Blosc
 from packaging.version import Version
 
@@ -28,26 +32,6 @@ SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 
 CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """The codec identifiers used in the blosc codec """
-
-
-class BloscConfigV2(TypedDict):
-    """Configuration for the V2 Blosc codec"""
-
-    cname: CName
-    clevel: int
-    shuffle: int
-    blocksize: int
-    typesize: NotRequired[int]
-
-
-class BloscConfigV3(TypedDict):
-    """Configuration for the V3 Blosc codec"""
-
-    cname: CName
-    clevel: int
-    shuffle: Shuffle
-    blocksize: int
-    typesize: int
 
 
 class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
