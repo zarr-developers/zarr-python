@@ -132,97 +132,139 @@ def test_codec_imports() -> None:
 
 def test_dtype_imports() -> None:
     from zarr_metadata.dtype import DType
-    from zarr_metadata.dtype.bytes import (
-        BYTES_DTYPE_NAME,
-        NULL_TERMINATED_BYTES_DTYPE_NAME,
-        BytesDTypeName,
-        FixedLengthBytesConfig,
-        NullTerminatedBytes,
-        NullTerminatedBytesDTypeName,
-    )
-    from zarr_metadata.dtype.primitive import (
-        BOOL_DTYPE_NAME,
+    from zarr_metadata.dtype.bool import BOOL_DTYPE_NAME, BoolDTypeName, BoolFillValue
+    from zarr_metadata.dtype.bytes import BYTES_DTYPE_NAME, BytesDTypeName, BytesFillValue
+    from zarr_metadata.dtype.complex64 import (
         COMPLEX64_DTYPE_NAME,
+        Complex64Component,
+        Complex64DTypeName,
+        Complex64FillValue,
+    )
+    from zarr_metadata.dtype.complex128 import (
         COMPLEX128_DTYPE_NAME,
+        Complex128Component,
+        Complex128DTypeName,
+        Complex128FillValue,
+    )
+    from zarr_metadata.dtype.float16 import (
         FLOAT16_DTYPE_NAME,
+        Float16DTypeName,
+        Float16FillValue,
+        Float16SpecialFillValue,
+    )
+    from zarr_metadata.dtype.float32 import (
         FLOAT32_DTYPE_NAME,
+        Float32DTypeName,
+        Float32FillValue,
+        Float32SpecialFillValue,
+    )
+    from zarr_metadata.dtype.float64 import (
         FLOAT64_DTYPE_NAME,
-        INT8_DTYPE_NAME,
-        INT16_DTYPE_NAME,
-        INT32_DTYPE_NAME,
-        INT64_DTYPE_NAME,
-        UINT8_DTYPE_NAME,
-        UINT16_DTYPE_NAME,
-        UINT32_DTYPE_NAME,
-        UINT64_DTYPE_NAME,
-        PrimitiveDTypeName,
+        Float64DTypeName,
+        Float64FillValue,
+        Float64SpecialFillValue,
     )
-    from zarr_metadata.dtype.string import (
-        FIXED_LENGTH_UTF32_DTYPE_NAME,
-        STRING_DTYPE_NAME,
-        FixedLengthUtf32,
-        FixedLengthUtf32DTypeName,
-        LengthBytesConfig,
-        StringDTypeName,
+    from zarr_metadata.dtype.int8 import INT8_DTYPE_NAME, Int8DTypeName, Int8FillValue
+    from zarr_metadata.dtype.int16 import INT16_DTYPE_NAME, Int16DTypeName, Int16FillValue
+    from zarr_metadata.dtype.int32 import INT32_DTYPE_NAME, Int32DTypeName, Int32FillValue
+    from zarr_metadata.dtype.int64 import INT64_DTYPE_NAME, Int64DTypeName, Int64FillValue
+    from zarr_metadata.dtype.numpy_datetime64 import (
+        NUMPY_DATETIME64_DTYPE_NAME,
+        NumpyDatetime64,
+        NumpyDatetime64Configuration,
+        NumpyDatetime64DTypeName,
+        NumpyDatetime64FillValue,
     )
+    from zarr_metadata.dtype.numpy_timedelta64 import (
+        NUMPY_TIMEDELTA64_DTYPE_NAME,
+        NumpyTimedelta64,
+        NumpyTimedelta64Configuration,
+        NumpyTimedelta64DTypeName,
+        NumpyTimedelta64FillValue,
+    )
+    from zarr_metadata.dtype.string import STRING_DTYPE_NAME, StringDTypeName, StringFillValue
     from zarr_metadata.dtype.struct import (
         STRUCT_DTYPE_NAME,
         Struct,
-        StructConfig,
+        StructConfiguration,
         StructDTypeName,
         StructField,
+        StructFillValue,
     )
-    from zarr_metadata.dtype.time import (
-        NUMPY_DATETIME64_DTYPE_NAME,
-        NUMPY_TIMEDELTA64_DTYPE_NAME,
-        DateTimeUnit,
-        NumpyDatetime64,
-        NumpyDatetime64DTypeName,
-        NumpyTimedelta64,
-        NumpyTimedelta64DTypeName,
-        TimeConfig,
-    )
+    from zarr_metadata.dtype.uint8 import UINT8_DTYPE_NAME, Uint8DTypeName, Uint8FillValue
+    from zarr_metadata.dtype.uint16 import UINT16_DTYPE_NAME, Uint16DTypeName, Uint16FillValue
+    from zarr_metadata.dtype.uint32 import UINT32_DTYPE_NAME, Uint32DTypeName, Uint32FillValue
+    from zarr_metadata.dtype.uint64 import UINT64_DTYPE_NAME, Uint64DTypeName, Uint64FillValue
 
     _ = (
         DType,
         BOOL_DTYPE_NAME,
         BYTES_DTYPE_NAME,
+        BoolDTypeName,
+        BoolFillValue,
         BytesDTypeName,
+        BytesFillValue,
         COMPLEX64_DTYPE_NAME,
         COMPLEX128_DTYPE_NAME,
-        DateTimeUnit,
-        FIXED_LENGTH_UTF32_DTYPE_NAME,
+        Complex64Component,
+        Complex64DTypeName,
+        Complex64FillValue,
+        Complex128Component,
+        Complex128DTypeName,
+        Complex128FillValue,
         FLOAT16_DTYPE_NAME,
         FLOAT32_DTYPE_NAME,
         FLOAT64_DTYPE_NAME,
-        FixedLengthBytesConfig,
-        FixedLengthUtf32,
-        FixedLengthUtf32DTypeName,
+        Float16DTypeName,
+        Float16FillValue,
+        Float16SpecialFillValue,
+        Float32DTypeName,
+        Float32FillValue,
+        Float32SpecialFillValue,
+        Float64DTypeName,
+        Float64FillValue,
+        Float64SpecialFillValue,
         INT8_DTYPE_NAME,
         INT16_DTYPE_NAME,
         INT32_DTYPE_NAME,
         INT64_DTYPE_NAME,
-        LengthBytesConfig,
-        NULL_TERMINATED_BYTES_DTYPE_NAME,
+        Int8DTypeName,
+        Int8FillValue,
+        Int16DTypeName,
+        Int16FillValue,
+        Int32DTypeName,
+        Int32FillValue,
+        Int64DTypeName,
+        Int64FillValue,
         NUMPY_DATETIME64_DTYPE_NAME,
         NUMPY_TIMEDELTA64_DTYPE_NAME,
-        NullTerminatedBytes,
-        NullTerminatedBytesDTypeName,
         NumpyDatetime64,
+        NumpyDatetime64Configuration,
         NumpyDatetime64DTypeName,
+        NumpyDatetime64FillValue,
         NumpyTimedelta64,
+        NumpyTimedelta64Configuration,
         NumpyTimedelta64DTypeName,
-        PrimitiveDTypeName,
+        NumpyTimedelta64FillValue,
         STRING_DTYPE_NAME,
         STRUCT_DTYPE_NAME,
         StringDTypeName,
+        StringFillValue,
         Struct,
-        StructConfig,
+        StructConfiguration,
         StructDTypeName,
         StructField,
-        TimeConfig,
+        StructFillValue,
         UINT8_DTYPE_NAME,
         UINT16_DTYPE_NAME,
         UINT32_DTYPE_NAME,
         UINT64_DTYPE_NAME,
+        Uint8DTypeName,
+        Uint8FillValue,
+        Uint16DTypeName,
+        Uint16FillValue,
+        Uint32DTypeName,
+        Uint32FillValue,
+        Uint64DTypeName,
+        Uint64FillValue,
     )

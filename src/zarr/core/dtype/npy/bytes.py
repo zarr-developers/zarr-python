@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import re
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self, TypeGuard, cast, overload
+from typing import ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 
@@ -20,7 +20,19 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr_metadata.dtype.bytes import FixedLengthBytesConfig as FixedLengthBytesConfig  # noqa: TC002
+
+
+class FixedLengthBytesConfig(TypedDict):
+    """
+    Configuration for fixed-length bytes data types in Zarr V3.
+
+    `null_terminated_bytes` is a zarr-python-specific extension; the
+    configuration carries `length_bytes`, the per-element allocated
+    byte count.
+    """
+
+    length_bytes: int
+
 
 BytesLike = np.bytes_ | str | bytes | int
 

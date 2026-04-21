@@ -14,6 +14,9 @@ from typing import (
 )
 
 import numpy as np
+from zarr_metadata.dtype.numpy_datetime64 import (
+    NumpyDatetime64Configuration as TimeConfig,
+)
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -32,7 +35,6 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr_metadata.dtype.time import TimeConfig as TimeConfig  # noqa: TC002
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat

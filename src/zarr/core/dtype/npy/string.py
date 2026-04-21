@@ -8,6 +8,7 @@ from typing import (
     Literal,
     Protocol,
     Self,
+    TypedDict,
     TypeGuard,
     overload,
     runtime_checkable,
@@ -33,7 +34,19 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import ZDType
-from zarr_metadata.dtype.string import LengthBytesConfig as LengthBytesConfig  # noqa: TC002
+
+
+class LengthBytesConfig(TypedDict):
+    """
+    Configuration for the fixed-length-utf32 string data type in Zarr V3.
+
+    `fixed_length_utf32` is a zarr-python-specific extension; the
+    configuration carries `length_bytes`, the per-element byte allocation
+    (must be a multiple of 4 for utf-32).
+    """
+
+    length_bytes: int
+
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
