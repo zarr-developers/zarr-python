@@ -33,6 +33,16 @@ test = ["pytest"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_metadata"]
 
+[tool.numpydoc_validation]
+checks = [
+    "GL10",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
+
 [tool.pyright]
 include = ["src"]
 enableExperimentalFeatures = true
