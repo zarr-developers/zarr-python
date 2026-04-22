@@ -7,7 +7,12 @@ import pytest
 
 import zarr
 from tests.test_codecs.conftest import Expect, ExpectErr
-from zarr.codecs.scale_offset import ScaleOffset, _decode, _encode
+from zarr.codecs.scale_offset import (
+    ScaleOffset,
+    _decode,
+    _decode_fits_natively,
+    _encode,
+)
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.storage._memory import MemoryStore
 
@@ -124,7 +129,6 @@ def test_construction_accepts_numeric(
 )
 def test_encode_decode_roundtrip(dtype: str, offset: float, scale: float) -> None:
     """Data survives encode → decode."""
-    import zarr
 
     arr = zarr.create_array(
         store={},
@@ -142,8 +146,6 @@ def test_encode_decode_roundtrip(dtype: str, offset: float, scale: float) -> Non
 
 def test_fill_value_transformed() -> None:
     """Fill value is transformed through the encode formula and read back correctly."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=(10,),
@@ -178,7 +180,6 @@ def test_identity_is_noop() -> None:
 
 def test_rejects_complex_dtype() -> None:
     """Complex dtypes are rejected at array creation time."""
-    import zarr
 
     with pytest.raises(ValueError, match="only supports integer and floating-point"):
         zarr.create_array(
@@ -194,7 +195,6 @@ def test_rejects_complex_dtype() -> None:
 
 def test_uint64_large_value_roundtrip() -> None:
     """uint64 values above 2**63 must survive encode+decode (spec requires uint64 support)."""
-    import zarr
 
     arr = zarr.create_array(
         store={},
@@ -213,7 +213,6 @@ def test_uint64_large_value_roundtrip() -> None:
 
 def test_float_nan_inf_preserved() -> None:
     """NaN and Inf are representable in float dtypes per IEEE 754 and must pass through."""
-    from zarr.codecs.scale_offset import _decode, _encode
 
     arr = np.array([1.0, np.nan, np.inf, -np.inf], dtype="float64")
     encoded = _encode(arr, np.float64(0.0), np.float64(2.0))
@@ -228,7 +227,6 @@ def test_float_nan_inf_preserved() -> None:
 
 def test_uint64_encode_rejects_underflow() -> None:
     """uint64 underflow during encode raises rather than silently wrapping."""
-    import zarr
 
     arr = zarr.create_array(
         store={},
@@ -245,7 +243,6 @@ def test_uint64_encode_rejects_underflow() -> None:
 
 def test_rejects_zero_scale() -> None:
     """scale=0 is rejected (destroys data and breaks decode division)."""
-    import zarr
 
     with pytest.raises(ValueError, match="scale must be non-zero"):
         zarr.create_array(
@@ -412,3 +409,49 @@ async def test_decode_rejects_integer_overflow_on_offset_add() -> None:
     await arr.store_path.store.set("c/0", buf)
     with pytest.raises(ValueError, match="outside the range of dtype int8"):
         arr[:]
+
+
+def test_decode_fits_natively_negative_scale() -> None:
+    """_decode_fits_natively handles negative scale by swapping bounds."""
+    # For a negative scale, x // scale flips the relationship between min/max.
+    # The function should use info.max // scale as the lower bound and info.min // scale
+    # as the upper bound.
+    dtype = np.dtype("int16")
+    # scale=-2 inverts; offset=0 means range is just q_lo..q_hi
+    assert _decode_fits_natively(dtype, offset=0, scale=-2) is True
+    # An offset that pushes the range out of bounds returns False
+    assert _decode_fits_natively(dtype, offset=100000, scale=-2) is False
+
+
+async def test_decode_int_widened_path() -> None:
+    """When _decode_fits_natively returns False, decode falls through to the widened path."""
+    # For uint32 with offset near max, q_hi + offset can exceed uint32 if computed in target dtype.
+    # The widened path uses int64 arithmetic and range-checks the result.
+    # We bypass encode by writing raw bytes directly to the store.
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store=store,
+        shape=(3,),
+        dtype="uint32",
+        chunks=(3,),
+        # offset large enough that _decode_fits_natively returns False
+        filters=[ScaleOffset(offset=2**31, scale=1)],
+        compressors=None,
+        # fill_value must be >= offset to avoid uint32 underflow during encode
+        fill_value=2**31,
+    )
+    # Encoded values that, when added to offset, stay within uint32
+    buf = default_buffer_prototype().buffer.from_bytes(
+        np.array([0, 100, 1000], dtype="uint32").tobytes()
+    )
+    await arr.store_path.store.set("c/0", buf)
+    expected = np.array([2**31, 2**31 + 100, 2**31 + 1000], dtype="uint32")
+    np.testing.assert_array_equal(arr[:], expected)
+
+
+def test_compute_encoded_size() -> None:
+    """compute_encoded_size returns the input byte length unchanged (codec is fixed-size)."""
+    codec = ScaleOffset(offset=0, scale=1)
+    # The chunk_spec argument is unused; pass any sentinel
+    assert codec.compute_encoded_size(input_byte_length=100, _chunk_spec=None) == 100 # type: ignore[arg-type]
+    assert codec.compute_encoded_size(input_byte_length=0, _chunk_spec=None) == 0 # type: ignore[arg-type]

@@ -107,6 +107,25 @@ def test_serialization_roundtrip(codec: CastValue) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
+
+
+def test_construction_accepts_zdtype_object() -> None:
+    """data_type can be a ZDType instance, not just a JSON string."""
+    from zarr.core.dtype import UInt8
+
+    codec = CastValue(data_type=UInt8())
+    assert codec.dtype.to_native_dtype() == np.dtype("uint8")
+
+
+def test_construction_rejects_invalid_target_dtype() -> None:
+    """Construction rejects target dtypes not in PERMITTED_DATA_TYPE_NAMES."""
+    with pytest.raises(ValueError, match="Invalid target data type"):
+        CastValue(data_type="complex64")
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
