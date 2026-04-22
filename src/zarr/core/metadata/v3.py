@@ -727,6 +727,12 @@ class ArrayV3Metadata(Metadata):
         # must hash equally, which a field-based hash violates for a NaN fill_value.
         return hash(json.dumps(self.to_dict(), sort_keys=True))
 
+    def to_json(self) -> ArrayMetadataJSON_V3:
+        """
+        Serialize this array metadata to a JSON-compatible Python object.
+        """
+        return cast(ArrayMetadataJSON_V3, self.to_dict())
+
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         chunk_grid = self.chunk_grid
         if isinstance(chunk_grid, RectilinearChunkGridMetadata):
