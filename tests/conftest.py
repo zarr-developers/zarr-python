@@ -74,7 +74,7 @@ class ExpectFail[TIn]:
     input: TIn
     exception: type[Exception]
     id: str
-    msg: str | None = None
+    msg: str
 
 
 async def parse_store(
