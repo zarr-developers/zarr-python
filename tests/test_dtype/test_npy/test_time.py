@@ -66,7 +66,7 @@ class TestDateTime64(_TestTimeBase):
     cast_value_params = (
         (DateTime64(unit="Y", scale_factor=1), "1", np.datetime64("1", "Y")),
         (DateTime64(unit="s", scale_factor=1), "2005-02-25", np.datetime64("2005-02-25", "s")),
-        (DateTime64(unit="ns", scale_factor=1), "NaT", np.datetime64("NaT")),
+        (DateTime64(unit="ns", scale_factor=1), "NaT", np.datetime64("NaT", "ns")),
     )
     invalid_scalar_params = (
         (DateTime64(unit="Y", scale_factor=1), 1.3),
