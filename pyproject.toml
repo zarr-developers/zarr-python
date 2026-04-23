@@ -36,7 +36,7 @@ dependencies = [
     'numpy>=2',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
-    'typing_extensions>=4.12',
+    'typing_extensions>=4.13',
     'donfig>=0.8',
 ]
 
@@ -110,10 +110,11 @@ remote-tests = [
 docs = [
     # Doc building
     "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1",
+    "mkdocs>=1.6.1,<2",
     "mkdocstrings>=0.29.1",
     "mkdocstrings-python>=1.16.10",
     "mike>=2.1.3",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
     "griffe-inherited-docstrings",
@@ -155,10 +156,6 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 dependency-groups = ["test"]
 
 [tool.hatch.envs.test.env-vars]
-# Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
-COV_CORE_SOURCE = "src"
-COV_CORE_CONFIG = ".coveragerc"
-COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.12", "3.13", "3.14"]
@@ -175,13 +172,23 @@ matrix.deps.dependency-groups = [
 ]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
-run = "run-coverage --no-cov --ignore tests/benchmarks"
+run-coverage = [
+    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage xml",
+]
+run-coverage-html = [
+    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
+    "coverage html",
+]
+run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = [
+    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage xml",
+]
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
+serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -195,8 +202,11 @@ features = ["gpu"]
 python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
-run = "run-coverage --no-cov"
+run-coverage = [
+    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage xml",
+]
+run = "pytest -m gpu --ignore tests/benchmarks"
 
 [tool.hatch.envs.upstream]
 template = 'test'
@@ -233,7 +243,7 @@ extra-dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
-    'typing_extensions==4.12.*',
+    'typing_extensions==4.13.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
 ]
@@ -244,6 +254,10 @@ installer = "uv"
 [tool.hatch.envs.docs]
 features = ['remote']
 dependency-groups = ['docs']
+
+[tool.hatch.envs.docs.env-vars]
+DISABLE_MKDOCS_2_WARNING = "true"
+NO_MKDOCS_2_WARNING = "true"
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve --watch src"

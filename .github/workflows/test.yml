@@ -20,6 +20,12 @@ concurrency:
 jobs:
   test:
     name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
+    environment:
+      name: codecov-upload
+      deployment: false
+    defaults:
+      run:
+        shell: bash
 
     strategy:
       matrix:
@@ -45,11 +51,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -58,24 +65,30 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
     name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
-
+    environment:
+      name: codecov-upload
+      deployment: false
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -87,11 +100,12 @@ jobs:
           - python-version: "3.12"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -100,27 +114,33 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env create ${{ matrix.dependency-set }}
-        hatch env run -e ${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   doctests:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: '3.13'
         cache: 'pip'
@@ -135,6 +155,27 @@ jobs:
       run: |
         hatch run doctest:test
 
+  benchmarks:
+    name: Benchmark smoke test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+    - name: Install Hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
+    - name: Run Benchmarks
+      run: |
+        hatch env run --env "test.py3.13-minimal" run-benchmark
+
   test-complete:
     name: Test complete
 
@@ -142,7 +183,8 @@ jobs:
       [
         test,
         test-upstream-and-min-deps,
-        doctests
+        doctests,
+        benchmarks
       ]
     if: always()
     runs-on: ubuntu-latest

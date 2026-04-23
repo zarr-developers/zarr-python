@@ -1,34 +1,568 @@
 from __future__ import annotations
 
+import bisect
 import itertools
 import math
 import numbers
 import operator
 import warnings
-from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast, runtime_checkable
 
 import numpy as np
+import numpy.typing as npt
 
 import zarr
-from zarr.abc.metadata import Metadata
 from zarr.core.common import (
-    JSON,
-    NamedConfig,
     ShapeLike,
     ceildiv,
-    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from typing import Self
+    from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.core.array import ShardsLike
+    from zarr.core.metadata import ArrayMetadata
+
+
+@dataclass(frozen=True)
+class FixedDimension:
+    """Uniform chunk size. Boundary chunks contain less data but are
+    encoded at full size by the codec pipeline."""
+
+    size: int  # chunk edge length (>= 0)
+    extent: int  # array dimension length
+    nchunks: int = field(init=False, repr=False)
+    ngridcells: int = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.size < 0:
+            raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
+        if self.extent < 0:
+            raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
+        if self.size == 0:
+            n = 0
+        else:
+            n = ceildiv(self.extent, self.size)
+        object.__setattr__(self, "nchunks", n)
+        object.__setattr__(self, "ngridcells", n)
+
+    def index_to_chunk(self, idx: int) -> int:
+        if idx < 0:
+            raise IndexError(f"Negative index {idx} is not allowed")
+        if idx >= self.extent:
+            raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
+        if self.size == 0:
+            return 0
+        return idx // self.size
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        """Byte-aligned start position of chunk *chunk_ix* in array coordinates.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        return chunk_ix * self.size
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        """Buffer size for codec processing — always uniform.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        return self.size
+
+    def data_size(self, chunk_ix: int) -> int:
+        """Valid data region within the buffer — clipped at extent.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        if self.size == 0:
+            return 0
+        return max(0, min(self.size, self.extent - chunk_ix * self.size))
+
+    @property
+    def _unique_edge_lengths(self) -> Iterable[int]:
+        """Distinct chunk edge lengths for this dimension.
+
+        Used by shard validation to check that every unique edge length
+        is divisible by the inner chunk size. O(1) for fixed dimensions
+        since there is only one edge length.
+        """
+        return (self.size,)
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        if self.size == 0:
+            return np.zeros_like(indices)
+        return indices // self.size
+
+    def with_extent(self, new_extent: int) -> FixedDimension:
+        """Re-bind to *new_extent* without modifying edges.
+
+        Used when constructing a grid from existing metadata where edges
+        are already correct. Raises on
+        ``VaryingDimension`` if edges don't cover the new extent.
+        """
+        return FixedDimension(size=self.size, extent=new_extent)
+
+    def resize(self, new_extent: int) -> FixedDimension:
+        """Adapt for a user-initiated array resize, growing edges if needed.
+
+        For ``FixedDimension`` this is identical to ``with_extent`` since
+        regular grids don't store explicit edges.
+        """
+        return FixedDimension(size=self.size, extent=new_extent)
+
+    @property
+    def _size_repr(self) -> str:
+        return str(self.size)
+
+
+@dataclass(frozen=True)
+class VaryingDimension:
+    """Explicit per-chunk sizes. The last chunk may extend past the array
+    extent (``extent < sum(edges)``), in which case ``data_size`` clips to
+    the valid region while ``chunk_size`` returns the full edge length for
+    codec processing. This underflow is allowed to match how regular grids
+    handle boundary chunks, and to support shrinking an array without
+    rewriting chunk edges (the spec allows trailing edges beyond the extent)."""
+
+    edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
+    cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
+    extent: int  # array dimension length (may be < sum(edges) after resize)
+    nchunks: int = field(init=False, repr=False)  # cached at construction
+    ngridcells: int = field(init=False, repr=False)  # cached at construction
+
+    # TODO(perf): for long dimensions (O(million chunks)):
+    # - with_extent/resize recompute cumulative sums and nchunks from scratch;
+    #   add a fast path that reuses the existing cumulative tuple.
+    # - Consider storing cumulative as ndarray so bisect calls can use
+    #   np.searchsorted. Scalar lookups (chunk_offset, index_to_chunk)
+    #   would need benchmarking to confirm no regression.
+    def __init__(self, edges: Sequence[int], extent: int) -> None:
+        edges_tuple = tuple(edges)
+        if not edges_tuple:
+            raise ValueError("VaryingDimension edges must not be empty")
+        if any(e <= 0 for e in edges_tuple):
+            raise ValueError(f"All edge lengths must be > 0, got {edges_tuple}")
+        cumulative = tuple(itertools.accumulate(edges_tuple))
+        if extent < 0:
+            raise ValueError(f"VaryingDimension extent must be >= 0, got {extent}")
+        if extent > cumulative[-1]:
+            raise ValueError(
+                f"VaryingDimension extent {extent} exceeds sum of edges {cumulative[-1]}"
+            )
+        object.__setattr__(self, "edges", edges_tuple)
+        object.__setattr__(self, "cumulative", cumulative)
+        object.__setattr__(self, "extent", extent)
+        # Cache nchunks: number of chunks that overlap [0, extent)
+        if extent == 0:
+            n = 0
+        else:
+            n = bisect.bisect_left(cumulative, extent) + 1
+        object.__setattr__(self, "nchunks", n)
+        object.__setattr__(self, "ngridcells", len(edges_tuple))
+
+    def index_to_chunk(self, idx: int) -> int:
+        if idx < 0 or idx >= self.extent:
+            raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
+        return bisect.bisect_right(self.cumulative, idx)
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        """Start position of chunk *chunk_ix* in array coordinates.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        """Buffer size for codec processing.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        return self.edges[chunk_ix]
+
+    def data_size(self, chunk_ix: int) -> int:
+        """Valid data region within the buffer — clipped at extent.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
+        offset = self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
+        return max(0, min(self.edges[chunk_ix], self.extent - offset))
+
+    @property
+    def _unique_edge_lengths(self) -> Iterable[int]:
+        """Distinct chunk edge lengths for this dimension (lazily deduplicated).
+
+        Used by shard validation to check that every unique edge length
+        is divisible by the inner chunk size. Lazy deduplication avoids
+        materializing all edges for dimensions with many repeated sizes.
+        """
+        seen: set[int] = set()
+        for e in self.edges:
+            if e not in seen:
+                seen.add(e)
+                yield e
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        return np.searchsorted(self.cumulative, indices, side="right")
+
+    def with_extent(self, new_extent: int) -> VaryingDimension:
+        """Re-bind to *new_extent* without modifying edges.
+
+        Used when constructing a grid from existing metadata where edges
+        are already correct. Raises if the
+        existing edges don't cover *new_extent*.
+        """
+        edge_sum = self.cumulative[-1]
+        if edge_sum < new_extent:
+            raise ValueError(
+                f"VaryingDimension edge sum {edge_sum} is less than new extent {new_extent}"
+            )
+        return VaryingDimension(self.edges, extent=new_extent)
+
+    def resize(self, new_extent: int) -> VaryingDimension:
+        """Adapt for a user-initiated array resize, growing edges if needed.
+
+        Unlike ``with_extent``, this never fails — if *new_extent* exceeds
+        the current edge sum, a new chunk is appended to cover the gap.
+        Shrinking preserves all edges (the spec allows trailing edges
+        beyond the array extent).
+        """
+        if new_extent == self.extent:
+            return self
+        elif new_extent > self.cumulative[-1]:
+            expanded_edges = list(self.edges) + [new_extent - self.cumulative[-1]]
+            return VaryingDimension(expanded_edges, extent=new_extent)
+        else:
+            return VaryingDimension(self.edges, extent=new_extent)
+
+    @property
+    def _size_repr(self) -> str:
+        return repr(tuple(self.edges))
+
+
+@runtime_checkable
+class DimensionGrid(Protocol):
+    """Structural interface shared by FixedDimension and VaryingDimension."""
+
+    @property
+    def nchunks(self) -> int: ...
+    @property
+    def ngridcells(self) -> int: ...
+    @property
+    def extent(self) -> int: ...
+    def index_to_chunk(self, idx: int) -> int: ...
+    def chunk_offset(self, chunk_ix: int) -> int: ...
+    def chunk_size(self, chunk_ix: int) -> int: ...
+    def data_size(self, chunk_ix: int) -> int: ...
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
+    @property
+    def _unique_edge_lengths(self) -> Iterable[int]: ...
+    def with_extent(self, new_extent: int) -> DimensionGrid: ...
+    def resize(self, new_extent: int) -> DimensionGrid: ...
+    @property
+    def _size_repr(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class ChunkSpec:
+    """Specification of a single chunk's location and size.
+
+    ``slices`` gives the valid data region in array coordinates.
+    ``codec_shape`` gives the buffer shape for codec processing.
+    For interior chunks these are equal. For boundary chunks of a regular
+    grid, ``codec_shape`` is the full declared chunk size while ``shape``
+    is clipped. For rectilinear grids, ``shape == codec_shape`` unless the
+    last chunk extends past the array extent.
+    """
+
+    slices: tuple[slice, ...]
+    codec_shape: tuple[int, ...]
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return tuple(s.stop - s.start for s in self.slices)
+
+    @property
+    def is_boundary(self) -> bool:
+        return self.shape != self.codec_shape
+
+
+# A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
+# list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
+
+
+def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
+    """Check if chunks is a nested sequence (e.g. [[10, 20], [5, 5]]).
+
+    Returns True for inputs like [[10, 20], [5, 5]] or [(10, 20), (5, 5)].
+    Returns False for flat sequences like (10, 10) or [10, 10].
+    """
+    if isinstance(chunks, (str, int, ChunkGrid)):
+        return False
+    if not hasattr(chunks, "__iter__"):
+        return False
+    try:
+        first_elem = next(iter(chunks), None)
+        if first_elem is None:
+            return False
+        return hasattr(first_elem, "__iter__") and not isinstance(first_elem, (str, bytes, int))
+    except (TypeError, StopIteration):
+        return False
+
+
+@dataclass(frozen=True)
+class ChunkGrid:
+    """
+    Unified chunk grid supporting both regular and rectilinear chunking.
+
+    A chunk grid is a concrete arrangement of chunks for a specific array.
+    It stores the extent (array dimension length) per dimension, enabling
+    ``grid[coords]`` to return a ``ChunkSpec`` without external parameters.
+
+    Internally represents each dimension as either FixedDimension (uniform chunks)
+    or VaryingDimension (per-chunk edge lengths with prefix sums).
+    """
+
+    _dimensions: tuple[DimensionGrid, ...]
+    _is_regular: bool
+
+    def __init__(self, *, dimensions: tuple[DimensionGrid, ...]) -> None:
+        object.__setattr__(self, "_dimensions", dimensions)
+        object.__setattr__(
+            self, "_is_regular", all(isinstance(d, FixedDimension) for d in dimensions)
+        )
+
+    def __repr__(self) -> str:
+        sizes = ", ".join(d._size_repr for d in self._dimensions)
+        shape = tuple(d.extent for d in self._dimensions)
+        return f"ChunkGrid(chunk_sizes=({sizes}), array_shape={shape})"
+
+    @classmethod
+    def from_metadata(cls, metadata: ArrayMetadata) -> ChunkGrid:
+        """Construct a ChunkGrid from array metadata.
+
+        For v2 metadata, builds from shape and chunks.
+        For v3 metadata, dispatches on the chunk grid type.
+        """
+        from zarr.core.metadata import ArrayV2Metadata
+        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+
+        if isinstance(metadata, ArrayV2Metadata):
+            return cls.from_sizes(metadata.shape, tuple(metadata.chunks))
+        chunk_grid_meta = metadata.chunk_grid
+        if isinstance(chunk_grid_meta, RegularChunkGridMetadata):
+            return cls.from_sizes(metadata.shape, tuple(chunk_grid_meta.chunk_shape))
+        elif isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
+            return cls.from_sizes(metadata.shape, chunk_grid_meta.chunk_shapes)
+        else:
+            raise TypeError(f"Unknown chunk grid metadata type: {type(chunk_grid_meta)}")
+
+    @classmethod
+    def from_sizes(
+        cls,
+        array_shape: ShapeLike,
+        chunk_sizes: Sequence[int | Sequence[int]],
+    ) -> ChunkGrid:
+        """Create a ChunkGrid from per-dimension chunk size specifications.
+
+        Parameters
+        ----------
+        array_shape
+            The array shape (one extent per dimension).
+        chunk_sizes
+            Per-dimension chunk sizes. Each element is either:
+
+            - An ``int`` — regular (fixed) chunk size for that dimension.
+            - A ``Sequence[int]`` — explicit per-chunk edge lengths. If all
+              edges are identical and cover the extent, the dimension is
+              stored as ``FixedDimension``; otherwise as ``VaryingDimension``.
+        """
+        extents = parse_shapelike(array_shape)
+        if len(extents) != len(chunk_sizes):
+            raise ValueError(
+                f"array_shape has {len(extents)} dimensions but chunk_sizes "
+                f"has {len(chunk_sizes)} dimensions"
+            )
+        dims: list[DimensionGrid] = []
+        for dim_spec, extent in zip(chunk_sizes, extents, strict=True):
+            if isinstance(dim_spec, int):
+                dims.append(FixedDimension(size=dim_spec, extent=extent))
+            else:
+                edges_list = list(dim_spec)
+                if not edges_list:
+                    raise ValueError("Each dimension must have at least one chunk")
+                edge_sum = sum(edges_list)
+                if (
+                    edges_list[0] > 0
+                    and all(e == edges_list[0] for e in edges_list)
+                    and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
+                ):
+                    dims.append(FixedDimension(size=edges_list[0], extent=extent))
+                else:
+                    dims.append(VaryingDimension(edges_list, extent=extent))
+        return cls(dimensions=tuple(dims))
+
+    # -- Properties --
+
+    @property
+    def ndim(self) -> int:
+        return len(self._dimensions)
+
+    @property
+    def is_regular(self) -> bool:
+        return self._is_regular
+
+    @property
+    def grid_shape(self) -> tuple[int, ...]:
+        """Number of chunks per dimension."""
+        return tuple(d.nchunks for d in self._dimensions)
+
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        """Return the uniform chunk shape. Raises if grid is not regular."""
+        if not self.is_regular:
+            raise ValueError(
+                "chunk_shape is only available for regular chunk grids. "
+                "Use grid[coords] for per-chunk sizes."
+            )
+        return tuple(d.size for d in self._dimensions if isinstance(d, FixedDimension))
+
+    @property
+    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension chunk sizes, including the final boundary chunk.
+
+        Returns the actual data size of each chunk (clipped at the array
+        extent), matching the dask ``Array.chunks`` convention.  Works for
+        both regular and rectilinear grids.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension, each containing the data size
+            of every chunk along that dimension.
+        """
+        return tuple(tuple(d.data_size(i) for i in range(d.nchunks)) for d in self._dimensions)
+
+    # -- Collection interface --
+
+    def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
+        """Return the ChunkSpec for a chunk at the given grid position, or None if OOB."""
+        if isinstance(coords, int):
+            coords = (coords,)
+        if len(coords) != self.ndim:
+            raise ValueError(
+                f"Expected {self.ndim} coordinate(s) for a {self.ndim}-d chunk grid, "
+                f"got {len(coords)}."
+            )
+        slices: list[slice] = []
+        codec_shape: list[int] = []
+        for dim, ix in zip(self._dimensions, coords, strict=True):
+            if ix < 0 or ix >= dim.nchunks:
+                return None
+            offset = dim.chunk_offset(ix)
+            slices.append(slice(offset, offset + dim.data_size(ix), 1))
+            codec_shape.append(dim.chunk_size(ix))
+        return ChunkSpec(tuple(slices), tuple(codec_shape))
+
+    def __iter__(self) -> Iterator[ChunkSpec]:
+        """Iterate all chunks, yielding ChunkSpec for each."""
+        for coords in itertools.product(*(range(d.nchunks) for d in self._dimensions)):
+            spec = self[coords]
+            if spec is not None:
+                yield spec
+
+    def all_chunk_coords(
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
+    ) -> Iterator[tuple[int, ...]]:
+        """Iterate over chunk coordinates, optionally restricted to a subregion.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None
+            The first chunk coordinate to return. Defaults to the grid origin.
+        selection_shape : Sequence[int] | None
+            The number of chunks per dimension to iterate. Defaults to the
+            remaining extent from origin.
+        """
+        if origin is None:
+            origin_parsed = (0,) * self.ndim
+        else:
+            origin_parsed = tuple(origin)
+        if selection_shape is None:
+            selection_shape_parsed = tuple(
+                g - o for o, g in zip(origin_parsed, self.grid_shape, strict=True)
+            )
+        else:
+            selection_shape_parsed = tuple(selection_shape)
+        ranges = tuple(
+            range(o, o + s) for o, s in zip(origin_parsed, selection_shape_parsed, strict=True)
+        )
+        return itertools.product(*ranges)
+
+    def iter_chunk_regions(
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
+    ) -> Iterator[tuple[slice, ...]]:
+        """Iterate over the data regions (slices) spanned by each chunk.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None
+            The first chunk coordinate to return. Defaults to the grid origin.
+        selection_shape : Sequence[int] | None
+            The number of chunks per dimension to iterate. Defaults to the
+            remaining extent from origin.
+        """
+        for coords in self.all_chunk_coords(origin=origin, selection_shape=selection_shape):
+            spec = self[coords]
+            if spec is not None:
+                yield spec.slices
+
+    def get_nchunks(self) -> int:
+        return reduce(operator.mul, (d.nchunks for d in self._dimensions), 1)
+
+    # -- Resize --
+
+    def update_shape(self, new_shape: tuple[int, ...]) -> ChunkGrid:
+        """Return a new ChunkGrid adjusted for *new_shape*.
+
+        For regular (FixedDimension) axes the extent is simply re-bound.
+        For varying (VaryingDimension) axes:
+        * **grow**: a new chunk whose size equals the growth is appended.
+        * **shrink**: trailing chunks that lie entirely beyond *new_shape* are
+          dropped; the last retained chunk is the one whose cumulative offset
+          first reaches or exceeds the new extent.
+        * **no change**: the dimension is kept as-is.
+
+        Raises
+        ------
+        ValueError
+            If *new_shape* has the wrong number of dimensions.
+        """
+        if len(new_shape) != self.ndim:
+            raise ValueError(
+                f"new_shape has {len(new_shape)} dimensions but "
+                f"chunk grid has {self.ndim} dimensions"
+            )
+        dims = tuple(
+            dim.resize(new_extent)
+            for dim, new_extent in zip(self._dimensions, new_shape, strict=True)
+        )
+        return ChunkGrid(dimensions=dims)
 
 
 def _guess_chunks(
@@ -156,58 +690,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
     return tuple(int(c) for c in chunks)
 
 
-@dataclass(frozen=True)
-class ChunkGrid(Metadata):
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
-        if isinstance(data, ChunkGrid):
-            return data
-
-        name_parsed, _ = parse_named_configuration(data)
-        if name_parsed == "regular":
-            return RegularChunkGrid._from_dict(data)
-        raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
-
-    @abstractmethod
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        pass
-
-    @abstractmethod
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        pass
-
-
-@dataclass(frozen=True)
-class RegularChunkGrid(ChunkGrid):
-    chunk_shape: tuple[int, ...]
-
-    def __init__(self, *, chunk_shape: ShapeLike) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
-
-        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
-
-    @classmethod
-    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
-
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
-
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        return itertools.product(
-            *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
-        )
-
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        return reduce(
-            operator.mul,
-            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
-            1,
-        )
-
-
 def _guess_num_chunks_per_axis_shard(
     chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
 ) -> int:
@@ -301,6 +783,6 @@ def _auto_partition(
         elif isinstance(shard_shape, dict):
             _shards_out = tuple(shard_shape["shape"])
         else:
-            _shards_out = shard_shape
+            _shards_out = cast("tuple[int, ...]", shard_shape)
 
     return _shards_out, _chunks_out

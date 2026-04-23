@@ -209,19 +209,19 @@ def test_array_name_properties_with_group(
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("specifiy_fill_value", [True, False])
+@pytest.mark.parametrize("specify_fill_value", [True, False])
 @pytest.mark.parametrize(
     "zdtype", zdtype_examples, ids=tuple(str(type(v)) for v in zdtype_examples)
 )
 def test_array_fill_value_default(
-    store: MemoryStore, specifiy_fill_value: bool, zdtype: ZDType[Any, Any]
+    store: MemoryStore, specify_fill_value: bool, zdtype: ZDType[Any, Any]
 ) -> None:
     """
     Test that creating an array with the fill_value parameter set to None, or unspecified,
     results in the expected fill_value attribute of the array, i.e. the default value of the dtype
     """
     shape = (10,)
-    if specifiy_fill_value:
+    if specify_fill_value:
         arr = zarr.create_array(
             store=store,
             shape=shape,
@@ -786,8 +786,6 @@ def test_resize_growing_skips_chunk_enumeration(
     store: MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     """Growing an array should not enumerate chunk coords for deletion (#3650 mitigation)."""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
     z = zarr.create(
         shape=(10, 10),
         chunks=(5, 5),
@@ -798,11 +796,13 @@ def test_resize_growing_skips_chunk_enumeration(
     )
     z[:] = np.ones((10, 10), dtype="i4")
 
+    grid_cls = type(z._chunk_grid)
+
     # growth only - ensure no chunk coords are enumerated
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z.metadata.chunk_grid.all_chunk_coords,
+        wraps=z._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z.resize((20, 20))
         mock_coords.assert_not_called()
@@ -813,9 +813,9 @@ def test_resize_growing_skips_chunk_enumeration(
 
     # shrink - ensure no regression of behaviour
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z.metadata.chunk_grid.all_chunk_coords,
+        wraps=z._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z.resize((5, 5))
         assert mock_coords.call_count > 0
@@ -836,9 +836,9 @@ def test_resize_growing_skips_chunk_enumeration(
     z2[:] = np.ones((10, 10), dtype="i4")
 
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z2.metadata.chunk_grid.all_chunk_coords,
+        wraps=z2._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z2.resize((20, 5))
         assert mock_coords.call_count > 0
@@ -1576,7 +1576,7 @@ class TestCreateArray:
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
             stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+                BasicIndexer(..., shape=arr.shape, chunk_grid=arr._chunk_grid),
                 prototype=default_buffer_prototype(),
             )
         else:
