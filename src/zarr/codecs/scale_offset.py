@@ -283,20 +283,32 @@ def _decode(
 class ScaleOffset(ArrayArrayCodec):
     """Scale-offset array-to-array codec.
 
-    Encodes values with ``out = (in - offset) * scale`` and decodes with
-    ``out = (in / scale) + offset``, using the input array's data type semantics.
+    Encodes values with `out = (in - offset) * scale` and decodes with
+    `out = (in / scale) + offset`, using the input array's data type semantics.
     Intermediate or final values that are not representable in that dtype are reported
     as errors (integer overflow, unsigned underflow, non-exact integer division).
 
-    See https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/scale_offset
-    for the codec specification.
-
     Parameters
     ----------
-    offset : float
-        Value subtracted during encoding. Default is 0.
-    scale : float
-        Value multiplied during encoding (after offset subtraction). Default is 1.
+    offset : int, float, or str
+        Value subtracted during encoding. Strings preserve the exact JSON
+        representation when round-tripping metadata. Default is 0.
+    scale : int, float, or str
+        Value multiplied during encoding (after offset subtraction). Strings
+        preserve the exact JSON representation when round-tripping metadata.
+        Default is 1.
+
+    Attributes
+    ----------
+    offset : int, float, or str
+        The offset value, as supplied to the constructor.
+    scale : int, float, or str
+        The scale value, as supplied to the constructor.
+
+    References
+    ----------
+
+    - The `scale_offset` codec spec: https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/scale_offset
     """
 
     is_fixed_size = True

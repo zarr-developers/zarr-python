@@ -142,20 +142,35 @@ class CastValue(ArrayArrayCodec):
     Value-converts array elements to a new data type during encoding,
     and back to the original data type during decoding.
 
-    Requires the ``cast-value-rs`` package for the actual casting logic.
+    Requires the `cast-value-rs` package for the actual casting logic.
 
     Parameters
     ----------
-    data_type : str
-        Target zarr v3 data type name (e.g. "uint8", "float32").
+    data_type : str or ZDType
+        Target zarr v3 data type. Strings are looked up by spec name
+        (e.g. "uint8", "float32"); a `ZDType` instance is used as-is.
     rounding : RoundingMode
-        How to round when exact representation is impossible. Default is "nearest-even".
+        How to round when exact representation is impossible. Default is
+        "nearest-even".
     out_of_range : OutOfRangeMode or None
-        What to do when a value is outside the target's range.
-        None means error. "clamp" clips to range. "wrap" uses modular arithmetic
-        (only valid for integer types).
-    scalar_map : dict or None
-        Explicit mapping from input scalars to output scalars.
+        What to do when a value is outside the target's range. `None` means
+        error; "clamp" clips to range; "wrap" uses modular arithmetic
+        (only valid for integer types). Default is `None`.
+    scalar_map : ScalarMap, ScalarMapJSON, or None
+        Explicit mapping from input scalars to output scalars. Default is
+        `None`.
+
+    Attributes
+    ----------
+    dtype : ZDType
+        Resolved target data type (a `ZDType` instance, regardless of
+        whether the constructor received a string or a `ZDType`).
+    rounding : RoundingMode
+        The rounding mode, as supplied to the constructor.
+    out_of_range : OutOfRangeMode or None
+        The out-of-range behaviour, as supplied to the constructor.
+    scalar_map : ScalarMap or None
+        Parsed scalar map (always normalized to `ScalarMap` form).
 
     References
     ----------
