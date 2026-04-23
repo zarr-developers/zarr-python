@@ -167,6 +167,7 @@ matrix.deps.features = [
   {value = "remote", if = ["optional"]},
   {value = "optional", if = ["optional"]},
   {value = "cli", if = ["optional"]},
+  {value = "cast-value-rs", if = ["optional"]},
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
@@ -191,16 +192,6 @@ run-hypothesis = [
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 serve-coverage-html = "python -m http.server -d htmlcov 8000"
 list-env = "pip list"
-
-[tool.hatch.envs.cast-value]
-template = "test"
-features = ["cast-value-rs"]
-
-[[tool.hatch.envs.cast-value.matrix]]
-python = ["3.12"]
-
-[tool.hatch.envs.cast-value.scripts]
-run = "pytest tests/test_codecs/test_cast_value.py {args:}"
 
 [tool.hatch.envs.gputest]
 template = "test"
