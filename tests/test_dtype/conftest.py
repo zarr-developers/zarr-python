@@ -6,14 +6,13 @@ import numpy as np
 
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
-from zarr.core.dtype.npy.structured import Structured
+from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 
 zdtype_examples: tuple[ZDType[Any, Any], ...] = ()
 for wrapper_cls in data_type_registry.contents.values():
-    # The Structured dtype has to be constructed with some actual fields
-    if wrapper_cls is Structured:
+    if wrapper_cls is Struct:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             zdtype_examples += (
