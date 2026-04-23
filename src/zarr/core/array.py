@@ -69,6 +69,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
+    Structured,
     VariableLengthBytes,
     VariableLengthUTF8,
     ZDType,
@@ -4879,10 +4880,13 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
     length strings and variable length bytes have hard-coded serializers -- ``VLenUTF8Codec`` and
     ``VLenBytesCodec``, respectively.
 
+    Structured data types with multi-byte fields use ``BytesCodec`` with little-endian encoding.
     """
     serializer: ArrayBytesCodec = BytesCodec(endian=None)
 
-    if isinstance(dtype, HasEndianness):
+    if isinstance(dtype, HasEndianness) or (
+        isinstance(dtype, Structured) and dtype.has_multi_byte_fields()
+    ):
         serializer = BytesCodec(endian="little")
     elif isinstance(dtype, HasObjectCodec):
         if dtype.object_codec_id == "vlen-bytes":
