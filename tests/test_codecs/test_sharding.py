@@ -1,5 +1,4 @@
 import pickle
-import re
 from typing import Any
 
 import numpy as np
@@ -489,9 +488,9 @@ def test_invalid_metadata(store: Store) -> None:
 def test_invalid_shard_shape() -> None:
     with pytest.raises(
         ValueError,
-        match=re.escape(
-            "The array's `chunk_shape` (got (16, 16)) needs to be divisible "
-            "by the shard's inner `chunk_shape` (got (9,))."
+        match=(
+            f"Chunk edge length {16} in dimension {0} is not "
+            f"divisible by the shard's inner chunk size {9}\\."
         ),
     ):
         zarr.create_array(

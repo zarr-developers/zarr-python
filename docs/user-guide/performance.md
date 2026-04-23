@@ -217,6 +217,28 @@ Lower concurrency values may be beneficial when:
 - Memory is constrained (each concurrent operation requires buffer space)
 - Using Zarr within a parallel computing framework (see below)
 
+### Thread pool size (`threading.max_workers`)
+
+When synchronous Zarr code calls async operations internally, Zarr uses a
+`ThreadPoolExecutor` to run those coroutines. The `threading.max_workers`
+configuration option controls the maximum number of worker threads in that pool.
+By default it is `None`, which lets Python choose the pool size (typically
+`min(32, os.cpu_count() + 4)`).
+
+You can set it explicitly when you want more predictable resource usage:
+
+```python
+import zarr
+
+zarr.config.set({'threading.max_workers': 8})
+```
+
+Reducing this value can help avoid overloading the event loop when Zarr is used
+inside a parallel computing framework such as Dask that already manages its own
+thread pool (see the Dask section below). Increasing it may improve throughput
+in CPU-bound workloads where many synchronous-to-async dispatches happen
+concurrently.
+
 ### Using Zarr with Dask
 
 [Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's concurrency settings.

@@ -209,19 +209,19 @@ def test_array_name_properties_with_group(
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("specifiy_fill_value", [True, False])
+@pytest.mark.parametrize("specify_fill_value", [True, False])
 @pytest.mark.parametrize(
     "zdtype", zdtype_examples, ids=tuple(str(type(v)) for v in zdtype_examples)
 )
 def test_array_fill_value_default(
-    store: MemoryStore, specifiy_fill_value: bool, zdtype: ZDType[Any, Any]
+    store: MemoryStore, specify_fill_value: bool, zdtype: ZDType[Any, Any]
 ) -> None:
     """
     Test that creating an array with the fill_value parameter set to None, or unspecified,
     results in the expected fill_value attribute of the array, i.e. the default value of the dtype
     """
     shape = (10,)
-    if specifiy_fill_value:
+    if specify_fill_value:
         arr = zarr.create_array(
             store=store,
             shape=shape,
@@ -786,8 +786,6 @@ def test_resize_growing_skips_chunk_enumeration(
     store: MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     """Growing an array should not enumerate chunk coords for deletion (#3650 mitigation)."""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
     z = zarr.create(
         shape=(10, 10),
         chunks=(5, 5),
@@ -798,11 +796,13 @@ def test_resize_growing_skips_chunk_enumeration(
     )
     z[:] = np.ones((10, 10), dtype="i4")
 
+    grid_cls = type(z._chunk_grid)
+
     # growth only - ensure no chunk coords are enumerated
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z.metadata.chunk_grid.all_chunk_coords,
+        wraps=z._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z.resize((20, 20))
         mock_coords.assert_not_called()
@@ -813,9 +813,9 @@ def test_resize_growing_skips_chunk_enumeration(
 
     # shrink - ensure no regression of behaviour
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z.metadata.chunk_grid.all_chunk_coords,
+        wraps=z._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z.resize((5, 5))
         assert mock_coords.call_count > 0
@@ -836,9 +836,9 @@ def test_resize_growing_skips_chunk_enumeration(
     z2[:] = np.ones((10, 10), dtype="i4")
 
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
-        wraps=z2.metadata.chunk_grid.all_chunk_coords,
+        wraps=z2._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z2.resize((20, 5))
         assert mock_coords.call_count > 0
@@ -1576,7 +1576,7 @@ class TestCreateArray:
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
             stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+                BasicIndexer(..., shape=arr.shape, chunk_grid=arr._chunk_grid),
                 prototype=default_buffer_prototype(),
             )
         else:
@@ -1853,24 +1853,21 @@ def test_roundtrip_numcodecs() -> None:
 
     # Create the array with the correct codecs
     root = zarr.group(store)
-    warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        root.create_array(
-            "test",
-            shape=(720, 1440),
-            chunks=(720, 1440),
-            dtype="float64",
-            compressors=compressors,  # type: ignore[arg-type]
-            filters=filters,  # type: ignore[arg-type]
-            fill_value=-9.99,
-            dimension_names=["lat", "lon"],
-        )
+    root.create_array(
+        "test",
+        shape=(720, 1440),
+        chunks=(720, 1440),
+        dtype="float64",
+        compressors=compressors,  # type: ignore[arg-type]
+        filters=filters,  # type: ignore[arg-type]
+        fill_value=-9.99,
+        dimension_names=["lat", "lon"],
+    )
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        metadata = root["test"].metadata.to_dict()
+    metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
 
@@ -2259,9 +2256,34 @@ def test_create_array_with_data_num_gets(
         data = zarr.zeros(shape, dtype="int64")
 
     zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
-    # one get for the metadata and one per shard.
-    # Note: we don't actually need one get per shard, but this is the current behavior
-    assert store.counter["get"] == 1 + num_shards
+    # One get for the metadata; full-shard writes should not read shard payloads.
+    assert store.counter["get"] == 1
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_gets"),
+    [(slice(None), 0), (slice(1, 9), 1)],
+)
+def test_shard_write_num_gets(selection: slice, expected_gets: int) -> None:
+    """
+    Test that partial-shard writes read the existing data and full-shard writes don't.
+    """
+    store = LoggingStore(store=MemoryStore())
+    arr = zarr.create_array(
+        store,
+        shape=(10,),
+        chunks=(1,),
+        shards=(10,),
+        dtype="int64",
+        fill_value=-1,
+    )
+    arr[:] = 0
+
+    store.counter.clear()
+
+    arr[selection] = 1
+
+    assert store.counter["get"] == expected_gets
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])

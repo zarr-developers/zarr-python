@@ -3,11 +3,10 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
@@ -19,11 +18,10 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
-        TDType_co,
-        TScalar_co,
         ZDType,
     )
 
@@ -55,7 +53,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
+type CompressorLikev2 = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,7 +73,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: tuple[int, ...],
-        dtype: ZDType[TDType_co, TScalar_co],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunks: tuple[int, ...],
         fill_value: Any,
         order: MemoryOrder,
@@ -118,8 +116,22 @@ class ArrayV2Metadata(Metadata):
         return len(self.shape)
 
     @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
+    def chunk_grid(self) -> ChunkGrid:
+        """Backwards-compatible chunk grid property.
+
+        .. deprecated::
+            Access the chunk grid via the array layer instead.
+            This property will be removed in a future release.
+        """
+        from zarr.core.chunk_grids import ChunkGrid
+
+        warnings.warn(
+            "ArrayV2Metadata.chunk_grid is deprecated. "
+            "Use ChunkGrid.from_metadata(metadata) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ChunkGrid.from_sizes(self.shape, tuple(self.chunks))
 
     @property
     def shards(self) -> tuple[int, ...] | None:
