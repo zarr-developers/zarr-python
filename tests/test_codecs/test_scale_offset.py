@@ -453,5 +453,5 @@ def test_compute_encoded_size() -> None:
     """compute_encoded_size returns the input byte length unchanged (codec is fixed-size)."""
     codec = ScaleOffset(offset=0, scale=1)
     # The chunk_spec argument is unused; pass any sentinel
-    assert codec.compute_encoded_size(input_byte_length=100, _chunk_spec=None) == 100 # type: ignore[arg-type]
-    assert codec.compute_encoded_size(input_byte_length=0, _chunk_spec=None) == 0 # type: ignore[arg-type]
+    assert codec.compute_encoded_size(input_byte_length=100, _chunk_spec=None) == 100  # type: ignore[arg-type]
+    assert codec.compute_encoded_size(input_byte_length=0, _chunk_spec=None) == 0  # type: ignore[arg-type]
