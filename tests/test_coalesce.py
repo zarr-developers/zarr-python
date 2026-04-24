@@ -316,3 +316,35 @@ async def test_fetch_raises_propagates() -> None:
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(200, 210)]
     with pytest.raises(OSError, match="injected"):
         await _collect(coalesced_get(fetch, ranges, options=opts))
+
+
+async def test_max_coalesced_bytes_prevents_over_cap_merge() -> None:
+    fetch = FakeFetch(b"x" * 10_000)
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 1000,  # allow gap
+        "max_coalesced_bytes": 50,  # but cap the merged size
+        "max_concurrency": 10,
+    }
+    # Two ranges 20 bytes apart, each 20 bytes -- merged span would be 20+20+20=60 > 50.
+    ranges: list[ByteRequest | None] = [RangeByteRequest(0, 20), RangeByteRequest(40, 60)]
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    assert len(groups) == 2
+    assert all(len(g) == 1 for g in groups)
+
+
+async def test_single_range_larger_than_cap_is_passed_through() -> None:
+    fetch = FakeFetch(b"x" * 10_000)
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 1000,
+        "max_coalesced_bytes": 50,
+        "max_concurrency": 10,
+    }
+    # A single 200-byte range, larger than the cap. Should still be fetched.
+    ranges: list[ByteRequest | None] = [RangeByteRequest(0, 200)]
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    assert len(groups) == 1
+    assert len(groups[0]) == 1
+    idx, buf = groups[0][0]
+    assert idx == 0
+    assert buf is not None
+    assert buf.to_bytes() == b"x" * 200
