@@ -287,6 +287,25 @@ async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
     assert len(groups[0]) == 1
 
 
+@pytest.mark.parametrize(
+    "byte_range",
+    [
+        OffsetByteRequest(5),
+        SuffixByteRequest(5),
+        None,
+    ],
+    ids=["offset", "suffix", "none"],
+)
+async def test_key_missing_on_uncoalescable_input_yields_nothing(
+    byte_range: ByteRequest | None,
+) -> None:
+    # Uncoalescable inputs take a distinct code path from the merged-group
+    # path; a missing key on that path must still short-circuit cleanly.
+    fetch = FakeFetch(b"x" * 100, key_exists=False)
+    groups = await _collect(coalesced_get(fetch, [byte_range], options=DEFAULT_COALESCE_OPTIONS))
+    assert groups == []
+
+
 async def test_fetch_raises_propagates() -> None:
     fetch = FakeFetch(
         b"x" * 100,
