@@ -7,9 +7,20 @@ import pytest
 
 from zarr.storage._protocols import SupportsGetRanges
 
+fsspec = pytest.importorskip("fsspec")
 
+from packaging.version import parse as parse_version  # noqa: E402
+
+# AsyncFileSystemWrapper (needed to wrap a sync MemoryFileSystem) landed in fsspec 2024.12.0.
+# Older versions are pinned by the min-deps CI job.
+_needs_async_wrapper = pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+
+
+@_needs_async_wrapper
 def test_fsspec_store_satisfies_supports_get_ranges() -> None:
-    pytest.importorskip("fsspec")
     from fsspec.implementations.memory import MemoryFileSystem
 
     from zarr.storage import FsspecStore
@@ -34,5 +45,4 @@ def test_type_assignment_at_module_level() -> None:
 
     If this runs without error the module imported cleanly; the static check is in mypy.
     """
-    pytest.importorskip("fsspec")
     from zarr.storage import _fsspec  # noqa: F401

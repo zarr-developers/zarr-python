@@ -8,6 +8,7 @@ fsspec MemoryFileSystem wrapped in the async wrapper.
 from __future__ import annotations
 
 import pytest
+from packaging.version import parse as parse_version
 
 from zarr.abc.store import RangeByteRequest
 from zarr.core._coalesce import DEFAULT_COALESCE_OPTIONS, CoalesceOptions
@@ -16,6 +17,13 @@ from zarr.storage import FsspecStore
 from zarr.storage._fsspec import _make_async
 
 fsspec = pytest.importorskip("fsspec")
+
+# AsyncFileSystemWrapper (needed to wrap a sync MemoryFileSystem) landed in fsspec 2024.12.0.
+# Older versions are pinned by the min-deps CI job, so skip the whole file there.
+pytestmark = pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
 
 
 @pytest.fixture
