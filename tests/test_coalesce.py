@@ -56,22 +56,6 @@ class FakeFetch:
         raise AssertionError(f"unknown byte_range {byte_range!r}")
 
 
-# A permissive options value used by most tests (heavy merging allowed).
-HEAVY_MERGE: CoalesceOptions = {
-    "max_gap_bytes": 1 << 20,
-    "max_coalesced_bytes": 1 << 30,
-    "max_concurrency": 10,
-}
-
-# An options value that forbids all merging (gap threshold 0 and any adjacent
-# merges would still be allowed at gap==0, so we also cap size).
-NO_MERGE: CoalesceOptions = {
-    "max_gap_bytes": -1,  # strictly less-than semantics -- any positive gap breaks
-    "max_coalesced_bytes": 1 << 30,
-    "max_concurrency": 10,
-}
-
-
 async def _collect(
     agen: AsyncIterator[Sequence[tuple[int, Buffer | None]]],
 ) -> list[list[tuple[int, Buffer | None]]]:
