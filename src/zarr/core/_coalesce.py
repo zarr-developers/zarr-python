@@ -117,8 +117,6 @@ async def coalesced_get(
     ]
     work_items.extend([(idx, single)] for idx, single in uncoalescable)
 
-    total = len(work_items)
-
     # Completion queue entries are either ("ok", payload), ("missing", None),
     # or ("error", exception). Kept as Any internally to avoid dragging
     # Sequence out of TYPE_CHECKING.
@@ -166,34 +164,32 @@ async def coalesced_get(
         tasks.add(asyncio.create_task(run_one(item)))
 
     try:
-        drained = 0
-        stopped = False
         pending_error: BaseException | None = None
-        while drained < total:
+        for _ in range(len(work_items)):
             kind, payload = await completion_queue.get()
-            drained += 1
-            if stopped:
-                continue  # Discard remaining results after a miss or error.
             if kind == "ok":
                 assert payload is not None
                 assert not isinstance(payload, BaseException)
                 yield payload
-            elif kind == "missing":
-                stopped = True
-                # Cancel any still-pending tasks to avoid unnecessary I/O.
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
-            else:  # "error"
+                continue
+            # "missing" or "error": stop scheduling and cancel pending work.
+            # Late arrivals that raced to enqueue before cancellation took
+            # effect sit in the completion queue and are discarded by the
+            # finally block (the queue is local and will be garbage-collected).
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            if kind == "error":
                 assert isinstance(payload, BaseException)
-                stopped = True
                 pending_error = payload
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
+            break
         if pending_error is not None:
             raise pending_error
     finally:
-        # Ensure we wait for any cancelled tasks to finish so no task escapes.
+        # Best-effort cancellation for in-flight tasks (covers the consumer
+        # break / early-exit case where we did not proactively cancel).
+        for t in tasks:
+            if not t.done():
+                t.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
