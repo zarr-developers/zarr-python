@@ -365,6 +365,48 @@ async def test_key_missing_on_uncoalescable_input_yields_nothing(
     assert groups == []
 
 
+async def test_consumer_break_cancels_pending_fetches() -> None:
+    # Kick off many slow ranges with small max_concurrency, break after the
+    # first yielded group, and verify the remaining tasks are cancelled rather
+    # than allowed to run to completion.
+    completed_calls = 0
+    cancelled_calls = 0
+
+    async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
+        nonlocal completed_calls, cancelled_calls
+        assert isinstance(byte_range, RangeByteRequest)
+        start = byte_range.start
+        try:
+            # First fetch returns fast so the async for body runs and can break.
+            # Later fetches sleep long enough that cancellation has room to land.
+            await asyncio.sleep(0.001 if start == 0 else 2.0)
+        except asyncio.CancelledError:
+            cancelled_calls += 1
+            raise
+        completed_calls += 1
+        return _buf(b"x")
+
+    opts: CoalesceOptions = {
+        "max_gap_bytes": -1,  # no merging
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 3,
+    }
+    ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(6)]
+
+    agen = coalesced_get(fetch, ranges, options=opts)
+    # Break after receiving the first yield.
+    async for _group in agen:
+        break
+    # Make sure the async generator is fully closed so its finally runs.
+    await agen.aclose()
+
+    # At least one slow fetch was actually running under the semaphore and got
+    # cancelled (rather than running to completion).
+    assert cancelled_calls >= 1
+    # And the first range's fetch completed normally (no spurious cancels there).
+    assert completed_calls >= 1
+
+
 async def test_fetch_raises_propagates() -> None:
     fetch = FakeFetch(
         b"x" * 100,
