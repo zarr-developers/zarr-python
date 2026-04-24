@@ -269,3 +269,50 @@ async def test_max_concurrency_is_honored() -> None:
         pass
     assert peak <= 3
     assert peak >= 2  # must have been some real concurrency
+
+
+async def test_key_missing_from_first_call_yields_nothing() -> None:
+    fetch = FakeFetch(b"x" * 100, key_exists=False)
+    ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(20, 30)]
+    groups = await _collect(coalesced_get(fetch, ranges, options=DEFAULT_COALESCE_OPTIONS))
+    assert groups == []
+
+
+async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
+    # Two non-mergeable ranges; the second fetch returns None.
+    call_count = 0
+
+    async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
+        nonlocal call_count
+        call_count += 1
+        # Ensure deterministic ordering: first call serves, second returns None.
+        await asyncio.sleep(0.01 if call_count == 1 else 0.02)
+        if call_count >= 2:
+            return None
+        return _buf(b"ok")
+
+    opts: CoalesceOptions = {
+        "max_gap_bytes": -1,
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 1,  # serialize for determinism
+    }
+    ranges: list[ByteRequest | None] = [RangeByteRequest(0, 2), RangeByteRequest(100, 102)]
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    # Exactly one group (the first) -- the second went missing.
+    assert len(groups) == 1
+    assert len(groups[0]) == 1
+
+
+async def test_fetch_raises_propagates() -> None:
+    fetch = FakeFetch(
+        b"x" * 100,
+        raise_on=lambda r: isinstance(r, RangeByteRequest) and r.start >= 100,
+    )
+    opts: CoalesceOptions = {
+        "max_gap_bytes": -1,
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 1,
+    }
+    ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(200, 210)]
+    with pytest.raises(OSError, match="injected"):
+        await _collect(coalesced_get(fetch, ranges, options=opts))
