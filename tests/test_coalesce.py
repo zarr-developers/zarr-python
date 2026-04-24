@@ -23,8 +23,6 @@ from zarr.core.buffer import Buffer, default_buffer_prototype
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
 
-pytestmark = pytest.mark.asyncio
-
 
 def _buf(data: bytes) -> Buffer:
     return default_buffer_prototype().buffer.from_bytes(data)
