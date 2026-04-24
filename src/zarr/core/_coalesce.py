@@ -5,7 +5,7 @@ import asyncio
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Sequence
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
@@ -37,7 +37,7 @@ async def coalesced_get(
     byte_ranges: Iterable[ByteRequest | None],
     *,
     options: CoalesceOptions,
-) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:
     """Read many byte ranges through ``fetch`` with coalescing and concurrency.
 
     Nearby ranges are merged into a single underlying I/O (subject to

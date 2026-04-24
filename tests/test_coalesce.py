@@ -397,7 +397,8 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
     # Break after receiving the first yield.
     async for _group in agen:
         break
-    # Make sure the async generator is fully closed so its finally runs.
+    # Explicitly close the generator so its finally block runs (cancelling
+    # in-flight tasks) before we make assertions.
     await agen.aclose()
 
     # At least one slow fetch was actually running under the semaphore and got
