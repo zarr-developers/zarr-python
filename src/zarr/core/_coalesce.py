@@ -38,9 +38,11 @@ async def coalesced_get(
     *,
     options: CoalesceOptions,
 ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-    """Read many byte ranges through ``fetch``, coalescing nearby ranges and firing merged requests concurrently.
+    """Read many byte ranges through ``fetch`` with coalescing and concurrency.
 
-    Each yield corresponds to exactly one underlying I/O operation: a sequence of
+    Nearby ranges are merged into a single underlying I/O (subject to
+    ``options``), and merged fetches are run concurrently. Each yield
+    corresponds to exactly one underlying I/O operation: a sequence of
     ``(input_index, result)`` tuples for all input ranges served by that I/O.
     Tuples within a yielded sequence are ordered by start offset. Yields across
     groups are in completion order, not input order.
