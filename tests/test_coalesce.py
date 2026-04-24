@@ -348,3 +348,30 @@ async def test_single_range_larger_than_cap_is_passed_through() -> None:
     assert idx == 0
     assert buf is not None
     assert buf.to_bytes() == b"x" * 200
+
+
+async def test_coverage_invariant_random_inputs() -> None:
+    import random
+
+    rng = random.Random(42)
+    blob = bytes(i % 256 for i in range(10_000))
+    fetch = FakeFetch(blob)
+
+    # Generate 50 random RangeByteRequests within the blob.
+    ranges: list[ByteRequest | None] = []
+    for _ in range(50):
+        start = rng.randint(0, 9000)
+        length = rng.randint(1, 500)
+        ranges.append(RangeByteRequest(start, start + length))
+
+    groups = await _collect(coalesced_get(fetch, ranges, options=DEFAULT_COALESCE_OPTIONS))
+    seen: list[int] = []
+    for group in groups:
+        for idx, _buf in group:
+            seen.append(idx)
+    assert sorted(seen) == list(range(len(ranges)))
+    # And the bytes are correct.
+    flat = _contents(groups)
+    for i, r in enumerate(ranges):
+        assert isinstance(r, RangeByteRequest)
+        assert flat[i] == blob[r.start : r.end]
