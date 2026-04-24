@@ -98,13 +98,13 @@ async def test_coalesce_options_wired_through() -> None:
 
 async def test_get_ranges_mixed_range_types(memory_store: FsspecStore) -> None:
     """Covers RangeByteRequest, OffsetByteRequest, SuffixByteRequest, and None in one call."""
-    from zarr.abc.store import OffsetByteRequest, SuffixByteRequest
+    from zarr.abc.store import ByteRequest, OffsetByteRequest, SuffixByteRequest
 
     blob = bytes(i % 256 for i in range(512))
     await _write(memory_store, "mixed", blob)
     proto = default_buffer_prototype()
 
-    ranges = [
+    ranges: list[ByteRequest | None] = [
         RangeByteRequest(0, 10),
         OffsetByteRequest(500),
         SuffixByteRequest(12),
