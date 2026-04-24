@@ -225,6 +225,7 @@ def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) 
         ExpectFail(
             input={"data_type": "uint8", "fill_value": {}},
             exception=TypeError,
+            msg=".*",
             id="invalid_fill_value_type",
         ),
     ],
