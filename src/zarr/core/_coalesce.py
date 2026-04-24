@@ -118,8 +118,6 @@ async def coalesced_get(
     work_items.extend([(idx, single)] for idx, single in uncoalescable)
 
     total = len(work_items)
-    if total == 0:
-        return
 
     # Completion queue entries are either ("ok", payload), ("missing", None),
     # or ("error", exception). Kept as Any internally to avoid dragging
@@ -142,22 +140,19 @@ async def coalesced_get(
                     await completion_queue.put(("ok", ((idx, buf),)))
                     return
                 # Merged group path: all members are RangeByteRequest.
-                starts = [r.start for _, r in members if isinstance(r, RangeByteRequest)]
-                ends = [r.end for _, r in members if isinstance(r, RangeByteRequest)]
+                assert all(isinstance(r, RangeByteRequest) for _, r in members)
+                starts = [r.start for _, r in members]  # type: ignore[union-attr]
+                ends = [r.end for _, r in members]  # type: ignore[union-attr]
                 group_start = min(starts)
                 group_end = max(ends)
                 big = await fetch(RangeByteRequest(group_start, group_end))
                 if big is None:
                     await completion_queue.put(("missing", None))
                     return
-                ordered = sorted(
-                    members,
-                    key=lambda pair: pair[1].start if isinstance(pair[1], RangeByteRequest) else 0,
-                )
+                ordered = sorted(members, key=lambda pair: pair[1].start)  # type: ignore[union-attr]
                 sliced: list[tuple[int, Buffer | None]] = []
                 for idx, r in ordered:
-                    assert isinstance(r, RangeByteRequest)
-                    sliced.append((idx, big[r.start - group_start : r.end - group_start]))
+                    sliced.append((idx, big[r.start - group_start : r.end - group_start]))  # type: ignore[union-attr]
                 await completion_queue.put(("ok", tuple(sliced)))
         except asyncio.CancelledError:
             # Cancellation is expected when we stop scheduling on a missing key.
