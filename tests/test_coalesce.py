@@ -1,6 +1,7 @@
 # tests/test_coalesce.py
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -239,3 +240,32 @@ async def test_mixed_mergeable_and_non_mergeable_counts_correct() -> None:
     # First group has 2, second has 1.
     sizes = sorted(len(g) for g in groups)
     assert sizes == [1, 2]
+
+
+async def test_max_concurrency_is_honored() -> None:
+    # Build 10 non-mergeable ranges, have the fetch hold a counter of in-flight calls.
+    in_flight = 0
+    peak = 0
+    lock = asyncio.Lock()
+
+    async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
+        nonlocal in_flight, peak
+        async with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        # give the scheduler a chance to run other tasks
+        await asyncio.sleep(0.01)
+        async with lock:
+            in_flight -= 1
+        return _buf(b"x")
+
+    ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(10)]
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 0,  # force no merging
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 3,
+    }
+    async for _group in coalesced_get(fetch, ranges, options=opts):
+        pass
+    assert peak <= 3
+    assert peak >= 2  # must have been some real concurrency

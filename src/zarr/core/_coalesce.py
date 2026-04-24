@@ -1,6 +1,7 @@
 # src/zarr/core/_coalesce.py
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
@@ -106,25 +107,96 @@ async def coalesced_get(
                 continue
         groups.append([pair])
 
-    # For now, serve groups sequentially (concurrency added in Task 5).
-    for group in groups:
-        group_start = min(x[1].start for x in group)
-        group_end = max(x[1].end for x in group)
-        big = await fetch(RangeByteRequest(group_start, group_end))
-        if big is None:
-            return  # key missing, stop yielding
-        # Slice back into per-input buffers, ordered by start offset.
-        group.sort(key=lambda pair: pair[1].start)
-        yielded: list[tuple[int, Buffer | None]] = []
-        for i, r in group:
-            local_start = r.start - group_start
-            local_end = r.end - group_start
-            yielded.append((i, big[local_start:local_end]))
-        yield tuple(yielded)
+    # Build a uniform list of work items. Each work item is a list of
+    # (input_index, ByteRequest | None) pairs. Merged groups have multiple
+    # members (all RangeByteRequest); uncoalescable items have a single member.
+    work_items: list[list[tuple[int, ByteRequest | None]]] = [
+        [(idx, r) for idx, r in g] for g in groups
+    ]
+    work_items.extend([(idx, single)] for idx, single in uncoalescable)
 
-    # Uncoalescable inputs are fetched one at a time, each as its own one-tuple group.
-    for idx, single in uncoalescable:
-        buf = await fetch(single)
-        if buf is None:
-            return  # key missing, stop yielding
-        yield ((idx, buf),)
+    total = len(work_items)
+    if total == 0:
+        return
+
+    # Completion queue entries are either ("ok", payload), ("missing", None),
+    # or ("error", exception). Kept as Any internally to avoid dragging
+    # Sequence out of TYPE_CHECKING.
+    completion_queue: asyncio.Queue[
+        tuple[str, Sequence[tuple[int, Buffer | None]] | BaseException | None]
+    ] = asyncio.Queue()
+    semaphore = asyncio.Semaphore(options["max_concurrency"])
+
+    async def run_one(members: list[tuple[int, ByteRequest | None]]) -> None:
+        try:
+            async with semaphore:
+                if len(members) == 1 and not isinstance(members[0][1], RangeByteRequest):
+                    # Uncoalescable single fetch.
+                    idx, single = members[0]
+                    buf = await fetch(single)
+                    if buf is None:
+                        await completion_queue.put(("missing", None))
+                        return
+                    await completion_queue.put(("ok", ((idx, buf),)))
+                    return
+                # Merged group path: all members are RangeByteRequest.
+                starts = [r.start for _, r in members if isinstance(r, RangeByteRequest)]
+                ends = [r.end for _, r in members if isinstance(r, RangeByteRequest)]
+                group_start = min(starts)
+                group_end = max(ends)
+                big = await fetch(RangeByteRequest(group_start, group_end))
+                if big is None:
+                    await completion_queue.put(("missing", None))
+                    return
+                ordered = sorted(
+                    members,
+                    key=lambda pair: pair[1].start if isinstance(pair[1], RangeByteRequest) else 0,
+                )
+                sliced: list[tuple[int, Buffer | None]] = []
+                for idx, r in ordered:
+                    assert isinstance(r, RangeByteRequest)
+                    sliced.append((idx, big[r.start - group_start : r.end - group_start]))
+                await completion_queue.put(("ok", tuple(sliced)))
+        except asyncio.CancelledError:
+            # Cancellation is expected when we stop scheduling on a missing key.
+            raise
+        except BaseException as exc:
+            await completion_queue.put(("error", exc))
+
+    # Launch all work items as tasks. The semaphore bounds actual concurrency.
+    tasks: set[asyncio.Task[None]] = set()
+    for item in work_items:
+        tasks.add(asyncio.create_task(run_one(item)))
+
+    try:
+        drained = 0
+        stopped = False
+        pending_error: BaseException | None = None
+        while drained < total:
+            kind, payload = await completion_queue.get()
+            drained += 1
+            if stopped:
+                continue  # Discard remaining results after a miss or error.
+            if kind == "ok":
+                assert payload is not None
+                assert not isinstance(payload, BaseException)
+                yield payload
+            elif kind == "missing":
+                stopped = True
+                # Cancel any still-pending tasks to avoid unnecessary I/O.
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+            else:  # "error"
+                assert isinstance(payload, BaseException)
+                stopped = True
+                pending_error = payload
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+        if pending_error is not None:
+            raise pending_error
+    finally:
+        # Ensure we wait for any cancelled tasks to finish so no task escapes.
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
