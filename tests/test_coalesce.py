@@ -287,6 +287,65 @@ async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
     assert len(groups[0]) == 1
 
 
+async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() -> None:
+    # Schedule multiple non-mergeable fetches under max_concurrency=3.
+    #   - Fetch #0 completes FIRST (short sleep) -> at least one yield observed.
+    #   - Fetch #1 returns None shortly after -> triggers the miss path.
+    #   - Fetches #2..#N are gated on an asyncio.Event so they only unblock
+    #     AFTER the miss has been observed, producing late arrivals that
+    #     exercise the `if stopped: continue` discard branch in the drain loop.
+    late_gate = asyncio.Event()
+    miss_fired = asyncio.Event()
+
+    async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
+        assert isinstance(byte_range, RangeByteRequest)
+        start = byte_range.start
+        if start == 0:
+            # First to complete: small sleep so it arrives before the miss.
+            await asyncio.sleep(0.01)
+            return _buf(b"ok")
+        if start == 1000:
+            # Miss: a little later than #0 so #0 yields first.
+            await asyncio.sleep(0.03)
+            miss_fired.set()
+            return None
+        # Late arrivals: wait until the miss has been processed, then return
+        # a buffer so the drain loop sees them post-stop.
+        await asyncio.wait_for(miss_fired.wait(), timeout=5.0)
+        await asyncio.wait_for(late_gate.wait(), timeout=5.0)
+        return _buf(b"ok")
+
+    opts: CoalesceOptions = {
+        "max_gap_bytes": -1,  # force no merging (each range its own fetch)
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 3,
+    }
+    # Stride by 1000 to avoid merging. 7 items fits within max_concurrency=3
+    # while producing pending work after the miss.
+    ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(7)]
+
+    groups: list[list[tuple[int, Buffer | None]]] = []
+    agen = coalesced_get(fetch, ranges, options=opts)
+    try:
+        async for group in agen:
+            groups.append(list(group))
+            # After the first yield, release the late gate so remaining
+            # in-flight tasks can complete and arrive post-stop.
+            late_gate.set()
+    finally:
+        # Guard against a bug preventing any yield: unblock waiters anyway.
+        late_gate.set()
+
+    # We observed exactly the one pre-miss yield.
+    assert len(groups) == 1
+    assert len(groups[0]) == 1
+    idx, buf = groups[0][0]
+    assert idx == 0
+    assert buf is not None
+    # The iterator completed cleanly without raising.
+    assert miss_fired.is_set()
+
+
 @pytest.mark.parametrize(
     "byte_range",
     [
