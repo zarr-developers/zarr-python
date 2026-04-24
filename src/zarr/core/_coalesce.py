@@ -71,6 +71,60 @@ async def coalesced_get(
     - If a fetch raises, the exception propagates on the yield that produced the
       failing group; earlier-completed groups remain observable.
     """
-    # Stub body; real implementation filled in by later tasks.
-    raise NotImplementedError
-    yield ()  # type: ignore[unreachable]  # pragma: no cover -- keeps this function an async generator
+    # Local import to avoid cycles at module import time.
+    from zarr.abc.store import RangeByteRequest
+
+    indexed: list[tuple[int, ByteRequest | None]] = list(enumerate(byte_ranges))
+    if not indexed:
+        return
+
+    # Split inputs into coalescable (RangeByteRequest only) and uncoalescable (the rest).
+    mergeable: list[tuple[int, RangeByteRequest]] = [
+        (i, r) for i, r in indexed if isinstance(r, RangeByteRequest)
+    ]
+    uncoalescable: list[tuple[int, ByteRequest | None]] = [
+        (i, r) for i, r in indexed if not isinstance(r, RangeByteRequest)
+    ]
+
+    # Sort mergeables by start offset, then merge.
+    mergeable.sort(key=lambda pair: pair[1].start)
+    groups: list[list[tuple[int, RangeByteRequest]]] = []
+    for pair in mergeable:
+        _i, r = pair
+        if groups:
+            last = groups[-1]
+            last_end = max(x[1].end for x in last)
+            gap = r.start - last_end
+            merged_start = min(x[1].start for x in last)
+            prospective_end = max(last_end, r.end)
+            prospective_size = prospective_end - merged_start
+            if (
+                gap <= options["max_gap_bytes"]
+                and prospective_size <= options["max_coalesced_bytes"]
+            ):
+                last.append(pair)
+                continue
+        groups.append([pair])
+
+    # For now, serve groups sequentially (concurrency added in Task 5).
+    for group in groups:
+        group_start = min(x[1].start for x in group)
+        group_end = max(x[1].end for x in group)
+        big = await fetch(RangeByteRequest(group_start, group_end))
+        if big is None:
+            return  # key missing, stop yielding
+        # Slice back into per-input buffers, ordered by start offset.
+        group.sort(key=lambda pair: pair[1].start)
+        yielded: list[tuple[int, Buffer | None]] = []
+        for i, r in group:
+            local_start = r.start - group_start
+            local_end = r.end - group_start
+            yielded.append((i, big[local_start:local_end]))
+        yield tuple(yielded)
+
+    # Uncoalescable inputs are fetched one at a time, each as its own one-tuple group.
+    for idx, single in uncoalescable:
+        buf = await fetch(single)
+        if buf is None:
+            return  # key missing, stop yielding
+        yield ((idx, buf),)
