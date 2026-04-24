@@ -158,3 +158,84 @@ async def test_adjacent_ranges_merge_into_one_group() -> None:
         1: bytes(range(10, 15)),
         2: bytes(range(20, 25)),
     }
+
+
+async def test_offset_and_suffix_and_none_each_get_own_group() -> None:
+    fetch = FakeFetch(b"abcdefghij")
+    ranges: list[ByteRequest | None] = [
+        RangeByteRequest(0, 3),
+        OffsetByteRequest(5),
+        SuffixByteRequest(2),
+        None,
+    ]
+    groups = await _collect(coalesced_get(fetch, ranges, options=DEFAULT_COALESCE_OPTIONS))
+    # 1 group from the RangeByteRequest + 3 one-tuple groups from the rest.
+    assert len(groups) == 4
+    # Contents.
+    flat = _contents(groups)
+    assert flat[0] == b"abc"
+    assert flat[1] == b"fghij"
+    assert flat[2] == b"ij"
+    assert flat[3] == b"abcdefghij"
+
+
+async def test_indices_preserved_under_shuffled_input() -> None:
+    fetch = FakeFetch(b"".join(bytes([i % 256]) for i in range(1000)))
+    # Construct ranges in a deliberately non-sorted order.
+    ranges: list[ByteRequest | None] = [
+        RangeByteRequest(500, 510),
+        RangeByteRequest(0, 10),
+        RangeByteRequest(200, 210),
+        RangeByteRequest(300, 310),
+    ]
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 50,
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 10,
+    }
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    flat = _contents(groups)
+    # Indices match original positions, not sorted order.
+    assert flat[0] == bytes(b % 256 for b in range(500, 510))
+    assert flat[1] == bytes(b % 256 for b in range(10))
+    assert flat[2] == bytes(b % 256 for b in range(200, 210))
+    assert flat[3] == bytes(b % 256 for b in range(300, 310))
+
+
+async def test_within_group_ordering_is_start_offset() -> None:
+    fetch = FakeFetch(b"".join(bytes([i % 256]) for i in range(100)))
+    # Two ranges will merge; one has a later start but is listed first in input.
+    ranges: list[ByteRequest | None] = [
+        RangeByteRequest(20, 25),
+        RangeByteRequest(0, 5),
+    ]
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 50,
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 10,
+    }
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    assert len(groups) == 1
+    # Within the group, tuples are ordered by start offset.
+    # Input index 1 (start=0) comes first, then 0 (start=20).
+    assert [idx for idx, _ in groups[0]] == [1, 0]
+
+
+async def test_mixed_mergeable_and_non_mergeable_counts_correct() -> None:
+    fetch = FakeFetch(b"x" * 10_000)
+    opts: CoalesceOptions = {
+        "max_gap_bytes": 50,
+        "max_coalesced_bytes": 1 << 20,
+        "max_concurrency": 10,
+    }
+    # Two clusters + one far-away singleton.
+    ranges: list[ByteRequest | None] = [
+        RangeByteRequest(0, 10),
+        RangeByteRequest(20, 30),
+        RangeByteRequest(500, 510),
+    ]
+    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    assert len(groups) == 2
+    # First group has 2, second has 1.
+    sizes = sorted(len(g) for g in groups)
+    assert sizes == [1, 2]
