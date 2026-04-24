@@ -752,8 +752,12 @@ def create(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     config : ArrayConfigLike, optional
-        Runtime configuration of the array. If provided, will override the
-        default values from `zarr.config.array`.
+    Runtime configuration of the array. If provided, will override the
+    default values from :obj:`zarr.config.array`.
+
+**kwargs
+    Additional keyword arguments passed through to
+    :func:`zarr.api.asynchronous.create`.
 
     Returns
     -------
