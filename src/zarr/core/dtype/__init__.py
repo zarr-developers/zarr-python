@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final
 
 from zarr.core.dtype.common import (
     DataTypeValidationError,
@@ -21,7 +21,13 @@ from zarr.core.dtype.npy.bytes import (
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.structured import (
+    Struct,
+    StructJSON_V3,
+    Structured,
+    StructuredJSON_V2,
+    StructuredJSON_V3,
+)
 from zarr.core.dtype.npy.time import (
     DateTime64,
     DateTime64JSON_V2,
@@ -75,6 +81,8 @@ __all__ = [
     "RawBytes",
     "RawBytesJSON_V2",
     "RawBytesJSON_V3",
+    "Struct",
+    "StructJSON_V3",
     "Structured",
     "StructuredJSON_V2",
     "StructuredJSON_V3",
@@ -124,7 +132,7 @@ AnyDType = (
     | ComplexFloatDType
     | StringDType
     | BytesDType
-    | Structured
+    | Struct
     | TimeDType
     | VariableLengthBytes
 )
@@ -137,7 +145,7 @@ ANY_DTYPE: Final = (
     *COMPLEX_FLOAT_DTYPE,
     *STRING_DTYPE,
     *BYTES_DTYPE,
-    Structured,
+    Struct,
     *TIME_DTYPE,
     VariableLengthBytes,
 )
@@ -149,7 +157,7 @@ ANY_DTYPE: Final = (
 VLEN_UTF8_ALIAS: Final = ("str", str, "string")
 
 # This type models inputs that can be coerced to a ZDType
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
+type ZDTypeLike = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
 
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType

@@ -36,6 +36,32 @@ If you have an idea about a new feature or some other improvement to Zarr, pleas
 
 We very much welcome ideas and suggestions for how to improve Zarr, but please bear in mind that we are likely to be conservative in accepting proposals for new features. The reasons for this are that we would like to keep the Zarr code base lean and focused on a core set of functionalities, and available time for development, review and maintenance of new features is limited. But if you have a great idea, please don't let that stop you from posting it on GitHub, just please don't be offended if we respond cautiously.
 
+## AI-assisted contributions
+
+AI coding tools are increasingly common in open source development. These tools are welcome in Zarr-Python, but the same standards apply to all contributions regardless of how they were produced — whether written by hand, with AI assistance, or generated entirely by an AI tool.
+
+### You are responsible for your changes
+
+If you submit a pull request, you are responsible for understanding and having fully reviewed the changes. You must be able to explain why each change is correct and how it fits into the project.
+
+### Communication must be your own
+
+PR descriptions, issue comments, and review responses must be in your own words. The substance and reasoning must come from you. Using AI to polish grammar or phrasing is fine, but do not paste AI-generated text as comments or review responses.
+
+### Review every line
+
+You must have personally reviewed and understood all changes before submitting. If you used AI to generate code, you are expected to have read it critically and tested it. The PR description should explain the approach and reasoning — do not leave it to reviewers to figure out what the code does and why.
+
+### Keep PRs reviewable
+
+Generating code with AI is fast; reviewing it is not. A large diff shifts the burden from the contributor to the reviewer. PRs that cannot be reviewed in reasonable time with reasonable effort may be closed, regardless of their potential usefulness or correctness. Use AI tools not only to write code but to prepare better, more reviewable PRs — well-structured commits, clear descriptions, and minimal scope.
+
+If you are planning a large AI-assisted contribution (e.g., a significant refactor or a new subsystem), **open an issue first** to discuss the scope and approach with maintainers. Maintainers may also request that large changes be broken into smaller, reviewable pieces.
+
+### Documentation
+
+The same principles apply to documentation. Zarr has domain-specific semantics (chunked storage, codec pipelines, Zarr v2/v3 format details) that AI tools frequently get wrong. Do not submit documentation that you haven't carefully read and verified.
+
 ## Contributing code and/or documentation
 
 ### Forking the repository
@@ -179,7 +205,7 @@ When submitting a pull request, coverage will also be collected across all suppo
 
 ### Documentation
 
-Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.11.
+Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.12.
 
 Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is written in the Markdown markup language (.md files) in the `docs` folder. The documentation consists both of prose and API documentation. All user-facing classes and functions are included in the API documentation, under the `docs/api` folder using the [mkdocstrings](https://mkdocstrings.github.io/) extension. Add any new public functions or classes to the relevant markdown file in `docs/api/*.md`. Any new features or important usage information should be included in the user-guide (`docs/user-guide`). Any changes should also be included as a new file in the `changes` directory.
 
@@ -284,6 +310,29 @@ Zarr developers should make changes as smooth as possible for users. This means 
 The Zarr library is an implementation of a file format standard defined externally -- see the [Zarr specifications website](https://zarr-specs.readthedocs.io) for the list of Zarr file format specifications.
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
+
+
+## Experimental API policy
+
+The `zarr.experimental` namespace contains features that are under active development and may change without notice. When contributing to or depending on experimental features, please keep the following in mind:
+
+### For contributors
+
+When adding a new feature to `zarr.experimental`:
+
+1. Place the feature under `src/zarr/experimental/` and export it from `src/zarr/experimental/__init__.py`.
+2. Document the feature in `docs/user-guide/experimental.md` and note clearly that it is experimental.
+3. Add a changelog entry categorized as `feature`.
+
+We aim to either **promote** or **remove** experimental features within **6 months** of their addition. To promote a feature to stable:
+
+1. Move it from `zarr.experimental` to the appropriate stable module.
+2. Keep a deprecated re-export in `zarr.experimental` for one minor release.
+3. Update the documentation to reflect the stable location.
+
+### For users
+
+Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
 
 ## Release procedure
 

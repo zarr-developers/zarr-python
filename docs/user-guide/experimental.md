@@ -55,7 +55,7 @@ such as a remote store for source data and a local store for persistent caching.
 
 The CacheStore provides significant performance improvements for repeated data access:
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 import time
 
 # Benchmark reading with cache
@@ -121,7 +121,7 @@ cache = CacheStore(
 
 **cache_set_data**: Controls whether written data is cached
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 # Cache data when writing (default)
 cache = CacheStore(
     store=source_store,
@@ -141,7 +141,7 @@ cache = CacheStore(
 
 The CacheStore provides statistics to monitor cache performance and state:
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 # Access some data to generate cache activity
 data = zarr_array[0:50, 0:50]  # First access - cache miss
 data = zarr_array[0:50, 0:50]  # Second access - cache hit
@@ -232,7 +232,7 @@ of source and cache stores for your specific use case.
 
 Here's a complete example demonstrating cache effectiveness:
 
-```python exec="true" session="experimental-final" source="above" result="ansi"
+```python exec="true" session="experimental-final" source="above"
 import numpy as np
 import time
 from tempfile import mkdtemp
