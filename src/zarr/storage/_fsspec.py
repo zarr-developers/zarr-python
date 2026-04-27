@@ -16,7 +16,7 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
-from zarr.storage._utils import _join_paths, normalize_path
+from zarr.storage._utils import _join_paths
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -127,7 +127,7 @@ class FsspecStore(Store):
     ) -> None:
         super().__init__(read_only=read_only)
         self.fs = fs
-        self.path = normalize_path(path)
+        self.path = path.rstrip("/")
         self.allowed_exceptions = allowed_exceptions
 
         if not self.fs.async_impl:

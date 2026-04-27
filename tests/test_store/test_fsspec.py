@@ -17,7 +17,6 @@ from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
 from zarr.storage._fsspec import _make_async
-from zarr.storage._utils import normalize_path
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
@@ -291,21 +290,47 @@ def array_roundtrip(store: FsspecStore) -> None:
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-@pytest.mark.parametrize("path", ["", "/", "//", "foo", "foo/", "/foo", "/foo/", "//foo//"])
-def test_fsspec_store_path_normalization(path: str) -> None:
-    """`FsspecStore.path` is normalized to the canonical form, matching
-    `normalize_path`, regardless of the surface representation the caller
-    supplies.
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("", ""),
+        ("/", ""),
+        ("//", ""),
+        ("foo", "foo"),
+        ("foo/", "foo"),
+        # Leading slashes are preserved: `path` is an opaque string passed to the
+        # underlying fsspec backend, and for some backends (notably LocalFileSystem)
+        # a leading slash is semantically meaningful. The store only strips trailing
+        # slashes so that `_join_paths([self.path, key])` produces a single separator
+        # between the root and the key.
+        ("/foo", "/foo"),
+        ("/foo/", "/foo"),
+        ("//foo//", "//foo"),
+        # An absolute filesystem path round-trips intact.
+        ("/home/runner/data.zarr", "/home/runner/data.zarr"),
+        ("/home/runner/data.zarr/", "/home/runner/data.zarr"),
+    ],
+)
+def test_fsspec_store_path_normalization(path: str, expected: str) -> None:
+    """`FsspecStore.path` strips trailing slashes only.
 
-    Regression test for https://github.com/zarr-developers/zarr-python/issues/3922
-    -- when a caller passed `path="/"` the leading slash flowed through
-    unmodified to subsequent `_join_paths([self.path, key])` calls, producing
-    `"//key"` and missing the underlying object.
+    Regression test for two related bugs:
+
+    - https://github.com/zarr-developers/zarr-python/issues/3922 -- a caller
+      passing ``path="/"`` resulted in `_join_paths(["/", "key"])` producing
+      ``"//key"``, which missed the underlying object on backends like
+      ``ReferenceFileSystem``. ``"/"`` must collapse to ``""``.
+
+    - Titiler regression after #3924 -- normalizing ``path`` via
+      ``normalize_path`` corrupted absolute filesystem paths by stripping the
+      leading slash, turning ``/home/runner/data.zarr`` into
+      ``home/runner/data.zarr`` (a relative path that doesn't exist). Leading
+      slashes must be preserved.
     """
     sync_fs = fsspec.filesystem("memory")
     fs = _make_async(sync_fs)
     store = FsspecStore(fs=fs, path=path)
-    assert store.path == normalize_path(path)
+    assert store.path == expected
 
 
 @pytest.mark.skipif(
