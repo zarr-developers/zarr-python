@@ -17,6 +17,7 @@ from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
 from zarr.storage._fsspec import _make_async
+from zarr.storage._utils import normalize_path
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
@@ -284,6 +285,27 @@ def array_roundtrip(store: FsspecStore) -> None:
     arr2 = zarr.open_array(store=store)
     assert isinstance(arr2, Array)
     np.testing.assert_array_equal(arr[:], data)
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+@pytest.mark.parametrize("path", ["", "/", "//", "foo", "foo/", "/foo", "/foo/", "//foo//"])
+def test_fsspec_store_path_normalization(path: str) -> None:
+    """`FsspecStore.path` is normalized to the canonical form, matching
+    `normalize_path`, regardless of the surface representation the caller
+    supplies.
+
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/3922
+    -- when a caller passed `path="/"` the leading slash flowed through
+    unmodified to subsequent `_join_paths([self.path, key])` calls, producing
+    `"//key"` and missing the underlying object.
+    """
+    sync_fs = fsspec.filesystem("memory")
+    fs = _make_async(sync_fs)
+    store = FsspecStore(fs=fs, path=path)
+    assert store.path == normalize_path(path)
 
 
 @pytest.mark.skipif(

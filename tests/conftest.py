@@ -58,6 +58,25 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import ZDType
 
 
+@dataclass
+class Expect[TIn, TOut]:
+    """A test case with explicit input, expected output, and a human-readable id."""
+
+    input: TIn
+    output: TOut
+    id: str
+
+
+@dataclass
+class ExpectFail[TIn]:
+    """A test case that should raise an exception."""
+
+    input: TIn
+    exception: type[Exception]
+    id: str
+    msg: str
+
+
 async def parse_store(
     store: Literal["local", "memory", "fsspec", "zip", "memory_get_latency"], path: str
 ) -> LocalStore | MemoryStore | FsspecStore | ZipStore | LatencyStore:

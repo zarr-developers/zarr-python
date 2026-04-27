@@ -97,7 +97,7 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 2. Defaulting to `zarr_format=3` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set `zarr_format=2` when creating arrays
-   or set `default_zarr_version=2` in Zarr's runtime configuration.
+   or set `default_zarr_format=2` in Zarr's runtime configuration.
 
 3. Function signature change to [`zarr.Array.resize`][] - the `resize` function now takes a
    `zarr.core.common.ShapeLike` input rather than separate arguments for each dimension.
@@ -107,11 +107,11 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 1. Disallow direct construction - use [`zarr.open_group`][] or [`zarr.create_group`][]
    instead of directly constructing the `zarr.Group` class.
-2. Most of the h5py compatibility methods are deprecated and will issue warnings if used.
-   The following functions are drop in replacements that have the same signature and functionality:
+2. The h5py compatibility methods `create_dataset` and `require_dataset` have been removed.
+   Use the following replacements:
 
-   - Use [`zarr.Group.create_array`][] in place of `zarr.Group.create_dataset`
-   - Use [`zarr.Group.require_array`][] in place of `zarr.Group.require_dataset`
+   - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
+   - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
 4. The `zarr.storage.init_group` low-level helper function has been removed. Use
@@ -195,9 +195,9 @@ When installing using `pip`:
 
 ### Miscellaneous
 
-- The keyword argument `zarr_version` available in most creation functions in `zarr`
+- The keyword argument `zarr_version` in most creation functions in `zarr`
   (e.g. [`zarr.create`][], [`zarr.open`][], [`zarr.group`][], [`zarr.array`][]) has
-  been deprecated in favor of `zarr_format`.
+  been removed. Use `zarr_format` instead.
 
 ## 🚧 Work in Progress 🚧
 
