@@ -7,41 +7,18 @@ Codec and dtype spec types live under `zarr_metadata.v3.codec` and
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Generic, NotRequired, TypedDict, TypeVar
-
-from typing_extensions import ReadOnly
+from typing import NotRequired, TypedDict
 
 JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None
 """Any valid JSON value."""
 
 
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
-
-
-class NamedConfig(TypedDict, Generic[TName, TConfig]):  # noqa: UP046
+class NamedConfig(TypedDict):
     """
-    Named-config envelope with optional configuration.
+    Externally-tagged union member for a metadata field.
 
     Generic with two parameters: name literal and configuration mapping.
-
-    Uses the PEP 484 ``Generic[T]`` form rather than PEP 695 ``[T]`` syntax
-    so the package supports Python 3.11.
     """
 
-    name: ReadOnly[TName]
-    configuration: NotRequired[ReadOnly[TConfig]]
-
-
-class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):  # noqa: UP046
-    """
-    Named-config envelope with required configuration.
-
-    Generic with two parameters: name literal and configuration mapping.
-
-    Uses the PEP 484 ``Generic[T]`` form rather than PEP 695 ``[T]`` syntax
-    so the package supports Python 3.11.
-    """
-
-    name: ReadOnly[TName]
-    configuration: ReadOnly[TConfig]
+    name: str
+    configuration: NotRequired[Mapping[str, JSON]]

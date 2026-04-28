@@ -19,7 +19,7 @@ class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     must_understand: Literal[False]
 
 
-MetadataField = str | NamedConfig[str, Mapping[str, JSON]]
+MetadataField = str | NamedConfig
 """A string or a {name: str, configuration: {...}} key value pair."""
 
 

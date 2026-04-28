@@ -1,4 +1,4 @@
-from zarr_metadata.common import JSON, NamedConfig, NamedRequiredConfig
+from zarr_metadata.common import JSON, NamedConfig
 from zarr_metadata.v2.array import ArrayMetadataV2
 from zarr_metadata.v2.group import GroupMetadataV2
 from zarr_metadata.v3.array import ArrayMetadataV3
@@ -20,5 +20,4 @@ __all__ = [
     "GroupMetadataV2",
     "GroupMetadataV3",
     "NamedConfig",
-    "NamedRequiredConfig",
 ]
