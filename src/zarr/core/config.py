@@ -104,8 +104,9 @@ config = Config(
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+                "path": "zarr.core.codec_pipeline.SyncCodecPipeline",
                 "batch_size": 1,
+                "max_workers": None,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
