@@ -20,7 +20,7 @@ class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
 
 
 MetadataField = str | NamedConfig
-"""A string or a {name: str, configuration: {...}} key value pair."""
+"""A string or a {name: str, configuration: {...}} key value pair, where the 'configuration' key may be omitted. """
 
 
 class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
