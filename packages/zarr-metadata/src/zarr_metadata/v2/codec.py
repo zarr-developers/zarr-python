@@ -5,7 +5,7 @@ V2 compressors and filters are numcodecs configuration dicts: a required
 `id` field naming the codec, plus arbitrary codec-specific extra fields.
 """
 
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import TypedDict
 
 from zarr_metadata.common import JSON
 
@@ -21,7 +21,7 @@ class NumcodecsConfig(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
 
-    id: ReadOnly[str]
+    id: str
 
 
 __all__ = [
