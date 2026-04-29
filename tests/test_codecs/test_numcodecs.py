@@ -54,7 +54,7 @@ def codec_conf() -> Iterator[Any]:
 
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON
+    from zarr.types import JSON
 
 
 def test_get_numcodec() -> None:

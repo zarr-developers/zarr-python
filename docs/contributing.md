@@ -183,6 +183,19 @@ prek list
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
 
+### Public and private API
+
+Zarr follows standard Python conventions for distinguishing public from private API:
+
+- **Public modules** are top-level or one level deep: `zarr`, `zarr.dtype`, `zarr.types`, `zarr.codecs`, `zarr.storage`, etc. Users should only need to import from these modules.
+- **Private modules** use a leading underscore or are within `zarr.core` (e.g. `zarr.core.dtype.npy.common`, `zarr.core._info`). These are implementation details and may change without notice.
+- **`__all__`** declares the public API of a module. Every public module should define `__all__`. If a name is not in `__all__`, it is not part of the public API.
+- **Type aliases** used across the codebase (e.g. `JSON`, `ZarrFormat`, `ShapeLike`) are re-exported from [`zarr.types`][zarr.types]. External users and tests should import from `zarr.types`. Internal code may import from the defining module (e.g. `zarr.core.common`).
+- **Extension points** (custom codecs, data types) should be fully usable by importing only from public modules. If a user needs to reach into `zarr.core.*` to implement an extension, that is a gap in the public API.
+- **Entry points** (e.g. `zarr.codecs`, `zarr.data_type`) are part of the public plugin interface and should be documented in the [extending guide](user-guide/extending.md).
+
+When adding new functionality, consider whether it belongs in the public API. If so, export it from the appropriate top-level module and add it to `__all__`. If it is an internal helper, place it in a private module or use a leading underscore.
+
 ### Test coverage
 
 > **Note:** Test coverage for Zarr-Python 3 is currently not at 100%. This is a known issue and help is welcome to bring test coverage back to 100%. See issue #2613 for more details.
