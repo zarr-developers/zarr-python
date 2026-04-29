@@ -147,7 +147,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         root = zarr.open_group(store=zarr_path, mode="w")
         root["x"] = np.array([1, 2, 3])
         shutil.make_archive(str(zarr_path), "zip", zarr_path)
-        shutil.move(str(zarr_path) + ".zip", zip_path)
+        shutil.move(f"{zarr_path}.zip", zip_path)
 
         store = ZipStore(zip_path, mode="r")
         assert not store._is_open

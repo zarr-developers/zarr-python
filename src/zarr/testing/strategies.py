@@ -21,8 +21,7 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
-from zarr.storage._common import _dereference_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _join_paths, normalize_path
 from zarr.types import AnyArray
 
 TrueOrFalse = Literal[True, False]
@@ -288,7 +287,7 @@ def arrays(
 
     expected_attrs = {} if attributes is None else attributes
 
-    array_path = _dereference_path(path, name)
+    array_path = _join_paths([path, name])
     root = zarr.open_group(store, mode=open_mode, zarr_format=zarr_format)
 
     # Convert chunk grid metadata to a form create_array accepts:
@@ -324,7 +323,7 @@ def arrays(
         assert a.fill_value is not None
     assert a.name is not None
     assert a.path == normalize_path(array_path)
-    assert a.name == "/" + a.path
+    assert a.name == f"/{a.path}"
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
 
@@ -621,7 +620,7 @@ def complex_rectilinear_arrays(
     store = draw(stores, label="store")
     path = draw(paths, label="array parent")
     name = draw(array_names, label="array name")
-    array_path = _dereference_path(path, name)
+    array_path = _join_paths([path, name])
 
     root = zarr.open_group(store, mode="w", zarr_format=3)
     with zarr.config.set({"array.rectilinear_chunks": True}):
