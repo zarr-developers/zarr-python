@@ -4,7 +4,7 @@ Blosc codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 
 BLOSC_CODEC_NAME: Final = "blosc"
 """The `name` field value of the `blosc` codec."""
@@ -37,7 +37,7 @@ class BloscCodecConfiguration(TypedDict):
     clevel: int
     shuffle: BloscShuffle
     blocksize: int
-    typesize: int
+    typesize: NotRequired[int]
 
 
 class BloscCodec(TypedDict):
