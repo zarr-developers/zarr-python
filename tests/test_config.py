@@ -63,6 +63,7 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
+                    "max_workers": None,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -134,7 +135,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
     assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
