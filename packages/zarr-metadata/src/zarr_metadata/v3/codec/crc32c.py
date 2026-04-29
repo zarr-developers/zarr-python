@@ -9,13 +9,15 @@ key is absent from the metadata.
 
 from typing import Final, Literal, NotRequired, TypedDict
 
-from zarr_metadata.common import JSON
-
 CRC32C_CODEC_NAME: Final = "crc32c"
 """The `name` field value of the `crc32c` codec."""
 
 Crc32cCodecName = Literal["crc32c"]
 """Literal type of the `name` field of the `crc32c` codec."""
+
+
+class Empty(TypedDict, closed=True):  # type: ignore[call-arg]
+    """An empty mapping"""
 
 
 class Crc32cCodec(TypedDict):
@@ -26,7 +28,7 @@ class Crc32cCodec(TypedDict):
     """
 
     name: Crc32cCodecName
-    configuration: NotRequired[dict[str, JSON]]
+    configuration: NotRequired[Empty]
 
 
 __all__ = [
