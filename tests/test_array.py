@@ -46,7 +46,7 @@ from zarr.core.array import (
 )
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
-from zarr.core.chunk_grids import _auto_partition
+from zarr.core.chunk_grids import normalize_chunks_nd, resolve_outer_and_inner_chunks
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
@@ -1073,36 +1073,55 @@ def test_auto_partition_auto_shards(
     where there are 8 or more chunks.
     """
     dtype = np.dtype("uint8")
+    chunks_normalized = normalize_chunks_nd(chunk_shape, array_shape)
     with pytest.warns(
         ZarrUserWarning,
         match="Automatic shard shape inference is experimental and may change without notice.",
     ):
         with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
-            auto_shards, _ = _auto_partition(
+            outer_chunks, _ = resolve_outer_and_inner_chunks(
                 array_shape=array_shape,
-                chunk_shape=chunk_shape,
+                chunks=chunks_normalized,
                 shard_shape="auto",
                 item_size=dtype.itemsize,
             )
+    auto_shards = tuple(dim[0] for dim in outer_chunks)
     assert auto_shards == expected_shards
 
 
 def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -> None:
     """
-    Test that automatically picking a shard size and a chunk size gives roughly 1MiB chunks.
+    Test that automatically picking chunk and shard sizes together produces
+    chunks close to 1 MiB and shards that are a multiple of the chunk size.
     """
+    from zarr.core.chunk_grids import SHARDED_INNER_CHUNK_MAX_BYTES, guess_chunks
+
+    array_shape = (10_000_000,)
+    item_size = 1
+    # Auto-chunks with sharding use the default inner chunk size target
+    chunks_normalized = guess_chunks(
+        array_shape, item_size, max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES
+    )
+    chunk_shape = tuple(dim[0] for dim in chunks_normalized)
+    chunk_bytes = np.prod(chunk_shape) * item_size
+    assert chunk_bytes <= SHARDED_INNER_CHUNK_MAX_BYTES
+    assert chunk_bytes > SHARDED_INNER_CHUNK_MAX_BYTES // 4  # should be in the right ballpark
+
     with pytest.warns(
         ZarrUserWarning,
         match="Automatic shard shape inference is experimental and may change without notice.",
     ):
         with zarr.config.set({"array.target_shard_size_bytes": 10_000_000}):
-            _, chunk_shape = _auto_partition(
-                array_shape=(10_000_000,),
-                chunk_shape="auto",
+            outer_chunks, inner = resolve_outer_and_inner_chunks(
+                array_shape=array_shape,
+                chunks=chunks_normalized,
                 shard_shape="auto",
-                item_size=1,
+                item_size=item_size,
             )
-    assert chunk_shape == (625000,)
+    assert inner is not None
+    shard_shape = tuple(dim[0] for dim in outer_chunks)
+    # Shard dimensions must be multiples of chunk dimensions
+    assert all(s % c == 0 for s, c in zip(shard_shape, chunk_shape, strict=True))
 
 
 def test_chunks_and_shards() -> None:
@@ -2321,3 +2340,44 @@ def test_with_config_polymorphism() -> None:
     arr_source_config_dict = arr.with_config(source_config_dict)
 
     assert arr_source_config.config == arr_source_config_dict.config
+
+
+@pytest.mark.parametrize(
+    ("chunk_input", "expected"),
+    [
+        (-1, ((10,),)),
+        ((-1,), ((10,),)),
+        ((10,), ((10,),)),
+        ((5,), ((5, 5),)),
+        ((3,), ((3, 3, 3, 1),)),
+    ],
+    ids=["scalar-neg1", "tuple-neg1", "exact", "half", "remainder"],
+)
+async def test_create_array_chunks_1d(
+    chunk_input: int | tuple[int, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Test that chunk normalization produces the expected chunk sizes for 1D arrays."""
+    arr = await create_array(store={}, shape=(10,), chunks=chunk_input, dtype="uint8")
+    assert arr.write_chunk_sizes == expected
+
+
+@pytest.mark.parametrize(
+    ("chunk_input", "expected"),
+    [
+        (-1, ((10,), (12,), (15,))),
+        ((3, 4, 5), ((3, 3, 3, 1), (4, 4, 4), (5, 5, 5))),
+        ((-1, 4, -1), ((10,), (4, 4, 4), (15,))),
+        ((10, 12, 15), ((10,), (12,), (15,))),
+        ((7, 3, 2), ((7, 3), (3, 3, 3, 3), (2, 2, 2, 2, 2, 2, 2, 1))),
+    ],
+    ids=["all-neg1", "mixed", "neg1-middle", "exact", "remainder"],
+)
+async def test_create_array_chunks_3d(
+    chunk_input: int | tuple[int, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Test that chunk normalization produces the expected chunk sizes for 3D arrays."""
+    shape = (10, 12, 15)
+    arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
+    assert arr.write_chunk_sizes == expected

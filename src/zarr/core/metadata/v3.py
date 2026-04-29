@@ -5,6 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
+import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -19,7 +20,6 @@ from zarr.core.chunk_key_encodings import (
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
-    ChunksLike,
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunksTuple
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
@@ -371,27 +372,62 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def resolve_chunks(
-    chunks: ChunksLike,
-    shape: tuple[int, ...],
-    typesize: int,
-) -> ChunkGridMetadata:
-    """Construct a chunk grid from user-facing input (e.g. ``create_array(chunks=...)``).
+def is_regular_1d(
+    dim_chunks: Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
+) -> bool:
+    """Check if a single dimension's chunk sizes represent a regular grid.
 
-    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGridMetadata``.
-    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGridMetadata``
-    after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
+    A regular dimension has either all chunks the same size, or all
+    but the last chunk the same size with the last chunk smaller
+    (boundary chunk).
+    """
+    if len(dim_chunks) <= 1:
+        return True
+    first = dim_chunks[0]
+    if isinstance(dim_chunks, np.ndarray):
+        # Vectorized comparison avoids per-element Python iteration over int64 arrays.
+        return bool((dim_chunks[1:-1] == first).all() and dim_chunks[-1] <= first)
+    for c in dim_chunks[1:-1]:
+        if c != first:
+            return False
+    # Last chunk must be the same size or a smaller boundary chunk
+    return dim_chunks[-1] <= first
+
+
+def is_regular_nd(
+    chunks: Iterable[Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]]],
+) -> bool:
+    """Check if an N-dimensional chunk specification represents a regular grid."""
+    return all(is_regular_1d(d) for d in chunks)
+
+
+def create_chunk_grid_metadata(
+    chunks: ChunksTuple,
+) -> ChunkGridMetadata:
+    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
+
+    Regular chunks produce a `RegularChunkGridMetadata`.
+    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+
+    Parameters
+    ----------
+    chunks : ChunksTuple
+        Normalized chunk specification, as returned by
+        `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
-
-    if _is_rectilinear_chunks(chunks):
-        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(c) for c in chunks))
-
-    return RegularChunkGridMetadata(chunk_shape=normalize_chunks(chunks, shape, typesize))
+    if is_regular_nd(chunks):
+        # If we know the chunks specification is regular, then we can take the first
+        # chunk size for each dimension as the chunk shape.
+        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
+        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
+    else:
+        return RectilinearChunkGridMetadata(
+            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
+        )
 
 
 def parse_chunk_grid(
@@ -401,7 +437,7 @@ def parse_chunk_grid(
 
     See Also
     --------
-    resolve_chunks : Construct a chunk grid from user-facing input.
+    create_chunk_grid_metadata : Construct a chunk grid from user-facing input.
     """
     if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data
