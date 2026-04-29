@@ -154,9 +154,6 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
-extra-dependencies = [
-    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
-]
 
 [tool.hatch.envs.test.env-vars]
 

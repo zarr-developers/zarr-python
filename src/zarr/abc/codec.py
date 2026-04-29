@@ -5,15 +5,11 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
-from zarr_metadata.v3.codec import Codec as _CodecJSON
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
-
-# Legacy alias preserved for zarr.core internal call sites.
-type CodecJSON = _CodecJSON
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
@@ -34,7 +30,6 @@ __all__ = [
     "BaseCodec",
     "BytesBytesCodec",
     "CodecInput",
-    "CodecJSON",
     "CodecOutput",
     "CodecPipeline",
     "GetResult",
@@ -64,6 +59,11 @@ def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
 
 CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 """The JSON representation of a codec for Zarr V3."""
+
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = str | Mapping[str, object]
+"""The widest type of JSON-like input that could specify a codec."""
 
 
 @runtime_checkable

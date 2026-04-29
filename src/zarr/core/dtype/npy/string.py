@@ -35,19 +35,6 @@ from zarr.core.dtype.npy.common import (
 )
 from zarr.core.dtype.wrapper import ZDType
 
-
-class LengthBytesConfig(TypedDict):
-    """
-    Configuration for the fixed-length-utf32 string data type in Zarr V3.
-
-    `fixed_length_utf32` is a zarr-python-specific extension; the
-    configuration carries `length_bytes`, the per-element byte allocation
-    (must be a multiple of 4 for utf-32).
-    """
-
-    length_bytes: int
-
-
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType
@@ -58,6 +45,19 @@ _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 @runtime_checkable
 class SupportsStr(Protocol):
     def __str__(self) -> str: ...
+
+
+class LengthBytesConfig(TypedDict):
+    """
+    Configuration for a fixed-length string data type in Zarr V3.
+
+    Attributes
+    ----------
+    length_bytes : int
+        The length in bytes of the data associated with this configuration.
+    """
+
+    length_bytes: int
 
 
 class FixedLengthUTF32JSON_V2(DTypeConfig_V2[str, None]):

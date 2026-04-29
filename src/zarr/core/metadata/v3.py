@@ -3,25 +3,9 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
-from zarr_metadata.v3.array import (
-    AllowedExtraField as AllowedExtraField,
-)
-from zarr_metadata.v3.array import ArrayMetadataV3
-from zarr_metadata.v3.chunk_grid.rectilinear import (
-    RectilinearChunkGrid,
-    RectilinearDimSpec,
-)
-from zarr_metadata.v3.chunk_grid.rectilinear import (
-    RectilinearChunkGridConfiguration as RectilinearChunkGridConfig,
-)
-from zarr_metadata.v3.chunk_grid.regular import (
-    RegularChunkGrid,
-)
-from zarr_metadata.v3.chunk_grid.regular import (
-    RegularChunkGridConfiguration as RegularChunkGridConfig,
-)
+from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
@@ -38,6 +22,7 @@ from zarr.core.common import (
     ChunksLike,
     DimensionNamesLike,
     NamedConfig,
+    NamedRequiredConfig,
     compress_rle,
     expand_rle,
     parse_named_configuration,
@@ -51,26 +36,6 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
-
-# Legacy aliases preserved for zarr.core internal call sites.
-# Using explicit `TypeAlias` rather than the `type` keyword so that runtime
-# introspection (e.g. `.__annotations__` on the underlying TypedDict) works.
-ArrayMetadataJSON_V3: TypeAlias = ArrayMetadataV3  # noqa: UP040
-RectilinearChunkGridMetadataJSON: TypeAlias = RectilinearChunkGrid  # noqa: UP040
-RectilinearChunkGridMetadataConfig: TypeAlias = RectilinearChunkGridConfig  # noqa: UP040
-RectilinearDimSpecJSON: TypeAlias = RectilinearDimSpec  # noqa: UP040
-RegularChunkGridMetadataJSON: TypeAlias = RegularChunkGrid  # noqa: UP040
-RegularChunkGridMetadataConfig: TypeAlias = RegularChunkGridConfig  # noqa: UP040
-
-__all__ = [
-    "AllowedExtraField",
-    "ArrayMetadataJSON_V3",
-    "RectilinearChunkGridMetadataConfig",
-    "RectilinearChunkGridMetadataJSON",
-    "RectilinearDimSpecJSON",
-    "RegularChunkGridMetadataConfig",
-    "RegularChunkGridMetadataJSON",
-]
 
 if TYPE_CHECKING:
     from typing import Self
@@ -173,6 +138,16 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
+class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
+    """
+    This class models allowed extra fields in array metadata.
+    They must have ``must_understand`` set to ``False``, and may contain
+    arbitrary additional JSON data.
+    """
+
+    must_understand: Literal[False]
+
+
 def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
     """
     Check if the extra field is allowed according to the Zarr v3 spec. The object
@@ -198,6 +173,28 @@ def parse_extra_fields(
             )
             raise ValueError(msg)
         return dict(data)
+
+
+# JSON type for a single dimension's rectilinear spec:
+# bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
+RectilinearDimSpecJSON = int | list[int | list[int]]
+
+
+class RegularChunkGridMetadataConfig(TypedDict):
+    chunk_shape: Sequence[int]
+
+
+class RectilinearChunkGridMetadataConfig(TypedDict):
+    kind: Literal["inline"]
+    chunk_shapes: Sequence[RectilinearDimSpecJSON]
+
+
+RegularChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["regular"], RegularChunkGridMetadataConfig
+]
+RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["rectilinear"], RectilinearChunkGridMetadataConfig
+]
 
 
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
@@ -315,9 +312,9 @@ class RectilinearChunkGridMetadata(Metadata):
                 rle = compress_rle(dim_spec)
                 # Use RLE only if it's actually shorter
                 if len(rle) < len(dim_spec):
-                    serialized_dims.append(tuple(rle))
+                    serialized_dims.append(rle)
                 else:
-                    serialized_dims.append(tuple(dim_spec))
+                    serialized_dims.append(list(dim_spec))
         return {
             "name": "rectilinear",
             "configuration": {
@@ -362,7 +359,7 @@ class RectilinearChunkGridMetadata(Metadata):
                 if dim_spec < 1:
                     raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
                 parsed.append(dim_spec)
-            elif isinstance(dim_spec, (list, tuple)):
+            elif isinstance(dim_spec, list):
                 parsed.append(tuple(expand_rle(dim_spec)))
             else:
                 raise TypeError(
@@ -415,6 +412,27 @@ def parse_chunk_grid(
     if name == "rectilinear":
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
+
+
+class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
+    """
+    A typed dictionary model for zarr v3 array metadata.
+
+    Extra keys are permitted if they conform to ``AllowedExtraField``
+    (i.e. they are mappings with ``must_understand: false``).
+    """
+
+    zarr_format: Literal[3]
+    node_type: Literal["array"]
+    data_type: str | NamedConfig[str, Mapping[str, JSON]]
+    shape: tuple[int, ...]
+    chunk_grid: str | NamedConfig[str, Mapping[str, JSON]]
+    chunk_key_encoding: str | NamedConfig[str, Mapping[str, JSON]]
+    fill_value: JSON
+    codecs: tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]
+    attributes: NotRequired[Mapping[str, JSON]]
+    storage_transformers: NotRequired[tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]]
+    dimension_names: NotRequired[tuple[str | None, ...]]
 
 
 """

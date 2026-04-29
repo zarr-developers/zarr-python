@@ -9,27 +9,11 @@ from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
-from zarr_metadata.v3.codec.blosc import BloscCodecConfiguration as BloscConfigV3
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
-
-
-class BloscConfigV2(TypedDict):
-    """Blosc configuration in the numcodecs/v2 form.
-
-    ``shuffle`` is an integer code (the numcodecs convention) rather than
-    a named literal as in v3.
-    """
-
-    cname: Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
-    clevel: int
-    shuffle: int
-    blocksize: int
-    typesize: NotRequired[int]
-
 
 if TYPE_CHECKING:
     from typing import Self
@@ -44,6 +28,26 @@ SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 
 CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """The codec identifiers used in the blosc codec """
+
+
+class BloscConfigV2(TypedDict):
+    """Configuration for the V2 Blosc codec"""
+
+    cname: CName
+    clevel: int
+    shuffle: int
+    blocksize: int
+    typesize: NotRequired[int]
+
+
+class BloscConfigV3(TypedDict):
+    """Configuration for the V3 Blosc codec"""
+
+    cname: CName
+    clevel: int
+    shuffle: Shuffle
+    blocksize: int
+    typesize: int
 
 
 class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):

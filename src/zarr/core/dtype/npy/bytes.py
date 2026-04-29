@@ -21,20 +21,29 @@ from zarr.core.dtype.common import (
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
+BytesLike = np.bytes_ | str | bytes | int
+
 
 class FixedLengthBytesConfig(TypedDict):
     """
-    Configuration for fixed-length bytes data types in Zarr V3.
+    A configuration for a data type that takes a ``length_bytes`` parameter.
 
-    `null_terminated_bytes` is a zarr-python-specific extension; the
-    configuration carries `length_bytes`, the per-element allocated
-    byte count.
+    Attributes
+    ----------
+
+    length_bytes : int
+        The length in bytes of the data associated with this configuration.
+
+    Examples
+    --------
+    ```python
+    {
+        "length_bytes": 12
+    }
+    ```
     """
 
     length_bytes: int
-
-
-BytesLike = np.bytes_ | str | bytes | int
 
 
 class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
