@@ -9,20 +9,15 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.codec import NumcodecsConfig
 
 
-class DataTypeV2Structured(TypedDict):
-    """
-    A single field entry inside a structured v2 dtype.
+DataTypeV2Structured = tuple[str, str] | tuple[str, str, tuple[int, ...]]
+"""
+A single field entry inside a structured v2 dtype.
 
-    Spec-faithful: `datatype` is a numpy-style dtype string; `shape` is
-    present only when the field is a subarray field.
+Spec-faithful: `datatype` is a numpy-style dtype string; `shape` is
+present only when the field is a subarray field.
 
-    See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
-    """
-
-    fieldname: str
-    datatype: str
-    shape: NotRequired[tuple[int, ...]]
-
+See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
+"""
 
 DataTypeV2 = str | tuple[DataTypeV2Structured, ...]
 """The v2 dtype representation.
@@ -50,6 +45,7 @@ class ArrayMetadataV2(TypedDict):
     order: Literal["C", "F"]
     filters: tuple[NumcodecsConfig, ...] | None
     dimension_separator: NotRequired[Literal[".", "/"]]
+    attributes: JSON
 
 
 __all__ = [
