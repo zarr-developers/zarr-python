@@ -308,8 +308,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         for node in self.all_groups | self.all_arrays:
             if node.startswith(path):
                 matches.add(node)
-        self.all_groups = self.all_groups - matches
-        self.all_arrays = self.all_arrays - matches
+        self.all_groups -= matches
+        self.all_arrays -= matches
 
     # @precondition(lambda self: bool(self.all_groups))
     # @precondition(lambda self: bool(self.all_arrays))

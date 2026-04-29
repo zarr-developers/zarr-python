@@ -743,7 +743,7 @@ def _auto_partition(
     given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
     """
     if shard_shape is None:
-        _shards_out: None | tuple[int, ...] = None
+        _shards_out: tuple[int, ...] | None = None
         if chunk_shape == "auto":
             _chunks_out = _guess_chunks(array_shape, item_size)
         else:

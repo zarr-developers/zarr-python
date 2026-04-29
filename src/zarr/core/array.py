@@ -2120,7 +2120,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.filters
 
     @property
-    def serializer(self) -> None | ArrayBytesCodec:
+    def serializer(self) -> ArrayBytesCodec | None:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
