@@ -1956,7 +1956,8 @@ def test_array_repr(store: Store) -> None:
     shape = (2, 3, 4)
     dtype = "uint8"
     arr = zarr.create_array(store, shape=shape, dtype=dtype)
-    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
+    domain = "{ [0, 2), [0, 3), [0, 4) }"
+    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype} domain={domain}>"
 
 
 class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
