@@ -695,12 +695,24 @@ class ByteGetter(Protocol):
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
 
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        byte_ranges: Iterable[ByteRequest | None],
+    ) -> list[Buffer | None]: ...
+
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        byte_ranges: Iterable[ByteRequest | None],
+    ) -> list[Buffer | None]: ...
 
     async def set(self, value: Buffer) -> None: ...
 
