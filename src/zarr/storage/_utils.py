@@ -267,10 +267,10 @@ def _relativize_path(*, path: str, prefix: str) -> str:
     if prefix == "":
         return path
     else:
-        _prefix = prefix + "/"
+        _prefix = f"{prefix}/"
         if not path.startswith(_prefix):
             raise ValueError(f"The first component of {path} does not start with {prefix}.")
-        return path.removeprefix(f"{prefix}/")
+        return path.removeprefix(_prefix)
 
 
 def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:

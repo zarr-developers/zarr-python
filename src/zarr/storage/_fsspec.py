@@ -408,7 +408,7 @@ class FsspecStore(Store):
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
-        for onefile in (a.removeprefix(self.path + "/") for a in allfiles):
+        for onefile in (a.removeprefix(f"{self.path}/") for a in allfiles):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
@@ -418,7 +418,7 @@ class FsspecStore(Store):
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
-        for onefile in (a.replace(prefix + "/", "") for a in allfiles):
+        for onefile in (a.replace(f"{prefix}/", "") for a in allfiles):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
