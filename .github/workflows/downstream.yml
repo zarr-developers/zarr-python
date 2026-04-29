@@ -86,7 +86,7 @@ jobs:
         working-directory: numcodecs
         run: |
           uv venv
-          uv pip install meson-python
+          uv pip install --group dev
           uv sync --group dev --group test-zarr-main --no-build-isolation
           uv pip install --no-build-isolation -e .
 
