@@ -58,8 +58,8 @@ def _make_nd_buffer(arr: np.ndarray[Any, np.dtype[Any]]) -> NDBuffer:
 )
 def test_construction(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None:
     """Construction succeeds when all codecs implement SupportsSyncCodec."""
-    spec = _make_array_spec(shape, np.dtype("float64"))
-    ChunkTransform(codecs=codecs, array_spec=spec)
+    _ = _make_array_spec(shape, np.dtype("float64"))
+    ChunkTransform(codecs=codecs)
 
 
 @pytest.mark.parametrize(
@@ -72,9 +72,9 @@ def test_construction(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None
 )
 def test_construction_rejects_non_sync(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None:
     """Construction raises TypeError when any codec lacks SupportsSyncCodec."""
-    spec = _make_array_spec(shape, np.dtype("float64"))
+    _ = _make_array_spec(shape, np.dtype("float64"))
     with pytest.raises(TypeError, match="AsyncOnlyCodec"):
-        ChunkTransform(codecs=codecs, array_spec=spec)
+        ChunkTransform(codecs=codecs)
 
 
 @pytest.mark.parametrize(
@@ -96,12 +96,12 @@ def test_encode_decode_roundtrip(
 ) -> None:
     """Data survives a full encode/decode cycle."""
     spec = _make_array_spec(arr.shape, arr.dtype)
-    chain = ChunkTransform(codecs=codecs, array_spec=spec)
+    chain = ChunkTransform(codecs=codecs)
     nd_buf = _make_nd_buffer(arr)
 
-    encoded = chain.encode_chunk(nd_buf)
+    encoded = chain.encode_chunk(nd_buf, spec)
     assert encoded is not None
-    decoded = chain.decode_chunk(encoded)
+    decoded = chain.decode_chunk(encoded, spec)
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
 
@@ -122,7 +122,7 @@ def test_compute_encoded_size(
 ) -> None:
     """compute_encoded_size returns the correct byte length."""
     spec = _make_array_spec(shape, np.dtype("float64"))
-    chain = ChunkTransform(codecs=codecs, array_spec=spec)
+    chain = ChunkTransform(codecs=codecs)
     assert chain.compute_encoded_size(input_size, spec) == expected_size
 
 
@@ -138,8 +138,7 @@ def test_encode_returns_none_propagation() -> None:
     spec = _make_array_spec((3, 4), np.dtype("float64"))
     chain = ChunkTransform(
         codecs=(NoneReturningAACodec(order=(1, 0)), BytesCodec()),
-        array_spec=spec,
     )
     arr = np.arange(12, dtype="float64").reshape(3, 4)
     nd_buf = _make_nd_buffer(arr)
-    assert chain.encode_chunk(nd_buf) is None
+    assert chain.encode_chunk(nd_buf, spec) is None

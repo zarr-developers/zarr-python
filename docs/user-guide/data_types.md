@@ -229,6 +229,37 @@ here, it's possible to create it yourself: see [Adding New Data Types](#adding-n
 #### Struct-like
 - [Structured][zarr.dtype.Structured]
 
+!!! note "Zarr V3 Structured Data Types"
+
+    In Zarr V3, structured data types are specified using the `struct` extension defined in the
+    [zarr-extensions repository](https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/struct).
+    The JSON representation uses an object format for fields:
+
+    ```json
+    {
+        "name": "struct",
+        "configuration": {
+            "fields": [
+                {"name": "x", "data_type": "float32"},
+                {"name": "y", "data_type": "int64"}
+            ]
+        }
+    }
+    ```
+
+    For backward compatibility, Zarr Python also accepts the legacy `structured` name with
+    tuple-format fields when reading existing data.
+
+    Fill values for structured types are represented as JSON objects mapping field names to values:
+
+    ```json
+    {"x": 1.5, "y": 42}
+    ```
+
+    When using structured types with multi-byte fields, the `bytes` codec must specify an
+    explicit `endian` parameter. If omitted, Zarr Python assumes little-endian for legacy
+    compatibility but emits a warning.
+
 ### Example Usage
 
 This section will demonstrates the basic usage of Zarr data types.
