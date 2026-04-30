@@ -27,6 +27,7 @@
   a `ChunkGridMetadata` instance instead of a `ChunkGrid` instance for the `chunk_grid`
   parameter. Third-party codecs that override `validate` and inspect the chunk grid will need to
   update their type annotations. No known downstream packages were using this parameter. ([#3802](https://github.com/zarr-developers/zarr-python/issues/3802))
+
 - Add `cast_value` and `scale_offset` codecs. ([#3874](https://github.com/zarr-developers/zarr-python/issues/3874))
 
 ### Bugfixes
