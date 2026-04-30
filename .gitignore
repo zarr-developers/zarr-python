@@ -91,3 +91,6 @@ tests/.hypothesis
 
 zarr/version.py
 zarr.egg-info/
+
+# zarr-metadata package lockfile (a library, not an app)
+packages/zarr-metadata/uv.lock
