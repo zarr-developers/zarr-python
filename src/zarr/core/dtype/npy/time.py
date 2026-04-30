@@ -851,7 +851,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             The default scalar value, which is a 'Not-a-Time' (NaT) value
         """
 
-        return np.datetime64("NaT")
+        return np.datetime64("NaT", self.unit)
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         """
