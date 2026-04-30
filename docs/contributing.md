@@ -339,6 +339,16 @@ Features in `zarr.experimental` carry no stability guarantees. They may be chang
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
 
+### Preparing a release
+
+Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
+
+1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
+2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
+3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
+4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
+5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
+
 ## Benchmarks
 
 Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
