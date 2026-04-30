@@ -22,7 +22,7 @@ from zarr.core._coalesce import (
 )
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
-from zarr.storage._utils import _join_paths, normalize_path
+from zarr.storage._utils import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Sequence
@@ -136,7 +136,7 @@ class FsspecStore(Store):
     ) -> None:
         super().__init__(read_only=read_only)
         self.fs = fs
-        self.path = normalize_path(path)
+        self.path = path
         self.allowed_exceptions = allowed_exceptions
         self.coalesce_options = coalesce_options
 
@@ -292,7 +292,7 @@ class FsspecStore(Store):
         # docstring inherited
         if not self._is_open:
             await self._open()
-        path = _join_paths([self.path, key])
+        path = _dereference_path(self.path, key)
 
         try:
             if byte_range is None:
@@ -355,7 +355,7 @@ class FsspecStore(Store):
             raise TypeError(
                 f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
-        path = _join_paths([self.path, key])
+        path = _dereference_path(self.path, key)
         # write data
         if byte_range:
             raise NotImplementedError
@@ -364,7 +364,7 @@ class FsspecStore(Store):
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
-        path = _join_paths([self.path, key])
+        path = _dereference_path(self.path, key)
         try:
             await self.fs._rm(path)
         except FileNotFoundError:
@@ -380,14 +380,14 @@ class FsspecStore(Store):
             )
         self._check_writable()
 
-        path_to_delete = _join_paths([self.path, prefix])
+        path_to_delete = _dereference_path(self.path, prefix)
 
         with suppress(*self.allowed_exceptions):
             await self.fs._rm(path_to_delete, recursive=True)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        path = _join_paths([self.path, key])
+        path = _dereference_path(self.path, key)
         exists: bool = await self.fs._exists(path)
         return exists
 
@@ -404,7 +404,7 @@ class FsspecStore(Store):
             starts: list[int | None] = []
             stops: list[int | None] = []
             for key, byte_range in key_ranges:
-                paths.append(_join_paths([self.path, key]))
+                paths.append(_dereference_path(self.path, key))
                 if byte_range is None:
                     starts.append(None)
                     stops.append(None)
@@ -434,7 +434,7 @@ class FsspecStore(Store):
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
-        for onefile in (a.removeprefix(self.path + "/") for a in allfiles):
+        for onefile in (a.removeprefix(f"{self.path}/") for a in allfiles):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
@@ -444,7 +444,7 @@ class FsspecStore(Store):
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
-        for onefile in (a.replace(prefix + "/", "") for a in allfiles):
+        for onefile in (a.replace(f"{prefix}/", "") for a in allfiles):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
@@ -455,7 +455,7 @@ class FsspecStore(Store):
             yield onefile.removeprefix(f"{self.path}/")
 
     async def getsize(self, key: str) -> int:
-        path = _join_paths([self.path, key])
+        path = _dereference_path(self.path, key)
         info = await self.fs._info(path)
 
         size = info.get("size")
