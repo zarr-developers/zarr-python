@@ -822,9 +822,9 @@ def test_tree() -> None:
 #             assert len(source) == len(dest)
 #             for key in source:
 #                 if self._version == 3:
-#                     dest_key = key[:10] + "new/" + key[10:]
+#                     dest_key = f"{key[:10]}new/{key[10:]}"
 #                 else:
-#                     dest_key = "new/" + key
+#                     dest_key = f"new/{key}"
 #                 assert source[key] == dest[dest_key]
 
 #     def test_source_dest_path(self):
@@ -841,7 +841,7 @@ def test_tree() -> None:
 #                         assert source[key] == dest[dest_key]
 #                     else:
 #                         assert key not in dest
-#                         assert ("new/" + key) not in dest
+#                         assert (f"new/{key}") not in dest
 
 #     def test_excludes_includes(self):
 #         source = self.source
@@ -853,16 +853,16 @@ def test_tree() -> None:
 #         assert len(dest) == 2
 
 #         root = ""
-#         assert root + "foo" not in dest
+#         assert "f{root}foo" not in dest
 
 #         # multiple excludes
 #         dest = self._get_dest_store()
 #         excludes = "b.z", ".*x"
 #         copy_store(source, dest, excludes=excludes)
 #         assert len(dest) == 1
-#         assert root + "foo" in dest
-#         assert root + "bar/baz" not in dest
-#         assert root + "bar/qux" not in dest
+#         assert f"{root}foo" in dest
+#         assert f"{root}bar/baz" not in dest
+#         assert f"{root}bar/qux" not in dest
 
 #         # excludes and includes
 #         dest = self._get_dest_store()
@@ -870,9 +870,9 @@ def test_tree() -> None:
 #         includes = ".*x"
 #         copy_store(source, dest, excludes=excludes, includes=includes)
 #         assert len(dest) == 2
-#         assert root + "foo" in dest
-#         assert root + "bar/baz" not in dest
-#         assert root + "bar/qux" in dest
+#         assert f"{root}foo" in dest
+#         assert f"{root}bar/baz" not in dest
+#         assert f"{root}bar/qux" in dest
 
 #     def test_dry_run(self):
 #         source = self.source
@@ -884,7 +884,7 @@ def test_tree() -> None:
 #         source = self.source
 #         dest = self._get_dest_store()
 #         root = ""
-#         dest[root + "bar/baz"] = b"mmm"
+#         dest[f"{root}bar/baz"] = b"mmm"
 
 #         # default ('raise')
 #         with pytest.raises(CopyError):
@@ -897,16 +897,16 @@ def test_tree() -> None:
 #         # skip
 #         copy_store(source, dest, if_exists="skip")
 #         assert 3 == len(dest)
-#         assert dest[root + "foo"] == b"xxx"
-#         assert dest[root + "bar/baz"] == b"mmm"
-#         assert dest[root + "bar/qux"] == b"zzz"
+#         assert dest[f"{root}foo"] == b"xxx"
+#         assert dest[f"{root}bar/baz"] == b"mmm"
+#         assert dest[f"{root}bar/qux"] == b"zzz"
 
 #         # replace
 #         copy_store(source, dest, if_exists="replace")
 #         assert 3 == len(dest)
-#         assert dest[root + "foo"] == b"xxx"
-#         assert dest[root + "bar/baz"] == b"yyy"
-#         assert dest[root + "bar/qux"] == b"zzz"
+#         assert dest[f"{root}foo"] == b"xxx"
+#         assert dest[f"{root}bar/baz"] == b"yyy"
+#         assert dest[f"{root}bar/qux"] == b"zzz"
 
 #         # invalid option
 #         with pytest.raises(ValueError):
