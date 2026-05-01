@@ -237,9 +237,9 @@ class MemoryStore(Store, SupportsSetRange):
             # a pseudo directory when there's a nested item and we're listing an
             # intermediate level.
             keys_unique = {
-                key.removeprefix(prefix + "/").split("/")[0]
+                key.removeprefix(f"{prefix}/").split("/")[0]
                 for key in self._store_dict
-                if key.startswith(prefix + "/") and key != prefix
+                if key.startswith(f"{prefix}/") and key != prefix
             }
 
         for key in keys_unique:
@@ -842,7 +842,7 @@ class ManagedMemoryStore(MemoryStore):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        prefix = self.path + "/" if self.path else ""
+        prefix = f"{self.path}/" if self.path else ""
         async for key in super().list():
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)
@@ -852,7 +852,7 @@ class ManagedMemoryStore(MemoryStore):
         # Manual concatenation instead of _join_paths because we need "path/"
         # as the prefix when prefix is empty (to list all keys under self.path)
         full_prefix = f"{self.path}/{prefix}" if self.path else prefix
-        path_prefix = self.path + "/" if self.path else ""
+        path_prefix = f"{self.path}/" if self.path else ""
         async for key in super().list_prefix(full_prefix):
             yield key.removeprefix(path_prefix)
 

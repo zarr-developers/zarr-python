@@ -446,7 +446,7 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
 
     def test_from_url_with_path(self, store: ManagedMemoryStore) -> None:
         """Test that from_url extracts path component from URL."""
-        url = str(store) + "/some/path"
+        url = f"{store}/some/path"
         store2 = ManagedMemoryStore.from_url(url)
         assert store2._store_dict is store._store_dict
         assert store2.path == "some/path"
