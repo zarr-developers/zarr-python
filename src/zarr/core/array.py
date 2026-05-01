@@ -229,10 +229,35 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_codecs(metadata.codecs)
+        pipeline = get_pipeline_class().from_codecs(metadata.codecs)
+        from zarr.core.metadata.v3 import RegularChunkGridMetadata
+
+        # Use the regular chunk shape if available, otherwise use a
+        # placeholder. The ChunkTransform is shape-agnostic — the actual
+        # chunk shape is passed per-call at decode/encode time.
+        if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
+            chunk_shape = metadata.chunk_grid.chunk_shape
+        else:
+            chunk_shape = (1,) * len(metadata.shape)
+        chunk_spec = ArraySpec(
+            shape=chunk_shape,
+            dtype=metadata.data_type,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
-        return get_pipeline_class().from_codecs([v2_codec])
+        pipeline = get_pipeline_class().from_codecs([v2_codec])
+        chunk_spec = ArraySpec(
+            shape=metadata.chunks,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({"order": metadata.order}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     raise TypeError  # pragma: no cover
 
 
@@ -5370,6 +5395,38 @@ def _get_chunk_spec(
     )
 
 
+def _get_default_chunk_spec(
+    metadata: ArrayMetadata,
+    chunk_grid: ChunkGrid,
+    array_config: ArrayConfig,
+    prototype: BufferPrototype,
+) -> ArraySpec | None:
+    """Build an ArraySpec for the regular (non-edge) chunk shape, or None if not regular.
+
+    For regular grids, all chunks have the same codec_shape, so we can
+    build the ArraySpec once and reuse it for every chunk — avoiding the
+    per-chunk ChunkGrid.__getitem__ + ArraySpec construction overhead.
+
+    > **Note**
+    >
+    > Ideally the per-chunk ArraySpec would not exist at all: dtype,
+    > fill_value, config, and prototype are constant across chunks —
+    > only the shape varies (and only for edge chunks). A cleaner
+    > design would pass a single ArraySpec plus a per-chunk shape
+    > override, which ChunkTransform.decode_chunk already supports
+    > via its `chunk_shape` parameter.
+    """
+    if chunk_grid.is_regular:
+        return ArraySpec(
+            shape=chunk_grid.chunk_shape,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=array_config,
+            prototype=prototype,
+        )
+    return None
+
+
 async def _get_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
@@ -5449,11 +5506,16 @@ async def _get_selection(
 
         # reading chunks and decoding them
         indexed_chunks = list(indexer)
+        # Pre-compute the default chunk spec for regular grids to avoid
+        # per-chunk ChunkGrid lookups and ArraySpec construction.
+        default_spec = _get_default_chunk_spec(metadata, chunk_grid, _config, prototype)
         results = await codec_pipeline.read(
             [
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
-                    _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                    default_spec
+                    if default_spec is not None
+                    else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
@@ -5792,11 +5854,14 @@ async def _set_selection(
         _config = replace(_config, order=order)
 
     # merging with existing data and encoding chunks
+    default_spec = _get_default_chunk_spec(metadata, chunk_grid, _config, prototype)
     await codec_pipeline.write(
         [
             (
                 store_path / metadata.encode_chunk_key(chunk_coords),
-                _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                default_spec
+                if default_spec is not None
+                else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                 chunk_selection,
                 out_selection,
                 is_complete_chunk,
