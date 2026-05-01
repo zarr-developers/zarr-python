@@ -19,15 +19,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash
-    working-directory: packages/zarr-metadata
-
 jobs:
   test:
     name: pytest py=${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +49,10 @@ jobs:
   ruff:
     name: ruff
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -62,6 +65,10 @@ jobs:
   pyright:
     name: pyright
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
