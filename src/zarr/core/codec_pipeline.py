@@ -127,6 +127,54 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         return fill_value
 
 
+def _merge_chunk_array(
+    existing_chunk_array: NDBuffer | None,
+    value: NDBuffer,
+    out_selection: SelectorTuple,
+    chunk_spec: ArraySpec,
+    chunk_selection: SelectorTuple,
+    is_complete_chunk: bool,
+    drop_axes: tuple[int, ...],
+) -> NDBuffer:
+    """Merge ``value`` into a full-chunk-shaped NDBuffer at ``chunk_selection``.
+
+    If ``is_complete_chunk`` and ``value`` already covers the full chunk
+    shape, ``value`` is returned directly (no copy). Otherwise, a writable
+    buffer is materialized — either from ``existing_chunk_array.copy()`` if
+    one was read from the store, or freshly allocated and filled with the
+    chunk's fill value — and the relevant slice of ``value`` is written into it.
+    """
+    if (
+        is_complete_chunk
+        and value.shape == chunk_spec.shape
+        # Guard that this is not a partial chunk at the end with is_complete_chunk=True
+        and value[out_selection].shape == chunk_spec.shape
+    ):
+        return value
+    if existing_chunk_array is None:
+        chunk_array = chunk_spec.prototype.nd_buffer.create(
+            shape=chunk_spec.shape,
+            dtype=chunk_spec.dtype.to_native_dtype(),
+            order=chunk_spec.order,
+            fill_value=fill_value_or_default(chunk_spec),
+        )
+    else:
+        chunk_array = existing_chunk_array.copy()
+    if chunk_selection == () or is_scalar(
+        value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
+    ):
+        chunk_value = value
+    else:
+        chunk_value = value[out_selection]
+        if drop_axes:
+            item = tuple(
+                None if idx in drop_axes else slice(None) for idx in range(chunk_spec.ndim)
+            )
+            chunk_value = chunk_value[item]
+    chunk_array[chunk_selection] = chunk_value
+    return chunk_array
+
+
 @dataclass(slots=True, kw_only=True)
 class ChunkTransform:
     """A synchronous codec chain.
@@ -505,50 +553,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     results.append(GetResult(status="missing"))
         return tuple(results)
 
-    def _merge_chunk_array(
-        self,
-        existing_chunk_array: NDBuffer | None,
-        value: NDBuffer,
-        out_selection: SelectorTuple,
-        chunk_spec: ArraySpec,
-        chunk_selection: SelectorTuple,
-        is_complete_chunk: bool,
-        drop_axes: tuple[int, ...],
-    ) -> NDBuffer:
-        if (
-            is_complete_chunk
-            and value.shape == chunk_spec.shape
-            # Guard that this is not a partial chunk at the end with is_complete_chunk=True
-            and value[out_selection].shape == chunk_spec.shape
-        ):
-            return value
-        if existing_chunk_array is None:
-            chunk_array = chunk_spec.prototype.nd_buffer.create(
-                shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype.to_native_dtype(),
-                order=chunk_spec.order,
-                fill_value=fill_value_or_default(chunk_spec),
-            )
-        else:
-            chunk_array = existing_chunk_array.copy()  # make a writable copy
-        if chunk_selection == () or is_scalar(
-            value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
-        ):
-            chunk_value = value
-        else:
-            chunk_value = value[out_selection]
-            # handle missing singleton dimensions
-            if drop_axes:
-                item = tuple(
-                    None  # equivalent to np.newaxis
-                    if idx in drop_axes
-                    else slice(None)
-                    for idx in range(chunk_spec.ndim)
-                )
-                chunk_value = chunk_value[item]
-        chunk_array[chunk_selection] = chunk_value
-        return chunk_array
-
     async def write_batch(
         self,
         batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
@@ -603,7 +607,7 @@ class BatchedCodecPipeline(CodecPipeline):
             )
 
             chunk_array_merged = [
-                self._merge_chunk_array(
+                _merge_chunk_array(
                     chunk_array,
                     value,
                     out_selection,
@@ -907,47 +911,6 @@ class FusedCodecPipeline(CodecPipeline):
             )
         return chunk_bytes_batch
 
-    # -- merge helper --
-
-    @staticmethod
-    def _merge_chunk_array(
-        existing_chunk_array: NDBuffer | None,
-        value: NDBuffer,
-        out_selection: SelectorTuple,
-        chunk_spec: ArraySpec,
-        chunk_selection: SelectorTuple,
-        is_complete_chunk: bool,
-        drop_axes: tuple[int, ...],
-    ) -> NDBuffer:
-        if (
-            is_complete_chunk
-            and value.shape == chunk_spec.shape
-            and value[out_selection].shape == chunk_spec.shape
-        ):
-            return value
-        if existing_chunk_array is None:
-            chunk_array = chunk_spec.prototype.nd_buffer.create(
-                shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype.to_native_dtype(),
-                order=chunk_spec.order,
-                fill_value=fill_value_or_default(chunk_spec),
-            )
-        else:
-            chunk_array = existing_chunk_array.copy()
-        if chunk_selection == () or is_scalar(
-            value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
-        ):
-            chunk_value = value
-        else:
-            chunk_value = value[out_selection]
-            if drop_axes:
-                item = tuple(
-                    None if idx in drop_axes else slice(None) for idx in range(chunk_spec.ndim)
-                )
-                chunk_value = chunk_value[item]
-        chunk_array[chunk_selection] = chunk_value
-        return chunk_array
-
     # -- sync read/write --
 
     def read_sync(
@@ -1097,7 +1060,7 @@ class FusedCodecPipeline(CodecPipeline):
             if existing_bytes is not None:
                 existing_chunk_array = transform.decode_chunk(existing_bytes, chunk_spec)
 
-            chunk_array = self._merge_chunk_array(
+            chunk_array = _merge_chunk_array(
                 existing_chunk_array,
                 value,
                 out_selection,
@@ -1228,7 +1191,7 @@ class FusedCodecPipeline(CodecPipeline):
         )
 
         chunk_array_merged = [
-            self._merge_chunk_array(
+            _merge_chunk_array(
                 chunk_array,
                 value,
                 out_selection,
