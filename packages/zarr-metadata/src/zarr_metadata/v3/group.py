@@ -11,10 +11,10 @@ if TYPE_CHECKING:
 
     from zarr_metadata.common import JSON
 
-from zarr_metadata.v3.array import AllowedExtraField
+from zarr_metadata.v3.array import ExtraField
 
 
-class GroupMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
+class GroupMetadataV3(TypedDict, extra_items=ExtraField):  # type: ignore[call-arg]
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 

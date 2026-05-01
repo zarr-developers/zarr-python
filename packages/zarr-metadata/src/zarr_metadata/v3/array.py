@@ -8,7 +8,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.common import JSON, NamedConfig
 
 
-class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
+class ExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
     Extra field on a v3 array metadata document.
 
@@ -23,7 +23,7 @@ MetadataField = str | NamedConfig
 """A string or a {name: str, configuration: {...}} key value pair, where the 'configuration' key may be omitted. """
 
 
-class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
+class ArrayMetadataV3(TypedDict, extra_items=ExtraField):  # type: ignore[call-arg]
     """
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
@@ -46,7 +46,7 @@ class ArrayMetadataV3(TypedDict, extra_items=AllowedExtraField):  # type: ignore
 
 
 __all__ = [
-    "AllowedExtraField",
     "ArrayMetadataV3",
+    "ExtraField",
     "MetadataField",
 ]
