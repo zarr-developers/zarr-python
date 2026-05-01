@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.indexing import ChunkProjection, SelectorTuple
+    from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
     from zarr.core.metadata.v3 import ChunkGridMetadata
 
@@ -34,8 +33,6 @@ __all__ = [
     "CodecOutput",
     "CodecPipeline",
     "GetResult",
-    "PreparedWrite",
-    "SupportsChunkCodec",
     "SupportsSyncCodec",
 ]
 
@@ -83,25 +80,6 @@ class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
 
     def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
-
-
-class SupportsChunkCodec(Protocol):
-    """Protocol for objects that can decode/encode whole chunks synchronously.
-
-    `ChunkTransform` satisfies this protocol. The ``chunk_shape`` parameter
-    allows decoding/encoding chunks of different shapes (e.g. rectilinear
-    grids) without rebuilding the transform.
-    """
-
-    array_spec: ArraySpec
-
-    def decode_chunk(
-        self, chunk_bytes: Buffer, chunk_shape: tuple[int, ...] | None = None
-    ) -> NDBuffer: ...
-
-    def encode_chunk(
-        self, chunk_array: NDBuffer, chunk_shape: tuple[int, ...] | None = None
-    ) -> Buffer | None: ...
 
 
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
@@ -227,37 +205,6 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
 
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
-
-
-@dataclass
-class PreparedWrite:
-    """Intermediate state between reading existing data and writing new data.
-
-    Created by `prepare_write_sync` / `prepare_write`, consumed by
-    `finalize_write_sync` / `finalize_write`. The compute phase sits
-    in between: iterate over `indexer`, decode the corresponding entry
-    in `chunk_dict`, merge new data, re-encode, and store the result
-    back into `chunk_dict`.
-
-    Attributes
-    ----------
-    chunk_dict : dict[tuple[int, ...], Buffer | None]
-        Per-inner-chunk encoded bytes, keyed by chunk coordinates.
-        For a regular array this is `{(0,): <bytes>}`. For a sharded
-        array it contains one entry per inner chunk in the shard,
-        including chunks not being modified (they pass through
-        unchanged). `None` means the chunk did not exist on disk.
-    indexer : list[ChunkProjection]
-        The inner chunks to modify. Each entry's `chunk_coords`
-        corresponds to a key in `chunk_dict`. `chunk_selection`
-        identifies the region within that inner chunk, and
-        `out_selection` identifies the corresponding region in the
-        source value array. This is a subset of `chunk_dict`'s keys
-        — untouched chunks are not listed.
-    """
-
-    chunk_dict: dict[tuple[int, ...], Buffer | None]
-    indexer: list[ChunkProjection]
 
 
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
