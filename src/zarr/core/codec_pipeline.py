@@ -7,8 +7,6 @@ from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
-import numpy as np
-
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -20,8 +18,6 @@ from zarr.abc.codec import (
     GetResult,
     SupportsSyncCodec,
 )
-from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import numpy_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
@@ -33,6 +29,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.metadata.v3 import ChunkGridMetadata
@@ -213,10 +210,9 @@ class ChunkTransform:
         ----------
         chunk_bytes : Buffer
             The encoded chunk bytes.
-        chunk_shape : tuple[int, ...] or None
-            The shape of this chunk. If None, uses the shape from the
-            ArraySpec provided at construction. Required for rectilinear
-            grids where chunks have different shapes.
+        chunk_spec : ArraySpec
+            The array spec describing shape, dtype, fill value, and codec
+            configuration for this chunk.
         """
         aa_specs, ab_spec = self._resolve_specs(chunk_spec)
 
@@ -240,9 +236,9 @@ class ChunkTransform:
         ----------
         chunk_array : NDBuffer
             The chunk data to encode.
-        chunk_shape : tuple[int, ...] or None
-            The shape of this chunk. If None, uses the shape from the
-            ArraySpec provided at construction.
+        chunk_spec : ArraySpec
+            The array spec describing shape, dtype, fill value, and codec
+            configuration for this chunk.
         """
         aa_specs, ab_spec = self._resolve_specs(chunk_spec)
 
@@ -785,7 +781,7 @@ register_pipeline(BatchedCodecPipeline)
 
 
 @dataclass(frozen=True)
-class SyncCodecPipeline(CodecPipeline):
+class FusedCodecPipeline(CodecPipeline):
     """Codec pipeline that uses the codec chain directly.
 
     Separates IO from compute without an intermediate layout abstraction.
@@ -1284,4 +1280,4 @@ class SyncCodecPipeline(CodecPipeline):
         )
 
 
-register_pipeline(SyncCodecPipeline)
+register_pipeline(FusedCodecPipeline)

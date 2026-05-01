@@ -1,4 +1,4 @@
-"""Tests for SyncCodecPipeline -- the sync-first codec pipeline."""
+"""Tests for FusedCodecPipeline -- the per-chunk-fused codec pipeline."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.buffer import cpu
-from zarr.core.codec_pipeline import SyncCodecPipeline
+from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -25,11 +25,11 @@ def _create_array(
     codecs: tuple[Any, ...] = (BytesCodec(),),
     fill_value: object = 0,
 ) -> zarr.Array[Any]:
-    """Create a zarr array using SyncCodecPipeline."""
+    """Create a zarr array using FusedCodecPipeline."""
     if chunks is None:
         chunks = shape
 
-    _ = SyncCodecPipeline.from_codecs(codecs)
+    _ = FusedCodecPipeline.from_codecs(codecs)
 
     return zarr.create_array(
         StorePath(MemoryStore()),
@@ -55,8 +55,8 @@ def _create_array(
     ids=["bytes-only", "gzip", "zstd", "transpose", "transpose+zstd"],
 )
 def test_construction(codecs: tuple[Any, ...]) -> None:
-    """SyncCodecPipeline can be constructed from valid codec combinations."""
-    pipeline = SyncCodecPipeline.from_codecs(codecs)
+    """FusedCodecPipeline can be constructed from valid codec combinations."""
+    pipeline = FusedCodecPipeline.from_codecs(codecs)
     assert pipeline.codecs == codecs
 
 
@@ -66,7 +66,7 @@ def test_evolve_from_array_spec() -> None:
     from zarr.core.buffer import default_buffer_prototype
     from zarr.core.dtype import get_data_type_from_native_dtype
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     assert pipeline._sync_transform is None
 
     zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
@@ -92,7 +92,7 @@ def test_evolve_from_array_spec() -> None:
     ids=["f64-1d", "f32-1d", "i32-1d", "f64-2d"],
 )
 def test_read_write_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
-    """Data written through SyncCodecPipeline can be read back correctly via async path."""
+    """Data written through FusedCodecPipeline can be read back correctly via async path."""
     from zarr.core.array_spec import ArrayConfig, ArraySpec
     from zarr.core.buffer import default_buffer_prototype
     from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
@@ -109,7 +109,7 @@ def test_read_write_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
         prototype=default_buffer_prototype(),
     )
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     # Write
@@ -156,7 +156,7 @@ def test_read_missing_chunk_fills() -> None:
         prototype=default_buffer_prototype(),
     )
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     out = CPUNDBuffer.from_numpy_array(np.zeros(10, dtype="float64"))
@@ -205,7 +205,7 @@ def test_read_write_sync_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
         prototype=default_buffer_prototype(),
     )
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     data = np.arange(int(np.prod(shape)), dtype=dtype).reshape(shape)
@@ -247,7 +247,7 @@ def test_read_sync_missing_chunk_fills() -> None:
         prototype=default_buffer_prototype(),
     )
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     out = CPUNDBuffer.from_numpy_array(np.zeros(10, dtype="float64"))
@@ -280,7 +280,7 @@ def test_sync_write_async_read_roundtrip() -> None:
         prototype=default_buffer_prototype(),
     )
 
-    pipeline = SyncCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     data = np.arange(100, dtype="float64")
@@ -311,7 +311,7 @@ def test_sync_transform_encode_decode_roundtrip() -> None:
     from zarr.core.dtype import Float64
 
     codecs = (BytesCodec(),)
-    pipeline = SyncCodecPipeline.from_codecs(codecs)
+    pipeline = FusedCodecPipeline.from_codecs(codecs)
     zdtype = Float64()
     spec = ArraySpec(
         shape=(100,),
@@ -517,7 +517,7 @@ def test_partial_shard_write_roundtrip_correctness() -> None:
 def test_partial_shard_write_uses_set_range() -> None:
     """Partial shard writes with fixed-size codecs should use set_range_sync.
 
-    Only the SyncCodecPipeline uses byte-range writes for partial shard
+    Only the FusedCodecPipeline uses byte-range writes for partial shard
     updates; skipped under other pipelines.
     """
     from unittest.mock import patch
@@ -536,8 +536,8 @@ def test_partial_shard_write_uses_set_range() -> None:
         fill_value=0.0,
         config={"write_empty_chunks": True},
     )
-    if not isinstance(arr._async_array.codec_pipeline, SyncCodecPipeline):
-        pytest.skip("byte-range write optimization is specific to SyncCodecPipeline")
+    if not isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline):
+        pytest.skip("byte-range write optimization is specific to FusedCodecPipeline")
 
     # Initial full write to create the shard blob
     arr[:] = np.arange(100, dtype="float64")
@@ -560,7 +560,7 @@ def test_partial_shard_write_uses_set_range() -> None:
 def test_partial_shard_write_falls_back_for_compressed() -> None:
     """Partial shard writes with compressed inner codecs should NOT use set_range.
 
-    Only meaningful under SyncCodecPipeline (which can use byte-range writes
+    Only meaningful under FusedCodecPipeline (which can use byte-range writes
     for fixed-size inner codecs). Other pipelines never use set_range_sync,
     so the assertion is trivially true and the test is uninformative.
     """
@@ -576,8 +576,8 @@ def test_partial_shard_write_falls_back_for_compressed() -> None:
         compressors=GzipCodec(),
         fill_value=0.0,
     )
-    if not isinstance(arr._async_array.codec_pipeline, SyncCodecPipeline):
-        pytest.skip("byte-range write optimization is specific to SyncCodecPipeline")
+    if not isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline):
+        pytest.skip("byte-range write optimization is specific to FusedCodecPipeline")
     arr[:] = np.arange(100, dtype="float64")
 
     with patch.object(type(store), "set_range_sync", wraps=store.set_range_sync) as mock_set_range:

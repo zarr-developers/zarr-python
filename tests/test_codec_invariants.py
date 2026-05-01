@@ -33,7 +33,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.codec_pipeline import ChunkTransform, SyncCodecPipeline
+from zarr.core.codec_pipeline import ChunkTransform, FusedCodecPipeline
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage import LocalStore, MemoryStore
 
@@ -165,11 +165,11 @@ def test_C3_pipeline_methods_do_not_isinstance_check_sharding_codec() -> None:
     import inspect
     import re
 
-    from zarr.core.codec_pipeline import BatchedCodecPipeline, SyncCodecPipeline
+    from zarr.core.codec_pipeline import BatchedCodecPipeline, FusedCodecPipeline
 
     pattern = re.compile(r"isinstance\s*\([^)]*ShardingCodec[^)]*\)")
 
-    for cls in (SyncCodecPipeline, BatchedCodecPipeline):
+    for cls in (FusedCodecPipeline, BatchedCodecPipeline):
         for method_name in ("read", "write", "read_sync", "write_sync"):
             method = getattr(cls, method_name, None)
             if method is None:
@@ -230,16 +230,16 @@ def test_S2_empty_shard_deleted_after_partial_writes_to_fill() -> None:
 
 
 def _is_sync_pipeline_default() -> bool:
-    """Check whether SyncCodecPipeline is the active pipeline."""
+    """Check whether FusedCodecPipeline is the active pipeline."""
     store = MemoryStore()
     arr = zarr.create_array(store=store, shape=(8,), chunks=(8,), dtype="uint8", fill_value=0)
-    return isinstance(arr._async_array.codec_pipeline, SyncCodecPipeline)
+    return isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline)
 
 
 def test_S3_byte_range_path_skipped_when_write_empty_chunks_false() -> None:
     """S3: under default config, partial shard writes do not call set_range_sync."""
     if not _is_sync_pipeline_default():
-        pytest.skip("byte-range fast path is specific to SyncCodecPipeline")
+        pytest.skip("byte-range fast path is specific to FusedCodecPipeline")
 
     store = MemoryStore()
     arr = zarr.create_array(
@@ -264,7 +264,7 @@ def test_S3_byte_range_path_skipped_when_write_empty_chunks_false() -> None:
 def test_S3_byte_range_path_used_when_write_empty_chunks_true() -> None:
     """S3: with write_empty_chunks=True, partial shard writes use set_range_sync."""
     if not _is_sync_pipeline_default():
-        pytest.skip("byte-range fast path is specific to SyncCodecPipeline")
+        pytest.skip("byte-range fast path is specific to FusedCodecPipeline")
 
     store = MemoryStore()
     arr = zarr.create_array(

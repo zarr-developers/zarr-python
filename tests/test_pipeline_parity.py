@@ -1,7 +1,7 @@
 """Pipeline parity test — exhaustive matrix of read/write scenarios.
 
 For every cell of the matrix (codec config x layout x operation
-sequence x runtime config), assert that ``SyncCodecPipeline`` and
+sequence x runtime config), assert that ``FusedCodecPipeline`` and
 ``BatchedCodecPipeline`` produce semantically identical results:
 
   * Same returned array contents on read.
@@ -240,7 +240,7 @@ def _read_under_pipeline(pipeline_path: str, store: MemoryStore) -> Any:
 
 
 _BATCHED = "zarr.core.codec_pipeline.BatchedCodecPipeline"
-_SYNC = "zarr.core.codec_pipeline.SyncCodecPipeline"
+_FUSED = "zarr.core.codec_pipeline.FusedCodecPipeline"
 
 
 @pytest.mark.parametrize(
@@ -253,7 +253,7 @@ def test_pipeline_parity(
     sequence_fn: Callable[[tuple[int, ...]], list[WriteOp]],
     write_empty_chunks: bool,
 ) -> None:
-    """SyncCodecPipeline must be semantically identical to BatchedCodecPipeline.
+    """FusedCodecPipeline must be semantically identical to BatchedCodecPipeline.
 
     Three checks, in order of decreasing diagnostic value:
 
@@ -274,14 +274,14 @@ def test_pipeline_parity(
         _BATCHED, codec_kwargs, layout, sequence, write_empty_chunks
     )
     sync_store, sync_arr = _write_under_pipeline(
-        _SYNC, codec_kwargs, layout, sequence, write_empty_chunks
+        _FUSED, codec_kwargs, layout, sequence, write_empty_chunks
     )
 
     # 1. Array contents must agree.
     np.testing.assert_array_equal(
         sync_arr,
         batched_arr,
-        err_msg="SyncCodecPipeline returned different array contents than BatchedCodecPipeline",
+        err_msg="FusedCodecPipeline returned different array contents than BatchedCodecPipeline",
     )
 
     # 2. Store key sets must agree.
@@ -294,17 +294,17 @@ def test_pipeline_parity(
     )
 
     # 3. Cross-read: each pipeline must correctly read the other's output.
-    sync_reads_batched = _read_under_pipeline(_SYNC, batched_store)
+    sync_reads_batched = _read_under_pipeline(_FUSED, batched_store)
     batched_reads_sync = _read_under_pipeline(_BATCHED, sync_store)
     np.testing.assert_array_equal(
         sync_reads_batched,
         batched_arr,
-        err_msg="SyncCodecPipeline could not correctly read BatchedCodecPipeline's output",
+        err_msg="FusedCodecPipeline could not correctly read BatchedCodecPipeline's output",
     )
     np.testing.assert_array_equal(
         batched_reads_sync,
         sync_arr,
-        err_msg="BatchedCodecPipeline could not correctly read SyncCodecPipeline's output",
+        err_msg="BatchedCodecPipeline could not correctly read FusedCodecPipeline's output",
     )
 
 
@@ -356,7 +356,7 @@ def test_pipeline_read_parity(
     layout: LayoutConfig,
     selection: Any,
 ) -> None:
-    """Partial reads via SyncCodecPipeline must match BatchedCodecPipeline.
+    """Partial reads via FusedCodecPipeline must match BatchedCodecPipeline.
 
     The full-write/full-read parity test above doesn't exercise partial
     reads (e.g. a single element from a sharded array), which take a
@@ -372,14 +372,14 @@ def test_pipeline_read_parity(
 
     with zarr_config.set({"codec_pipeline.path": _BATCHED}):
         batched_arr = zarr.open_array(store=store, mode="r")[selection]
-    with zarr_config.set({"codec_pipeline.path": _SYNC}):
+    with zarr_config.set({"codec_pipeline.path": _FUSED}):
         sync_arr = zarr.open_array(store=store, mode="r")[selection]
 
     np.testing.assert_array_equal(
         sync_arr,
         batched_arr,
         err_msg=(
-            f"SyncCodecPipeline read returned different result than BatchedCodecPipeline "
+            f"FusedCodecPipeline read returned different result than BatchedCodecPipeline "
             f"for selection {selection!r}"
         ),
     )

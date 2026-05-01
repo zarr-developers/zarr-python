@@ -26,7 +26,7 @@ def _enable_rectilinear_chunks() -> Generator[None]:
 
 pipeline_paths = [
     "zarr.core.codec_pipeline.BatchedCodecPipeline",
-    "zarr.core.codec_pipeline.SyncCodecPipeline",
+    "zarr.core.codec_pipeline.FusedCodecPipeline",
 ]
 
 
