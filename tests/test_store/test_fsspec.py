@@ -286,6 +286,116 @@ def array_roundtrip(store: FsspecStore) -> None:
     np.testing.assert_array_equal(arr[:], data)
 
 
+@pytest.mark.parametrize(
+    ("root", "key", "expected"),
+    [
+        # `"/"` as root collapses so that bare-key backends (notably
+        # ReferenceFileSystem) get the right key. Regression test for
+        # https://github.com/zarr-developers/zarr-python/issues/3922 .
+        ("/", "zarr.json", "zarr.json"),
+        ("", "zarr.json", "zarr.json"),
+        # Trailing slashes on the root are stripped before joining.
+        ("foo/", "zarr.json", "foo/zarr.json"),
+        ("foo", "zarr.json", "foo/zarr.json"),
+        # Leading slashes on the root are preserved -- absolute filesystem
+        # paths must stay absolute. Regression test for the titiler-xarray
+        # breakage that #3924 introduced when `normalize_path` was applied to
+        # `FsspecStore.path`.
+        ("/home/runner/data.zarr", "zarr.json", "/home/runner/data.zarr/zarr.json"),
+        ("/home/runner/data.zarr/", "zarr.json", "/home/runner/data.zarr/zarr.json"),
+        # Multi-segment keys.
+        ("/home/foo", "a/b/zarr.json", "/home/foo/a/b/zarr.json"),
+        ("", "a/b/zarr.json", "a/b/zarr.json"),
+        # Trailing slash on the result is stripped (relevant when key is "").
+        ("/home/foo", "", "/home/foo"),
+    ],
+)
+def test_dereference_path(root: str, key: str, expected: str) -> None:
+    """Verify the contract `_dereference_path` provides for `FsspecStore`.
+
+    `FsspecStore.path` is stored verbatim; the join with a key must collapse a
+    sentinel `"/"` root, strip trailing slashes, and preserve leading
+    slashes on absolute paths.
+    """
+    from zarr.storage._utils import _dereference_path
+
+    assert _dereference_path(root, key) == expected
+
+
+async def test_fsspec_store_open_group_via_reference_filesystem() -> None:
+    """End-to-end regression test for
+    https://github.com/zarr-developers/zarr-python/issues/3922 .
+
+    ``ReferenceFileSystem`` keys its refs by bare strings like ``"zarr.json"``.
+    The bug was that ``FsspecStore(fs=ref_fs, path="/")`` produced
+    ``"//zarr.json"`` at the join site and failed to find the entry, raising
+    ``GroupNotFoundError``. This test pins ``path="/"`` explicitly to keep
+    coverage even if the default value changes later.
+    """
+    import json
+
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    group_json = json.dumps({"zarr_format": 3, "node_type": "group", "attributes": {}})
+    fs = ReferenceFileSystem(
+        fo={"version": 1, "refs": {"zarr.json": group_json}},
+        asynchronous=True,
+    )
+    store = FsspecStore(fs=fs, path="/", read_only=True)
+    group = await zarr.api.asynchronous.open_group(store, mode="r")
+    assert group.metadata.zarr_format == 3
+
+
+async def test_fsspec_store_read_array_chunk_via_reference_filesystem() -> None:
+    """End-to-end regression test that exercises the byte-range read path
+    against ``ReferenceFileSystem``.
+
+    Beyond opening a group (covered by
+    ``test_fsspec_store_open_group_via_reference_filesystem``), this test
+    constructs a small zarr v3 array whose chunk lives in the refs dict and
+    reads it through the store. Path-handling bugs on the byte-range
+    fetch path (used by kerchunk-style virtualization) would surface here
+    rather than at metadata-open time.
+    """
+    import json
+
+    import numpy as np
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    # Construct a minimal v3 zarr: a single 1-D uint8 array of length 4 with
+    # one chunk of size 4. The chunk bytes are little-endian uint8s 1..4.
+    array_meta = json.dumps(
+        {
+            "zarr_format": 3,
+            "node_type": "array",
+            "shape": [4],
+            "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+            "data_type": "uint8",
+            "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+            "fill_value": 0,
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "attributes": {},
+        }
+    )
+    chunk_bytes = bytes([1, 2, 3, 4])
+
+    refs: dict[str, str] = {
+        "zarr.json": array_meta,
+        # ReferenceFileSystem accepts raw bytes via base64 encoding or
+        # latin-1-decoded strings; latin-1 round-trips bytes 1:1.
+        "c/0": chunk_bytes.decode("latin-1"),
+    }
+
+    fs = ReferenceFileSystem(
+        fo={"version": 1, "refs": refs},
+        asynchronous=True,
+    )
+    store = FsspecStore(fs=fs, path="/", read_only=True)
+    array = await zarr.api.asynchronous.open_array(store=store, mode="r")
+    data = await array.getitem(slice(None))
+    np.testing.assert_array_equal(data, np.array([1, 2, 3, 4], dtype="uint8"))
+
+
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",

@@ -285,8 +285,8 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key.strip("/") != prefix:
-                    k = key.removeprefix(prefix + "/").split("/")[0]
+                if key.startswith(f"{prefix}/") and key.strip("/") != prefix:
+                    k = key.removeprefix(f"{prefix}/").split("/")[0]
                     if k not in seen:
                         seen.add(k)
                         yield k

@@ -840,7 +840,7 @@ class AsyncGroup:
             # follow h5py convention: add leading slash
             name = self.path
             if name[0] != "/":
-                name = "/" + name
+                name = f"/{name}"
             return name
         return "/"
 
