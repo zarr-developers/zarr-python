@@ -4,9 +4,9 @@ Zarr `numpy.datetime64` data type (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64
 """
 
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal
 
-from typing_extensions import ReadOnly
+from typing_extensions import ReadOnly, TypedDict
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 """The `name` field value of the `numpy.datetime64` data type."""
@@ -49,7 +49,6 @@ NumpyDatetime64FillValue = int | Literal["NaT"]
 Either a JSON integer (count of `unit * scale_factor` since the epoch),
 or the string `"NaT"` (equivalent to the integer `-2**63`).
 """
-
 
 __all__ = [
     "NUMPY_DATETIME64_DATA_TYPE_NAME",

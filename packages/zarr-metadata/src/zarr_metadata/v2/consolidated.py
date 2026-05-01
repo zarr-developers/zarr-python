@@ -7,7 +7,8 @@ canonical-implementation convention.
 """
 
 from collections.abc import Mapping
-from typing import TypedDict
+
+from typing_extensions import TypedDict
 
 from zarr_metadata.v2.array import ArrayMetadataV2
 from zarr_metadata.v2.group import GroupMetadataV2

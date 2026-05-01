@@ -5,9 +5,9 @@ See https://github.com/zarr-developers/zarr-extensions/blob/main/data-types/stru
 """
 
 from collections.abc import Mapping
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal
 
-from typing_extensions import ReadOnly
+from typing_extensions import ReadOnly, TypedDict
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""
@@ -52,7 +52,6 @@ StructFillValue = Mapping[str, object]
 A JSON object mapping each field name to that field's fill value. Field
 fill values are themselves shaped per the field's `data_type`, recursively.
 """
-
 
 __all__ = [
     "STRUCT_DATA_TYPE_NAME",

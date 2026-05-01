@@ -7,7 +7,9 @@ having to rename chunks. Not recommended for new arrays.
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
@@ -44,7 +46,6 @@ V2ChunkKeyEncodingMetadata = V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName
 The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
-
 
 __all__ = [
     "V2_CHUNK_KEY_ENCODING_NAME",

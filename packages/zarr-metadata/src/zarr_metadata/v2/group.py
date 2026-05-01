@@ -3,7 +3,9 @@
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
-from typing import Literal, TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 
 class GroupMetadataV2(TypedDict):

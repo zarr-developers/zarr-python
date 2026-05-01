@@ -4,7 +4,9 @@ Rectilinear chunk grid (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear
 """
 
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal
+
+from typing_extensions import TypedDict
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -41,7 +43,6 @@ RectilinearChunkGridMetadata = RectilinearChunkGridObject
 `kind` and `chunk_shapes` are required, so only the object form is valid;
 the short-hand-name form is not permitted by the spec for this grid.
 """
-
 
 __all__ = [
     "RECTILINEAR_CHUNK_GRID_NAME",

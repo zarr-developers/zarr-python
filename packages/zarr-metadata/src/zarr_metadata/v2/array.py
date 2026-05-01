@@ -1,7 +1,9 @@
 """Zarr v2 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 from zarr_metadata.v2.codec import NumcodecsConfig
 

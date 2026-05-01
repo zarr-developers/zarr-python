@@ -4,7 +4,9 @@ Bytes codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 """
 
-from typing import Final, Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 BYTES_CODEC_NAME: Final = "bytes"
 """The `name` field value of the `bytes` codec."""
@@ -40,7 +42,6 @@ The configuration has no required keys (`endian` is conditionally required
 at runtime based on data type), so the spec's short-hand-name form is
 permitted in addition to the object form.
 """
-
 
 __all__ = [
     "BYTES_CODEC_NAME",

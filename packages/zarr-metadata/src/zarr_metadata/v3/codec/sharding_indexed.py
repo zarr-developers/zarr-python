@@ -4,7 +4,9 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from typing import Final, Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 from zarr_metadata.v3._common import MetadataField
 
@@ -54,7 +56,6 @@ The configuration has multiple required keys (`chunk_shape`, `codecs`,
 `index_codecs`), so only the object form is valid; the short-hand-name
 form is not permitted by the spec for this codec.
 """
-
 
 __all__ = [
     "SHARDING_INDEXED_CODEC_NAME",

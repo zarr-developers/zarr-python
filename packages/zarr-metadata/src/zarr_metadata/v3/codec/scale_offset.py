@@ -4,7 +4,9 @@ Scale-offset codec types.
 See https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/scale_offset
 """
 
-from typing import Final, Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired
+
+from typing_extensions import TypedDict
 
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
@@ -47,7 +49,6 @@ The configuration has no required keys (both `offset` and `scale` are
 optional, and the configuration itself is optional), so the short-hand-name
 form is permitted in addition to the object form.
 """
-
 
 __all__ = [
     "SCALE_OFFSET_CODEC_NAME",

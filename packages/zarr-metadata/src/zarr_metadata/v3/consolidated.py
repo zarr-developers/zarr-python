@@ -7,7 +7,9 @@ on a group's `zarr.json`.
 """
 
 from collections.abc import Mapping
-from typing import Literal, TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 from zarr_metadata.v3.array import ArrayMetadataV3
 from zarr_metadata.v3.group import GroupMetadataV3

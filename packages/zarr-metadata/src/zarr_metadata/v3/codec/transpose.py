@@ -4,7 +4,9 @@ Transpose codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 """
 
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal
+
+from typing_extensions import TypedDict
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -37,7 +39,6 @@ TransposeCodecMetadata = TransposeCodecObject
 `order` is required, so only the object form is valid; the short-hand-name
 form is not permitted by the spec for this codec.
 """
-
 
 __all__ = [
     "TRANSPOSE_CODEC_NAME",

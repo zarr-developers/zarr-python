@@ -6,7 +6,9 @@ time of writing; the configuration shape below reflects the proposed
 specification).
 """
 
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal
+
+from typing_extensions import TypedDict
 
 ZSTD_CODEC_NAME: Final = "zstd"
 """The `name` field value of the `zstd` codec."""
@@ -39,7 +41,6 @@ ZstdCodecMetadata = ZstdCodecObject
 Both `level` and `checksum` are required, so only the object form is
 valid; the short-hand-name form is not permitted by the spec for this codec.
 """
-
 
 __all__ = [
     "ZSTD_CODEC_NAME",

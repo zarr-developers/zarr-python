@@ -7,7 +7,9 @@ Codec and dtype spec types live under `zarr_metadata.v3.codec` and
 """
 
 from collections.abc import Mapping
-from typing import NotRequired, TypedDict
+from typing import NotRequired
+
+from typing_extensions import TypedDict
 
 
 class NamedConfig(TypedDict):
