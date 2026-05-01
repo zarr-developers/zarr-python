@@ -486,7 +486,17 @@ class ShardingCodec(
         shard_bytes: Buffer,
         shard_spec: ArraySpec,
     ) -> NDBuffer:
-        """Decode a full shard synchronously."""
+        """Decode a full shard synchronously.
+
+        Sync counterpart to ``_decode_single``. Same semantics (decode every
+        inner chunk and assemble the full shard array) but routes through
+        ``ChunkTransform`` instead of the async codec pipeline, so it can
+        run on the sync codec-pipeline fast path without an event loop.
+
+        For a partial read where the caller only needs a slice of the shard,
+        use ``_decode_partial_sync`` instead — it fetches only the byte
+        ranges that overlap the selection.
+        """
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -527,7 +537,22 @@ class ShardingCodec(
         shard_array: NDBuffer,
         shard_spec: ArraySpec,
     ) -> Buffer | None:
-        """Encode a full shard synchronously."""
+        """Encode a full shard synchronously.
+
+        Sync counterpart to ``_encode_single``. Iterates inner chunks in
+        Morton (Z-curve) order — that's the canonical layout the shard
+        index expects — and encodes each through the inner ``ChunkTransform``.
+        Empty inner chunks become ``None`` entries when ``write_empty_chunks``
+        is False, signalling ``_encode_shard_dict_sync`` to elide them
+        from the data section and mark them empty in the shard index.
+
+        Returns ``None`` if every inner chunk was elided (an all-empty
+        shard) — callers treat that as "delete the shard key".
+
+        For a partial write that only touches some inner chunks, use
+        ``_encode_partial_sync`` instead — it patches affected slots in
+        place when possible.
+        """
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
@@ -632,6 +657,12 @@ class ShardingCodec(
                 # below can mutate it.
                 index = _ShardIndex(shard_reader.index.offsets_and_lengths.copy())
 
+                # Inner chunks are written in Morton (Z-curve) order, and
+                # because they're fixed-size we can compute a chunk's byte
+                # offset deterministically from its rank without consulting
+                # the shard index. This is what makes byte-range patching
+                # safe: the slot for a given chunk is always at the same
+                # offset regardless of which other chunks are present.
                 rank_map = {c: r for r, c in enumerate(morton_order_iter(chunks_per_shard))}
 
                 def _byte_offset(coords: tuple[int, ...]) -> int:
@@ -733,12 +764,23 @@ class ShardingCodec(
         chunks_per_shard: tuple[int, ...],
         buffer_prototype: BufferPrototype,
     ) -> Buffer | None:
-        """Sync version of _encode_shard_dict."""
+        """Sync version of _encode_shard_dict.
+
+        Pack the encoded inner chunks (in Morton order) into a contiguous
+        data section, build a shard index that points each present chunk
+        at its offset/length within that section, and concatenate.
+
+        Returns ``None`` for an all-empty shard (no chunks present).
+        """
         index = _ShardIndex.create_empty(chunks_per_shard)
         buffers = []
         template = buffer_prototype.buffer.create_zero_length()
         chunk_start = 0
 
+        # First pass: lay out present chunks in the data section. Offsets
+        # here are relative to the start of the data section, not the start
+        # of the final blob — they get shifted in the index-at-start branch
+        # below to account for the index-bytes prefix.
         for chunk_coords in morton_order_iter(chunks_per_shard):
             value = shard_dict.get(chunk_coords)
             if value is None or len(value) == 0:
@@ -753,6 +795,11 @@ class ShardingCodec(
 
         index_bytes = self._encode_shard_index_sync(index)
         if self.index_location == ShardingCodecIndexLocation.start:
+            # When the index is at the start of the blob, the data offsets
+            # we just wrote are off by len(index_bytes). Shift only the
+            # *present* chunks (empty chunks have offset == MAX_UINT_64 as
+            # a sentinel and must not be touched), then re-encode the index
+            # with the corrected offsets.
             empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
             index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = self._encode_shard_index_sync(index)
@@ -893,6 +940,13 @@ class ShardingCodec(
         Reads only the inner-chunk byte ranges that overlap ``selection``
         (plus the shard index) and decodes them through the inner codec
         chain.  The store must support ``get_sync`` with byte ranges.
+
+        Two sub-paths:
+        - If ``selection`` covers the entire shard, just fetch the whole
+          blob — that's strictly cheaper than two round trips (index, then
+          data) plus the per-chunk overhead of partial fetches.
+        - Otherwise fetch the index alone, look up only the byte slices of
+          the inner chunks the selection touches, fetch those, and decode.
         """
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
