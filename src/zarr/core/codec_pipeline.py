@@ -175,6 +175,49 @@ def _merge_chunk_array(
     return chunk_array
 
 
+async def _async_read_fallback(
+    pipeline: CodecPipeline,
+    batch: list[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+    out: NDBuffer,
+    drop_axes: tuple[int, ...],
+) -> tuple[GetResult, ...]:
+    """Async fallback read used when no fast-path is available.
+
+    Fetches every chunk's bytes via ``concurrent_map`` (sized by
+    ``async.concurrency``), decodes the batch through ``pipeline.decode``,
+    then scatters each decoded chunk into ``out`` at its ``out_selection``.
+
+    Used by both ``BatchedCodecPipeline.read_batch`` (non-partial-decode
+    branch) and ``FusedCodecPipeline.read`` (when the store is not a
+    ``SupportsGetSync`` / sync transform is unavailable).
+    """
+    chunk_bytes_batch = await concurrent_map(
+        [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch],
+        lambda byte_getter, prototype: byte_getter.get(prototype),
+        config.get("async.concurrency"),
+    )
+    chunk_array_batch = await pipeline.decode(
+        [
+            (chunk_bytes, chunk_spec)
+            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+        ],
+    )
+    results: list[GetResult] = []
+    for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
+        chunk_array_batch, batch, strict=False
+    ):
+        if chunk_array is not None:
+            tmp = chunk_array[chunk_selection]
+            if drop_axes:
+                tmp = tmp.squeeze(axis=drop_axes)
+            out[out_selection] = tmp
+            results.append(GetResult(status="present"))
+        else:
+            out[out_selection] = fill_value_or_default(chunk_spec)
+            results.append(GetResult(status="missing"))
+    return tuple(results)
+
+
 @dataclass(slots=True, kw_only=True)
 class ChunkTransform:
     """A synchronous codec chain.
@@ -501,8 +544,8 @@ class BatchedCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> tuple[GetResult, ...]:
-        results: list[GetResult] = []
         if self.supports_partial_decode:
+            results: list[GetResult] = []
             batch_info_list = list(batch_info)
             chunk_array_batch = await self.decode_partial_batch(
                 [
@@ -521,37 +564,8 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
                     results.append(GetResult(status="missing"))
-        else:
-            batch_info_list = list(batch_info)
-            chunk_bytes_batch = await concurrent_map(
-                [
-                    (byte_getter, array_spec.prototype)
-                    for byte_getter, array_spec, *_ in batch_info_list
-                ],
-                lambda byte_getter, prototype: byte_getter.get(prototype),
-                config.get("async.concurrency"),
-            )
-            chunk_array_batch = await self.decode_batch(
-                [
-                    (chunk_bytes, chunk_spec)
-                    for chunk_bytes, (_, chunk_spec, *_) in zip(
-                        chunk_bytes_batch, batch_info_list, strict=False
-                    )
-                ],
-            )
-            for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
-                chunk_array_batch, batch_info_list, strict=False
-            ):
-                if chunk_array is not None:
-                    tmp = chunk_array[chunk_selection]
-                    if drop_axes:
-                        tmp = tmp.squeeze(axis=drop_axes)
-                    out[out_selection] = tmp
-                    results.append(GetResult(status="present"))
-                else:
-                    out[out_selection] = fill_value_or_default(chunk_spec)
-                    results.append(GetResult(status="missing"))
-        return tuple(results)
+            return tuple(results)
+        return await _async_read_fallback(self, list(batch_info), out, drop_axes)
 
     async def write_batch(
         self,
@@ -1113,32 +1127,7 @@ class FusedCodecPipeline(CodecPipeline):
         ):
             return self.read_sync(batch, out, drop_axes, max_workers=_resolve_max_workers())
 
-        # Async fallback: fetch all chunks, decode via async codec API, scatter
-        chunk_bytes_batch = await concurrent_map(
-            [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch],
-            lambda byte_getter, prototype: byte_getter.get(prototype),
-            config.get("async.concurrency"),
-        )
-        chunk_array_batch = await self.decode(
-            [
-                (chunk_bytes, chunk_spec)
-                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
-            ],
-        )
-        results: list[GetResult] = []
-        for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
-            chunk_array_batch, batch, strict=False
-        ):
-            if chunk_array is not None:
-                tmp = chunk_array[chunk_selection]
-                if drop_axes:
-                    tmp = tmp.squeeze(axis=drop_axes)
-                out[out_selection] = tmp
-                results.append(GetResult(status="present"))
-            else:
-                out[out_selection] = fill_value_or_default(chunk_spec)
-                results.append(GetResult(status="missing"))
-        return tuple(results)
+        return await _async_read_fallback(self, batch, out, drop_axes)
 
     async def write(
         self,
