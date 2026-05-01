@@ -8,14 +8,14 @@ from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3.array import ExtraFieldV3
+from zarr_metadata.v3.array import ExtensionFieldV3
 
 
-class GroupMetadataV3(TypedDict, extra_items=ExtraFieldV3):  # type: ignore[call-arg]
+class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 
-    Extra keys are permitted if they conform to `ExtraFieldV3`.
+    Extra keys are permitted if they conform to `ExtensionFieldV3`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadata
     """

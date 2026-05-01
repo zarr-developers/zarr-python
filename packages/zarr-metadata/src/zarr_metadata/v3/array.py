@@ -8,22 +8,36 @@ from typing_extensions import TypedDict
 from zarr_metadata.v3._common import MetadataFieldV3
 
 
-class ExtraFieldV3(TypedDict, extra_items=object):  # type: ignore[call-arg]
+class ExtensionFieldV3(TypedDict, extra_items=object):  # type: ignore[call-arg]
     """
-    Extra field on a v3 array metadata document.
+    Required shape of any extension field on a v3 metadata document.
 
-    Extras must include `must_understand: false` and may carry arbitrary
-    additional JSON data.
+    The Zarr v3 spec permits extra keys on array and group metadata
+    documents, provided each value is an object with `must_understand`
+    set to `False`. This TypedDict captures that constraint and is used
+    as the `extra_items=` parameter on `ArrayMetadataV3` and `GroupMetadataV3`.
+
+    Spec interpretation: this type follows the original Zarr v3.0 reading
+    of the spec, under which any object with `must_understand: false` is a
+    valid extension field. The v3.1 spec rewrite added language requiring
+    extension fields to also include a `name: str` key (the "Extension
+    definition" form). Under the strict v3.1 reading, real-world extension
+    fields written by zarr-python and zarrs (notably `consolidated_metadata`,
+    which has no `name` field) are out of spec. The community consensus at
+    the time of writing is that this is a regression to be reverted; this
+    package models the v3.0 / pre-revert interpretation. See
+    https://github.com/zarr-developers/zarr-specs/issues/371 for the
+    ongoing discussion.
     """
 
     must_understand: Literal[False]
 
 
-class ArrayMetadataV3(TypedDict, extra_items=ExtraFieldV3):  # type: ignore[call-arg]
+class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
     """
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
-    Extra keys are permitted if they conform to `ExtraFieldV3`.
+    Extra keys are permitted if they conform to `ExtensionFieldV3`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """
@@ -43,5 +57,5 @@ class ArrayMetadataV3(TypedDict, extra_items=ExtraFieldV3):  # type: ignore[call
 
 __all__ = [
     "ArrayMetadataV3",
-    "ExtraFieldV3",
+    "ExtensionFieldV3",
 ]

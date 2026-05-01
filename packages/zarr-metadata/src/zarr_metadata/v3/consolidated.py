@@ -2,8 +2,17 @@
 
 There is no Zarr v3 specification for consolidated metadata. This module
 models the inline-on-group convention used by the reference Python
-implementation, where consolidated metadata is embedded as an extra field
-on a group's `zarr.json`.
+implementation (and zarrs), where consolidated metadata is embedded as
+an extension field on a group's `zarr.json`.
+
+The shape modeled here (`{kind, must_understand, metadata}` with no `name`
+field) reflects the original Zarr v3.0 reading of the extension-field
+rules. Under the strict Zarr v3.1 reading, every extension field must
+also include a `name: str` key, which would make this shape — and every
+real-world consolidated metadata document in the wild — out of spec.
+See `ExtensionFieldV3` and
+https://github.com/zarr-developers/zarr-specs/issues/371 for the
+ongoing discussion.
 """
 
 from collections.abc import Mapping
