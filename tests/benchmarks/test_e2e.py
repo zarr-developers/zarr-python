@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import NamedConfig
+
 from operator import getitem, setitem
 from typing import Any, Literal
 
@@ -22,6 +23,7 @@ import pytest
 
 from zarr import create_array
 from zarr.core.config import config as zarr_config
+from zarr.testing.store import LatencyStore
 
 CompressorName = Literal["gzip"] | None
 
@@ -45,6 +47,30 @@ _PIPELINE_PATHS = {
     "fused": "zarr.core.codec_pipeline.FusedCodecPipeline",
 }
 
+_LATENCY_VALUES = (0.0, 0.001, 0.05, 0.2)
+
+
+@pytest.fixture(params=_LATENCY_VALUES, ids=lambda v: f"latency={v}")
+def latency(request: pytest.FixtureRequest) -> float:
+    return request.param  # type: ignore[no-any-return]
+
+
+@pytest.fixture
+def bench_store(store: Store, latency: float, request: pytest.FixtureRequest) -> Store:
+    """Wraps the underlying store in LatencyStore when latency > 0.
+
+    Local-store cases skip nonzero latency — synthetic latency on top of
+    a real LocalStore is double-counting; latency simulation only applies
+    to the in-process memory store.
+    """
+    callspec = getattr(request.node, "callspec", None)
+    store_kind = callspec.params.get("store", "memory") if callspec is not None else "memory"
+    if latency > 0:
+        if store_kind == "local":
+            pytest.skip("latency injection only applies to in-memory store")
+        return LatencyStore(store, get_latency=latency, set_latency=latency)
+    return store
+
 
 @pytest.fixture(params=["batched", "fused"])
 def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
@@ -62,7 +88,7 @@ def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_write_array(
-    store: Store,
+    bench_store: Store,
     layout: Layout,
     compression_name: CompressorName,
     pipeline: str,
@@ -72,7 +98,7 @@ def test_write_array(
     Test the time required to fill an array with a single value
     """
     arr = create_array(
-        store,
+        bench_store,
         dtype="uint8",
         shape=layout.shape,
         chunks=layout.chunks,
@@ -88,7 +114,7 @@ def test_write_array(
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_read_array(
-    store: Store,
+    bench_store: Store,
     layout: Layout,
     compression_name: CompressorName,
     pipeline: str,
@@ -98,7 +124,7 @@ def test_read_array(
     Test the time required to fill an array with a single value
     """
     arr = create_array(
-        store,
+        bench_store,
         dtype="uint8",
         shape=layout.shape,
         chunks=layout.chunks,
