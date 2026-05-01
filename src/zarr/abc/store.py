@@ -714,9 +714,9 @@ class ByteSetter(Protocol):
 class SupportsSetRange(Protocol):
     """Protocol for stores that support writing to a byte range within an existing value.
 
-    Overwrites ``len(value)`` bytes starting at byte offset ``start`` within the
-    existing stored value for ``key``. The key must already exist and the write
-    must fit within the existing value (i.e., ``start + len(value) <= len(existing)``).
+    Overwrites `len(value)` bytes starting at byte offset `start` within the
+    existing stored value for `key`. The key must already exist and the write
+    must fit within the existing value (i.e., `start + len(value) <= len(existing)`).
 
     Behavior when the write extends past the end of the existing value is
     implementation-specific and should not be relied upon.

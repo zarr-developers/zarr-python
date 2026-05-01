@@ -488,13 +488,13 @@ class ShardingCodec(
     ) -> NDBuffer:
         """Decode a full shard synchronously.
 
-        Sync counterpart to ``_decode_single``. Same semantics (decode every
+        Sync counterpart to `_decode_single`. Same semantics (decode every
         inner chunk and assemble the full shard array) but routes through
-        ``ChunkTransform`` instead of the async codec pipeline, so it can
+        `ChunkTransform` instead of the async codec pipeline, so it can
         run on the sync codec-pipeline fast path without an event loop.
 
         For a partial read where the caller only needs a slice of the shard,
-        use ``_decode_partial_sync`` instead — it fetches only the byte
+        use `_decode_partial_sync` instead — it fetches only the byte
         ranges that overlap the selection.
         """
         shard_shape = shard_spec.shape
@@ -539,18 +539,18 @@ class ShardingCodec(
     ) -> Buffer | None:
         """Encode a full shard synchronously.
 
-        Sync counterpart to ``_encode_single``. Iterates inner chunks in
+        Sync counterpart to `_encode_single`. Iterates inner chunks in
         Morton (Z-curve) order — that's the canonical layout the shard
-        index expects — and encodes each through the inner ``ChunkTransform``.
-        Empty inner chunks become ``None`` entries when ``write_empty_chunks``
-        is False, signalling ``_encode_shard_dict_sync`` to elide them
+        index expects — and encodes each through the inner `ChunkTransform`.
+        Empty inner chunks become `None` entries when `write_empty_chunks`
+        is False, signalling `_encode_shard_dict_sync` to elide them
         from the data section and mark them empty in the shard index.
 
-        Returns ``None`` if every inner chunk was elided (an all-empty
+        Returns `None` if every inner chunk was elided (an all-empty
         shard) — callers treat that as "delete the shard key".
 
         For a partial write that only touches some inner chunks, use
-        ``_encode_partial_sync`` instead — it patches affected slots in
+        `_encode_partial_sync` instead — it patches affected slots in
         place when possible.
         """
         shard_shape = shard_spec.shape
@@ -594,15 +594,15 @@ class ShardingCodec(
         selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> None:
-        """Sync equivalent of ``_encode_partial_single``.
+        """Sync equivalent of `_encode_partial_single`.
 
         Receives the source data for the written region (not a pre-merged
         shard array) and the selection within the shard, matching the
         calling convention of the async partial-encode path used by
-        ``BatchedCodecPipeline``.
+        `BatchedCodecPipeline`.
 
         When inner codecs are fixed-size and the store supports
-        ``set_range_sync``, partial writes update only the affected inner
+        `set_range_sync`, partial writes update only the affected inner
         chunks at their deterministic byte offsets.  Otherwise falls back
         to a full shard rewrite.
         """
@@ -770,7 +770,7 @@ class ShardingCodec(
         data section, build a shard index that points each present chunk
         at its offset/length within that section, and concatenate.
 
-        Returns ``None`` for an all-empty shard (no chunks present).
+        Returns `None` for an all-empty shard (no chunks present).
         """
         index = _ShardIndex.create_empty(chunks_per_shard)
         buffers = []
@@ -935,14 +935,14 @@ class ShardingCodec(
         selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> NDBuffer | None:
-        """Sync equivalent of ``_decode_partial_single``.
+        """Sync equivalent of `_decode_partial_single`.
 
-        Reads only the inner-chunk byte ranges that overlap ``selection``
+        Reads only the inner-chunk byte ranges that overlap `selection`
         (plus the shard index) and decodes them through the inner codec
-        chain.  The store must support ``get_sync`` with byte ranges.
+        chain.  The store must support `get_sync` with byte ranges.
 
         Two sub-paths:
-        - If ``selection`` covers the entire shard, just fetch the whole
+        - If `selection` covers the entire shard, just fetch the whole
           blob — that's strictly cheaper than two round trips (index, then
           data) plus the per-chunk overhead of partial fetches.
         - Otherwise fetch the index alone, look up only the byte slices of

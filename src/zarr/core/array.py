@@ -5407,13 +5407,14 @@ def _get_default_chunk_spec(
     build the ArraySpec once and reuse it for every chunk — avoiding the
     per-chunk ChunkGrid.__getitem__ + ArraySpec construction overhead.
 
-    .. note::
-        Ideally the per-chunk ArraySpec would not exist at all: dtype,
-        fill_value, config, and prototype are constant across chunks —
-        only the shape varies (and only for edge chunks). A cleaner
-        design would pass a single ArraySpec plus a per-chunk shape
-        override, which ChunkTransform.decode_chunk already supports
-        via its ``chunk_shape`` parameter.
+    > **Note**
+    >
+    > Ideally the per-chunk ArraySpec would not exist at all: dtype,
+    > fill_value, config, and prototype are constant across chunks —
+    > only the shape varies (and only for edge chunks). A cleaner
+    > design would pass a single ArraySpec plus a per-chunk shape
+    > override, which ChunkTransform.decode_chunk already supports
+    > via its `chunk_shape` parameter.
     """
     if chunk_grid.is_regular:
         return ArraySpec(

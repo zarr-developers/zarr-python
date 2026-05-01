@@ -41,19 +41,19 @@ _pool_lock = threading.Lock()
 
 
 def _resolve_max_workers() -> int:
-    """Resolve ``codec_pipeline.max_workers`` config to an effective worker count.
+    """Resolve `codec_pipeline.max_workers` config to an effective worker count.
 
-    ``None`` means "auto" → ``os.cpu_count()`` (or 1 if unavailable).
+    `None` means "auto" → `os.cpu_count()` (or 1 if unavailable).
     Values < 1 are clamped to 1 (sequential).
 
     Notes
     -----
-    The default (``None`` → ``cpu_count``) is tuned for large chunks
+    The default (`None` → `cpu_count`) is tuned for large chunks
     (≳ 1 MB encoded) where per-chunk decode + scatter is real work and
     threading helps. For small chunks (≲ 64 KB) the per-task pool
     overhead (≈ 30-50 µs submit + worker handoff) outweighs the work
     and threading slows things down by 1.5-3x. If your workload uses
-    many small chunks, set ``codec_pipeline.max_workers=1`` explicitly:
+    many small chunks, set `codec_pipeline.max_workers=1` explicitly:
 
         zarr.config.set({"codec_pipeline.max_workers": 1})
 
@@ -70,7 +70,7 @@ def _resolve_max_workers() -> int:
 
 
 def _get_pool(max_workers: int) -> ThreadPoolExecutor:
-    """Get or create the module-level thread pool, sized to ``max_workers``.
+    """Get or create the module-level thread pool, sized to `max_workers`.
 
     The pool grows on demand — if a request arrives for more workers than
     the current pool has, the existing pool is shut down and replaced.
@@ -78,7 +78,7 @@ def _get_pool(max_workers: int) -> ThreadPoolExecutor:
     workers idle).
 
     Callers that want sequential execution should not call this — they
-    should run the task list inline. ``max_workers`` must be >= 1.
+    should run the task list inline. `max_workers` must be >= 1.
     """
     global _pool, _pool_size
     if max_workers < 1:
@@ -136,13 +136,13 @@ def _merge_chunk_array(
     is_complete_chunk: bool,
     drop_axes: tuple[int, ...],
 ) -> NDBuffer:
-    """Merge ``value`` into a full-chunk-shaped NDBuffer at ``chunk_selection``.
+    """Merge `value` into a full-chunk-shaped NDBuffer at `chunk_selection`.
 
-    If ``is_complete_chunk`` and ``value`` already covers the full chunk
-    shape, ``value`` is returned directly (no copy). Otherwise, a writable
-    buffer is materialized — either from ``existing_chunk_array.copy()`` if
+    If `is_complete_chunk` and `value` already covers the full chunk
+    shape, `value` is returned directly (no copy). Otherwise, a writable
+    buffer is materialized — either from `existing_chunk_array.copy()` if
     one was read from the store, or freshly allocated and filled with the
-    chunk's fill value — and the relevant slice of ``value`` is written into it.
+    chunk's fill value — and the relevant slice of `value` is written into it.
     """
     if (
         is_complete_chunk
@@ -183,13 +183,13 @@ async def _async_read_fallback(
 ) -> tuple[GetResult, ...]:
     """Async fallback read used when no fast-path is available.
 
-    Fetches every chunk's bytes via ``concurrent_map`` (sized by
-    ``async.concurrency``), decodes the batch through ``pipeline.decode``,
-    then scatters each decoded chunk into ``out`` at its ``out_selection``.
+    Fetches every chunk's bytes via `concurrent_map` (sized by
+    `async.concurrency`), decodes the batch through `pipeline.decode`,
+    then scatters each decoded chunk into `out` at its `out_selection`.
 
-    Used by both ``BatchedCodecPipeline.read_batch`` (non-partial-decode
-    branch) and ``FusedCodecPipeline.read`` (when the store is not a
-    ``SupportsGetSync`` / sync transform is unavailable).
+    Used by both `BatchedCodecPipeline.read_batch` (non-partial-decode
+    branch) and `FusedCodecPipeline.read` (when the store is not a
+    `SupportsGetSync` / sync transform is unavailable).
     """
     chunk_bytes_batch = await concurrent_map(
         [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch],
@@ -226,17 +226,17 @@ async def _async_write_fallback(
 ) -> None:
     """Async fallback write used when no fast-path is available.
 
-    For each chunk in ``batch``: read its existing bytes from the store
+    For each chunk in `batch`: read its existing bytes from the store
     (skipping the read for complete chunks), decode the batch via
-    ``pipeline.decode``, merge ``value`` into each decoded chunk via
-    ``_merge_chunk_array``, drop chunks that are all-fill when
-    ``write_empty_chunks`` is False, encode the surviving chunks via
-    ``pipeline.encode``, then ``set`` the encoded bytes (or ``delete``
-    if encoding produced ``None`` or the chunk dropped).
+    `pipeline.decode`, merge `value` into each decoded chunk via
+    `_merge_chunk_array`, drop chunks that are all-fill when
+    `write_empty_chunks` is False, encode the surviving chunks via
+    `pipeline.encode`, then `set` the encoded bytes (or `delete`
+    if encoding produced `None` or the chunk dropped).
 
-    Used by both ``BatchedCodecPipeline.write_batch`` (non-partial-encode
-    branch) and ``FusedCodecPipeline.write`` (when the store is not a
-    ``SupportsSetSync`` / sync transform is unavailable).
+    Used by both `BatchedCodecPipeline.write_batch` (non-partial-encode
+    branch) and `FusedCodecPipeline.write` (when the store is not a
+    `SupportsSetSync` / sync transform is unavailable).
     """
 
     async def _read_key(
@@ -364,14 +364,14 @@ class ChunkTransform:
     _cached_ab_spec: ArraySpec | None = field(init=False, repr=False, compare=False, default=None)
 
     def _resolve_specs(self, chunk_spec: ArraySpec) -> tuple[tuple[ArraySpec, ...], ArraySpec]:
-        """Return per-AA-codec input specs and the AB spec for ``chunk_spec``.
+        """Return per-AA-codec input specs and the AB spec for `chunk_spec`.
 
-        The codec chain only changes ``shape`` (via TransposeCodec etc.) —
-        ``prototype``, ``dtype``, ``fill_value``, and ``config`` are
+        The codec chain only changes `shape` (via TransposeCodec etc.) —
+        `prototype`, `dtype`, `fill_value`, and `config` are
         invariant. We cache the resolved spec chain keyed on
-        ``(chunk_spec.shape, id(chunk_spec))``, and reuse it directly
-        when the same ``chunk_spec`` is passed again. For a different
-        ``chunk_spec`` with the same shape, we recompute (cheap).
+        `(chunk_spec.shape, id(chunk_spec))`, and reuse it directly
+        when the same `chunk_spec` is passed again. For a different
+        `chunk_spec` with the same shape, we recompute (cheap).
         """
         if not self._aa_codecs:
             return (), chunk_spec
@@ -818,15 +818,15 @@ class FusedCodecPipeline(CodecPipeline):
     """Codec pipeline that uses the codec chain directly.
 
     Separates IO from compute without an intermediate layout abstraction.
-    The ShardingCodec handles shard IO internally via its ``_decode_sync``
-    and ``_encode_sync`` methods, so the pipeline simply:
+    The ShardingCodec handles shard IO internally via its `_decode_sync`
+    and `_encode_sync` methods, so the pipeline simply:
 
     1. Fetches the raw blob from the store (one key per chunk/shard).
     2. Decodes/encodes through the codec chain (pure compute).
     3. Writes the result back.
 
-    A ``ChunkTransform`` wraps the codec chain for fast synchronous
-    decode/encode when all codecs support ``SupportsSyncCodec``.
+    A `ChunkTransform` wraps the codec chain for fast synchronous
+    decode/encode when all codecs support `SupportsSyncCodec`.
     """
 
     codecs: tuple[Codec, ...]
@@ -951,17 +951,17 @@ class FusedCodecPipeline(CodecPipeline):
     ) -> tuple[GetResult, ...]:
         """Synchronous read: fetch -> decode -> scatter, per chunk.
 
-        When ``max_workers > 1`` and there are multiple chunks, each
+        When `max_workers > 1` and there are multiple chunks, each
         chunk's full lifecycle (fetch + decode + scatter) runs as one
-        task on a thread pool sized to ``max_workers`` — overlapping IO
+        task on a thread pool sized to `max_workers` — overlapping IO
         of one chunk with decode/scatter of another. Scatter is
         thread-safe because the chunks have non-overlapping output
         selections.
 
-        ``max_workers=1`` runs everything sequentially in the calling
+        `max_workers=1` runs everything sequentially in the calling
         thread (no pool involvement).
 
-        Mirrors ``BatchedCodecPipeline.read_batch``: when the AB codec
+        Mirrors `BatchedCodecPipeline.read_batch`: when the AB codec
         supports partial decoding (e.g. sharding), the codec handles its
         own IO and only fetches the inner-chunk byte ranges that overlap
         the read selection. Otherwise the pipeline fetches the full
@@ -1032,18 +1032,18 @@ class FusedCodecPipeline(CodecPipeline):
     ) -> None:
         """Synchronous write: fetch existing -> merge+encode -> store.
 
-        When ``max_workers > 1`` and there are multiple chunks, each
+        When `max_workers > 1` and there are multiple chunks, each
         chunk's full lifecycle (get-existing + merge + encode + set/delete)
-        runs as one task on a thread pool sized to ``max_workers`` —
+        runs as one task on a thread pool sized to `max_workers` —
         overlapping IO of one chunk with compute of another.
 
-        ``max_workers=1`` runs everything sequentially in the calling
+        `max_workers=1` runs everything sequentially in the calling
         thread (no pool involvement).
 
         When the codec pipeline supports partial encoding (e.g. a
         sharding codec with no outer AA/BB codecs), the AB codec handles
         the full write cycle — reading existing data, merging, encoding,
-        and writing — matching the async ``BatchedCodecPipeline`` path.
+        and writing — matching the async `BatchedCodecPipeline` path.
         """
         assert self._sync_transform is not None
         transform = self._sync_transform
