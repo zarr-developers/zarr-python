@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from tests.benchmarks.common import Layout
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from pytest_benchmark.fixture import BenchmarkFixture
 
     from zarr.abc.store import Store
@@ -19,6 +21,7 @@ from typing import Any, Literal
 import pytest
 
 from zarr import create_array
+from zarr.core.config import config as zarr_config
 
 CompressorName = Literal["gzip"] | None
 
@@ -37,12 +40,33 @@ layouts: tuple[Layout, ...] = (
     Layout(shape=(1_000_000,), chunks=(100,), shards=(10000 * 100,)),
 )
 
+_PIPELINE_PATHS = {
+    "batched": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    "fused": "zarr.core.codec_pipeline.FusedCodecPipeline",
+}
+
+
+@pytest.fixture(params=["batched", "fused"])
+def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
+    """Set ``codec_pipeline.path`` for the duration of the benchmark.
+
+    Yields the pipeline name so each parametrize cell has a distinct
+    benchmark id.
+    """
+    name = request.param
+    with zarr_config.set({"codec_pipeline.path": _PIPELINE_PATHS[name]}):
+        yield name
+
 
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_write_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    pipeline: str,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
     Test the time required to fill an array with a single value
@@ -64,7 +88,11 @@ def test_write_array(
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_read_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    pipeline: str,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
     Test the time required to fill an array with a single value
