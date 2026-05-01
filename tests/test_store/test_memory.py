@@ -170,12 +170,28 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         self, store: MemoryStore, start: int, patch: bytes, expected: bytes
     ) -> None:
         """set_range_sync should overwrite bytes at the given offset."""
-        store._is_open = True
         store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
         store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
         result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
         assert result is not None
         assert result.to_bytes() == expected
+
+    async def test_set_range_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range auto-opens a closed store."""
+        assert not store_not_open._is_open
+        await self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store_not_open.set_range("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert store_not_open._is_open
+        observed = await self.get(store_not_open, "test/key")
+        assert observed.to_bytes() == b"XXAAAAAAAA"
+
+    def test_set_range_sync_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range_sync auto-opens a closed store."""
+        assert not store_not_open._is_open
+        store_not_open._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        store_not_open.set_range_sync("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert store_not_open._is_open
+        assert store_not_open._store_dict["test/key"].to_bytes() == b"XXAAAAAAAA"
 
 
 # TODO: fix this warning

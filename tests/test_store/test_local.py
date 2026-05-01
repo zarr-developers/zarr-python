@@ -211,6 +211,24 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert result is not None
         assert result.to_bytes() == expected
 
+    async def test_set_range_not_open(self, store_not_open: LocalStore) -> None:
+        """set_range auto-opens a closed store."""
+        assert not store_not_open._is_open
+        await self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store_not_open.set_range("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert store_not_open._is_open
+        observed = await self.get(store_not_open, "test/key")
+        assert observed.to_bytes() == b"XXAAAAAAAA"
+
+    def test_set_range_sync_not_open(self, store_not_open: LocalStore) -> None:
+        """set_range_sync auto-opens a closed store."""
+        assert not store_not_open._is_open
+        sync(self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA")))
+        store_not_open.set_range_sync("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert store_not_open._is_open
+        observed = sync(self.get(store_not_open, "test/key"))
+        assert observed.to_bytes() == b"XXAAAAAAAA"
+
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
