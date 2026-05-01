@@ -1,0 +1,92 @@
+name: zarr-metadata
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/zarr-metadata/**'
+      - '.github/workflows/zarr-metadata.yml'
+  pull_request:
+    paths:
+      - 'packages/zarr-metadata/**'
+      - '.github/workflows/zarr-metadata.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: packages/zarr-metadata
+
+jobs:
+  test:
+    name: pytest py=${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Sync test dependency group
+        run: uv sync --group test --python ${{ matrix.python-version }}
+      - name: Run pytest
+        run: uv run --group test pytest tests
+
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Run ruff
+        run: uvx ruff check .
+
+  pyright:
+    name: pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Sync test dependency group
+        run: uv sync --group test --python 3.11
+      - name: Run pyright
+        run: uv run --group test --with pyright pyright src
+
+  zarr-metadata-complete:
+    name: zarr-metadata complete
+    needs: [test, ruff, pyright]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check failure
+        if: |
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Success
+        run: echo Success!
