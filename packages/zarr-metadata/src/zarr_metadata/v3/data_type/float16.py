@@ -42,8 +42,26 @@ Either a JSON number, one of the named non-finite sentinels (`"NaN"`,
 the unsigned-integer representation of the IEEE 754 value).
 """
 
+CANONICAL_NAN_HEX_FLOAT16: Final = "0x7e00"
+"""Canonical hex form of the float16 NaN sentinel `"NaN"`.
+
+Per spec the named `"NaN"` sentinel denotes the float with sign=0, the
+most significant mantissa bit set, and all other mantissa bits zero
+(the IEEE 754 default quiet NaN). Other NaN bit patterns must be
+encoded with the explicit hex-string form.
+"""
+
+CANONICAL_POSITIVE_INFINITY_HEX_FLOAT16: Final = "0x7c00"
+"""Canonical hex form of the float16 `"Infinity"` sentinel."""
+
+CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT16: Final = "0xfc00"
+"""Canonical hex form of the float16 `"-Infinity"` sentinel."""
+
 
 __all__ = [
+    "CANONICAL_NAN_HEX_FLOAT16",
+    "CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT16",
+    "CANONICAL_POSITIVE_INFINITY_HEX_FLOAT16",
     "FLOAT16_DATA_TYPE_NAME",
     "Float16DataTypeName",
     "Float16FillValue",

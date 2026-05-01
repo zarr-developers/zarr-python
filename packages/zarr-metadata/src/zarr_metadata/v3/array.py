@@ -13,12 +13,19 @@ class ExtensionFieldV3(TypedDict, extra_items=object):  # type: ignore[call-arg]
     Required shape of any extension field on a v3 metadata document.
 
     The Zarr v3 spec permits extra keys on array and group metadata
-    documents, provided each value is an object with `must_understand`
-    set to `False`. This TypedDict captures that constraint and is used
-    as the `extra_items=` parameter on `ArrayMetadataV3` and `GroupMetadataV3`.
+    documents, provided each value is an object with a `must_understand`
+    boolean key. This TypedDict captures that constraint and is used as
+    the `extra_items=` parameter on `ArrayMetadataV3` and `GroupMetadataV3`.
+
+    `must_understand` is typed as `bool` rather than `Literal[False]` so
+    that applications which understand a particular extension can produce
+    or consume it with `must_understand: true` (signalling that readers
+    that don't recognize the extension MUST refuse to open the document).
+    The common case is still `false`, signalling that unknown readers may
+    safely ignore the field.
 
     Spec interpretation: this type follows the original Zarr v3.0 reading
-    of the spec, under which any object with `must_understand: false` is a
+    of the spec, under which any object with a `must_understand` key is a
     valid extension field. The v3.1 spec rewrite added language requiring
     extension fields to also include a `name: str` key (the "Extension
     definition" form). Under the strict v3.1 reading, real-world extension
@@ -30,7 +37,7 @@ class ExtensionFieldV3(TypedDict, extra_items=object):  # type: ignore[call-arg]
     ongoing discussion.
     """
 
-    must_understand: Literal[False]
+    must_understand: bool
 
 
 class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
