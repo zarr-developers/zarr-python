@@ -1,0 +1,108 @@
+name: Downstream
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xarray:
+    name: Xarray zarr backend tests
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out zarr-python
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out xarray
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: pydata/xarray
+          path: xarray
+          persist-credentials: false
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@19eac09b398e3d0c747adc7921926a6d802df4da # v0.8.8
+        with:
+          manifest-path: xarray/pixi.toml
+
+      - name: Install zarr-python from branch
+        working-directory: xarray
+        run: pixi run -e test-py313 -- pip install --no-deps ..
+
+      - name: Show versions
+        working-directory: xarray
+        run: |
+          pixi run -e test-py313 -- python -c "
+          import zarr; print(f'zarr {zarr.__version__}')
+          import xarray; print(f'xarray {xarray.__version__}')
+          "
+
+      - name: Run xarray zarr backend tests
+        working-directory: xarray
+        run: |
+          pixi run -e test-py313 -- python -m pytest -x --no-header -q \
+            xarray/tests/test_backends.py -k zarr \
+            xarray/tests/test_backends_api.py -k zarr \
+            xarray/tests/test_backends_datatree.py -k zarr
+
+  numcodecs:
+    name: numcodecs zarr3 codec tests
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out zarr-python
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out numcodecs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: zarr-developers/numcodecs
+          fetch-depth: 0
+          path: numcodecs
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install numcodecs with test-zarr-main group
+        working-directory: numcodecs
+        run: |
+          uv venv
+          uv pip install --group dev
+          uv sync --group dev --group test-zarr-main
+          uv pip install --no-build-isolation -e .
+
+      - name: Override zarr-python with branch version
+        working-directory: numcodecs
+        run: uv pip install --no-deps ..
+
+      - name: Show versions
+        working-directory: numcodecs
+        run: |
+          uv run python -c "
+          import zarr; print(f'zarr {zarr.__version__}')
+          import numcodecs; print(f'numcodecs {numcodecs.__version__}')
+          "
+
+      - name: Run numcodecs zarr3 tests
+        working-directory: numcodecs
+        run: uv run python -m pytest -x --no-header -q tests/test_zarr3.py
