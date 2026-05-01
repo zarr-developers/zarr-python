@@ -216,7 +216,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert not store_not_open._is_open
         await self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
         await store_not_open.set_range("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
-        assert store_not_open._is_open
+        assert store_not_open._is_open is True
         observed = await self.get(store_not_open, "test/key")
         assert observed.to_bytes() == b"XXAAAAAAAA"
 
@@ -225,7 +225,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert not store_not_open._is_open
         sync(self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA")))
         store_not_open.set_range_sync("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
-        assert store_not_open._is_open
+        assert store_not_open._is_open is True
         observed = sync(self.get(store_not_open, "test/key"))
         assert observed.to_bytes() == b"XXAAAAAAAA"
 
