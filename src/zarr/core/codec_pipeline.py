@@ -218,6 +218,106 @@ async def _async_read_fallback(
     return tuple(results)
 
 
+async def _async_write_fallback(
+    pipeline: CodecPipeline,
+    batch: list[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+    value: NDBuffer,
+    drop_axes: tuple[int, ...],
+) -> None:
+    """Async fallback write used when no fast-path is available.
+
+    For each chunk in ``batch``: read its existing bytes from the store
+    (skipping the read for complete chunks), decode the batch via
+    ``pipeline.decode``, merge ``value`` into each decoded chunk via
+    ``_merge_chunk_array``, drop chunks that are all-fill when
+    ``write_empty_chunks`` is False, encode the surviving chunks via
+    ``pipeline.encode``, then ``set`` the encoded bytes (or ``delete``
+    if encoding produced ``None`` or the chunk dropped).
+
+    Used by both ``BatchedCodecPipeline.write_batch`` (non-partial-encode
+    branch) and ``FusedCodecPipeline.write`` (when the store is not a
+    ``SupportsSetSync`` / sync transform is unavailable).
+    """
+
+    async def _read_key(
+        byte_setter: ByteSetter | None, prototype: BufferPrototype
+    ) -> Buffer | None:
+        if byte_setter is None:
+            return None
+        return await byte_setter.get(prototype=prototype)
+
+    chunk_bytes_batch: Iterable[Buffer | None]
+    chunk_bytes_batch = await concurrent_map(
+        [
+            (
+                None if is_complete_chunk else byte_setter,
+                chunk_spec.prototype,
+            )
+            for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch
+        ],
+        _read_key,
+        config.get("async.concurrency"),
+    )
+    chunk_array_decoded = await pipeline.decode(
+        [
+            (chunk_bytes, chunk_spec)
+            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+        ],
+    )
+
+    chunk_array_merged = [
+        _merge_chunk_array(
+            chunk_array,
+            value,
+            out_selection,
+            chunk_spec,
+            chunk_selection,
+            is_complete_chunk,
+            drop_axes,
+        )
+        for chunk_array, (
+            _,
+            chunk_spec,
+            chunk_selection,
+            out_selection,
+            is_complete_chunk,
+        ) in zip(chunk_array_decoded, batch, strict=False)
+    ]
+    chunk_array_batch: list[NDBuffer | None] = []
+    for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch, strict=False):
+        if chunk_array is None:
+            chunk_array_batch.append(None)  # type: ignore[unreachable]
+        else:
+            if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+                fill_value_or_default(chunk_spec)
+            ):
+                chunk_array_batch.append(None)
+            else:
+                chunk_array_batch.append(chunk_array)
+
+    chunk_bytes_batch = await pipeline.encode(
+        [
+            (chunk_array, chunk_spec)
+            for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_batch, batch, strict=False)
+        ],
+    )
+
+    async def _write_key(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
+        if chunk_bytes is None:
+            await byte_setter.delete()
+        else:
+            await byte_setter.set(chunk_bytes)
+
+    await concurrent_map(
+        [
+            (byte_setter, chunk_bytes)
+            for chunk_bytes, (byte_setter, *_) in zip(chunk_bytes_batch, batch, strict=False)
+        ],
+        _write_key,
+        config.get("async.concurrency"),
+    )
+
+
 @dataclass(slots=True, kw_only=True)
 class ChunkTransform:
     """A synchronous codec chain.
@@ -590,93 +690,8 @@ class BatchedCodecPipeline(CodecPipeline):
                     ],
                 )
 
-        else:
-            # Read existing bytes if not total slice
-            async def _read_key(
-                byte_setter: ByteSetter | None, prototype: BufferPrototype
-            ) -> Buffer | None:
-                if byte_setter is None:
-                    return None
-                return await byte_setter.get(prototype=prototype)
-
-            chunk_bytes_batch: Iterable[Buffer | None]
-            chunk_bytes_batch = await concurrent_map(
-                [
-                    (
-                        None if is_complete_chunk else byte_setter,
-                        chunk_spec.prototype,
-                    )
-                    for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch_info
-                ],
-                _read_key,
-                config.get("async.concurrency"),
-            )
-            chunk_array_decoded = await self.decode_batch(
-                [
-                    (chunk_bytes, chunk_spec)
-                    for chunk_bytes, (_, chunk_spec, *_) in zip(
-                        chunk_bytes_batch, batch_info, strict=False
-                    )
-                ],
-            )
-
-            chunk_array_merged = [
-                _merge_chunk_array(
-                    chunk_array,
-                    value,
-                    out_selection,
-                    chunk_spec,
-                    chunk_selection,
-                    is_complete_chunk,
-                    drop_axes,
-                )
-                for chunk_array, (
-                    _,
-                    chunk_spec,
-                    chunk_selection,
-                    out_selection,
-                    is_complete_chunk,
-                ) in zip(chunk_array_decoded, batch_info, strict=False)
-            ]
-            chunk_array_batch: list[NDBuffer | None] = []
-            for chunk_array, (_, chunk_spec, *_) in zip(
-                chunk_array_merged, batch_info, strict=False
-            ):
-                if chunk_array is None:
-                    chunk_array_batch.append(None)  # type: ignore[unreachable]
-                else:
-                    if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                        fill_value_or_default(chunk_spec)
-                    ):
-                        chunk_array_batch.append(None)
-                    else:
-                        chunk_array_batch.append(chunk_array)
-
-            chunk_bytes_batch = await self.encode_batch(
-                [
-                    (chunk_array, chunk_spec)
-                    for chunk_array, (_, chunk_spec, *_) in zip(
-                        chunk_array_batch, batch_info, strict=False
-                    )
-                ],
-            )
-
-            async def _write_key(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
-                if chunk_bytes is None:
-                    await byte_setter.delete()
-                else:
-                    await byte_setter.set(chunk_bytes)
-
-            await concurrent_map(
-                [
-                    (byte_setter, chunk_bytes)
-                    for chunk_bytes, (byte_setter, *_) in zip(
-                        chunk_bytes_batch, batch_info, strict=False
-                    )
-                ],
-                _write_key,
-                config.get("async.concurrency"),
-            )
+            return
+        await _async_write_fallback(self, list(batch_info), value, drop_axes)
 
     async def decode(
         self,
@@ -1152,84 +1167,7 @@ class FusedCodecPipeline(CodecPipeline):
             self.write_sync(batch, value, drop_axes, max_workers=_resolve_max_workers())
             return
 
-        # Async fallback: same pattern as BatchedCodecPipeline.write_batch
-        async def _read_key(
-            byte_setter: ByteSetter | None, prototype: BufferPrototype
-        ) -> Buffer | None:
-            if byte_setter is None:
-                return None
-            return await byte_setter.get(prototype=prototype)
-
-        chunk_bytes_batch: Iterable[Buffer | None]
-        chunk_bytes_batch = await concurrent_map(
-            [
-                (
-                    None if is_complete_chunk else byte_setter,
-                    chunk_spec.prototype,
-                )
-                for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch
-            ],
-            _read_key,
-            config.get("async.concurrency"),
-        )
-        chunk_array_decoded = await self.decode(
-            [
-                (chunk_bytes, chunk_spec)
-                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
-            ],
-        )
-
-        chunk_array_merged = [
-            _merge_chunk_array(
-                chunk_array,
-                value,
-                out_selection,
-                chunk_spec,
-                chunk_selection,
-                is_complete_chunk,
-                drop_axes,
-            )
-            for chunk_array, (
-                _,
-                chunk_spec,
-                chunk_selection,
-                out_selection,
-                is_complete_chunk,
-            ) in zip(chunk_array_decoded, batch, strict=False)
-        ]
-        chunk_array_batch: list[NDBuffer | None] = []
-        for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch, strict=False):
-            if chunk_array is None:
-                chunk_array_batch.append(None)  # type: ignore[unreachable]
-            else:
-                if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                    fill_value_or_default(chunk_spec)
-                ):
-                    chunk_array_batch.append(None)
-                else:
-                    chunk_array_batch.append(chunk_array)
-
-        chunk_bytes_batch = await self.encode(
-            [
-                (chunk_array, chunk_spec)
-                for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_batch, batch, strict=False)
-            ],
-        )
-
-        async def _write_key(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
-            if chunk_bytes is None:
-                await byte_setter.delete()
-            else:
-                await byte_setter.set(chunk_bytes)
-
-        await concurrent_map(
-            [
-                (byte_setter, chunk_bytes)
-                for chunk_bytes, (byte_setter, *_) in zip(chunk_bytes_batch, batch, strict=False)
-            ],
-            _write_key,
-            config.get("async.concurrency"),
-        )
+        await _async_write_fallback(self, batch, value, drop_axes)
 
 
 register_pipeline(FusedCodecPipeline)
