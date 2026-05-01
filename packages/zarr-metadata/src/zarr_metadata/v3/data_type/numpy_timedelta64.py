@@ -8,10 +8,10 @@ from typing import Final, Literal, TypedDict
 
 from typing_extensions import ReadOnly
 
-NUMPY_TIMEDELTA64_DTYPE_NAME: Final = "numpy.timedelta64"
+NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 """The `name` field value of the `numpy.timedelta64` data type."""
 
-NumpyTimedelta64DTypeName = Literal["numpy.timedelta64"]
+NumpyTimedelta64DataTypeName = Literal["numpy.timedelta64"]
 """Literal type of the `name` field of the `numpy.timedelta64` data type."""
 
 DateTimeUnit = Literal[
@@ -39,7 +39,7 @@ class NumpyTimedelta64Configuration(TypedDict):
 class NumpyTimedelta64(TypedDict):
     """`numpy.timedelta64` data type metadata."""
 
-    name: NumpyTimedelta64DTypeName
+    name: NumpyTimedelta64DataTypeName
     configuration: NumpyTimedelta64Configuration
 
 
@@ -52,10 +52,10 @@ Either a JSON integer (a count of `unit * scale_factor`), or the string
 
 
 __all__ = [
-    "NUMPY_TIMEDELTA64_DTYPE_NAME",
+    "NUMPY_TIMEDELTA64_DATA_TYPE_NAME",
     "DateTimeUnit",
     "NumpyTimedelta64",
     "NumpyTimedelta64Configuration",
-    "NumpyTimedelta64DTypeName",
+    "NumpyTimedelta64DataTypeName",
     "NumpyTimedelta64FillValue",
 ]

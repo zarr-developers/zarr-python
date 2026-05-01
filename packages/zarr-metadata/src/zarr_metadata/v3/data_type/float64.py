@@ -7,10 +7,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
-FLOAT64_DTYPE_NAME: Final = "float64"
+FLOAT64_DATA_TYPE_NAME: Final = "float64"
 """The `data_type` value for the `float64` type."""
 
-Float64DTypeName = Literal["float64"]
+Float64DataTypeName = Literal["float64"]
 """Literal type of the `data_type` field for `float64`."""
 
 Float64SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
@@ -45,8 +45,8 @@ value).
 
 
 __all__ = [
-    "FLOAT64_DTYPE_NAME",
-    "Float64DTypeName",
+    "FLOAT64_DATA_TYPE_NAME",
+    "Float64DataTypeName",
     "Float64FillValue",
     "Float64SpecialFillValue",
     "HexFloat64",

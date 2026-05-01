@@ -6,10 +6,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-UINT64_DTYPE_NAME: Final = "uint64"
+UINT64_DATA_TYPE_NAME: Final = "uint64"
 """The `data_type` value for the `uint64` type."""
 
-Uint64DTypeName = Literal["uint64"]
+Uint64DataTypeName = Literal["uint64"]
 """Literal type of the `data_type` field for `uint64`."""
 
 Uint64FillValue = int
@@ -17,7 +17,7 @@ Uint64FillValue = int
 
 
 __all__ = [
-    "UINT64_DTYPE_NAME",
-    "Uint64DTypeName",
+    "UINT64_DATA_TYPE_NAME",
+    "Uint64DataTypeName",
     "Uint64FillValue",
 ]

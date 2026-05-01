@@ -1,13 +1,9 @@
 """Zarr v2 array metadata types."""
 
-from __future__ import annotations
+from collections.abc import Mapping
+from typing import Literal, NotRequired, TypedDict
 
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
-
-if TYPE_CHECKING:
-    from zarr_metadata.common import JSON
-    from zarr_metadata.v2.codec import NumcodecsConfig
-
+from zarr_metadata.v2.codec import NumcodecsConfig
 
 DataTypeV2Structured = tuple[str, str] | tuple[str, str, tuple[int, ...]]
 """
@@ -31,7 +27,14 @@ part of this type.
 
 class ArrayMetadataV2(TypedDict):
     """
-    Zarr v2 array metadata document (the `.zarray` content).
+    Zarr v2 array metadata document.
+
+    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
+    (user attributes). On disk, attributes live in a sibling `.zattrs` file
+    and are not part of `.zarray`; this type folds them in as the
+    `attributes` field so a single TypedDict represents the complete
+    in-memory state of a v2 array node. Consumers that read or write a
+    real `.zarray` file should split / merge `attributes` accordingly.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -41,11 +44,15 @@ class ArrayMetadataV2(TypedDict):
     chunks: tuple[int, ...]
     dtype: DataTypeV2
     compressor: NumcodecsConfig | None
-    fill_value: JSON
+    fill_value: object
     order: Literal["C", "F"]
     filters: tuple[NumcodecsConfig, ...] | None
     dimension_separator: NotRequired[Literal[".", "/"]]
-    attributes: JSON
+    attributes: Mapping[str, object]
+    """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
+
+    See the class docstring for the rationale behind the merged representation.
+    """
 
 
 __all__ = [

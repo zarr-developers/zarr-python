@@ -6,10 +6,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-BOOL_DTYPE_NAME: Final = "bool"
+BOOL_DATA_TYPE_NAME: Final = "bool"
 """The `data_type` value for the `bool` type."""
 
-BoolDTypeName = Literal["bool"]
+BoolDataTypeName = Literal["bool"]
 """Literal type of the `data_type` field for `bool`."""
 
 BoolFillValue = bool
@@ -17,7 +17,7 @@ BoolFillValue = bool
 
 
 __all__ = [
-    "BOOL_DTYPE_NAME",
-    "BoolDTypeName",
+    "BOOL_DATA_TYPE_NAME",
+    "BoolDataTypeName",
     "BoolFillValue",
 ]

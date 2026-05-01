@@ -7,10 +7,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
-FLOAT16_DTYPE_NAME: Final = "float16"
+FLOAT16_DATA_TYPE_NAME: Final = "float16"
 """The `data_type` value for the `float16` type."""
 
-Float16DTypeName = Literal["float16"]
+Float16DataTypeName = Literal["float16"]
 """Literal type of the `data_type` field for `float16`."""
 
 Float16SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
@@ -44,8 +44,8 @@ the unsigned-integer representation of the IEEE 754 value).
 
 
 __all__ = [
-    "FLOAT16_DTYPE_NAME",
-    "Float16DTypeName",
+    "FLOAT16_DATA_TYPE_NAME",
+    "Float16DataTypeName",
     "Float16FillValue",
     "Float16SpecialFillValue",
     "HexFloat16",

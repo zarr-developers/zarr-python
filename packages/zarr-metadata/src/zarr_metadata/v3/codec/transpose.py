@@ -24,16 +24,25 @@ class TransposeCodecConfiguration(TypedDict):
     order: tuple[int, ...]
 
 
-class TransposeCodec(TypedDict):
-    """`transpose` codec metadata."""
+class TransposeCodecObject(TypedDict):
+    """`transpose` codec metadata in object form."""
 
     name: TransposeCodecName
     configuration: TransposeCodecConfiguration
 
 
+TransposeCodecMetadata = TransposeCodecObject
+"""Permitted JSON shape for `transpose` codec metadata.
+
+`order` is required, so only the object form is valid; the short-hand-name
+form is not permitted by the spec for this codec.
+"""
+
+
 __all__ = [
     "TRANSPOSE_CODEC_NAME",
-    "TransposeCodec",
     "TransposeCodecConfiguration",
+    "TransposeCodecMetadata",
     "TransposeCodecName",
+    "TransposeCodecObject",
 ]

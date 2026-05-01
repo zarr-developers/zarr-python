@@ -6,10 +6,10 @@ See https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/stri
 
 from typing import Final, Literal
 
-STRING_DTYPE_NAME: Final = "string"
+STRING_DATA_TYPE_NAME: Final = "string"
 """The `data_type` value for the `string` type."""
 
-StringDTypeName = Literal["string"]
+StringDataTypeName = Literal["string"]
 """Literal type of the `data_type` field for `string`."""
 
 StringFillValue = str
@@ -17,7 +17,7 @@ StringFillValue = str
 
 
 __all__ = [
-    "STRING_DTYPE_NAME",
-    "StringDTypeName",
+    "STRING_DATA_TYPE_NAME",
+    "StringDataTypeName",
     "StringFillValue",
 ]

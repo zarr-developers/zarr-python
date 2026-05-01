@@ -1,16 +1,14 @@
 """
 Zarr v2 codec configuration shape.
 
-V2 compressors and filters are numcodecs configuration dicts: a required
+In v2, compressors and filters are numcodecs configuration dicts: a required
 `id` field naming the codec, plus arbitrary codec-specific extra fields.
 """
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.common import JSON
 
-
-class NumcodecsConfig(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
+class NumcodecsConfig(TypedDict, extra_items=object):  # type: ignore[call-arg]
     """
     A numcodecs configuration dict, used as a v2 compressor or filter.
 

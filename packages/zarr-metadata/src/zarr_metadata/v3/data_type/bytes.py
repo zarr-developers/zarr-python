@@ -7,10 +7,10 @@ See https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/byte
 import re
 from typing import Final, Literal, NewType
 
-BYTES_DTYPE_NAME: Final = "bytes"
+BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
 
-BytesDTypeName = Literal["bytes"]
+BytesDataTypeName = Literal["bytes"]
 """Literal type of the `data_type` field for `bytes`."""
 
 Base64Bytes = NewType("Base64Bytes", str)
@@ -40,9 +40,9 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 
 
 __all__ = [
-    "BYTES_DTYPE_NAME",
+    "BYTES_DATA_TYPE_NAME",
     "Base64Bytes",
-    "BytesDTypeName",
+    "BytesDataTypeName",
     "BytesFillValue",
     "base64_bytes",
 ]

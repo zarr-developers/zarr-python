@@ -1,14 +1,16 @@
-"""Zarr v3 consolidated metadata types."""
+"""Zarr v3 consolidated metadata types.
 
-from __future__ import annotations
+There is no Zarr v3 specification for consolidated metadata. This module
+models the inline-on-group convention used by the reference Python
+implementation, where consolidated metadata is embedded as an extra field
+on a group's `zarr.json`.
+"""
 
-from typing import TYPE_CHECKING, Literal, TypedDict
+from collections.abc import Mapping
+from typing import Literal, TypedDict
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from zarr_metadata.v3.array import ArrayMetadataV3
-    from zarr_metadata.v3.group import GroupMetadataV3
+from zarr_metadata.v3.array import ArrayMetadataV3
+from zarr_metadata.v3.group import GroupMetadataV3
 
 
 class ConsolidatedMetadataV3(TypedDict):

@@ -12,9 +12,6 @@ BYTES_CODEC_NAME: Final = "bytes"
 BytesCodecName = Literal["bytes"]
 """Literal type of the `name` field of the `bytes` codec."""
 
-BYTES_ENDIAN_LITTLE: Final = "little"
-BYTES_ENDIAN_BIG: Final = "big"
-
 Endian = Literal["little", "big"]
 """Byte order of multi-byte numeric data."""
 
@@ -29,19 +26,27 @@ class BytesCodecConfiguration(TypedDict):
     endian: NotRequired[Endian]
 
 
-class BytesCodec(TypedDict):
-    """`bytes` codec metadata."""
+class BytesCodecObject(TypedDict):
+    """`bytes` codec metadata in object form."""
 
     name: BytesCodecName
     configuration: BytesCodecConfiguration
 
 
+BytesCodecMetadata = BytesCodecObject | BytesCodecName
+"""Permitted JSON shapes for `bytes` codec metadata.
+
+The configuration has no required keys (`endian` is conditionally required
+at runtime based on data type), so the spec's short-hand-name form is
+permitted in addition to the object form.
+"""
+
+
 __all__ = [
     "BYTES_CODEC_NAME",
-    "BYTES_ENDIAN_BIG",
-    "BYTES_ENDIAN_LITTLE",
-    "BytesCodec",
     "BytesCodecConfiguration",
+    "BytesCodecMetadata",
     "BytesCodecName",
+    "BytesCodecObject",
     "Endian",
 ]

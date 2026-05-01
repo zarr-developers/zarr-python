@@ -6,10 +6,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-UINT8_DTYPE_NAME: Final = "uint8"
+UINT8_DATA_TYPE_NAME: Final = "uint8"
 """The `data_type` value for the `uint8` type."""
 
-Uint8DTypeName = Literal["uint8"]
+Uint8DataTypeName = Literal["uint8"]
 """Literal type of the `data_type` field for `uint8`."""
 
 Uint8FillValue = int
@@ -17,7 +17,7 @@ Uint8FillValue = int
 
 
 __all__ = [
-    "UINT8_DTYPE_NAME",
-    "Uint8DTypeName",
+    "UINT8_DATA_TYPE_NAME",
+    "Uint8DataTypeName",
     "Uint8FillValue",
 ]

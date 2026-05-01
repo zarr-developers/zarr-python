@@ -1,15 +1,12 @@
-"""Zarr v3 group metadata types."""
+"""Zarr v3 group metadata types.
 
-from __future__ import annotations
+See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadata
+"""
 
-from typing import TYPE_CHECKING, Literal, NotRequired
+from collections.abc import Mapping
+from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from zarr_metadata.common import JSON
 
 from zarr_metadata.v3.array import ExtraField
 
@@ -18,12 +15,14 @@ class GroupMetadataV3(TypedDict, extra_items=ExtraField):  # type: ignore[call-a
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 
-    Extra keys are permitted if they conform to `AllowedExtraField`.
+    Extra keys are permitted if they conform to `ExtraField`.
+
+    See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadata
     """
 
     zarr_format: Literal[3]
     node_type: Literal["group"]
-    attributes: NotRequired[Mapping[str, JSON]]
+    attributes: NotRequired[Mapping[str, object]]
 
 
 __all__ = [

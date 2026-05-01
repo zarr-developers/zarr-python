@@ -26,16 +26,25 @@ class ZstdCodecConfiguration(TypedDict):
     checksum: bool
 
 
-class ZstdCodec(TypedDict):
-    """`zstd` codec metadata."""
+class ZstdCodecObject(TypedDict):
+    """`zstd` codec metadata in object form."""
 
     name: ZstdCodecName
     configuration: ZstdCodecConfiguration
 
 
+ZstdCodecMetadata = ZstdCodecObject
+"""Permitted JSON shape for `zstd` codec metadata.
+
+Both `level` and `checksum` are required, so only the object form is
+valid; the short-hand-name form is not permitted by the spec for this codec.
+"""
+
+
 __all__ = [
     "ZSTD_CODEC_NAME",
-    "ZstdCodec",
     "ZstdCodecConfiguration",
+    "ZstdCodecMetadata",
     "ZstdCodecName",
+    "ZstdCodecObject",
 ]

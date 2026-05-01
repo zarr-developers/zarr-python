@@ -12,19 +12,8 @@ BLOSC_CODEC_NAME: Final = "blosc"
 BloscCodecName = Literal["blosc"]
 """Literal type of the `name` field of the `blosc` codec."""
 
-BLOSC_SHUFFLE_NOSHUFFLE: Final = "noshuffle"
-BLOSC_SHUFFLE_SHUFFLE: Final = "shuffle"
-BLOSC_SHUFFLE_BITSHUFFLE: Final = "bitshuffle"
-
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 """Blosc shuffle mode names."""
-
-BLOSC_CNAME_LZ4: Final = "lz4"
-BLOSC_CNAME_LZ4HC: Final = "lz4hc"
-BLOSC_CNAME_BLOSCLZ: Final = "blosclz"
-BLOSC_CNAME_SNAPPY: Final = "snappy"
-BLOSC_CNAME_ZLIB: Final = "zlib"
-BLOSC_CNAME_ZSTD: Final = "zstd"
 
 BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """Blosc compressor identifiers."""
@@ -40,27 +29,28 @@ class BloscCodecConfiguration(TypedDict):
     typesize: NotRequired[int]
 
 
-class BloscCodec(TypedDict):
-    """`blosc` codec metadata."""
+class BloscCodecObject(TypedDict):
+    """`blosc` codec metadata in object form."""
 
     name: BloscCodecName
     configuration: BloscCodecConfiguration
 
 
+BloscCodecMetadata = BloscCodecObject
+"""Permitted JSON shape for `blosc` codec metadata.
+
+The configuration has multiple required keys (`cname`, `clevel`, `shuffle`,
+`blocksize`), so only the object form is valid; the short-hand-name form
+is not permitted by the spec for this codec.
+"""
+
+
 __all__ = [
-    "BLOSC_CNAME_BLOSCLZ",
-    "BLOSC_CNAME_LZ4",
-    "BLOSC_CNAME_LZ4HC",
-    "BLOSC_CNAME_SNAPPY",
-    "BLOSC_CNAME_ZLIB",
-    "BLOSC_CNAME_ZSTD",
     "BLOSC_CODEC_NAME",
-    "BLOSC_SHUFFLE_BITSHUFFLE",
-    "BLOSC_SHUFFLE_NOSHUFFLE",
-    "BLOSC_SHUFFLE_SHUFFLE",
     "BloscCName",
-    "BloscCodec",
     "BloscCodecConfiguration",
+    "BloscCodecMetadata",
     "BloscCodecName",
+    "BloscCodecObject",
     "BloscShuffle",
 ]

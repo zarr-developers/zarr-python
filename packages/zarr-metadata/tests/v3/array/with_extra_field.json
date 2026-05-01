@@ -1,0 +1,21 @@
+{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [10],
+  "data_type": "int32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [10]}
+  },
+  "chunk_key_encoding": {
+    "name": "default"
+  },
+  "fill_value": 0,
+  "codecs": [
+    {"name": "bytes", "configuration": {"endian": "little"}}
+  ],
+  "my_custom_extension": {
+    "must_understand": false,
+    "purpose": "exercise the extra_items=ExtraField path"
+  }
+}

@@ -28,17 +28,26 @@ class RectilinearChunkGridConfiguration(TypedDict):
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
 
-class RectilinearChunkGrid(TypedDict):
-    """Rectilinear chunk grid metadata."""
+class RectilinearChunkGridObject(TypedDict):
+    """Rectilinear chunk grid metadata in object form."""
 
     name: RectilinearChunkGridName
     configuration: RectilinearChunkGridConfiguration
 
 
+RectilinearChunkGridMetadata = RectilinearChunkGridObject
+"""Permitted JSON shape for rectilinear chunk grid metadata.
+
+`kind` and `chunk_shapes` are required, so only the object form is valid;
+the short-hand-name form is not permitted by the spec for this grid.
+"""
+
+
 __all__ = [
     "RECTILINEAR_CHUNK_GRID_NAME",
-    "RectilinearChunkGrid",
     "RectilinearChunkGridConfiguration",
+    "RectilinearChunkGridMetadata",
     "RectilinearChunkGridName",
+    "RectilinearChunkGridObject",
     "RectilinearDimSpec",
 ]

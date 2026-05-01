@@ -25,16 +25,25 @@ class GzipCodecConfiguration(TypedDict):
     level: NotRequired[int]
 
 
-class GzipCodec(TypedDict):
-    """`gzip` codec metadata."""
+class GzipCodecObject(TypedDict):
+    """`gzip` codec metadata in object form."""
 
     name: GzipCodecName
     configuration: GzipCodecConfiguration
 
 
+GzipCodecMetadata = GzipCodecObject | GzipCodecName
+"""Permitted JSON shapes for `gzip` codec metadata.
+
+The configuration has no required keys (`level` has no spec-mandated
+default but is `NotRequired`), so the short-hand-name form is permitted.
+"""
+
+
 __all__ = [
     "GZIP_CODEC_NAME",
-    "GzipCodec",
     "GzipCodecConfiguration",
+    "GzipCodecMetadata",
     "GzipCodecName",
+    "GzipCodecObject",
 ]

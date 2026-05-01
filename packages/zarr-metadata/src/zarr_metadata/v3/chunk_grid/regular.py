@@ -19,16 +19,25 @@ class RegularChunkGridConfiguration(TypedDict):
     chunk_shape: tuple[int, ...]
 
 
-class RegularChunkGrid(TypedDict):
-    """Regular chunk grid metadata."""
+class RegularChunkGridObject(TypedDict):
+    """Regular chunk grid metadata in object form."""
 
     name: RegularChunkGridName
     configuration: RegularChunkGridConfiguration
 
 
+RegularChunkGridMetadata = RegularChunkGridObject
+"""Permitted JSON shape for regular chunk grid metadata.
+
+`chunk_shape` is required and has no default, so only the object form is
+valid; the short-hand-name form is not permitted by the spec for this grid.
+"""
+
+
 __all__ = [
     "REGULAR_CHUNK_GRID_NAME",
-    "RegularChunkGrid",
     "RegularChunkGridConfiguration",
+    "RegularChunkGridMetadata",
     "RegularChunkGridName",
+    "RegularChunkGridObject",
 ]

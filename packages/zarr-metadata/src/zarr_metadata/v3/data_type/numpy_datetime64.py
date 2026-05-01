@@ -8,10 +8,10 @@ from typing import Final, Literal, TypedDict
 
 from typing_extensions import ReadOnly
 
-NUMPY_DATETIME64_DTYPE_NAME: Final = "numpy.datetime64"
+NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 """The `name` field value of the `numpy.datetime64` data type."""
 
-NumpyDatetime64DTypeName = Literal["numpy.datetime64"]
+NumpyDatetime64DataTypeName = Literal["numpy.datetime64"]
 """Literal type of the `name` field of the `numpy.datetime64` data type."""
 
 DateTimeUnit = Literal[
@@ -39,7 +39,7 @@ class NumpyDatetime64Configuration(TypedDict):
 class NumpyDatetime64(TypedDict):
     """`numpy.datetime64` data type metadata."""
 
-    name: NumpyDatetime64DTypeName
+    name: NumpyDatetime64DataTypeName
     configuration: NumpyDatetime64Configuration
 
 
@@ -52,10 +52,10 @@ or the string `"NaT"` (equivalent to the integer `-2**63`).
 
 
 __all__ = [
-    "NUMPY_DATETIME64_DTYPE_NAME",
+    "NUMPY_DATETIME64_DATA_TYPE_NAME",
     "DateTimeUnit",
     "NumpyDatetime64",
     "NumpyDatetime64Configuration",
-    "NumpyDatetime64DTypeName",
+    "NumpyDatetime64DataTypeName",
     "NumpyDatetime64FillValue",
 ]

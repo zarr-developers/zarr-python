@@ -1,4 +1,7 @@
-"""Zarr v2 group metadata types."""
+"""Zarr v2 group metadata types.
+
+See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
+"""
 
 from typing import Literal, TypedDict
 
@@ -9,6 +12,8 @@ class GroupMetadataV2(TypedDict):
 
     Attributes live in a sibling `.zattrs` file, so they are not part
     of this dict.
+
+    See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
 
     zarr_format: Literal[2]

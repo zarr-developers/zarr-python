@@ -6,10 +6,10 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-UINT32_DTYPE_NAME: Final = "uint32"
+UINT32_DATA_TYPE_NAME: Final = "uint32"
 """The `data_type` value for the `uint32` type."""
 
-Uint32DTypeName = Literal["uint32"]
+Uint32DataTypeName = Literal["uint32"]
 """Literal type of the `data_type` field for `uint32`."""
 
 Uint32FillValue = int
@@ -17,7 +17,7 @@ Uint32FillValue = int
 
 
 __all__ = [
-    "UINT32_DTYPE_NAME",
-    "Uint32DTypeName",
+    "UINT32_DATA_TYPE_NAME",
+    "Uint32DataTypeName",
     "Uint32FillValue",
 ]

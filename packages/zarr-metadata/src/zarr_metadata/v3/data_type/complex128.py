@@ -8,10 +8,10 @@ from typing import Final, Literal
 
 from zarr_metadata.v3.data_type.float64 import Float64FillValue
 
-COMPLEX128_DTYPE_NAME: Final = "complex128"
+COMPLEX128_DATA_TYPE_NAME: Final = "complex128"
 """The `data_type` value for the `complex128` type."""
 
-Complex128DTypeName = Literal["complex128"]
+Complex128DataTypeName = Literal["complex128"]
 """Literal type of the `data_type` field for `complex128`."""
 
 Complex128Component = Float64FillValue
@@ -30,8 +30,8 @@ A two-element JSON array `[real, imag]` where each component is a
 
 
 __all__ = [
-    "COMPLEX128_DTYPE_NAME",
+    "COMPLEX128_DATA_TYPE_NAME",
     "Complex128Component",
-    "Complex128DTypeName",
+    "Complex128DataTypeName",
     "Complex128FillValue",
 ]

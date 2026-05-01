@@ -6,15 +6,11 @@ is no Zarr v2 specification that defines `.zmetadata`; it is a
 canonical-implementation convention.
 """
 
-from __future__ import annotations
+from collections.abc import Mapping
+from typing import TypedDict
 
-from typing import TYPE_CHECKING, TypedDict
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from .array import ArrayMetadataV2
-    from .group import GroupMetadataV2
+from zarr_metadata.v2.array import ArrayMetadataV2
+from zarr_metadata.v2.group import GroupMetadataV2
 
 
 class ConsolidatedMetadataV2(TypedDict):
