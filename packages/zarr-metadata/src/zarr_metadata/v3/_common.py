@@ -2,12 +2,12 @@
 
 This module is private (underscore-prefixed) and exists to avoid circular
 imports between leaf modules and sub-package `__init__.py` re-exports.
-Public consumers should import `MetadataField` from `zarr_metadata.v3`.
+Public consumers should import `MetadataFieldV3` from `zarr_metadata.v3`.
 """
 
 from zarr_metadata._common import NamedConfig
 
-MetadataField = str | NamedConfig
+MetadataFieldV3 = str | NamedConfig
 """The JSON shape of any v3 metadata extension-point entry: either a bare
 short-hand name string or a `{name, configuration}` envelope.
 
@@ -19,5 +19,5 @@ codec.
 
 
 __all__ = [
-    "MetadataField",
+    "MetadataFieldV3",
 ]

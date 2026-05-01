@@ -16,6 +16,6 @@
   ],
   "my_custom_extension": {
     "must_understand": false,
-    "purpose": "exercise the extra_items=ExtraField path"
+    "purpose": "exercise the extra_items=ExtraFieldV3 path"
   }
 }

@@ -11,7 +11,7 @@ a bare-string short-hand form). For the underlying `<X>CodecObject`,
 `<X>CodecConfiguration`, etc., import directly from the leaf submodule.
 
 For the field-level "any codec entry" alias (used in array metadata's
-`codecs` list and in sharding's inner pipelines), import `MetadataField`
+`codecs` list and in sharding's inner pipelines), import `MetadataFieldV3`
 from `zarr_metadata.v3`.
 
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html

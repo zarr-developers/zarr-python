@@ -8,7 +8,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3._common import MetadataField
+from zarr_metadata.v3._common import MetadataFieldV3
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -58,7 +58,7 @@ class CastValueCodecConfiguration(TypedDict):
     bare-string primitive name or a `{name, configuration}` envelope.
     """
 
-    data_type: MetadataField
+    data_type: MetadataFieldV3
     rounding: NotRequired[RoundingMode]
     out_of_range: NotRequired[OutOfRangeMode]
     scalar_map: NotRequired[ScalarMap]
