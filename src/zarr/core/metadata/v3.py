@@ -676,6 +676,12 @@ class ArrayV3Metadata(Metadata):
             out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
         return out_dict
 
+    def to_json(self) -> ArrayMetadataJSON_V3:
+        """
+        Serialize this array metadata to a JSON-compatible Python object.
+        """
+        return cast(ArrayMetadataJSON_V3, self.to_dict())
+
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         chunk_grid = self.chunk_grid
         if isinstance(chunk_grid, RectilinearChunkGridMetadata):
