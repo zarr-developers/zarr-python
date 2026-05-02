@@ -1,0 +1,167 @@
+name: zarr-metadata release
+
+# Manual-only release for now. Once we settle on a tag scheme
+# (e.g. `zarr-metadata/v0.1.0`), this workflow can grow a
+# `release:` or `push: tags:` trigger.
+#
+# Operator picks the target index at dispatch time:
+#   - `pypi`     -> https://pypi.org publishes the version as-declared in
+#                   pyproject.toml. Each version is a single shot — re-runs
+#                   for the same version will be rejected by PyPI.
+#   - `testpypi` -> https://test.pypi.org. The build appends a
+#                   `.dev<run_number>` suffix to the version automatically
+#                   so each test push gets a unique version on TestPyPI.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Index to publish to'
+        required: true
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build wheel and sdist
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Apply dev-suffix for TestPyPI builds
+        if: inputs.target == 'testpypi'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 <<'PY'
+          import os, re
+          from pathlib import Path
+
+          run_number = os.environ["RUN_NUMBER"]
+          pyp = Path("pyproject.toml")
+          init = Path("src/zarr_metadata/__init__.py")
+
+          base = re.search(r'^version\s*=\s*"([^"]+)"', pyp.read_text(), re.M).group(1)
+          new_version = f"{base}.dev{run_number}"
+          print(f"::notice::TestPyPI build: {base} -> {new_version}")
+
+          pyp.write_text(re.sub(
+              r'^(version\s*=\s*)"[^"]+"',
+              rf'\1"{new_version}"',
+              pyp.read_text(),
+              count=1,
+              flags=re.M,
+          ))
+          init.write_text(re.sub(
+              r'^(__version__\s*=\s*)"[^"]+"',
+              rf'\1"{new_version}"',
+              init.read_text(),
+              count=1,
+              flags=re.M,
+          ))
+          PY
+
+      - name: Install Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        with:
+          version: '1.16.5'
+
+      - name: Build
+        run: hatch build
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: zarr-metadata-dist
+          path: packages/zarr-metadata/dist
+
+  test_artifacts:
+    name: Test built artifacts
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: zarr-metadata-dist
+          path: dist
+
+      - name: List built artifacts
+        run: ls -la dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install built wheel and run import smoke test
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv run --with "${wheel}" --python 3.12 --no-project \
+            python -c "import zarr_metadata; print('zarr_metadata', zarr_metadata.__version__)"
+
+  upload_pypi:
+    name: Upload to PyPI
+    needs: [build, test_artifacts]
+    if: inputs.target == 'pypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: zarr-metadata-releases
+      url: https://pypi.org/p/zarr-metadata
+    permissions:
+      id-token: write          # required for OIDC trusted publishing
+      attestations: write      # required for artifact attestations
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: zarr-metadata-dist
+          path: dist
+
+      - name: Generate artifact attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/*
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+
+  upload_testpypi:
+    name: Upload to TestPyPI
+    needs: [build, test_artifacts]
+    if: inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: zarr-metadata-releases-test
+      url: https://test.pypi.org/p/zarr-metadata
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: zarr-metadata-dist
+          path: dist
+
+      - name: Generate artifact attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/*
+
+      - name: Publish package to TestPyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
