@@ -5,7 +5,7 @@ import pytest
 
 import zarr
 from zarr.abc.store import Store
-from zarr.core.common import ZarrFormat
+from zarr.types import ZarrFormat
 
 
 def create_nested_zarr(

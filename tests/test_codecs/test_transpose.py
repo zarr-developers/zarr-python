@@ -8,9 +8,9 @@ from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer, default_buffer_prototype
-from zarr.core.common import MemoryOrder
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage import StorePath
+from zarr.types import MemoryOrder
 
 from .test_codecs import _AsyncArrayProxy
 
