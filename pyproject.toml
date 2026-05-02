@@ -38,6 +38,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.13',
     'donfig>=0.8',
+    'zarr-interfaces>=0.1.0',
 ]
 
 dynamic = [
@@ -467,6 +468,9 @@ underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
 issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [tool.codespell]
 ignore-words-list = "astroid"
