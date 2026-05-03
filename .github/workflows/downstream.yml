@@ -3,7 +3,7 @@ name: Downstream
 on:
   workflow_dispatch:
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize, opened, reopened]
 
 permissions:
   contents: read
@@ -15,7 +15,9 @@ concurrency:
 jobs:
   xarray:
     name: Xarray zarr backend tests
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-downstream')
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
@@ -51,14 +53,16 @@ jobs:
       - name: Run xarray zarr backend tests
         working-directory: xarray
         run: |
-          pixi run -e test-py313 -- python -m pytest -x --no-header -q \
-            xarray/tests/test_backends.py -k zarr \
-            xarray/tests/test_backends_api.py -k zarr \
-            xarray/tests/test_backends_datatree.py -k zarr
+          pixi run -e test-py313 -- python -m pytest --no-header -q \
+            xarray/tests/test_backends.py \
+            xarray/tests/test_backends_api.py \
+            xarray/tests/test_backends_datatree.py
 
   numcodecs:
     name: numcodecs zarr3 codec tests
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-downstream'
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-downstream')
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
