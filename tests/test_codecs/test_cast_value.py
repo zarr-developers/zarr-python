@@ -165,6 +165,7 @@ def test_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
         )
 
 
+@requires_cast_value_rs
 @pytest.mark.parametrize(
     ("source_dtype", "target_dtype"),
     [
