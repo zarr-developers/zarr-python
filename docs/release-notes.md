@@ -2,6 +2,22 @@
 
 <!-- towncrier release notes start -->
 
+## 3.2.1 (2026-05-04)
+
+### Bugfixes
+
+- Fixed a `CastValue` validation bug where the "can we use an out-of-range mode" check
+  inspected the source dtype instead of the target dtype. This meant arrays with a
+  float source dtype and an integer target dtype incorrectly raised a `ValueError`
+  when configured with a `wrap` out-of-range mode. ([#3938](https://github.com/zarr-developers/zarr-python/issues/3938))
+- Fixed a bug where the codec pipeline evolved each codec against the original
+  array spec instead of the spec produced by upstream array-to-array codecs. This
+  caused failures whenever an upstream codec changed the dtype between codec
+  boundaries — e.g. arrays using `CastValue` to convert a single-byte source dtype
+  (`int8`) to a multi-byte target dtype (`int16`) raised a `ValueError` from
+  `BytesCodec` about a missing `endian` configuration. ([#3941](https://github.com/zarr-developers/zarr-python/issues/3941))
+
+
 ## 3.2.0 (2026-04-30)
 
 ### Features
