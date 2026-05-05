@@ -539,7 +539,21 @@ class ArrayV3Metadata(Metadata):
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
-        codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
+        # Thread the spec through evolution: each codec must be evolved against
+        # the spec it will actually see at run-time, not the original array spec.
+        # Earlier array->array codecs may transform the dtype (e.g. cast_value),
+        # so the spec passed to later codecs must reflect those transformations.
+        # Per-codec validate() must run before resolve_metadata(), since the
+        # latter may rely on invariants the former checks (e.g. cast_value
+        # rejects complex source dtypes that would otherwise crash _do_cast).
+        evolved: list[Codec] = []
+        spec = array_spec
+        for c in codecs_parsed_partial:
+            evolved_codec = c.evolve_from_array_spec(spec)
+            evolved_codec.validate(shape=spec.shape, dtype=spec.dtype, chunk_grid=chunk_grid_parsed)
+            evolved.append(evolved_codec)
+            spec = evolved_codec.resolve_metadata(spec)
+        codecs_parsed = tuple(evolved)
         validate_codecs(codecs_parsed_partial, data_type)
 
         object.__setattr__(self, "shape", shape_parsed)

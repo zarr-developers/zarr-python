@@ -1,0 +1,17 @@
+{
+  "zarr_consolidated_format": 1,
+  "metadata": {
+    ".zgroup": {"zarr_format": 2},
+    "data/.zarray": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<i4",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null,
+      "attributes": {}
+    }
+  }
+}
