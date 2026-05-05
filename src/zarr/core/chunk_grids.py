@@ -39,8 +39,8 @@ if TYPE_CHECKING:
 SHARDED_INNER_CHUNK_MAX_BYTES: int = 1048576
 """Target ceiling in bytes for the auto-chunking heuristic when sharding is active (1 MiB).
 
-Only used when `chunks="auto"` and `shards` is not `None`. Explicit chunk sizes
-are not affected by this value.
+Applied when `chunks` is left to auto-chunking (`None` or `"auto"`) and `shards`
+is not `None`. Explicit chunk sizes are not affected by this value.
 """
 
 ChunksTuple = NewType("ChunksTuple", tuple[np.ndarray[tuple[int], np.dtype[np.int64]], ...])
@@ -733,22 +733,25 @@ def normalize_chunks_nd(
     Normalize a chunk specification into a `ChunksTuple`.
 
     This is a mechanical transformation — no heuristics, no guessing.
-    Handles scalar ints, -1 sentinels, None per-dimension, short specs
-    (padded with None), and explicit per-chunk size lists.
+    Handles `False` ("no chunking"), scalar ints, `-1` sentinels (one chunk
+    per dimension covering the full span), and explicit per-dimension lists
+    of chunk sizes (regular or rectilinear).
 
     For auto-chunking, use `guess_chunks` which returns a
-    `ChunksTuple` directly.
+    `ChunksTuple` directly. `chunks=None` and `chunks=True` are rejected
+    here — the caller is responsible for choosing between explicit sizes
+    and auto-chunking.
     """
-    if chunks is None:
+    if chunks is None or chunks is True:
         raise ValueError(
-            "normalize_chunks_nd does not accept None. Use guess_chunks() for auto-chunking."
+            f"normalize_chunks_nd does not accept {chunks!r}. Use guess_chunks() for auto-chunking."
         )
 
     # handle no chunking
     if chunks is False:
         return ChunksTuple(tuple(np.array([s], dtype=np.int64) for s in shape))
 
-    # handle 1D convenience form
+    # handle 1D convenience form. bool is excluded above so this only catches actual ints.
     if isinstance(chunks, numbers.Integral):
         chunks = tuple(int(chunks) for _ in shape)
 

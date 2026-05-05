@@ -178,6 +178,9 @@ def test_normalize_chunks_1d_errors(case: ExpectErr[tuple[Any, int]]) -> None:
     "case",
     [
         ExpectErr(input=(None, (100,)), msg="does not accept None", exception_cls=ValueError),
+        # `True` is rejected explicitly because bool is a subclass of int — without
+        # this guard, `chunks=True` would silently produce size-1 chunks.
+        ExpectErr(input=(True, (100,)), msg="does not accept True", exception_cls=ValueError),
         ExpectErr(input=("foo", (100,)), msg="dimensions", exception_cls=ValueError),
         ExpectErr(input=((100, 10), (100,)), msg="dimensions", exception_cls=ValueError),
         ExpectErr(input=((10,), (100, 100)), msg="dimensions", exception_cls=ValueError),
@@ -188,7 +191,7 @@ def test_normalize_chunks_1d_errors(case: ExpectErr[tuple[Any, int]]) -> None:
             exception_cls=TypeError,
         ),
     ],
-    ids=["none", "string", "too-many-dims", "too-few-dims", "rle-inner-dim"],
+    ids=["none", "true", "string", "too-many-dims", "too-few-dims", "rle-inner-dim"],
 )
 def test_normalize_chunks_nd_errors(case: ExpectErr[tuple[Any, tuple[int, ...]]]) -> None:
     """Invalid N-D chunk specifications are rejected with informative error messages."""
