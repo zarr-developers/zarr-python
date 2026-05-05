@@ -16,7 +16,10 @@
   boundaries — e.g. arrays using `CastValue` to convert a single-byte source dtype
   (`int8`) to a multi-byte target dtype (`int16`) raised a `ValueError` from
   `BytesCodec` about a missing `endian` configuration. ([#3941](https://github.com/zarr-developers/zarr-python/issues/3941))
-
+- Fixed breakage in existing fsspec-dependent workflows caused by associating the "memory" URL scheme with
+instances of `ManagedMemoryStore` instead of fsspec's memory-backed store. After this change, store URLs with a "memory" scheme are handled differently when `fsspec` is installed:
+with `fsspec`, a `FsspecStore` backed by a `MemoryFileSystem` is used. Without `fsspec`,
+a `ManagedMemoryStore` is used.
 
 ## 3.2.0 (2026-04-30)
 
