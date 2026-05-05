@@ -4,9 +4,10 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.test_codecs.conftest import ExpectErr
+from tests.test_codecs.conftest import Expect, ExpectErr
 from zarr.core.chunk_grids import (
     _guess_regular_chunks,
+    normalize_chunks_1d,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
 )
@@ -128,103 +129,93 @@ def test_chunk_layout_nested() -> None:
     assert top.inner.inner.inner is None
 
 
-def test_normalize_chunks_1d_errors() -> None:
-    from zarr.core.chunk_grids import normalize_chunks_1d
-
-    with pytest.raises(ValueError, match="Chunk size must be positive"):
-        normalize_chunks_1d(0, 100)
-    with pytest.raises(ValueError, match="Chunk size must be positive"):
-        normalize_chunks_1d(-2, 100)
-    with pytest.raises(ValueError, match="must not be empty"):
-        normalize_chunks_1d([], 100)
-    with pytest.raises(ValueError, match="must be positive"):
-        normalize_chunks_1d([10, -1, 10], 100)
-    with pytest.raises(ValueError, match="do not sum to span"):
-        normalize_chunks_1d([10, 20], 100)
-
-
 @pytest.mark.parametrize(
     "case",
     [
-        # The motivating case: nested/RLE form for a single dim.
+        ExpectErr(input=(0, 100), msg="Chunk size must be positive", exception_cls=ValueError),
+        ExpectErr(input=(-2, 100), msg="Chunk size must be positive", exception_cls=ValueError),
+        ExpectErr(input=([], 100), msg="must not be empty", exception_cls=ValueError),
+        ExpectErr(input=([10, -1, 10], 100), msg="must be positive", exception_cls=ValueError),
+        ExpectErr(input=([10, 20], 100), msg="do not sum to span", exception_cls=ValueError),
+        # Nested/RLE form for a single dim is rejected with offending indices.
         ExpectErr(
             input=([[3, 3], 1], 7),
             msg="non-integer element(s) ([3, 3],) at indices (0,)",
             exception_cls=TypeError,
         ),
-        # Multiple non-int elements report all offending indices.
+        # Multiple non-int elements: all offending indices reported.
         ExpectErr(
             input=([1, [2, 2], 1, [3]], 9),
             msg="non-integer element(s) ([2, 2], [3]) at indices (1, 3)",
             exception_cls=TypeError,
         ),
-        # Strings are also non-integers and should be reported the same way.
+        # Strings are non-integers and should be reported the same way.
         ExpectErr(
             input=([2, "3", 5], 10),
             msg="non-integer element(s) ('3',) at indices (1,)",
             exception_cls=TypeError,
         ),
     ],
-    ids=["rle-single-dim", "multiple-non-ints", "string-element"],
+    ids=[
+        "zero-uniform",
+        "negative-uniform",
+        "empty-list",
+        "negative-element",
+        "wrong-sum",
+        "rle-single-dim",
+        "multiple-non-ints",
+        "string-element",
+    ],
 )
-def test_normalize_chunks_1d_rejects_non_int_elements(
-    case: ExpectErr[tuple[list[Any], int]],
-) -> None:
-    """Reject nested/RLE-style chunk specs with a precise error pointing at offending indices."""
-    from zarr.core.chunk_grids import normalize_chunks_1d
-
+def test_normalize_chunks_1d_errors(case: ExpectErr[tuple[Any, int]]) -> None:
+    """Invalid 1D chunk specifications are rejected with informative error messages."""
     chunks, span = case.input
     with pytest.raises(case.exception_cls, match=re.escape(case.msg)):
         normalize_chunks_1d(chunks, span=span)
 
 
-def test_normalize_chunks_nd_rejects_rle_inner_dim() -> None:
-    """End-to-end: a per-dim RLE form like [[3, 3], 1] surfaces the precise error."""
-    with pytest.raises(
-        TypeError, match=re.escape("non-integer element(s) ([3, 3],) at indices (0,)")
-    ):
-        normalize_chunks_nd([[6, 4], [[3, 3], 1]], (10, 10))
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(input=(None, (100,)), msg="does not accept None", exception_cls=ValueError),
+        ExpectErr(input=("foo", (100,)), msg="dimensions", exception_cls=ValueError),
+        ExpectErr(input=((100, 10), (100,)), msg="dimensions", exception_cls=ValueError),
+        ExpectErr(input=((10,), (100, 100)), msg="dimensions", exception_cls=ValueError),
+        # End-to-end: per-dim RLE surfaces through normalize_chunks_nd.
+        ExpectErr(
+            input=([[6, 4], [[3, 3], 1]], (10, 10)),
+            msg="non-integer element(s) ([3, 3],) at indices (0,)",
+            exception_cls=TypeError,
+        ),
+    ],
+    ids=["none", "string", "too-many-dims", "too-few-dims", "rle-inner-dim"],
+)
+def test_normalize_chunks_nd_errors(case: ExpectErr[tuple[Any, tuple[int, ...]]]) -> None:
+    """Invalid N-D chunk specifications are rejected with informative error messages."""
+    chunks, shape = case.input
+    with pytest.raises(case.exception_cls, match=re.escape(case.msg)):
+        normalize_chunks_nd(chunks, shape)
 
 
-def test_normalize_chunks_errors() -> None:
-    with pytest.raises(ValueError, match="does not accept None"):
-        normalize_chunks_nd(None, (100,))
-    with pytest.raises(ValueError):
-        normalize_chunks_nd("foo", (100,))
-    with pytest.raises(ValueError, match="dimensions"):
-        normalize_chunks_nd((100, 10), (100,))
-    with pytest.raises(ValueError, match="dimensions"):
-        normalize_chunks_nd((10,), (100, 100))
-
-
-def test_normalize_chunks_1d_uniform_returns_int64_array() -> None:
-    """The uniform-chunks branch must return a 1D int64 array — this is the
-    representation that enables O(1) construction via np.full."""
-    from zarr.core.chunk_grids import normalize_chunks_1d
-
-    result = normalize_chunks_1d(1000, 100_000)
+@pytest.mark.parametrize(
+    "case",
+    [
+        # uniform-chunks branch: one int → broadcast across span via np.full.
+        Expect(input=(1000, 100_000), expected=[1000] * 100),
+        # explicit-per-chunk branch.
+        Expect(input=([10, 20, 30, 40], 100), expected=[10, 20, 30, 40]),
+        # -1 sentinel branch: one chunk covering the full span.
+        Expect(input=(-1, 100), expected=[100]),
+    ],
+    ids=["uniform", "explicit-list", "full-span-sentinel"],
+)
+def test_normalize_chunks_1d_returns_int64_array(
+    case: Expect[tuple[Any, int], list[int]],
+) -> None:
+    """Every branch of normalize_chunks_1d must produce a 1D int64 array."""
+    chunks, span = case.input
+    result = normalize_chunks_1d(chunks, span)
     assert isinstance(result, np.ndarray)
     assert result.dtype == np.int64
     assert result.ndim == 1
-    assert result.shape == (100,)
-    assert (result == 1000).all()
-
-
-def test_normalize_chunks_1d_explicit_list_returns_int64_array() -> None:
-    """The explicit-per-chunk branch must also produce an int64 array."""
-    from zarr.core.chunk_grids import normalize_chunks_1d
-
-    result = normalize_chunks_1d([10, 20, 30, 40], 100)
-    assert isinstance(result, np.ndarray)
-    assert result.dtype == np.int64
-    assert result.tolist() == [10, 20, 30, 40]
-
-
-def test_normalize_chunks_1d_full_span_returns_int64_array() -> None:
-    """The -1 sentinel branch must also produce an int64 array."""
-    from zarr.core.chunk_grids import normalize_chunks_1d
-
-    result = normalize_chunks_1d(-1, 100)
-    assert isinstance(result, np.ndarray)
-    assert result.dtype == np.int64
-    assert result.tolist() == [100]
+    assert result.tolist() == case.expected
