@@ -683,7 +683,7 @@ def _guess_regular_chunks(
 
 
 def normalize_chunks_1d(
-    chunks: int | Iterable[int], span: int
+    chunks: int | Iterable[object], span: int
 ) -> np.ndarray[tuple[int], np.dtype[np.int64]]:
     """
     Normalize a one-dimensional chunk specification into a 1D int64 array of
@@ -707,11 +707,22 @@ def normalize_chunks_1d(
         chunk_list = list(chunks)
         if not chunk_list:
             raise ValueError("Chunk specification must not be empty")
-        if any(c <= 0 for c in chunk_list):
-            raise ValueError(f"All chunk sizes must be positive, got {chunk_list}")
-        if sum(chunk_list) != span:
-            raise ValueError(f"Chunk sizes {chunk_list} do not sum to span {span}")
-        return np.asarray(chunk_list, dtype=np.int64)
+        non_int = [
+            (idx, c) for idx, c in enumerate(chunk_list) if not isinstance(c, numbers.Integral)
+        ]
+        if non_int:
+            non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
+            raise TypeError(
+                f"Each chunk size must be an integer; got non-integer element(s) {non_int_vals!r} "
+                f"at indices {non_int_idxs!r}. Chunk sizes must be declareds as a flat sequence of"
+                f"positive integers (e.g. [3, 3, 1])."
+            )
+        ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
+        if any(c <= 0 for c in ints):
+            raise ValueError(f"All chunk sizes must be positive, got {ints}")
+        if sum(ints) != span:
+            raise ValueError(f"Chunk sizes {ints} do not sum to span {span}")
+        return np.asarray(ints, dtype=np.int64)
 
 
 def normalize_chunks_nd(

@@ -1,8 +1,10 @@
+import re
 from typing import Any
 
 import numpy as np
 import pytest
 
+from tests.test_codecs.conftest import ExpectErr
 from zarr.core.chunk_grids import (
     _guess_regular_chunks,
     normalize_chunks_nd,
@@ -139,6 +141,49 @@ def test_normalize_chunks_1d_errors() -> None:
         normalize_chunks_1d([10, -1, 10], 100)
     with pytest.raises(ValueError, match="do not sum to span"):
         normalize_chunks_1d([10, 20], 100)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        # The motivating case: nested/RLE form for a single dim.
+        ExpectErr(
+            input=([[3, 3], 1], 7),
+            msg="non-integer element(s) ([3, 3],) at indices (0,)",
+            exception_cls=TypeError,
+        ),
+        # Multiple non-int elements report all offending indices.
+        ExpectErr(
+            input=([1, [2, 2], 1, [3]], 9),
+            msg="non-integer element(s) ([2, 2], [3]) at indices (1, 3)",
+            exception_cls=TypeError,
+        ),
+        # Strings are also non-integers and should be reported the same way.
+        ExpectErr(
+            input=([2, "3", 5], 10),
+            msg="non-integer element(s) ('3',) at indices (1,)",
+            exception_cls=TypeError,
+        ),
+    ],
+    ids=["rle-single-dim", "multiple-non-ints", "string-element"],
+)
+def test_normalize_chunks_1d_rejects_non_int_elements(
+    case: ExpectErr[tuple[list[Any], int]],
+) -> None:
+    """Reject nested/RLE-style chunk specs with a precise error pointing at offending indices."""
+    from zarr.core.chunk_grids import normalize_chunks_1d
+
+    chunks, span = case.input
+    with pytest.raises(case.exception_cls, match=re.escape(case.msg)):
+        normalize_chunks_1d(chunks, span=span)
+
+
+def test_normalize_chunks_nd_rejects_rle_inner_dim() -> None:
+    """End-to-end: a per-dim RLE form like [[3, 3], 1] surfaces the precise error."""
+    with pytest.raises(
+        TypeError, match=re.escape("non-integer element(s) ([3, 3],) at indices (0,)")
+    ):
+        normalize_chunks_nd([[6, 4], [[3, 3], 1]], (10, 10))
 
 
 def test_normalize_chunks_errors() -> None:
