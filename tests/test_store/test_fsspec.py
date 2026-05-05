@@ -547,6 +547,10 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
     _ = store_w.with_read_only()
 
 
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
 async def test_memory_scheme() -> None:
     """Test that the "memory" scheme creates a `MemoryFileSystem`-backed store"""
     store = await make_store("memory://test")
