@@ -69,6 +69,7 @@ remote = [
 gpu = [
     "cupy-cuda12x",
 ]
+cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -166,6 +167,7 @@ matrix.deps.features = [
   {value = "remote", if = ["optional"]},
   {value = "optional", if = ["optional"]},
   {value = "cli", if = ["optional"]},
+  {value = "cast-value-rs", if = ["optional"]},
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
