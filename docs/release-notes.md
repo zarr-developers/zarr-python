@@ -2,7 +2,7 @@
 
 <!-- towncrier release notes start -->
 
-## 3.2.1 (2026-05-04)
+## 3.2.1 (2026-05-05)
 
 ### Bugfixes
 
@@ -19,7 +19,7 @@
 - Fixed breakage in existing fsspec-dependent workflows caused by associating the "memory" URL scheme with
 instances of `ManagedMemoryStore` instead of fsspec's memory-backed store. After this change, store URLs with a "memory" scheme are handled differently when `fsspec` is installed:
 with `fsspec`, a `FsspecStore` backed by a `MemoryFileSystem` is used. Without `fsspec`,
-a `ManagedMemoryStore` is used.
+a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr-python/issues/3944))
 
 ## 3.2.0 (2026-04-30)
 
