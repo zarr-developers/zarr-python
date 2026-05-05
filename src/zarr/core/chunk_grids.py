@@ -714,7 +714,7 @@ def normalize_chunks_1d(
             non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
             raise TypeError(
                 f"Each chunk size must be an integer; got non-integer element(s) {non_int_vals!r} "
-                f"at indices {non_int_idxs!r}. Chunk sizes must be declareds as a flat sequence of"
+                f"at indices {non_int_idxs!r}. Chunk sizes must be declared as a flat sequence of "
                 f"positive integers (e.g. [3, 3, 1])."
             )
         ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
