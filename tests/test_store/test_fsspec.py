@@ -16,6 +16,7 @@ from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
+from zarr.storage._common import make_store
 from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
 
@@ -544,3 +545,10 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
 
     store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
     _ = store_w.with_read_only()
+
+
+async def test_memory_scheme() -> None:
+    """Test that the "memory" scheme creates a `MemoryFileSystem`-backed store"""
+    store = await make_store("memory://test")
+    assert isinstance(store, FsspecStore)
+    assert store.fs.protocol == "memory"
