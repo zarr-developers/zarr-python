@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zarr-metadata"
-version = "0.1.0"
+version = "0.1.1"
 description = "Spec-defined metadata types for Zarr v2 and v3."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,7 +16,6 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
