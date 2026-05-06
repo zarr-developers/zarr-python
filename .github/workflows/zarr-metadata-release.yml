@@ -5,12 +5,12 @@ name: zarr-metadata release
 # `release:` or `push: tags:` trigger.
 #
 # Operator picks the target index at dispatch time:
-#   - `pypi`     -> https://pypi.org publishes the version as-declared in
-#                   pyproject.toml. Each version is a single shot — re-runs
-#                   for the same version will be rejected by PyPI.
-#   - `testpypi` -> https://test.pypi.org. The build appends a
-#                   `.dev<run_number>` suffix to the version automatically
-#                   so each test push gets a unique version on TestPyPI.
+#   - `pypi`     -> https://pypi.org
+#   - `testpypi` -> https://test.pypi.org
+#
+# Both indexes reject re-uploads of an existing version, so each publish
+# requires a version bump in pyproject.toml. For TestPyPI dry-runs, use a
+# PEP 440 pre-release/dev suffix (e.g. `0.1.0.dev1`) in the source.
 on:
   workflow_dispatch:
     inputs:
@@ -42,39 +42,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-
-      - name: Apply dev-suffix for TestPyPI builds
-        if: inputs.target == 'testpypi'
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          python3 <<'PY'
-          import os, re
-          from pathlib import Path
-
-          run_number = os.environ["RUN_NUMBER"]
-          pyp = Path("pyproject.toml")
-          init = Path("src/zarr_metadata/__init__.py")
-
-          base = re.search(r'^version\s*=\s*"([^"]+)"', pyp.read_text(), re.M).group(1)
-          new_version = f"{base}.dev{run_number}"
-          print(f"::notice::TestPyPI build: {base} -> {new_version}")
-
-          pyp.write_text(re.sub(
-              r'^(version\s*=\s*)"[^"]+"',
-              rf'\1"{new_version}"',
-              pyp.read_text(),
-              count=1,
-              flags=re.M,
-          ))
-          init.write_text(re.sub(
-              r'^(__version__\s*=\s*)"[^"]+"',
-              rf'\1"{new_version}"',
-              init.read_text(),
-              count=1,
-              flags=re.M,
-          ))
-          PY
 
       - name: Install Hatch
         uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
