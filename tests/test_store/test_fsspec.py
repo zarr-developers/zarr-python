@@ -80,7 +80,13 @@ def s3_base() -> Generator[None, None, None]:
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = botocore.session.Session()
-    return session.create_client("s3", endpoint_url=endpoint_url)
+
+    # Prevent IllegalLocationConstraintException by explicitly setting region to
+    # "us-east-1", which does not require configuring LocationConstraint during
+    # bucket creation. (It is, in fact, forbidden for that region.)  Necessary
+    # in the face of "ambient" AWS configuration in a development environment
+    # where the default region might be configured differently.
+    return session.create_client("s3", endpoint_url=endpoint_url, region_name="us-east-1")
 
 
 @pytest.fixture(autouse=True)
@@ -100,7 +106,14 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    s3 = s3fs.S3FileSystem(
+        anon=False,
+        client_kwargs={"endpoint_url": endpoint_url},
+        # Prevent "AssertionError: Session was never entered" from aiobotocore
+        # at end of test execution.  Using clear_instance_cache is insufficient,
+        # although still necessary.
+        skip_instance_cache=True,
+    )
     session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
