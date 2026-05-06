@@ -5449,11 +5449,24 @@ async def _get_selection(
 
         # reading chunks and decoding them
         indexed_chunks = list(indexer)
+        # For regular grids, all chunks share the same ArraySpec, so build it once
+        # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+        regular_grid = chunk_grid.is_regular
+        if regular_grid:
+            regular_chunk_spec = ArraySpec(
+                shape=chunk_grid.chunk_shape,
+                dtype=metadata.dtype,
+                fill_value=metadata.fill_value,
+                config=_config,
+                prototype=prototype,
+            )
         results = await codec_pipeline.read(
             [
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
-                    _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                    regular_chunk_spec
+                    if regular_grid
+                    else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
@@ -5792,11 +5805,24 @@ async def _set_selection(
         _config = replace(_config, order=order)
 
     # merging with existing data and encoding chunks
+    # For regular grids, all chunks share the same ArraySpec, so build it once
+    # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+    regular_grid = chunk_grid.is_regular
+    if regular_grid:
+        regular_chunk_spec = ArraySpec(
+            shape=chunk_grid.chunk_shape,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=_config,
+            prototype=prototype,
+        )
     await codec_pipeline.write(
         [
             (
                 store_path / metadata.encode_chunk_key(chunk_coords),
-                _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                regular_chunk_spec
+                if regular_grid
+                else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                 chunk_selection,
                 out_selection,
                 is_complete_chunk,
