@@ -278,15 +278,16 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
             # dtypes from containing object dtypes.
+            name = data["name"]
             return cls(
-                fields=tuple(  # type: ignore[misc]
+                fields=tuple(  # type: ignore[str-unpack]
                     (  # type: ignore[misc]
                         f_name,
                         get_data_type_from_json(
                             {"name": f_dtype, "object_codec_id": None}, zarr_format=2
                         ),
                     )
-                    for f_name, f_dtype in data["name"]
+                    for f_name, f_dtype in name
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"

@@ -83,7 +83,7 @@ class WrapperStore[T_Store: Store](Store):
         return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
+        return type(self) is type(value) and self._store.__eq__(value._store)
 
     def __str__(self) -> str:
         return f"wrapping-{self._store}"

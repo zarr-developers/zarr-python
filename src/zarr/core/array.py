@@ -4816,7 +4816,7 @@ def _parse_keep_array_attr(
         if serializer == "keep":
             serializer = "auto"
     # After resolving "keep" above, chunks is never "keep" at this point.
-    chunks_out: ChunksLike | Literal["auto"] = chunks  # type: ignore[assignment]
+    chunks_out: ChunksLike | Literal["auto"] = chunks
     return (
         chunks_out,
         shards,
