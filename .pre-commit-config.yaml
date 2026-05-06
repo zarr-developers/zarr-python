@@ -31,7 +31,7 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
-        files: src|tests
+        files: ^(src|tests)/
         additional_dependencies:
           # Package dependencies
           - packaging

@@ -32,7 +32,7 @@ jobs:
       with:
         version: '1.16.5'
     - name: Run the benchmarks
-      uses: CodSpeedHQ/action@1c8ae4843586d3ba879736b7f6b7b0c990757fab # v4.12.1
+      uses: CodSpeedHQ/action@658a901452bb54c799643e060733b7afe9121b8d # v4.14.0
       with:
           mode: walltime
           run: hatch run test.py3.12-minimal:pytest tests/benchmarks --codspeed

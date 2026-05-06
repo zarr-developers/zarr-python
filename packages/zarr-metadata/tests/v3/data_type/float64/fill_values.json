@@ -1,0 +1,9 @@
+{
+  "zero": 0.0,
+  "nan": "NaN",
+  "infinity": "Infinity",
+  "neg_infinity": "-Infinity",
+  "hex_zero": "0x0000000000000000",
+  "hex_canonical_nan": "0x7ff8000000000000",
+  "hex_signaling_nan": "0x7ff4000000000000"
+}
