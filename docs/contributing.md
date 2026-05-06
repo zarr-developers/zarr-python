@@ -311,10 +311,43 @@ The Zarr library is an implementation of a file format standard defined external
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
+
+## Experimental API policy
+
+The `zarr.experimental` namespace contains features that are under active development and may change without notice. When contributing to or depending on experimental features, please keep the following in mind:
+
+### For contributors
+
+When adding a new feature to `zarr.experimental`:
+
+1. Place the feature under `src/zarr/experimental/` and export it from `src/zarr/experimental/__init__.py`.
+2. Document the feature in `docs/user-guide/experimental.md` and note clearly that it is experimental.
+3. Add a changelog entry categorized as `feature`.
+
+We aim to either **promote** or **remove** experimental features within **6 months** of their addition. To promote a feature to stable:
+
+1. Move it from `zarr.experimental` to the appropriate stable module.
+2. Keep a deprecated re-export in `zarr.experimental` for one minor release.
+3. Update the documentation to reflect the stable location.
+
+### For users
+
+Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
+
 ## Release procedure
 
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+### Preparing a release
+
+Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
+
+1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
+2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
+3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
+4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
+5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Benchmarks
 
