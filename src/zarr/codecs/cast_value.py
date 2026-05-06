@@ -54,20 +54,31 @@ class ScalarMap(TypedDict, total=False):
 
 
 # see https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value
-PERMITTED_DATA_TYPE_NAMES: Final[set[str]] = {
+CAST_VALUE_INT_DTYPES: Final[set[str]] = {
+    # signed
     "int2",
     "int4",
     "int8",
     "int16",
     "int32",
     "int64",
-    "int64uint2",
+    # unsigned
+    "uint2",
     "uint4",
     "uint8",
     "uint16",
     "uint32",
     "uint64",
-    "uint64float4_e2m1fn",
+}
+"""Integer dtype identifiers permitted as the source or target of `cast_value`.
+
+Membership in this set drives the `out_of_range="wrap"` rule, which the
+spec restricts to integral targets that use two's-complement representation
+for modular arithmetic.
+"""
+
+CAST_VALUE_FLOAT_DTYPES: Final[set[str]] = {
+    "float4_e2m1fn",
     "float6_e2m3fn",
     "float6_e3m2fn",
     "float8_e3m4",
@@ -82,6 +93,10 @@ PERMITTED_DATA_TYPE_NAMES: Final[set[str]] = {
     "float32",
     "float64",
 }
+"""Floating-point dtype identifiers permitted as the source or target of `cast_value`."""
+
+PERMITTED_DATA_TYPE_NAMES: Final[set[str]] = CAST_VALUE_INT_DTYPES | CAST_VALUE_FLOAT_DTYPES
+"""All dtype identifiers the `cast_value` codec is defined for."""
 
 
 def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
@@ -240,15 +255,22 @@ class CastValue(ArrayArrayCodec):
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
     ) -> None:
-        target_name = dtype.to_json(zarr_format=3)
-        if target_name not in PERMITTED_DATA_TYPE_NAMES:
+        # `dtype` is the source (the array's dtype); `self.dtype` is the
+        # cast target. The spec requires both to be permitted, and rules
+        # like `out_of_range="wrap"` apply to the target.
+        source_name = dtype.to_json(zarr_format=3)
+        target_name = self.dtype.to_json(zarr_format=3)
+        for role, name in (("source", source_name), ("target", target_name)):
+            if name not in PERMITTED_DATA_TYPE_NAMES:
+                raise ValueError(
+                    f"The cast_value codec only supports integer and floating-point data types. "
+                    f"Got {role} dtype {name}."
+                )
+        if self.out_of_range == "wrap" and target_name not in CAST_VALUE_INT_DTYPES:
             raise ValueError(
-                f"The cast_value codec only supports integer and floating-point data types. "
-                f"Got dtype {target_name}."
+                f"out_of_range='wrap' is only valid for integer target types. "
+                f"Got target dtype {target_name}."
             )
-        target_native = dtype.to_native_dtype()
-        if self.out_of_range == "wrap" and not np.issubdtype(target_native, np.integer):
-            raise ValueError("out_of_range='wrap' is only valid for integer target types.")
 
         if self.scalar_map is not None:
             self._validate_scalar_map(dtype, self.dtype)
