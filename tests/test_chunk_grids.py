@@ -136,6 +136,7 @@ def test_chunk_layout_nested() -> None:
         ExpectErr(input=(-2, 100), msg="Chunk size must be positive", exception_cls=ValueError),
         ExpectErr(input=([], 100), msg="must not be empty", exception_cls=ValueError),
         ExpectErr(input=([10, -1, 10], 100), msg="must be positive", exception_cls=ValueError),
+        ExpectErr(input=([10, 0, 10], 20), msg="must be positive", exception_cls=ValueError),
         ExpectErr(input=([10, 20], 100), msg="do not sum to span", exception_cls=ValueError),
         # Nested/RLE form for a single dim is rejected with offending indices.
         ExpectErr(
@@ -161,6 +162,7 @@ def test_chunk_layout_nested() -> None:
         "negative-uniform",
         "empty-list",
         "negative-element",
+        "zero-element",
         "wrong-sum",
         "rle-single-dim",
         "multiple-non-ints",
