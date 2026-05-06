@@ -16,6 +16,7 @@ from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
+from zarr.storage._common import make_store
 from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
 
@@ -79,7 +80,13 @@ def s3_base() -> Generator[None, None, None]:
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = botocore.session.Session()
-    return session.create_client("s3", endpoint_url=endpoint_url)
+
+    # Prevent IllegalLocationConstraintException by explicitly setting region to
+    # "us-east-1", which does not require configuring LocationConstraint during
+    # bucket creation. (It is, in fact, forbidden for that region.)  Necessary
+    # in the face of "ambient" AWS configuration in a development environment
+    # where the default region might be configured differently.
+    return session.create_client("s3", endpoint_url=endpoint_url, region_name="us-east-1")
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +106,14 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    s3 = s3fs.S3FileSystem(
+        anon=False,
+        client_kwargs={"endpoint_url": endpoint_url},
+        # Prevent "AssertionError: Session was never entered" from aiobotocore
+        # at end of test execution.  Using clear_instance_cache is insufficient,
+        # although still necessary.
+        skip_instance_cache=True,
+    )
     session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
@@ -544,3 +558,14 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
 
     store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
     _ = store_w.with_read_only()
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_memory_scheme() -> None:
+    """Test that the "memory" scheme creates a `MemoryFileSystem`-backed store"""
+    store = await make_store("memory://test")
+    assert isinstance(store, FsspecStore)
+    assert store.fs.protocol == "memory"
