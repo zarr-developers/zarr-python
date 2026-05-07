@@ -497,7 +497,7 @@ def test_invalid_shard_shape() -> None:
             {},
             shape=(16, 16),
             shards=(16, 16),
-            chunks=(9,),
+            chunks=(9, 9),
             dtype=np.dtype("uint8"),
             fill_value=0,
         )
