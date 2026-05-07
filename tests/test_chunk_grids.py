@@ -178,10 +178,18 @@ def test_normalize_chunks_1d_errors(case: ExpectErr[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(input=(None, (100,)), msg="does not accept None", exception_cls=ValueError),
+        ExpectErr(
+            input=(None, (100,)),
+            msg="None is not a valid chunk input",
+            exception_cls=ValueError,
+        ),
         # `True` is rejected explicitly because bool is a subclass of int — without
         # this guard, `chunks=True` would silently produce size-1 chunks.
-        ExpectErr(input=(True, (100,)), msg="does not accept True", exception_cls=ValueError),
+        ExpectErr(
+            input=(True, (100,)),
+            msg="True is not a valid chunk input",
+            exception_cls=ValueError,
+        ),
         ExpectErr(input=("foo", (100,)), msg="dimensions", exception_cls=ValueError),
         ExpectErr(input=((100, 10), (100,)), msg="dimensions", exception_cls=ValueError),
         ExpectErr(input=((10,), (100, 100)), msg="dimensions", exception_cls=ValueError),
