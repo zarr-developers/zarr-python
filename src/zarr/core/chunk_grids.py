@@ -779,7 +779,7 @@ def normalize_chunks_nd(
     """
     if chunks is None or chunks is True:
         raise ValueError(
-            f"normalize_chunks_nd does not accept {chunks!r}. Use guess_chunks() for auto-chunking."
+            f"{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints."
         )
 
     # handle no chunking
