@@ -1789,7 +1789,7 @@ async def test_from_array(
     assert result.fill_value == new_fill_value
     assert result.dtype == src_dtype
     assert result.attrs == new_attributes
-    assert result.chunks == new_chunks
+    assert result.chunks == new_chunks  # type: ignore[unreachable]
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=True)
