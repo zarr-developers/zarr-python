@@ -112,9 +112,7 @@ async def coalesced_get(
     # Build a uniform list of work items. Each work item is a list of
     # (input_index, ByteRequest | None) pairs. Merged groups have multiple
     # members (all RangeByteRequest); uncoalescable items have a single member.
-    work_items: list[list[tuple[int, ByteRequest | None]]] = [
-        [(idx, r) for idx, r in g] for g in groups
-    ]
+    work_items: list[list[tuple[int, ByteRequest | None]]] = groups
     work_items.extend([(idx, single)] for idx, single in uncoalescable)
 
     # Completion queue entries are either ("ok", payload), ("missing", None),
