@@ -9,6 +9,7 @@ import numpy.typing as npt
 import pytest
 
 import zarr
+from zarr.abc.store import SupportsSetRange
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
@@ -126,6 +127,71 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
 
         result = store._get_json_sync(key, prototype=buffer_cls)
         assert result == data
+
+    def test_supports_set_range(self, store: MemoryStore) -> None:
+        """MemoryStore should implement SupportsSetRange."""
+        assert isinstance(store, SupportsSetRange)
+
+    @pytest.mark.parametrize(
+        ("start", "patch", "expected"),
+        [
+            (0, b"XX", b"XXAAAAAAAA"),
+            (3, b"XX", b"AAAXXAAAAA"),
+            (8, b"XX", b"AAAAAAAAXX"),
+            (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+            (5, b"B", b"AAAAABAAAA"),
+            (0, b"BCDE", b"BCDEAAAAAA"),
+        ],
+        ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    )
+    async def test_set_range(
+        self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    ) -> None:
+        """set_range should overwrite bytes at the given offset."""
+        await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        result = await store.get("test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == expected
+
+    @pytest.mark.parametrize(
+        ("start", "patch", "expected"),
+        [
+            (0, b"XX", b"XXAAAAAAAA"),
+            (3, b"XX", b"AAAXXAAAAA"),
+            (8, b"XX", b"AAAAAAAAXX"),
+            (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+            (5, b"B", b"AAAAABAAAA"),
+            (0, b"BCDE", b"BCDEAAAAAA"),
+        ],
+        ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    )
+    def test_set_range_sync(
+        self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    ) -> None:
+        """set_range_sync should overwrite bytes at the given offset."""
+        store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == expected
+
+    async def test_set_range_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range auto-opens a closed store."""
+        assert not store_not_open._is_open
+        await self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store_not_open.set_range("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert getattr(store_not_open, "_is_open")  # noqa: B009
+        observed = await self.get(store_not_open, "test/key")
+        assert observed.to_bytes() == b"XXAAAAAAAA"
+
+    def test_set_range_sync_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range_sync auto-opens a closed store."""
+        assert not store_not_open._is_open
+        store_not_open._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        store_not_open.set_range_sync("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert getattr(store_not_open, "_is_open")  # noqa: B009
+        assert store_not_open._store_dict["test/key"].to_bytes() == b"XXAAAAAAAA"
 
 
 # TODO: fix this warning
