@@ -1,202 +1,471 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from zarr.core._transforms.domain import IndexDomain
+from tests.test_transforms.conftest import Expect, ExpectErr
+from zarr.core._transforms.domain import IndexDomain, _normalize_selection
 
 
-class TestIndexDomainConstruction:
-    def test_from_shape(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        assert d.inclusive_min == (0, 0)
-        assert d.exclusive_max == (10, 20)
-        assert d.ndim == 2
-        assert d.origin == (0, 0)
-        assert d.shape == (10, 20)
-
-    def test_from_shape_0d(self) -> None:
-        d = IndexDomain.from_shape(())
-        assert d.ndim == 0
-        assert d.shape == ()
-
-    def test_non_zero_origin(self) -> None:
-        d = IndexDomain(inclusive_min=(5, 10), exclusive_max=(15, 30))
-        assert d.origin == (5, 10)
-        assert d.shape == (10, 20)
-        assert d.ndim == 2
-
-    def test_validation_mismatched_lengths(self) -> None:
-        with pytest.raises(ValueError, match="same length"):
-            IndexDomain(inclusive_min=(0,), exclusive_max=(10, 20))
-
-    def test_validation_min_greater_than_max(self) -> None:
-        with pytest.raises(ValueError, match="inclusive_min must be <="):
-            IndexDomain(inclusive_min=(10,), exclusive_max=(5,))
-
-    def test_empty_domain(self) -> None:
-        d = IndexDomain(inclusive_min=(5,), exclusive_max=(5,))
-        assert d.shape == (0,)
-
-    def test_labels(self) -> None:
-        d = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20), labels=("x", "y"))
-        assert d.labels == ("x", "y")
-
-    def test_labels_none(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        assert d.labels is None
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input={"inclusive_min": (0, 0), "exclusive_max": (10, 20)},
+            expected={"ndim": 2, "origin": (0, 0), "shape": (10, 20), "labels": None},
+            id="2d-zero-origin",
+        ),
+        Expect(
+            input={"inclusive_min": (5, 10), "exclusive_max": (15, 30)},
+            expected={"ndim": 2, "origin": (5, 10), "shape": (10, 20), "labels": None},
+            id="2d-non-zero-origin",
+        ),
+        Expect(
+            input={"inclusive_min": (5,), "exclusive_max": (5,)},
+            expected={"ndim": 1, "origin": (5,), "shape": (0,), "labels": None},
+            id="1d-empty",
+        ),
+        Expect(
+            input={"inclusive_min": (), "exclusive_max": ()},
+            expected={"ndim": 0, "origin": (), "shape": (), "labels": None},
+            id="0d",
+        ),
+        Expect(
+            input={"inclusive_min": (0, 0), "exclusive_max": (10, 20), "labels": ("x", "y")},
+            expected={"ndim": 2, "origin": (0, 0), "shape": (10, 20), "labels": ("x", "y")},
+            id="2d-with-labels",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_construction_success(case: Expect[dict[str, Any], dict[str, Any]]) -> None:
+    """IndexDomain construction yields the expected shape, origin, ndim, and labels."""
+    d = IndexDomain(**case.input)
+    for prop, expected in case.expected.items():
+        assert getattr(d, prop) == expected
 
 
-class TestIndexDomainContains:
-    def test_contains_inside(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        assert d.contains((0, 0)) is True
-        assert d.contains((9, 19)) is True
-        assert d.contains((5, 10)) is True
-
-    def test_contains_outside(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        assert d.contains((10, 0)) is False
-        assert d.contains((-1, 0)) is False
-        assert d.contains((0, 20)) is False
-
-    def test_contains_non_zero_origin(self) -> None:
-        d = IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
-        assert d.contains((5,)) is True
-        assert d.contains((9,)) is True
-        assert d.contains((4,)) is False
-        assert d.contains((10,)) is False
-
-    def test_contains_wrong_ndim(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        assert d.contains((5,)) is False
-
-    def test_contains_domain_inside(self) -> None:
-        outer = IndexDomain.from_shape((10, 20))
-        inner = IndexDomain(inclusive_min=(2, 3), exclusive_max=(8, 15))
-        assert outer.contains_domain(inner) is True
-
-    def test_contains_domain_outside(self) -> None:
-        outer = IndexDomain.from_shape((10, 20))
-        inner = IndexDomain(inclusive_min=(2, 3), exclusive_max=(11, 15))
-        assert outer.contains_domain(inner) is False
-
-    def test_contains_domain_wrong_ndim(self) -> None:
-        outer = IndexDomain.from_shape((10, 20))
-        inner = IndexDomain.from_shape((5,))
-        assert outer.contains_domain(inner) is False
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input={"inclusive_min": (0,), "exclusive_max": (10, 20)},
+            msg="same length",
+            exception_cls=ValueError,
+            id="mismatched-min-max-lengths",
+        ),
+        ExpectErr(
+            input={"inclusive_min": (10,), "exclusive_max": (5,)},
+            msg="inclusive_min must be <=",
+            exception_cls=ValueError,
+            id="min-greater-than-max",
+        ),
+        ExpectErr(
+            input={"inclusive_min": (0, 0), "exclusive_max": (10, 20), "labels": ("x",)},
+            msg="labels must have the same length as dimensions",
+            exception_cls=ValueError,
+            id="labels-wrong-length",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_construction_errors(case: ExpectErr[dict[str, Any]]) -> None:
+    """IndexDomain construction with invalid inputs raises ValueError."""
+    with pytest.raises(case.exception_cls, match=case.msg):
+        IndexDomain(**case.input)
 
 
-class TestIndexDomainIntersect:
-    def test_overlapping(self) -> None:
-        a = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 10))
-        b = IndexDomain(inclusive_min=(5, 5), exclusive_max=(15, 15))
-        result = a.intersect(b)
-        assert result is not None
-        assert result.inclusive_min == (5, 5)
-        assert result.exclusive_max == (10, 10)
-
-    def test_disjoint(self) -> None:
-        a = IndexDomain(inclusive_min=(0,), exclusive_max=(5,))
-        b = IndexDomain(inclusive_min=(10,), exclusive_max=(15,))
-        assert a.intersect(b) is None
-
-    def test_touching_boundary(self) -> None:
-        a = IndexDomain(inclusive_min=(0,), exclusive_max=(5,))
-        b = IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
-        assert a.intersect(b) is None
-
-    def test_contained(self) -> None:
-        a = IndexDomain.from_shape((20,))
-        b = IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
-        result = a.intersect(b)
-        assert result is not None
-        assert result.inclusive_min == (5,)
-        assert result.exclusive_max == (10,)
-
-    def test_wrong_ndim(self) -> None:
-        a = IndexDomain.from_shape((10,))
-        b = IndexDomain.from_shape((10, 20))
-        with pytest.raises(ValueError, match="different ranks"):
-            a.intersect(b)
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(10, 20), expected=(2, (0, 0), (10, 20)), id="2d"),
+        Expect(input=(10,), expected=(1, (0,), (10,)), id="1d"),
+        Expect(input=(), expected=(0, (), ()), id="0d"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_from_shape_success(
+    case: Expect[tuple[int, ...], tuple[int, tuple[int, ...], tuple[int, ...]]],
+) -> None:
+    """IndexDomain.from_shape produces a zero-origin domain with the requested shape."""
+    d = IndexDomain.from_shape(case.input)
+    expected_ndim, expected_origin, expected_shape = case.expected
+    assert d.ndim == expected_ndim
+    assert d.origin == expected_origin
+    assert d.shape == expected_shape
 
 
-class TestIndexDomainTranslate:
-    def test_translate_positive(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        result = d.translate((5, 10))
-        assert result.inclusive_min == (5, 10)
-        assert result.exclusive_max == (15, 30)
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (0, 0)),
+            expected=True,
+            id="2d-corner-low",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (9, 19)),
+            expected=True,
+            id="2d-corner-high",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (5, 10)),
+            expected=True,
+            id="2d-interior",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (10, 0)),
+            expected=False,
+            id="2d-outside-high",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (-1, 0)),
+            expected=False,
+            id="2d-outside-low",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (5,)),
+            expected=False,
+            id="wrong-ndim",
+        ),
+        Expect(
+            input=(IndexDomain(inclusive_min=(5,), exclusive_max=(10,)), (5,)),
+            expected=True,
+            id="non-zero-origin-low",
+        ),
+        Expect(
+            input=(IndexDomain(inclusive_min=(5,), exclusive_max=(10,)), (4,)),
+            expected=False,
+            id="non-zero-origin-below",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_contains_success(case: Expect[tuple[IndexDomain, tuple[int, ...]], bool]) -> None:
+    """IndexDomain.contains returns True iff the index is within the domain."""
+    domain, index = case.input
+    assert domain.contains(index) is case.expected
 
-    def test_translate_negative(self) -> None:
-        d = IndexDomain(inclusive_min=(10, 20), exclusive_max=(30, 40))
-        result = d.translate((-10, -20))
-        assert result.inclusive_min == (0, 0)
-        assert result.exclusive_max == (20, 20)
 
-    def test_translate_wrong_length(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        with pytest.raises(ValueError, match="same length"):
-            d.translate((1, 2))
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(
+                IndexDomain.from_shape((10, 20)),
+                IndexDomain(inclusive_min=(2, 3), exclusive_max=(8, 15)),
+            ),
+            expected=True,
+            id="strict-subset",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), IndexDomain.from_shape((10, 20))),
+            expected=True,
+            id="equal-domains",
+        ),
+        Expect(
+            input=(
+                IndexDomain.from_shape((10, 20)),
+                IndexDomain(inclusive_min=(2, 3), exclusive_max=(11, 15)),
+            ),
+            expected=False,
+            id="extends-past-max",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), IndexDomain.from_shape((5,))),
+            expected=False,
+            id="wrong-ndim",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_contains_domain_success(case: Expect[tuple[IndexDomain, IndexDomain], bool]) -> None:
+    """IndexDomain.contains_domain returns True iff `other` is fully contained."""
+    outer, inner = case.input
+    assert outer.contains_domain(inner) is case.expected
 
 
-class TestIndexDomainNarrow:
-    def test_narrow_slice(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        result = d.narrow((slice(2, 8), slice(5, 15)))
-        assert result.inclusive_min == (2, 5)
-        assert result.exclusive_max == (8, 15)
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(
+                IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 10)),
+                IndexDomain(inclusive_min=(5, 5), exclusive_max=(15, 15)),
+            ),
+            expected=IndexDomain(inclusive_min=(5, 5), exclusive_max=(10, 10)),
+            id="overlapping-2d",
+        ),
+        Expect(
+            input=(
+                IndexDomain.from_shape((20,)),
+                IndexDomain(inclusive_min=(5,), exclusive_max=(10,)),
+            ),
+            expected=IndexDomain(inclusive_min=(5,), exclusive_max=(10,)),
+            id="contained",
+        ),
+        Expect(
+            input=(
+                IndexDomain(inclusive_min=(0,), exclusive_max=(5,)),
+                IndexDomain(inclusive_min=(10,), exclusive_max=(15,)),
+            ),
+            expected=None,
+            id="disjoint",
+        ),
+        Expect(
+            input=(
+                IndexDomain(inclusive_min=(0,), exclusive_max=(5,)),
+                IndexDomain(inclusive_min=(5,), exclusive_max=(10,)),
+            ),
+            expected=None,
+            id="touching-boundary",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_intersect_success(
+    case: Expect[tuple[IndexDomain, IndexDomain], IndexDomain | None],
+) -> None:
+    """IndexDomain.intersect returns the intersection, or None when disjoint."""
+    a, b = case.input
+    assert a.intersect(b) == case.expected
 
-    def test_narrow_int(self) -> None:
-        d = IndexDomain.from_shape((10, 20))
-        result = d.narrow((3, slice(None)))
-        assert result.inclusive_min == (3, 0)
-        assert result.exclusive_max == (4, 20)
 
-    def test_narrow_ellipsis(self) -> None:
-        d = IndexDomain.from_shape((10, 20, 30))
-        result = d.narrow((slice(1, 5), ...))
-        assert result.inclusive_min == (1, 0, 0)
-        assert result.exclusive_max == (5, 20, 30)
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexDomain.from_shape((10,)), IndexDomain.from_shape((10, 20))),
+            msg="different ranks",
+            exception_cls=ValueError,
+            id="rank-mismatch",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_intersect_errors(case: ExpectErr[tuple[IndexDomain, IndexDomain]]) -> None:
+    """IndexDomain.intersect raises ValueError on rank mismatch."""
+    a, b = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        a.intersect(b)
 
-    def test_narrow_slice_none(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        result = d.narrow((slice(None),))
-        assert result == d
 
-    def test_narrow_non_zero_origin(self) -> None:
-        d = IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
-        result = d.narrow((slice(12, 18),))
-        assert result.inclusive_min == (12,)
-        assert result.exclusive_max == (18,)
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (5, 10)),
+            expected=IndexDomain(inclusive_min=(5, 10), exclusive_max=(15, 30)),
+            id="positive-offset",
+        ),
+        Expect(
+            input=(IndexDomain(inclusive_min=(10, 20), exclusive_max=(30, 40)), (-10, -20)),
+            expected=IndexDomain(inclusive_min=(0, 0), exclusive_max=(20, 20)),
+            id="negative-offset",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10,)), (0,)),
+            expected=IndexDomain.from_shape((10,)),
+            id="zero-offset",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_translate_success(
+    case: Expect[tuple[IndexDomain, tuple[int, ...]], IndexDomain],
+) -> None:
+    """IndexDomain.translate shifts every coordinate by the offset."""
+    domain, offset = case.input
+    assert domain.translate(offset) == case.expected
 
-    def test_narrow_int_out_of_bounds(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.narrow((10,))
 
-    def test_narrow_int_below_origin(self) -> None:
-        d = IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.narrow((4,))
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexDomain.from_shape((10,)), (1, 2)),
+            msg="same length",
+            exception_cls=ValueError,
+            id="offset-too-long",
+        ),
+        ExpectErr(
+            input=(IndexDomain.from_shape((10, 20)), (1,)),
+            msg="same length",
+            exception_cls=ValueError,
+            id="offset-too-short",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_translate_errors(case: ExpectErr[tuple[IndexDomain, tuple[int, ...]]]) -> None:
+    """IndexDomain.translate raises when offset length differs from ndim."""
+    domain, offset = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        domain.translate(offset)
 
-    def test_narrow_clamps_to_domain(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        result = d.narrow((slice(-5, 100),))
-        assert result.inclusive_min == (0,)
-        assert result.exclusive_max == (10,)
 
-    def test_narrow_bare_slice(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        result = d.narrow(slice(2, 8))
-        assert result.inclusive_min == (2,)
-        assert result.exclusive_max == (8,)
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (slice(2, 8), slice(5, 15))),
+            expected=IndexDomain(inclusive_min=(2, 5), exclusive_max=(8, 15)),
+            id="2d-slices",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20)), (3, slice(None))),
+            expected=IndexDomain(inclusive_min=(3, 0), exclusive_max=(4, 20)),
+            id="int-and-slice",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10, 20, 30)), (slice(1, 5), ...)),
+            expected=IndexDomain(inclusive_min=(1, 0, 0), exclusive_max=(5, 20, 30)),
+            id="ellipsis-fills-trailing",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10,)), (slice(None),)),
+            expected=IndexDomain.from_shape((10,)),
+            id="slice-none-is-noop",
+        ),
+        Expect(
+            input=(IndexDomain(inclusive_min=(10,), exclusive_max=(20,)), (slice(12, 18),)),
+            expected=IndexDomain(inclusive_min=(12,), exclusive_max=(18,)),
+            id="non-zero-origin",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10,)), (slice(-5, 100),)),
+            expected=IndexDomain(inclusive_min=(0,), exclusive_max=(10,)),
+            id="clamps-to-domain",
+        ),
+        Expect(
+            input=(IndexDomain.from_shape((10,)), slice(2, 8)),
+            expected=IndexDomain(inclusive_min=(2,), exclusive_max=(8,)),
+            id="bare-slice-is-wrapped",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_narrow_success(case: Expect[tuple[IndexDomain, Any], IndexDomain]) -> None:
+    """IndexDomain.narrow applies basic indexing to produce a sub-domain."""
+    domain, selection = case.input
+    assert domain.narrow(selection) == case.expected
 
-    def test_narrow_too_many_indices(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        with pytest.raises(IndexError, match="too many indices"):
-            d.narrow((1, 2))
 
-    def test_narrow_step_not_one(self) -> None:
-        d = IndexDomain.from_shape((10,))
-        with pytest.raises(IndexError, match="step=1"):
-            d.narrow((slice(0, 10, 2),))
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexDomain.from_shape((10,)), (10,)),
+            msg="out of bounds",
+            exception_cls=IndexError,
+            id="int-at-upper-bound",
+        ),
+        ExpectErr(
+            input=(IndexDomain(inclusive_min=(5,), exclusive_max=(10,)), (4,)),
+            msg="out of bounds",
+            exception_cls=IndexError,
+            id="int-below-origin",
+        ),
+        ExpectErr(
+            input=(IndexDomain.from_shape((10,)), (1, 2)),
+            msg="too many indices",
+            exception_cls=IndexError,
+            id="too-many-indices",
+        ),
+        ExpectErr(
+            input=(IndexDomain.from_shape((10,)), (slice(0, 10, 2),)),
+            msg="step=1",
+            exception_cls=IndexError,
+            id="non-unit-step",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_narrow_errors(case: ExpectErr[tuple[IndexDomain, Any]]) -> None:
+    """IndexDomain.narrow raises IndexError on invalid selections."""
+    domain, selection = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        domain.narrow(selection)
+
+
+# ---------------------------------------------------------------------------
+# Direct tests for the non-trivial private helper _normalize_selection.
+# Public callers (`IndexDomain.narrow` and `selection_to_transform`) exercise
+# most branches transitively, but the double-ellipsis guard only triggers on
+# inputs no public caller currently constructs. Test it directly.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=((slice(2, 8), slice(5, 15)), 2),
+            expected=(slice(2, 8), slice(5, 15)),
+            id="explicit-slices",
+        ),
+        Expect(
+            input=((3, slice(None)), 2),
+            expected=(3, slice(None)),
+            id="int-and-slice",
+        ),
+        Expect(
+            input=((..., slice(0, 5)), 3),
+            expected=(slice(None), slice(None), slice(0, 5)),
+            id="leading-ellipsis-fills",
+        ),
+        Expect(
+            input=((slice(0, 5), ...), 3),
+            expected=(slice(0, 5), slice(None), slice(None)),
+            id="trailing-ellipsis-fills",
+        ),
+        Expect(
+            input=((slice(2, 8),), 3),
+            expected=(slice(2, 8), slice(None), slice(None)),
+            id="implicit-trailing-fills",
+        ),
+        Expect(
+            input=(slice(2, 8), 1),
+            expected=(slice(2, 8),),
+            id="bare-slice-is-wrapped",
+        ),
+        Expect(
+            input=(5, 1),
+            expected=(5,),
+            id="bare-int-is-wrapped",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_normalize_selection_success(
+    case: Expect[tuple[Any, int], tuple[int | slice, ...]],
+) -> None:
+    """_normalize_selection produces a length-ndim tuple of ints/slices."""
+    selection, ndim = case.input
+    assert _normalize_selection(selection, ndim) == case.expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=((..., ..., slice(0, 5)), 3),
+            msg="single ellipsis",
+            exception_cls=IndexError,
+            id="double-ellipsis",
+        ),
+        ExpectErr(
+            input=((1, 2, 3), 2),
+            msg="too many indices",
+            exception_cls=IndexError,
+            id="too-many-indices",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_normalize_selection_errors(case: ExpectErr[tuple[Any, int]]) -> None:
+    """_normalize_selection rejects double ellipsis and over-long selections."""
+    selection, ndim = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        _normalize_selection(selection, ndim)
