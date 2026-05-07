@@ -106,6 +106,14 @@ class _ShardingByteGetter(ByteGetter):
         start, stop = _normalize_byte_range_index(value, byte_range)
         return value[start:stop]
 
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        byte_ranges: Iterable[ByteRequest | None],
+    ) -> list[Buffer | None]:
+        # Concurrency not needed, each .get() is a slice of an in-memory buffer.
+        return [await self.get(prototype, byte_range) for byte_range in byte_ranges]
+
 
 @dataclass(frozen=True)
 class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
@@ -485,7 +493,7 @@ class ShardingCodec(
         all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
 
         # reading bytes of all requested chunks
-        shard_dict: ShardMapping = {}
+        shard_dict_maybe: ShardMapping | None
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(
@@ -493,24 +501,18 @@ class ShardingCodec(
                 prototype=chunk_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
-            if shard_dict_maybe is None:
-                return None
-            shard_dict = shard_dict_maybe
         else:
             # read some chunks within the shard
-            shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
-            if shard_index is None:
-                return None
-            shard_dict = {}
-            for chunk_coords in all_chunk_coords:
-                chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
-                if chunk_byte_slice:
-                    chunk_bytes = await byte_getter.get(
-                        prototype=chunk_spec.prototype,
-                        byte_range=RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
-                    )
-                    if chunk_bytes:
-                        shard_dict[chunk_coords] = chunk_bytes
+            shard_dict_maybe = await self._load_partial_shard_maybe(
+                byte_getter,
+                chunk_spec.prototype,
+                chunks_per_shard,
+                all_chunk_coords,
+            )
+
+        if shard_dict_maybe is None:
+            return None
+        shard_dict = shard_dict_maybe
 
         # decoding chunks and writing them into the output buffer
         await self.codec_pipeline.read(
@@ -796,6 +798,43 @@ class ShardingCodec(
             if shard_bytes
             else None
         )
+
+    async def _load_partial_shard_maybe(
+        self,
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+        chunks_per_shard: tuple[int, ...],
+        all_chunk_coords: set[tuple[int, ...]],
+    ) -> ShardMapping | None:
+        """
+        Read chunks from `byte_getter` for the case where the read is less than a full shard.
+        Returns a mapping of chunk coordinates to bytes or None.
+        """
+        shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
+        if shard_index is None:
+            return None  # shard index read failure, the ByteGetter returned None
+
+        # Build parallel lists of chunk coordinates and byte ranges for non-empty chunks
+        chunk_coords_list: list[tuple[int, ...]] = []
+        byte_ranges: list[RangeByteRequest] = []
+        for chunk_coords in all_chunk_coords:
+            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
+            if chunk_byte_slice is not None:
+                chunk_coords_list.append(chunk_coords)
+                byte_ranges.append(RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+
+        if not byte_ranges:
+            return {}
+
+        # Fetch all chunk byte ranges via get_partial_values
+        buffers = await byte_getter.get_partial_values(prototype, byte_ranges)
+
+        shard_dict: ShardMutableMapping = {}
+        for chunk_coords, buf in zip(chunk_coords_list, buffers, strict=True):
+            if buf is not None:
+                shard_dict[chunk_coords] = buf
+
+        return shard_dict
 
     def compute_encoded_size(self, input_byte_length: int, shard_spec: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)

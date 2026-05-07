@@ -33,6 +33,8 @@ else:
     FSMap = None
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from zarr.core.buffer import BufferPrototype
 
 
@@ -160,6 +162,30 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        byte_ranges: Iterable[ByteRequest | None],
+    ) -> list[Buffer | None]:
+        """
+        Read multiple byte ranges from the store.
+
+        Parameters
+        ----------
+        prototype : BufferPrototype
+            The buffer prototype to use when reading the bytes.
+        byte_ranges : Iterable[ByteRequest | None]
+            The byte ranges to read.
+
+        Returns
+        -------
+        list of Buffer or None
+            The read bytes for each range, or None for missing keys.
+        """
+        return await self.store.get_partial_values(
+            prototype, [(self.path, byte_range) for byte_range in byte_ranges]
+        )
 
     async def set(self, value: Buffer) -> None:
         """
