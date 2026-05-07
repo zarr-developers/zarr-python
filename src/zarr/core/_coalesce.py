@@ -2,13 +2,71 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Literal, NamedTuple, TypedDict
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Sequence
 
-    from zarr.abc.store import ByteRequest
+    from zarr.abc.store import ByteRequest, RangeByteRequest
     from zarr.core.buffer import Buffer
+
+    _CompletionEntry = (
+        tuple[Literal["ok"], Sequence[tuple[int, Buffer | None]]]
+        | tuple[Literal["missing"], None]
+        | tuple[Literal["error"], BaseException]
+    )
+
+
+class _WorkerCtx(NamedTuple):
+    """Shared state passed to the per-task worker coroutines.
+
+    Bundling these lets the workers declare their dependencies as one
+    parameter instead of capturing them implicitly via closure.
+    """
+
+    fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]]
+    semaphore: asyncio.Semaphore
+    queue: asyncio.Queue[_CompletionEntry]
+
+
+async def _fetch_single(ctx: _WorkerCtx, idx: int, req: ByteRequest | None) -> None:
+    try:
+        async with ctx.semaphore:
+            buf = await ctx.fetch(req)
+        if buf is None:
+            await ctx.queue.put(("missing", None))
+            return
+        await ctx.queue.put(("ok", ((idx, buf),)))
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await ctx.queue.put(("error", exc))
+
+
+async def _fetch_group(ctx: _WorkerCtx, members: list[tuple[int, RangeByteRequest]]) -> None:
+    """Fetch one merged byte range and slice it back into per-input buffers.
+
+    ``members`` must already be sorted by ``start``; callers in this module
+    build it from the sorted mergeable list.
+    """
+    from zarr.abc.store import RangeByteRequest
+
+    try:
+        start = members[0][1].start
+        end = max(r.end for _, r in members)
+        async with ctx.semaphore:
+            big = await ctx.fetch(RangeByteRequest(start, end))
+        if big is None:
+            await ctx.queue.put(("missing", None))
+            return
+        sliced: list[tuple[int, Buffer | None]] = [
+            (idx, big[r.start - start : r.end - start]) for idx, r in members
+        ]
+        await ctx.queue.put(("ok", tuple(sliced)))
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await ctx.queue.put(("error", exc))
 
 
 class CoalesceOptions(TypedDict):
@@ -89,84 +147,44 @@ async def coalesced_get(
         (i, r) for i, r in indexed if not isinstance(r, RangeByteRequest)
     ]
 
-    # Sort mergeables by start offset, then merge.
+    # Sort mergeables by start offset, then merge. Track running start/end of the
+    # current group so each merge step is O(1) instead of O(group size).
     mergeable.sort(key=lambda pair: pair[1].start)
-    iter_mergeable = iter(mergeable)
-    groups: list[list[tuple[int, RangeByteRequest]]] = [[next(iter_mergeable)]]
-    for pair in iter_mergeable:
+    groups: list[list[tuple[int, RangeByteRequest]]] = []
+    group_start = 0
+    group_end = 0
+    for pair in mergeable:
         _i, r = pair
-        last = groups[-1]
-        last_end = max(x[1].end for x in last)
-        gap = r.start - last_end
-        merged_start = min(x[1].start for x in last)
-        prospective_end = max(last_end, r.end)
-        prospective_size = prospective_end - merged_start
-        if gap <= options["max_gap_bytes"] and prospective_size <= options["max_coalesced_bytes"]:
-            last.append(pair)
-            continue
+        if groups and r.start - group_end <= options["max_gap_bytes"]:
+            prospective_end = max(group_end, r.end)
+            if prospective_end - group_start <= options["max_coalesced_bytes"]:
+                groups[-1].append(pair)
+                group_end = prospective_end
+                continue
         groups.append([pair])
+        group_start = r.start
+        group_end = r.end
 
-    # Build a uniform list of work items. Each work item is a list of
-    # (input_index, ByteRequest | None) pairs. Merged groups have multiple
-    # members (all RangeByteRequest); uncoalescable items have a single member.
-    work_items: list[list[tuple[int, ByteRequest | None]]] = groups  # type: ignore[assignment]
-    work_items.extend([(idx, single)] for idx, single in uncoalescable)
+    ctx = _WorkerCtx(
+        fetch=fetch,
+        semaphore=asyncio.Semaphore(options["max_concurrency"]),
+        queue=asyncio.Queue(),
+    )
 
-    # Completion queue entries are either ("ok", payload), ("missing", None),
-    # or ("error", exception). Kept as Any internally to avoid dragging
-    # Sequence out of TYPE_CHECKING.
-    completion_queue: asyncio.Queue[
-        tuple[str, Sequence[tuple[int, Buffer | None]] | BaseException | None]
-    ] = asyncio.Queue()
-    semaphore = asyncio.Semaphore(options["max_concurrency"])
-
-    async def run_one(members: list[tuple[int, ByteRequest | None]]) -> None:
-        try:
-            async with semaphore:
-                if len(members) == 1 and not isinstance(members[0][1], RangeByteRequest):
-                    # Uncoalescable single fetch.
-                    idx, single = members[0]
-                    buf = await fetch(single)
-                    if buf is None:
-                        await completion_queue.put(("missing", None))
-                        return
-                    await completion_queue.put(("ok", ((idx, buf),)))
-                    return
-                # Merged group path: all members are RangeByteRequest.
-                assert all(isinstance(r, RangeByteRequest) for _, r in members)
-                starts: list[int] = [r.start for _, r in members]  # type: ignore[union-attr]
-                ends: list[int] = [r.end for _, r in members]  # type: ignore[union-attr]
-                group_start = min(starts)
-                group_end = max(ends)
-                big = await fetch(RangeByteRequest(group_start, group_end))
-                if big is None:
-                    await completion_queue.put(("missing", None))
-                    return
-                ordered = sorted(members, key=lambda pair: pair[1].start)  # type: ignore[union-attr]
-                sliced: list[tuple[int, Buffer | None]] = [
-                    (idx, big[r.start - group_start : r.end - group_start])  # type: ignore[union-attr]
-                    for idx, r in ordered
-                ]
-                await completion_queue.put(("ok", tuple(sliced)))
-        except asyncio.CancelledError:
-            # Cancellation is expected when we stop scheduling on a missing key.
-            raise
-        except BaseException as exc:
-            await completion_queue.put(("error", exc))
-
-    # Launch all work items as tasks. The semaphore bounds actual concurrency.
+    # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
     tasks: set[asyncio.Task[None]] = set()
-    for item in work_items:
-        tasks.add(asyncio.create_task(run_one(item)))
+    for group in groups:
+        tasks.add(asyncio.create_task(_fetch_group(ctx, group)))
+    for idx, single in uncoalescable:
+        tasks.add(asyncio.create_task(_fetch_single(ctx, idx, single)))
+    total_work = len(tasks)
 
     try:
         pending_error: BaseException | None = None
-        for _ in range(len(work_items)):
-            kind, payload = await completion_queue.get()
-            if kind == "ok":
-                assert payload is not None
-                assert not isinstance(payload, BaseException)
-                yield payload
+        for _ in range(total_work):
+            entry = await ctx.queue.get()
+            if entry[0] == "ok":
+                yield entry[1]
                 continue
             # "missing" or "error": stop scheduling and cancel pending work.
             # Late arrivals that raced to enqueue before cancellation took
@@ -175,9 +193,8 @@ async def coalesced_get(
             for t in tasks:
                 if not t.done():
                     t.cancel()
-            if kind == "error":
-                assert isinstance(payload, BaseException)
-                pending_error = payload
+            if entry[0] == "error":
+                pending_error = entry[1]
             break
         if pending_error is not None:
             raise pending_error
