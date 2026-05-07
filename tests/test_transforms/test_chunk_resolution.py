@@ -98,7 +98,7 @@ def test_iter_chunk_transforms_array_map_lists_chunks_for_array_entries() -> Non
     idx = np.array([5, 15, 25], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=idx),),
+        output=(ArrayMap(index_array=idx, input_dimensions=(0,)),),
     )
     results = list(iter_chunk_transforms(t, _grid_1d(10, 30)))
     coords_list = [r[0] for r in results]
@@ -203,7 +203,7 @@ def test_sub_transform_to_selections_array_map_no_offset() -> None:
     arr = np.array([1, 5, 9], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=arr, offset=0, stride=1),),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,), offset=0, stride=1),),
     )
     chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
     assert isinstance(chunk_sel[0], np.ndarray)
@@ -218,7 +218,7 @@ def test_sub_transform_to_selections_array_map_with_offset_stride() -> None:
     arr = np.array([0, 1, 2], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=arr, offset=10, stride=5),),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,), offset=10, stride=5),),
     )
     chunk_sel, _out_sel, drop_axes = sub_transform_to_selections(t)
     assert isinstance(chunk_sel[0], np.ndarray)
@@ -232,7 +232,7 @@ def test_sub_transform_to_selections_orthogonal_array_with_out_indices() -> None
     arr = np.array([1, 5, 9], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=arr),),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,)),),
     )
     out_indices = np.array([0, 2], dtype=np.intp)
     _chunk_sel, out_sel, _drop_axes = sub_transform_to_selections(t, out_indices)
@@ -247,8 +247,8 @@ def test_sub_transform_to_selections_vectorized_with_out_indices() -> None:
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
         output=(
-            ArrayMap(index_array=np.array([1, 5, 9], dtype=np.intp)),
-            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp)),
+            ArrayMap(index_array=np.array([1, 5, 9], dtype=np.intp), input_dimensions=(0,)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp), input_dimensions=(0,)),
         ),
     )
     out_indices = np.array([0, 1], dtype=np.intp)

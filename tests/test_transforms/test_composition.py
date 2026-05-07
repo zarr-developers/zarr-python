@@ -34,14 +34,14 @@ _dimension_outer_0_5_2 = IndexTransform(
 _array_outer_arr = np.array([0, 2, 4], dtype=np.intp)
 _array_outer = IndexTransform(
     domain=IndexDomain.from_shape((3,)),
-    output=(ArrayMap(index_array=_array_outer_arr, offset=5, stride=2),),
+    output=(ArrayMap(index_array=_array_outer_arr, input_dimensions=(0,), offset=5, stride=2),),
 )
 
 # Inner = ArrayMap with various outers.
 _array_inner_arr = np.array([10, 20, 30], dtype=np.intp)
 _array_inner = IndexTransform(
     domain=IndexDomain.from_shape((3,)),
-    output=(ArrayMap(index_array=_array_inner_arr, offset=0, stride=1),),
+    output=(ArrayMap(index_array=_array_inner_arr, input_dimensions=(0,), offset=0, stride=1),),
 )
 _constant_outer_1 = IndexTransform(
     domain=IndexDomain.from_shape((5,)),
@@ -49,7 +49,14 @@ _constant_outer_1 = IndexTransform(
 )
 _array_outer_for_array_inner = IndexTransform(
     domain=IndexDomain.from_shape((3,)),
-    output=(ArrayMap(index_array=np.array([0, 2, 1], dtype=np.intp), offset=0, stride=1),),
+    output=(
+        ArrayMap(
+            index_array=np.array([0, 2, 1], dtype=np.intp),
+            input_dimensions=(0,),
+            offset=0,
+            stride=1,
+        ),
+    ),
 )
 
 
@@ -203,7 +210,8 @@ def test_compose_chains_associatively() -> None:
                     domain=IndexDomain.from_shape((3, 2)),
                     output=(
                         ArrayMap(
-                            index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp)
+                            index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp),
+                            input_dimensions=(0, 1),
                         ),
                     ),
                 ),

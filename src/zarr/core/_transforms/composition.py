@@ -64,6 +64,7 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     if isinstance(outer_map, ArrayMap):
         return ArrayMap(
             index_array=outer_map.index_array,
+            input_dimensions=outer_map.input_dimensions,
             offset=offset_i + stride_i * outer_map.offset,
             stride=stride_i * outer_map.stride,
         )
@@ -74,39 +75,62 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
 def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap:
     """Compose when inner is an ArrayMap.
 
-    storage = offset_i + stride_i * arr_i[intermediate]
-    We need to evaluate arr_i at the intermediate coordinates produced by outer.
+    storage = offset_i + stride_i * arr_i[intermediate[input_dimensions[0]],
+                                          intermediate[input_dimensions[1]], ...]
+
+    For each axis k of arr_i, the corresponding intermediate dim is
+    inner_map.input_dimensions[k] = d. We need to evaluate arr_i over the
+    product of `outer.output[d]` for each such d.
+
+    All-constant outer: collapse to a single ConstantMap.
+
+    Single 1-D inner array, single outer output: evaluate arr_i along the
+    one outer output's parameterization.
     """
     arr_i = inner_map.index_array
     offset_i = inner_map.offset
     stride_i = inner_map.stride
+    in_dims_i = inner_map.input_dimensions
 
-    # Check if all outer outputs are constant
-    all_constant = all(isinstance(m, ConstantMap) for m in outer.output)
-
-    if all_constant:
-        # Evaluate arr_i at the single constant point
-        idx = tuple(m.offset for m in outer.output if isinstance(m, ConstantMap))
+    # All-constant outer: arr_i is evaluated at a single fixed point.
+    if all(isinstance(m, ConstantMap) for m in outer.output):
+        idx = tuple(outer.output[d].offset for d in in_dims_i)
         value = int(arr_i[idx])
         return ConstantMap(offset=offset_i + stride_i * value)
 
-    # For 1D inner array with a single outer output (simple case)
-    if arr_i.ndim == 1 and len(outer.output) == 1:
-        outer_map = outer.output[0]
+    # 1-D inner array, single referenced outer output.
+    if len(in_dims_i) == 1:
+        dim_i = in_dims_i[0]
+        outer_map = outer.output[dim_i]
 
         if isinstance(outer_map, DimensionMap):
-            dim_size = outer.domain.shape[outer_map.input_dimension]
-            user_indices = np.arange(dim_size, dtype=np.intp)
+            # Evaluate arr_i at the outer DimensionMap's range.
+            input_d = outer_map.input_dimension
+            input_lo = outer.domain.inclusive_min[input_d]
+            input_hi = outer.domain.exclusive_max[input_d]
+            user_indices = np.arange(input_lo, input_hi, dtype=np.intp)
             intermediate_vals = outer_map.offset + outer_map.stride * user_indices
             new_arr = arr_i[intermediate_vals]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
+            return ArrayMap(
+                index_array=new_arr,
+                input_dimensions=(input_d,),
+                offset=offset_i,
+                stride=stride_i,
+            )
 
         if isinstance(outer_map, ArrayMap):
+            # Evaluate arr_i at outer's array values; new array inherits outer's
+            # parameterization.
             intermediate_vals = outer_map.offset + outer_map.stride * outer_map.index_array
             new_arr = arr_i[intermediate_vals]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
+            return ArrayMap(
+                index_array=new_arr,
+                input_dimensions=outer_map.input_dimensions,
+                offset=offset_i,
+                stride=stride_i,
+            )
 
-    # General multi-dim case: not yet implemented
+    # General multi-dim case: not yet implemented.
     raise NotImplementedError(
         "Composing a multi-dimensional inner array map with non-constant outer maps "
         "is not yet supported."

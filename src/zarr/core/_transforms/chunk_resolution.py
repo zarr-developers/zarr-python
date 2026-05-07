@@ -180,11 +180,17 @@ def sub_transform_to_selections(
     # Build out_sel: one entry per non-dropped output dim.
     out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
 
-    # Vectorized: multiple correlated ArrayMaps share one scatter index
-    is_vectorized = (
-        out_indices is not None
-        and sum(1 for m in sub_transform.output if isinstance(m, ArrayMap)) >= 2
-    )
+    # Vectorized: 2+ ArrayMaps that share at least one input dimension are
+    # correlated; they all index into a single shared scatter array.
+    is_vectorized = False
+    if out_indices is not None:
+        seen_input_dims: set[int] = set()
+        for m in sub_transform.output:
+            if isinstance(m, ArrayMap):
+                if seen_input_dims & set(m.input_dimensions):
+                    is_vectorized = True
+                    break
+                seen_input_dims.update(m.input_dimensions)
 
     if is_vectorized:
         assert out_indices is not None

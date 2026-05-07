@@ -34,18 +34,28 @@ from zarr.core._transforms.output_map import ArrayMap, ConstantMap, DimensionMap
             id="DimensionMap-defaults",
         ),
         Expect(
-            input=ArrayMap(index_array=np.array([1, 3, 5], dtype=np.intp), offset=10, stride=2),
+            input=ArrayMap(
+                index_array=np.array([1, 3, 5], dtype=np.intp),
+                input_dimensions=(0,),
+                offset=10,
+                stride=2,
+            ),
             expected={
                 "index_array": np.array([1, 3, 5], dtype=np.intp),
+                "input_dimensions": (0,),
                 "offset": 10,
                 "stride": 2,
             },
             id="ArrayMap-all-fields",
         ),
         Expect(
-            input=ArrayMap(index_array=np.array([0, 1], dtype=np.intp)),
+            input=ArrayMap(
+                index_array=np.array([0, 1], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
             expected={
                 "index_array": np.array([0, 1], dtype=np.intp),
+                "input_dimensions": (0,),
                 "offset": 0,
                 "stride": 1,
             },
@@ -81,7 +91,11 @@ def test_construction_success(case: Expect[Any, dict[str, Any]]) -> None:
             id="DimensionMap-frozen",
         ),
         ExpectErr(
-            input=(ArrayMap(index_array=np.array([0], dtype=np.intp)), "offset", 1),
+            input=(
+                ArrayMap(index_array=np.array([0], dtype=np.intp), input_dimensions=(0,)),
+                "offset",
+                1,
+            ),
             msg="cannot assign to field 'offset'",
             exception_cls=FrozenInstanceError,
             id="ArrayMap-frozen",

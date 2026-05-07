@@ -64,11 +64,29 @@ class IndexTransform:
                         f"output[{i}].input_dimension = {m.input_dimension} "
                         f"is out of range for input rank {self.domain.ndim}"
                     )
-            elif isinstance(m, ArrayMap) and m.index_array.ndim > self.domain.ndim:
-                raise ValueError(
-                    f"output[{i}].index_array has {m.index_array.ndim} dims "
-                    f"but input domain has {self.domain.ndim} dims"
-                )
+            elif isinstance(m, ArrayMap):
+                # Every input dim referenced must be in range.
+                for d in m.input_dimensions:
+                    if d < 0 or d >= self.domain.ndim:
+                        raise ValueError(
+                            f"output[{i}].input_dimensions = {m.input_dimensions} "
+                            f"references dimension {d}, out of range for input "
+                            f"rank {self.domain.ndim}"
+                        )
+                # No duplicates allowed.
+                if len(set(m.input_dimensions)) != len(m.input_dimensions):
+                    raise ValueError(
+                        f"output[{i}].input_dimensions = {m.input_dimensions} "
+                        f"contains duplicate dimensions"
+                    )
+                # index_array.shape must match the extents on input_dimensions.
+                expected_shape = tuple(self.domain.shape[d] for d in m.input_dimensions)
+                if m.index_array.shape != expected_shape:
+                    raise ValueError(
+                        f"output[{i}].index_array.shape = {m.index_array.shape} "
+                        f"does not match expected shape {expected_shape} for "
+                        f"input_dimensions={m.input_dimensions}"
+                    )
 
     @property
     def input_rank(self) -> int:
@@ -128,7 +146,10 @@ class IndexTransform:
             elif isinstance(m, DimensionMap):
                 maps.append(f"out[{i}] = {m.offset} + {m.stride} * in[{m.input_dimension}]")
             elif isinstance(m, ArrayMap):
-                maps.append(f"out[{i}] = {m.offset} + {m.stride} * arr{m.index_array.shape}[in]")
+                in_dims = ",".join(f"in[{d}]" for d in m.input_dimensions)
+                maps.append(
+                    f"out[{i}] = {m.offset} + {m.stride} * arr{m.index_array.shape}[{in_dims}]"
+                )
         maps_str = ", ".join(maps)
         return f"IndexTransform(domain={self.domain}, {maps_str})"
 
@@ -165,6 +186,7 @@ class IndexTransform:
                 new_output.append(
                     ArrayMap(
                         index_array=m.index_array,
+                        input_dimensions=m.input_dimensions,
                         offset=m.offset + s,
                         stride=m.stride,
                     )
@@ -206,10 +228,21 @@ def _intersect(
             f"transform output rank ({transform.output_rank})"
         )
 
-    # Check if we have correlated ArrayMaps (vectorized)
-    array_dims = [i for i, m in enumerate(transform.output) if isinstance(m, ArrayMap)]
-    if len(array_dims) >= 2:
-        return _intersect_vectorized(transform, output_domain, array_dims)
+    # Check if we have correlated ArrayMaps (vectorized).
+    # Two ArrayMaps are correlated iff they share at least one input dimension.
+    array_output_dims = [i for i, m in enumerate(transform.output) if isinstance(m, ArrayMap)]
+    if len(array_output_dims) >= 2:
+        seen_input_dims: set[int] = set()
+        is_vectorized = False
+        for out_d in array_output_dims:
+            m = transform.output[out_d]
+            assert isinstance(m, ArrayMap)
+            if seen_input_dims & set(m.input_dimensions):
+                is_vectorized = True
+                break
+            seen_input_dims.update(m.input_dimensions)
+        if is_vectorized:
+            return _intersect_vectorized(transform, output_domain, array_output_dims)
 
     # Orthogonal: intersect each output dimension independently
     new_min = list(transform.domain.inclusive_min)
@@ -259,11 +292,22 @@ def _intersect(
             mask = (storage >= lo) & (storage < hi)
             if not np.any(mask):
                 return None
+            # Orthogonal ArrayMap: filter the array and shrink the input dim
+            # it parameterizes. Only the 1-D case is currently exercised; the
+            # multi-dim orthogonal ArrayMap path is rejected with a clear error.
+            if len(m.input_dimensions) != 1:
+                raise NotImplementedError(
+                    "intersect on a multi-dimensional orthogonal ArrayMap is not yet supported"
+                )
+            (input_d,) = m.input_dimensions
             surviving_indices = np.nonzero(mask.ravel())[0].astype(np.intp)
             filtered = m.index_array.ravel()[surviving_indices]
+            new_min[input_d] = 0
+            new_max[input_d] = len(filtered)
             new_output.append(
                 ArrayMap(
                     index_array=filtered,
+                    input_dimensions=(input_d,),
                     offset=m.offset,
                     stride=m.stride,
                 )
@@ -280,28 +324,31 @@ def _intersect(
 def _intersect_vectorized(
     transform: IndexTransform,
     output_domain: IndexDomain,
-    array_dims: list[int],
+    array_output_dims: list[int],
 ) -> tuple[IndexTransform, np.ndarray[Any, np.dtype[np.intp]] | None] | None:
     """Intersect a vectorized transform with an output domain.
 
-    All ArrayMap outputs are correlated — a point survives only if ALL its
-    storage coordinates fall within the output domain.
+    All ArrayMap outputs in `array_output_dims` are correlated — a point
+    survives only if ALL its storage coordinates fall within the output
+    domain. The correlated ArrayMaps share `input_dimensions`; after
+    filtering, those shared input dims collapse into a single 1-D domain
+    `(len(surviving),)`. Any non-correlated input dims (used by
+    DimensionMap outputs on independent input dims) are preserved.
     """
-    # Compute storage coords per array dim and check bounds simultaneously
-    n_points: int | None = None
+    # Compute storage coords per array dim and check bounds simultaneously.
     masks: list[np.ndarray[Any, np.dtype[np.bool_]]] = []
+    correlated_input_dims: set[int] = set()
 
-    for out_dim in array_dims:
+    for out_dim in array_output_dims:
         m = transform.output[out_dim]
         assert isinstance(m, ArrayMap)
         storage = m.offset + m.stride * m.index_array
         lo = output_domain.inclusive_min[out_dim]
         hi = output_domain.exclusive_max[out_dim]
         masks.append((storage >= lo) & (storage < hi))
-        if n_points is None:
-            n_points = storage.size
+        correlated_input_dims.update(m.input_dimensions)
 
-    # A point survives only if it's in-bounds on ALL array dims
+    # A point survives only if it's in-bounds on ALL array dims.
     combined_mask = masks[0]
     for mask in masks[1:]:
         combined_mask = combined_mask & mask
@@ -311,7 +358,20 @@ def _intersect_vectorized(
 
     surviving = np.nonzero(combined_mask.ravel())[0].astype(np.intp)
 
-    # Build new output maps
+    # Build the new domain. The correlated input dims collapse into a single
+    # 1-D dim (the surviving-points dim, placed at index 0). Any input dims
+    # NOT consumed by the correlated ArrayMaps are preserved in their order.
+    preserved_input_dims = [
+        d for d in range(transform.domain.ndim) if d not in correlated_input_dims
+    ]
+    new_inclusive_min = [0] + [transform.domain.inclusive_min[d] for d in preserved_input_dims]
+    new_exclusive_max = [len(surviving)] + [
+        transform.domain.exclusive_max[d] for d in preserved_input_dims
+    ]
+    # old input dim -> new input dim
+    old_to_new: dict[int, int] = {d: i + 1 for i, d in enumerate(preserved_input_dims)}
+
+    # Build new output maps.
     new_output: list[OutputIndexMap] = []
     for out_dim, m in enumerate(transform.output):
         if isinstance(m, ArrayMap):
@@ -319,6 +379,7 @@ def _intersect_vectorized(
             new_output.append(
                 ArrayMap(
                     index_array=filtered,
+                    input_dimensions=(0,),
                     offset=m.offset,
                     stride=m.stride,
                 )
@@ -331,9 +392,23 @@ def _intersect_vectorized(
             else:
                 return None
         elif isinstance(m, DimensionMap):
-            new_output.append(m)
+            if m.input_dimension in correlated_input_dims:
+                raise NotImplementedError(
+                    "vectorized intersect with a DimensionMap on a correlated "
+                    "input dim is not supported"
+                )
+            new_output.append(
+                DimensionMap(
+                    input_dimension=old_to_new[m.input_dimension],
+                    offset=m.offset,
+                    stride=m.stride,
+                )
+            )
 
-    new_domain = IndexDomain.from_shape((len(surviving),))
+    new_domain = IndexDomain(
+        inclusive_min=tuple(new_inclusive_min),
+        exclusive_max=tuple(new_exclusive_max),
+    )
     result = IndexTransform(domain=new_domain, output=tuple(new_output))
     return (result, surviving)
 
@@ -376,77 +451,6 @@ def _normalize_basic_selection(selection: Any, ndim: int) -> tuple[int | slice |
         result.append(slice(None))
 
     return tuple(result)
-
-
-def _reindex_array(
-    arr: np.ndarray[Any, np.dtype[np.intp]],
-    normalized: tuple[int | slice | None, ...],
-    domain: IndexDomain,
-) -> np.ndarray[Any, np.dtype[np.intp]]:
-    """Apply basic indexing operations to an ArrayMap's index_array.
-
-    The array's axes correspond to the transform's input dimensions (0-indexed
-    over the domain shape). When input dimensions are dropped (int), sliced,
-    or inserted (newaxis), the array must be updated accordingly.
-    """
-    # Build a numpy indexing tuple: one entry per old input dimension
-    idx: list[Any] = []
-    old_dim = 0
-    newaxis_positions: list[int] = []
-    result_axis = 0
-
-    for sel in normalized:
-        if sel is None:
-            newaxis_positions.append(result_axis)
-            result_axis += 1
-        elif isinstance(sel, int):
-            if old_dim < arr.ndim:
-                # Convert absolute domain coordinate to 0-based array index
-                array_idx = sel - domain.inclusive_min[old_dim]
-                idx.append(array_idx)
-            old_dim += 1
-        elif isinstance(sel, slice):
-            if old_dim < arr.ndim:
-                dim_size = domain.shape[old_dim]
-                # sel.indices gives 0-based start/stop/step for the array axis
-                start, stop, step = sel.indices(dim_size)
-                idx.append(slice(start, stop, step))
-            old_dim += 1
-            result_axis += 1
-
-    result = arr[tuple(idx)] if idx else arr
-
-    for pos in newaxis_positions:
-        result = np.expand_dims(result, axis=pos)
-
-    return np.asarray(result, dtype=np.intp)
-
-
-def _reindex_array_oindex(
-    arr: np.ndarray[Any, np.dtype[np.intp]],
-    normalized: tuple[Any, ...] | list[Any],
-    domain: IndexDomain,
-) -> np.ndarray[Any, np.dtype[np.intp]]:
-    """Apply oindex/vindex selection to an existing ArrayMap's index_array.
-
-    Each old input dimension gets either an array (fancy index that axis)
-    or a slice applied to the corresponding array axis.
-    """
-    idx: list[Any] = []
-    for old_dim, sel in enumerate(normalized):
-        if old_dim >= arr.ndim:
-            break
-        if isinstance(sel, np.ndarray):
-            idx.append(sel)
-        elif isinstance(sel, slice):
-            dim_size = domain.shape[old_dim]
-            start, stop, step = sel.indices(dim_size)
-            idx.append(slice(start, stop, step))
-        else:
-            idx.append(slice(None))
-
-    result = arr[tuple(idx)] if idx else arr
-    return np.asarray(result, dtype=np.intp)
 
 
 def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTransform:
@@ -537,8 +541,42 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         elif isinstance(m, ArrayMap):
-            new_arr = _reindex_array(m.index_array, normalized, transform.domain)
-            new_output.append(ArrayMap(index_array=new_arr, offset=m.offset, stride=m.stride))
+            # The array's axes are labeled by m.input_dimensions, in order.
+            # For each labeled axis: if the corresponding old input dim is
+            # dropped (int), select that one entry; if sliced, slice the axis;
+            # otherwise leave the axis intact. Newaxis insertions don't touch
+            # the array (they add new input dims not in input_dimensions).
+            arr_idx: list[Any] = []
+            new_input_dims: list[int] = []
+            for axis_dim in m.input_dimensions:
+                if axis_dim in dropped_dims:
+                    array_idx = dim_int_val[axis_dim] - transform.domain.inclusive_min[axis_dim]
+                    arr_idx.append(array_idx)
+                elif axis_dim in old_to_new_dim:
+                    abs_start, _, step = dim_slice_params[axis_dim]
+                    array_start = abs_start - transform.domain.inclusive_min[axis_dim]
+                    new_size = (
+                        new_exclusive_max[old_to_new_dim[axis_dim]]
+                        - new_inclusive_min[old_to_new_dim[axis_dim]]
+                    )
+                    array_stop = array_start + step * new_size
+                    arr_idx.append(slice(array_start, array_stop, step))
+                    new_input_dims.append(old_to_new_dim[axis_dim])
+                else:
+                    raise RuntimeError(
+                        f"unexpected: ArrayMap input_dim {axis_dim} not in "
+                        "dropped_dims or old_to_new_dim"
+                    )
+            new_arr = m.index_array[tuple(arr_idx)] if arr_idx else m.index_array
+            new_arr = np.asarray(new_arr, dtype=np.intp)
+            new_output.append(
+                ArrayMap(
+                    index_array=new_arr,
+                    input_dimensions=tuple(new_input_dims),
+                    offset=m.offset,
+                    stride=m.stride,
+                )
+            )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
@@ -646,6 +684,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 new_output.append(
                     ArrayMap(
                         index_array=dim_array[d],
+                        input_dimensions=(old_to_new_dim[d],),
                         offset=m.offset,
                         stride=m.stride,
                     )
@@ -663,8 +702,39 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         elif isinstance(m, ArrayMap):
-            new_arr = _reindex_array_oindex(m.index_array, normalized, transform.domain)
-            new_output.append(ArrayMap(index_array=new_arr, offset=m.offset, stride=m.stride))
+            # Each axis of m.index_array corresponds to one entry in
+            # m.input_dimensions. For each such old input dim, oindex either
+            # picks specific entries (dim_array[d]) or slices the axis
+            # (dim_slice_params[d]).
+            arr_idx: list[Any] = []
+            for axis_dim in m.input_dimensions:
+                if axis_dim in dim_array:
+                    arr_idx.append(dim_array[axis_dim])
+                elif axis_dim in dim_slice_params:
+                    abs_start, _, step = dim_slice_params[axis_dim]
+                    array_start = abs_start - transform.domain.inclusive_min[axis_dim]
+                    new_size = (
+                        new_exclusive_max[old_to_new_dim[axis_dim]]
+                        - new_inclusive_min[old_to_new_dim[axis_dim]]
+                    )
+                    array_stop = array_start + step * new_size
+                    arr_idx.append(slice(array_start, array_stop, step))
+                else:
+                    raise RuntimeError(
+                        f"unexpected: ArrayMap input_dim {axis_dim} not in "
+                        "dim_array or dim_slice_params"
+                    )
+            new_arr = m.index_array[tuple(arr_idx)] if arr_idx else m.index_array
+            new_arr = np.asarray(new_arr, dtype=np.intp)
+            new_input_dims = tuple(old_to_new_dim[d] for d in m.input_dimensions)
+            new_output.append(
+                ArrayMap(
+                    index_array=new_arr,
+                    input_dimensions=new_input_dims,
+                    offset=m.offset,
+                    stride=m.stride,
+                )
+            )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
@@ -793,6 +863,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     # New dim index for slice dims starts after broadcast dims
     n_broadcast_dims = len(broadcast_shape)
 
+    # Broadcast dims are placed at input_dim positions [0, n_broadcast_dims).
+    broadcast_input_dims = tuple(range(n_broadcast_dims))
+
     new_output: list[OutputIndexMap] = []
     for m in transform.output:
         if isinstance(m, ConstantMap):
@@ -803,6 +876,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 new_output.append(
                     ArrayMap(
                         index_array=array_dim_to_broadcast[d],
+                        input_dimensions=broadcast_input_dims,
                         offset=m.offset,
                         stride=m.stride,
                     )
@@ -819,8 +893,13 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
         elif isinstance(m, ArrayMap):
-            new_arr = _reindex_array_oindex(m.index_array, processed, transform.domain)
-            new_output.append(ArrayMap(index_array=new_arr, offset=m.offset, stride=m.stride))
+            # vindex on a transform that already has an ArrayMap output is not
+            # currently exercised. The semantics are subtle (broadcasting can
+            # reshape the array's parameterization) and require careful design;
+            # raise rather than produce wrong results.
+            raise NotImplementedError(
+                "vindex on a transform whose output is already an ArrayMap is not yet supported"
+            )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 

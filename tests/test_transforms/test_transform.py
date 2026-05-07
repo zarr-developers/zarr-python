@@ -253,15 +253,30 @@ def test_getitem_composition(
 # rather than building a new map.
 _array_map_1d = IndexTransform(
     domain=IndexDomain.from_shape((5,)),
-    output=(ArrayMap(index_array=np.array([10, 20, 30, 40, 50], dtype=np.intp)),),
+    output=(
+        ArrayMap(
+            index_array=np.array([10, 20, 30, 40, 50], dtype=np.intp),
+            input_dimensions=(0,),
+        ),
+    ),
 )
 _array_map_2d_3x2 = IndexTransform(
     domain=IndexDomain.from_shape((3, 2)),
-    output=(ArrayMap(index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp)),),
+    output=(
+        ArrayMap(
+            index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp),
+            input_dimensions=(0, 1),
+        ),
+    ),
 )
 _array_map_2d_2x3 = IndexTransform(
     domain=IndexDomain.from_shape((2, 3)),
-    output=(ArrayMap(index_array=np.array([[10, 20, 30], [40, 50, 60]], dtype=np.intp)),),
+    output=(
+        ArrayMap(
+            index_array=np.array([[10, 20, 30], [40, 50, 60]], dtype=np.intp),
+            input_dimensions=(0, 1),
+        ),
+    ),
 )
 
 
@@ -302,17 +317,26 @@ def test_getitem_on_array_map(
 
 
 def test_getitem_newaxis_on_array_map() -> None:
-    """np.newaxis on an ArrayMap inserts a new axis in the index_array, not just the domain."""
+    """np.newaxis on an ArrayMap inserts a new input dim into the domain but
+    leaves the array's parameterization unchanged. The array's input_dimensions
+    just shifts to point at the new index of the old dim."""
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=np.array([10, 20, 30], dtype=np.intp)),),
+        output=(
+            ArrayMap(
+                index_array=np.array([10, 20, 30], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+        ),
     )
     result = t[np.newaxis, :]
     assert result.input_rank == 2
     assert result.domain.shape == (1, 3)
     assert isinstance(result.output[0], ArrayMap)
-    assert result.output[0].index_array.shape == (1, 3)
-    np.testing.assert_array_equal(result.output[0].index_array, np.array([[10, 20, 30]]))
+    # newaxis is at new dim 0; old dim 0 shifts to new dim 1.
+    assert result.output[0].input_dimensions == (1,)
+    assert result.output[0].index_array.shape == (3,)
+    np.testing.assert_array_equal(result.output[0].index_array, np.array([10, 20, 30]))
 
 
 # ---------------------------------------------------------------------------
@@ -532,7 +556,7 @@ def test_selection_to_transform_unknown_mode_errors() -> None:
     """
     t = IndexTransform.from_shape((10,))
     with pytest.raises(ValueError, match="Unknown mode"):
-        selection_to_transform(slice(None), t, "diagonal")
+        selection_to_transform(slice(None), t, "diagonal")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -603,7 +627,7 @@ def test_intersect_array_partial() -> None:
     arr = np.array([3, 8, 15, 22], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((4,)),
-        output=(ArrayMap(index_array=arr),),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,)),),
     )
     result = t.intersect(IndexDomain(inclusive_min=(5,), exclusive_max=(20,)))
     assert result is not None
@@ -619,7 +643,7 @@ def test_intersect_array_disjoint() -> None:
     arr = np.array([1, 2, 3], dtype=np.intp)
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
-        output=(ArrayMap(index_array=arr),),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,)),),
     )
     assert t.intersect(IndexDomain(inclusive_min=(10,), exclusive_max=(20,))) is None
 
@@ -663,12 +687,15 @@ def test_intersect_rank_mismatch_errors() -> None:
 
 def _vectorized_2d_array_map() -> IndexTransform:
     """Helper: a vectorized transform over a (3,) input domain with two
-    correlated ArrayMaps. Storage coords: (1,10), (5,11), (9,12)."""
+    correlated ArrayMaps. Storage coords: (1,10), (5,11), (9,12).
+
+    Both ArrayMaps share input_dimensions=(0,) — that's what makes them
+    correlated under the new design."""
     return IndexTransform(
         domain=IndexDomain.from_shape((3,)),
         output=(
-            ArrayMap(index_array=np.array([1, 5, 9], dtype=np.intp)),
-            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp)),
+            ArrayMap(index_array=np.array([1, 5, 9], dtype=np.intp), input_dimensions=(0,)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp), input_dimensions=(0,)),
         ),
     )
 
@@ -701,8 +728,8 @@ def test_intersect_vectorized_with_constant_outside_drops_to_none() -> None:
     t = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
         output=(
-            ArrayMap(index_array=np.array([1, 2, 3], dtype=np.intp)),
-            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp)),
+            ArrayMap(index_array=np.array([1, 2, 3], dtype=np.intp), input_dimensions=(0,)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp), input_dimensions=(0,)),
             ConstantMap(offset=99),
         ),
     )
@@ -717,7 +744,13 @@ def test_intersect_vectorized_with_constant_outside_drops_to_none() -> None:
 _translate_dimension_t = IndexTransform.from_shape((10,))
 _translate_array_t = IndexTransform(
     domain=IndexDomain.from_shape((2,)),
-    output=(ArrayMap(index_array=np.array([5, 10], dtype=np.intp), offset=3),),
+    output=(
+        ArrayMap(
+            index_array=np.array([5, 10], dtype=np.intp),
+            input_dimensions=(0,),
+            offset=3,
+        ),
+    ),
 )
 _translate_constant_t = IndexTransform(
     domain=IndexDomain.from_shape((10,)),
