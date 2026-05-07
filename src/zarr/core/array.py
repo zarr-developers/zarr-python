@@ -41,6 +41,7 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -410,8 +411,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
-
-        from zarr.core.chunk_grids import _is_rectilinear_chunks
 
         # Unify the v2 (chunks) and v3 (chunk_shape) parameter names
         _raw_chunks = chunks if chunks is not None else chunk_shape
@@ -4406,8 +4405,6 @@ async def init_array(
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
     # Validate rectilinear chunks constraints
-    from zarr.core.chunk_grids import _is_rectilinear_chunks
-
     if _is_rectilinear_chunks(chunks):
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")

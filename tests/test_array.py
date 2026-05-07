@@ -46,7 +46,12 @@ from zarr.core.array import (
 )
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
-from zarr.core.chunk_grids import normalize_chunks_nd, resolve_outer_and_inner_chunks
+from zarr.core.chunk_grids import (
+    SHARDED_INNER_CHUNK_MAX_BYTES,
+    guess_chunks,
+    normalize_chunks_nd,
+    resolve_outer_and_inner_chunks,
+)
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
@@ -1094,8 +1099,6 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     Test that automatically picking chunk and shard sizes together produces
     chunks close to 1 MiB and shards that are a multiple of the chunk size.
     """
-    from zarr.core.chunk_grids import SHARDED_INNER_CHUNK_MAX_BYTES, guess_chunks
-
     array_shape = (10_000_000,)
     item_size = 1
     # Auto-chunks with sharding use the default inner chunk size target

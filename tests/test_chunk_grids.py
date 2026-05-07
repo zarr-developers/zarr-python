@@ -6,6 +6,7 @@ import pytest
 
 from tests.test_codecs.conftest import Expect, ExpectErr
 from zarr.core.chunk_grids import (
+    ChunkLayout,
     _guess_regular_chunks,
     normalize_chunks_1d,
     normalize_chunks_nd,
@@ -111,8 +112,6 @@ def test_resolve_outer_and_inner_chunks(
 
 def test_chunk_layout_nested() -> None:
     """Test that ChunkLayout supports recursive nesting for nested sharding."""
-    from zarr.core.chunk_grids import ChunkLayout
-
     leaf = normalize_chunks_nd((5, 5), (100, 100))
     mid = ChunkLayout(
         outer_chunks=normalize_chunks_nd((25, 25), (100, 100)),
