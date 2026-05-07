@@ -1,10 +1,12 @@
 """Index domains — rectangular regions in N-dimensional integer space.
 
 An `IndexDomain` represents the set of valid coordinates for an array or
-array view. It is the cartesian product of per-dimension integer ranges::
+array view. It is the cartesian product of per-dimension integer ranges:
 
-    IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
-    # represents {(i, j) : 2 <= i < 10, 5 <= j < 20}
+```python
+IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
+# represents {(i, j) : 2 <= i < 10, 5 <= j < 20}
+```
 
 Unlike NumPy, domains can have **non-zero origins**. After slicing
 `arr[5:10]`, the result has origin 5 and shape 5 — coordinates 5 through
