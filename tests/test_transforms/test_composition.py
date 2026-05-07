@@ -220,3 +220,125 @@ def test_compose_errors(case: ExpectErr[tuple[IndexTransform, IndexTransform]]) 
     outer, inner = case.input
     with pytest.raises(case.exception_cls, match=case.msg):
         compose(outer, inner)
+
+
+# ---------------------------------------------------------------------------
+# Associativity property test.
+#
+# An IndexTransform models a function from input coords to output coords;
+# function composition is associative by definition. Verify the implementation
+# preserves that algebraic property by sampling random affine triples
+# `(a, b, c)` with compatible ranks and checking that
+#   compose(compose(a, b), c)
+# evaluates the same as
+#   compose(a, compose(b, c))
+# at randomly-chosen points in `a`'s domain.
+#
+# Restricted to DimensionMap + ConstantMap outputs (the affine subset).
+# ArrayMap composition has implementation-level branching that depends on
+# outer structure, and would need a more careful generator to avoid the
+# NotImplementedError path; saved for a follow-up.
+# ---------------------------------------------------------------------------
+
+pytest.importorskip("hypothesis")
+
+from hypothesis import assume, given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+
+def _evaluate(transform: IndexTransform, user_coord: tuple[int, ...]) -> tuple[int, ...]:
+    """Evaluate a transform at a single input coordinate.
+
+    Restricted to DimensionMap + ConstantMap outputs; `ArrayMap` is unsupported
+    here because the property test only generates affine triples.
+    """
+    storage: list[int] = []
+    for m in transform.output:
+        if isinstance(m, ConstantMap):
+            storage.append(m.offset)
+        elif isinstance(m, DimensionMap):
+            storage.append(m.offset + m.stride * user_coord[m.input_dimension])
+        else:
+            raise TypeError(f"property test should not generate {type(m).__name__}; got {m!r}")
+    return tuple(storage)
+
+
+def _affine_output_map(input_rank: int, draw: st.DrawFn) -> ConstantMap | DimensionMap:
+    """Generate one ConstantMap or DimensionMap output map.
+
+    DimensionMap requires input_rank >= 1; falls back to ConstantMap otherwise.
+    Offsets and strides are kept small to avoid integer overflow during
+    repeated composition.
+    """
+    if input_rank == 0:
+        return ConstantMap(offset=draw(st.integers(min_value=-10, max_value=10)))
+    kind = draw(st.sampled_from(["constant", "dimension"]))
+    if kind == "constant":
+        return ConstantMap(offset=draw(st.integers(min_value=-10, max_value=10)))
+    # stride must be non-zero; sample sign and magnitude separately.
+    stride_mag = draw(st.integers(min_value=1, max_value=3))
+    stride_sign = draw(st.sampled_from([-1, 1]))
+    return DimensionMap(
+        input_dimension=draw(st.integers(min_value=0, max_value=input_rank - 1)),
+        offset=draw(st.integers(min_value=-10, max_value=10)),
+        stride=stride_sign * stride_mag,
+    )
+
+
+@st.composite
+def _affine_transform(draw: st.DrawFn, input_rank: int, output_rank: int) -> IndexTransform:
+    """Generate an affine IndexTransform with the requested ranks."""
+    domain_shape = tuple(draw(st.integers(min_value=1, max_value=8)) for _ in range(input_rank))
+    domain = IndexDomain.from_shape(domain_shape)
+    output = tuple(_affine_output_map(input_rank, draw) for _ in range(output_rank))
+    return IndexTransform(domain=domain, output=output)
+
+
+@st.composite
+def _affine_triple(
+    draw: st.DrawFn,
+) -> tuple[IndexTransform, IndexTransform, IndexTransform]:
+    """Generate three rank-compatible affine transforms (a, b, c)."""
+    m = draw(st.integers(min_value=1, max_value=3))  # a's input rank
+    n = draw(st.integers(min_value=1, max_value=3))  # a's output / b's input rank
+    p = draw(st.integers(min_value=1, max_value=3))  # b's output / c's input rank
+    q = draw(st.integers(min_value=1, max_value=3))  # c's output rank
+    a = draw(_affine_transform(input_rank=m, output_rank=n))
+    b = draw(_affine_transform(input_rank=n, output_rank=p))
+    c = draw(_affine_transform(input_rank=p, output_rank=q))
+    return a, b, c
+
+
+@settings(max_examples=200, deadline=None)
+@given(triple=_affine_triple(), data=st.data())
+def test_compose_is_associative(
+    triple: tuple[IndexTransform, IndexTransform, IndexTransform],
+    data: st.DataObject,
+) -> None:
+    """For affine transforms, compose(compose(a,b),c) and compose(a,compose(b,c))
+    evaluate identically at every point in a's domain."""
+    a, b, c = triple
+    left = compose(compose(a, b), c)
+    right = compose(a, compose(b, c))
+
+    # Sanity: both compositions agree on rank and domain.
+    assert left.input_rank == right.input_rank
+    assert left.output_rank == right.output_rank
+    assert left.domain == right.domain
+
+    # Sample a few points from a's domain and compare evaluations.
+    if a.input_rank == 0:
+        coord: tuple[int, ...] = ()
+    else:
+        coord = tuple(
+            data.draw(
+                st.integers(
+                    min_value=a.domain.inclusive_min[d],
+                    max_value=a.domain.exclusive_max[d] - 1,
+                )
+            )
+            for d in range(a.input_rank)
+        )
+        assume(a.domain.contains(coord))
+
+    assert _evaluate(left, coord) == _evaluate(right, coord)
