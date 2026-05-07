@@ -91,22 +91,22 @@ async def coalesced_get(
 
     # Sort mergeables by start offset, then merge.
     mergeable.sort(key=lambda pair: pair[1].start)
-    groups: list[list[tuple[int, RangeByteRequest]]] = []
-    for pair in mergeable:
+    iter_mergeable = iter(mergeable)
+    groups: list[list[tuple[int, RangeByteRequest]]] = [[next(iter_mergeable)]]
+    for pair in iter_mergeable:
         _i, r = pair
-        if groups:
-            last = groups[-1]
-            last_end = max(x[1].end for x in last)
-            gap = r.start - last_end
-            merged_start = min(x[1].start for x in last)
-            prospective_end = max(last_end, r.end)
-            prospective_size = prospective_end - merged_start
-            if (
-                gap <= options["max_gap_bytes"]
-                and prospective_size <= options["max_coalesced_bytes"]
-            ):
-                last.append(pair)
-                continue
+        last = groups[-1]
+        last_end = max(x[1].end for x in last)
+        gap = r.start - last_end
+        merged_start = min(x[1].start for x in last)
+        prospective_end = max(last_end, r.end)
+        prospective_size = prospective_end - merged_start
+        if (
+            gap <= options["max_gap_bytes"]
+            and prospective_size <= options["max_coalesced_bytes"]
+        ):
+            last.append(pair)
+            continue
         groups.append([pair])
 
     # Build a uniform list of work items. Each work item is a list of
