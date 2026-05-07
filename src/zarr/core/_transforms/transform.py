@@ -825,61 +825,6 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
 
-def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
-    """Convert negative indices to positive ones using the array shape.
-
-    Only normalizes integer and array-like index components; leaves
-    slices, Ellipsis, None, etc. untouched.
-    """
-    if not isinstance(selection, tuple):
-        selection_tuple: tuple[Any, ...] = (selection,)
-    else:
-        selection_tuple = selection
-
-    # Count real dimensions (non-None, non-Ellipsis) to map each entry to a shape dim
-    has_ellipsis = any(s is Ellipsis for s in selection_tuple)
-    n_non_newaxis = sum(1 for s in selection_tuple if s is not None and s is not Ellipsis)
-    n_ellipsis_dims = len(shape) - n_non_newaxis + (1 if has_ellipsis else 0)
-
-    result: list[Any] = []
-    dim = 0
-
-    for sel in selection_tuple:
-        if sel is Ellipsis:
-            result.append(sel)
-            dim += max(0, n_ellipsis_dims)
-        elif sel is None:
-            result.append(sel)
-        elif isinstance(sel, (int, np.integer)) and not isinstance(sel, bool):
-            idx = int(sel)
-            if idx < 0 and dim < len(shape):
-                idx = idx + shape[dim]
-            result.append(idx)
-            dim += 1
-        elif isinstance(sel, np.ndarray) and sel.dtype != np.bool_:
-            arr = sel.copy()
-            if dim < len(shape):
-                arr = np.where(arr < 0, arr + shape[dim], arr)
-            result.append(arr)
-            dim += 1
-        elif isinstance(sel, list):
-            # Convert lists to arrays with negative index normalization
-            arr = np.asarray(sel, dtype=np.intp)
-            if dim < len(shape):
-                arr = np.where(arr < 0, arr + shape[dim], arr)
-            result.append(arr)
-            dim += 1
-        else:
-            # slice, bool array, or anything else: pass through
-            result.append(sel)
-            if sel is not None and sel is not Ellipsis:
-                dim += 1
-
-    if not isinstance(selection, tuple) and len(result) == 1:
-        return result[0]
-    return tuple(result)
-
-
 def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str) -> None:
     """Validate array-based selections (orthogonal, vectorized).
 
