@@ -1,13 +1,13 @@
 """Index transforms — composable, lazy coordinate mappings.
 
-An ``IndexTransform`` pairs an **input domain** (the coordinates a user sees)
+An `IndexTransform` pairs an **input domain** (the coordinates a user sees)
 with a tuple of **output maps** (the storage coordinates those inputs map to).
-One output map per storage dimension. See ``output_map.py`` for the three
+One output map per storage dimension. See `output_map.py` for the three
 output map types.
 
 Key operations:
 
-- **Indexing** (``transform[2:8]``, ``.oindex[idx]``, ``.vindex[idx]``) —
+- **Indexing** (`transform[2:8]`, `.oindex[idx]`, `.vindex[idx]`) —
   produces a new transform with a narrower input domain and adjusted output
   maps. No I/O occurs. This is how lazy slicing works.
 
@@ -18,12 +18,11 @@ Key operations:
 - **translate(shift)** — shift all output coordinates. This makes coordinates
   chunk-local: "express my coordinates relative to the chunk origin."
 
-- **compose(outer, inner)** — chain two transforms. See ``composition.py``.
+- **compose(outer, inner)** — chain two transforms. See `composition.py`.
 
 The transform is the atomic unit that connects user-facing indexing to
-chunk-level I/O. Every ``Array`` holds a transform (identity by default).
-``Array.z[...]`` composes a new transform lazily. Reading resolves the
-transform against the chunk grid via intersect + translate.
+chunk-level I/O. Indexing into a lazy view composes a new transform; reading
+resolves the transform against the chunk grid via intersect + translate.
 """
 
 from __future__ import annotations
@@ -42,15 +41,15 @@ from zarr.core._transforms.output_map import ArrayMap, ConstantMap, DimensionMap
 class IndexTransform:
     """A composable mapping from input coordinates to storage coordinates.
 
-    An ``IndexTransform`` has:
+    An `IndexTransform` has:
 
-    - ``domain``: an ``IndexDomain`` describing the valid input coordinates
+    - `domain`: an `IndexDomain` describing the valid input coordinates
       (the user-facing shape, possibly with non-zero origin).
-    - ``output``: a tuple of output maps (one per storage dimension), each
+    - `output`: a tuple of output maps (one per storage dimension), each
       describing which storage coordinates the inputs touch.
 
     For a freshly opened array, the transform is the identity: input
-    coordinate ``i`` maps to storage coordinate ``i``. Indexing operations
+    coordinate `i` maps to storage coordinate `i`. Indexing operations
     compose new transforms without I/O.
     """
 
@@ -90,10 +89,10 @@ class IndexTransform:
 
     @property
     def selection_repr(self) -> str:
-        """Compact domain string, e.g. ``'{ [2, 8), [0, 10) }'``.
+        """Compact domain string, e.g. `'{ [2, 8), [0, 10) }'`.
 
         Follows TensorStore's IndexDomain notation: each dimension shown
-        as ``[inclusive_min, exclusive_max)`` with stride annotation if not 1.
+        as `[inclusive_min, exclusive_max)` with stride annotation if not 1.
         Constant (integer-indexed) dimensions show as a single value.
         Array-indexed dimensions show the set of selected coordinates.
         """
@@ -138,16 +137,16 @@ class IndexTransform:
     ) -> tuple[IndexTransform, np.ndarray[Any, np.dtype[np.intp]] | None] | None:
         """Restrict this transform to storage coordinates within output_domain.
 
-        Returns ``(restricted_transform, surviving_indices)`` or None if empty.
+        Returns `(restricted_transform, surviving_indices)` or None if empty.
 
-        ``surviving_indices`` is an integer array of which input positions
+        `surviving_indices` is an integer array of which input positions
         survived the intersection (for ArrayMap dimensions), or None if all
         positions survived (ConstantMap/DimensionMap only).
         """
         return _intersect(self, output_domain)
 
     def translate(self, shift: tuple[int, ...]) -> IndexTransform:
-        """Shift all output coordinates by ``shift``."""
+        """Shift all output coordinates by `shift`."""
         if len(shift) != self.output_rank:
             raise ValueError(f"shift must have length {self.output_rank}, got {len(shift)}")
         new_output: list[OutputIndexMap] = []
@@ -545,7 +544,7 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
 
 
 class _OIndexHelper:
-    """Helper that provides orthogonal (outer) indexing via ``transform.oindex[...]``."""
+    """Helper that provides orthogonal (outer) indexing via `transform.oindex[...]`."""
 
     def __init__(self, transform: IndexTransform) -> None:
         self._transform = transform
@@ -671,7 +670,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
 
 class _VIndexHelper:
-    """Helper that provides vectorized (fancy) indexing via ``transform.vindex[...]``."""
+    """Helper that provides vectorized (fancy) indexing via `transform.vindex[...]`."""
 
     def __init__(self, transform: IndexTransform) -> None:
         self._transform = transform

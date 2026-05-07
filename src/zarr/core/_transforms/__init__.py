@@ -11,11 +11,11 @@ must be limited to other private zarr modules.
 
 Key types:
 
-- ``IndexDomain`` -- a rectangular region of integer coordinates
-- ``IndexTransform`` -- maps input coordinates to storage coordinates
-- ``ConstantMap``, ``DimensionMap``, ``ArrayMap`` -- the three ways a single
-  output dimension can depend on the input (see ``output_map.py``)
-- ``compose`` -- chain two transforms into one
+- `IndexDomain` -- a rectangular region of integer coordinates
+- `IndexTransform` -- maps input coordinates to storage coordinates
+- `ConstantMap`, `DimensionMap`, `ArrayMap` -- the three ways a single
+  output dimension can depend on the input (see `output_map.py`)
+- `compose` -- chain two transforms into one
 """
 
 from zarr.core._transforms.composition import compose
