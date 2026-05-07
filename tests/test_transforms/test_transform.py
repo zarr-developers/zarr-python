@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -475,7 +475,9 @@ def test_vindex_success(case: Expect[tuple[IndexTransform, Any], tuple[int, ...]
     ids=lambda c: c.id,
 )
 def test_selection_to_transform_success(
-    case: Expect[tuple[IndexTransform, Any, str], dict[str, Any]],
+    case: Expect[
+        tuple[IndexTransform, Any, Literal["basic", "orthogonal", "vectorized"]], dict[str, Any]
+    ],
 ) -> None:
     """selection_to_transform dispatches to basic/orthogonal/vectorized correctly."""
     transform, selection, mode = case.input

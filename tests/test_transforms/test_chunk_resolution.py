@@ -254,4 +254,5 @@ def test_sub_transform_to_selections_vectorized_with_out_indices() -> None:
     out_indices = np.array([0, 1], dtype=np.intp)
     _chunk_sel, out_sel, _drop_axes = sub_transform_to_selections(t, out_indices)
     assert len(out_sel) == 1
+    assert isinstance(out_sel[0], np.ndarray)
     np.testing.assert_array_equal(out_sel[0], out_indices)
