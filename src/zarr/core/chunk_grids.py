@@ -768,7 +768,7 @@ def normalize_chunks_nd(
     Normalize a chunk specification into a `ChunksTuple`.
 
     This is a mechanical transformation — no heuristics, no guessing.
-    Handles `False` ("no chunking"), scalar ints, `-1` sentinels (one chunk
+    Handles `False` ("all data in one chunk"), scalar ints, `-1` sentinels (one chunk
     per dimension covering the full span), and explicit per-dimension lists
     of chunk sizes (regular or rectilinear).
 
