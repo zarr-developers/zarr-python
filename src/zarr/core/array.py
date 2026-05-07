@@ -42,6 +42,7 @@ from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
     _is_rectilinear_chunks,
+    as_regular_shape,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -478,7 +479,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
                 outer_chunks = normalize_chunks_nd(_raw, shape)
-            _chunks = tuple(int(dim[0]) for dim in outer_chunks)
+            _chunks = as_regular_shape(outer_chunks)
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -4460,7 +4461,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=tuple(int(dim[0]) for dim in outer_chunks),
+            chunks=as_regular_shape(outer_chunks),
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4479,7 +4480,7 @@ async def init_array(
         grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
         if inner is not None:
-            inner_chunks_flat = tuple(int(dim[0]) for dim in inner.outer_chunks)
+            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))

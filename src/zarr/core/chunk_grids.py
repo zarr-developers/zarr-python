@@ -360,6 +360,41 @@ def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
         return False
 
 
+def is_regular_1d(
+    dim_chunks: Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
+) -> bool:
+    """Check if a single dimension's chunk sizes represent a regular grid.
+
+    A regular dimension has either all chunks the same size, or all
+    but the last chunk the same size with the last chunk smaller
+    (boundary chunk).
+    """
+    if len(dim_chunks) <= 1:
+        return True
+    first = dim_chunks[0]
+    if isinstance(dim_chunks, np.ndarray):
+        # Vectorized comparison avoids per-element Python iteration over int64 arrays.
+        return bool((dim_chunks[1:-1] == first).all() and dim_chunks[-1] <= first)
+    for c in dim_chunks[1:-1]:
+        if c != first:
+            return False
+    # Last chunk must be the same size or a smaller boundary chunk
+    return dim_chunks[-1] <= first
+
+
+def is_regular_nd(
+    chunks: Iterable[Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]]],
+) -> bool:
+    """Check if an N-dimensional chunk specification represents a regular grid."""
+    return all(is_regular_1d(d) for d in chunks)
+
+
+def as_regular_shape(chunks: ChunksTuple) -> tuple[int, ...]:
+    """Flatten a regular ChunksTuple to one int per dimension."""
+    assert is_regular_nd(chunks), f"expected regular chunks, got {chunks}"
+    return tuple(int(dim[0]) for dim in chunks)
+
+
 @dataclass(frozen=True)
 class ChunkGrid:
     """
@@ -869,7 +904,7 @@ def resolve_outer_and_inner_chunks(
         return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
 
     # Extract the flat chunk shape (first size per dimension) for arithmetic.
-    chunk_shape_flat = tuple(int(dim[0]) for dim in chunks)
+    chunk_shape_flat = as_regular_shape(chunks)
 
     if shard_shape == "auto":
         warnings.warn(

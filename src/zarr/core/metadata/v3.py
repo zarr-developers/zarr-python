@@ -5,13 +5,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
-import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.chunk_grids import is_regular_nd
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -370,35 +370,6 @@ class RectilinearChunkGridMetadata(Metadata):
 
 
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
-
-
-def is_regular_1d(
-    dim_chunks: Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
-) -> bool:
-    """Check if a single dimension's chunk sizes represent a regular grid.
-
-    A regular dimension has either all chunks the same size, or all
-    but the last chunk the same size with the last chunk smaller
-    (boundary chunk).
-    """
-    if len(dim_chunks) <= 1:
-        return True
-    first = dim_chunks[0]
-    if isinstance(dim_chunks, np.ndarray):
-        # Vectorized comparison avoids per-element Python iteration over int64 arrays.
-        return bool((dim_chunks[1:-1] == first).all() and dim_chunks[-1] <= first)
-    for c in dim_chunks[1:-1]:
-        if c != first:
-            return False
-    # Last chunk must be the same size or a smaller boundary chunk
-    return dim_chunks[-1] <= first
-
-
-def is_regular_nd(
-    chunks: Iterable[Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]]],
-) -> bool:
-    """Check if an N-dimensional chunk specification represents a regular grid."""
-    return all(is_regular_1d(d) for d in chunks)
 
 
 def create_chunk_grid_metadata(

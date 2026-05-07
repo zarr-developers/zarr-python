@@ -11,6 +11,7 @@ import pytest
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_grids import is_regular_1d, is_regular_nd
 from zarr.core.config import config
 from zarr.core.dtype import UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
@@ -18,8 +19,6 @@ from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
     ArrayV3Metadata,
-    is_regular_1d,
-    is_regular_nd,
     parse_codecs,
     parse_dimension_names,
     parse_node_type_array,
