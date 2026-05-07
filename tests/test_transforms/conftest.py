@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Expect[TIn, TOut]:
+    """Model an input and an expected output value for a test case."""
+
+    input: TIn
+    expected: TOut
+    id: str
+
+
+@dataclass(frozen=True)
+class ExpectErr[TIn]:
+    """Model an input and an expected error for a test case."""
+
+    input: TIn
+    msg: str
+    exception_cls: type[Exception]
+    id: str
