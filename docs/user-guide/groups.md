@@ -8,12 +8,11 @@ To create a group, use the [`zarr.group`][] function:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 import zarr
-store = zarr.storage.MemoryStore()
-root = zarr.create_group(store=store)
+root = zarr.create_group(store="memory://groups-demo")
 print(root)
 ```
 
-Groups have a similar API to the Group class from [h5py](https://www.h5py.org/).  For example, groups can contain other groups:
+Groups have a similar API to the Group class from [h5py](https://www.h5py.org/). For example, groups can contain other groups:
 
 ```python exec="true" session="groups" source="above"
 foo = root.create_group('foo')
@@ -105,8 +104,7 @@ Diagnostic information about arrays and groups is available via the `info`
 property. E.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
-store = zarr.storage.MemoryStore()
-root = zarr.group(store=store)
+root = zarr.group(store="memory://diagnostics-demo")
 foo = root.create_group('foo')
 bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
 bar[:] = 42
@@ -133,5 +131,3 @@ Groups also have the [`zarr.Group.tree`][] method, e.g.:
 print(root.tree())
 ```
 
-!!! note
-    [`zarr.Group.tree`][] requires the optional [rich](https://rich.readthedocs.io/en/stable/) dependency. It can be installed with the `[tree]` extra.

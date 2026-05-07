@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling>=1.29.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr-metadata"
+version = "0.1.1"
+description = "Spec-defined metadata types for Zarr v2 and v3."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [
+    { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typing_extensions>=4.13",
+]
+
+[dependency-groups]
+test = ["pytest", "pydantic>=2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zarr_metadata"]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py311"
+
+[tool.pytest.ini_options]
+minversion = "7"
+testpaths = ["tests"]
+xfail_strict = true
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+filterwarnings = [
+    "error",
+    # pydantic warns about ReadOnly TypedDict items not being enforced at runtime.
+    # That's expected here — we rely on type-checker enforcement, not pydantic mutation guards.
+    "ignore::UserWarning:pydantic._internal._generate_schema",
+]
+
+[tool.numpydoc_validation]
+checks = [
+    "GL10",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
+
+[tool.pyright]
+include = ["src"]
+enableExperimentalFeatures = true
+typeCheckingMode = "strict"
+pythonVersion = "3.11"

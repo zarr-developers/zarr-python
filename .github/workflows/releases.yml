@@ -1,6 +1,21 @@
 name: Wheels
 
-on: [push, pull_request]
+on:
+  release:
+    types:
+      - published
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
 
@@ -11,32 +26,34 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         name: Install Python
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
-      - name: Install PyBuild
-        run: |
-          python -m pip install --upgrade pip
-          pip install hatch
+      - name: Install Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        with:
+          version: '1.16.5'
       - name: Build wheel and sdist
         run: hatch build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: releases
           path: dist
 
   test_dist_pypi:
+    name: Test distribution artifacts
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: releases
           path: dist
@@ -47,16 +64,25 @@ jobs:
           ls dist
 
   upload_pypi:
-    needs: [build_artifacts]
+    name: Upload to PyPI
+    needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
+    environment:
+      name: releases
+      url: https://pypi.org/p/zarr
+    permissions:
+      id-token: write # Required for OIDC trusted publishing to PyPI
+      attestations: write # Required for artifact attestation
+      artifact-metadata: write # Required for artifact attestation metadata
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@v1.13.0
+      - name: Generate artifact attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          user: __token__
-          password: ${{ secrets.pypi_password }}
-          # To test: repository_url: https://test.pypi.org/legacy/
+          subject-path: dist/*
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0

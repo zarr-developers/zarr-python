@@ -267,7 +267,7 @@ class Buffer(ABC):
         -------
             An object that implements the Python buffer protocol
         """
-        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
+        return memoryview(self.as_numpy_array())
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -315,7 +315,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by an underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -368,7 +368,7 @@ class NDBuffer:
 
         Notes
         -----
-        A subclass can overwrite this method to create a ndarray-like object
+        A subclass can overwrite this method to create an ndarray-like object
         other then the default Numpy array.
         """
         if cls is NDBuffer:
@@ -416,7 +416,7 @@ class NDBuffer:
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        """Create a new buffer of a ndarray-like object
+        """Create a new buffer of an ndarray-like object
 
         Parameters
         ----------
@@ -535,14 +535,14 @@ class NDBuffer:
             and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
         ):
             _data, other = np.broadcast_arrays(self._data, np.asarray(other, self._data.dtype))
-            void_dtype = "V" + str(_data.dtype.itemsize)
+            void_dtype = f"V{_data.dtype.itemsize}"
             return np.array_equal(_data.view(void_dtype), other.view(void_dtype))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
         # every single time we have to write data?
         _data, other = np.broadcast_arrays(self._data, other)
         return np.array_equal(
-            self._data,
+            _data,
             other,
             equal_nan=equal_nan
             if self._data.dtype.kind not in ("U", "S", "T", "O", "V")

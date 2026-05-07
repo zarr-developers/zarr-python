@@ -1,7 +1,7 @@
 import builtins
 import functools
 from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -24,22 +24,21 @@ from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_protot
 from zarr.core.sync import SyncMixin
 from zarr.storage import LocalStore, MemoryStore
 from zarr.testing.strategies import (
+    arrays as zarr_arrays,
+)
+from zarr.testing.strategies import (
     basic_indices,
     chunk_paths,
-    dimension_names,
     key_ranges,
     node_names,
-    np_array_and_chunks,
     orthogonal_indices,
 )
 from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
 
-F = TypeVar("F", bound=Callable[..., Any])
 
-
-def with_frequency(frequency: float) -> Callable[[F], F]:
+def with_frequency[F: Callable[..., Any]](frequency: float) -> Callable[[F], F]:
     """This needs to be deterministic for hypothesis replaying"""
 
     def decorator(func: F) -> F:
@@ -120,18 +119,11 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         zarr.group(store=self.store, path=path)
         zarr.group(store=self.model, path=path)
 
-    @rule(data=st.data(), name=node_names, array_and_chunks=np_array_and_chunks())
-    def add_array(
-        self,
-        data: DataObject,
-        name: str,
-        array_and_chunks: tuple[np.ndarray[Any, Any], tuple[int, ...]],
-    ) -> None:
+    @rule(data=st.data(), name=node_names)
+    def add_array(self, data: DataObject, name: str) -> None:
         # Handle possible case-insensitive file systems (e.g. MacOS)
         if isinstance(self.store, LocalStore):
             name = name.lower()
-        array, chunks = array_and_chunks
-        fill_value = data.draw(npst.from_dtype(array.dtype))
         if self.all_groups:
             parent = data.draw(st.sampled_from(sorted(self.all_groups)), label="Array parent")
         else:
@@ -140,21 +132,46 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         # TODO: support overwriting potentially by just skipping `self.can_add`
         path = f"{parent}/{name}".lstrip("/")
         assume(self.can_add(path))
-        note(f"Adding array:  path='{path}'  shape={array.shape}  chunks={chunks}")
-        for store in [self.store, self.model]:
-            zarr.array(
-                array,
-                chunks=chunks,
-                path=path,
-                store=store,
-                fill_value=fill_value,
-                zarr_format=3,
-                dimension_names=data.draw(
-                    dimension_names(ndim=array.ndim), label="dimension names"
-                ),
-                # Chose bytes codec to avoid wasting time compressing the data being written
-                codecs=[BytesCodec()],
-            )
+
+        # Generate array on the model store using the arrays strategy
+        a = data.draw(
+            zarr_arrays(
+                stores=st.just(self.model),
+                paths=st.just(parent),
+                array_names=st.just(name),
+                zarr_formats=st.just(3),
+                compressors=st.just(BytesCodec()),
+                open_mode="a",
+            ),
+            label="generated array",
+        )
+        note(f"Adding array:  path='{path}'  shape={a.shape}  chunks={a.metadata.chunk_grid}")
+
+        # Recreate the same array in the store under test
+        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+
+        chunk_grid = a.metadata.chunk_grid
+        chunks_param: tuple[int, ...] | list[list[int]]
+        if isinstance(chunk_grid, RectilinearChunkGridMetadata):
+            chunks_param = [
+                list(dim) if isinstance(dim, tuple) else [dim] for dim in chunk_grid.chunk_shapes
+            ]
+        elif isinstance(chunk_grid, RegularChunkGridMetadata):
+            chunks_param = chunk_grid.chunk_shape
+        else:
+            chunks_param = a.chunks
+
+        root = zarr.open_group(store=self.store, mode="a")
+        arr = root.create_array(
+            path,
+            shape=a.shape,
+            chunks=chunks_param,
+            dtype=a.dtype,
+            fill_value=a.fill_value,
+            dimension_names=a.metadata.dimension_names,  # type: ignore[union-attr]
+            compressors=None,
+        )
+        arr[:] = a[:]
         self.all_arrays.add(path)
 
     @rule()
@@ -340,13 +357,13 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.all_arrays.remove(array_path)
 
     @precondition(lambda self: self.store.supports_deletes)
-    @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
+    @precondition(lambda self: bool(self.all_groups))
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
-        # ensure that we don't include the root group in the list of member names that we try
-        # to delete
-        member_names = tuple(filter(lambda v: "/" in v, sorted(self.all_groups)))
-        group_path = data.draw(st.sampled_from(member_names), label="Group deletion target")
+        group_path = data.draw(
+            st.sampled_from(sorted(self.all_groups)),
+            label="Group deletion target",
+        )
         prefix, group_name = split_prefix_name(group_path)
         note(f"Deleting group '{group_path=!r}', {prefix=!r}, {group_name=!r} using delete")
         members = zarr.open_group(store=self.model, path=group_path).members(max_depth=None)
@@ -359,9 +376,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             group = zarr.open_group(store=store, path=prefix)
             group[group_name]  # check that it exists
             del group[group_name]
-        if group_path != "/":
-            # The root group is always present
-            self.all_groups.remove(group_path)
+        self.all_groups.remove(group_path)
 
     # # --------------- assertions -----------------
     # def check_group_arrays(self, group):

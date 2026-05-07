@@ -1,0 +1,9 @@
+{
+  "zarr_format": 3,
+  "node_type": "group",
+  "consolidated_metadata": {
+    "must_understand": false,
+    "kind": "inline",
+    "metadata": {}
+  }
+}
