@@ -101,10 +101,7 @@ async def coalesced_get(
         merged_start = min(x[1].start for x in last)
         prospective_end = max(last_end, r.end)
         prospective_size = prospective_end - merged_start
-        if (
-            gap <= options["max_gap_bytes"]
-            and prospective_size <= options["max_coalesced_bytes"]
-        ):
+        if gap <= options["max_gap_bytes"] and prospective_size <= options["max_coalesced_bytes"]:
             last.append(pair)
             continue
         groups.append([pair])
@@ -112,7 +109,7 @@ async def coalesced_get(
     # Build a uniform list of work items. Each work item is a list of
     # (input_index, ByteRequest | None) pairs. Merged groups have multiple
     # members (all RangeByteRequest); uncoalescable items have a single member.
-    work_items: list[list[tuple[int, ByteRequest | None]]] = groups
+    work_items: list[list[tuple[int, ByteRequest | None]]] = groups  # type: ignore[assignment]
     work_items.extend([(idx, single)] for idx, single in uncoalescable)
 
     # Completion queue entries are either ("ok", payload), ("missing", None),
@@ -137,8 +134,8 @@ async def coalesced_get(
                     return
                 # Merged group path: all members are RangeByteRequest.
                 assert all(isinstance(r, RangeByteRequest) for _, r in members)
-                starts = [r.start for _, r in members]  # type: ignore[union-attr]
-                ends = [r.end for _, r in members]  # type: ignore[union-attr]
+                starts: list[int] = [r.start for _, r in members]  # type: ignore[union-attr]
+                ends: list[int] = [r.end for _, r in members]  # type: ignore[union-attr]
                 group_start = min(starts)
                 group_end = max(ends)
                 big = await fetch(RangeByteRequest(group_start, group_end))
@@ -147,7 +144,7 @@ async def coalesced_get(
                     return
                 ordered = sorted(members, key=lambda pair: pair[1].start)  # type: ignore[union-attr]
                 sliced: list[tuple[int, Buffer | None]] = [
-                     (idx, big[r.start - group_start : r.end - group_start])
+                    (idx, big[r.start - group_start : r.end - group_start])  # type: ignore[union-attr]
                     for idx, r in ordered
                 ]
                 await completion_queue.put(("ok", tuple(sliced)))
