@@ -193,11 +193,30 @@ def test_compose_chains_associatively() -> None:
             exception_cls=ValueError,
             id="outer-output-rank-vs-inner-input-rank-mismatch",
         ),
+        ExpectErr(
+            input=(
+                # Outer is a non-constant 2D identity transform.
+                IndexTransform.from_shape((3, 2)),
+                # Inner has a 2D ArrayMap. _compose_array's general multi-dim
+                # path raises NotImplementedError for this combination.
+                IndexTransform(
+                    domain=IndexDomain.from_shape((3, 2)),
+                    output=(
+                        ArrayMap(
+                            index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp)
+                        ),
+                    ),
+                ),
+            ),
+            msg="not yet supported",
+            exception_cls=NotImplementedError,
+            id="multi-d-array-inner-non-constant-outer",
+        ),
     ],
     ids=lambda c: c.id,
 )
 def test_compose_errors(case: ExpectErr[tuple[IndexTransform, IndexTransform]]) -> None:
-    """compose rejects rank-mismatched outer/inner pairs."""
+    """compose raises on rank mismatch and on the unsupported multi-d-array compose path."""
     outer, inner = case.input
     with pytest.raises(case.exception_cls, match=case.msg):
         compose(outer, inner)

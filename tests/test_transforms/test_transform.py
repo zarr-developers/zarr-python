@@ -369,6 +369,25 @@ def test_oindex_success(case: Expect[tuple[IndexTransform, Any], dict[str, Any]]
         assert isinstance(result.output[1], case.expected["out1_kind"])
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), (slice(None, None, -1),)),
+            msg="slice step must be positive",
+            exception_cls=IndexError,
+            id="negative-slice-step",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_oindex_errors(case: ExpectErr[tuple[IndexTransform, Any]]) -> None:
+    """IndexTransform.oindex rejects non-positive slice steps."""
+    transform, selection = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        transform.oindex[selection]
+
+
 # ---------------------------------------------------------------------------
 # vindex (vectorized indexing)
 # ---------------------------------------------------------------------------
@@ -422,6 +441,25 @@ def test_vindex_success(case: Expect[tuple[IndexTransform, Any], tuple[int, ...]
     transform, selection = case.input
     result = transform.vindex[selection]
     assert result.domain.shape == case.expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), (slice(None, None, -1),)),
+            msg="slice step must be positive",
+            exception_cls=IndexError,
+            id="negative-slice-step",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_vindex_errors(case: ExpectErr[tuple[IndexTransform, Any]]) -> None:
+    """IndexTransform.vindex rejects non-positive slice steps."""
+    transform, selection = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        transform.vindex[selection]
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +522,17 @@ def test_selection_to_transform_success(
     result = selection_to_transform(selection, transform, mode)
     assert result.domain.shape == case.expected["shape"]
     assert isinstance(result.output[0], case.expected["out0_kind"])
+
+
+def test_selection_to_transform_unknown_mode_errors() -> None:
+    """selection_to_transform rejects unknown indexing modes.
+
+    The `mode` parameter is typed as `Literal["basic", "orthogonal", "vectorized"]`,
+    so this test bypasses static type checking to exercise the runtime guard.
+    """
+    t = IndexTransform.from_shape((10,))
+    with pytest.raises(ValueError, match="Unknown mode"):
+        selection_to_transform(slice(None), t, "diagonal")
 
 
 # ---------------------------------------------------------------------------
@@ -593,6 +642,14 @@ def test_intersect_2d_mixed_constant_and_dimension() -> None:
     assert isinstance(restricted.output[1], DimensionMap)
     assert restricted.domain.inclusive_min == (5,)
     assert restricted.domain.exclusive_max == (10,)
+
+
+def test_intersect_rank_mismatch_errors() -> None:
+    """intersect rejects an output_domain whose rank differs from the transform's output rank."""
+    t = IndexTransform.from_shape((10,))  # output rank 1
+    chunk = IndexDomain.from_shape((10, 20))  # rank 2
+    with pytest.raises(ValueError, match="output rank"):
+        t.intersect(chunk)
 
 
 # ---------------------------------------------------------------------------
@@ -712,3 +769,28 @@ def test_translate_2d() -> None:
     assert out0.offset == -5
     assert isinstance(out1, DimensionMap)
     assert out1.offset == -10
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((10, 20)), (1,)),
+            msg="shift must have length",
+            exception_cls=ValueError,
+            id="shift-too-short",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), (1, 2)),
+            msg="shift must have length",
+            exception_cls=ValueError,
+            id="shift-too-long",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_translate_errors(case: ExpectErr[tuple[IndexTransform, tuple[int, ...]]]) -> None:
+    """IndexTransform.translate rejects shifts whose length doesn't match output_rank."""
+    transform, shift = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        transform.translate(shift)
