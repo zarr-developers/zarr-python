@@ -1,516 +1,712 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
+from tests.test_transforms.conftest import Expect, ExpectErr
 from zarr.core._transforms.domain import IndexDomain
 from zarr.core._transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr.core._transforms.transform import IndexTransform, selection_to_transform
+from zarr.core._transforms.transform import (
+    IndexTransform,
+    _intersect_vectorized,
+    selection_to_transform,
+)
+
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
 
 
-class TestIndexTransformConstruction:
-    def test_from_shape(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        assert t.input_rank == 2
-        assert t.output_rank == 2
-        assert t.domain.shape == (10, 20)
-        assert t.domain.origin == (0, 0)
-        for i, m in enumerate(t.output):
-            assert isinstance(m, DimensionMap)
-            assert m.input_dimension == i
-            assert m.offset == 0
-            assert m.stride == 1
-
-    def test_identity(self) -> None:
-        domain = IndexDomain(inclusive_min=(5,), exclusive_max=(15,))
-        t = IndexTransform.identity(domain)
-        assert t.input_rank == 1
-        assert t.output_rank == 1
-        assert t.domain == domain
-        assert isinstance(t.output[0], DimensionMap)
-        assert t.output[0].input_dimension == 0
-
-    def test_from_shape_0d(self) -> None:
-        t = IndexTransform.from_shape(())
-        assert t.input_rank == 0
-        assert t.output_rank == 0
-        assert t.domain.shape == ()
-
-    def test_custom_output_maps(self) -> None:
-        domain = IndexDomain.from_shape((10,))
-        maps = (ConstantMap(offset=42), DimensionMap(input_dimension=0, offset=5, stride=2))
-        t = IndexTransform(domain=domain, output=maps)
-        assert t.input_rank == 1
-        assert t.output_rank == 2
-
-    def test_validation_input_dimension_out_of_range(self) -> None:
-        domain = IndexDomain.from_shape((10,))
-        maps = (DimensionMap(input_dimension=5),)
-        with pytest.raises(ValueError, match="input_dimension"):
-            IndexTransform(domain=domain, output=maps)
-
-
-class TestIndexTransformBasicIndexing:
-    def test_slice_identity(self) -> None:
-        """slice(None) on identity transform is a no-op."""
-        t = IndexTransform.from_shape((10, 20))
-        result = t[slice(None), slice(None)]
-        assert result.domain.shape == (10, 20)
-        assert result.input_rank == 2
-        assert result.output_rank == 2
-
-    def test_slice_narrows(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = t[2:8, 5:15]
-        assert result.domain.shape == (6, 10)
-        assert result.domain.origin == (0, 0)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 2
-        assert result.output[0].stride == 1
-        assert result.output[0].input_dimension == 0
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].offset == 5
-        assert result.output[1].input_dimension == 1
-
-    def test_strided_slice(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        result = t[::2]
-        assert result.domain.shape == (5,)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 0
-        assert result.output[0].stride == 2
-
-    def test_strided_slice_with_start(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        result = t[1:9:3]
-        # indices: 1, 4, 7 -> 3 elements
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 1
-        assert result.output[0].stride == 3
-
-    def test_int_drops_dimension(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = t[3]
-        assert result.input_rank == 1
-        assert result.output_rank == 2
-        assert isinstance(result.output[0], ConstantMap)
-        assert result.output[0].offset == 3
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].input_dimension == 0
-
-    def test_int_middle_dimension(self) -> None:
-        t = IndexTransform.from_shape((10, 20, 30))
-        result = t[:, 5, :]
-        assert result.input_rank == 2
-        assert result.output_rank == 3
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].input_dimension == 0
-        assert isinstance(result.output[1], ConstantMap)
-        assert result.output[1].offset == 5
-        assert isinstance(result.output[2], DimensionMap)
-        assert result.output[2].input_dimension == 1
-
-    def test_ellipsis(self) -> None:
-        t = IndexTransform.from_shape((10, 20, 30))
-        result = t[2:8, ...]
-        assert result.input_rank == 3
-        assert result.domain.shape == (6, 20, 30)
-
-    def test_newaxis(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = t[np.newaxis, :, :]
-        assert result.input_rank == 3
-        assert result.domain.shape == (1, 10, 20)
-        assert result.output_rank == 2
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].input_dimension == 1
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].input_dimension == 2
-
-    def test_int_out_of_bounds(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        with pytest.raises(IndexError):
-            t[10]
-
-    def test_negative_int_is_literal(self) -> None:
-        """Negative indices are literal coordinates (TensorStore convention),
-        not 'from the end' like NumPy."""
-        t = IndexTransform.from_shape((10,))
-        with pytest.raises(IndexError):
-            t[-1]  # -1 is out of bounds for domain [0, 10)
-
-    def test_negative_int_valid_with_negative_origin(self) -> None:
-        """Negative index is valid if the domain includes negative coordinates."""
-        domain = IndexDomain(inclusive_min=(-5,), exclusive_max=(5,))
-        t = IndexTransform.identity(domain)
-        result = t[-3]
-        assert isinstance(result.output[0], ConstantMap)
-        assert result.output[0].offset == -3
-
-    def test_composition_of_slices(self) -> None:
-        """Slicing a sliced transform should compose offsets."""
-        t = IndexTransform.from_shape((100,))
-        result = t[10:50][5:20]
-        assert result.domain.shape == (15,)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 15
-        assert result.output[0].stride == 1
-
-    def test_composition_of_strides(self) -> None:
-        t = IndexTransform.from_shape((100,))
-        result = t[::2][::3]
-        # t[::2] -> shape (50,), offset=0, stride=2
-        # [::3] -> shape ceil(50/3)=17, offset=0, stride=2*3=6
-        assert result.domain.shape == (17,)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].stride == 6
-
-    def test_bare_int(self) -> None:
-        """Non-tuple selection."""
-        t = IndexTransform.from_shape((10, 20))
-        result = t[3]
-        assert result.input_rank == 1
-
-    def test_bare_slice(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = t[2:8]
-        assert result.domain.shape == (6, 20)
-
-
-class TestBasicIndexingOnArrayMaps:
-    """When a transform already has ArrayMap outputs, basic indexing must
-    apply the corresponding operation to the index_array's axes."""
-
-    def test_int_on_array_map_drops_axis(self) -> None:
-        """Integer index on a dimension referenced by an ArrayMap should
-        index into the array on that axis."""
-        arr = np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp)
-        # 2D input domain (3, 2), one ArrayMap output
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3, 2)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        # Index with int on dim 0 -> pick row 1 -> arr[1, :] = [30, 40]
-        result = t[1]
-        assert result.input_rank == 1
-        assert result.domain.shape == (2,)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, np.array([30, 40]))
-
-    def test_slice_on_array_map(self) -> None:
-        """Slice on a dimension referenced by an ArrayMap should slice the array."""
-        arr = np.array([10, 20, 30, 40, 50], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((5,)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        result = t[1:4]
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, np.array([20, 30, 40]))
-
-    def test_strided_slice_on_array_map(self) -> None:
-        """Strided slice on ArrayMap should stride the array."""
-        arr = np.array([10, 20, 30, 40, 50], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((5,)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        result = t[::2]
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, np.array([10, 30, 50]))
-
-    def test_newaxis_on_array_map(self) -> None:
-        """Newaxis should insert an axis in the index_array."""
-        arr = np.array([10, 20, 30], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        result = t[np.newaxis, :]
-        assert result.input_rank == 2
-        assert result.domain.shape == (1, 3)
-        assert isinstance(result.output[0], ArrayMap)
-        assert result.output[0].index_array.shape == (1, 3)
-        np.testing.assert_array_equal(result.output[0].index_array, np.array([[10, 20, 30]]))
-
-    def test_int_drops_one_of_two_array_dims(self) -> None:
-        """2D array map, int on dim 0, slice on dim 1."""
-        arr = np.array([[10, 20, 30], [40, 50, 60]], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((2, 3)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        result = t[0, 1:3]
-        assert result.input_rank == 1
-        assert result.domain.shape == (2,)
-        assert isinstance(result.output[0], ArrayMap)
-        # arr[0, 1:3] = [20, 30]
-        np.testing.assert_array_equal(result.output[0].index_array, np.array([20, 30]))
-
-
-class TestIndexTransformOindex:
-    def test_oindex_int_array(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx = np.array([1, 3, 5], dtype=np.intp)
-        result = t.oindex[idx, :]
-        assert result.input_rank == 2
-        assert result.domain.shape == (3, 20)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, idx)
-        assert result.output[0].offset == 0
-        assert result.output[0].stride == 1
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].input_dimension == 1
-
-    def test_oindex_bool_array(self) -> None:
-        t = IndexTransform.from_shape((5,))
-        mask = np.array([True, False, True, False, True])
-        result = t.oindex[mask]
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(
-            result.output[0].index_array, np.array([0, 2, 4], dtype=np.intp)
-        )
-
-    def test_oindex_mixed(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx = np.array([2, 4], dtype=np.intp)
-        result = t.oindex[idx, 5:15]
-        assert result.input_rank == 2
-        assert result.domain.shape == (2, 10)
-        assert isinstance(result.output[0], ArrayMap)
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].offset == 5
-
-    def test_oindex_multiple_arrays(self) -> None:
-        t = IndexTransform.from_shape((10, 20, 30))
-        idx0 = np.array([1, 3], dtype=np.intp)
-        idx1 = np.array([5, 10, 15], dtype=np.intp)
-        result = t.oindex[idx0, :, idx1]
-        assert result.input_rank == 3
-        assert result.domain.shape == (2, 20, 3)
-        assert isinstance(result.output[0], ArrayMap)
-        assert isinstance(result.output[1], DimensionMap)
-        assert isinstance(result.output[2], ArrayMap)
-
-
-class TestIndexTransformVindex:
-    def test_vindex_single_array(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        idx = np.array([1, 3, 5], dtype=np.intp)
-        result = t.vindex[idx]
-        assert result.input_rank == 1
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, idx)
-
-    def test_vindex_broadcast(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx0 = np.array([[1, 2], [3, 4]], dtype=np.intp)
-        idx1 = np.array([[10, 11], [12, 13]], dtype=np.intp)
-        result = t.vindex[idx0, idx1]
-        assert result.input_rank == 2
-        assert result.domain.shape == (2, 2)
-        assert isinstance(result.output[0], ArrayMap)
-        assert isinstance(result.output[1], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, idx0)
-        np.testing.assert_array_equal(result.output[1].index_array, idx1)
-
-    def test_vindex_with_slice(self) -> None:
-        t = IndexTransform.from_shape((10, 20, 30))
-        idx = np.array([1, 3, 5], dtype=np.intp)
-        result = t.vindex[idx, :, :]
-        assert result.input_rank == 3
-        assert result.domain.shape == (3, 20, 30)
-        assert isinstance(result.output[0], ArrayMap)
-
-    def test_vindex_bool_mask(self) -> None:
-        t = IndexTransform.from_shape((5,))
-        mask = np.array([True, False, True, False, True])
-        result = t.vindex[mask]
-        assert result.domain.shape == (3,)
-        assert isinstance(result.output[0], ArrayMap)
-
-    def test_vindex_broadcast_different_shapes(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx0 = np.array([1, 2, 3], dtype=np.intp)
-        idx1 = np.array([[10], [11]], dtype=np.intp)
-        result = t.vindex[idx0, idx1]
-        assert result.input_rank == 2
-        assert result.domain.shape == (2, 3)
-
-
-class TestSelectionToTransform:
-    def test_basic_slice(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform((slice(2, 8), slice(5, 15)), t, "basic")
-        assert result.domain.shape == (6, 10)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 2
-
-    def test_basic_int(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform((3, slice(None)), t, "basic")
-        assert result.input_rank == 1
-        assert isinstance(result.output[0], ConstantMap)
-        assert result.output[0].offset == 3
-
-    def test_basic_ellipsis(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform(Ellipsis, t, "basic")
-        assert result.domain.shape == (10, 20)
-
-    def test_orthogonal(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx = np.array([1, 3, 5], dtype=np.intp)
-        result = selection_to_transform((idx, slice(None)), t, "orthogonal")
-        assert result.domain.shape == (3, 20)
-        assert isinstance(result.output[0], ArrayMap)
-
-    def test_vectorized(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        idx0 = np.array([1, 3], dtype=np.intp)
-        idx1 = np.array([5, 7], dtype=np.intp)
-        result = selection_to_transform((idx0, idx1), t, "vectorized")
-        assert result.domain.shape == (2,)
-        assert isinstance(result.output[0], ArrayMap)
-        assert isinstance(result.output[1], ArrayMap)
-
-    def test_composition_with_non_identity(self) -> None:
-        """Indexing a sliced transform composes offsets."""
-        t = IndexTransform.from_shape((100,))[10:50]
-        result = selection_to_transform(slice(5, 20), t, "basic")
-        assert result.domain.shape == (15,)
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 15
-
-
-class TestIndexTransformIntersect:
-    def test_constant_inside(self) -> None:
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(ConstantMap(offset=5),),
-        )
-        result = t.intersect(IndexDomain(inclusive_min=(0,), exclusive_max=(10,)))
-        assert result is not None
-        restricted, surviving = result
-        assert isinstance(restricted.output[0], ConstantMap)
-        assert restricted.output[0].offset == 5
-        assert surviving is None
-
-    def test_constant_outside(self) -> None:
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(ConstantMap(offset=5),),
-        )
-        result = t.intersect(IndexDomain(inclusive_min=(10,), exclusive_max=(20,)))
-        assert result is None
-
-    def test_dimension_partial(self) -> None:
-        """DimensionMap over [0,10) intersected with [5,15) narrows input to [5,10)."""
-        t = IndexTransform.from_shape((10,))
-        result = t.intersect(IndexDomain(inclusive_min=(5,), exclusive_max=(15,)))
-        assert result is not None
-        restricted, surviving = result
-        assert restricted.domain.inclusive_min == (5,)
-        assert restricted.domain.exclusive_max == (10,)
-        assert surviving is None
-
-    def test_dimension_no_overlap(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        result = t.intersect(IndexDomain(inclusive_min=(20,), exclusive_max=(30,)))
-        assert result is None
-
-    def test_dimension_strided(self) -> None:
-        """stride=2, offset=1 over [0,5): storage 1,3,5,7,9. Chunk [4,8)."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((5,)),
-            output=(DimensionMap(input_dimension=0, offset=1, stride=2),),
-        )
-        result = t.intersect(IndexDomain(inclusive_min=(4,), exclusive_max=(8,)))
-        assert result is not None
-        restricted, _surviving = result
-        # input 2->5, input 3->7. Both in [4,8).
-        assert restricted.domain.inclusive_min == (2,)
-        assert restricted.domain.exclusive_max == (4,)
-
-    def test_array_partial(self) -> None:
-        arr = np.array([3, 8, 15, 22], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((4,)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        result = t.intersect(IndexDomain(inclusive_min=(5,), exclusive_max=(20,)))
-        assert result is not None
-        restricted, surviving = result
-        assert isinstance(restricted.output[0], ArrayMap)
-        np.testing.assert_array_equal(restricted.output[0].index_array, np.array([8, 15]))
-        assert surviving is not None
-        np.testing.assert_array_equal(surviving, np.array([1, 2]))
-
-    def test_array_none_inside(self) -> None:
-        arr = np.array([1, 2, 3], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(ArrayMap(index_array=arr),),
-        )
-        assert t.intersect(IndexDomain(inclusive_min=(10,), exclusive_max=(20,))) is None
-
-    def test_2d_mixed(self) -> None:
-        """2D: ConstantMap on dim 0, DimensionMap on dim 1."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(
-                ConstantMap(offset=5),
-                DimensionMap(input_dimension=0, offset=0, stride=1),
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=IndexTransform.from_shape((10, 20)),
+            expected={"input_rank": 2, "output_rank": 2, "domain_shape": (10, 20)},
+            id="from_shape-2d",
+        ),
+        Expect(
+            input=IndexTransform.from_shape(()),
+            expected={"input_rank": 0, "output_rank": 0, "domain_shape": ()},
+            id="from_shape-0d",
+        ),
+        Expect(
+            input=IndexTransform.identity(IndexDomain(inclusive_min=(5,), exclusive_max=(15,))),
+            expected={"input_rank": 1, "output_rank": 1, "domain_shape": (10,)},
+            id="identity-non-zero-origin",
+        ),
+        Expect(
+            input=IndexTransform(
+                domain=IndexDomain.from_shape((10,)),
+                output=(ConstantMap(offset=42), DimensionMap(input_dimension=0)),
             ),
-        )
-        chunk = IndexDomain(inclusive_min=(0, 5), exclusive_max=(10, 15))
-        result = t.intersect(chunk)
-        assert result is not None
-        restricted, _ = result
-        assert isinstance(restricted.output[0], ConstantMap)
-        assert restricted.output[0].offset == 5
-        assert isinstance(restricted.output[1], DimensionMap)
-        assert restricted.domain.inclusive_min == (5,)
-        assert restricted.domain.exclusive_max == (10,)
+            expected={"input_rank": 1, "output_rank": 2, "domain_shape": (10,)},
+            id="custom-output-maps",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_construction_success(case: Expect[IndexTransform, dict[str, Any]]) -> None:
+    """IndexTransform constructors yield the expected ranks and domain shape."""
+    t = case.input
+    assert t.input_rank == case.expected["input_rank"]
+    assert t.output_rank == case.expected["output_rank"]
+    assert t.domain.shape == case.expected["domain_shape"]
 
 
-class TestIndexTransformTranslate:
-    def test_translate_constant(self) -> None:
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(ConstantMap(offset=5),),
-        )
-        result = t.translate((-5,))
-        assert isinstance(result.output[0], ConstantMap)
-        assert result.output[0].offset == 0
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input={
+                "domain": IndexDomain.from_shape((10,)),
+                "output": (DimensionMap(input_dimension=5),),
+            },
+            msg="input_dimension",
+            exception_cls=ValueError,
+            id="dimension-map-out-of-range",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_construction_errors(case: ExpectErr[dict[str, Any]]) -> None:
+    """IndexTransform construction with invalid output maps raises ValueError."""
+    with pytest.raises(case.exception_cls, match=case.msg):
+        IndexTransform(**case.input)
 
-    def test_translate_dimension(self) -> None:
-        t = IndexTransform.from_shape((10,))
-        result = t.translate((-3,))
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == -3
-        assert result.output[0].stride == 1
 
-    def test_translate_array(self) -> None:
-        arr = np.array([5, 10], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((2,)),
-            output=(ArrayMap(index_array=arr, offset=3),),
-        )
-        result = t.translate((-3,))
-        assert isinstance(result.output[0], ArrayMap)
-        assert result.output[0].offset == 0
-        np.testing.assert_array_equal(result.output[0].index_array, arr)
+# ---------------------------------------------------------------------------
+# from_shape produces an identity transform whose output maps are DimensionMaps
+# pointing at the corresponding input dim with offset=0, stride=1.
+# ---------------------------------------------------------------------------
 
-    def test_translate_2d(self) -> None:
-        t = IndexTransform.from_shape((10, 20))
-        result = t.translate((-5, -10))
-        assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == -5
-        assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].offset == -10
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(10, 20), expected=2, id="2d"),
+        Expect(input=(7,), expected=1, id="1d"),
+        Expect(input=(), expected=0, id="0d"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_from_shape_produces_identity_dimension_maps(
+    case: Expect[tuple[int, ...], int],
+) -> None:
+    """IndexTransform.from_shape produces DimensionMaps that map each output dim
+    back to the corresponding input dim, with no offset and unit stride."""
+    t = IndexTransform.from_shape(case.input)
+    assert len(t.output) == case.expected
+    for i, m in enumerate(t.output):
+        assert isinstance(m, DimensionMap)
+        assert m.input_dimension == i
+        assert m.offset == 0
+        assert m.stride == 1
+
+
+# ---------------------------------------------------------------------------
+# __getitem__ (basic indexing)
+#
+# Most successful branches are covered by selection_to_transform tests below;
+# this set focuses on cases unique to the __getitem__ surface (composition,
+# bare-int / bare-slice, ArrayMap interactions).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), (slice(None), slice(None))),
+            expected={"shape": (10, 20), "input_rank": 2, "output_rank": 2},
+            id="identity-slice",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), (slice(2, 8), slice(5, 15))),
+            expected={"shape": (6, 10), "input_rank": 2, "output_rank": 2},
+            id="2d-narrowing-slices",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10,)), slice(None, None, 2)),
+            expected={"shape": (5,), "input_rank": 1, "output_rank": 1},
+            id="strided-slice",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10,)), slice(1, 9, 3)),
+            expected={"shape": (3,), "input_rank": 1, "output_rank": 1},
+            id="strided-slice-with-start",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), 3),
+            expected={"shape": (20,), "input_rank": 1, "output_rank": 2},
+            id="bare-int-drops-leading-dim",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20, 30)), (slice(None), 5, slice(None))),
+            expected={"shape": (10, 30), "input_rank": 2, "output_rank": 3},
+            id="int-drops-middle-dim",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20, 30)), (slice(2, 8), ...)),
+            expected={"shape": (6, 20, 30), "input_rank": 3, "output_rank": 3},
+            id="ellipsis-fills-trailing",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), (np.newaxis, slice(None), slice(None))),
+            expected={"shape": (1, 10, 20), "input_rank": 3, "output_rank": 2},
+            id="newaxis-prepends-axis",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), slice(2, 8)),
+            expected={"shape": (6, 20), "input_rank": 2, "output_rank": 2},
+            id="bare-slice-implicitly-fills-trailing",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_getitem_basic_success(
+    case: Expect[tuple[IndexTransform, Any], dict[str, Any]],
+) -> None:
+    """IndexTransform.__getitem__ produces a sub-transform with the expected shape and rank."""
+    transform, selection = case.input
+    result = transform[selection]
+    assert result.domain.shape == case.expected["shape"]
+    assert result.input_rank == case.expected["input_rank"]
+    assert result.output_rank == case.expected["output_rank"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), 10),
+            msg="out of bounds",
+            exception_cls=IndexError,
+            id="int-at-upper-bound",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), -1),
+            msg="out of bounds",
+            exception_cls=IndexError,
+            id="negative-int-out-of-domain",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_getitem_basic_errors(case: ExpectErr[tuple[IndexTransform, Any]]) -> None:
+    """IndexTransform.__getitem__ rejects out-of-domain integer indices.
+
+    Note: negative indices are LITERAL coordinates per TensorStore convention,
+    not wrap-around. arr[-1] on a domain [0, 10) is out of bounds, not arr[9].
+    """
+    transform, selection = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        transform[selection]
+
+
+def test_getitem_negative_int_valid_with_negative_origin() -> None:
+    """A negative integer index is valid when the domain's origin is negative.
+
+    Stand-alone test (not parametrized) because verifying the *literal-coordinate*
+    semantics is the whole point — the assertion on the resulting ConstantMap
+    offset is the load-bearing check, not the shape.
+    """
+    domain = IndexDomain(inclusive_min=(-5,), exclusive_max=(5,))
+    t = IndexTransform.identity(domain)
+    result = t[-3]
+    assert isinstance(result.output[0], ConstantMap)
+    assert result.output[0].offset == -3
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexTransform.from_shape((100,))[10:50], slice(5, 20)),
+            expected={"shape": (15,), "offset": 15, "stride": 1},
+            id="composed-slices",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((100,))[::2], slice(None, None, 3)),
+            expected={"shape": (17,), "offset": 0, "stride": 6},
+            id="composed-strides",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_getitem_composition(
+    case: Expect[tuple[IndexTransform, Any], dict[str, Any]],
+) -> None:
+    """Indexing a sliced transform composes offsets and strides on the DimensionMap."""
+    transform, selection = case.input
+    result = transform[selection]
+    assert result.domain.shape == case.expected["shape"]
+    assert isinstance(result.output[0], DimensionMap)
+    assert result.output[0].offset == case.expected["offset"]
+    assert result.output[0].stride == case.expected["stride"]
+
+
+# Indexing into a transform whose output is already an ArrayMap — basic
+# operations (int/slice/stride/newaxis) must transform the index_array itself
+# rather than building a new map.
+_array_map_1d = IndexTransform(
+    domain=IndexDomain.from_shape((5,)),
+    output=(ArrayMap(index_array=np.array([10, 20, 30, 40, 50], dtype=np.intp)),),
+)
+_array_map_2d_3x2 = IndexTransform(
+    domain=IndexDomain.from_shape((3, 2)),
+    output=(ArrayMap(index_array=np.array([[10, 20], [30, 40], [50, 60]], dtype=np.intp)),),
+)
+_array_map_2d_2x3 = IndexTransform(
+    domain=IndexDomain.from_shape((2, 3)),
+    output=(ArrayMap(index_array=np.array([[10, 20, 30], [40, 50, 60]], dtype=np.intp)),),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(_array_map_2d_3x2, 1),
+            expected=np.array([30, 40], dtype=np.intp),
+            id="int-on-array-map-drops-axis",
+        ),
+        Expect(
+            input=(_array_map_1d, slice(1, 4)),
+            expected=np.array([20, 30, 40], dtype=np.intp),
+            id="slice-on-array-map",
+        ),
+        Expect(
+            input=(_array_map_1d, slice(None, None, 2)),
+            expected=np.array([10, 30, 50], dtype=np.intp),
+            id="strided-slice-on-array-map",
+        ),
+        Expect(
+            input=(_array_map_2d_2x3, (0, slice(1, 3))),
+            expected=np.array([20, 30], dtype=np.intp),
+            id="int-then-slice-on-2d-array-map",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_getitem_on_array_map(
+    case: Expect[tuple[IndexTransform, Any], np.ndarray[Any, np.dtype[np.intp]]],
+) -> None:
+    """Basic indexing on a transform whose output is an ArrayMap reshapes the index array."""
+    transform, selection = case.input
+    result = transform[selection]
+    assert isinstance(result.output[0], ArrayMap)
+    np.testing.assert_array_equal(result.output[0].index_array, case.expected)
+
+
+def test_getitem_newaxis_on_array_map() -> None:
+    """np.newaxis on an ArrayMap inserts a new axis in the index_array, not just the domain."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(ArrayMap(index_array=np.array([10, 20, 30], dtype=np.intp)),),
+    )
+    result = t[np.newaxis, :]
+    assert result.input_rank == 2
+    assert result.domain.shape == (1, 3)
+    assert isinstance(result.output[0], ArrayMap)
+    assert result.output[0].index_array.shape == (1, 3)
+    np.testing.assert_array_equal(result.output[0].index_array, np.array([[10, 20, 30]]))
+
+
+# ---------------------------------------------------------------------------
+# oindex (orthogonal indexing)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (np.array([1, 3, 5], dtype=np.intp), slice(None)),
+            ),
+            expected={"shape": (3, 20), "out0_kind": ArrayMap, "out1_kind": DimensionMap},
+            id="int-array-and-slice",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((5,)), (np.array([True, False, True, False, True]),)),
+            expected={"shape": (3,), "out0_kind": ArrayMap, "out1_kind": None},
+            id="bool-mask",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (np.array([2, 4], dtype=np.intp), slice(5, 15)),
+            ),
+            expected={"shape": (2, 10), "out0_kind": ArrayMap, "out1_kind": DimensionMap},
+            id="array-and-narrowing-slice",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20, 30)),
+                (
+                    np.array([1, 3], dtype=np.intp),
+                    slice(None),
+                    np.array([5, 10, 15], dtype=np.intp),
+                ),
+            ),
+            expected={"shape": (2, 20, 3), "out0_kind": ArrayMap, "out1_kind": DimensionMap},
+            id="three-dims-mixed",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_oindex_success(case: Expect[tuple[IndexTransform, Any], dict[str, Any]]) -> None:
+    """IndexTransform.oindex combines array indices independently per dimension."""
+    transform, selection = case.input
+    result = transform.oindex[selection]
+    assert result.domain.shape == case.expected["shape"]
+    assert isinstance(result.output[0], case.expected["out0_kind"])
+    if case.expected["out1_kind"] is not None:
+        assert isinstance(result.output[1], case.expected["out1_kind"])
+
+
+# ---------------------------------------------------------------------------
+# vindex (vectorized indexing)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexTransform.from_shape((10,)), np.array([1, 3, 5], dtype=np.intp)),
+            expected=(3,),
+            id="single-1d-array",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (
+                    np.array([[1, 2], [3, 4]], dtype=np.intp),
+                    np.array([[10, 11], [12, 13]], dtype=np.intp),
+                ),
+            ),
+            expected=(2, 2),
+            id="two-2d-arrays-broadcast",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20, 30)),
+                (np.array([1, 3, 5], dtype=np.intp), slice(None), slice(None)),
+            ),
+            expected=(3, 20, 30),
+            id="array-with-trailing-slices",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((5,)), np.array([True, False, True, False, True])),
+            expected=(3,),
+            id="bool-mask",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (np.array([1, 2, 3], dtype=np.intp), np.array([[10], [11]], dtype=np.intp)),
+            ),
+            expected=(2, 3),
+            id="broadcast-different-shapes",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_vindex_success(case: Expect[tuple[IndexTransform, Any], tuple[int, ...]]) -> None:
+    """IndexTransform.vindex broadcasts array indices and produces correlated ArrayMaps."""
+    transform, selection = case.input
+    result = transform.vindex[selection]
+    assert result.domain.shape == case.expected
+
+
+# ---------------------------------------------------------------------------
+# selection_to_transform — the public dispatch front door for all three modes.
+# Sanity check that each mode produces the expected output kind.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), (slice(2, 8), slice(5, 15)), "basic"),
+            expected={"shape": (6, 10), "out0_kind": DimensionMap},
+            id="basic-slices",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), (3, slice(None)), "basic"),
+            expected={"shape": (20,), "out0_kind": ConstantMap},
+            id="basic-int-and-slice",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((10, 20)), Ellipsis, "basic"),
+            expected={"shape": (10, 20), "out0_kind": DimensionMap},
+            id="basic-bare-ellipsis",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (np.array([1, 3, 5], dtype=np.intp), slice(None)),
+                "orthogonal",
+            ),
+            expected={"shape": (3, 20), "out0_kind": ArrayMap},
+            id="orthogonal",
+        ),
+        Expect(
+            input=(
+                IndexTransform.from_shape((10, 20)),
+                (np.array([1, 3], dtype=np.intp), np.array([5, 7], dtype=np.intp)),
+                "vectorized",
+            ),
+            expected={"shape": (2,), "out0_kind": ArrayMap},
+            id="vectorized",
+        ),
+        Expect(
+            input=(IndexTransform.from_shape((100,))[10:50], slice(5, 20), "basic"),
+            expected={"shape": (15,), "out0_kind": DimensionMap},
+            id="composes-with-non-identity-base",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_selection_to_transform_success(
+    case: Expect[tuple[IndexTransform, Any, str], dict[str, Any]],
+) -> None:
+    """selection_to_transform dispatches to basic/orthogonal/vectorized correctly."""
+    transform, selection, mode = case.input
+    result = selection_to_transform(selection, transform, mode)
+    assert result.domain.shape == case.expected["shape"]
+    assert isinstance(result.output[0], case.expected["out0_kind"])
+
+
+# ---------------------------------------------------------------------------
+# intersect — restrict an output domain. Returns (sub_transform, surviving)
+# or None when the intersection is empty.
+# ---------------------------------------------------------------------------
+
+
+def test_intersect_constant_inside() -> None:
+    """A ConstantMap whose offset is inside the chunk survives unchanged."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ConstantMap(offset=5),),
+    )
+    result = t.intersect(IndexDomain(inclusive_min=(0,), exclusive_max=(10,)))
+    assert result is not None
+    restricted, surviving = result
+    assert isinstance(restricted.output[0], ConstantMap)
+    assert restricted.output[0].offset == 5
+    assert surviving is None
+
+
+def test_intersect_constant_outside() -> None:
+    """A ConstantMap whose offset is outside the chunk yields None."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ConstantMap(offset=5),),
+    )
+    assert t.intersect(IndexDomain(inclusive_min=(10,), exclusive_max=(20,))) is None
+
+
+def test_intersect_dimension_partial() -> None:
+    """A DimensionMap whose storage-coord range partially overlaps the chunk
+    narrows the input domain to the surviving slice."""
+    t = IndexTransform.from_shape((10,))
+    result = t.intersect(IndexDomain(inclusive_min=(5,), exclusive_max=(15,)))
+    assert result is not None
+    restricted, surviving = result
+    assert restricted.domain.inclusive_min == (5,)
+    assert restricted.domain.exclusive_max == (10,)
+    assert surviving is None
+
+
+def test_intersect_dimension_no_overlap() -> None:
+    """A DimensionMap whose storage-coord range does not overlap the chunk yields None."""
+    t = IndexTransform.from_shape((10,))
+    assert t.intersect(IndexDomain(inclusive_min=(20,), exclusive_max=(30,))) is None
+
+
+def test_intersect_dimension_strided() -> None:
+    """Strided DimensionMap: storage = offset + stride * input. Only inputs that land
+    in the chunk survive."""
+    # offset=1, stride=2, input [0,5): storage = {1, 3, 5, 7, 9}. Chunk [4, 8) -> {5, 7}.
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((5,)),
+        output=(DimensionMap(input_dimension=0, offset=1, stride=2),),
+    )
+    result = t.intersect(IndexDomain(inclusive_min=(4,), exclusive_max=(8,)))
+    assert result is not None
+    restricted, _ = result
+    assert restricted.domain.inclusive_min == (2,)
+    assert restricted.domain.exclusive_max == (4,)
+
+
+def test_intersect_array_partial() -> None:
+    """An ArrayMap whose storage coords partially overlap the chunk yields a filtered ArrayMap
+    plus a `surviving` mask of the input indices that survived."""
+    arr = np.array([3, 8, 15, 22], dtype=np.intp)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((4,)),
+        output=(ArrayMap(index_array=arr),),
+    )
+    result = t.intersect(IndexDomain(inclusive_min=(5,), exclusive_max=(20,)))
+    assert result is not None
+    restricted, surviving = result
+    assert isinstance(restricted.output[0], ArrayMap)
+    np.testing.assert_array_equal(restricted.output[0].index_array, np.array([8, 15]))
+    assert surviving is not None
+    np.testing.assert_array_equal(surviving, np.array([1, 2]))
+
+
+def test_intersect_array_disjoint() -> None:
+    """An ArrayMap whose storage coords are entirely outside the chunk yields None."""
+    arr = np.array([1, 2, 3], dtype=np.intp)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(ArrayMap(index_array=arr),),
+    )
+    assert t.intersect(IndexDomain(inclusive_min=(10,), exclusive_max=(20,))) is None
+
+
+def test_intersect_2d_mixed_constant_and_dimension() -> None:
+    """2D output: ConstantMap on dim 0 (inside chunk), DimensionMap on dim 1 (overlaps chunk)."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(
+            ConstantMap(offset=5),
+            DimensionMap(input_dimension=0, offset=0, stride=1),
+        ),
+    )
+    chunk = IndexDomain(inclusive_min=(0, 5), exclusive_max=(10, 15))
+    result = t.intersect(chunk)
+    assert result is not None
+    restricted, _ = result
+    assert isinstance(restricted.output[0], ConstantMap)
+    assert restricted.output[0].offset == 5
+    assert isinstance(restricted.output[1], DimensionMap)
+    assert restricted.domain.inclusive_min == (5,)
+    assert restricted.domain.exclusive_max == (10,)
+
+
+# ---------------------------------------------------------------------------
+# Direct tests for _intersect_vectorized.
+#
+# Public `intersect` only calls _intersect_vectorized when the transform has
+# 2+ ArrayMap outputs (correlated indices). All public test cases use exactly
+# one ArrayMap, so this branch is unreachable from public-surface tests.
+# ---------------------------------------------------------------------------
+
+
+def _vectorized_2d_array_map() -> IndexTransform:
+    """Helper: a vectorized transform over a (3,) input domain with two
+    correlated ArrayMaps. Storage coords: (1,10), (5,11), (9,12)."""
+    return IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(index_array=np.array([1, 5, 9], dtype=np.intp)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp)),
+        ),
+    )
+
+
+def test_intersect_vectorized_partial_survival() -> None:
+    """Two correlated ArrayMaps; only points where ALL coords are in-chunk survive."""
+    t = _vectorized_2d_array_map()
+    chunk = IndexDomain(inclusive_min=(0, 10), exclusive_max=(8, 12))
+    # Storage points (1,10), (5,11), (9,12). In-chunk: (1,10), (5,11). (9,12) fails dim 1.
+    result = _intersect_vectorized(t, chunk, [0, 1])
+    assert result is not None
+    restricted, surviving = result
+    assert isinstance(restricted.output[0], ArrayMap)
+    assert isinstance(restricted.output[1], ArrayMap)
+    np.testing.assert_array_equal(restricted.output[0].index_array, np.array([1, 5]))
+    np.testing.assert_array_equal(restricted.output[1].index_array, np.array([10, 11]))
+    assert surviving is not None
+    np.testing.assert_array_equal(surviving, np.array([0, 1]))
+
+
+def test_intersect_vectorized_no_survival() -> None:
+    """If no point is in-chunk on all dims, returns None."""
+    t = _vectorized_2d_array_map()
+    chunk = IndexDomain(inclusive_min=(20, 20), exclusive_max=(30, 30))
+    assert _intersect_vectorized(t, chunk, [0, 1]) is None
+
+
+def test_intersect_vectorized_with_constant_outside_drops_to_none() -> None:
+    """When a ConstantMap output is outside the chunk, the entire transform fails."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(index_array=np.array([1, 2, 3], dtype=np.intp)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp)),
+            ConstantMap(offset=99),
+        ),
+    )
+    chunk = IndexDomain(inclusive_min=(0, 0, 0), exclusive_max=(10, 20, 5))
+    assert _intersect_vectorized(t, chunk, [0, 1]) is None
+
+
+# ---------------------------------------------------------------------------
+# translate — shift every coordinate by an offset.
+# ---------------------------------------------------------------------------
+
+_translate_dimension_t = IndexTransform.from_shape((10,))
+_translate_array_t = IndexTransform(
+    domain=IndexDomain.from_shape((2,)),
+    output=(ArrayMap(index_array=np.array([5, 10], dtype=np.intp), offset=3),),
+)
+_translate_constant_t = IndexTransform(
+    domain=IndexDomain.from_shape((10,)),
+    output=(ConstantMap(offset=5),),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(_translate_constant_t, (-5,)),
+            expected={"out_kind": ConstantMap, "offset": 0},
+            id="constant",
+        ),
+        Expect(
+            input=(_translate_dimension_t, (-3,)),
+            expected={"out_kind": DimensionMap, "offset": -3, "stride": 1},
+            id="dimension",
+        ),
+        Expect(
+            input=(_translate_array_t, (-3,)),
+            expected={"out_kind": ArrayMap, "offset": 0},
+            id="array",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_translate_success(
+    case: Expect[tuple[IndexTransform, tuple[int, ...]], dict[str, Any]],
+) -> None:
+    """IndexTransform.translate adjusts each output map's offset uniformly."""
+    transform, shift = case.input
+    result = transform.translate(shift)
+    out0 = result.output[0]
+    assert isinstance(out0, case.expected["out_kind"])
+    assert out0.offset == case.expected["offset"]
+    if "stride" in case.expected:
+        assert isinstance(out0, DimensionMap)
+        assert out0.stride == case.expected["stride"]
+
+
+def test_translate_2d() -> None:
+    """A multi-dimensional translate shifts all output dims independently."""
+    t = IndexTransform.from_shape((10, 20))
+    result = t.translate((-5, -10))
+    out0, out1 = result.output
+    assert isinstance(out0, DimensionMap)
+    assert out0.offset == -5
+    assert isinstance(out1, DimensionMap)
+    assert out1.offset == -10
