@@ -44,6 +44,7 @@ from zarr.core.chunk_grids import (
     _is_rectilinear_chunks,
     as_regular_shape,
     guess_chunks,
+    _is_rectilinear_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
 )
