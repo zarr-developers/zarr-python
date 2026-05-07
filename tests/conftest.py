@@ -22,7 +22,13 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     _parse_chunk_key_encoding,
 )
-from zarr.core.chunk_grids import _auto_partition
+from zarr.core.chunk_grids import (
+    SHARDED_INNER_CHUNK_MAX_BYTES,
+    as_regular_shape,
+    guess_chunks,
+    normalize_chunks_nd,
+    resolve_outer_and_inner_chunks,
+)
 from zarr.core.common import (
     JSON,
     DimensionNamesLike,
@@ -37,7 +43,7 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, create_chunk_grid_metadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.testing.store import LatencyStore
@@ -345,10 +351,18 @@ def create_array_metadata(
     item_size = 1
     if isinstance(dtype_parsed, HasItemSize):
         item_size = dtype_parsed.item_size
-    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+    if chunks == "auto":
+        chunks_normalized = guess_chunks(
+            shape_parsed,
+            item_size,
+            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
+        )
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=shape_parsed,
+        chunks=chunks_normalized,
         shard_shape=shards,
-        chunk_shape=chunks,
         item_size=item_size,
     )
 
@@ -356,7 +370,6 @@ def create_array_metadata(
         order_parsed = zarr_config.get("array.order")
     else:
         order_parsed = order
-    chunks_out: tuple[int, ...]
 
     if zarr_format == 2:
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
@@ -366,7 +379,7 @@ def create_array_metadata(
         return ArrayV2Metadata(
             shape=shape_parsed,
             dtype=dtype_parsed,
-            chunks=chunk_shape_parsed,
+            chunks=as_regular_shape(outer_chunks),
             order=order_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
@@ -384,32 +397,32 @@ def create_array_metadata(
 
         sub_codecs: tuple[Codec, ...] = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
-        if shard_shape_parsed is not None:
+        if inner is not None:
+            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed,
+                chunk_shape=inner_chunks_flat,
                 codecs=sub_codecs,
                 index_location=index_location,
             )
+            validation_grid = create_chunk_grid_metadata(outer_chunks)
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
+                shape=inner_chunks_flat,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGridMetadata(chunk_shape=shard_shape_parsed),
+                chunk_grid=validation_grid,
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
         else:
-            chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
         return ArrayV3Metadata(
             shape=shape_parsed,
             data_type=dtype_parsed,
-            chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks_out}},
+            chunk_grid=create_chunk_grid_metadata(outer_chunks),
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value,
             codecs=codecs_out,
