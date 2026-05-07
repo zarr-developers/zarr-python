@@ -148,9 +148,10 @@ async def coalesced_get(
                     await completion_queue.put(("missing", None))
                     return
                 ordered = sorted(members, key=lambda pair: pair[1].start)  # type: ignore[union-attr]
-                sliced: list[tuple[int, Buffer | None]] = []
-                for idx, r in ordered:
-                    sliced.append((idx, big[r.start - group_start : r.end - group_start]))  # type: ignore[union-attr]
+                sliced: list[tuple[int, Buffer | None]] = [
+                     (idx, big[r.start - group_start : r.end - group_start])
+                    for idx, r in ordered
+                ]
                 await completion_queue.put(("ok", tuple(sliced)))
         except asyncio.CancelledError:
             # Cancellation is expected when we stop scheduling on a missing key.
