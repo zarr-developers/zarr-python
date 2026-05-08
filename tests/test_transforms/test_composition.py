@@ -102,6 +102,34 @@ _array_outer_for_array_inner = IndexTransform(
             id="array-inner-constant-outer",
         ),
         Expect(
+            input=(
+                # Outer: 1-D identity-ish, input domain (4,), DimensionMap with
+                # offset=1 stride=1. Intermediate produced: [1, 2, 3, 4].
+                IndexTransform(
+                    domain=IndexDomain.from_shape((4,)),
+                    output=(DimensionMap(input_dimension=0, offset=1, stride=1),),
+                ),
+                # Inner: ArrayMap of length 5 on intermediate dim 0.
+                # arr[1..4] = [200, 300, 400, 500].
+                IndexTransform(
+                    domain=IndexDomain.from_shape((5,)),
+                    output=(
+                        ArrayMap(
+                            index_array=np.array([100, 200, 300, 400, 500], dtype=np.intp),
+                            input_dimensions=(0,),
+                        ),
+                    ),
+                ),
+            ),
+            expected={
+                "kind": ArrayMap,
+                "offset": 0,
+                "stride": 1,
+                "index_array": np.array([200, 300, 400, 500], dtype=np.intp),
+            },
+            id="array-inner-dimension-outer",
+        ),
+        Expect(
             input=(_array_outer_for_array_inner, _array_inner),
             expected={
                 "kind": ArrayMap,
@@ -276,20 +304,18 @@ def _affine_output_map(input_rank: int, draw: st.DrawFn) -> ConstantMap | Dimens
 
     DimensionMap requires input_rank >= 1; falls back to ConstantMap otherwise.
     Offsets and strides are kept small to avoid integer overflow during
-    repeated composition.
+    repeated composition. Strides are positive (DimensionMap rejects
+    non-positive strides at construction).
     """
     if input_rank == 0:
         return ConstantMap(offset=draw(st.integers(min_value=-10, max_value=10)))
     kind = draw(st.sampled_from(["constant", "dimension"]))
     if kind == "constant":
         return ConstantMap(offset=draw(st.integers(min_value=-10, max_value=10)))
-    # stride must be non-zero; sample sign and magnitude separately.
-    stride_mag = draw(st.integers(min_value=1, max_value=3))
-    stride_sign = draw(st.sampled_from([-1, 1]))
     return DimensionMap(
         input_dimension=draw(st.integers(min_value=0, max_value=input_rank - 1)),
         offset=draw(st.integers(min_value=-10, max_value=10)),
-        stride=stride_sign * stride_mag,
+        stride=draw(st.integers(min_value=1, max_value=3)),
     )
 
 

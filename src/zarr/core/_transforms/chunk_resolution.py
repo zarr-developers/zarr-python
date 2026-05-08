@@ -81,12 +81,9 @@ def iter_chunk_transforms(
             dim_hi = transform.domain.exclusive_max[d]
             if dim_lo >= dim_hi:
                 return  # empty domain
-            if m.stride > 0:
-                s_min = m.offset + m.stride * dim_lo
-                s_max = m.offset + m.stride * (dim_hi - 1)
-            else:
-                s_min = m.offset + m.stride * (dim_hi - 1)
-                s_max = m.offset + m.stride * dim_lo
+            # DimensionMap.stride is always positive (enforced by __post_init__).
+            s_min = m.offset + m.stride * dim_lo
+            s_max = m.offset + m.stride * (dim_hi - 1)
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
             chunk_ranges.append(range(first, last + 1))
@@ -162,12 +159,11 @@ def sub_transform_to_selections(
         if isinstance(m, ConstantMap):
             chunk_sel.append(m.offset)
         elif isinstance(m, DimensionMap):
+            # DimensionMap.stride is always positive (enforced by __post_init__).
             dim_lo = sub_transform.domain.inclusive_min[m.input_dimension]
             dim_hi = sub_transform.domain.exclusive_max[m.input_dimension]
             start = m.offset + m.stride * dim_lo
             stop = m.offset + m.stride * dim_hi
-            if m.stride < 0:
-                start, stop = stop + 1, start + 1
             chunk_sel.append(slice(start, stop, m.stride))
         elif isinstance(m, ArrayMap):
             if m.offset == 0 and m.stride == 1:

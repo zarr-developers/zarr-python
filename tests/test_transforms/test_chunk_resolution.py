@@ -256,3 +256,36 @@ def test_sub_transform_to_selections_vectorized_with_out_indices() -> None:
     assert len(out_sel) == 1
     assert isinstance(out_sel[0], np.ndarray)
     np.testing.assert_array_equal(out_sel[0], out_indices)
+
+
+def test_iter_chunk_transforms_empty_domain() -> None:
+    """When the input domain is empty (some dim has zero extent),
+    iter_chunk_transforms yields nothing."""
+    t = IndexTransform(
+        domain=IndexDomain(inclusive_min=(0,), exclusive_max=(0,)),
+        output=(DimensionMap(input_dimension=0, offset=0, stride=1),),
+    )
+    grid = _grid_1d(10, 30)
+    results = list(iter_chunk_transforms(t, grid))
+    assert results == []
+
+
+def test_iter_chunk_transforms_skips_chunks_that_intersect_returns_none() -> None:
+    """A strided DimensionMap can produce a chunk-range overestimate that
+    includes chunks the transform doesn't actually touch. iter_chunk_transforms
+    must skip those (the `if result is None: continue` branch)."""
+    # arr[::5] over a domain of size 30 yields storage coords [0, 5, 10, 15, 20, 25].
+    # With chunk size 4, those land in chunks 0, 1, 2, 3, 5, 6 — chunk 4 (storage [16,20))
+    # is in the chunk-range but contains no surviving storage coord (storage 20 is in chunk 5).
+    # Wait: storage 20 lands in chunk floor(20/4) = 5; 16 is in chunk 4. Let me recheck.
+    # arr[::5] gives [0, 5, 10, 15, 20, 25]. Chunks (size 4): 0/4=0, 5/4=1, 10/4=2,
+    # 15/4=3, 20/4=5, 25/4=6. So chunk 4 (storage [16, 20)) is skipped.
+    # The chunk-range computed in iter_chunk_transforms is range(0, 7) -> 0..6 inclusive,
+    # so chunk 4 is iterated and intersect() returns None.
+    t = IndexTransform.from_shape((30,))[::5]
+    grid = _grid_1d(4, 30)
+    results = list(iter_chunk_transforms(t, grid))
+    coords = sorted(r[0][0] for r in results)
+    # Every storage coord is hit exactly once; chunk 4 is NOT in the result.
+    assert 4 not in coords
+    assert sorted(coords) == [0, 1, 2, 3, 5, 6]

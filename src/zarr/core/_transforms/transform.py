@@ -64,6 +64,12 @@ class IndexTransform:
                         f"output[{i}].input_dimension = {m.input_dimension} "
                         f"is out of range for input rank {self.domain.ndim}"
                     )
+                if m.stride <= 0:
+                    raise ValueError(
+                        f"output[{i}].stride = {m.stride} must be positive. "
+                        "Negative-stride DimensionMaps are not supported; the "
+                        "Array layer normalizes negative strides upstream."
+                    )
             elif isinstance(m, ArrayMap):
                 # Every input dim referenced must be in range.
                 for d in m.input_dimensions:
@@ -267,18 +273,10 @@ def _intersect(
             if input_lo >= input_hi:
                 return None
 
-            # Find input range that produces storage coords in [lo, hi)
-            if m.stride > 0:
-                new_input_lo = max(input_lo, math.ceil((lo - m.offset) / m.stride))
-                new_input_hi = min(input_hi, math.ceil((hi - m.offset) / m.stride))
-            elif m.stride < 0:
-                new_input_lo = max(input_lo, math.ceil((hi - 1 - m.offset) / m.stride))
-                new_input_hi = min(input_hi, math.ceil((lo - 1 - m.offset) / m.stride))
-            else:
-                if lo <= m.offset < hi:
-                    new_input_lo, new_input_hi = input_lo, input_hi
-                else:
-                    return None
+            # Find the input range that produces storage coords in [lo, hi).
+            # DimensionMap.stride is always positive (enforced by __post_init__).
+            new_input_lo = max(input_lo, math.ceil((lo - m.offset) / m.stride))
+            new_input_hi = min(input_hi, math.ceil((hi - m.offset) / m.stride))
 
             if new_input_lo >= new_input_hi:
                 return None
@@ -297,7 +295,7 @@ def _intersect(
             # public oindex / vindex API; multi-dim orthogonal ArrayMaps would
             # only arise via direct manual construction. Reject rather than
             # silently produce an unsupported result.
-            if len(m.input_dimensions) != 1:
+            if len(m.input_dimensions) != 1:  # pragma: no cover - public API never produces this
                 raise NotImplementedError(
                     "intersect on a multi-dimensional orthogonal ArrayMap is not yet supported"
                 )
@@ -398,7 +396,9 @@ def _intersect_vectorized(
             # input dim: the broadcast dims always become ArrayMap parameters and
             # the slice dims become DimensionMaps on dims past the broadcast block.
             # This guard is reachable only via direct manual transform construction.
-            if m.input_dimension in correlated_input_dims:
+            if (
+                m.input_dimension in correlated_input_dims
+            ):  # pragma: no cover - public API never produces this
                 raise NotImplementedError(
                     "vectorized intersect with a DimensionMap on a correlated "
                     "input dim is not supported"
@@ -545,7 +545,9 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                     )
                 )
             else:
-                raise RuntimeError(f"unexpected: dimension {d} not handled")
+                raise RuntimeError(  # pragma: no cover - defensive; unreachable for validated transforms
+                    f"unexpected: dimension {d} not handled"
+                )
         elif isinstance(m, ArrayMap):
             # The array's axes are labeled by m.input_dimensions, in order.
             # For each labeled axis: if the corresponding old input dim is
@@ -568,7 +570,7 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                     array_stop = array_start + step * new_size
                     arr_idx.append(slice(array_start, array_stop, step))
                     new_input_dims.append(old_to_new_dim[axis_dim])
-                else:
+                else:  # pragma: no cover - defensive; unreachable for validated transforms
                     raise RuntimeError(
                         f"unexpected: ArrayMap input_dim {axis_dim} not in "
                         "dropped_dims or old_to_new_dim"
@@ -627,7 +629,7 @@ def _normalize_oindex_selection(
             result.append(np.array([int(sel)], dtype=np.intp))
         elif isinstance(sel, (list, tuple)):
             result.append(np.asarray(sel, dtype=np.intp))
-        else:
+        else:  # pragma: no cover - upstream _validate_array_selection rejects other types
             result.append(sel)
 
     # Pad with slice(None)
@@ -706,7 +708,9 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
             else:
-                raise RuntimeError(f"unexpected: dimension {d} not handled")
+                raise RuntimeError(  # pragma: no cover - defensive; unreachable for validated transforms
+                    f"unexpected: dimension {d} not handled"
+                )
         elif isinstance(m, ArrayMap):
             # Each axis of m.index_array corresponds to one entry in
             # m.input_dimensions. For each such old input dim, oindex either
@@ -727,7 +731,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                     array_stop = array_start + step * new_size
                     arr_idx.append(slice(array_start, array_stop, step))
-                else:
+                else:  # pragma: no cover - defensive; unreachable for validated transforms
                     raise RuntimeError(
                         f"unexpected: ArrayMap input_dim {axis_dim} not in "
                         "dim_array or dim_slice_params"
@@ -818,7 +822,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             processed.append(np.asarray(sel, dtype=np.intp))
         elif isinstance(sel, (int, np.integer)):
             processed.append(np.array([int(sel)], dtype=np.intp))
-        else:
+        else:  # pragma: no cover - upstream _validate_array_selection rejects other types
             processed.append(sel)
 
     # Separate array dims and slice dims

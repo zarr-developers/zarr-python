@@ -68,6 +68,52 @@ def test_construction_success(case: Expect[IndexTransform, dict[str, Any]]) -> N
             exception_cls=ValueError,
             id="dimension-map-out-of-range",
         ),
+        ExpectErr(
+            input={
+                "domain": IndexDomain.from_shape((10,)),
+                "output": (DimensionMap(input_dimension=0, stride=0),),
+            },
+            msg="must be positive",
+            exception_cls=ValueError,
+            id="dimension-map-zero-stride",
+        ),
+        ExpectErr(
+            input={
+                "domain": IndexDomain.from_shape((10,)),
+                "output": (DimensionMap(input_dimension=0, stride=-1),),
+            },
+            msg="must be positive",
+            exception_cls=ValueError,
+            id="dimension-map-negative-stride",
+        ),
+        ExpectErr(
+            input={
+                "domain": IndexDomain.from_shape((5, 3)),
+                "output": (
+                    ArrayMap(
+                        index_array=np.array([0, 1, 2], dtype=np.intp),
+                        input_dimensions=(7,),
+                    ),
+                ),
+            },
+            msg="out of range",
+            exception_cls=ValueError,
+            id="array-map-input-dim-out-of-range",
+        ),
+        ExpectErr(
+            input={
+                "domain": IndexDomain.from_shape((5, 3)),
+                "output": (
+                    ArrayMap(
+                        index_array=np.zeros((5, 5), dtype=np.intp),
+                        input_dimensions=(0, 0),
+                    ),
+                ),
+            },
+            msg="duplicate dimensions",
+            exception_cls=ValueError,
+            id="array-map-input-dims-duplicate",
+        ),
     ],
     ids=lambda c: c.id,
 )
@@ -871,3 +917,449 @@ def test_translate_errors(case: ExpectErr[tuple[IndexTransform, tuple[int, ...]]
     transform, shift = case.input
     with pytest.raises(case.exception_cls, match=case.msg):
         transform.translate(shift)
+
+
+# ---------------------------------------------------------------------------
+# selection_repr and __repr__: verify the human-readable strings cover each
+# OutputIndexMap variant.
+# ---------------------------------------------------------------------------
+
+
+def test_selection_repr_covers_all_map_kinds() -> None:
+    """selection_repr produces a TensorStore-style domain string with one
+    entry per output dim, formatted differently for each map kind."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ConstantMap(offset=5),
+            DimensionMap(input_dimension=0, offset=2, stride=1),
+            DimensionMap(input_dimension=0, offset=0, stride=3),
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+        ),
+    )
+    repr_str = t.selection_repr
+    assert "5" in repr_str  # ConstantMap
+    assert "[2, 5)" in repr_str  # DimensionMap stride=1 over input [0, 3)
+    assert "step 3" in repr_str  # DimensionMap stride=3
+    assert "{1, 5, 9}" in repr_str  # ArrayMap (small)
+
+
+def test_selection_repr_array_map_large() -> None:
+    """ArrayMaps with more than 5 elements show as `array(N)` rather than spelled out."""
+    arr = np.arange(10, dtype=np.intp)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,)),),
+    )
+    assert "array(10)" in t.selection_repr
+
+
+def test_repr_covers_all_map_kinds() -> None:
+    """__repr__ formats each output map with its kind-specific shape."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10, 5)),
+        output=(
+            ConstantMap(offset=7),
+            DimensionMap(input_dimension=0, offset=1, stride=2),
+            ArrayMap(
+                index_array=np.array([0, 1, 2, 3, 4], dtype=np.intp),
+                input_dimensions=(1,),
+            ),
+        ),
+    )
+    s = repr(t)
+    assert "out[0] = 7" in s
+    assert "out[1] = 1 + 2 * in[0]" in s
+    assert "out[2] = 0 + 1 * arr(5,)[in[1]]" in s
+
+
+# ---------------------------------------------------------------------------
+# intersect() public dispatch: prior tests call _intersect_vectorized directly;
+# the public IndexTransform.intersect() vectorized path was untested.
+# ---------------------------------------------------------------------------
+
+
+def test_intersect_dispatches_to_vectorized_when_arraymaps_correlated() -> None:
+    """IndexTransform.intersect() uses the vectorized path when 2+ ArrayMaps
+    share an input dimension. It uses the orthogonal path when ArrayMaps have
+    disjoint input dimensions."""
+    # Correlated: both ArrayMaps share input_dimensions=(0,) on a 1-D domain.
+    t_correlated = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            ArrayMap(
+                index_array=np.array([10, 11, 12], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+        ),
+    )
+    chunk = IndexDomain(inclusive_min=(0, 10), exclusive_max=(8, 12))
+    result = t_correlated.intersect(chunk)
+    assert result is not None
+    _, surviving = result
+    # Both points (1,10), (5,11) survive; (9,12) fails dim 1.
+    assert surviving is not None
+    np.testing.assert_array_equal(surviving, np.array([0, 1]))
+
+
+# ---------------------------------------------------------------------------
+# _intersect_vectorized with a DimensionMap output on a NON-correlated input
+# dim: the post-refactor path that preserves the non-broadcast input dim.
+# ---------------------------------------------------------------------------
+
+
+def test_intersect_vectorized_preserves_non_correlated_dim() -> None:
+    """A vindex transform with a non-broadcast input dim produces a
+    DimensionMap on that dim. Intersecting must remap that DimensionMap's
+    input_dimension to the new domain (where the broadcast dim has been
+    collapsed to (len(surviving),) at index 0)."""
+    # Construct the transform that vindex-with-trailing-slice would produce:
+    # (broadcast_dim=3, slice_dim=20).  output[0] = ArrayMap on broadcast,
+    # output[1] = DimensionMap on slice_dim.
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 20)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            DimensionMap(input_dimension=1, offset=0, stride=1),
+        ),
+    )
+    # Two correlated outputs needed for vectorized path; add a second ArrayMap
+    # on the same broadcast dim.
+    t_with_two_arrays = IndexTransform(
+        domain=IndexDomain.from_shape((3, 20)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            ArrayMap(
+                index_array=np.array([2, 6, 10], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            DimensionMap(input_dimension=1, offset=0, stride=1),
+        ),
+    )
+    chunk = IndexDomain(inclusive_min=(0, 0, 0), exclusive_max=(20, 20, 20))
+    result = t_with_two_arrays.intersect(chunk)
+    assert result is not None
+    restricted, surviving = result
+    # Surviving points: all 3 (all storage coords in [0,20)).
+    assert surviving is not None
+    np.testing.assert_array_equal(surviving, np.array([0, 1, 2]))
+    # New domain: (3 surviving, 20 from preserved slice dim).
+    assert restricted.domain.shape == (3, 20)
+    # output[2] (the DimensionMap) should have its input_dimension remapped
+    # from old dim 1 to new dim 1 (broadcast dim is now new dim 0).
+    out_dim_map = restricted.output[2]
+    assert isinstance(out_dim_map, DimensionMap)
+    assert out_dim_map.input_dimension == 1
+    # silence unused-var: t was an intermediate construction reference
+    assert t.output_rank == 2
+
+
+# ---------------------------------------------------------------------------
+# _apply_basic_indexing rejects negative slice steps.
+# ---------------------------------------------------------------------------
+
+
+def test_basic_indexing_rejects_negative_slice_step() -> None:
+    t = IndexTransform.from_shape((10,))
+    with pytest.raises(IndexError, match="slice step must be positive"):
+        t[slice(None, None, -1)]
+
+
+# ---------------------------------------------------------------------------
+# _apply_vindex on an existing ArrayMap output raises NotImplementedError.
+# ---------------------------------------------------------------------------
+
+
+def test_vindex_on_existing_arraymap_errors() -> None:
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((5,)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 2, 3, 4, 5], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+        ),
+    )
+    with pytest.raises(NotImplementedError, match="ArrayMap"):
+        t.vindex[np.array([0, 2], dtype=np.intp)]
+
+
+# ---------------------------------------------------------------------------
+# selection_to_transform validation: reject unsupported selection types.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), 1.5, "basic"),
+            msg="unsupported selection type",
+            exception_cls=IndexError,
+            id="basic-rejects-float",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), 1.5, "orthogonal"),
+            msg="unsupported selection type",
+            exception_cls=IndexError,
+            id="orthogonal-rejects-float",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), 1.5, "vectorized"),
+            msg="unsupported selection type",
+            exception_cls=IndexError,
+            id="vectorized-rejects-float",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_selection_to_transform_rejects_unsupported_types(
+    case: ExpectErr[tuple[IndexTransform, Any, Literal["basic", "orthogonal", "vectorized"]]],
+) -> None:
+    """selection_to_transform's validators reject types like float."""
+    transform, selection, mode = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        selection_to_transform(selection, transform, mode)
+
+
+# ---------------------------------------------------------------------------
+# _apply_oindex parsing branches: bare int, list selection.
+# ---------------------------------------------------------------------------
+
+
+def test_oindex_bare_int_becomes_singleton_array() -> None:
+    """oindex[3] on a 1-D transform converts the int to a 1-element array,
+    producing an ArrayMap of length 1 (not a ConstantMap)."""
+    t = IndexTransform.from_shape((10,))
+    result = t.oindex[3]
+    assert result.input_rank == 1
+    assert result.domain.shape == (1,)
+    assert isinstance(result.output[0], ArrayMap)
+    np.testing.assert_array_equal(result.output[0].index_array, np.array([3]))
+
+
+def test_oindex_list_selection() -> None:
+    """oindex accepts a Python list and converts it to an integer array."""
+    t = IndexTransform.from_shape((10,))
+    result = t.oindex[[1, 3, 5]]
+    assert result.input_rank == 1
+    assert result.domain.shape == (3,)
+    assert isinstance(result.output[0], ArrayMap)
+    np.testing.assert_array_equal(result.output[0].index_array, np.array([1, 3, 5]))
+
+
+# ---------------------------------------------------------------------------
+# _apply_vindex parsing branches: ellipsis, 2D bool, list, bare int.
+# ---------------------------------------------------------------------------
+
+
+def test_vindex_ellipsis() -> None:
+    """vindex[...] is a no-op identity."""
+    t = IndexTransform.from_shape((4, 5))
+    result = t.vindex[...]
+    assert result.domain.shape == (4, 5)
+
+
+def test_vindex_2d_bool_mask_consumes_two_dims() -> None:
+    """A 2-D bool mask in vindex consumes both dims of a 2-D domain and
+    expands into two correlated 1-D ArrayMaps."""
+    t = IndexTransform.from_shape((3, 4))
+    mask = np.array(
+        [[True, False, True, False], [False, True, False, True], [True, True, False, False]]
+    )
+    result = t.vindex[mask]
+    # 6 True entries; broadcast shape (6,).
+    assert result.domain.shape == (6,)
+    assert isinstance(result.output[0], ArrayMap)
+    assert isinstance(result.output[1], ArrayMap)
+
+
+def test_vindex_list_selection() -> None:
+    """vindex accepts a Python list like oindex does."""
+    t = IndexTransform.from_shape((10,))
+    result = t.vindex[[1, 3, 5]]
+    assert result.domain.shape == (3,)
+    assert isinstance(result.output[0], ArrayMap)
+
+
+def test_vindex_bare_int_becomes_singleton_array() -> None:
+    """vindex[3] on a 1-D transform produces an ArrayMap of length 1."""
+    t = IndexTransform.from_shape((10,))
+    result = t.vindex[3]
+    assert result.domain.shape == (1,)
+    assert isinstance(result.output[0], ArrayMap)
+
+
+def test_vindex_with_fewer_selections_than_dims_pads_with_slice() -> None:
+    """vindex(arr) on a 2-D domain leaves trailing dims untouched (slice fill)."""
+    t = IndexTransform.from_shape((3, 5))
+    result = t.vindex[np.array([0, 1], dtype=np.intp)]
+    # Broadcast dim (2,) prepended; trailing dim (5,) preserved.
+    assert result.domain.shape == (2, 5)
+
+
+# ---------------------------------------------------------------------------
+# ConstantMap survives basic / oindex / vindex unchanged. The tests above
+# exercise these paths for DimensionMap-only transforms; these cover the
+# `output[i] is ConstantMap` branch in each of the three apply functions.
+# ---------------------------------------------------------------------------
+
+
+def test_basic_indexing_preserves_constant_map() -> None:
+    """A ConstantMap output passes through basic indexing unchanged."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ConstantMap(offset=42), DimensionMap(input_dimension=0)),
+    )
+    result = t[2:8]
+    assert isinstance(result.output[0], ConstantMap)
+    assert result.output[0].offset == 42
+
+
+def test_oindex_preserves_constant_map() -> None:
+    """A ConstantMap output passes through oindex unchanged."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ConstantMap(offset=42), DimensionMap(input_dimension=0)),
+    )
+    result = t.oindex[np.array([1, 3, 5], dtype=np.intp)]
+    assert isinstance(result.output[0], ConstantMap)
+    assert result.output[0].offset == 42
+
+
+def test_vindex_preserves_constant_map() -> None:
+    """A ConstantMap output passes through vindex unchanged."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((10,)),
+        output=(ConstantMap(offset=42), DimensionMap(input_dimension=0)),
+    )
+    result = t.vindex[np.array([1, 3, 5], dtype=np.intp)]
+    assert isinstance(result.output[0], ConstantMap)
+    assert result.output[0].offset == 42
+
+
+def test_intersect_vectorized_constant_inside_chunk_passes() -> None:
+    """In _intersect_vectorized, a ConstantMap whose offset is inside the
+    chunk's range on its output dim is passed through. (The outside-chunk
+    case yields None and is already tested.)"""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(index_array=np.array([1, 2, 3], dtype=np.intp), input_dimensions=(0,)),
+            ArrayMap(index_array=np.array([10, 11, 12], dtype=np.intp), input_dimensions=(0,)),
+            ConstantMap(offset=5),
+        ),
+    )
+    chunk = IndexDomain(inclusive_min=(0, 0, 0), exclusive_max=(10, 20, 10))
+    result = t.intersect(chunk)
+    assert result is not None
+    restricted, _ = result
+    assert isinstance(restricted.output[2], ConstantMap)
+    assert restricted.output[2].offset == 5
+
+
+# ---------------------------------------------------------------------------
+# Domain-level edge cases: empty-domain intersect, oindex with ellipsis or
+# trailing-dim implicit fill.
+# ---------------------------------------------------------------------------
+
+
+def test_intersect_dimension_map_on_empty_domain_returns_none() -> None:
+    """When a DimensionMap's input dim is already empty (input_lo >= input_hi),
+    intersect returns None."""
+    t = IndexTransform(
+        domain=IndexDomain(inclusive_min=(0,), exclusive_max=(0,)),
+        output=(DimensionMap(input_dimension=0, offset=0, stride=1),),
+    )
+    assert t.intersect(IndexDomain.from_shape((10,))) is None
+
+
+def test_oindex_with_ellipsis() -> None:
+    """oindex with ellipsis fills missing dims with slice(None)."""
+    t = IndexTransform.from_shape((4, 5, 6))
+    result = t.oindex[np.array([0, 2], dtype=np.intp), ...]
+    # ellipsis fills dims 1 and 2 with slice(None); domain becomes (2, 5, 6).
+    assert result.domain.shape == (2, 5, 6)
+
+
+def test_oindex_with_implicit_trailing_dim_fill() -> None:
+    """oindex with fewer entries than ndim pads trailing dims with slice(None)."""
+    t = IndexTransform.from_shape((4, 5, 6))
+    result = t.oindex[np.array([0, 2], dtype=np.intp)]
+    # Only the first dim is selected; trailing dims pad with slice(None).
+    assert result.domain.shape == (2, 5, 6)
+
+
+# ---------------------------------------------------------------------------
+# IndexTransform.__post_init__ shape mismatch error: covered in test_construction_errors
+# above? No — the shape mismatch is implicit (the __post_init__ check fires when
+# ArrayMap shape != domain shape on input_dimensions), and it's hit by the
+# multi-dim oindex test elsewhere. Add an explicit test.
+# ---------------------------------------------------------------------------
+
+
+def test_construction_rejects_shape_mismatch() -> None:
+    """ArrayMap.index_array.shape must match the input domain's extents on
+    input_dimensions (in order)."""
+    with pytest.raises(ValueError, match="does not match expected shape"):
+        IndexTransform(
+            domain=IndexDomain.from_shape((10,)),
+            output=(
+                ArrayMap(
+                    index_array=np.array([1, 2, 3], dtype=np.intp),
+                    input_dimensions=(0,),
+                ),
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# _normalize_basic_selection error paths.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectErr(
+            input=(IndexTransform.from_shape((2,)), (1, 2, 3)),
+            msg="too many indices",
+            exception_cls=IndexError,
+            id="too-many-indices",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((3, 3, 3)), (..., 0, ...)),
+            msg="single ellipsis",
+            exception_cls=IndexError,
+            id="double-ellipsis",
+        ),
+        ExpectErr(
+            input=(IndexTransform.from_shape((10,)), 1.5),
+            msg="unsupported selection type",
+            exception_cls=IndexError,
+            id="float-not-supported",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_basic_indexing_rejects_malformed_selections(
+    case: ExpectErr[tuple[IndexTransform, Any]],
+) -> None:
+    """_normalize_basic_selection error paths: too-many-indices, double-ellipsis,
+    and unsupported types like float."""
+    transform, selection = case.input
+    with pytest.raises(case.exception_cls, match=case.msg):
+        transform[selection]
