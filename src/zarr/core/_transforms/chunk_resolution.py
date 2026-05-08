@@ -87,7 +87,7 @@ def iter_chunk_transforms(
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
             chunk_ranges.append(range(first, last + 1))
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             storage = m.offset + m.stride * m.index_array
             flat = storage.ravel().astype(np.intp)
             chunk_ids = dg.indices_to_chunks(flat)
@@ -165,7 +165,7 @@ def sub_transform_to_selections(
             start = m.offset + m.stride * dim_lo
             stop = m.offset + m.stride * dim_hi
             chunk_sel.append(slice(start, stop, m.stride))
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             if m.offset == 0 and m.stride == 1:
                 chunk_sel.append(m.index_array)
             else:
@@ -198,7 +198,9 @@ def sub_transform_to_selections(
                 lo = sub_transform.domain.inclusive_min[m.input_dimension]
                 hi = sub_transform.domain.exclusive_max[m.input_dimension]
                 out_sel.append(slice(lo, hi))
-            elif isinstance(m, ArrayMap):
+            elif isinstance(
+                m, ArrayMap
+            ):  # pragma: no branch - exhaustive over OutputIndexMap union
                 if out_indices is not None:
                     # Orthogonal ArrayMap: out_indices has the surviving positions
                     out_sel.append(out_indices)

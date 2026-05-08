@@ -1363,3 +1363,110 @@ def test_basic_indexing_rejects_malformed_selections(
     transform, selection = case.input
     with pytest.raises(case.exception_cls, match=case.msg):
         transform[selection]
+
+
+# ---------------------------------------------------------------------------
+# Transforms with ArrayMap NOT in the last output position.
+#
+# Several `for m in self.output:` loops in selection_repr, __repr__, basic /
+# oindex / vindex apply functions, and _intersect's orthogonal path have an
+# `elif isinstance(m, ArrayMap):` branch that, for branch coverage, needs to
+# be exercised with an ArrayMap that is NOT the last output (i.e., the loop
+# continues to a next iteration after the ArrayMap branch). The fixture below
+# constructs a transform with ArrayMap-then-DimensionMap output ordering;
+# the tests use it to hit those continuation branches.
+# ---------------------------------------------------------------------------
+
+
+def _arraymap_then_dimensionmap() -> IndexTransform:
+    """Helper: a 2-D-input transform whose first output is an ArrayMap and
+    whose second output is a DimensionMap. Ensures `for m in output` loops
+    encounter an ArrayMap with a next iteration available."""
+    return IndexTransform(
+        domain=IndexDomain.from_shape((3, 5)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 4, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            DimensionMap(input_dimension=1, offset=0, stride=1),
+        ),
+    )
+
+
+def test_selection_repr_with_arraymap_not_last() -> None:
+    """selection_repr output loop visits ArrayMap then continues."""
+    t = _arraymap_then_dimensionmap()
+    s = t.selection_repr
+    assert "{1, 4, 9}" in s
+    assert "[0, 5)" in s
+
+
+def test_repr_with_arraymap_not_last() -> None:
+    """__repr__ output loop visits ArrayMap then continues."""
+    t = _arraymap_then_dimensionmap()
+    s = repr(t)
+    assert "out[0] = 0 + 1 * arr(3,)[in[0]]" in s
+    assert "out[1] = 0 + 1 * in[1]" in s
+
+
+def test_translate_with_arraymap_not_last() -> None:
+    """IndexTransform.translate output loop visits ArrayMap then continues.
+
+    The shift is applied to every output, so an ArrayMap-then-DimensionMap
+    transform produces a (translated ArrayMap, translated DimensionMap)
+    pair."""
+    t = _arraymap_then_dimensionmap()
+    result = t.translate((10, 100))
+    assert isinstance(result.output[0], ArrayMap)
+    assert result.output[0].offset == 10
+    assert isinstance(result.output[1], DimensionMap)
+    assert result.output[1].offset == 100
+
+
+def test_basic_indexing_with_arraymap_not_last() -> None:
+    """_apply_basic_indexing output loop visits ArrayMap then continues."""
+    t = _arraymap_then_dimensionmap()
+    result = t[:, 2:5]
+    assert isinstance(result.output[0], ArrayMap)
+    assert isinstance(result.output[1], DimensionMap)
+
+
+def test_oindex_with_arraymap_not_last() -> None:
+    """_apply_oindex output loop visits ArrayMap then continues."""
+    t = _arraymap_then_dimensionmap()
+    result = t.oindex[:, np.array([0, 2, 4], dtype=np.intp)]
+    # Two outputs preserved: the original ArrayMap (untouched on its
+    # parameterizing dim) and the new ArrayMap created from the DimensionMap.
+    assert isinstance(result.output[0], ArrayMap)
+    assert isinstance(result.output[1], ArrayMap)
+
+
+def test_intersect_with_two_uncorrelated_arraymaps_uses_orthogonal_path() -> None:
+    """When 2+ ArrayMaps have disjoint input_dimensions (no shared input dim),
+    intersect detects no correlation and falls through to the orthogonal path,
+    NOT the vectorized path. Also exercises the `for m in output` orthogonal
+    loop visiting an ArrayMap that is not the last output."""
+    # 2-D input domain (3, 4); two ArrayMaps with disjoint input_dimensions.
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 4)),
+        output=(
+            ArrayMap(
+                index_array=np.array([0, 5, 10], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            ArrayMap(
+                index_array=np.array([20, 30, 40, 50], dtype=np.intp),
+                input_dimensions=(1,),
+            ),
+        ),
+    )
+    # Chunk that includes everything. The orthogonal path filters each
+    # ArrayMap independently against its output dim's chunk range.
+    chunk = IndexDomain.from_shape((100, 100))
+    result = t.intersect(chunk)
+    assert result is not None
+    restricted, _ = result
+    # Both outputs survive as ArrayMaps (orthogonal path preserves them).
+    assert isinstance(restricted.output[0], ArrayMap)
+    assert isinstance(restricted.output[1], ArrayMap)

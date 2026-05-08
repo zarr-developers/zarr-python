@@ -270,6 +270,95 @@ def test_iter_chunk_transforms_empty_domain() -> None:
     assert results == []
 
 
+def test_iter_chunk_transforms_arraymap_followed_by_dimensionmap() -> None:
+    """An ArrayMap output followed by a DimensionMap output exercises the
+    ArrayMap branch's loop-continuation path in iter_chunk_transforms."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 5)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            DimensionMap(input_dimension=1, offset=0, stride=1),
+        ),
+    )
+    grid = _grid_2d(10, 10, 10, 5)
+    results = list(iter_chunk_transforms(t, grid))
+    # Sanity: at least one result is yielded.
+    assert results
+
+
+def test_sub_transform_to_selections_arraymap_followed_by_dimensionmap_orthogonal() -> None:
+    """An ArrayMap output followed by a DimensionMap output in non-vectorized
+    mode (out_indices=None) exercises the ArrayMap branch's loop-continuation
+    path in both the chunk_sel and out_sel construction loops."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 5)),
+        output=(
+            ArrayMap(
+                index_array=np.array([1, 5, 9], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            DimensionMap(input_dimension=1, offset=0, stride=1),
+        ),
+    )
+    chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
+    # Two output dims, both with selections.
+    assert len(chunk_sel) == 2
+    assert isinstance(chunk_sel[0], np.ndarray)  # ArrayMap → array selection
+    assert isinstance(chunk_sel[1], slice)  # DimensionMap → slice
+    assert len(out_sel) == 2
+    assert drop_axes == ()
+
+
+def test_sub_transform_to_selections_with_out_indices_skips_non_arraymap_in_correlation_check() -> (
+    None
+):
+    """When out_indices is supplied and an output is NOT an ArrayMap, the
+    correlation-detection loop skips it (covers the `if isinstance(m, ArrayMap)`
+    False branch in vectorized detection)."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            DimensionMap(input_dimension=0, offset=0, stride=1),
+            ArrayMap(
+                index_array=np.array([1, 2, 3], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+        ),
+    )
+    out_indices = np.array([0, 1], dtype=np.intp)
+    chunk_sel, out_sel, _drop_axes = sub_transform_to_selections(t, out_indices)
+    # Single ArrayMap → not vectorized; falls through to the orthogonal path.
+    assert len(chunk_sel) == 2
+    assert len(out_sel) == 2
+
+
+def test_sub_transform_to_selections_uncorrelated_arraymaps_with_out_indices() -> None:
+    """Two uncorrelated ArrayMaps (disjoint input_dimensions) plus out_indices
+    falls through to the non-vectorized branch (covers the for-loop early
+    exit when no correlation found)."""
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 4)),
+        output=(
+            ArrayMap(
+                index_array=np.array([0, 1, 2], dtype=np.intp),
+                input_dimensions=(0,),
+            ),
+            ArrayMap(
+                index_array=np.array([0, 1, 2, 3], dtype=np.intp),
+                input_dimensions=(1,),
+            ),
+        ),
+    )
+    out_indices = np.array([0, 1], dtype=np.intp)
+    chunk_sel, out_sel, _drop_axes = sub_transform_to_selections(t, out_indices)
+    # Non-vectorized: each ArrayMap contributes its own out_sel entry.
+    assert len(chunk_sel) == 2
+    assert len(out_sel) == 2
+
+
 def test_iter_chunk_transforms_skips_chunks_that_intersect_returns_none() -> None:
     """A strided DimensionMap can produce a chunk-range overestimate that
     includes chunks the transform doesn't actually touch. iter_chunk_transforms

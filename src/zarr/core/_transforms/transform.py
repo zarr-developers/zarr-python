@@ -70,7 +70,9 @@ class IndexTransform:
                         "Negative-stride DimensionMaps are not supported; the "
                         "Array layer normalizes negative strides upstream."
                     )
-            elif isinstance(m, ArrayMap):
+            elif isinstance(
+                m, ArrayMap
+            ):  # pragma: no branch - exhaustive over OutputIndexMap union  # pragma: no branch - exhaustive over OutputIndexMap union
                 # Every input dim referenced must be in range.
                 for d in m.input_dimensions:
                     if d < 0 or d >= self.domain.ndim:
@@ -134,7 +136,9 @@ class IndexTransform:
                     parts.append(f"[{start}, {stop})")
                 else:
                     parts.append(f"[{start}, {stop}) step {m.stride}")
-            elif isinstance(m, ArrayMap):
+            elif isinstance(
+                m, ArrayMap
+            ):  # pragma: no branch - exhaustive over OutputIndexMap union  # pragma: no branch - exhaustive over OutputIndexMap union
                 storage = m.offset + m.stride * m.index_array
                 n = len(storage)
                 if n <= 5:
@@ -151,7 +155,9 @@ class IndexTransform:
                 maps.append(f"out[{i}] = {m.offset}")
             elif isinstance(m, DimensionMap):
                 maps.append(f"out[{i}] = {m.offset} + {m.stride} * in[{m.input_dimension}]")
-            elif isinstance(m, ArrayMap):
+            elif isinstance(
+                m, ArrayMap
+            ):  # pragma: no branch - exhaustive over OutputIndexMap union  # pragma: no branch - exhaustive over OutputIndexMap union
                 in_dims = ",".join(f"in[{d}]" for d in m.input_dimensions)
                 maps.append(
                     f"out[{i}] = {m.offset} + {m.stride} * arr{m.index_array.shape}[{in_dims}]"
@@ -188,7 +194,9 @@ class IndexTransform:
                         stride=m.stride,
                     )
                 )
-            elif isinstance(m, ArrayMap):
+            elif isinstance(
+                m, ArrayMap
+            ):  # pragma: no branch - exhaustive over OutputIndexMap union  # pragma: no branch - exhaustive over OutputIndexMap union
                 new_output.append(
                     ArrayMap(
                         index_array=m.index_array,
@@ -285,7 +293,7 @@ def _intersect(
             new_max[d] = new_input_hi
             new_output.append(m)
 
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             storage = m.offset + m.stride * m.index_array
             mask = (storage >= lo) & (storage < hi)
             if not np.any(mask):
@@ -494,7 +502,9 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             dropped_dims.add(old_dim)
             dim_int_val[old_dim] = idx
             old_dim += 1
-        elif isinstance(sel, slice):
+        elif isinstance(
+            sel, slice
+        ):  # pragma: no branch - exhaustive over normalized's element type
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
@@ -548,7 +558,7 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                 raise RuntimeError(  # pragma: no cover - defensive; unreachable for validated transforms
                     f"unexpected: dimension {d} not handled"
                 )
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             # The array's axes are labeled by m.input_dimensions, in order.
             # For each labeled axis: if the corresponding old input dim is
             # dropped (int), select that one entry; if sliced, slice the axis;
@@ -662,7 +672,9 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             new_exclusive_max.append(len(sel))
             old_to_new_dim[old_dim] = new_dim_idx
             new_dim_idx += 1
-        elif isinstance(sel, slice):
+        elif isinstance(
+            sel, slice
+        ):  # pragma: no branch - exhaustive over normalized's element type
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
@@ -711,7 +723,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 raise RuntimeError(  # pragma: no cover - defensive; unreachable for validated transforms
                     f"unexpected: dimension {d} not handled"
                 )
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             # Each axis of m.index_array corresponds to one entry in
             # m.input_dimensions. For each such old input dim, oindex either
             # picks specific entries (dim_array[d]) or slices the axis
@@ -914,7 +926,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                         input_dimension=new_input_dim, offset=new_offset, stride=new_stride
                     )
                 )
-        elif isinstance(m, ArrayMap):
+        elif isinstance(m, ArrayMap):  # pragma: no branch - exhaustive over OutputIndexMap union
             # vindex on a transform that already has an ArrayMap output is not
             # currently exercised. The semantics are subtle (broadcasting can
             # reshape the array's parameterization) and require careful design;

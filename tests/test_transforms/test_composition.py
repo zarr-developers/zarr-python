@@ -248,6 +248,34 @@ def test_compose_chains_associatively() -> None:
             exception_cls=NotImplementedError,
             id="multi-d-array-inner-non-constant-outer",
         ),
+        ExpectErr(
+            input=(
+                # Outer with mixed types: ConstantMap on dim 0, DimensionMap on dim 1.
+                # Outer is NOT all-constant, so the early-return path is skipped.
+                IndexTransform(
+                    domain=IndexDomain.from_shape((4,)),
+                    output=(
+                        ConstantMap(offset=2),
+                        DimensionMap(input_dimension=0, offset=0, stride=1),
+                    ),
+                ),
+                # Inner: 1-D ArrayMap referencing outer's dim 0 (the ConstantMap).
+                # _compose_array reaches the 1-D path; outer.output[0] is ConstantMap,
+                # which falls through both inner elifs to NotImplementedError.
+                IndexTransform(
+                    domain=IndexDomain.from_shape((5, 4)),
+                    output=(
+                        ArrayMap(
+                            index_array=np.array([10, 20, 30, 40, 50], dtype=np.intp),
+                            input_dimensions=(0,),
+                        ),
+                    ),
+                ),
+            ),
+            msg="not yet supported",
+            exception_cls=NotImplementedError,
+            id="single-input-dim-points-at-constantmap-with-mixed-outer",
+        ),
     ],
     ids=lambda c: c.id,
 )
