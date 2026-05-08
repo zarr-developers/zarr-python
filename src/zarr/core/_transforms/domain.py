@@ -4,6 +4,8 @@ An `IndexDomain` represents the set of valid coordinates for an array or
 array view. It is the cartesian product of per-dimension integer ranges:
 
 ```python
+from zarr.core._transforms.domain import IndexDomain
+
 IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
 # represents {(i, j) : 2 <= i < 10, 5 <= j < 20}
 ```
