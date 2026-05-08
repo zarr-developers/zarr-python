@@ -332,10 +332,10 @@ class FsspecStore(Store):
         *,
         prototype: BufferPrototype,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-        """Read many byte ranges from ``key``, coalescing nearby ranges and fetching concurrently.
+        """Read many byte ranges from `key`, coalescing nearby ranges and fetching concurrently.
 
-        See :class:`zarr.storage._protocols.SupportsGetRanges` for the contract and
-        :func:`zarr.core._coalesce.coalesced_get` for the full semantics.
+        See `zarr.storage._protocols.SupportsGetRanges` for the contract and
+        `zarr.core._coalesce.coalesced_get` for the full semantics.
         """
         fetch = partial(self.get, key, prototype)
         async for group in coalesced_get(fetch, byte_ranges, options=self.coalesce_options):

@@ -25,10 +25,10 @@ class SupportsGetRanges(Protocol):
         *,
         prototype: BufferPrototype,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-        """Read many byte ranges from ``key``.
+        """Read many byte ranges from `key`.
 
         Each yield corresponds to one underlying I/O operation.
 
-        See :func:`zarr.core._coalesce.coalesced_get` for full semantics.
+        See `zarr.core._coalesce.coalesced_get` for full semantics.
         """
         ...

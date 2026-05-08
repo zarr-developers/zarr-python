@@ -46,7 +46,7 @@ async def _fetch_single(ctx: _WorkerCtx, idx: int, req: ByteRequest | None) -> N
 async def _fetch_group(ctx: _WorkerCtx, members: list[tuple[int, RangeByteRequest]]) -> None:
     """Fetch one merged byte range and slice it back into per-input buffers.
 
-    ``members`` must already be sorted by ``start``; callers in this module
+    `members` must already be sorted by `start`; callers in this module
     build it from the sorted mergeable list.
     """
     from zarr.abc.store import RangeByteRequest
@@ -90,56 +90,50 @@ DEFAULT_COALESCE_OPTIONS: CoalesceOptions = {
 }
 
 
-async def coalesced_get(
-    fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]],
+def coalesce_ranges(
     byte_ranges: Iterable[ByteRequest | None],
     *,
     options: CoalesceOptions,
-) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:
-    """Read many byte ranges through ``fetch`` with coalescing and concurrency.
+) -> tuple[
+    list[list[tuple[int, RangeByteRequest]]],
+    list[tuple[int, ByteRequest | None]],
+]:
+    """Plan a set of byte-range fetches: which inputs merge, which stand alone.
 
-    Nearby ranges are merged into a single underlying I/O (subject to
-    ``options``), and merged fetches are run concurrently. Each yield
-    corresponds to exactly one underlying I/O operation: a sequence of
-    ``(input_index, result)`` tuples for all input ranges served by that I/O.
-    Tuples within a yielded sequence are ordered by start offset. Yields across
-    groups are in completion order, not input order.
+    Pure (no I/O). The result is the I/O plan a caller would execute: each
+    group corresponds to one fetch of a coalesced byte range, and each
+    uncoalescable item corresponds to one fetch of the original request.
 
     Parameters
     ----------
-    fetch
-        Callable that reads one byte range and returns a ``Buffer`` (or ``None``
-        if the underlying key does not exist). Typically constructed via
-        ``functools.partial(store.get, key, prototype)``.
     byte_ranges
-        Input ranges. ``None`` means "the whole value".
+        Input ranges. `None` means "the whole value".
     options
-        Coalescing knobs.
+        Coalescing knobs (see `CoalesceOptions`).
 
-    Yields
-    ------
-    Sequence[tuple[int, Buffer | None]]
-        Per-I/O batch of ``(input_index, result)`` tuples.
+    Returns
+    -------
+    groups
+        List of merged groups. Each group is a list of
+        `(input_index, RangeByteRequest)` pairs sorted by `start`. A
+        single-element group represents a `RangeByteRequest` that did not
+        merge with any neighbor.
+    uncoalescable
+        List of `(input_index, request)` pairs for inputs that are not
+        `RangeByteRequest` (`OffsetByteRequest`, `SuffixByteRequest`,
+        `None`). Indices are preserved from the input order.
 
     Notes
     -----
-    - Only ``RangeByteRequest`` inputs are coalesced. ``OffsetByteRequest``,
-      ``SuffixByteRequest``, and ``None`` are each treated as uncoalescable
-      (one fetch, one single-tuple yield per input).
-    - If any fetch returns ``None`` the iterator stops scheduling further fetches
-      and completes without yielding the missing group. Groups completed before
-      the miss remain observable.
-    - If a fetch raises, the exception propagates on the yield that produced the
-      failing group; earlier-completed groups remain observable.
+    Only `RangeByteRequest` inputs participate in coalescing. Two ranges
+    merge when both: their gap (next `start` minus current group's running
+    `end`) is `<= options["max_gap_bytes"]`, and the resulting merged
+    span is `<= options["max_coalesced_bytes"]`.
     """
     # Local import to avoid cycles at module import time.
     from zarr.abc.store import RangeByteRequest
 
     indexed: list[tuple[int, ByteRequest | None]] = list(enumerate(byte_ranges))
-    if not indexed:
-        return
-
-    # Split inputs into coalescable (RangeByteRequest only) and uncoalescable (the rest).
     mergeable: list[tuple[int, RangeByteRequest]] = [
         (i, r) for i, r in indexed if isinstance(r, RangeByteRequest)
     ]
@@ -164,6 +158,55 @@ async def coalesced_get(
         groups.append([pair])
         group_start = r.start
         group_end = r.end
+
+    return groups, uncoalescable
+
+
+async def coalesced_get(
+    fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]],
+    byte_ranges: Iterable[ByteRequest | None],
+    *,
+    options: CoalesceOptions,
+) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:
+    """Read many byte ranges through `fetch` with coalescing and concurrency.
+
+    Nearby ranges are merged into a single underlying I/O (subject to
+    `options`), and merged fetches are run concurrently. Each yield
+    corresponds to exactly one underlying I/O operation: a sequence of
+    `(input_index, result)` tuples for all input ranges served by that I/O.
+    Tuples within a yielded sequence are ordered by start offset. Yields across
+    groups are in completion order, not input order.
+
+    Parameters
+    ----------
+    fetch
+        Callable that reads one byte range and returns a `Buffer` (or `None`
+        if the underlying key does not exist). Typically constructed via
+        `functools.partial(store.get, key, prototype)`.
+    byte_ranges
+        Input ranges. `None` means "the whole value".
+    options
+        Coalescing knobs.
+
+    Yields
+    ------
+    Sequence[tuple[int, Buffer | None]]
+        Per-I/O batch of `(input_index, result)` tuples.
+
+    Notes
+    -----
+    - Only `RangeByteRequest` inputs are coalesced. `OffsetByteRequest`,
+      `SuffixByteRequest`, and `None` are each treated as uncoalescable
+      (one fetch, one single-tuple yield per input).
+    - If any fetch returns `None` the iterator stops scheduling further fetches
+      and completes without yielding the missing group. Groups completed before
+      the miss remain observable.
+    - If a fetch raises, the exception propagates on the yield that produced the
+      failing group; earlier-completed groups remain observable.
+    """
+    groups, uncoalescable = coalesce_ranges(byte_ranges, options=options)
+    if not groups and not uncoalescable:
+        return
 
     ctx = _WorkerCtx(
         fetch=fetch,
