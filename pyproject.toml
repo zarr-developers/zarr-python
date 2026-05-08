@@ -153,6 +153,9 @@ version.source = "vcs"
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
 
+[tool.hatch.envs.dev]
+dependency-groups = ["dev"]
+
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
 
@@ -184,7 +187,6 @@ run-coverage-html = [
 ]
 run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
 run-hypothesis = [
     "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage xml",
@@ -362,6 +364,7 @@ ignore = [
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
+files = ["src", "tests"]
 python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false

@@ -39,9 +39,13 @@ from zarr.core.buffer import (
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
+    SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
-    _auto_partition,
-    normalize_chunks,
+    _is_rectilinear_chunks,
+    as_regular_shape,
+    guess_chunks,
+    normalize_chunks_nd,
+    resolve_outer_and_inner_chunks,
 )
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -121,10 +125,8 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
-    RectilinearChunkGridMetadata,
-    RegularChunkGridMetadata,
+    create_chunk_grid_metadata,
     parse_node_type_array,
-    resolve_chunks,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -411,8 +413,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        from zarr.core.chunk_grids import _is_rectilinear_chunks
-
+        # Unify the v2 (chunks) and v3 (chunk_shape) parameter names
         _raw_chunks = chunks if chunks is not None else chunk_shape
 
         config_parsed = parse_array_config(config)
@@ -438,7 +439,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            chunk_grid = resolve_chunks(_raw_chunks, shape, item_size)
+            if _raw_chunks is None:
+                outer_chunks = guess_chunks(shape, item_size)
+            else:
+                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
+            chunk_grid = create_chunk_grid_metadata(outer_chunks)
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
@@ -469,10 +474,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            if chunks:
-                _chunks = normalize_chunks(chunks, shape, item_size)
+            _raw = chunks or chunk_shape
+            if _raw is None:
+                outer_chunks = guess_chunks(shape, item_size)
             else:
-                _chunks = normalize_chunks(chunk_shape, shape, item_size)
+                outer_chunks = normalize_chunks_nd(_raw, shape)
+            _chunks = as_regular_shape(outer_chunks)
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -4385,6 +4392,7 @@ async def init_array(
 
     zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
+    item_size = zdtype.item_size if isinstance(zdtype, HasItemSize) else 1
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
     )
@@ -4397,12 +4405,7 @@ async def init_array(
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
-    # Detect rectilinear (nested list) chunks or shards, e.g. [[10, 20, 30], [25, 25]]
-    from zarr.core.chunk_grids import _is_rectilinear_chunks
-
-    rectilinear_meta: RectilinearChunkGridMetadata | None = None
-    rectilinear_shards = _is_rectilinear_chunks(shards)
-
+    # Validate rectilinear chunks constraints
     if _is_rectilinear_chunks(chunks):
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
@@ -4412,43 +4415,29 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-        rectilinear_meta = RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(dim_edges) for dim_edges in chunks)
+
+    # Normalize the user's chunks into canonical ChunksTuple form
+    if chunks is None or chunks == "auto":
+        chunks_normalized = guess_chunks(
+            shape_parsed,
+            item_size,
+            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
         )
-        # Use first chunk size per dim as placeholder for _auto_partition
-        chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(dim_edges[0] for dim_edges in chunks)
     else:
-        # Normalize scalar int to per-dimension tuple (e.g. chunks=100000 for a 1D array)
-        if isinstance(chunks, int):
-            chunks = tuple(chunks for _ in shape_parsed)
-        chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
-    # Handle rectilinear shards: shards=[[60, 40, 20], [50, 50]]
-    # means variable-sized shard boundaries with uniform inner chunks
-    shards_for_partition: ShardsLike | None = shards
-    if _is_rectilinear_chunks(shards):
-        if zarr_format == 2:
-            raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-        rectilinear_meta = RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(dim_edges) for dim_edges in shards)
-        )
-        # Use first shard size per dim as placeholder for _auto_partition
-        shards_for_partition = tuple(dim_edges[0] for dim_edges in shards)
-
-    item_size = 1
-    if isinstance(zdtype, HasItemSize):
-        item_size = zdtype.item_size
-
-    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+    # Resolve chunks + shards into outer_chunks (grid metadata) and
+    # inner (sub-chunk structure for ShardingCodec, None if no sharding)
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=shape_parsed,
-        shard_shape=shards_for_partition,
-        chunk_shape=chunks_flat,
+        chunks=chunks_normalized,
+        shard_shape=shards,
         item_size=item_size,
     )
-    chunks_out: tuple[int, ...]
+
     meta: ArrayV2Metadata | ArrayV3Metadata
     if zarr_format == 2:
-        if shard_shape_parsed is not None:
+        if inner is not None:
             msg = (
                 "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. "
                 f"Got `shard_shape={shards}` instead."
@@ -4472,7 +4461,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=chunk_shape_parsed,
+            chunks=as_regular_shape(outer_chunks),
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4488,40 +4477,29 @@ async def init_array(
             dtype=zdtype,
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
+        grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
-        if shard_shape_parsed is not None:
+        if inner is not None:
+            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+                chunk_shape=inner_chunks_flat, codecs=sub_codecs, index_location=index_location
             )
-            # Use rectilinear grid for validation when shards are rectilinear
-            if rectilinear_shards and rectilinear_meta is not None:
-                validation_grid: ChunkGridMetadata = rectilinear_meta
-            else:
-                validation_grid = RegularChunkGridMetadata(chunk_shape=shard_shape_parsed)
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
+                shape=inner_chunks_flat,
                 dtype=zdtype,
-                chunk_grid=validation_grid,
+                chunk_grid=grid,
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
         else:
-            chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
         if order is not None:
             _warn_order_kwarg()
-
-        grid: ChunkGridMetadata
-        if rectilinear_meta is not None:
-            grid = rectilinear_meta
-        else:
-            grid = RegularChunkGridMetadata(chunk_shape=chunks_out)
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=zdtype,
