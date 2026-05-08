@@ -412,6 +412,50 @@ def test_oindex_errors(case: ExpectErr[tuple[IndexTransform, Any]]) -> None:
         transform.oindex[selection]
 
 
+def test_oindex_on_1d_array_map_with_int_array() -> None:
+    """oindex on a transform with a 1-D ArrayMap output indexes that ArrayMap's
+    array along its single parameterizing input dim."""
+    arr = np.array([10, 20, 30, 40, 50], dtype=np.intp)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((5,)),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0,)),),
+    )
+    result = t.oindex[np.array([0, 2, 4], dtype=np.intp)]
+    assert result.input_rank == 1
+    assert result.domain.shape == (3,)
+    assert isinstance(result.output[0], ArrayMap)
+    np.testing.assert_array_equal(result.output[0].index_array, np.array([10, 30, 50]))
+
+
+def test_oindex_on_2d_array_map_all_slices() -> None:
+    """oindex on a 2-D ArrayMap with slices on every axis is well-defined
+    (no axes selected by integer arrays)."""
+    arr = np.arange(12, dtype=np.intp).reshape(3, 4)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 4)),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0, 1)),),
+    )
+    # Both axes sliced; no array indices.
+    result = t.oindex[1:3, 0:3]
+    assert result.input_rank == 2
+    assert result.domain.shape == (2, 3)
+    assert isinstance(result.output[0], ArrayMap)
+    np.testing.assert_array_equal(result.output[0].index_array, arr[1:3, 0:3])
+
+
+def test_oindex_on_multi_dim_array_map_with_two_array_axes_errors() -> None:
+    """oindex on a multi-dim ArrayMap with two or more axes selected by
+    integer arrays needs np.ix_-style outer-product semantics. Until that
+    is implemented, raise NotImplementedError."""
+    arr = np.arange(12, dtype=np.intp).reshape(3, 4)
+    t = IndexTransform(
+        domain=IndexDomain.from_shape((3, 4)),
+        output=(ArrayMap(index_array=arr, input_dimensions=(0, 1)),),
+    )
+    with pytest.raises(NotImplementedError, match="multi-dimensional ArrayMap"):
+        t.oindex[np.array([0, 2], dtype=np.intp), np.array([1, 3], dtype=np.intp)]
+
+
 # ---------------------------------------------------------------------------
 # vindex (vectorized indexing)
 # ---------------------------------------------------------------------------

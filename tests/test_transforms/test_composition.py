@@ -334,19 +334,20 @@ def test_compose_is_associative(
     assert left.output_rank == right.output_rank
     assert left.domain == right.domain
 
-    # Sample a few points from a's domain and compare evaluations.
-    if a.input_rank == 0:
-        coord: tuple[int, ...] = ()
-    else:
-        coord = tuple(
-            data.draw(
-                st.integers(
-                    min_value=a.domain.inclusive_min[d],
-                    max_value=a.domain.exclusive_max[d] - 1,
+    # Sample several points from a's domain and compare evaluations at each.
+    # 5 coords per triple raises probabilistic coverage at negligible cost.
+    for _ in range(5):
+        if a.input_rank == 0:
+            coord: tuple[int, ...] = ()
+        else:
+            coord = tuple(
+                data.draw(
+                    st.integers(
+                        min_value=a.domain.inclusive_min[d],
+                        max_value=a.domain.exclusive_max[d] - 1,
+                    )
                 )
+                for d in range(a.input_rank)
             )
-            for d in range(a.input_rank)
-        )
-        assume(a.domain.contains(coord))
-
-    assert _evaluate(left, coord) == _evaluate(right, coord)
+            assume(a.domain.contains(coord))
+        assert _evaluate(left, coord) == _evaluate(right, coord)

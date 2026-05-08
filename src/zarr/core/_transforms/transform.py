@@ -293,8 +293,10 @@ def _intersect(
             if not np.any(mask):
                 return None
             # Orthogonal ArrayMap: filter the array and shrink the input dim
-            # it parameterizes. Only the 1-D case is currently exercised; the
-            # multi-dim orthogonal ArrayMap path is rejected with a clear error.
+            # it parameterizes. The 1-D case is the only one produced by the
+            # public oindex / vindex API; multi-dim orthogonal ArrayMaps would
+            # only arise via direct manual construction. Reject rather than
+            # silently produce an unsupported result.
             if len(m.input_dimensions) != 1:
                 raise NotImplementedError(
                     "intersect on a multi-dimensional orthogonal ArrayMap is not yet supported"
@@ -392,6 +394,10 @@ def _intersect_vectorized(
             else:
                 return None
         elif isinstance(m, DimensionMap):
+            # _apply_vindex never places a DimensionMap on a correlated (broadcast)
+            # input dim: the broadcast dims always become ArrayMap parameters and
+            # the slice dims become DimensionMaps on dims past the broadcast block.
+            # This guard is reachable only via direct manual transform construction.
             if m.input_dimension in correlated_input_dims:
                 raise NotImplementedError(
                     "vectorized intersect with a DimensionMap on a correlated "
@@ -707,9 +713,11 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             # picks specific entries (dim_array[d]) or slices the axis
             # (dim_slice_params[d]).
             arr_idx: list[Any] = []
+            n_array_axes = 0
             for axis_dim in m.input_dimensions:
                 if axis_dim in dim_array:
                     arr_idx.append(dim_array[axis_dim])
+                    n_array_axes += 1
                 elif axis_dim in dim_slice_params:
                     abs_start, _, step = dim_slice_params[axis_dim]
                     array_start = abs_start - transform.domain.inclusive_min[axis_dim]
@@ -724,6 +732,16 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                         f"unexpected: ArrayMap input_dim {axis_dim} not in "
                         "dim_array or dim_slice_params"
                     )
+            # Multi-dim ArrayMap with two or more axes selected by arrays needs
+            # `np.ix_`-style outer-product indexing to preserve oindex semantics
+            # (NumPy's `arr[a, b]` would broadcast a and b instead). Until that
+            # is implemented, refuse rather than silently produce wrong results.
+            if n_array_axes >= 2:
+                raise NotImplementedError(
+                    "oindex on a multi-dimensional ArrayMap with two or more "
+                    "axes selected by integer/boolean arrays is not yet "
+                    "supported"
+                )
             new_arr = m.index_array[tuple(arr_idx)] if arr_idx else m.index_array
             new_arr = np.asarray(new_arr, dtype=np.intp)
             new_input_dims = tuple(old_to_new_dim[d] for d in m.input_dimensions)
