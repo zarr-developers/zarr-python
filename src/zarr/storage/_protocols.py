@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Sequence
+    from collections.abc import AsyncIterator, Sequence
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -21,7 +21,7 @@ class SupportsGetRanges(Protocol):
     def get_ranges(
         self,
         key: str,
-        byte_ranges: Iterable[ByteRequest | None],
+        byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:

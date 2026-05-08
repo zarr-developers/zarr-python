@@ -5,7 +5,7 @@ import asyncio
 from typing import TYPE_CHECKING, Literal, NamedTuple, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Sequence
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 
     from zarr.abc.store import ByteRequest, RangeByteRequest
     from zarr.core.buffer import Buffer
@@ -91,7 +91,7 @@ DEFAULT_COALESCE_OPTIONS: CoalesceOptions = {
 
 
 def coalesce_ranges(
-    byte_ranges: Iterable[ByteRequest | None],
+    byte_ranges: Sequence[ByteRequest | None],
     *,
     options: CoalesceOptions,
 ) -> tuple[
@@ -164,7 +164,7 @@ def coalesce_ranges(
 
 async def coalesced_get(
     fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]],
-    byte_ranges: Iterable[ByteRequest | None],
+    byte_ranges: Sequence[ByteRequest | None],
     *,
     options: CoalesceOptions,
 ) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:

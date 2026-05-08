@@ -328,7 +328,7 @@ class FsspecStore(Store):
     async def get_ranges(
         self,
         key: str,
-        byte_ranges: Iterable[ByteRequest | None],
+        byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
