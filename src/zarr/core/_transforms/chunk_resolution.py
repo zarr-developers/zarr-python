@@ -29,6 +29,7 @@ pipeline accepts transforms natively.
 
 from __future__ import annotations
 
+import itertools
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -96,8 +97,6 @@ def iter_chunk_transforms(
             first = int(chunk_ids.min())
             last = int(chunk_ids.max())
             chunk_ranges.append(range(first, last + 1))
-
-    import itertools
 
     for chunk_coords_tuple in itertools.product(*chunk_ranges):
         chunk_coords = tuple(int(c) for c in chunk_coords_tuple)
