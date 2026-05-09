@@ -933,10 +933,9 @@ async def create(
         and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
-        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
