@@ -512,7 +512,7 @@ print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 
 ### Block Indexing
 
-Zarr also support block indexing, which allows selections of whole chunks based on their
+Zarr also supports block indexing, which allows selections of whole chunks based on their
 logical indices along each dimension of an array. For example, this allows selecting
 a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 

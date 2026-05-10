@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 from typing_extensions import ReadOnly
 
-from zarr.core.common import NamedConfig
+from zarr.core.common import NamedRequiredConfig
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
@@ -111,14 +111,14 @@ class TimeConfig(TypedDict):
     scale_factor: ReadOnly[int]
 
 
-class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
+class DateTime64JSON_V3(NamedRequiredConfig[Literal["numpy.datetime64"], TimeConfig]):
     """
     The JSON representation of the ``numpy.datetime64`` data type in Zarr V3.
 
     References
     ----------
     This representation is defined in the ``numpy.datetime64``
-    [specification document](https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-datetime64).
+    [specification document](https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64).
 
     Examples
     --------
@@ -128,20 +128,20 @@ class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
         "configuration": {
             "unit": "ms",
             "scale_factor": 1
-            }
+        }
     }
     ```
     """
 
 
-class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
+class TimeDelta64JSON_V3(NamedRequiredConfig[Literal["numpy.timedelta64"], TimeConfig]):
     """
     The JSON representation of the ``TimeDelta64`` data type in Zarr V3.
 
     References
     ----------
     This representation is defined in the numpy.timedelta64
-    [specification document](https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-timedelta64).
+    [specification document](https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.timedelta64).
 
     Examples
     --------
@@ -151,7 +151,7 @@ class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
         "configuration": {
             "unit": "ms",
             "scale_factor": 1
-            }
+        }
     }
     ```
     """

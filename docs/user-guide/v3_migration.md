@@ -126,7 +126,7 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 ### The Store class
 
-The Store API has changed significant in Zarr-Python 3.
+The Store API has changed significantly in Zarr-Python 3.
 
 #### The base store class
 
