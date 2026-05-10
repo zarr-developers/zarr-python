@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Final, TypedDict, cast
+from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
 
 import numpy as np
 
@@ -23,8 +23,6 @@ from zarr.core.dtype import get_data_type_from_json
 if TYPE_CHECKING:
     from typing import NotRequired, Self
 
-    from zarr_metadata.v3.codec.cast_value import OutOfRangeMode, RoundingMode
-
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -33,6 +31,17 @@ if TYPE_CHECKING:
     class ScalarMapJSON(TypedDict):
         encode: NotRequired[list[tuple[object, object]]]
         decode: NotRequired[list[tuple[object, object]]]
+
+
+RoundingMode = Literal[
+    "nearest-even",
+    "towards-zero",
+    "towards-positive",
+    "towards-negative",
+    "nearest-away",
+]
+
+OutOfRangeMode = Literal["clamp", "wrap"]
 
 
 class ScalarMap(TypedDict, total=False):

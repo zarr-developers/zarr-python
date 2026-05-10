@@ -42,7 +42,6 @@ repos:
           - typing_extensions
           - universal-pathlib
           - obstore>=0.5.1
-          - zarr-metadata>=0.1.1
           # Tests
           - pytest
           - hypothesis
