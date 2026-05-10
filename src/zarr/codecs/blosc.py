@@ -61,8 +61,8 @@ class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
 
 class _DeprecatedStrEnumMeta(type):
     """
-    Metaclass for the legacy ``BloscShuffle`` / ``BloscCname`` classes. Accessing
-    a member name (e.g. ``BloscShuffle.bitshuffle``) emits a ``DeprecationWarning``
+    Metaclass for the legacy `BloscShuffle` / `BloscCname` classes. Accessing
+    a member name (e.g. `BloscShuffle.bitshuffle`) emits a `DeprecationWarning`
     and returns the equivalent string.
     """
 
@@ -82,8 +82,8 @@ class _DeprecatedStrEnumMeta(type):
 
 class BloscShuffle(metaclass=_DeprecatedStrEnumMeta):
     """
-    Deprecated. Pass a literal string (``"noshuffle"``, ``"shuffle"``, or
-    ``"bitshuffle"``) directly to :class:`BloscCodec` instead.
+    Deprecated. Pass a literal string (`"noshuffle"`, `"shuffle"`, or
+    `"bitshuffle"`) directly to `BloscCodec` instead.
     """
 
     _members: ClassVar[dict[str, str]] = {
@@ -106,9 +106,9 @@ class BloscShuffle(metaclass=_DeprecatedStrEnumMeta):
 
 class BloscCname(metaclass=_DeprecatedStrEnumMeta):
     """
-    Deprecated. Pass a literal string (one of ``"lz4"``, ``"lz4hc"``,
-    ``"blosclz"``, ``"snappy"``, ``"zlib"``, ``"zstd"``) directly to
-    :class:`BloscCodec` instead.
+    Deprecated. Pass a literal string (one of `"lz4"`, `"lz4hc"`,
+    `"blosclz"`, `"snappy"`, `"zlib"`, `"zstd"`) directly to
+    `BloscCodec` instead.
     """
 
     _members: ClassVar[dict[str, str]] = {
@@ -151,8 +151,8 @@ def parse_blocksize(data: JSON) -> int:
 
 def _coerce_enum_input(value: object, param_name: str) -> object:
     """
-    If ``value`` is a real :class:`enum.Enum` instance, emit a deprecation
-    warning and return ``value.value``. Otherwise return ``value`` unchanged.
+    If `value` is a real `enum.Enum` instance, emit a deprecation warning
+    and return `value.value`. Otherwise return `value` unchanged.
     """
     if isinstance(value, Enum):
         warnings.warn(
@@ -211,7 +211,7 @@ class BloscCodec(BytesBytesCodec):
         Default: 1.
     cname : {'lz4', 'lz4hc', 'blosclz', 'snappy', 'zlib', 'zstd'}, optional
         The compression algorithm to use. Default: `'zstd'`. Passing a
-        :class:`BloscCname` enum is deprecated.
+        `BloscCname` enum is deprecated.
     clevel : int, optional
         The compression level, from 0 (no compression) to 9 (maximum compression).
         Higher values provide better compression at the cost of speed. Default: 5.
