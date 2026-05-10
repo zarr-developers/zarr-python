@@ -9,10 +9,22 @@ from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from zarr_metadata.v3.codec.blosc import (
+    BloscCName as _BloscCName,
+)
+from zarr_metadata.v3.codec.blosc import (
+    BloscCodecConfiguration as _BloscCodecConfiguration,
+)
+from zarr_metadata.v3.codec.blosc import (
+    BloscCodecObject as _BloscCodecObject,
+)
+from zarr_metadata.v3.codec.blosc import (
+    BloscShuffle as _BloscShuffle,
+)
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
+from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
 
 if TYPE_CHECKING:
@@ -21,13 +33,13 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
 
-Shuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-"""The shuffle values permitted for the blosc codec"""
+# Re-export under zarr-python's historical names.
+Shuffle = _BloscShuffle
+CName = _BloscCName
+BloscConfigV3 = _BloscCodecConfiguration
+BloscJSON_V3 = _BloscCodecObject
 
 SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
-
-CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
-"""The codec identifiers used in the blosc codec """
 
 
 class BloscConfigV2(TypedDict):
@@ -38,22 +50,6 @@ class BloscConfigV2(TypedDict):
     shuffle: int
     blocksize: int
     typesize: NotRequired[int]
-
-
-class BloscConfigV3(TypedDict):
-    """Configuration for the V3 Blosc codec"""
-
-    cname: CName
-    clevel: int
-    shuffle: Shuffle
-    blocksize: int
-    typesize: int
-
-
-class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
-    """
-    The JSON form of the Blosc codec in Zarr V3.
-    """
 
 
 class BloscShuffle(Enum):
