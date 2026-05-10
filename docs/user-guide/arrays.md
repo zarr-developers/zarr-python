@@ -201,7 +201,7 @@ Different compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=zarr.codecs.BloscShuffle.bitshuffle)
+compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle='bitshuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
 z[:] = data
@@ -298,7 +298,7 @@ Here is an example using a delta filter with the Blosc compressor:
 from zarr.codecs.numcodecs import Delta
 
 filters = [Delta(dtype='int32')]
-compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
+compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle='shuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
 print(z.info_complete())
