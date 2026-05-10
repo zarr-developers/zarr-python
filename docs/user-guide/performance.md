@@ -296,7 +296,7 @@ Zarr arrays and groups can be pickled, as long as the underlying store object ca
 pickled. With the exception of the `zarr.storage.MemoryStore`, any of the
 storage classes provided in the `zarr.storage` module can be pickled.
 
-If an array or group is backed by a persistent store such as the a `zarr.storage.LocalStore`,
+If an array or group is backed by a persistent store such as a `zarr.storage.LocalStore`,
 `zarr.storage.ZipStore` or `zarr.storage.FsspecStore` then the store data
 **are not** pickled. The only thing that is pickled is the necessary parameters to allow the store
 to re-open any underlying files or databases upon being unpickled.
