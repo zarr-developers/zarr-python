@@ -687,9 +687,9 @@ def create(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -858,9 +858,9 @@ def create_array(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -873,7 +873,7 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
         in [`zarr.config`][zarr.config].
@@ -893,7 +893,7 @@ def create_array(
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -1042,7 +1042,7 @@ def from_array(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
         The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
         If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
@@ -1059,7 +1059,7 @@ def from_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
@@ -1087,7 +1087,7 @@ def from_array(
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory

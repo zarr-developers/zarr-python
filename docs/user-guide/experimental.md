@@ -4,7 +4,7 @@ This section contains documentation for experimental Zarr Python features. The f
 
 ## `CacheStore`
 
-Zarr Python 3.1.4 adds [`zarr.experimental.cache_store.CacheStore`][] provides a dual-store caching implementation
+Zarr Python 3.1.4 adds [`zarr.experimental.cache_store.CacheStore`][], which provides a dual-store caching implementation
 that can be wrapped around any Zarr store to improve performance for repeated data access.
 This is particularly useful when working with remote stores (e.g., S3, HTTP) where network
 latency can significantly impact data access speed.
