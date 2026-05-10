@@ -69,7 +69,7 @@ For more information on groups see the [`zarr.Group` API docs](../api/zarr/group
 ## Batch Group Creation
 
 You can also create multiple groups concurrently with a single function call. [`zarr.create_hierarchy`][] takes
-a [`zarr Storage instance`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
+a [`zarr Storage`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
 writes metadata documents to storage:
 
 ```python exec="true" session="groups" source="above" result="ansi"
