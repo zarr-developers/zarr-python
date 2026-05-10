@@ -198,7 +198,7 @@ def collect_aiterator[T](data: AsyncIterator[T]) -> tuple[T, ...]:
 
 class SyncMixin:
     def _sync[T](self, coroutine: Coroutine[Any, Any, T]) -> T:
-        # TODO: refactor this to to take *args and **kwargs and pass those to the method
+        # TODO: refactor this to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
         return sync(
             coroutine,
