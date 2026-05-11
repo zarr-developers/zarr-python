@@ -554,3 +554,13 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
+
+
+def test_sharding_zero_dimensional() -> None:
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3751"""
+    arr = zarr.create_array({}, shape=(), dtype="f4", chunks=(), shards=())
+    arr[()] = 42.0
+    assert arr[()] == pytest.approx(42.0)
+    # Overwriting should also work
+    arr[()] = 43.0
+    assert arr[()] == pytest.approx(43.0)
