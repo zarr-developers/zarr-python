@@ -13,7 +13,7 @@ from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
 from zarr_metadata.v3.group import GroupMetadataV3
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 """Hardcoded package version. Must match the `version` field in
 `pyproject.toml`; the sync is enforced by `tests/test_version.py`."""
 

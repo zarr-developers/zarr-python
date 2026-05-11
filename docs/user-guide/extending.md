@@ -78,11 +78,11 @@ Coming soon.
 
 ## Custom array buffers
 
-Zarr-python provides control over where and how arrays stored in memory through
+Zarr-python provides control over where and how arrays are stored in memory through
 [`zarr.abc.buffer.Buffer`][]. Currently both CPU (the default) and GPU implementations are
 provided (see [Using GPUs with Zarr](gpu.md) for more information). You can implement your own buffer
 classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototype`][].
 
 ## Other extensions
 
-In the future, Zarr will support writing custom custom data types and chunk grids.
+In the future, Zarr will support writing custom data types and chunk grids.
