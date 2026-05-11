@@ -181,29 +181,19 @@ def test_blosc_codec_accepts_all_shuffles(shuffle: BloscShuffleLiteral) -> None:
     assert codec.shuffle == shuffle
 
 
-@pytest.mark.parametrize(
-    ("param", "value"),
-    [("cname", v) for v in BLOSC_CNAME] + [("shuffle", v) for v in BLOSC_SHUFFLE],
-)
-def test_blosc_codec_json_roundtrip(param: str, value: str) -> None:
+@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
+@pytest.mark.parametrize("cname", BLOSC_CNAME)
+def test_blosc_codec_json_roundtrip(cname: BloscCnameLiteral, shuffle: BloscShuffleLiteral) -> None:
     """
-    JSON serialization (to_dict / from_dict) preserves every value in
-    BLOSC_CNAME and BLOSC_SHUFFLE. Guards against drift in the codec's V3
-    JSON form for any compressor or shuffle option.
+    JSON serialization (to_dict / from_dict) preserves every (cname, shuffle)
+    pair drawn from BLOSC_CNAME x BLOSC_SHUFFLE. Guards against drift in the
+    codec's V3 JSON form for any combination of compressor and shuffle option.
 
     The non-varied fields are fully specified so the codec has no tunable
     attributes; tunability is not part of the JSON form and would otherwise
     cause spurious round-trip mismatches.
     """
-    kwargs: dict[str, Any] = {
-        "typesize": 1,
-        "cname": "zstd",
-        "clevel": 5,
-        "shuffle": "shuffle",
-        "blocksize": 0,
-        param: value,
-    }
-    codec = BloscCodec(**kwargs)
+    codec = BloscCodec(typesize=1, cname=cname, clevel=5, shuffle=shuffle, blocksize=0)
     restored = BloscCodec.from_dict(codec.to_dict())
     assert restored == codec
 
