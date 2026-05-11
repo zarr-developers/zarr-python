@@ -25,12 +25,12 @@ if TYPE_CHECKING:
 BloscShuffleLiteral = Literal["noshuffle", "shuffle", "bitshuffle"]
 """The shuffle values permitted for the blosc codec"""
 
-SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 
 BloscCnameLiteral = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """The codec identifiers used in the blosc codec"""
 
-CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
+BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
 
 
 class BloscConfigV2(TypedDict):
@@ -166,15 +166,15 @@ def _coerce_enum_input(value: object, param_name: str) -> object:
 
 
 def _parse_cname(data: object) -> BloscCnameLiteral:
-    if isinstance(data, str) and data in CNAME:
+    if isinstance(data, str) and data in BLOSC_CNAME:
         return data  # type: ignore[return-value]
-    raise ValueError(f"cname must be one of {list(CNAME)!r}. Got {data!r}.")
+    raise ValueError(f"cname must be one of {list(BLOSC_CNAME)!r}. Got {data!r}.")
 
 
 def _parse_shuffle(data: object) -> BloscShuffleLiteral:
-    if isinstance(data, str) and data in SHUFFLE:
+    if isinstance(data, str) and data in BLOSC_SHUFFLE:
         return data  # type: ignore[return-value]
-    raise ValueError(f"shuffle must be one of {list(SHUFFLE)!r}. Got {data!r}.")
+    raise ValueError(f"shuffle must be one of {list(BLOSC_SHUFFLE)!r}. Got {data!r}.")
 
 
 @dataclass(frozen=True)
