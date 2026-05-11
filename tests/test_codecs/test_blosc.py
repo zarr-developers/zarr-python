@@ -181,32 +181,29 @@ def test_blosc_codec_accepts_all_shuffles(shuffle: BloscShuffleLiteral) -> None:
     assert codec.shuffle == shuffle
 
 
-@pytest.mark.parametrize("cname", BLOSC_CNAME)
-def test_blosc_codec_json_roundtrip_all_cnames(cname: BloscCnameLiteral) -> None:
+@pytest.mark.parametrize(
+    ("param", "value"),
+    [("cname", v) for v in BLOSC_CNAME] + [("shuffle", v) for v in BLOSC_SHUFFLE],
+)
+def test_blosc_codec_json_roundtrip(param: str, value: str) -> None:
     """
-    JSON serialization (to_dict / from_dict) preserves every cname. Guards
-    against drift in the codec's V3 JSON form for any compressor option.
+    JSON serialization (to_dict / from_dict) preserves every value in
+    BLOSC_CNAME and BLOSC_SHUFFLE. Guards against drift in the codec's V3
+    JSON form for any compressor or shuffle option.
 
-    The non-cname fields are fully specified so the codec has no tunable
+    The non-varied fields are fully specified so the codec has no tunable
     attributes; tunability is not part of the JSON form and would otherwise
     cause spurious round-trip mismatches.
     """
-    codec = BloscCodec(typesize=1, cname=cname, clevel=5, shuffle="shuffle", blocksize=0)
-    restored = BloscCodec.from_dict(codec.to_dict())
-    assert restored == codec
-
-
-@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
-def test_blosc_codec_json_roundtrip_all_shuffles(shuffle: BloscShuffleLiteral) -> None:
-    """
-    JSON serialization (to_dict / from_dict) preserves every shuffle mode.
-    Guards against drift in the codec's V3 JSON form for any shuffle option.
-
-    The non-shuffle fields are fully specified so the codec has no tunable
-    attributes; tunability is not part of the JSON form and would otherwise
-    cause spurious round-trip mismatches.
-    """
-    codec = BloscCodec(typesize=1, cname="zstd", clevel=5, shuffle=shuffle, blocksize=0)
+    kwargs: dict[str, Any] = {
+        "typesize": 1,
+        "cname": "zstd",
+        "clevel": 5,
+        "shuffle": "shuffle",
+        "blocksize": 0,
+        param: value,
+    }
+    codec = BloscCodec(**kwargs)
     restored = BloscCodec.from_dict(codec.to_dict())
     assert restored == codec
 
