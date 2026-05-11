@@ -1,7 +1,7 @@
 import enum
 import json
 import warnings
-from typing import cast
+from typing import Any, cast
 
 import numcodecs
 import numpy as np
@@ -11,7 +11,7 @@ from packaging.version import Version
 import zarr
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import BloscCname, BloscCnameLiteral, BloscShuffle, BloscShuffleLiteral
+from zarr.codecs.blosc import BloscCname, BloscShuffle, BloscShuffleLiteral
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt16, get_data_type_from_native_dtype
@@ -150,19 +150,30 @@ def test_blosc_codec_sync_roundtrip() -> None:
     np.testing.assert_array_equal(arr, result)
 
 
-def test_blosc_shuffle_member_access_warns() -> None:
-    with pytest.warns(DeprecationWarning, match="BloscShuffle.shuffle"):
-        value = BloscShuffle.shuffle
-    assert value == "shuffle"
-
-
-def test_blosc_cname_member_access_warns() -> None:
-    with pytest.warns(DeprecationWarning, match="BloscCname.zstd"):
-        value = BloscCname.zstd
-    assert value == "zstd"
+@pytest.mark.parametrize(
+    ("enum_cls", "member", "expected"),
+    [
+        (BloscShuffle, "shuffle", "shuffle"),
+        (BloscCname, "zstd", "zstd"),
+    ],
+)
+def test_blosc_enum_member_access_warns(enum_cls: type, member: str, expected: str) -> None:
+    """
+    Accessing a member on the deprecated BloscShuffle / BloscCname classes
+    emits a DeprecationWarning and resolves to the equivalent literal string.
+    """
+    match = f"{enum_cls.__name__}.{member}"
+    with pytest.warns(DeprecationWarning, match=match):
+        value = getattr(enum_cls, member)
+    assert value == expected
 
 
 def test_blosc_enum_classes_import_silently() -> None:
+    """
+    Importing the deprecated enum classes by name must not emit a warning;
+    only member access does. This guards against the blosc module accidentally
+    triggering its own deprecation warnings when it (or zarr) is imported.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         from zarr.codecs.blosc import BloscCname as _BloscCname  # noqa: F401
@@ -170,7 +181,12 @@ def test_blosc_enum_classes_import_silently() -> None:
 
 
 def test_blosc_codec_init_with_enum_instance_warns() -> None:
-    """A real enum.Enum instance must trigger the init-level deprecation warning."""
+    """
+    Passing a real `enum.Enum` instance to BloscCodec.__init__ (e.g. an
+    instance materialized before the deprecation shim was introduced) must
+    trigger the init-level deprecation warning and still normalize the value
+    to the corresponding literal string.
+    """
 
     class LegacyShuffle(enum.Enum):
         bitshuffle = "bitshuffle"
@@ -187,18 +203,25 @@ def test_blosc_codec_init_with_enum_instance_warns() -> None:
     assert codec.shuffle == "bitshuffle"
 
 
-def test_blosc_codec_rejects_unknown_cname() -> None:
-    with pytest.raises(ValueError, match="cname must be one of"):
-        BloscCodec(cname=cast(BloscCnameLiteral, "not-a-codec"))
+@pytest.mark.parametrize("param", ["cname", "shuffle"])
+def test_blosc_codec_rejects_unknown(param: str) -> None:
+    """
+    BloscCodec.__init__ raises ValueError when given a string outside the
+    allowed set for `cname` or `shuffle`, and the error message names the
+    offending parameter.
+    """
+    kwargs: dict[str, Any] = {param: f"not-a-{param}"}
+    with pytest.raises(ValueError, match=f"{param} must be one of"):
+        BloscCodec(**kwargs)
 
 
-def test_blosc_codec_rejects_unknown_shuffle() -> None:
-    with pytest.raises(ValueError, match="shuffle must be one of"):
-        BloscCodec(shuffle=cast(BloscShuffleLiteral, "not-a-shuffle"))
-
-
-def test_blosc_enum_attribute_error_for_unknown_member() -> None:
+@pytest.mark.parametrize("enum_cls", [BloscShuffle, BloscCname])
+def test_blosc_enum_attribute_error_for_unknown_member(enum_cls: type) -> None:
+    """
+    Attribute access for a name that is not a known member of the deprecated
+    enum classes falls through to AttributeError, matching the behavior of a
+    regular class.
+    """
+    unknown_name = "not_a_member"
     with pytest.raises(AttributeError):
-        _ = BloscShuffle.not_a_member
-    with pytest.raises(AttributeError):
-        _ = BloscCname.not_a_member
+        getattr(enum_cls, unknown_name)
