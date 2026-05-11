@@ -78,7 +78,7 @@ jobs:
         hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
-      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
+      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests
@@ -125,7 +125,7 @@ jobs:
       run: |
         hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
-      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
+      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests

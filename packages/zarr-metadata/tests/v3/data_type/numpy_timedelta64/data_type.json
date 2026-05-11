@@ -1,0 +1,7 @@
+{
+  "name": "numpy.timedelta64",
+  "configuration": {
+    "unit": "s",
+    "scale_factor": 1
+  }
+}

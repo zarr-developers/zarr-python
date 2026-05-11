@@ -139,7 +139,7 @@ def test_construction_rejects_invalid_target_dtype() -> None:
             exception_cls=ValueError,
         ),
         ExpectErr(
-            input={"dtype": "float32", "target": "int32", "out_of_range": "wrap"},
+            input={"dtype": "int32", "target": "float64", "out_of_range": "wrap"},
             msg="only valid for integer",
             exception_cls=ValueError,
         ),
@@ -163,6 +163,30 @@ def test_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
             compressors=None,
             fill_value=0,
         )
+
+
+@requires_cast_value_rs
+@pytest.mark.parametrize(
+    ("source_dtype", "target_dtype"),
+    [
+        ("float16", "int8"),
+        ("float32", "int32"),
+        ("float64", "int64"),
+        ("int32", "uint8"),
+    ],
+)
+def test_validation_accepts_wrap_with_integer_target(source_dtype: str, target_dtype: str) -> None:
+    """Regression for #3936: `out_of_range="wrap"` is permitted when the
+    cast TARGET (not the source array dtype) is an integer type."""
+    zarr.create_array(
+        store={},
+        shape=(1,),
+        dtype=source_dtype,
+        chunks=(1,),
+        filters=[CastValue(data_type=target_dtype, out_of_range="wrap")],
+        compressors=None,
+        fill_value=0,
+    )
 
 
 def test_zero_itemsize_raises() -> None:

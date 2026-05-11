@@ -1,0 +1,20 @@
+{
+  "zarr_format": 2,
+  "shape": [200],
+  "chunks": [50],
+  "dtype": "<f8",
+  "compressor": {
+    "id": "blosc",
+    "cname": "lz4",
+    "clevel": 5,
+    "shuffle": 1,
+    "blocksize": 0
+  },
+  "fill_value": 0.0,
+  "order": "C",
+  "filters": [
+    {"id": "delta", "dtype": "<f8"}
+  ],
+  "dimension_separator": ".",
+  "attributes": {"name": "demo"}
+}

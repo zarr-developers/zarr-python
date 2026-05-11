@@ -119,7 +119,7 @@ print(array)
 
 ### Remote Store
 
-The [`zarr.storage.FsspecStore`][] stores the contents of a Zarr hierarchy in following the same
+The [`zarr.storage.FsspecStore`][] stores the contents of a Zarr hierarchy following the same
 logical layout as the [`LocalStore`][zarr.storage.LocalStore], except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
 [`zarr.storage.FsspecStore`][] is backed by [fsspec](https://filesystem-spec.readthedocs.io) and can support any backend
@@ -154,7 +154,7 @@ print(store)
 
 ### Memory Store
 
-The [`zarr.storage.MemoryStore`][] an in-memory store that allows for serialization of
+The [`zarr.storage.MemoryStore`][] is an in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary:
 
 ```python exec="true" session="storage" source="above" result="ansi"

@@ -1,0 +1,15 @@
+{
+  "little_endian": {
+    "name": "bytes",
+    "configuration": {"endian": "little"}
+  },
+  "big_endian": {
+    "name": "bytes",
+    "configuration": {"endian": "big"}
+  },
+  "no_endian": {
+    "name": "bytes",
+    "configuration": {}
+  },
+  "short_hand_name": "bytes"
+}

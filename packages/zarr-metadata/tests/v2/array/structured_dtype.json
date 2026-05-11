@@ -1,0 +1,16 @@
+{
+  "zarr_format": 2,
+  "shape": [10],
+  "chunks": [5],
+  "dtype": [
+    ["x", "<f4"],
+    ["y", "<f4"],
+    ["coords", "<i4", [3]]
+  ],
+  "compressor": null,
+  "fill_value": 0,
+  "order": "F",
+  "filters": null,
+  "dimension_separator": "/",
+  "attributes": {}
+}

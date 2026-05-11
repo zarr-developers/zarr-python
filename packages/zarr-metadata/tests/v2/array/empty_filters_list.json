@@ -1,0 +1,11 @@
+{
+  "zarr_format": 2,
+  "shape": [50],
+  "chunks": [50],
+  "dtype": "|u1",
+  "compressor": {"id": "gzip", "level": 1},
+  "fill_value": 0,
+  "order": "C",
+  "filters": [],
+  "attributes": {}
+}

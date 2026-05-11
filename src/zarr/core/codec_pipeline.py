@@ -187,7 +187,18 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
+        # Each codec must be evolved against the spec it will actually see
+        # at run-time, not the original array spec. Earlier array->array
+        # codecs may transform the dtype (e.g. cast_value), so the spec
+        # threaded into later codecs (the array->bytes serializer and any
+        # bytes->bytes filters) must reflect those transformations.
+        evolved: list[Codec] = []
+        spec = array_spec
+        for codec in self:
+            evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
+            evolved.append(evolved_codec)
+            spec = evolved_codec.resolve_metadata(spec)
+        return type(self).from_codecs(evolved)
 
     @classmethod
     def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:

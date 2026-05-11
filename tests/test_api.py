@@ -137,7 +137,7 @@ async def test_array_like_creation(
             kwargs["fill_value"] = out_fill
             expect_fill = out_fill
     elif func is zarr.api.asynchronous.open_like:  # type: ignore[comparison-overlap]
-        if out_fill == "keep":
+        if out_fill == "keep":  # type: ignore[unreachable]
             expect_fill = ref_fill
         else:
             kwargs["fill_value"] = out_fill
@@ -161,7 +161,7 @@ async def test_array_like_creation(
     else:
         expect_dtype = ref_arr.dtype  # type: ignore[assignment]
 
-    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)  # type: ignore[call-arg]
+    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)
     assert new_arr.shape == expect_shape
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype
@@ -187,7 +187,7 @@ def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
     array_w[:] = data_val
     assert array_w.shape == shape
     assert array_w.attrs == attrs
-    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)
+    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)  # type: ignore[unreachable]
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
@@ -326,7 +326,7 @@ async def test_create_group(store: Store, zarr_format: ZarrFormat) -> None:
     node = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
     assert isinstance(node, Group)
     assert node.attrs == attrs
-    assert node.metadata.zarr_format == zarr_format
+    assert node.metadata.zarr_format == zarr_format  # type: ignore[unreachable]
 
 
 async def test_open_group(memory_store: MemoryStore) -> None:
