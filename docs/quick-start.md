@@ -58,7 +58,7 @@ z = zarr.create_array(
     compressors=zarr.codecs.BloscCodec(
         cname="zstd",
         clevel=3,
-        shuffle=zarr.codecs.BloscShuffle.shuffle
+        shuffle="shuffle"
     )
 )
 

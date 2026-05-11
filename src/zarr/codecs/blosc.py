@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, TypedDict
 
 import numcodecs
 from numcodecs.blosc import Blosc
@@ -24,7 +25,7 @@ from zarr_metadata.v3.codec.blosc import (
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
 
 if TYPE_CHECKING:
@@ -33,57 +34,95 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
 
-# Re-export under zarr-python's historical names.
-Shuffle = _BloscShuffle
-CName = _BloscCName
-BloscConfigV3 = _BloscCodecConfiguration
-BloscJSON_V3 = _BloscCodecObject
+# Re-export under zarr-python's historical names; canonical definitions
+# live in `zarr_metadata.v3.codec.blosc`.
+BloscShuffleLiteral = _BloscShuffle
+"""The shuffle values permitted for the blosc codec"""
 
-SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+
+BloscCnameLiteral = _BloscCName
+"""The codec identifiers used in the blosc codec"""
+
+BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
 
 
 class BloscConfigV2(TypedDict):
-    """Configuration for the V2 Blosc codec"""
+    """Configuration for the V2 Blosc codec.
 
-    cname: CName
+    v2 codec shapes predate zarr-metadata, which models only v3 codecs."""
+
+    cname: BloscCnameLiteral
     clevel: int
     shuffle: int
     blocksize: int
     typesize: NotRequired[int]
 
 
-class BloscShuffle(Enum):
+BloscConfigV3 = _BloscCodecConfiguration
+BloscJSON_V3 = _BloscCodecObject
+
+
+class _DeprecatedStrEnumMeta(type):
     """
-    Enum for shuffle filter used by blosc.
+    Metaclass for the legacy `BloscShuffle` / `BloscCname` classes. Accessing
+    a member name (e.g. `BloscShuffle.bitshuffle`) emits a `DeprecationWarning`
+    and returns the equivalent string.
     """
 
-    noshuffle = "noshuffle"
-    shuffle = "shuffle"
-    bitshuffle = "bitshuffle"
+    _members: dict[str, str]
 
-    @classmethod
-    def from_int(cls, num: int) -> BloscShuffle:
-        blosc_shuffle_int_to_str = {
+    def __getattr__(cls, name: str) -> str:
+        members: dict[str, str] = type.__getattribute__(cls, "_members")
+        if name in members:
+            warnings.warn(
+                f"{cls.__name__}.{name} is deprecated; pass the string {members[name]!r} instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return members[name]
+        raise AttributeError(name)
+
+
+class BloscShuffle(metaclass=_DeprecatedStrEnumMeta):
+    """
+    Deprecated. Pass a literal string (`"noshuffle"`, `"shuffle"`, or
+    `"bitshuffle"`) directly to `BloscCodec` instead.
+    """
+
+    _members: ClassVar[dict[str, str]] = {
+        "noshuffle": "noshuffle",
+        "shuffle": "shuffle",
+        "bitshuffle": "bitshuffle",
+    }
+
+    @staticmethod
+    def from_int(num: int) -> BloscShuffleLiteral:
+        mapping: dict[int, BloscShuffleLiteral] = {
             0: "noshuffle",
             1: "shuffle",
             2: "bitshuffle",
         }
-        if num not in blosc_shuffle_int_to_str:
+        if num not in mapping:
             raise ValueError(f"Value must be between 0 and 2. Got {num}.")
-        return BloscShuffle[blosc_shuffle_int_to_str[num]]
+        return mapping[num]
 
 
-class BloscCname(Enum):
+class BloscCname(metaclass=_DeprecatedStrEnumMeta):
     """
-    Enum for compression library used by blosc.
+    Deprecated. Pass a literal string (one of `"lz4"`, `"lz4hc"`,
+    `"blosclz"`, `"snappy"`, `"zlib"`, `"zstd"`) directly to
+    `BloscCodec` instead.
     """
 
-    lz4 = "lz4"
-    lz4hc = "lz4hc"
-    blosclz = "blosclz"
-    zstd = "zstd"
-    snappy = "snappy"
-    zlib = "zlib"
+    _members: ClassVar[dict[str, str]] = {
+        "lz4": "lz4",
+        "lz4hc": "lz4hc",
+        "blosclz": "blosclz",
+        "snappy": "snappy",
+        "zstd": "zstd",
+        "zlib": "zlib",
+    }
 
 
 # See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
@@ -114,6 +153,34 @@ def parse_blocksize(data: JSON) -> int:
     raise TypeError(f"Value should be an int. Got {type(data)} instead.")
 
 
+def _coerce_enum_input(value: object, param_name: str) -> object:
+    """
+    If `value` is a real `enum.Enum` instance, emit a deprecation warning
+    and return `value.value`. Otherwise return `value` unchanged.
+    """
+    if isinstance(value, Enum):
+        warnings.warn(
+            f"Passing an enum to BloscCodec(..., {param_name}=...) is deprecated; "
+            "pass the equivalent literal string instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return value.value
+    return value
+
+
+def _parse_cname(data: object) -> BloscCnameLiteral:
+    if isinstance(data, str) and data in BLOSC_CNAME:
+        return data  # type: ignore[return-value]
+    raise ValueError(f"cname must be one of {list(BLOSC_CNAME)!r}. Got {data!r}.")
+
+
+def _parse_shuffle(data: object) -> BloscShuffleLiteral:
+    if isinstance(data, str) and data in BLOSC_SHUFFLE:
+        return data  # type: ignore[return-value]
+    raise ValueError(f"shuffle must be one of {list(BLOSC_SHUFFLE)!r}. Got {data!r}.")
+
+
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
     """
@@ -129,12 +196,14 @@ class BloscCodec(BytesBytesCodec):
         Always False for Blosc codec, as compression produces variable-sized output.
     typesize : int
         The data type size in bytes used for shuffle filtering.
-    cname : BloscCname
-        The compression algorithm being used (lz4, lz4hc, blosclz, snappy, zlib, or zstd).
+    cname : BloscCnameLiteral
+        The compression algorithm being used; one of "lz4", "lz4hc",
+        "blosclz", "snappy", "zlib", or "zstd".
     clevel : int
         The compression level (0-9).
-    shuffle : BloscShuffle
-        The shuffle filter mode (noshuffle, shuffle, or bitshuffle).
+    shuffle : BloscShuffleLiteral
+        The shuffle filter mode; one of "noshuffle", "shuffle", or
+        "bitshuffle".
     blocksize : int
         The size of compressed blocks in bytes (0 for automatic).
 
@@ -144,13 +213,16 @@ class BloscCodec(BytesBytesCodec):
         The data type size in bytes. This affects how the shuffle filter processes
         the data. If None, defaults to 1 and the attribute is marked as tunable.
         Default: 1.
-    cname : BloscCname or {'lz4', 'lz4hc', 'blosclz', 'snappy', 'zlib', 'zstd'}, optional
-        The compression algorithm to use. Default: 'zstd'.
+    cname : BloscCnameLiteral, optional
+        The compression algorithm to use; one of "lz4", "lz4hc", "blosclz",
+        "snappy", "zlib", or "zstd". Default is "zstd". Passing a `BloscCname`
+        enum is deprecated.
     clevel : int, optional
         The compression level, from 0 (no compression) to 9 (maximum compression).
         Higher values provide better compression at the cost of speed. Default: 5.
-    shuffle : BloscShuffle or {'noshuffle', 'shuffle', 'bitshuffle'}, optional
-        The shuffle filter to apply before compression:
+    shuffle : BloscShuffleLiteral or None, optional
+        The shuffle filter to apply before compression; one of "noshuffle",
+        "shuffle", or "bitshuffle":
 
         - 'noshuffle': No shuffling
         - 'shuffle': Byte shuffling (better for typesize > 1)
@@ -179,18 +251,13 @@ class BloscCodec(BytesBytesCodec):
     >>> codec.typesize
     1
     >>> codec.shuffle
-    <BloscShuffle.bitshuffle: 'bitshuffle'>
+    'bitshuffle'
 
     Create a codec with specific compression settings:
 
     >>> codec = BloscCodec(cname='zstd', clevel=9, shuffle='shuffle')
     >>> codec.cname
-    <BloscCname.zstd: 'zstd'>
-
-    See Also
-    --------
-    BloscShuffle : Enum for shuffle filter options
-    BloscCname : Enum for compression algorithm options
+    'zstd'
     """
 
     # This attribute tracks parameters were set to None at init time, and thus tunable
@@ -198,38 +265,37 @@ class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
     typesize: int
-    cname: BloscCname
+    cname: BloscCnameLiteral
     clevel: int
-    shuffle: BloscShuffle
+    shuffle: BloscShuffleLiteral
     blocksize: int
 
     def __init__(
         self,
         *,
         typesize: int | None = None,
-        cname: BloscCname | CName = BloscCname.zstd,
+        cname: BloscCname | BloscCnameLiteral = "zstd",
         clevel: int = 5,
-        shuffle: BloscShuffle | Shuffle | None = None,
+        shuffle: BloscShuffle | BloscShuffleLiteral | None = None,
         blocksize: int = 0,
     ) -> None:
         object.__setattr__(self, "_tunable_attrs", set())
 
-        # If typesize was set to None, replace it with a valid typesize
-        # and flag the typesize attribute as safe to replace later
         if typesize is None:
             typesize = 1
             self._tunable_attrs.update({"typesize"})
 
-        # If shuffle was set to None, replace it with a valid shuffle
-        # and flag the shuffle attribute as safe to replace later
         if shuffle is None:
-            shuffle = BloscShuffle.bitshuffle
+            shuffle = "bitshuffle"
             self._tunable_attrs.update({"shuffle"})
 
+        cname = _coerce_enum_input(cname, "cname")  # type: ignore[assignment]
+        shuffle = _coerce_enum_input(shuffle, "shuffle")  # type: ignore[assignment]
+
         typesize_parsed = parse_typesize(typesize)
-        cname_parsed = parse_enum(cname, BloscCname)
+        cname_parsed = _parse_cname(cname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_enum(shuffle, BloscShuffle)
+        shuffle_parsed = _parse_shuffle(shuffle)
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
@@ -248,9 +314,9 @@ class BloscCodec(BytesBytesCodec):
             "name": "blosc",
             "configuration": {
                 "typesize": self.typesize,
-                "cname": self.cname.value,
+                "cname": self.cname,
                 "clevel": self.clevel,
-                "shuffle": self.shuffle.value,
+                "shuffle": self.shuffle,
                 "blocksize": self.blocksize,
             },
         }
@@ -272,20 +338,20 @@ class BloscCodec(BytesBytesCodec):
         if "shuffle" in self._tunable_attrs:
             new_codec = replace(
                 new_codec,
-                shuffle=(BloscShuffle.bitshuffle if item_size == 1 else BloscShuffle.shuffle),
+                shuffle=("bitshuffle" if item_size == 1 else "shuffle"),
             )
 
         return new_codec
 
     @cached_property
     def _blosc_codec(self) -> Blosc:
-        map_shuffle_str_to_int = {
-            BloscShuffle.noshuffle: 0,
-            BloscShuffle.shuffle: 1,
-            BloscShuffle.bitshuffle: 2,
+        map_shuffle_str_to_int: dict[BloscShuffleLiteral, int] = {
+            "noshuffle": 0,
+            "shuffle": 1,
+            "bitshuffle": 2,
         }
         config_dict: BloscConfigV2 = {
-            "cname": self.cname.name,  # type: ignore[typeddict-item]
+            "cname": self.cname,
             "clevel": self.clevel,
             "shuffle": map_shuffle_str_to_int[self.shuffle],
             "blocksize": self.blocksize,
