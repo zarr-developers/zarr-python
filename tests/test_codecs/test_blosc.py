@@ -11,7 +11,7 @@ from packaging.version import Version
 import zarr
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import BloscCname, BloscShuffle, CName, Shuffle
+from zarr.codecs.blosc import BloscCname, BloscCnameLiteral, BloscShuffle, BloscShuffleLiteral
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt16, get_data_type_from_native_dtype
@@ -66,7 +66,9 @@ async def test_blosc_evolve(dtype: str) -> None:
 
 @pytest.mark.parametrize("shuffle", [None, "bitshuffle", "legacy-enum"])
 @pytest.mark.parametrize("typesize", [None, 1, 2])
-def test_tunable_attrs_param(shuffle: None | Shuffle | str, typesize: None | int) -> None:
+def test_tunable_attrs_param(
+    shuffle: None | BloscShuffleLiteral | str, typesize: None | int
+) -> None:
     """
     Test that the tunable_attrs parameter is set as expected when creating a BloscCodec.
     """
@@ -74,11 +76,11 @@ def test_tunable_attrs_param(shuffle: None | Shuffle | str, typesize: None | int
     # contaminating the BloscCodec construction below with that warning.
     if shuffle == "legacy-enum":
         with pytest.warns(DeprecationWarning, match="BloscShuffle.shuffle"):
-            shuffle_arg: None | Shuffle | str = BloscShuffle.shuffle
+            shuffle_arg: None | BloscShuffleLiteral | str = BloscShuffle.shuffle
     else:
         shuffle_arg = shuffle
 
-    codec = BloscCodec(typesize=typesize, shuffle=cast(Shuffle | None, shuffle_arg))
+    codec = BloscCodec(typesize=typesize, shuffle=cast(BloscShuffleLiteral | None, shuffle_arg))
 
     if shuffle_arg is None:
         assert codec.shuffle == "bitshuffle"  # default shuffle
@@ -187,12 +189,12 @@ def test_blosc_codec_init_with_enum_instance_warns() -> None:
 
 def test_blosc_codec_rejects_unknown_cname() -> None:
     with pytest.raises(ValueError, match="cname must be one of"):
-        BloscCodec(cname=cast(CName, "not-a-codec"))
+        BloscCodec(cname=cast(BloscCnameLiteral, "not-a-codec"))
 
 
 def test_blosc_codec_rejects_unknown_shuffle() -> None:
     with pytest.raises(ValueError, match="shuffle must be one of"):
-        BloscCodec(shuffle=cast(Shuffle, "not-a-shuffle"))
+        BloscCodec(shuffle=cast(BloscShuffleLiteral, "not-a-shuffle"))
 
 
 def test_blosc_enum_attribute_error_for_unknown_member() -> None:
