@@ -132,7 +132,7 @@ class FsspecStore(Store):
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
         *,
-        coalesce_options: CoalesceOptions = DEFAULT_COALESCE_OPTIONS,
+        coalesce_options: CoalesceOptions | None = None,
     ) -> None:
         super().__init__(read_only=read_only)
         self.fs = fs
