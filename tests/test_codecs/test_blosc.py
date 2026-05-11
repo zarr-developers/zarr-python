@@ -11,7 +11,14 @@ from packaging.version import Version
 import zarr
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import BloscCname, BloscShuffle, BloscShuffleLiteral
+from zarr.codecs.blosc import (
+    BLOSC_CNAME,
+    BLOSC_SHUFFLE,
+    BloscCname,
+    BloscCnameLiteral,
+    BloscShuffle,
+    BloscShuffleLiteral,
+)
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt16, get_data_type_from_native_dtype
@@ -148,6 +155,60 @@ def test_blosc_codec_sync_roundtrip() -> None:
     decoded = codec._decode_sync(encoded, spec)
     result = np.frombuffer(decoded.as_numpy_array(), dtype="float64")
     np.testing.assert_array_equal(arr, result)
+
+
+@pytest.mark.parametrize("cname", BLOSC_CNAME)
+def test_blosc_codec_accepts_all_cnames(cname: BloscCnameLiteral) -> None:
+    """
+    Every compressor name in BLOSC_CNAME is accepted by BloscCodec and round-trips
+    to the same value on the stored attribute. Adding a new value to the
+    BloscCnameLiteral type alias without also adding it to BLOSC_CNAME (or vice
+    versa) is caught here.
+    """
+    codec = BloscCodec(cname=cname)
+    assert codec.cname == cname
+
+
+@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
+def test_blosc_codec_accepts_all_shuffles(shuffle: BloscShuffleLiteral) -> None:
+    """
+    Every shuffle mode in BLOSC_SHUFFLE is accepted by BloscCodec and round-trips
+    to the same value on the stored attribute. Adding a new value to the
+    BloscShuffleLiteral type alias without also adding it to BLOSC_SHUFFLE (or
+    vice versa) is caught here.
+    """
+    codec = BloscCodec(shuffle=shuffle)
+    assert codec.shuffle == shuffle
+
+
+@pytest.mark.parametrize("cname", BLOSC_CNAME)
+def test_blosc_codec_json_roundtrip_all_cnames(cname: BloscCnameLiteral) -> None:
+    """
+    JSON serialization (to_dict / from_dict) preserves every cname. Guards
+    against drift in the codec's V3 JSON form for any compressor option.
+
+    The non-cname fields are fully specified so the codec has no tunable
+    attributes; tunability is not part of the JSON form and would otherwise
+    cause spurious round-trip mismatches.
+    """
+    codec = BloscCodec(typesize=1, cname=cname, clevel=5, shuffle="shuffle", blocksize=0)
+    restored = BloscCodec.from_dict(codec.to_dict())
+    assert restored == codec
+
+
+@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
+def test_blosc_codec_json_roundtrip_all_shuffles(shuffle: BloscShuffleLiteral) -> None:
+    """
+    JSON serialization (to_dict / from_dict) preserves every shuffle mode.
+    Guards against drift in the codec's V3 JSON form for any shuffle option.
+
+    The non-shuffle fields are fully specified so the codec has no tunable
+    attributes; tunability is not part of the JSON form and would otherwise
+    cause spurious round-trip mismatches.
+    """
+    codec = BloscCodec(typesize=1, cname="zstd", clevel=5, shuffle=shuffle, blocksize=0)
+    restored = BloscCodec.from_dict(codec.to_dict())
+    assert restored == codec
 
 
 @pytest.mark.parametrize(
