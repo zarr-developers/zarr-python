@@ -16,8 +16,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core._coalesce import (
-    DEFAULT_COALESCE_OPTIONS,
-    CoalesceOptions,
+    COALESCE_DEFAULT_MAX_CONCURRENCY,
     coalesced_get,
 )
 from zarr.core.buffer import Buffer
@@ -131,14 +130,11 @@ class FsspecStore(Store):
         read_only: bool = False,
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-        *,
-        coalesce_options: CoalesceOptions | None = None,
     ) -> None:
         super().__init__(read_only=read_only)
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
-        self.coalesce_options = coalesce_options
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
@@ -331,6 +327,9 @@ class FsspecStore(Store):
         byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
+        max_concurrency: int = COALESCE_DEFAULT_MAX_CONCURRENCY,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
         """Read many byte ranges from `key`, coalescing nearby ranges and fetching concurrently.
 
@@ -338,7 +337,13 @@ class FsspecStore(Store):
         `zarr.core._coalesce.coalesced_get` for the full semantics.
         """
         fetch = partial(self.get, key, prototype)
-        async for group in coalesced_get(fetch, byte_ranges, options=self.coalesce_options):
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
             yield group
 
     async def set(

@@ -11,7 +11,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 from zarr.abc.store import RangeByteRequest
-from zarr.core._coalesce import DEFAULT_COALESCE_OPTIONS, CoalesceOptions
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.storage import FsspecStore
 from zarr.storage._fsspec import _make_async
@@ -81,27 +80,25 @@ async def test_get_ranges_missing_key_yields_nothing(memory_store: FsspecStore) 
     assert groups == []
 
 
-async def test_default_coalesce_options_on_store_without_arg() -> None:
-    from fsspec.implementations.memory import MemoryFileSystem
+async def test_get_ranges_forwards_coalescing_kwargs(memory_store: FsspecStore) -> None:
+    """`max_gap_bytes=-1` forces no merging; we should see three groups for three ranges."""
+    blob = bytes(i % 256 for i in range(1024))
+    await _write(memory_store, "blob", blob)
+    proto = default_buffer_prototype()
 
-    fs = MemoryFileSystem()
-    fs.store.clear()
-    store = FsspecStore(fs=_make_async(fs), path="/x")
-    assert store.coalesce_options == DEFAULT_COALESCE_OPTIONS
-
-
-async def test_coalesce_options_wired_through() -> None:
-    from fsspec.implementations.memory import MemoryFileSystem
-
-    fs = MemoryFileSystem()
-    fs.store.clear()
-    custom: CoalesceOptions = {
-        "max_gap_bytes": 0,
-        "max_coalesced_bytes": 1 << 20,
-        "max_concurrency": 2,
-    }
-    store = FsspecStore(fs=_make_async(fs), path="/x", coalesce_options=custom)
-    assert store.coalesce_options == custom
+    ranges = [
+        RangeByteRequest(0, 10),
+        RangeByteRequest(11, 20),  # adjacent: would merge under defaults
+        RangeByteRequest(21, 30),
+    ]
+    groups: list[list[tuple[int, Buffer | None]]] = [
+        list(group)
+        async for group in memory_store.get_ranges(
+            "blob", ranges, prototype=proto, max_gap_bytes=-1
+        )
+    ]
+    # With merging disabled, every range becomes its own one-tuple group.
+    assert sorted(len(g) for g in groups) == [1, 1, 1]
 
 
 async def test_get_ranges_mixed_range_types(memory_store: FsspecStore) -> None:

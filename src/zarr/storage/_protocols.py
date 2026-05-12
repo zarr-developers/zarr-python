@@ -24,11 +24,16 @@ class SupportsGetRanges(Protocol):
         byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
+        max_gap_bytes: int | None = ...,
+        max_coalesced_bytes: int | None = ...,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
         """Read many byte ranges from `key`.
 
-        Each yield corresponds to one underlying I/O operation.
-
-        See `zarr.core._coalesce.coalesced_get` for full semantics.
+        Each yield corresponds to one underlying I/O operation. The coalescing
+        knobs `max_gap_bytes` and `max_coalesced_bytes` describe *what counts
+        as coalesceable* and are part of this contract; implementations may
+        accept additional kwargs (e.g. concurrency knobs) but should honor
+        these two consistently. See `zarr.core._coalesce.coalesce_ranges` for
+        full semantics.
         """
         ...

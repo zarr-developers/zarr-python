@@ -14,15 +14,13 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core._coalesce import (
-    DEFAULT_COALESCE_OPTIONS,
-    CoalesceOptions,
     coalesce_ranges,
     coalesced_get,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 
 
 def _buf(data: bytes) -> Buffer:
@@ -73,30 +71,29 @@ def _contents(groups: list[list[tuple[int, Buffer | None]]]) -> dict[int, bytes]
 
 
 # ---------------------------------------------------------------------------
-# Shared option values for parametrized structural tests.
+# Shared coalescing-knob bundles. Each is a mapping of kwargs to splat into
+# `coalesce_ranges` and `coalesced_get`. Concurrency is orthogonal to merging
+# and is set inline by tests that exercise it.
 # ---------------------------------------------------------------------------
 
-DEFAULT: CoalesceOptions = DEFAULT_COALESCE_OPTIONS
-"""The library default; permissive merging."""
+DEFAULT: Mapping[str, int] = {}
+"""Empty: rely on the library defaults defined in `_coalesce`."""
 
-MERGE_GAP_50: CoalesceOptions = {
+MERGE_GAP_50: Mapping[str, int] = {
     "max_gap_bytes": 50,
     "max_coalesced_bytes": 1 << 20,
-    "max_concurrency": 10,
 }
 """Merge ranges within 50 bytes of each other."""
 
-NO_MERGE: CoalesceOptions = {
+NO_MERGE: Mapping[str, int] = {
     "max_gap_bytes": -1,
     "max_coalesced_bytes": 1 << 20,
-    "max_concurrency": 10,
 }
 """No merging: any positive gap is > -1, so no pair ever coalesces."""
 
-CAP_50: CoalesceOptions = {
+CAP_50: Mapping[str, int] = {
     "max_gap_bytes": 1000,
     "max_coalesced_bytes": 50,
-    "max_concurrency": 10,
 }
 """Gap permissive but merged size capped at 50 bytes."""
 
@@ -118,8 +115,8 @@ class StructuralCase:
     """pytest id for the case."""
     ranges: list[ByteRequest | None]
     """Input to coalesced_get."""
-    options: CoalesceOptions
-    """Coalescing knobs."""
+    options: Mapping[str, int]
+    """Coalescing knobs to splat into `coalesced_get`."""
     expected_group_sizes: list[int]
     """Sorted list of group tuple-counts (order-independent)."""
     expected_contents: dict[int, bytes] | None = None
@@ -252,7 +249,7 @@ _STRUCTURAL_CASES: list[StructuralCase] = [
 async def test_coalescing_structure_and_contents(case: StructuralCase) -> None:
     """Group structure, byte contents, and fetch-call count for the deterministic cases."""
     fetch = FakeFetch(_INDEXED_BLOB)
-    groups = await _collect(coalesced_get(fetch, case.ranges, options=case.options))
+    groups = await _collect(coalesced_get(fetch, case.ranges, **case.options))
 
     assert sorted(len(g) for g in groups) == sorted(case.expected_group_sizes)
 
@@ -273,7 +270,7 @@ async def test_within_group_ordering_is_start_offset() -> None:
     fetch = FakeFetch(_INDEXED_BLOB)
     # Two ranges that merge; one has a later start but is listed first in input.
     ranges: list[ByteRequest | None] = [RangeByteRequest(20, 25), RangeByteRequest(0, 5)]
-    groups = await _collect(coalesced_get(fetch, ranges, options=MERGE_GAP_50))
+    groups = await _collect(coalesced_get(fetch, ranges, **MERGE_GAP_50))
     assert len(groups) == 1
     # Input index 1 (start=0) comes first, then 0 (start=20).
     assert [idx for idx, _ in groups[0]] == [1, 0]
@@ -287,7 +284,7 @@ async def test_adjacent_ranges_fire_single_fetch_spanning_merged_region() -> Non
         RangeByteRequest(10, 15),
         RangeByteRequest(20, 25),
     ]
-    await _collect(coalesced_get(fetch, ranges, options=MERGE_GAP_50))
+    await _collect(coalesced_get(fetch, ranges, **MERGE_GAP_50))
     assert len(fetch.calls) == 1
     call = fetch.calls[0]
     assert isinstance(call, RangeByteRequest)
@@ -318,12 +315,12 @@ async def test_max_concurrency_is_honored() -> None:
         return _buf(b"x")
 
     ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(10)]
-    opts: CoalesceOptions = {
+    opts: Mapping[str, int] = {
         "max_gap_bytes": 0,  # force no merging
         "max_coalesced_bytes": 1 << 20,
         "max_concurrency": 3,
     }
-    async for _group in coalesced_get(fetch, ranges, options=opts):
+    async for _group in coalesced_get(fetch, ranges, **opts):
         pass
     assert peak <= 3
     assert peak >= 2  # must have been some real concurrency
@@ -348,14 +345,14 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
         completed_calls += 1
         return _buf(b"x")
 
-    opts: CoalesceOptions = {
+    opts: Mapping[str, int] = {
         "max_gap_bytes": -1,  # no merging
         "max_coalesced_bytes": 1 << 20,
         "max_concurrency": 3,
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(6)]
 
-    agen = coalesced_get(fetch, ranges, options=opts)
+    agen = coalesced_get(fetch, ranges, **opts)
     async for _group in agen:
         break
     # Explicitly close the generator so its finally block runs (cancelling
@@ -375,7 +372,7 @@ async def test_key_missing_from_first_call_yields_nothing() -> None:
     """If the very first fetch returns None, the iterator yields no groups."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(20, 30)]
-    groups = await _collect(coalesced_get(fetch, ranges, options=DEFAULT_COALESCE_OPTIONS))
+    groups = await _collect(coalesced_get(fetch, ranges))
     assert groups == []
 
 
@@ -389,7 +386,7 @@ async def test_key_missing_on_uncoalescable_input_yields_nothing(
 ) -> None:
     """Uncoalescable inputs take a distinct path; key-missing must still short-circuit."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
-    groups = await _collect(coalesced_get(fetch, [byte_range], options=DEFAULT_COALESCE_OPTIONS))
+    groups = await _collect(coalesced_get(fetch, [byte_range]))
     assert groups == []
 
 
@@ -406,13 +403,13 @@ async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
             return None
         return _buf(b"ok")
 
-    opts: CoalesceOptions = {
+    opts: Mapping[str, int] = {
         "max_gap_bytes": -1,
         "max_coalesced_bytes": 1 << 20,
         "max_concurrency": 1,  # serialize for determinism
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 2), RangeByteRequest(100, 102)]
-    groups = await _collect(coalesced_get(fetch, ranges, options=opts))
+    groups = await _collect(coalesced_get(fetch, ranges, **opts))
     assert len(groups) == 1
     assert len(groups[0]) == 1
 
@@ -444,7 +441,7 @@ async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() ->
         await asyncio.wait_for(late_gate.wait(), timeout=5.0)
         return _buf(b"ok")
 
-    opts: CoalesceOptions = {
+    opts: Mapping[str, int] = {
         "max_gap_bytes": -1,
         "max_coalesced_bytes": 1 << 20,
         "max_concurrency": 3,
@@ -452,7 +449,7 @@ async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() ->
     ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(7)]
 
     groups: list[list[tuple[int, Buffer | None]]] = []
-    agen = coalesced_get(fetch, ranges, options=opts)
+    agen = coalesced_get(fetch, ranges, **opts)
     try:
         async for group in agen:
             groups.append(list(group))
@@ -479,14 +476,14 @@ async def test_fetch_raises_propagates() -> None:
         _INDEXED_BLOB,
         raise_on=lambda r: isinstance(r, RangeByteRequest) and r.start >= 100,
     )
-    opts: CoalesceOptions = {
+    opts: Mapping[str, int] = {
         "max_gap_bytes": -1,
         "max_coalesced_bytes": 1 << 20,
         "max_concurrency": 1,
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(200, 210)]
     with pytest.raises(OSError, match="injected"):
-        await _collect(coalesced_get(fetch, ranges, options=opts))
+        await _collect(coalesced_get(fetch, ranges, **opts))
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +504,7 @@ async def test_coverage_invariant_random_inputs() -> None:
         length = rng.randint(1, 500)
         ranges.append(RangeByteRequest(start, start + length))
 
-    groups = await _collect(coalesced_get(fetch, ranges, options=DEFAULT_COALESCE_OPTIONS))
+    groups = await _collect(coalesced_get(fetch, ranges))
     seen: list[int] = [idx for group in groups for idx, _buf in group]
     assert sorted(seen) == list(range(len(ranges)))
 
@@ -523,7 +520,7 @@ async def test_coverage_invariant_random_inputs() -> None:
 
 
 def test_coalesce_ranges_empty_input() -> None:
-    groups, uncoalescable = coalesce_ranges([], options=DEFAULT_COALESCE_OPTIONS)
+    groups, uncoalescable = coalesce_ranges([])
     assert groups == []
     assert uncoalescable == []
 
@@ -536,7 +533,7 @@ def test_coalesce_ranges_separates_coalescable_from_uncoalescable() -> None:
         None,
         RangeByteRequest(20, 30),
     ]
-    groups, uncoalescable = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, uncoalescable = coalesce_ranges(ranges, **MERGE_GAP_50)
 
     # Both range requests fall within MERGE_GAP_50's gap budget.
     assert len(groups) == 1
@@ -556,7 +553,7 @@ def test_coalesce_ranges_no_merge_when_gap_exceeds_budget() -> None:
         RangeByteRequest(200, 210),
         RangeByteRequest(500, 510),
     ]
-    groups, uncoalescable = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, uncoalescable = coalesce_ranges(ranges, **MERGE_GAP_50)
     assert uncoalescable == []
     assert [len(g) for g in groups] == [1, 1, 1]
     assert [idx for g in groups for idx, _ in g] == [0, 1, 2]
@@ -568,7 +565,7 @@ def test_coalesce_ranges_merges_within_gap_budget() -> None:
         RangeByteRequest(10, 15),
         RangeByteRequest(20, 25),
     ]
-    groups, _ = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, _ = coalesce_ranges(ranges, **MERGE_GAP_50)
     assert len(groups) == 1
     assert [idx for idx, _ in groups[0]] == [0, 1, 2]
 
@@ -580,7 +577,7 @@ def test_coalesce_ranges_respects_max_coalesced_bytes() -> None:
         RangeByteRequest(0, 30),
         RangeByteRequest(40, 80),
     ]
-    groups, _ = coalesce_ranges(ranges, options=CAP_50)
+    groups, _ = coalesce_ranges(ranges, **CAP_50)
     assert [len(g) for g in groups] == [1, 1]
 
 
@@ -592,7 +589,7 @@ def test_coalesce_ranges_groups_are_sorted_by_start() -> None:
         RangeByteRequest(20, 30),
         RangeByteRequest(200, 210),
     ]
-    groups, _ = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, _ = coalesce_ranges(ranges, **MERGE_GAP_50)
     # First group is the {0-10, 20-30} cluster (from input indices 1, 2).
     # Then the {200-210} singleton, then {500-510}.
     flat = [idx for g in groups for idx, _ in g]
@@ -610,7 +607,7 @@ def test_coalesce_ranges_overlapping_ranges_merge() -> None:
         RangeByteRequest(50, 60),  # nested
         RangeByteRequest(80, 120),  # overlaps
     ]
-    groups, _ = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, _ = coalesce_ranges(ranges, **MERGE_GAP_50)
     assert len(groups) == 1
     assert [idx for idx, _ in groups[0]] == [0, 1, 2]
 
@@ -622,14 +619,14 @@ def test_coalesce_ranges_running_end_handles_nesting() -> None:
         RangeByteRequest(100, 200),  # nested; group_end stays at 1000
         RangeByteRequest(990, 1010),  # gap = -10 from running end, still merges
     ]
-    groups, _ = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, _ = coalesce_ranges(ranges, **MERGE_GAP_50)
     assert len(groups) == 1
     assert {idx for idx, _ in groups[0]} == {0, 1, 2}
 
 
 def test_coalesce_ranges_only_uncoalescable_inputs() -> None:
     ranges: list[ByteRequest | None] = [None, OffsetByteRequest(10), SuffixByteRequest(5)]
-    groups, uncoalescable = coalesce_ranges(ranges, options=DEFAULT_COALESCE_OPTIONS)
+    groups, uncoalescable = coalesce_ranges(ranges)
     assert groups == []
     assert [idx for idx, _ in uncoalescable] == [0, 1, 2]
 
@@ -643,6 +640,6 @@ def test_coalesce_ranges_total_index_coverage() -> None:
         OffsetByteRequest(100),
         RangeByteRequest(30, 40),
     ]
-    groups, uncoalescable = coalesce_ranges(ranges, options=MERGE_GAP_50)
+    groups, uncoalescable = coalesce_ranges(ranges, **MERGE_GAP_50)
     seen = sorted([idx for g in groups for idx, _ in g] + [idx for idx, _ in uncoalescable])
     assert seen == list(range(len(ranges)))

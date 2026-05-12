@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Literal, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
@@ -69,31 +69,16 @@ async def _fetch_group(ctx: _WorkerCtx, members: list[tuple[int, RangeByteReques
         await ctx.queue.put(("error", exc))
 
 
-class CoalesceOptions(TypedDict):
-    """Knobs for coalescing contiguous byte ranges into fewer I/O requests.
-
-    All fields required. See DEFAULT_COALESCE_OPTIONS for a sensible default.
-    """
-
-    max_gap_bytes: int
-    """Two RangeByteRequests separated by at most this many bytes may be merged into one fetch."""
-    max_coalesced_bytes: int
-    """Upper bound on the size of a single merged fetch (ignored for an already-oversized single request)."""
-    max_concurrency: int
-    """Maximum number of merged fetches in flight at once."""
-
-
-DEFAULT_COALESCE_OPTIONS: CoalesceOptions = {
-    "max_gap_bytes": 1 << 20,  # 1 MiB
-    "max_coalesced_bytes": 16 << 20,  # 16 MiB
-    "max_concurrency": 10,
-}
+COALESCE_DEFAULT_MAX_GAP_BYTES: Final = 1 << 20
+COALESCE_DEFAULT_MAX_COALESCED_BYTES: Final = 16 << 20
+COALESCE_DEFAULT_MAX_CONCURRENCY: Final = 10
 
 
 def coalesce_ranges(
     byte_ranges: Sequence[ByteRequest | None],
     *,
-    options: CoalesceOptions,
+    max_gap_bytes: int | None = None,
+    max_coalesced_bytes: int | None = None,
 ) -> tuple[
     list[list[tuple[int, RangeByteRequest]]],
     list[tuple[int, ByteRequest | None]],
@@ -108,8 +93,12 @@ def coalesce_ranges(
     ----------
     byte_ranges
         Input ranges. `None` means "the whole value".
-    options
-        Coalescing knobs (see `CoalesceOptions`).
+    max_gap_bytes
+        Two `RangeByteRequest`s separated by at most this many bytes may be
+        merged into one fetch. Defaults to `COALESCE_DEFAULT_MAX_GAP_BYTES`.
+    max_coalesced_bytes
+        Upper bound on the size of a single merged fetch. Defaults to
+        `COALESCE_DEFAULT_MAX_COALESCED_BYTES`.
 
     Returns
     -------
@@ -127,11 +116,16 @@ def coalesce_ranges(
     -----
     Only `RangeByteRequest` inputs participate in coalescing. Two ranges
     merge when both: their gap (next `start` minus current group's running
-    `end`) is `<= options["max_gap_bytes"]`, and the resulting merged
-    span is `<= options["max_coalesced_bytes"]`.
+    `end`) is `<= max_gap_bytes`, and the resulting merged span is
+    `<= max_coalesced_bytes`.
     """
     # Local import to avoid cycles at module import time.
     from zarr.abc.store import RangeByteRequest
+
+    if max_gap_bytes is None:
+        max_gap_bytes = COALESCE_DEFAULT_MAX_GAP_BYTES
+    if max_coalesced_bytes is None:
+        max_coalesced_bytes = COALESCE_DEFAULT_MAX_COALESCED_BYTES
 
     indexed: list[tuple[int, ByteRequest | None]] = list(enumerate(byte_ranges))
     mergeable: list[tuple[int, RangeByteRequest]] = [
@@ -149,9 +143,9 @@ def coalesce_ranges(
     group_end = 0
     for pair in mergeable:
         _i, r = pair
-        if groups and r.start - group_end <= options["max_gap_bytes"]:
+        if groups and r.start - group_end <= max_gap_bytes:
             prospective_end = max(group_end, r.end)
-            if prospective_end - group_start <= options["max_coalesced_bytes"]:
+            if prospective_end - group_start <= max_coalesced_bytes:
                 groups[-1].append(pair)
                 group_end = prospective_end
                 continue
@@ -166,16 +160,18 @@ async def coalesced_get(
     fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]],
     byte_ranges: Sequence[ByteRequest | None],
     *,
-    options: CoalesceOptions,
+    max_concurrency: int | None = None,
+    max_gap_bytes: int | None = None,
+    max_coalesced_bytes: int | None = None,
 ) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:
     """Read many byte ranges through `fetch` with coalescing and concurrency.
 
-    Nearby ranges are merged into a single underlying I/O (subject to
-    `options`), and merged fetches are run concurrently. Each yield
-    corresponds to exactly one underlying I/O operation: a sequence of
-    `(input_index, result)` tuples for all input ranges served by that I/O.
-    Tuples within a yielded sequence are ordered by start offset. Yields across
-    groups are in completion order, not input order.
+    Nearby ranges are merged into a single underlying I/O, and merged fetches
+    are run concurrently. Each yield corresponds to exactly one underlying I/O
+    operation: a sequence of `(input_index, result)` tuples for all input
+    ranges served by that I/O. Tuples within a yielded sequence are ordered by
+    start offset. Yields across groups are in completion order, not input
+    order.
 
     Parameters
     ----------
@@ -185,8 +181,13 @@ async def coalesced_get(
         `functools.partial(store.get, key, prototype)`.
     byte_ranges
         Input ranges. `None` means "the whole value".
-    options
-        Coalescing knobs.
+    max_concurrency
+        Maximum number of merged fetches in flight at once. Defaults to
+        `COALESCE_DEFAULT_MAX_CONCURRENCY`.
+    max_gap_bytes
+        Forwarded to `coalesce_ranges`.
+    max_coalesced_bytes
+        Forwarded to `coalesce_ranges`.
 
     Yields
     ------
@@ -204,20 +205,34 @@ async def coalesced_get(
     - If a fetch raises, the exception propagates on the yield that produced the
       failing group; earlier-completed groups remain observable.
     """
-    groups, uncoalescable = coalesce_ranges(byte_ranges, options=options)
+    if max_concurrency is None:
+        max_concurrency = COALESCE_DEFAULT_MAX_CONCURRENCY
+
+    groups, uncoalescable = coalesce_ranges(
+        byte_ranges,
+        max_gap_bytes=max_gap_bytes,
+        max_coalesced_bytes=max_coalesced_bytes,
+    )
     if not groups and not uncoalescable:
         return
 
     ctx = _WorkerCtx(
         fetch=fetch,
-        semaphore=asyncio.Semaphore(options["max_concurrency"]),
+        semaphore=asyncio.Semaphore(max_concurrency),
         queue=asyncio.Queue(),
     )
 
     # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
+    # A one-member group is a RangeByteRequest that did not merge with a
+    # neighbor; route it through _fetch_single so it skips the redundant
+    # slice-by-zero in _fetch_group.
     tasks: set[asyncio.Task[None]] = set()
     for group in groups:
-        tasks.add(asyncio.create_task(_fetch_group(ctx, group)))
+        if len(group) == 1:
+            solo_idx, solo_req = group[0]
+            tasks.add(asyncio.create_task(_fetch_single(ctx, solo_idx, solo_req)))
+        else:
+            tasks.add(asyncio.create_task(_fetch_group(ctx, group)))
     for idx, single in uncoalescable:
         tasks.add(asyncio.create_task(_fetch_single(ctx, idx, single)))
     total_work = len(tasks)
