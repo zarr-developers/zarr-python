@@ -198,7 +198,7 @@ async def coalesced_get(
     if max_concurrency is None:
         max_concurrency = COALESCE_DEFAULT_MAX_CONCURRENCY
 
-    groups, uncoalescable = coalesce_ranges(
+    groups, singles = coalesce_ranges(
         byte_ranges,
         max_gap_bytes=max_gap_bytes,
         max_coalesced_bytes=max_coalesced_bytes,
@@ -207,28 +207,12 @@ async def coalesced_get(
     ctx = _WorkerCtx(fetch=fetch, semaphore=asyncio.Semaphore(max_concurrency))
 
     # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
-    # A one-member group is a RangeByteRequest that did not merge with a
-    # neighbor; route it through _fetch_single so it skips the redundant
-    # slice-by-zero in _fetch_group.
-    tasks: list[asyncio.Task[Sequence[tuple[int, Buffer | None]]]] = []
-    for group in groups:
-        if len(group) == 1:
-            solo_idx, solo_req = group[0]
-            tasks.append(asyncio.create_task(_fetch_single(ctx, solo_idx, solo_req)))
-        else:
-            tasks.append(asyncio.create_task(_fetch_group(ctx, group)))
-    for idx, single in uncoalescable:
-        tasks.append(asyncio.create_task(_fetch_single(ctx, idx, single)))
 
-    try:
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            *(tg.create_task(_fetch_group(ctx, group)) for group in groups),
+            *(tg.create_task(_fetch_single(ctx, i, single)) for i, single in singles),
+        ]
+
         for fut in asyncio.as_completed(tasks):
             yield await fut
-    finally:
-        # Best-effort cancellation for any task still in flight. Covers the
-        # consumer-break path as well as exception propagation from `await fut`,
-        # where the remaining tasks must not be left running.
-        for t in tasks:
-            if not t.done():
-                t.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
