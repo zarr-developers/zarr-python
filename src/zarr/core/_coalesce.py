@@ -44,6 +44,10 @@ async def _fetch_group(
     """
     from zarr.abc.store import RangeByteRequest
 
+    if len(members) == 1:
+        solo_idx, solo_req = members[0]
+        return await _fetch_single(ctx, solo_idx, solo_req)
+
     start = members[0][1].start
     end = max(r.end for _, r in members)
     async with ctx.semaphore:
