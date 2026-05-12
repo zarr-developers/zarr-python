@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self
 
@@ -102,6 +102,26 @@ class WrapperStore[T_Store: Store](Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         return await self._store.get_partial_values(prototype, key_ranges)
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        async for group in self._store.get_ranges(
+            key,
+            byte_ranges,
+            prototype=prototype,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
+            yield group
 
     async def exists(self, key: str) -> bool:
         return await self._store.exists(key)

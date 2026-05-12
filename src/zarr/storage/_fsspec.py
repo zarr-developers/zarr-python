@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import warnings
 from contextlib import suppress
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from packaging.version import parse as parse_version
@@ -15,23 +14,18 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core._coalesce import (
-    COALESCE_DEFAULT_MAX_CONCURRENCY,
-    coalesced_get,
-)
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
 from zarr.storage._utils import _dereference_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Sequence
+    from collections.abc import AsyncIterator, Iterable
 
     from fsspec import AbstractFileSystem
     from fsspec.asyn import AsyncFileSystem
     from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.storage._protocols import SupportsGetRanges
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -321,31 +315,6 @@ class FsspecStore(Store):
         else:
             return value
 
-    async def get_ranges(
-        self,
-        key: str,
-        byte_ranges: Sequence[ByteRequest | None],
-        *,
-        prototype: BufferPrototype,
-        max_concurrency: int = COALESCE_DEFAULT_MAX_CONCURRENCY,
-        max_gap_bytes: int | None = None,
-        max_coalesced_bytes: int | None = None,
-    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-        """Read many byte ranges from `key`, coalescing nearby ranges and fetching concurrently.
-
-        See `zarr.storage._protocols.SupportsGetRanges` for the contract and
-        `zarr.core._coalesce.coalesced_get` for the full semantics.
-        """
-        fetch = partial(self.get, key, prototype)
-        async for group in coalesced_get(
-            fetch,
-            byte_ranges,
-            max_concurrency=max_concurrency,
-            max_gap_bytes=max_gap_bytes,
-            max_coalesced_bytes=max_coalesced_bytes,
-        ):
-            yield group
-
     async def set(
         self,
         key: str,
@@ -471,8 +440,3 @@ class FsspecStore(Store):
         else:
             # fsspec doesn't have typing. We'll need to assume or verify this is true
             return int(size)
-
-
-# Module-level type assertion: FsspecStore structurally satisfies SupportsGetRanges.
-# This line is a no-op at runtime but causes mypy/pyright to complain if the shape drifts.
-_: type[SupportsGetRanges] = FsspecStore

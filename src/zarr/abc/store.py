@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 from zarr.core.sync import sync
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self
 
@@ -615,6 +615,60 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Read many byte ranges from `key`.
+
+        Yields one batch per underlying I/O operation, each a sequence of
+        `(input_index, Buffer | None)` tuples. Batches across yields arrive in
+        completion order, not input order. The default implementation built
+        into `Store` runs the coalescer over `self.get`, so subclasses get a
+        working implementation for free; stores that have a more efficient
+        backend (e.g. ranged HTTP, S3 byte-range fetches) should override.
+
+        Parameters
+        ----------
+        key
+            Storage key to read from.
+        byte_ranges
+            Input ranges. `None` means "the whole value".
+        prototype
+            Buffer prototype, forwarded to `self.get`.
+        max_concurrency
+            Maximum number of merged fetches in flight at once.
+        max_gap_bytes
+            See `zarr.core._coalesce.coalesce_ranges`.
+        max_coalesced_bytes
+            See `zarr.core._coalesce.coalesce_ranges`.
+
+        Raises
+        ------
+        FileNotFoundError
+            If any underlying fetch returns `None` (i.e. `key` is absent).
+        """
+        # Local import: zarr.core._coalesce imports symbols from this module.
+        from functools import partial
+
+        from zarr.core._coalesce import coalesced_get
+
+        fetch = partial(self.get, key, prototype)
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
+            yield group
 
     async def getsize(self, key: str) -> int:
         """
