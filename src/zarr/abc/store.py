@@ -4,6 +4,7 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -657,8 +658,6 @@ class Store(ABC):
             If any underlying fetch returns `None` (i.e. `key` is absent).
         """
         # Local import: zarr.core._coalesce imports symbols from this module.
-        from functools import partial
-
         from zarr.core._coalesce import coalesced_get
 
         fetch = partial(self.get, key, prototype)

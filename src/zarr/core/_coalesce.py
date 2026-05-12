@@ -4,10 +4,12 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
+from zarr.abc.store import RangeByteRequest
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
-    from zarr.abc.store import ByteRequest, RangeByteRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
 
 
@@ -42,8 +44,6 @@ async def _fetch_group(
     build it from the sorted mergeable list. Raises `FileNotFoundError`
     if the key is absent.
     """
-    from zarr.abc.store import RangeByteRequest
-
     if len(members) == 1:
         solo_idx, solo_req = members[0]
         return await _fetch_single(ctx, solo_idx, solo_req)
@@ -106,9 +106,6 @@ def coalesce_ranges(
     `end`) is `<= max_gap_bytes`, and the resulting merged span is
     `<= max_coalesced_bytes`.
     """
-    # Local import to avoid cycles at module import time.
-    from zarr.abc.store import RangeByteRequest
-
     indexed: list[tuple[int, ByteRequest | None]] = list(enumerate(byte_ranges))
     mergeable: list[tuple[int, RangeByteRequest]] = [
         (i, r) for i, r in indexed if isinstance(r, RangeByteRequest)
