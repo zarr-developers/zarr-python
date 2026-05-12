@@ -9,7 +9,7 @@ path and the explicit delegation in `WrapperStore`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
     from zarr.abc.store import ByteRequest
+    from zarr.core._coalesce import CoalesceKwargs
     from zarr.core.buffer import Buffer, BufferPrototype
 
 
@@ -71,19 +72,10 @@ async def test_wrapper_store_delegates_get_ranges() -> None:
             byte_ranges: Sequence[ByteRequest | None],
             *,
             prototype: BufferPrototype,
-            max_concurrency: int | None = None,
-            max_gap_bytes: int | None = None,
-            max_coalesced_bytes: int | None = None,
+            **kwargs: Unpack[CoalesceKwargs],
         ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
             type(self).get_ranges_calls += 1
-            async for group in super().get_ranges(
-                key,
-                byte_ranges,
-                prototype=prototype,
-                max_concurrency=max_concurrency,
-                max_gap_bytes=max_gap_bytes,
-                max_coalesced_bytes=max_coalesced_bytes,
-            ):
+            async for group in super().get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
                 yield group
 
     inner = CountingMemoryStore()
@@ -114,19 +106,10 @@ async def test_wrapper_store_forwards_coalescing_kwargs() -> None:
             byte_ranges: Sequence[ByteRequest | None],
             *,
             prototype: BufferPrototype,
-            max_concurrency: int | None = None,
-            max_gap_bytes: int | None = None,
-            max_coalesced_bytes: int | None = None,
+            **kwargs: Unpack[CoalesceKwargs],
         ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-            type(self).last_max_gap_bytes = max_gap_bytes
-            async for group in super().get_ranges(
-                key,
-                byte_ranges,
-                prototype=prototype,
-                max_concurrency=max_concurrency,
-                max_gap_bytes=max_gap_bytes,
-                max_coalesced_bytes=max_coalesced_bytes,
-            ):
+            type(self).last_max_gap_bytes = kwargs.get("max_gap_bytes")
+            async for group in super().get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
                 yield group
 
     inner = SpyMemoryStore()

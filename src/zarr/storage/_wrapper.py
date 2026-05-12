@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Unpack, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.buffer import Buffer
     from zarr.abc.store import ByteRequest
+    from zarr.core._coalesce import CoalesceKwargs
     from zarr.core.buffer import BufferPrototype
 
 from zarr.abc.store import Store
@@ -109,18 +110,9 @@ class WrapperStore[T_Store: Store](Store):
         byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
-        max_concurrency: int | None = None,
-        max_gap_bytes: int | None = None,
-        max_coalesced_bytes: int | None = None,
+        **kwargs: Unpack[CoalesceKwargs],
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-        async for group in self._store.get_ranges(
-            key,
-            byte_ranges,
-            prototype=prototype,
-            max_concurrency=max_concurrency,
-            max_gap_bytes=max_gap_bytes,
-            max_coalesced_bytes=max_coalesced_bytes,
-        ):
+        async for group in self._store.get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
             yield group
 
     async def exists(self, key: str) -> bool:
