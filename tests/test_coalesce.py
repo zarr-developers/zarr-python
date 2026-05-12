@@ -425,17 +425,19 @@ async def test_key_missing_mid_stream_with_concurrency_cancels_late_arrivals() -
     """
     late_gate = asyncio.Event()
     miss_fired = asyncio.Event()
+    # Driven by the test body after the first successful yield, so the miss
+    # task can't race past the start=0 result.
+    fire_miss = asyncio.Event()
 
     async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
         assert isinstance(byte_range, RangeByteRequest)
         start = byte_range.start
         if start == 0:
-            # First to complete: arrives before the miss.
-            await asyncio.sleep(0.01)
             return _buf(b"ok")
         if start == 1000:
-            # Miss: a little later than #0 so #0 yields first.
-            await asyncio.sleep(0.03)
+            # Wait for the test to give the green light before returning None.
+            # This makes ordering deterministic regardless of scheduling.
+            await asyncio.wait_for(fire_miss.wait(), timeout=5.0)
             miss_fired.set()
             return None
         # Late arrivals would block on this gate; they should be cancelled
@@ -456,6 +458,8 @@ async def test_key_missing_mid_stream_with_concurrency_cancels_late_arrivals() -
     idx, buf = first[0]
     assert idx == 0
     assert buf is not None
+    # Now that #0 has yielded, signal the miss task to return None.
+    fire_miss.set()
     with pytest.raises(FileNotFoundError):
         await anext(agen)
     assert miss_fired.is_set()
