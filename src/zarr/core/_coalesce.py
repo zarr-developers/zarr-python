@@ -54,9 +54,7 @@ async def _fetch_group(
         big = await ctx.fetch(RangeByteRequest(start, end))
     if big is None:
         raise FileNotFoundError
-    sliced: list[tuple[int, Buffer | None]] = [
-        (idx, big[r.start - start : r.end - start]) for idx, r in members
-    ]
+    sliced = [(idx, big[r.start - start : r.end - start]) for idx, r in members]
     return tuple(sliced)
 
 
