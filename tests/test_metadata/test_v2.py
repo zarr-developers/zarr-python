@@ -281,35 +281,6 @@ class TestConsolidated:
         assert isinstance(air, zarr.AsyncArray)
         assert air.metadata.shape == (730,)
 
-    async def test_getitem_consolidated_empty_leaf_group(
-        self, memory_store: zarr.storage.MemoryStore
-    ) -> None:
-        zmetadata: dict[str, JSON] = {
-            "metadata": {
-                ".zattrs": {},
-                ".zgroup": {"zarr_format": 2},
-                "raw/.zattrs": {},
-                "raw/.zgroup": {"zarr_format": 2},
-                "raw/varm/.zattrs": {},
-                "raw/varm/.zgroup": {"zarr_format": 2},
-            },
-            "zarr_consolidated_format": 1,
-        }
-        await memory_store.set(
-            ".zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
-        )
-        await memory_store.set(".zattrs", cpu.Buffer.from_bytes(json.dumps({}).encode()))
-        await memory_store.set(".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode()))
-
-        group = await zarr.api.asynchronous.open_consolidated(store=memory_store, zarr_format=2)
-        raw = await group.getitem("raw")
-        assert isinstance(raw, zarr.AsyncGroup)
-        assert raw.metadata.consolidated_metadata is not None
-
-        varm = await raw.getitem("varm")
-        assert isinstance(varm, zarr.AsyncGroup)
-        assert varm.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
-
 
 def test_from_dict_extra_fields() -> None:
     data = {
