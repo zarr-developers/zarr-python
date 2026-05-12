@@ -5,7 +5,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from itertools import starmap
-from typing import TYPE_CHECKING, Literal, Protocol, Unpack, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from zarr.core.sync import sync
 
@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from types import TracebackType
     from typing import Any, Self
 
-    from zarr.core._coalesce import CoalesceKwargs
     from zarr.core.buffer import Buffer, BufferPrototype
 
 __all__ = [
@@ -623,7 +622,9 @@ class Store(ABC):
         byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
-        **kwargs: Unpack[CoalesceKwargs],
+        max_concurrency: int = 10,
+        max_gap_bytes: int = 1 << 20,
+        max_coalesced_bytes: int = 16 << 20,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
         """Read many byte ranges from `key`.
 
@@ -642,10 +643,13 @@ class Store(ABC):
             Input ranges. `None` means "the whole value".
         prototype
             Buffer prototype, forwarded to `self.get`.
-        **kwargs
-            Forwarded to `zarr.core._coalesce.coalesced_get`. See its docstring
-            for supported tuning knobs (`max_concurrency`, `max_gap_bytes`,
-            `max_coalesced_bytes`).
+        max_concurrency
+            Maximum number of merged fetches in flight at once.
+        max_gap_bytes
+            Two `RangeByteRequest`s separated by at most this many bytes may
+            be merged into one fetch.
+        max_coalesced_bytes
+            Upper bound on the size of a single merged fetch.
 
         Raises
         ------
@@ -658,7 +662,13 @@ class Store(ABC):
         from zarr.core._coalesce import coalesced_get
 
         fetch = partial(self.get, key, prototype)
-        async for group in coalesced_get(fetch, byte_ranges, **kwargs):
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
             yield group
 
     async def getsize(self, key: str) -> int:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Unpack, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.buffer import Buffer
     from zarr.abc.store import ByteRequest
-    from zarr.core._coalesce import CoalesceKwargs
     from zarr.core.buffer import BufferPrototype
 
 from zarr.abc.store import Store
@@ -110,8 +109,23 @@ class WrapperStore[T_Store: Store](Store):
         byte_ranges: Sequence[ByteRequest | None],
         *,
         prototype: BufferPrototype,
-        **kwargs: Unpack[CoalesceKwargs],
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Forward `get_ranges` to the wrapped store.
+
+        Default values for the coalescing kwargs are not declared here; the
+        wrapped store decides them. `None` means "don't override the wrapped
+        store's default".
+        """
+        kwargs: dict[str, int] = {}
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
         async for group in self._store.get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
             yield group
 

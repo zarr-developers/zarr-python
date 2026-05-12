@@ -1,15 +1,16 @@
-# tests/test_store/test_protocols.py
+# tests/test_store/test_get_ranges.py
 """Tests for `Store.get_ranges` — the ABC default implementation and wrapper delegation.
 
-This file used to validate a separate `SupportsGetRanges` protocol. That protocol
-was folded into the `Store` ABC, so every store inherits a working `get_ranges`
-built on `coalesced_get(self.get, ...)`. The tests here exercise that default
-path and the explicit delegation in `WrapperStore`.
+`Store.get_ranges` is defined on the ABC with a default implementation built
+on `coalesced_get(self.get, ...)`, so every store inherits a working version.
+These tests cover that inherited path and the explicit delegation in
+`WrapperStore` (which ensures wrapped stores' optimized overrides are honored).
+Store-specific overrides (e.g. `FsspecStore`) have their own test modules.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Unpack
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
     from zarr.abc.store import ByteRequest
-    from zarr.core._coalesce import CoalesceKwargs
     from zarr.core.buffer import Buffer, BufferPrototype
 
 
@@ -72,10 +72,19 @@ async def test_wrapper_store_delegates_get_ranges() -> None:
             byte_ranges: Sequence[ByteRequest | None],
             *,
             prototype: BufferPrototype,
-            **kwargs: Unpack[CoalesceKwargs],
+            max_concurrency: int = 10,
+            max_gap_bytes: int = 1 << 20,
+            max_coalesced_bytes: int = 16 << 20,
         ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
             type(self).get_ranges_calls += 1
-            async for group in super().get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
+            async for group in super().get_ranges(
+                key,
+                byte_ranges,
+                prototype=prototype,
+                max_concurrency=max_concurrency,
+                max_gap_bytes=max_gap_bytes,
+                max_coalesced_bytes=max_coalesced_bytes,
+            ):
                 yield group
 
     inner = CountingMemoryStore()
@@ -106,10 +115,19 @@ async def test_wrapper_store_forwards_coalescing_kwargs() -> None:
             byte_ranges: Sequence[ByteRequest | None],
             *,
             prototype: BufferPrototype,
-            **kwargs: Unpack[CoalesceKwargs],
+            max_concurrency: int = 10,
+            max_gap_bytes: int = 1 << 20,
+            max_coalesced_bytes: int = 16 << 20,
         ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
-            type(self).last_max_gap_bytes = kwargs.get("max_gap_bytes")
-            async for group in super().get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
+            type(self).last_max_gap_bytes = max_gap_bytes
+            async for group in super().get_ranges(
+                key,
+                byte_ranges,
+                prototype=prototype,
+                max_concurrency=max_concurrency,
+                max_gap_bytes=max_gap_bytes,
+                max_coalesced_bytes=max_coalesced_bytes,
+            ):
                 yield group
 
     inner = SpyMemoryStore()

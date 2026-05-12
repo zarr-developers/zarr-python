@@ -2,35 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, NamedTuple, TypedDict, Unpack, cast
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
     from zarr.abc.store import ByteRequest, RangeByteRequest
     from zarr.core.buffer import Buffer
-
-
-class _GroupingKwargs(TypedDict, total=False):
-    """Internal forwarding bundle for `coalesce_ranges`'s grouping knobs."""
-
-    max_gap_bytes: int
-    max_coalesced_bytes: int
-
-
-class CoalesceKwargs(TypedDict, total=False):
-    """Internal forwarding bundle for `coalesced_get`'s tuning knobs.
-
-    Used with `Unpack[CoalesceKwargs]` in forwarder signatures so intermediate
-    layers can pass overrides through without knowing or duplicating the leaf
-    defaults. An unset key means "use the leaf's default": `max_gap_bytes` and
-    `max_coalesced_bytes` resolve in `coalesce_ranges`; `max_concurrency`
-    resolves in `coalesced_get`.
-    """
-
-    max_gap_bytes: int
-    max_coalesced_bytes: int
-    max_concurrency: int
 
 
 class _WorkerCtx(NamedTuple):
@@ -83,8 +61,8 @@ async def _fetch_group(
 def coalesce_ranges(
     byte_ranges: Sequence[ByteRequest | None],
     *,
-    max_gap_bytes: int = 1 << 20,
-    max_coalesced_bytes: int = 16 << 20,
+    max_gap_bytes: int,
+    max_coalesced_bytes: int,
 ) -> tuple[
     list[list[tuple[int, RangeByteRequest]]],
     list[tuple[int, ByteRequest | None]],
@@ -94,6 +72,10 @@ def coalesce_ranges(
     Pure (no I/O). The result is the I/O plan a caller would execute: each
     group corresponds to one fetch of a coalesced byte range, and each
     uncoalescable item corresponds to one fetch of the original request.
+
+    All tuning knobs are required keyword arguments. `Store.get_ranges` is
+    the public entry point and owns the canonical default values; this
+    function takes them explicitly to avoid duplicating policy.
 
     Parameters
     ----------
@@ -159,7 +141,10 @@ def coalesce_ranges(
 async def coalesced_get(
     fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]],
     byte_ranges: Sequence[ByteRequest | None],
-    **kwargs: Unpack[CoalesceKwargs],
+    *,
+    max_concurrency: int,
+    max_gap_bytes: int,
+    max_coalesced_bytes: int,
 ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
     """Read many byte ranges through `fetch` with coalescing and concurrency.
 
@@ -170,6 +155,10 @@ async def coalesced_get(
     start offset. Yields across groups are in completion order, not input
     order.
 
+    All tuning knobs are required keyword arguments. `Store.get_ranges` is
+    the public entry point and owns the canonical default values; this
+    function takes them explicitly to avoid duplicating policy.
+
     Parameters
     ----------
     fetch
@@ -178,13 +167,12 @@ async def coalesced_get(
         `functools.partial(store.get, key, prototype)`.
     byte_ranges
         Input ranges. `None` means "the whole value".
-    **kwargs
-        Tuning knobs (see `CoalesceKwargs`):
-
-        - `max_concurrency` — maximum merged fetches in flight at once.
-          Defaults to 10.
-        - `max_gap_bytes`, `max_coalesced_bytes` — forwarded to
-          `coalesce_ranges`; see that function for defaults.
+    max_concurrency
+        Maximum number of merged fetches in flight at once.
+    max_gap_bytes
+        Forwarded to `coalesce_ranges`.
+    max_coalesced_bytes
+        Forwarded to `coalesce_ranges`.
 
     Yields
     ------
@@ -205,11 +193,11 @@ async def coalesced_get(
     if not byte_ranges:
         return
 
-    max_concurrency = kwargs.pop("max_concurrency", 10)
-    # After popping, `kwargs` only contains _GroupingKwargs keys, but type
-    # checkers can't narrow `**kwargs` parameters through dict mutation.
-    grouping_kwargs = cast("_GroupingKwargs", kwargs)
-    groups, singles = coalesce_ranges(byte_ranges, **grouping_kwargs)
+    groups, singles = coalesce_ranges(
+        byte_ranges,
+        max_gap_bytes=max_gap_bytes,
+        max_coalesced_bytes=max_coalesced_bytes,
+    )
 
     ctx = _WorkerCtx(fetch=fetch, semaphore=asyncio.Semaphore(max_concurrency))
 
