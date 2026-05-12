@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -20,7 +20,7 @@ from zarr.core._coalesce import (
 from zarr.core.buffer import Buffer, default_buffer_prototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+    from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping, Sequence
 
 
 def _buf(data: bytes) -> Buffer:
@@ -356,8 +356,10 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
     async for _group in agen:
         break
     # Explicitly close the generator so its finally block runs (cancelling
-    # in-flight tasks) before we make assertions.
-    await agen.aclose()
+    # in-flight tasks) before we make assertions. The narrow AsyncIterator
+    # return type does not expose `.aclose()`, but the runtime object is an
+    # async generator and supports it.
+    await cast("AsyncGenerator[Any, None]", agen).aclose()
 
     assert cancelled_calls >= 1
     assert completed_calls >= 1
@@ -368,12 +370,12 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_key_missing_from_first_call_yields_nothing() -> None:
-    """If the very first fetch returns None, the iterator yields no groups."""
+async def test_key_missing_from_first_call_raises() -> None:
+    """If the very first fetch returns None, the iterator raises FileNotFoundError."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(20, 30)]
-    groups = await _collect(coalesced_get(fetch, ranges))
-    assert groups == []
+    with pytest.raises(FileNotFoundError):
+        await _collect(coalesced_get(fetch, ranges))
 
 
 @pytest.mark.parametrize(
@@ -381,17 +383,17 @@ async def test_key_missing_from_first_call_yields_nothing() -> None:
     [OffsetByteRequest(5), SuffixByteRequest(5), None],
     ids=["offset", "suffix", "none"],
 )
-async def test_key_missing_on_uncoalescable_input_yields_nothing(
+async def test_key_missing_on_uncoalescable_input_raises(
     byte_range: ByteRequest | None,
 ) -> None:
-    """Uncoalescable inputs take a distinct path; key-missing must still short-circuit."""
+    """Uncoalescable inputs take a distinct path; key-missing must still raise."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
-    groups = await _collect(coalesced_get(fetch, [byte_range]))
-    assert groups == []
+    with pytest.raises(FileNotFoundError):
+        await _collect(coalesced_get(fetch, [byte_range]))
 
 
-async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
-    """If a later fetch returns None, earlier-completed groups remain observable."""
+async def test_key_missing_mid_stream_raises_after_earlier_groups() -> None:
+    """If a later fetch returns None, earlier-completed groups yield before the raise."""
     call_count = 0
 
     async def fetch(byte_range: ByteRequest | None) -> Buffer | None:
@@ -409,16 +411,17 @@ async def test_key_missing_mid_stream_yields_earlier_groups_only() -> None:
         "max_concurrency": 1,  # serialize for determinism
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 2), RangeByteRequest(100, 102)]
-    groups = await _collect(coalesced_get(fetch, ranges, **opts))
-    assert len(groups) == 1
-    assert len(groups[0]) == 1
+    agen = coalesced_get(fetch, ranges, **opts)
+    first = await anext(agen)
+    assert len(first) == 1
+    with pytest.raises(FileNotFoundError):
+        await anext(agen)
 
 
-async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() -> None:
+async def test_key_missing_mid_stream_with_concurrency_cancels_late_arrivals() -> None:
     """
-    Under max_concurrency > 1, a mid-stream miss should still cause the iterator
-    to complete cleanly even when unrelated tasks are still in flight and arrive
-    after the miss has been observed.
+    Under max_concurrency > 1, a mid-stream miss should raise FileNotFoundError
+    and cancel still-in-flight unrelated tasks rather than wait for them.
     """
     late_gate = asyncio.Event()
     miss_fired = asyncio.Event()
@@ -435,9 +438,8 @@ async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() ->
             await asyncio.sleep(0.03)
             miss_fired.set()
             return None
-        # Late arrivals: wait until the miss has been processed, then return
-        # a buffer so the drain loop sees them post-stop.
-        await asyncio.wait_for(miss_fired.wait(), timeout=5.0)
+        # Late arrivals would block on this gate; they should be cancelled
+        # before they ever return.
         await asyncio.wait_for(late_gate.wait(), timeout=5.0)
         return _buf(b"ok")
 
@@ -448,21 +450,17 @@ async def test_key_missing_mid_stream_with_concurrency_drains_late_arrivals() ->
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(i * 1000, i * 1000 + 1) for i in range(7)]
 
-    groups: list[list[tuple[int, Buffer | None]]] = []
     agen = coalesced_get(fetch, ranges, **opts)
-    try:
-        async for group in agen:
-            groups.append(list(group))
-            late_gate.set()
-    finally:
-        late_gate.set()
-
-    assert len(groups) == 1
-    assert len(groups[0]) == 1
-    idx, buf = groups[0][0]
+    first = await anext(agen)
+    assert len(first) == 1
+    idx, buf = first[0]
     assert idx == 0
     assert buf is not None
+    with pytest.raises(FileNotFoundError):
+        await anext(agen)
     assert miss_fired.is_set()
+    # Sanity: late_gate was never set, so the cancellation path is what completed the test.
+    assert not late_gate.is_set()
 
 
 # ---------------------------------------------------------------------------

@@ -69,15 +69,12 @@ async def test_get_ranges_happy_path(memory_store: FsspecStore) -> None:
     assert flat[2] == blob[500:520]
 
 
-async def test_get_ranges_missing_key_yields_nothing(memory_store: FsspecStore) -> None:
+async def test_get_ranges_missing_key_raises(memory_store: FsspecStore) -> None:
+    """A request against a missing key raises FileNotFoundError."""
     proto = default_buffer_prototype()
-    groups: list[list[tuple[int, Buffer | None]]] = [
-        list(group)
-        async for group in memory_store.get_ranges(
-            "does-not-exist", [RangeByteRequest(0, 10)], prototype=proto
-        )
-    ]
-    assert groups == []
+    agen = memory_store.get_ranges("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
+    with pytest.raises(FileNotFoundError):
+        await anext(agen)
 
 
 async def test_get_ranges_forwards_coalescing_kwargs(memory_store: FsspecStore) -> None:

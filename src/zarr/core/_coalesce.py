@@ -2,19 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
     from zarr.abc.store import ByteRequest, RangeByteRequest
     from zarr.core.buffer import Buffer
-
-    _CompletionEntry = (
-        tuple[Literal["ok"], Sequence[tuple[int, Buffer | None]]]
-        | tuple[Literal["missing"], None]
-        | tuple[Literal["error"], BaseException]
-    )
 
 
 class _WorkerCtx(NamedTuple):
@@ -26,47 +20,40 @@ class _WorkerCtx(NamedTuple):
 
     fetch: Callable[[ByteRequest | None], Awaitable[Buffer | None]]
     semaphore: asyncio.Semaphore
-    queue: asyncio.Queue[_CompletionEntry]
 
 
-async def _fetch_single(ctx: _WorkerCtx, idx: int, req: ByteRequest | None) -> None:
-    try:
-        async with ctx.semaphore:
-            buf = await ctx.fetch(req)
-        if buf is None:
-            await ctx.queue.put(("missing", None))
-            return
-        await ctx.queue.put(("ok", ((idx, buf),)))
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        await ctx.queue.put(("error", exc))
+async def _fetch_single(
+    ctx: _WorkerCtx, idx: int, req: ByteRequest | None
+) -> Sequence[tuple[int, Buffer | None]]:
+    """Fetch one byte range. Raises FileNotFoundError if the key is absent."""
+    async with ctx.semaphore:
+        buf = await ctx.fetch(req)
+    if buf is None:
+        raise FileNotFoundError
+    return ((idx, buf),)
 
 
-async def _fetch_group(ctx: _WorkerCtx, members: list[tuple[int, RangeByteRequest]]) -> None:
+async def _fetch_group(
+    ctx: _WorkerCtx, members: list[tuple[int, RangeByteRequest]]
+) -> Sequence[tuple[int, Buffer | None]]:
     """Fetch one merged byte range and slice it back into per-input buffers.
 
     `members` must already be sorted by `start`; callers in this module
-    build it from the sorted mergeable list.
+    build it from the sorted mergeable list. Raises `FileNotFoundError`
+    if the key is absent.
     """
     from zarr.abc.store import RangeByteRequest
 
-    try:
-        start = members[0][1].start
-        end = max(r.end for _, r in members)
-        async with ctx.semaphore:
-            big = await ctx.fetch(RangeByteRequest(start, end))
-        if big is None:
-            await ctx.queue.put(("missing", None))
-            return
-        sliced: list[tuple[int, Buffer | None]] = [
-            (idx, big[r.start - start : r.end - start]) for idx, r in members
-        ]
-        await ctx.queue.put(("ok", tuple(sliced)))
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        await ctx.queue.put(("error", exc))
+    start = members[0][1].start
+    end = max(r.end for _, r in members)
+    async with ctx.semaphore:
+        big = await ctx.fetch(RangeByteRequest(start, end))
+    if big is None:
+        raise FileNotFoundError
+    sliced: list[tuple[int, Buffer | None]] = [
+        (idx, big[r.start - start : r.end - start]) for idx, r in members
+    ]
+    return tuple(sliced)
 
 
 COALESCE_DEFAULT_MAX_GAP_BYTES: Final = 1 << 20
@@ -199,11 +186,11 @@ async def coalesced_get(
     - Only `RangeByteRequest` inputs are coalesced. `OffsetByteRequest`,
       `SuffixByteRequest`, and `None` are each treated as uncoalescable
       (one fetch, one single-tuple yield per input).
-    - If any fetch returns `None` the iterator stops scheduling further fetches
-      and completes without yielding the missing group. Groups completed before
-      the miss remain observable.
-    - If a fetch raises, the exception propagates on the yield that produced the
-      failing group; earlier-completed groups remain observable.
+    - If any fetch returns `None`, the iterator raises `FileNotFoundError`
+      after cancelling pending fetches. Groups completed before the miss
+      remain observable on the yields preceding the raise.
+    - If a fetch raises, the exception propagates on the yield that produced
+      the failing group; earlier-completed groups remain observable.
     """
     if not byte_ranges:
         return
@@ -217,46 +204,29 @@ async def coalesced_get(
         max_coalesced_bytes=max_coalesced_bytes,
     )
 
-    ctx = _WorkerCtx(
-        fetch=fetch,
-        semaphore=asyncio.Semaphore(max_concurrency),
-        queue=asyncio.Queue(),
-    )
+    ctx = _WorkerCtx(fetch=fetch, semaphore=asyncio.Semaphore(max_concurrency))
 
     # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
     # A one-member group is a RangeByteRequest that did not merge with a
     # neighbor; route it through _fetch_single so it skips the redundant
     # slice-by-zero in _fetch_group.
-    tasks: set[asyncio.Task[None]] = set()
+    tasks: list[asyncio.Task[Sequence[tuple[int, Buffer | None]]]] = []
     for group in groups:
         if len(group) == 1:
             solo_idx, solo_req = group[0]
-            tasks.add(asyncio.create_task(_fetch_single(ctx, solo_idx, solo_req)))
+            tasks.append(asyncio.create_task(_fetch_single(ctx, solo_idx, solo_req)))
         else:
-            tasks.add(asyncio.create_task(_fetch_group(ctx, group)))
+            tasks.append(asyncio.create_task(_fetch_group(ctx, group)))
     for idx, single in uncoalescable:
-        tasks.add(asyncio.create_task(_fetch_single(ctx, idx, single)))
-    total_work = len(tasks)
+        tasks.append(asyncio.create_task(_fetch_single(ctx, idx, single)))
 
     try:
-        for _ in range(total_work):
-            entry = await ctx.queue.get()
-            if entry[0] == "ok":
-                yield entry[1]
-                continue
-            # "missing" or "error": stop scheduling and cancel pending work.
-            # Late arrivals that raced to enqueue before cancellation took
-            # effect sit in the completion queue and are discarded by the
-            # finally block (the queue is local and will be garbage-collected).
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
-            if entry[0] == "error":
-                raise entry[1]
-            break
+        for fut in asyncio.as_completed(tasks):
+            yield await fut
     finally:
-        # Best-effort cancellation for in-flight tasks (covers the consumer
-        # break / early-exit case where we did not proactively cancel).
+        # Best-effort cancellation for any task still in flight. Covers the
+        # consumer-break path as well as exception propagation from `await fut`,
+        # where the remaining tasks must not be left running.
         for t in tasks:
             if not t.done():
                 t.cancel()
