@@ -5,7 +5,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
     from zarr.abc.store import ByteRequest, RangeByteRequest
     from zarr.core.buffer import Buffer
@@ -163,7 +163,7 @@ async def coalesced_get(
     max_concurrency: int | None = None,
     max_gap_bytes: int | None = None,
     max_coalesced_bytes: int | None = None,
-) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]], None]:
+) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
     """Read many byte ranges through `fetch` with coalescing and concurrency.
 
     Nearby ranges are merged into a single underlying I/O, and merged fetches
@@ -205,6 +205,9 @@ async def coalesced_get(
     - If a fetch raises, the exception propagates on the yield that produced the
       failing group; earlier-completed groups remain observable.
     """
+    if not byte_ranges:
+        return
+
     if max_concurrency is None:
         max_concurrency = COALESCE_DEFAULT_MAX_CONCURRENCY
 
@@ -213,8 +216,6 @@ async def coalesced_get(
         max_gap_bytes=max_gap_bytes,
         max_coalesced_bytes=max_coalesced_bytes,
     )
-    if not groups and not uncoalescable:
-        return
 
     ctx = _WorkerCtx(
         fetch=fetch,
@@ -238,7 +239,6 @@ async def coalesced_get(
     total_work = len(tasks)
 
     try:
-        pending_error: BaseException | None = None
         for _ in range(total_work):
             entry = await ctx.queue.get()
             if entry[0] == "ok":
@@ -252,10 +252,8 @@ async def coalesced_get(
                 if not t.done():
                     t.cancel()
             if entry[0] == "error":
-                pending_error = entry[1]
+                raise entry[1]
             break
-        if pending_error is not None:
-            raise pending_error
     finally:
         # Best-effort cancellation for in-flight tasks (covers the consumer
         # break / early-exit case where we did not proactively cancel).
