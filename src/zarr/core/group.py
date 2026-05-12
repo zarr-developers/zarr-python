@@ -235,8 +235,6 @@ class ConsolidatedMetadata:
         # array metadata of its immediate children.
         # In the example, the group at `/a/b` will have consolidated metadata
         # for its children `array-0` and `array-1`.
-        #
-        # metadata = dict(metadata)
 
         keys = sorted(metadata, key=lambda k: k.count("/"))
         grouped = {
@@ -269,13 +267,17 @@ class ConsolidatedMetadata:
                 # These are already present, either thanks to being an array in the
                 # root, or by being collected as a child in the else clause
                 continue
-            children_keys = list(children_keys)
-            # We pop from metadata, since we're *moving* this under group
-            children = {
-                child_key.split("/")[-1]: metadata.pop(child_key)
-                for child_key in children_keys
-                if child_key != key
-            }
+            children: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
+            # We pop from metadata, since we're *moving* this under group.
+            # While doing this, normalize leaf groups to carry empty consolidated metadata.
+            for child_key in children_keys:
+                if child_key == key:
+                    continue
+                child = metadata.pop(child_key)
+                if isinstance(child, GroupMetadata) and child.consolidated_metadata is None:
+                    child = replace(child, consolidated_metadata=ConsolidatedMetadata(metadata={}))
+                children[child_key.split("/")[-1]] = child
+
             parent[name] = replace(
                 node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
             )

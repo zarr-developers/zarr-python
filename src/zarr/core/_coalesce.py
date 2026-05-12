@@ -66,15 +66,17 @@ async def _fetch_group(
     """
     from zarr.abc.store import RangeByteRequest
 
+    if len(members) == 1:
+        solo_idx, solo_req = members[0]
+        return await _fetch_single(ctx, solo_idx, solo_req)
+
     start = members[0][1].start
     end = max(r.end for _, r in members)
     async with ctx.semaphore:
         big = await ctx.fetch(RangeByteRequest(start, end))
     if big is None:
         raise FileNotFoundError
-    sliced: list[tuple[int, Buffer | None]] = [
-        (idx, big[r.start - start : r.end - start]) for idx, r in members
-    ]
+    sliced = [(idx, big[r.start - start : r.end - start]) for idx, r in members]
     return tuple(sliced)
 
 
@@ -207,33 +209,29 @@ async def coalesced_get(
     # After popping, `kwargs` only contains _GroupingKwargs keys, but type
     # checkers can't narrow `**kwargs` parameters through dict mutation.
     grouping_kwargs = cast("_GroupingKwargs", kwargs)
-    groups, uncoalescable = coalesce_ranges(byte_ranges, **grouping_kwargs)
+    groups, singles = coalesce_ranges(byte_ranges, **grouping_kwargs)
 
     ctx = _WorkerCtx(fetch=fetch, semaphore=asyncio.Semaphore(max_concurrency))
 
     # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
-    # A one-member group is a RangeByteRequest that did not merge with a
-    # neighbor; route it through _fetch_single so it skips the redundant
-    # slice-by-zero in _fetch_group.
-    tasks: list[asyncio.Task[Sequence[tuple[int, Buffer | None]]]] = []
-    for group in groups:
-        if len(group) == 1:
-            solo_idx, solo_req = group[0]
-            tasks.append(asyncio.create_task(_fetch_single(ctx, solo_idx, solo_req)))
-        else:
-            tasks.append(asyncio.create_task(_fetch_group(ctx, group)))
-    for idx, single in uncoalescable:
-        tasks.append(asyncio.create_task(_fetch_single(ctx, idx, single)))
-
+    # TaskGroup wraps any task exception in BaseExceptionGroup; we unwrap it
+    # so callers see the underlying error directly (e.g. FileNotFoundError).
+    # GeneratorExit (raised when the consumer calls aclose()) is also caught
+    # and re-raised bare so close completes cleanly.
     try:
-        for fut in asyncio.as_completed(tasks):
-            yield await fut
-    finally:
-        # Best-effort cancellation for any task still in flight. Covers the
-        # consumer-break path as well as exception propagation from `await fut`,
-        # where the remaining tasks must not be left running.
-        for t in tasks:
-            if not t.done():
-                t.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                *(tg.create_task(_fetch_group(ctx, group)) for group in groups),
+                *(tg.create_task(_fetch_single(ctx, i, single)) for i, single in singles),
+            ]
+
+            for fut in asyncio.as_completed(tasks):
+                yield await fut
+    except BaseExceptionGroup as eg:
+        # Unwrap: prefer GeneratorExit, then a single inner exception, otherwise raise group.
+        for exc in eg.exceptions:
+            if isinstance(exc, GeneratorExit):
+                raise exc from None
+        if len(eg.exceptions) == 1:
+            raise eg.exceptions[0] from None
+        raise
