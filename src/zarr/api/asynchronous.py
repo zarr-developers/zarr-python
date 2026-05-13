@@ -1049,7 +1049,9 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        # numpy stubs no longer include `None` in `DTypeLike` (and thus `ZDTypeLike`);
+        # `_create` -> `parse_dtype` -> `np.dtype(None)` resolves to the platform default.
+        dtype=cast("ZDTypeLike", dtype),
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

@@ -27,25 +27,15 @@ repos:
       - id: check-yaml
         exclude: mkdocs.yml
       - id: trailing-whitespace
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.2
+  - repo: local
     hooks:
       - id: mypy
-        files: ^(src|tests)/
-        additional_dependencies:
-          # Package dependencies
-          - packaging
-          - donfig
-          - numcodecs
-          - google-crc32c>=1.5
-          - numpy==2.1 # https://github.com/zarr-developers/zarr-python/issues/3780 + https://github.com/zarr-developers/zarr-python/issues/3688
-          - typing_extensions
-          - universal-pathlib
-          - obstore>=0.5.1
-          # Tests
-          - pytest
-          - hypothesis
-          - s3fs
+        name: mypy
+        language: system
+        entry: hatch run dev:mypy
+        pass_filenames: false
+        always_run: true
+        types_or: [python, pyi]
   - repo: https://github.com/scientific-python/cookie
     rev: 2026.04.04
     hooks:

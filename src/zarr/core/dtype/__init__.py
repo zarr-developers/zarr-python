@@ -276,7 +276,7 @@ def parse_dtype(
     # First attempt to interpret the input as JSON
     if isinstance(dtype_spec, Mapping | str | Sequence):
         try:
-            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)
         except ValueError:
             # no data type matched this JSON-like input
             pass
