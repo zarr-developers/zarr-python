@@ -1,5 +1,7 @@
+import enum
 import pickle
-from typing import Any
+import warnings
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -12,9 +14,13 @@ from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
+    TransposeCodec,
+)
+from zarr.codecs.sharding import (
+    INDEX_LOCATION,
+    IndexLocationLiteral,
     ShardingCodec,
     ShardingCodecIndexLocation,
-    TransposeCodec,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.storage import StorePath, ZipStore
@@ -554,3 +560,92 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
+
+
+# --- Tests for ShardingCodecIndexLocation deprecation ---
+
+
+@pytest.mark.parametrize("location", INDEX_LOCATION)
+def test_sharding_codec_accepts_all_index_locations(location: IndexLocationLiteral) -> None:
+    """
+    Every value in INDEX_LOCATION is accepted by ShardingCodec and round-trips
+    to the same value on the stored attribute. Catches drift between the
+    IndexLocationLiteral type alias and the runtime INDEX_LOCATION tuple.
+    """
+    codec = ShardingCodec(chunk_shape=(1,), index_location=location)
+    assert codec.index_location == location
+
+
+@pytest.mark.parametrize("location", INDEX_LOCATION)
+def test_sharding_codec_json_roundtrip_index_location(
+    location: IndexLocationLiteral,
+) -> None:
+    """
+    ShardingCodec.to_dict / from_dict preserves every value in INDEX_LOCATION.
+    """
+    codec = ShardingCodec(chunk_shape=(1,), index_location=location)
+    restored = ShardingCodec.from_dict(codec.to_dict())
+    assert restored == codec
+
+
+@pytest.mark.parametrize(
+    ("member", "expected"),
+    [("start", "start"), ("end", "end")],
+)
+def test_sharding_index_location_member_access_warns(member: str, expected: str) -> None:
+    """
+    Accessing a member on the deprecated ShardingCodecIndexLocation class
+    emits a DeprecationWarning and resolves to the equivalent literal string.
+    """
+    with pytest.warns(DeprecationWarning, match=f"ShardingCodecIndexLocation.{member}"):
+        value = getattr(ShardingCodecIndexLocation, member)
+    assert value == expected
+
+
+def test_sharding_index_location_class_imports_silently() -> None:
+    """
+    Importing the deprecated ShardingCodecIndexLocation class by name must not
+    emit a warning; only member access does.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        from zarr.codecs.sharding import (  # noqa: F401
+            ShardingCodecIndexLocation as _SCIL,
+        )
+
+
+def test_sharding_codec_init_with_enum_instance_warns() -> None:
+    """
+    Passing a real enum.Enum instance to ShardingCodec.__init__ triggers the
+    init-level deprecation warning and normalizes the value to the
+    corresponding literal string.
+    """
+
+    class LegacyIndexLocation(enum.Enum):
+        end = "end"
+
+    with pytest.warns(DeprecationWarning, match="enum"):
+        codec = ShardingCodec(
+            chunk_shape=(1,),
+            index_location=cast(ShardingCodecIndexLocation, LegacyIndexLocation.end),
+        )
+    assert codec.index_location == "end"
+
+
+def test_sharding_codec_rejects_unknown_index_location() -> None:
+    """
+    ShardingCodec.__init__ raises ValueError when index_location is outside
+    INDEX_LOCATION, and the error message names the offending parameter.
+    """
+    kwargs: dict[str, Any] = {"chunk_shape": (1,), "index_location": "middle"}
+    with pytest.raises(ValueError, match="index_location must be one of"):
+        ShardingCodec(**kwargs)
+
+
+def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
+    """
+    Attribute access for a name that is not a known member of the deprecated
+    ShardingCodecIndexLocation class falls through to AttributeError.
+    """
+    with pytest.raises(AttributeError):
+        getattr(ShardingCodecIndexLocation, "not_a_member")  # noqa: B009
