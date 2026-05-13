@@ -576,10 +576,15 @@ def test_sharding_codec_json_roundtrip_index_location(
     location: IndexLocationLiteral,
 ) -> None:
     """
-    ShardingCodec.to_dict / from_dict preserves every value in INDEX_LOCATION.
+    ShardingCodec.to_dict writes index_location as the bare literal string,
+    and the round-trip through from_dict preserves equality. Asserting the
+    on-disk index_location value (not just the round-trip) catches drift
+    between ShardingCodec's runtime representation and the V3 wire form.
     """
     codec = ShardingCodec(chunk_shape=(1,), index_location=location)
-    restored = ShardingCodec.from_dict(codec.to_dict())
+    serialized = codec.to_dict()
+    assert serialized["configuration"]["index_location"] == location  # type: ignore[index, call-overload]
+    restored = ShardingCodec.from_dict(serialized)
     assert restored == codec
 
 
@@ -592,7 +597,7 @@ def test_sharding_index_location_member_access_warns(member: str, expected: str)
     Accessing a member on the deprecated ShardingCodecIndexLocation class
     emits a DeprecationWarning and resolves to the equivalent literal string.
     """
-    with pytest.warns(DeprecationWarning, match=f"ShardingCodecIndexLocation.{member}"):
+    with pytest.warns(DeprecationWarning, match=rf"ShardingCodecIndexLocation\.{member}"):
         value = getattr(ShardingCodecIndexLocation, member)
     assert value == expected
 
@@ -611,18 +616,40 @@ def test_sharding_index_location_class_imports_silently() -> None:
 
 def test_sharding_codec_init_with_enum_instance_warns() -> None:
     """
-    Passing a real enum.Enum instance to ShardingCodec.__init__ triggers the
-    init-level deprecation warning and normalizes the value to the
-    corresponding literal string.
+    Passing a foreign enum.Enum instance to ShardingCodec.__init__ triggers
+    the init-level deprecation warning (from _coerce_enum_input) and
+    normalizes the value to the corresponding literal string. Covers the
+    case where a downstream package defined its own enum-shaped class to
+    bridge between zarr's old API and its own.
     """
 
     class LegacyIndexLocation(enum.Enum):
         end = "end"
 
-    with pytest.warns(DeprecationWarning, match="enum"):
+    with pytest.warns(DeprecationWarning, match=r"Passing an enum to ShardingCodec"):
         codec = ShardingCodec(
             chunk_shape=(1,),
             index_location=cast(ShardingCodecIndexLocation, LegacyIndexLocation.end),
+        )
+    assert codec.index_location == "end"
+
+
+def test_sharding_codec_init_with_deprecated_class_member() -> None:
+    """
+    The realistic legacy-upgrade idiom: ShardingCodec(index_location=ShardingCodecIndexLocation.end).
+    Member access on ShardingCodecIndexLocation emits one DeprecationWarning
+    (from the metaclass) and resolves to the bare string, which ShardingCodec
+    then accepts without further warning. No second warning from
+    _coerce_enum_input because the metaclass already produced a string.
+
+    The cast is necessary because the metaclass __getattr__ is typed as
+    returning str, which does not statically match the codec's
+    IndexLocationLiteral parameter even though the runtime value does.
+    """
+    with pytest.warns(DeprecationWarning, match=r"ShardingCodecIndexLocation\.end"):
+        codec = ShardingCodec(
+            chunk_shape=(1,),
+            index_location=cast(IndexLocationLiteral, ShardingCodecIndexLocation.end),
         )
     assert codec.index_location == "end"
 

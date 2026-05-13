@@ -31,10 +31,13 @@ def test_bytes_codec_accepts_all_endians(endian: EndianLiteral) -> None:
 @pytest.mark.parametrize("endian", ENDIAN)
 def test_bytes_codec_json_roundtrip(endian: EndianLiteral) -> None:
     """
-    BytesCodec.to_dict / from_dict preserves every value in ENDIAN. Guards
-    against drift in the codec's V3 JSON form.
+    BytesCodec.to_dict produces the spec-defined wire shape and the
+    round-trip through from_dict preserves equality. Asserting the literal
+    JSON shape catches drift between BytesCodec's runtime representation and
+    the codec's V3 on-disk form.
     """
     codec = BytesCodec(endian=endian)
+    assert codec.to_dict() == {"name": "bytes", "configuration": {"endian": endian}}
     restored = BytesCodec.from_dict(codec.to_dict())
     assert restored == codec
 
@@ -48,7 +51,7 @@ def test_endian_member_access_warns(member: str, expected: str) -> None:
     Accessing a member on the deprecated `Endian` class emits a
     `DeprecationWarning` and resolves to the equivalent literal string.
     """
-    with pytest.warns(DeprecationWarning, match=f"Endian.{member}"):
+    with pytest.warns(DeprecationWarning, match=rf"Endian\.{member}"):
         value = getattr(Endian, member)
     assert value == expected
 
@@ -66,16 +69,35 @@ def test_endian_class_imports_silently() -> None:
 
 def test_bytes_codec_init_with_enum_instance_warns() -> None:
     """
-    Passing a real `enum.Enum` instance to `BytesCodec.__init__` triggers
-    the init-level deprecation warning and normalizes the value to the
-    corresponding literal string.
+    Passing a foreign `enum.Enum` instance to `BytesCodec.__init__` triggers
+    the init-level deprecation warning (from `_coerce_enum_input`) and
+    normalizes the value to the corresponding literal string. Covers the
+    case where a downstream package defined its own enum-shaped class to
+    bridge between zarr's old API and its own.
     """
 
     class LegacyEndian(enum.Enum):
         little = "little"
 
-    with pytest.warns(DeprecationWarning, match="enum"):
+    with pytest.warns(DeprecationWarning, match=r"Passing an enum to BytesCodec"):
         codec = BytesCodec(endian=cast(Endian, LegacyEndian.little))
+    assert codec.endian == "little"
+
+
+def test_bytes_codec_init_with_deprecated_class_member() -> None:
+    """
+    The realistic legacy-upgrade idiom: `BytesCodec(endian=Endian.little)`.
+    Member access on `Endian` emits one `DeprecationWarning` (from the
+    metaclass) and resolves to the bare string, which `BytesCodec` then
+    accepts without further warning. No second warning from
+    `_coerce_enum_input` because the metaclass already produced a string.
+
+    The `cast` is necessary because the metaclass `__getattr__` is typed
+    as returning `str`, which does not statically match the codec's
+    `EndianLiteral` parameter even though the runtime value does.
+    """
+    with pytest.warns(DeprecationWarning, match=r"Endian\.little"):
+        codec = BytesCodec(endian=cast(EndianLiteral, Endian.little))
     assert codec.endian == "little"
 
 
