@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,7 +20,7 @@ from zarr.core._coalesce import (
 from zarr.core.buffer import Buffer, default_buffer_prototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping, Sequence
+    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 
 
 def _buf(data: bytes) -> Buffer:
@@ -381,8 +381,13 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
     # in-flight tasks) before we make assertions.
     await agen.aclose()
 
-    assert completed_calls >= 1
-    assert cancelled_calls == len(ranges) - completed_calls
+    # The fast task completes; the remaining tasks are either cancelled while
+    # sleeping (raising CancelledError into the user try block) or cancelled
+    # while still waiting on the semaphore (which doesn't enter the try at all).
+    # Either way, none of them should be allowed to complete.
+    assert completed_calls == 1
+    assert cancelled_calls >= 1
+    assert completed_calls + cancelled_calls <= len(ranges)
 
 
 # ---------------------------------------------------------------------------

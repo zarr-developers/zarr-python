@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from zarr.abc.store import RangeByteRequest
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
