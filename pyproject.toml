@@ -38,7 +38,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.13',
     'donfig>=0.8',
-    'zarr-metadata>=0.1.1',
+    'zarr-metadata>=0.1.1,<0.2',
 ]
 
 dynamic = [
@@ -147,6 +147,15 @@ omit = [
     "bench/compress_normal.py",
     "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
+
+# When developing zarr-python locally, resolve zarr-metadata from the in-tree
+# package under packages/zarr-metadata/. The `[project.dependencies]` version
+# requirement is what propagates to consumers installing from PyPI.
+[tool.uv.workspace]
+members = ["packages/zarr-metadata"]
+
+[tool.uv.sources]
+zarr-metadata = { workspace = true }
 
 [tool.hatch]
 version.source = "vcs"
