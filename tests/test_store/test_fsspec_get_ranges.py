@@ -70,10 +70,10 @@ async def test_get_ranges_happy_path(memory_store: FsspecStore) -> None:
 
 
 async def test_get_ranges_missing_key_raises(memory_store: FsspecStore) -> None:
-    """A request against a missing key raises FileNotFoundError."""
+    """A request against a missing key raises BaseExceptionGroup containing FileNotFoundError."""
     proto = default_buffer_prototype()
     agen = memory_store.get_ranges("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await anext(agen)
 
 

@@ -181,11 +181,15 @@ async def coalesced_get(
     - Only `RangeByteRequest` inputs are coalesced. `OffsetByteRequest`,
       `SuffixByteRequest`, and `None` are each treated as uncoalescable
       (one fetch, one single-tuple yield per input).
-    - If any fetch returns `None`, the iterator raises `FileNotFoundError`
-      after cancelling pending fetches. Groups completed before the miss
-      remain observable on the yields preceding the raise.
-    - If a fetch raises, the exception propagates on the yield that produced
-      the failing group; earlier-completed groups remain observable.
+    - Failures from underlying fetches surface as a `BaseExceptionGroup`
+      (PEP 654). Inner exceptions include `FileNotFoundError` if a fetch
+      returns `None`, plus any exception `fetch` raises. Pending fetches are
+      cancelled as soon as one task fails, so the group typically contains a
+      single non-`CancelledError` exception even under high concurrency.
+    - Groups completed before the failure remain observable on the yields
+      preceding the raise.
+    - `GeneratorExit` raised by `aclose()` is filtered out so the iterator
+      closes cleanly; callers don't see a group containing only it.
     """
     if not byte_ranges:
         return
@@ -199,10 +203,10 @@ async def coalesced_get(
     ctx = _WorkerCtx(fetch=fetch, semaphore=asyncio.Semaphore(max_concurrency))
 
     # Launch all work as tasks. The semaphore bounds actual I/O concurrency.
-    # TaskGroup wraps any task exception in BaseExceptionGroup; we unwrap it
-    # so callers see the underlying error directly (e.g. FileNotFoundError).
-    # GeneratorExit (raised when the consumer calls aclose()) is also caught
-    # and re-raised bare so close completes cleanly.
+    # TaskGroup wraps task exceptions in BaseExceptionGroup; we propagate the
+    # group unchanged as part of the public contract (callers handle batch
+    # failures via `except*` / PEP 654). GeneratorExit (raised when the
+    # consumer calls aclose()) is filtered out so close completes cleanly.
     try:
         async with asyncio.TaskGroup() as tg:
             tasks = [
@@ -213,6 +217,11 @@ async def coalesced_get(
             for fut in asyncio.as_completed(tasks):
                 yield await fut
     except BaseExceptionGroup as eg:
-        # Filter out GeneratorExits, which should NOT be reraised.
-        if subgroup := eg.subgroup(lambda e: not isinstance(e, GeneratorExit)):
-            raise subgroup from None
+        # Strip GeneratorExits (consumer aclose()) and propagate whatever
+        # remains. `split` is used instead of `subgroup` because the latter
+        # short-circuits on the group object itself, returning the unchanged
+        # group when a predicate lambda happens to be true for the wrapper.
+        _, rest = eg.split(GeneratorExit)
+        if rest is None:
+            return  # only GeneratorExits — clean close
+        raise rest from None

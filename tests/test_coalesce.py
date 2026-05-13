@@ -396,10 +396,10 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
 
 
 async def test_key_missing_from_first_call_raises() -> None:
-    """If the very first fetch returns None, the iterator raises FileNotFoundError."""
+    """If the very first fetch returns None, the iterator raises an ExceptionGroup containing FileNotFoundError."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(20, 30)]
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await _collect(coalesced_get(fetch, ranges, **DEFAULT))
 
 
@@ -411,9 +411,9 @@ async def test_key_missing_from_first_call_raises() -> None:
 async def test_key_missing_on_uncoalescable_input_raises(
     byte_range: ByteRequest | None,
 ) -> None:
-    """Uncoalescable inputs take a distinct path; key-missing must still raise."""
+    """Uncoalescable inputs take a distinct path; key-missing must still raise (wrapped in a group)."""
     fetch = FakeFetch(b"x" * 100, key_exists=False)
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await _collect(coalesced_get(fetch, [byte_range], **DEFAULT))
 
 
@@ -439,7 +439,7 @@ async def test_key_missing_mid_stream_raises_after_earlier_groups() -> None:
     agen = coalesced_get(fetch, ranges, **opts)
     first = await anext(agen)
     assert len(first) == 1
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await anext(agen)
 
 
@@ -485,7 +485,7 @@ async def test_key_missing_mid_stream_with_concurrency_cancels_late_arrivals() -
     assert buf is not None
     # Now that #0 has yielded, signal the miss task to return None.
     fire_miss.set()
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await anext(agen)
     assert miss_fired.is_set()
     # Sanity: late_gate was never set, so the cancellation path is what completed the test.
@@ -509,7 +509,7 @@ async def test_fetch_raises_propagates() -> None:
         "max_concurrency": 1,
     }
     ranges: list[ByteRequest | None] = [RangeByteRequest(0, 10), RangeByteRequest(200, 210)]
-    with pytest.raises(OSError, match="injected"):
+    with pytest.RaisesGroup(pytest.RaisesExc(OSError, match="injected")):
         await _collect(coalesced_get(fetch, ranges, **opts))
 
 

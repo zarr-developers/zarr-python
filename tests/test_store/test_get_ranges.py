@@ -50,11 +50,11 @@ async def test_memory_store_inherits_get_ranges_from_abc() -> None:
 
 
 async def test_memory_store_get_ranges_missing_key_raises() -> None:
-    """A missing key on a default-impl store must raise FileNotFoundError, matching the contract."""
+    """A missing key on a default-impl store raises BaseExceptionGroup containing FileNotFoundError."""
     store = MemoryStore()
     proto = default_buffer_prototype()
     agen = store.get_ranges("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
-    with pytest.raises(FileNotFoundError):
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await anext(agen)
 
 

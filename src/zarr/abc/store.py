@@ -654,8 +654,15 @@ class Store(ABC):
 
         Raises
         ------
-        FileNotFoundError
-            If any underlying fetch returns `None` (i.e. `key` is absent).
+        BaseExceptionGroup
+            Failures from underlying fetches are reported as a
+            `BaseExceptionGroup` (PEP 654) and should be handled with
+            `except*`. Inner exceptions include `FileNotFoundError` if any
+            fetch returns `None` (i.e. `key` is absent), and any exception
+            raised by `self.get` for the corresponding range. Pending
+            fetches are cancelled as soon as one task fails, so the group
+            typically contains a single non-`CancelledError` exception even
+            under high concurrency.
         """
         # Local import: zarr.core._coalesce imports symbols from this module.
         from zarr.core._coalesce import coalesced_get
