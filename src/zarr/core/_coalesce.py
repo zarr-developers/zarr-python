@@ -142,7 +142,7 @@ async def coalesced_get(
     max_concurrency: int,
     max_gap_bytes: int,
     max_coalesced_bytes: int,
-) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+) -> AsyncGenerator[Sequence[tuple[int, Buffer | None]]]:
     """Read many byte ranges through `fetch` with coalescing and concurrency.
 
     Nearby ranges are merged into a single underlying I/O, and merged fetches
