@@ -153,7 +153,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
-    from zarr.codecs.sharding import ShardingCodecIndexLocation
+    from zarr.codecs.sharding import IndexLocationLiteral, ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -4003,7 +4003,7 @@ type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 class ShardsConfigParam(TypedDict):
     shape: tuple[int, ...]
-    index_location: ShardingCodecIndexLocation | None
+    index_location: IndexLocationLiteral | ShardingCodecIndexLocation | None
 
 
 type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]

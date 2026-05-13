@@ -14,12 +14,12 @@ from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
+    ShardingCodec,
     TransposeCodec,
 )
 from zarr.codecs.sharding import (
     INDEX_LOCATION,
     IndexLocationLiteral,
-    ShardingCodec,
     ShardingCodecIndexLocation,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
@@ -44,7 +44,7 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 def test_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocationLiteral,
     offset: int,
 ) -> None:
     """
@@ -82,7 +82,7 @@ def test_sharding(
 @pytest.mark.parametrize("offset", [0, 10])
 def test_sharding_scalar(
     store: Store,
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocationLiteral,
     offset: int,
 ) -> None:
     """
@@ -116,7 +116,7 @@ def test_sharding_scalar(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -152,7 +152,7 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 def test_sharding_partial_readwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -184,7 +184,7 @@ def test_sharding_partial_readwrite(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_read(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -213,7 +213,7 @@ def test_sharding_partial_read(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_overwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -264,8 +264,8 @@ def test_sharding_partial_overwrite(
 def test_nested_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    outer_index_location: ShardingCodecIndexLocation,
-    inner_index_location: ShardingCodecIndexLocation,
+    outer_index_location: IndexLocationLiteral,
+    inner_index_location: IndexLocationLiteral,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -312,8 +312,8 @@ def test_nested_sharding(
 def test_nested_sharding_create_array(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    outer_index_location: ShardingCodecIndexLocation,
-    inner_index_location: ShardingCodecIndexLocation,
+    outer_index_location: IndexLocationLiteral,
+    inner_index_location: IndexLocationLiteral,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -412,11 +412,9 @@ def test_pickle() -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 async def test_sharding_with_empty_inner_chunk(
-    store: Store, index_location: ShardingCodecIndexLocation
+    store: Store, index_location: IndexLocationLiteral
 ) -> None:
     data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
     fill_value = 1
@@ -439,13 +437,10 @@ async def test_sharding_with_empty_inner_chunk(
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize(
-    "index_location",
-    [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end],
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("chunks_per_shard", [(5, 2), (2, 5), (5, 5)])
 async def test_sharding_with_chunks_per_shard(
-    store: Store, index_location: ShardingCodecIndexLocation, chunks_per_shard: tuple[int]
+    store: Store, index_location: IndexLocationLiteral, chunks_per_shard: tuple[int]
 ) -> None:
     chunk_shape = (2, 1)
     shape = tuple(x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False))
