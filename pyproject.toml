@@ -165,9 +165,18 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.dev]
 dependency-groups = ["dev"]
+# Resolve zarr-metadata from the in-tree workspace member, not PyPI. See
+# `[tool.uv.sources]` above for the equivalent for `uv run` invocations.
+workspace.members = ["packages/zarr-metadata"]
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
+# Resolve zarr-metadata from the in-tree workspace member, not PyPI, so CI
+# in `test.yml` exercises the integration between the two packages on every
+# PR. Envs that inherit via `template = "test"` (gputest, upstream) pick
+# this up automatically; min_deps overrides it (see below) to test against
+# the published floor.
+workspace.members = ["packages/zarr-metadata"]
 
 [tool.hatch.envs.test.env-vars]
 
@@ -250,6 +259,11 @@ template = "test"
 python = "3.12"
 features = ["remote"]
 dependency-groups = ["remote-tests"]
+# Override the inherited workspace.members so this env tests against the
+# minimum supported zarr-metadata from PyPI (the floor of the version range
+# declared in [project.dependencies]) instead of the in-tree source. This
+# keeps the "minimum supported deps" guarantee honest.
+workspace.members = []
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',

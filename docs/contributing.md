@@ -93,14 +93,16 @@ To verify that your development environment is working, you can run the unit tes
 hatch env run --env test.py3.12-optional run
 ```
 
-#### The zarr-metadata package and the uv workspace
+#### The zarr-metadata package and the workspace
 
 zarr-python depends on [`zarr-metadata`](https://pypi.org/project/zarr-metadata/), a small package of TypedDicts and literals describing the JSON shape of Zarr v2 and v3 metadata documents. Both packages live in this repository:
 
 - zarr-python: the project root.
 - zarr-metadata: [`packages/zarr-metadata/`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata) — its own `pyproject.toml`, source tree, and tests.
 
-This is configured as a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/). The relevant declaration in zarr-python's `pyproject.toml`:
+This is configured as a workspace in two places, because the project supports both [`uv`](https://docs.astral.sh/uv/) and [`hatch`](https://hatch.pypa.io/) as front-ends.
+
+**uv workspace declaration** (consumed by `uv sync`, `uv run`, and anything reading uv's project metadata):
 
 ```toml
 [tool.uv.workspace]
@@ -110,15 +112,24 @@ members = ["packages/zarr-metadata"]
 zarr-metadata = { workspace = true }
 ```
 
+**Hatch workspace declaration** (consumed by `hatch env run`, including the CI test matrix in `test.yml`):
+
+```toml
+[tool.hatch.envs.test]
+workspace.members = ["packages/zarr-metadata"]
+```
+
+Both mechanisms point at the same in-tree path. They have to be declared separately because uv and hatch don't share configuration. The `dev` env, the `test` matrix, the inherited `gputest` and `upstream` envs all use the in-tree source. The `min_deps` env explicitly opts out (`workspace.members = []`) so it tests against the minimum supported zarr-metadata from PyPI — the floor of the version range in `[project.dependencies]`.
+
 What this means in practice:
 
-- **During local development** (`uv sync`, `uv run`, and any tool that respects `pyproject.toml`), zarr-python resolves `zarr-metadata` from the in-tree source under `packages/zarr-metadata/`, not from PyPI. Changes you make in `packages/zarr-metadata/` are immediately visible to zarr-python without reinstalling.
-- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.1.1,<0.2`) is carried. The `[tool.uv.sources]` block is development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
-- **On every CI run**, zarr-python's tests run against the in-tree zarr-metadata source. A change to `packages/zarr-metadata/` that would break zarr-python surfaces immediately in CI, before zarr-metadata is released to PyPI.
+- **During local development** (whether you invoke `uv run pytest` or `hatch env run --env test.py3.12-optional run`), zarr-python resolves `zarr-metadata` from the in-tree source under `packages/zarr-metadata/`. Changes you make there are immediately visible to zarr-python without reinstalling.
+- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.1.1,<0.2`) is carried. The workspace declarations are development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
+- **In CI**, the primary test matrix (`test.yml`) runs `hatch env run` against the in-tree zarr-metadata. A change in `packages/zarr-metadata/` that breaks zarr-python surfaces immediately, before zarr-metadata is released to PyPI. The `min_deps` job additionally exercises the published floor on every PR, so a change in zarr-python that *requires* an unreleased zarr-metadata feature also gets caught.
 
-If you change zarr-metadata, also run zarr-python's test suite to make sure the change is compatible — the workspace setup makes this just `uv run pytest` or your usual hatch invocation, no extra steps.
+If you change zarr-metadata, also run zarr-python's test suite. The workspace setup makes this transparent — your usual `uv run pytest` or `hatch env run` picks up the in-tree source automatically.
 
-When releasing a new zarr-metadata version that contains a breaking change, also bump zarr-python's version cap on zarr-metadata (currently `<0.2`) in the same release cycle.
+When releasing a new zarr-metadata version that contains a breaking change, also bump zarr-python's version cap on zarr-metadata (currently `<0.2`) in the same release cycle. See [Releasing zarr-python when zarr-metadata has changed](#releasing-zarr-python-when-zarr-metadata-has-changed) below for the full procedure.
 
 ### Creating a branch
 
