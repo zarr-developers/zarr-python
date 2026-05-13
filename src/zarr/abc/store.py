@@ -624,8 +624,8 @@ class Store(ABC):
         *,
         prototype: BufferPrototype,
         max_concurrency: int = 10,
-        max_gap_bytes: int = 1 << 20,
-        max_coalesced_bytes: int = 16 << 20,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
     ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
         """Read many byte ranges from `key`.
 
