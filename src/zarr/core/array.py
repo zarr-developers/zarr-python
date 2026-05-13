@@ -4388,7 +4388,7 @@ async def init_array(
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
-    from zarr.codecs.sharding import ShardingCodec, _parse_index_location
+    from zarr.codecs.sharding import ShardingCodec
 
     zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
@@ -4481,11 +4481,9 @@ async def init_array(
         codecs_out: tuple[Codec, ...]
         if inner is not None:
             inner_chunks_flat = as_regular_shape(inner.outer_chunks)
-            index_location: IndexLocationLiteral | None = None
+            index_location: IndexLocationLiteral = "end"
             if isinstance(shards, dict):
-                index_location = _parse_index_location(shards.get("index_location", "end"))
-            if index_location is None:
-                index_location = "end"
+                index_location = cast("IndexLocationLiteral", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat, codecs=sub_codecs, index_location=index_location
             )
