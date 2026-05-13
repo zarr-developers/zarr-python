@@ -274,6 +274,10 @@ extra-dependencies = [
     'typing_extensions==4.13.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
+    # Pin to the floor of zarr-python's declared zarr-metadata range. Must
+    # match the >= bound in [project.dependencies] above; the
+    # `check_min_deps_floor.py` pre-commit hook enforces this invariant.
+    'zarr-metadata==0.1.1',
 ]
 
 [tool.hatch.envs.defaults]
