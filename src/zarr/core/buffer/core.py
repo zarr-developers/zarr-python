@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
 
-    from zarr.codecs.bytes import Endian
+    from zarr.codecs.bytes import EndianLiteral
     from zarr.core.common import BytesLike
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
@@ -491,15 +491,13 @@ class NDBuffer:
         return self._data.shape
 
     @property
-    def byteorder(self) -> Endian:
-        from zarr.codecs.bytes import Endian
-
+    def byteorder(self) -> EndianLiteral:
         if self.dtype.byteorder == "<":
-            return Endian.little
+            return "little"
         elif self.dtype.byteorder == ">":
-            return Endian.big
+            return "big"
         else:
-            return Endian(sys.byteorder)
+            return sys.byteorder
 
     def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
         return self.__class__(self._data.reshape(newshape))
