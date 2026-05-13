@@ -10,8 +10,9 @@ from collections.abc import Mapping
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v2.array import ArrayMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2
+from zarr_metadata.v2.array import ZArrayMetadata
+from zarr_metadata.v2.attributes import ZAttrsMetadata
+from zarr_metadata.v2.group import ZGroupMetadata
 
 
 class ConsolidatedMetadataV2(TypedDict):
@@ -20,11 +21,20 @@ class ConsolidatedMetadataV2(TypedDict):
 
     The `metadata` map uses flat path keys (`"foo/bar/.zarray"`,
     `"foo/.zattrs"`, etc.) pointing to the JSON contents of the file at
-    that path. The keys include the filename suffix, not just the node path.
+    that path. The keys include the filename suffix, not just the node
+    path; the value's shape is determined by which file the key points at:
+
+    - `<path>/.zarray` -> `ZArrayMetadata`
+    - `<path>/.zgroup` -> `ZGroupMetadata`
+    - `<path>/.zattrs` -> `ZAttrsMetadata`
+
+    The TypedDict cannot discriminate the value shape on the key suffix
+    at the type level; consumers should narrow at runtime by inspecting
+    `key.endswith(".zarray")` etc.
     """
 
     zarr_consolidated_format: int
-    metadata: Mapping[str, GroupMetadataV2 | ArrayMetadataV2]
+    metadata: Mapping[str, ZArrayMetadata | ZGroupMetadata | ZAttrsMetadata]
 
 
 __all__ = [

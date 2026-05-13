@@ -39,16 +39,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
 
-class ArrayMetadataV2(TypedDict):
+class ZArrayMetadata(TypedDict):
     """
-    Zarr v2 array metadata document.
+    On-disk `.zarray` file content.
 
-    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
-    (user attributes). On disk, attributes live in a sibling `.zattrs` file
-    and are not part of `.zarray`; this type folds them in as the
-    `attributes` field so a single TypedDict represents the complete
-    in-memory state of a v2 array node. Consumers that read or write a
-    real `.zarray` file should split / merge `attributes` accordingly.
+    Strict shape of the JSON document persisted at `<path>/.zarray` for
+    a v2 array. User attributes live in a sibling `.zattrs` file and are
+    NOT part of this type; see `ZAttrsMetadata`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -62,7 +59,33 @@ class ArrayMetadataV2(TypedDict):
     order: ArrayOrderV2
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
-    attributes: Mapping[str, object]
+
+
+class ArrayMetadataV2(TypedDict):
+    """
+    Zarr v2 array metadata document, in-memory merged form.
+
+    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
+    (user attributes). On disk, attributes live in a sibling `.zattrs` file
+    and are not part of `.zarray`; this type folds them in as the
+    `attributes` field so a single TypedDict represents the complete
+    in-memory state of a v2 array node. Consumers that read or write a
+    real `.zarray` file should split / merge `attributes` accordingly,
+    or use `ZArrayMetadata` (strict on-disk) plus `ZAttrsMetadata` directly.
+
+    See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
+    """
+
+    zarr_format: Literal[2]
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
+    dtype: DataTypeMetadataV2
+    compressor: CodecMetadataV2 | None
+    fill_value: object
+    order: ArrayOrderV2
+    filters: tuple[CodecMetadataV2, ...] | None
+    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    attributes: NotRequired[Mapping[str, object]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
     See the class docstring for the rationale behind the merged representation.
@@ -74,4 +97,5 @@ __all__ = [
     "ArrayMetadataV2",
     "ArrayOrderV2",
     "DataTypeMetadataV2",
+    "ZArrayMetadata",
 ]
