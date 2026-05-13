@@ -579,6 +579,6 @@ def test_shard_index_get_chunk_slices_vectorized_zero_dimensional() -> None:
 
     # Empty/unwritten chunk case
     index_empty = _ShardIndex(np.array([MAX_UINT_64, MAX_UINT_64], dtype=np.uint64))
-    starts_e, ends_e, valid_e = index_empty.get_chunk_slices_vectorized(chunk_coords)
+    starts_e, _ends_e, valid_e = index_empty.get_chunk_slices_vectorized(chunk_coords)
     np.testing.assert_array_equal(starts_e, np.array([MAX_UINT_64], dtype=np.uint64))
     np.testing.assert_array_equal(valid_e, np.array([False]))
