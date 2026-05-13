@@ -213,10 +213,7 @@ async def coalesced_get(
             for fut in asyncio.as_completed(tasks):
                 yield await fut
     except BaseExceptionGroup as eg:
-        # Unwrap: prefer GeneratorExit, then a single inner exception, otherwise raise group.
-        for exc in eg.exceptions:
-            if isinstance(exc, GeneratorExit):
-                raise exc from None
-        if len(eg.exceptions) == 1:
-            raise eg.exceptions[0] from None
-        raise
+        # Unwrap: prefer a single inner exception, otherwise raise group.
+        if subgroup := eg.subgroup(lambda e: not isinstance(e, GeneratorExit)):
+            e = subgroup.exceptions[0] if len(subgroup.exceptions) == 1 else subgroup
+            raise e from None
