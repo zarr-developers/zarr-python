@@ -376,6 +376,17 @@ Releases are prepared using the ["Prepare release notes"](https://github.com/zar
 4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
 5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
+### Releasing zarr-python when zarr-metadata has changed
+
+zarr-python depends on the [`zarr-metadata`](https://pypi.org/project/zarr-metadata/) package, which is developed in the same monorepo (see [The zarr-metadata package and the uv workspace](#the-zarr-metadata-package-and-the-uv-workspace) above). When a zarr-python release depends on a zarr-metadata change that has not yet been published to PyPI, the release must follow this order:
+
+1. **Bump zarr-metadata's version** in `packages/zarr-metadata/pyproject.toml` and `packages/zarr-metadata/src/zarr_metadata/__init__.py` (the version literal). Use semver: bump the minor for breaking type changes, the patch for additive changes.
+2. **Release zarr-metadata to PyPI.** Tag and publish from `packages/zarr-metadata/`.
+3. **Bump zarr-python's floor** on zarr-metadata in `[project.dependencies]` (e.g. `zarr-metadata>=0.1.1,<0.2` → `zarr-metadata>=0.2.0,<0.3`). Update `[tool.uv.workspace]` and `[tool.uv.sources]` only if necessary.
+4. **Release zarr-python.**
+
+If steps 1 and 2 are skipped (or step 3's bumped floor names a version that does not yet exist on PyPI), the `verify_pypi_dependency` job in [`releases.yml`](https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/releases.yml) will fail before the upload step runs. This gate exists because the wheel ships only a version-range requirement; pip resolves that against PyPI on the user's machine, and there is no built-in equivalent of `cargo publish`'s automatic check that the declared dependency is actually available in the registry.
+
 ## Benchmarks
 
 Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
