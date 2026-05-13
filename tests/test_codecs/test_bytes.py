@@ -15,6 +15,10 @@ from zarr.codecs.bytes import (
     Endian,
     EndianLiteral,
 )
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.dtype.npy.int import Int8, Int32
+from zarr.core.dtype.npy.structured import Struct
 
 
 @pytest.mark.parametrize("endian", ENDIAN)
@@ -129,3 +133,41 @@ def test_bytes_codec_default_endian_matches_system() -> None:
     """
     codec = BytesCodec()
     assert codec.endian == sys.byteorder
+
+
+def _make_array_spec(dtype: Any) -> ArraySpec:
+    """Build a minimal ArraySpec around the given dtype for codec.evolve testing."""
+    return ArraySpec(
+        shape=(1,),
+        dtype=dtype,
+        fill_value=0,
+        config=cast(ArrayConfig, {}),
+        prototype=default_buffer_prototype(),
+    )
+
+
+def test_bytes_codec_evolve_structured_multi_byte_fields_warns_and_defaults() -> None:
+    """
+    BytesCodec(endian=None).evolve_from_array_spec(spec) with a structured dtype
+    whose fields contain multi-byte members emits a UserWarning about the
+    missing endian and returns a codec with endian set to "little" for legacy
+    compatibility.
+    """
+    codec = BytesCodec(endian=None)
+    dtype = Struct(fields=(("a", Int32()), ("b", Int32())))
+    spec = _make_array_spec(dtype)
+    with pytest.warns(UserWarning, match=r"Missing 'endian' for structured dtype"):
+        evolved = codec.evolve_from_array_spec(spec)
+    assert evolved.endian == "little"
+
+
+def test_bytes_codec_evolve_structured_single_byte_fields_clears_endian() -> None:
+    """
+    For a structured dtype whose fields are all single-byte, BytesCodec drops
+    its endian on evolve (endian is meaningless for single-byte content).
+    """
+    codec = BytesCodec(endian="little")
+    dtype = Struct(fields=(("a", Int8()), ("b", Int8())))
+    spec = _make_array_spec(dtype)
+    evolved = codec.evolve_from_array_spec(spec)
+    assert evolved.endian is None

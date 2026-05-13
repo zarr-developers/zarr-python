@@ -23,6 +23,7 @@ from zarr.codecs.sharding import (
     ShardingCodecIndexLocation,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -671,3 +672,26 @@ def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
     """
     with pytest.raises(AttributeError):
         getattr(ShardingCodecIndexLocation, "not_a_member")  # noqa: B009
+
+
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
+def test_create_array_with_dict_shards_index_location(
+    index_location: IndexLocationLiteral,
+) -> None:
+    """
+    zarr.create_array accepts a `ShardsConfigParam`-shaped dict for `shards`
+    with an explicit `index_location`, and the resulting sharding codec
+    stores that value. Covers the `isinstance(shards, dict)` branch in
+    init_array that the tuple-shaped `shards` form doesn't reach.
+    """
+    arr = zarr.create_array(
+        store={},
+        shape=(8,),
+        chunks=(2,),
+        shards={"shape": (4,), "index_location": index_location},
+        dtype="uint8",
+    )
+    assert isinstance(arr.metadata, ArrayV3Metadata)  # needed for mypy
+    sharding = arr.metadata.codecs[0]
+    assert isinstance(sharding, ShardingCodec)
+    assert sharding.index_location == index_location
