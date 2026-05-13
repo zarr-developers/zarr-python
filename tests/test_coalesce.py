@@ -383,8 +383,8 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
     # async generator and supports it.
     await cast("AsyncGenerator[Any, None]", agen).aclose()
 
-    assert cancelled_calls >= 1
     assert completed_calls >= 1
+    assert cancelled_calls == len(ranges) - completed_calls
 
 
 # ---------------------------------------------------------------------------
