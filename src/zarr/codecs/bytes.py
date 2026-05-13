@@ -131,11 +131,11 @@ class BytesCodec(ArrayBytesCodec):
         if (
             chunk_array.dtype.itemsize > 1
             and self.endian is not None
-            and self.endian != chunk_array.byteorder  # type: ignore[comparison-overlap]
+            and self.endian != chunk_array.byteorder
         ):
             # type-ignore is a numpy bug
             # see https://github.com/numpy/numpy/issues/26473
-            new_dtype = chunk_array.dtype.newbyteorder(self.endian)
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian)  # type: ignore[arg-type]
             chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()

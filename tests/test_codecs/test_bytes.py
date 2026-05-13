@@ -96,7 +96,7 @@ def test_endian_attribute_error_for_unknown_member() -> None:
     the behavior of a regular class.
     """
     with pytest.raises(AttributeError):
-        _ = Endian.not_a_member
+        getattr(Endian, "not_a_member")  # noqa: B009
 
 
 def test_bytes_codec_default_endian_matches_system() -> None:
