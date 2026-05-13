@@ -378,10 +378,8 @@ async def test_consumer_break_cancels_pending_fetches() -> None:
     async for _group in agen:
         break
     # Explicitly close the generator so its finally block runs (cancelling
-    # in-flight tasks) before we make assertions. The narrow AsyncIterator
-    # return type does not expose `.aclose()`, but the runtime object is an
-    # async generator and supports it.
-    await cast("AsyncGenerator[Any, None]", agen).aclose()
+    # in-flight tasks) before we make assertions.
+    await agen.aclose()
 
     assert completed_calls >= 1
     assert cancelled_calls == len(ranges) - completed_calls
