@@ -15,6 +15,5 @@
   "filters": [
     {"id": "delta", "dtype": "<f8"}
   ],
-  "dimension_separator": ".",
-  "attributes": {"name": "demo"}
+  "dimension_separator": "."
 }
