@@ -19,7 +19,7 @@ from zarr.codecs import (
 )
 from zarr.codecs.sharding import (
     INDEX_LOCATION,
-    IndexLocationLiteral,
+    IndexLocation,
     ShardingCodecIndexLocation,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
@@ -45,7 +45,7 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 def test_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: IndexLocationLiteral,
+    index_location: IndexLocation,
     offset: int,
 ) -> None:
     """
@@ -83,7 +83,7 @@ def test_sharding(
 @pytest.mark.parametrize("offset", [0, 10])
 def test_sharding_scalar(
     store: Store,
-    index_location: IndexLocationLiteral,
+    index_location: IndexLocation,
     offset: int,
 ) -> None:
     """
@@ -117,7 +117,7 @@ def test_sharding_scalar(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -153,7 +153,7 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 def test_sharding_partial_readwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -185,7 +185,7 @@ def test_sharding_partial_readwrite(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_read(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -214,7 +214,7 @@ def test_sharding_partial_read(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_overwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocationLiteral
+    store: Store, array_fixture: npt.NDArray[Any], index_location: IndexLocation
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -265,8 +265,8 @@ def test_sharding_partial_overwrite(
 def test_nested_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    outer_index_location: IndexLocationLiteral,
-    inner_index_location: IndexLocationLiteral,
+    outer_index_location: IndexLocation,
+    inner_index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -313,8 +313,8 @@ def test_nested_sharding(
 def test_nested_sharding_create_array(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    outer_index_location: IndexLocationLiteral,
-    inner_index_location: IndexLocationLiteral,
+    outer_index_location: IndexLocation,
+    inner_index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -414,9 +414,7 @@ def test_pickle() -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("index_location", ["start", "end"])
-async def test_sharding_with_empty_inner_chunk(
-    store: Store, index_location: IndexLocationLiteral
-) -> None:
+async def test_sharding_with_empty_inner_chunk(store: Store, index_location: IndexLocation) -> None:
     data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
     fill_value = 1
 
@@ -441,7 +439,7 @@ async def test_sharding_with_empty_inner_chunk(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("chunks_per_shard", [(5, 2), (2, 5), (5, 5)])
 async def test_sharding_with_chunks_per_shard(
-    store: Store, index_location: IndexLocationLiteral, chunks_per_shard: tuple[int]
+    store: Store, index_location: IndexLocation, chunks_per_shard: tuple[int]
 ) -> None:
     chunk_shape = (2, 1)
     shape = tuple(x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False))
@@ -562,11 +560,11 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
 
 
 @pytest.mark.parametrize("location", INDEX_LOCATION)
-def test_sharding_codec_accepts_all_index_locations(location: IndexLocationLiteral) -> None:
+def test_sharding_codec_accepts_all_index_locations(location: IndexLocation) -> None:
     """
     Every value in INDEX_LOCATION is accepted by ShardingCodec and round-trips
     to the same value on the stored attribute. Catches drift between the
-    IndexLocationLiteral type alias and the runtime INDEX_LOCATION tuple.
+    IndexLocation type alias and the runtime INDEX_LOCATION tuple.
     """
     codec = ShardingCodec(chunk_shape=(1,), index_location=location)
     assert codec.index_location == location
@@ -574,7 +572,7 @@ def test_sharding_codec_accepts_all_index_locations(location: IndexLocationLiter
 
 @pytest.mark.parametrize("location", INDEX_LOCATION)
 def test_sharding_codec_json_roundtrip_index_location(
-    location: IndexLocationLiteral,
+    location: IndexLocation,
 ) -> None:
     """
     ShardingCodec.to_dict writes index_location as the bare literal string,
@@ -645,12 +643,12 @@ def test_sharding_codec_init_with_deprecated_class_member() -> None:
 
     The cast is necessary because the metaclass __getattr__ is typed as
     returning str, which does not statically match the codec's
-    IndexLocationLiteral parameter even though the runtime value does.
+    IndexLocation parameter even though the runtime value does.
     """
     with pytest.warns(DeprecationWarning, match=r"ShardingCodecIndexLocation\.end"):
         codec = ShardingCodec(
             chunk_shape=(1,),
-            index_location=cast(IndexLocationLiteral, ShardingCodecIndexLocation.end),
+            index_location=cast(IndexLocation, ShardingCodecIndexLocation.end),
         )
     assert codec.index_location == "end"
 
@@ -676,7 +674,7 @@ def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
 
 @pytest.mark.parametrize("index_location", INDEX_LOCATION)
 def test_create_array_with_dict_shards_index_location(
-    index_location: IndexLocationLiteral,
+    index_location: IndexLocation,
 ) -> None:
     """
     zarr.create_array accepts a `ShardsConfigParam`-shaped dict for `shards`

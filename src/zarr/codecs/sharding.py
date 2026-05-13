@@ -73,7 +73,7 @@ ShardMapping = Mapping[tuple[int, ...], Buffer | None]
 ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer | None]
 
 
-IndexLocationLiteral = Literal["start", "end"]
+IndexLocation = Literal["start", "end"]
 """Position of the shard index within the encoded shard."""
 
 INDEX_LOCATION: Final = ("start", "end")
@@ -88,7 +88,7 @@ class ShardingCodecIndexLocation(metaclass=_DeprecatedStrEnumMeta):
     _members: ClassVar[dict[str, str]] = {"start": "start", "end": "end"}
 
 
-def _parse_index_location(data: object) -> IndexLocationLiteral:
+def _parse_index_location(data: object) -> IndexLocation:
     if isinstance(data, str) and data in INDEX_LOCATION:
         return data  # type: ignore[return-value]
     raise ValueError(f"index_location must be one of {list(INDEX_LOCATION)!r}. Got {data!r}.")
@@ -317,7 +317,7 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
-    index_location: IndexLocationLiteral = "end"
+    index_location: IndexLocation = "end"
 
     def __init__(
         self,
@@ -325,7 +325,7 @@ class ShardingCodec(
         chunk_shape: ShapeLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
-        index_location: ShardingCodecIndexLocation | IndexLocationLiteral = "end",
+        index_location: ShardingCodecIndexLocation | IndexLocation = "end",
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)

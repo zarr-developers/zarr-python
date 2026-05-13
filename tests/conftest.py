@@ -16,7 +16,7 @@ from hypothesis import HealthCheck, Verbosity, settings
 import zarr.registry
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
-from zarr.codecs.sharding import IndexLocationLiteral, ShardingCodec
+from zarr.codecs.sharding import IndexLocation, ShardingCodec
 from zarr.core.array import (
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
@@ -399,9 +399,9 @@ def create_array_metadata(
         codecs_out: tuple[Codec, ...]
         if inner is not None:
             inner_chunks_flat = as_regular_shape(inner.outer_chunks)
-            index_location: IndexLocationLiteral = "end"
+            index_location: IndexLocation = "end"
             if isinstance(shards, dict):
-                index_location = cast("IndexLocationLiteral", shards.get("index_location", "end"))
+                index_location = cast("IndexLocation", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat,
                 codecs=sub_codecs,
