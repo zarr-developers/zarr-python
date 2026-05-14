@@ -2,7 +2,10 @@ ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
   autofix_prs: false
-  skip: []  # pre-commit.ci only checks for updates, prek runs hooks locally
+  # mypy runs as a `language: system` hook via `hatch run dev:mypy`, which needs
+  # the project's hatch dev env — unavailable on pre-commit.ci's runners. It is
+  # covered instead by the Lint GitHub Actions workflow and by local prek runs.
+  skip: [mypy]
 
 default_stages: [pre-commit, pre-push]
 
