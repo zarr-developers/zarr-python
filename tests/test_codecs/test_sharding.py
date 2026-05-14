@@ -567,10 +567,19 @@ def test_sharding_zero_dimensional() -> None:
     assert arr[()] == pytest.approx(43.0)
 
 
+def test_shard_index_stores_chunks_per_shard_explicitly() -> None:
+    """_ShardIndex stores the chunk grid shape as an explicit field."""
+    index = _ShardIndex.create_empty((2, 3))
+    assert index.chunks_per_shard == (2, 3)
+
+    # 0-D: chunks_per_shard is the empty tuple, distinct from the array's rank
+    index_0d = _ShardIndex.create_empty(())
+    assert index_0d.chunks_per_shard == ()
+
+
 def test_shard_index_get_chunk_slices_vectorized_zero_dimensional() -> None:
-    """Directly cover the 0-D path in _ShardIndex.get_chunk_slices_vectorized."""
-    # For a 0D array offsets_and_lengths has shape (2,) — reshape to (1, 2) inside.
-    index = _ShardIndex(np.array([10, 4], dtype=np.uint64))
+    """Cover the 0-D case in _ShardIndex.get_chunk_slices_vectorized."""
+    index = _ShardIndex((), np.array([10, 4], dtype=np.uint64))
     chunk_coords = np.empty((1, 0), dtype=np.uint64)
     starts, ends, valid = index.get_chunk_slices_vectorized(chunk_coords)
     np.testing.assert_array_equal(starts, np.array([10], dtype=np.uint64))
@@ -578,7 +587,7 @@ def test_shard_index_get_chunk_slices_vectorized_zero_dimensional() -> None:
     np.testing.assert_array_equal(valid, np.array([True]))
 
     # Empty/unwritten chunk case
-    index_empty = _ShardIndex(np.array([MAX_UINT_64, MAX_UINT_64], dtype=np.uint64))
+    index_empty = _ShardIndex((), np.array([MAX_UINT_64, MAX_UINT_64], dtype=np.uint64))
     starts_e, _ends_e, valid_e = index_empty.get_chunk_slices_vectorized(chunk_coords)
     np.testing.assert_array_equal(starts_e, np.array([MAX_UINT_64], dtype=np.uint64))
     np.testing.assert_array_equal(valid_e, np.array([False]))
