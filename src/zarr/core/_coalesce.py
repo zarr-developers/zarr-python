@@ -106,10 +106,8 @@ def coalesce_ranges(
     `end`) is `<= max_gap_bytes`, and the resulting merged span is
     `<= max_coalesced_bytes`.
     """
-    indexed: list[tuple[int, ByteRequest | None]] = list(enumerate(byte_ranges))
-    mergeable: list[tuple[int, RangeByteRequest]] = [
-        (i, r) for i, r in indexed if isinstance(r, RangeByteRequest)
-    ]
+    indexed = list(enumerate(byte_ranges))
+    mergeable = [(i, r) for i, r in indexed if isinstance(r, RangeByteRequest)]
     uncoalescable: list[tuple[int, ByteRequest | None]] = [
         (i, r) for i, r in indexed if not isinstance(r, RangeByteRequest)
     ]
