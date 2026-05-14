@@ -94,7 +94,7 @@ class TestFixedLengthUTF32(BaseTestZDType):
         FixedLengthUTF32(length=10),
     ],
 )
-def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -> None:
+def test_unstable_dtype_warning(zdtype: FixedLengthUTF32) -> None:
     """
     Test that we get a warning when serializing a dtype without a zarr v3 spec to json
     when zarr_format is 3
