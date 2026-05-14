@@ -69,7 +69,6 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
-from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -1981,19 +1980,10 @@ def test_array_repr(store: Store) -> None:
     assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
 
 
-class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
+class UnknownObjectDtype(VariableLengthUTF8):
+    """A data type that requires an object codec with an unknown id, used for error-path tests."""
+
     object_codec_id = "unknown"  # type: ignore[assignment]
-
-    def to_native_dtype(self) -> np.dtypes.ObjectDType:
-        """
-        Create a NumPy object dtype from this VariableLengthUTF8 ZDType.
-
-        Returns
-        -------
-        np.dtypes.ObjectDType
-            The NumPy object dtype.
-        """
-        return np.dtype("o")  # type: ignore[return-value]
 
 
 @pytest.mark.parametrize(
