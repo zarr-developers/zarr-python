@@ -1033,11 +1033,6 @@ async def create(
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    # Legacy v2 behavior: an unspecified dtype defaults to float64. Resolve it here so the
-    # value forwarded to `_create` is a real dtype rather than `None`.
-    if dtype is None:
-        dtype = "float64"
-
     config_parsed = parse_array_config(config)
 
     if write_empty_chunks is not None:
@@ -1054,7 +1049,8 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        # Legacy v2 behavior: an unspecified dtype defaults to float64.
+        dtype=dtype or "float64",
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

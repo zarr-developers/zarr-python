@@ -172,7 +172,8 @@ class FixedLengthUTF32(
             The NumPy data type.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls(self.length).newbyteorder(byte_order)  # type: ignore[return-value]  # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls(self.length).newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[FixedLengthUTF32JSON_V2]:
