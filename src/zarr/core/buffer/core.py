@@ -70,7 +70,14 @@ class NDArrayLike(Protocol):
 
     def __array__(self) -> npt.NDArray[Any]: ...
 
-    def reshape(self, *args: Any, **kwargs: Any) -> Any: ...
+    def reshape(
+        self,
+        shape: tuple[int, ...],
+        /,
+        *,
+        order: Literal["A", "C", "F"] | None = ...,
+        copy: bool | None = ...,
+    ) -> NDArrayLike: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
@@ -90,7 +97,7 @@ class NDArrayLike(Protocol):
 
     def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
 
-    def all(self, *args: Any, **kwargs: Any) -> Any: ...
+    def all(self) -> np.bool_: ...
 
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
@@ -500,7 +507,10 @@ class NDBuffer:
             return Endian(sys.byteorder)
 
     def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
-        return self.__class__(self._data.reshape(newshape))
+        # numpy accepts a bare -1, but the NDArrayLike protocol only types the
+        # tuple form; normalize so the forwarded value matches the protocol.
+        shape = (newshape,) if newshape == -1 else newshape
+        return self.__class__(self._data.reshape(shape))
 
     def squeeze(self, axis: tuple[int, ...]) -> Self:
         newshape = tuple(a for i, a in enumerate(self.shape) if i not in axis)
