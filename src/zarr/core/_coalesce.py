@@ -215,11 +215,8 @@ async def coalesced_get(
             for fut in asyncio.as_completed(tasks):
                 yield await fut
     except BaseExceptionGroup as eg:
-        # Strip GeneratorExits (consumer aclose()) and propagate whatever
-        # remains. `split` is used instead of `subgroup` because the latter
-        # short-circuits on the group object itself, returning the unchanged
-        # group when a predicate lambda happens to be true for the wrapper.
-        _, rest = eg.split(GeneratorExit)
-        if rest is None:
-            return  # only GeneratorExits — clean close
-        raise rest from None
+        # Strip GeneratorExits (consumer aclose()) and propagate whatever remains.
+        _, other_errors = eg.split(GeneratorExit)
+
+        if other_errors is not None:
+            raise other_errors from None
