@@ -171,6 +171,16 @@ class _ShardIndex(NamedTuple):
         valid : ndarray of shape (n_chunks,)
             Boolean mask indicating which chunks are non-empty.
         """
+        # Handle 0-dimensional arrays (n_dims == 0)
+        if chunk_coords_array.shape[1] == 0:
+            # offsets_and_lengths has shape (2,) for 0D, reshape to (1, 2)
+            offsets_and_lengths = self.offsets_and_lengths.reshape(1, 2)
+            starts = offsets_and_lengths[:, 0]
+            lengths = offsets_and_lengths[:, 1]
+            valid = starts != MAX_UINT_64
+            ends = starts + lengths
+            return starts, ends, valid
+
         # Localize coordinates via modulo (vectorized)
         shard_shape = np.array(self.offsets_and_lengths.shape[:-1], dtype=np.uint64)
         localized = chunk_coords_array.astype(np.uint64) % shard_shape
