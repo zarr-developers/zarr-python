@@ -153,7 +153,6 @@ version.source = "vcs"
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.dev]
-python = "3.12"
 dependency-groups = ["dev"]
 
 [tool.hatch.envs.test]
