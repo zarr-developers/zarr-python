@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from zarr_metadata import ArrayMetadataV3
 
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
@@ -18,6 +17,7 @@ from zarr.core.dtype import UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
+    ArrayMetadataJSON_V3,
     ArrayV3Metadata,
     parse_codecs,
     parse_dimension_names,
@@ -172,7 +172,7 @@ def test_array_metadata_keys_matches_typeddict() -> None:
     Test that the variable modelling the set of keys for array v3 metadata matches
     the keys of the typeddict model for the metadata.
     """
-    assert ARRAY_METADATA_KEYS == set(ArrayMetadataV3.__annotations__.keys())
+    assert ARRAY_METADATA_KEYS == set(ArrayMetadataJSON_V3.__annotations__.keys())
 
 
 # ---------------------------------------------------------------------------

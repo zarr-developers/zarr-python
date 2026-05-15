@@ -421,11 +421,12 @@ def parse_chunk_grid(
 
 
 ArrayMetadataJSON_V3 = ArrayMetadataV3
-"""Alias for `zarr_metadata.v3.array.ArrayMetadataV3`.
+"""Alias for `zarr_metadata.v3.array.ArrayMetadataV3`, the TypedDict modeling
+the v3 array metadata document.
 
-The TypedDict from the metadata package is the canonical model of the v3
-array metadata document; this alias preserves the historical zarr-python
-name. Extra keys are permitted if they conform to `ExtensionFieldV3`."""
+Used throughout zarr-python under this name to avoid visual collision with
+the `ArrayV3Metadata` dataclass — the two differ only in word order. Extra
+keys are permitted on this dict if they conform to `ExtensionFieldV3`."""
 
 
 """
@@ -641,7 +642,7 @@ class ArrayV3Metadata(Metadata):
             )
             raise MetadataValidationError(msg)
         # TODO: replace this with a real type check!
-        _data_typed = cast(ArrayMetadataV3, _data)
+        _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
         return cls(
             shape=_data_typed["shape"],
@@ -657,11 +658,11 @@ class ArrayV3Metadata(Metadata):
         )
 
     def to_dict(self) -> dict[str, JSON]:
-        """Serialize as a JSON-shaped dict matching `ArrayMetadataV3`.
+        """Serialize as a JSON-shaped dict matching `ArrayMetadataJSON_V3`.
 
-        Return type is `dict[str, JSON]` rather than `ArrayMetadataV3` so the
-        result composes with other zarr-python metadata serialisation paths
-        that traffic in `dict[str, JSON]` (notably consolidated metadata).
+        Return type is `dict[str, JSON]` rather than `ArrayMetadataJSON_V3` so
+        the result composes with other zarr-python metadata serialisation
+        paths that traffic in `dict[str, JSON]` (notably consolidated metadata).
         """
         out_dict = super().to_dict()
         extra_fields = out_dict.pop("extra_fields")

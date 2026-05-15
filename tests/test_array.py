@@ -86,10 +86,11 @@ from zarr.types import AnyArray, AnyAsyncArray
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
-    from zarr_metadata import ArrayMetadataV2, ArrayMetadataV3
+    from zarr_metadata import ArrayMetadataV2
     from zarr_metadata.v3.codec.bytes import BytesCodecMetadata
 
     from zarr.abc.codec import CodecJSON_V3
+    from zarr.core.metadata import ArrayMetadataJSON_V3
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -337,7 +338,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat) -> No
     meaning) is unaffected.
     """
     if zarr_format == 3:
-        v3_metadata: ArrayMetadataV3 = {
+        v3_metadata: ArrayMetadataJSON_V3 = {
             "zarr_format": 3,
             "node_type": "array",
             "shape": (10,),

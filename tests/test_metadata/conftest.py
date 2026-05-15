@@ -5,14 +5,15 @@ from typing import TYPE_CHECKING, Any
 from zarr.codecs.bytes import BytesCodec
 
 if TYPE_CHECKING:
-    from zarr_metadata import ArrayMetadataV3
     from zarr_metadata.v3.chunk_grid.regular import RegularChunkGridMetadata
     from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncodingMetadata
+
+    from zarr.core.metadata import ArrayMetadataJSON_V3
 
 
 def minimal_metadata_dict_v3(
     extra_fields: dict[str, Any] | None = None, **overrides: Any
-) -> ArrayMetadataV3:
+) -> ArrayMetadataJSON_V3:
     """Build a minimal valid V3 array metadata JSON dict.
 
     The output matches the shape of ``ArrayV3Metadata.to_dict()`` — all
@@ -36,7 +37,7 @@ def minimal_metadata_dict_v3(
         "name": "default",
         "configuration": {"separator": "/"},
     }
-    d: ArrayMetadataV3 = {
+    d: ArrayMetadataJSON_V3 = {
         "zarr_format": 3,
         "node_type": "array",
         "shape": (4, 4),
