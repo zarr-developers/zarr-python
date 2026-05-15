@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from zarr_metadata import ArrayMetadataV3
 
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
@@ -17,7 +18,6 @@ from zarr.core.dtype import UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
-    ArrayMetadataJSON_V3,
     ArrayV3Metadata,
     parse_codecs,
     parse_dimension_names,
@@ -32,6 +32,10 @@ from zarr.errors import (
 
 if TYPE_CHECKING:
     from typing import Any
+
+    from zarr_metadata import GroupMetadataV3
+    from zarr_metadata.v3.codec.bytes import BytesCodecObject
+
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +173,7 @@ def test_array_metadata_keys_matches_typeddict() -> None:
     Test that the variable modelling the set of keys for array v3 metadata matches
     the keys of the typeddict model for the metadata.
     """
-    assert ARRAY_METADATA_KEYS == set(ArrayMetadataJSON_V3.__annotations__.keys())
+    assert ARRAY_METADATA_KEYS == set(ArrayMetadataV3.__annotations__.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +181,10 @@ def test_array_metadata_keys_matches_typeddict() -> None:
 # ---------------------------------------------------------------------------
 
 # Codecs after evolution for single-byte (uint8) and multi-byte (float64) types.
-_UINT8_CODECS = ({"name": "bytes"},)
-_FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
+_UINT8_CODECS: tuple[BytesCodecObject, ...] = ({"name": "bytes"},)
+_FLOAT64_CODECS: tuple[BytesCodecObject, ...] = (
+    {"name": "bytes", "configuration": {"endian": "little"}},
+)
 
 
 @pytest.mark.parametrize(
@@ -380,7 +386,11 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
     ):
         group = consolidate_metadata(store)
 
-    assert group.metadata.to_dict() == {
+    # `consolidated_metadata` is an `ExtensionFieldV3` (extra key allowed
+    # on `GroupMetadataV3` via PEP 728 extra_items=ExtensionFieldV3). mypy
+    # doesn't honor PEP 728 yet and reports `typeddict-unknown-key`; the
+    # annotation is correct, so the error code is ignored at the literal.
+    expected: GroupMetadataV3 = {  # type: ignore[typeddict-unknown-key]
         "zarr_format": 3,
         "node_type": "group",
         "attributes": attributes or {},
@@ -401,3 +411,4 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
             },
         },
     }
+    assert group.metadata.to_dict() == expected
