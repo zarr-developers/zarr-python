@@ -1050,7 +1050,7 @@ async def create(
         shape=shape,
         chunks=chunks,
         # Legacy v2 behavior: an unspecified dtype defaults to float64.
-        dtype=dtype or "float64",
+        dtype="float64" if dtype is None else dtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,
