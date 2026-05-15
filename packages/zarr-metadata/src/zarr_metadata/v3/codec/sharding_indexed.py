@@ -17,10 +17,7 @@ ShardingIndexedCodecName = Literal["sharding_indexed"]
 """Literal type of the `name` field of the `sharding_indexed` codec."""
 
 IndexLocation = Literal["start", "end"]
-"""Literal type of the position of the shard index within the encoded shard."""
-
-INDEX_LOCATION: Final = ("start", "end")
-"""Tuple of permitted values for the `index_location` field of the `sharding_indexed` codec."""
+"""Position of the shard index within the encoded shard."""
 
 
 class ShardingIndexedCodecConfiguration(TypedDict):
@@ -61,7 +58,6 @@ form is not permitted by the spec for this codec.
 """
 
 __all__ = [
-    "INDEX_LOCATION",
     "SHARDING_INDEXED_CODEC_NAME",
     "IndexLocation",
     "ShardingIndexedCodecConfiguration",

@@ -18,13 +18,10 @@ V2ChunkKeyEncodingName = Literal["v2"]
 """Literal type of the `name` field of the v2 chunk key encoding."""
 
 V2ChunkKeyEncodingSeparator = Literal["/", "."]
-"""Literal type of permitted `separator` values for the v2 chunk key encoding.
+"""Permitted `separator` values for the v2 chunk key encoding.
 
 Defaults to `"."` if absent.
 """
-
-V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
-"""Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
 
 
 class V2ChunkKeyEncodingConfiguration(TypedDict):
@@ -52,7 +49,6 @@ so the short-hand-name form is permitted in addition to the object form.
 
 __all__ = [
     "V2_CHUNK_KEY_ENCODING_NAME",
-    "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingConfiguration",
     "V2ChunkKeyEncodingMetadata",
     "V2ChunkKeyEncodingName",

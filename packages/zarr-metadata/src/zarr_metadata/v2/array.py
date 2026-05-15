@@ -1,7 +1,7 @@
 """Zarr v2 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Final, Literal, NotRequired
+from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -22,27 +22,21 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
 """
 
 ArrayOrderV2 = Literal["C", "F"]
-"""Literal type of permitted values for the `order` field of v2 array metadata.
+"""Permitted values for the `order` field of v2 array metadata.
 
 `"C"` (row-major) or `"F"` (column-major) — the in-chunk byte layout.
 
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
-ARRAY_ORDER_V2: Final = ("C", "F")
-"""Tuple of permitted values for the `order` field of v2 array metadata."""
-
 ArrayDimensionSeparatorV2 = Literal[".", "/"]
-"""Literal type of permitted values for the `dimension_separator` field of v2 array metadata.
+"""Permitted values for the `dimension_separator` field of v2 array metadata.
 
 `"."` (legacy default) joins chunk grid coordinates as `0.0`, `0.1`, ...
 `"/"` joins them as `0/0`, `0/1`, ... yielding nested directories.
 
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
-
-ARRAY_DIMENSION_SEPARATOR_V2: Final = (".", "/")
-"""Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
 
 
 class ZArrayMetadata(TypedDict):
@@ -99,8 +93,6 @@ class ArrayMetadataV2(TypedDict):
 
 
 __all__ = [
-    "ARRAY_DIMENSION_SEPARATOR_V2",
-    "ARRAY_ORDER_V2",
     "ArrayDimensionSeparatorV2",
     "ArrayMetadataV2",
     "ArrayOrderV2",

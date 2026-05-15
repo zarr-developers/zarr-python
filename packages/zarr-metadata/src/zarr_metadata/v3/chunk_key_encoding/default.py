@@ -18,13 +18,10 @@ DefaultChunkKeyEncodingName = Literal["default"]
 """Literal type of the `name` field of the default chunk key encoding."""
 
 DefaultChunkKeyEncodingSeparator = Literal["/", "."]
-"""Literal type of permitted `separator` values for the default chunk key encoding.
+"""Permitted `separator` values for the default chunk key encoding.
 
 Defaults to `"/"` if absent.
 """
-
-DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
-"""Tuple of permitted values for the `separator` field of the default chunk key encoding."""
 
 
 class DefaultChunkKeyEncodingConfiguration(TypedDict):
@@ -52,7 +49,6 @@ so the short-hand-name form is permitted in addition to the object form.
 
 __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
-    "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "DefaultChunkKeyEncodingConfiguration",
     "DefaultChunkKeyEncodingMetadata",
     "DefaultChunkKeyEncodingName",

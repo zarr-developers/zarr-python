@@ -15,16 +15,10 @@ BloscCodecName = Literal["blosc"]
 """Literal type of the `name` field of the `blosc` codec."""
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-"""Literal type of blosc shuffle mode names."""
-
-BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
-"""Tuple of permitted values for the `shuffle` field of the `blosc` codec."""
+"""Blosc shuffle mode names."""
 
 BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
-"""Literal type of blosc compressor identifiers."""
-
-BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
-"""Tuple of permitted values for the `cname` field of the `blosc` codec."""
+"""Blosc compressor identifiers."""
 
 
 class BloscCodecConfiguration(TypedDict):
@@ -53,9 +47,7 @@ is not permitted by the spec for this codec.
 """
 
 __all__ = [
-    "BLOSC_CNAME",
     "BLOSC_CODEC_NAME",
-    "BLOSC_SHUFFLE",
     "BloscCName",
     "BloscCodecConfiguration",
     "BloscCodecMetadata",
