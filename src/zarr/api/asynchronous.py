@@ -1049,7 +1049,8 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        # Legacy v2 behavior: an unspecified dtype defaults to float64.
+        dtype="float64" if dtype is None else dtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

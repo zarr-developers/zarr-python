@@ -537,7 +537,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         numpy.timedelta64
             The input data cast as a numpy timedelta64 scalar.
         """
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+        # numpy 2.x stub: timedelta64(scalar, formatted_unit_str) is runtime-valid
+        # but no overload matches the dynamic f-string unit argument.
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
 
     def cast_scalar(self, data: object) -> np.timedelta64:
         """
@@ -546,7 +548,8 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         """
         if self._check_scalar(data):
             if isinstance(data, np.timedelta64) and np.isnat(data):
-                return np.timedelta64("NaT", self.unit)
+                # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+                return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
             return self._cast_scalar_unchecked(data)
         msg = (
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
@@ -561,7 +564,8 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         This method provides a default value for the timedelta64 scalar, which is
         a 'Not-a-Time' (NaT) value.
         """
-        return np.timedelta64("NaT", self.unit)
+        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+        return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         """
@@ -585,7 +589,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             If the input JSON is not a valid representation of a scalar for this data type.
         """
         if check_json_time(data):
-            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+            # numpy 2.x stub: timedelta64(scalar, formatted_unit_str) is runtime-valid
+            # but no overload matches the dynamic f-string unit argument.
+            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
 
@@ -812,7 +818,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         numpy.datetime64
             The input cast to a NumPy datetime scalar.
         """
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+        # numpy 2.x stub: datetime64(scalar, formatted_unit_str) is runtime-valid
+        # but no overload matches the dynamic f-string unit argument.
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
 
     def cast_scalar(self, data: object) -> np.datetime64:
         """
@@ -851,7 +859,8 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             The default scalar value, which is a 'Not-a-Time' (NaT) value
         """
 
-        return np.datetime64("NaT", self.unit)
+        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+        return np.datetime64("NaT", self.unit)  # type: ignore[arg-type]
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         """
