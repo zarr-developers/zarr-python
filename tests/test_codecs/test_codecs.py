@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
+from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 import zarr
 import zarr.api
@@ -66,10 +67,10 @@ def test_sharding_pickle() -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("input_order", ["F", "C"])
-@pytest.mark.parametrize("store_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
+@pytest.mark.parametrize("input_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("store_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("runtime_write_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("runtime_read_order", ARRAY_ORDER_V2)
 @pytest.mark.parametrize("with_sharding", [True, False])
 async def test_order(
     store: Store,
@@ -116,9 +117,9 @@ async def test_order(
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("input_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
+@pytest.mark.parametrize("input_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("runtime_write_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("runtime_read_order", ARRAY_ORDER_V2)
 @pytest.mark.parametrize("with_sharding", [True, False])
 def test_order_implicit(
     store: Store,

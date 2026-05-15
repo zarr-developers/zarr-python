@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 from packaging.version import Version
+from zarr_metadata.v3.chunk_key_encoding.v2 import V2_CHUNK_KEY_ENCODING_SEPARATOR
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
@@ -1375,7 +1376,7 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("name", ["v2", "default", "invalid"])
-    @pytest.mark.parametrize("separator", [".", "/"])
+    @pytest.mark.parametrize("separator", V2_CHUNK_KEY_ENCODING_SEPARATOR)
     async def test_chunk_key_encoding(
         name: str, separator: Literal[".", "/"], zarr_format: ZarrFormat, store: MemoryStore
     ) -> None:

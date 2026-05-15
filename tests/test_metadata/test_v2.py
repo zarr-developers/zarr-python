@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
+from zarr_metadata.v2.array import ARRAY_DIMENSION_SEPARATOR_V2, ARRAY_ORDER_V2
 
 import zarr.api.asynchronous
 import zarr.storage
@@ -41,8 +42,8 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 @pytest.mark.parametrize("filters", [None, [{"id": "gzip", "level": 1}]])
 @pytest.mark.parametrize("compressor", [None, {"id": "gzip", "level": 1}])
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
-@pytest.mark.parametrize("order", ["C", "F"])
-@pytest.mark.parametrize("dimension_separator", [".", "/", None])
+@pytest.mark.parametrize("order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("dimension_separator", [*ARRAY_DIMENSION_SEPARATOR_V2, None])
 def test_metadata_to_dict(
     compressor: Codec | None,
     filters: tuple[Codec] | None,

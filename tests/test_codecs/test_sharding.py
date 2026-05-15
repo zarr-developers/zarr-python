@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pytest
+from zarr_metadata.v3.codec.sharding_indexed import INDEX_LOCATION
 
 import zarr
 import zarr.api
@@ -25,7 +26,7 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize(
     "array_fixture",
     [
@@ -73,7 +74,7 @@ def test_sharding(
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("offset", [0, 10])
 def test_sharding_scalar(
     store: Store,
@@ -101,7 +102,7 @@ def test_sharding_scalar(
     np.testing.assert_array_equal(read_data, 10)
 
 
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize(
     "array_fixture",
@@ -137,7 +138,7 @@ def test_sharding_partial(
     assert np.array_equal(data, read_data)
 
 
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize(
     "array_fixture",
@@ -176,7 +177,7 @@ def test_sharding_partial_readwrite(
     ],
     indirect=["array_fixture"],
 )
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_read(
     store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
@@ -205,7 +206,7 @@ def test_sharding_partial_read(
     ],
     indirect=["array_fixture"],
 )
-@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_overwrite(
     store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
@@ -247,14 +248,8 @@ def test_sharding_partial_overwrite(
     ],
     indirect=True,
 )
-@pytest.mark.parametrize(
-    "outer_index_location",
-    ["start", "end"],
-)
-@pytest.mark.parametrize(
-    "inner_index_location",
-    ["start", "end"],
-)
+@pytest.mark.parametrize("outer_index_location", INDEX_LOCATION)
+@pytest.mark.parametrize("inner_index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_nested_sharding(
     store: Store,
@@ -295,14 +290,8 @@ def test_nested_sharding(
     ],
     indirect=["array_fixture"],
 )
-@pytest.mark.parametrize(
-    "outer_index_location",
-    ["start", "end"],
-)
-@pytest.mark.parametrize(
-    "inner_index_location",
-    ["start", "end"],
-)
+@pytest.mark.parametrize("outer_index_location", INDEX_LOCATION)
+@pytest.mark.parametrize("inner_index_location", INDEX_LOCATION)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_nested_sharding_create_array(
     store: Store,
