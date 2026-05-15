@@ -26,6 +26,8 @@ from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
+    from zarr_metadata.v2 import ConsolidatedMetadataV2, ZAttrsMetadata, ZGroupMetadata
+
     from zarr.abc.store import Store
     from zarr.core.common import JSON, ZarrFormat
 
@@ -63,14 +65,22 @@ class TestConsolidated:
         #
         # field on the leaf group nodes.
         if zarr_format == 2:
-            zmetadata: dict[str, JSON] = {
+            # Bind each value to a typed variable so the outer TypedDict's
+            # value-union (ZArrayMetadata | ZGroupMetadata | ZAttrsMetadata)
+            # resolves unambiguously to the correct arm — inline literals
+            # do not narrow because mypy can't structurally disambiguate
+            # `{}` between `ZAttrsMetadata` (Mapping[str, object]) and an
+            # empty TypedDict variant.
+            empty_attrs: ZAttrsMetadata = {}
+            empty_group: ZGroupMetadata = {"zarr_format": 2}
+            zmetadata: ConsolidatedMetadataV2 = {
                 "metadata": {
-                    ".zattrs": {},
-                    ".zgroup": {"zarr_format": 2},
-                    "raw/.zattrs": {},
-                    "raw/.zgroup": {"zarr_format": 2},
-                    "raw/varm/.zattrs": {},
-                    "raw/varm/.zgroup": {"zarr_format": 2},
+                    ".zattrs": empty_attrs,
+                    ".zgroup": empty_group,
+                    "raw/.zattrs": empty_attrs,
+                    "raw/.zgroup": empty_group,
+                    "raw/varm/.zattrs": empty_attrs,
+                    "raw/varm/.zgroup": empty_group,
                 },
                 "zarr_consolidated_format": 1,
             }
@@ -83,7 +93,11 @@ class TestConsolidated:
             )
 
         else:
-            zmetadata = {
+            # The v3 shape is a group metadata document with an inline
+            # `consolidated_metadata` extension field; not a
+            # `ConsolidatedMetadataV2` shape, so use a separately-named
+            # variable.
+            zarr_json: dict[str, JSON] = {
                 "attributes": {},
                 "zarr_format": 3,
                 "consolidated_metadata": {
@@ -105,7 +119,7 @@ class TestConsolidated:
                 "node_type": "group",
             }
             await memory_store.set(
-                "zarr.json", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode())
+                "zarr.json", cpu.Buffer.from_bytes(json.dumps(zarr_json).encode())
             )
 
         group = await zarr.api.asynchronous.open_consolidated(
