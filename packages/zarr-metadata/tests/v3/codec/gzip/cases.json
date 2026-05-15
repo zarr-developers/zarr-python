@@ -2,5 +2,10 @@
   "with_level": {
     "name": "gzip",
     "configuration": {"level": 5}
-  }
+  },
+  "no_level": {
+    "name": "gzip",
+    "configuration": {}
+  },
+  "short_hand_name": "gzip"
 }

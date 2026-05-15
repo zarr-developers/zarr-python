@@ -29,16 +29,10 @@ class BytesCodecConfiguration(TypedDict):
 
 
 class BytesCodecObject(TypedDict):
-    """`bytes` codec metadata in object form.
-
-    `configuration` is itself optional — when no configuration fields are
-    set, the entire `configuration` key may be omitted. This matches the
-    bare-string short-hand form (`BytesCodecName`) at the canonical data
-    level; both encodings describe a `bytes` codec with default settings.
-    """
+    """`bytes` codec metadata in object form."""
 
     name: BytesCodecName
-    configuration: NotRequired[BytesCodecConfiguration]
+    configuration: BytesCodecConfiguration
 
 
 BytesCodecMetadata = BytesCodecObject | BytesCodecName
@@ -46,8 +40,7 @@ BytesCodecMetadata = BytesCodecObject | BytesCodecName
 
 The configuration has no required keys (`endian` is conditionally required
 at runtime based on data type), so the spec's short-hand-name form is
-permitted in addition to the object form, and the object form may itself
-omit `configuration` entirely.
+permitted in addition to the object form.
 """
 
 __all__ = [
