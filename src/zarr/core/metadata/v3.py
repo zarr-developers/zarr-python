@@ -641,7 +641,7 @@ class ArrayV3Metadata(Metadata):
             )
             raise MetadataValidationError(msg)
         # TODO: replace this with a real type check!
-        _data_typed = cast(ArrayMetadataJSON_V3, _data)
+        _data_typed = cast(ArrayMetadataV3, _data)
 
         return cls(
             shape=_data_typed["shape"],

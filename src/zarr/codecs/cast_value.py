@@ -232,10 +232,16 @@ class CastValue(ArrayArrayCodec):
         if self.out_of_range is not None:
             config["out_of_range"] = self.out_of_range
         if self.scalar_map is not None:
-            json_map: dict[str, list[tuple[object, object]]] = {}
+            # Emit ScalarMap entries as a tuple of 2-tuples. JSON Arrays are
+            # typed fixed-length containers at the spec level; the
+            # in-memory canonical shape is `tuple[tuple[object, object], ...]`
+            # to match `zarr_metadata.v3.codec.cast_value.ScalarMap`.
+            json_map: dict[str, tuple[tuple[object, object], ...]] = {}
             for direction in ("encode", "decode"):
                 if direction in self.scalar_map:
-                    json_map[direction] = [(k, v) for k, v in self.scalar_map[direction].items()]
+                    json_map[direction] = tuple(
+                        (k, v) for k, v in self.scalar_map[direction].items()
+                    )
             config["scalar_map"] = cast("JSON", json_map)
         return {"name": "cast_value", "configuration": config}
 

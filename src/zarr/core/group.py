@@ -443,6 +443,12 @@ class GroupMetadata(Metadata):
         else:
             # Leave consolidated metadata unset if it's None
             result.pop("consolidated_metadata")
+        # `node_type` is a v3-only field. v2 group metadata (.zgroup) has
+        # only `zarr_format`; attributes live in a sibling .zattrs file.
+        # The dataclass carries `node_type` for in-memory use; strip it
+        # from the serialized v2 form.
+        if self.zarr_format == 2:
+            result.pop("node_type", None)
         return result
 
 
