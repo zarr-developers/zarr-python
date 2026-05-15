@@ -2,7 +2,11 @@ ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
   autofix_prs: false
-  skip: []  # pre-commit.ci only checks for updates, prek runs hooks locally
+  # mypy runs as a `language: system` hook via `uv run mypy`, which needs `uv`
+  # and the repo checkout to resolve the dev environment from `uv.lock` —
+  # unavailable on pre-commit.ci's runners. It is covered instead by the Lint
+  # GitHub Actions workflow and by local prek runs.
+  skip: [mypy]
 
 default_stages: [pre-commit, pre-push]
 
@@ -27,26 +31,15 @@ repos:
       - id: check-yaml
         exclude: mkdocs.yml
       - id: trailing-whitespace
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.2
+  - repo: local
     hooks:
       - id: mypy
-        files: ^(src|tests)/
-        additional_dependencies:
-          # Package dependencies
-          - packaging
-          - donfig
-          - numcodecs
-          - google-crc32c>=1.5
-          - numpy==2.1 # https://github.com/zarr-developers/zarr-python/issues/3780 + https://github.com/zarr-developers/zarr-python/issues/3688
-          - typing_extensions
-          - universal-pathlib
-          - obstore>=0.5.1
-          - zarr-metadata>=0.1.1
-          # Tests
-          - pytest
-          - hypothesis
-          - s3fs
+        name: mypy
+        language: system
+        entry: uv run --frozen mypy
+        pass_filenames: false
+        always_run: true
+        types_or: [python, pyi]
   - repo: https://github.com/scientific-python/cookie
     rev: 2026.04.04
     hooks:

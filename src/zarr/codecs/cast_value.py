@@ -291,11 +291,11 @@ class CastValue(ArrayArrayCodec):
 
     def _do_cast(
         self,
-        arr: np.ndarray,  # type: ignore[type-arg]
+        arr: np.ndarray,
         *,
-        target_dtype: np.dtype,  # type: ignore[type-arg]
+        target_dtype: np.dtype,
         scalar_map: Mapping[str | float | int, str | float | int] | None,
-    ) -> np.ndarray:  # type: ignore[type-arg]
+    ) -> np.ndarray:
         if not _HAS_RUST_BACKEND:
             raise ImportError(
                 "The cast_value codec requires the 'cast-value-rs' package. "
