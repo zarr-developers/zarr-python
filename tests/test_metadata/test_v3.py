@@ -180,7 +180,10 @@ def test_array_metadata_keys_matches_typeddict() -> None:
 # ---------------------------------------------------------------------------
 
 # Codecs after evolution for single-byte (uint8) and multi-byte (float64) types.
-_UINT8_CODECS: tuple[BytesCodecObject, ...] = ({"name": "bytes"},)
+# The uint8 case omits `configuration`; floor-pinned zarr-metadata 0.1.1
+# marks that field as required, so the annotation is dropped until the
+# relaxed shape ships.
+_UINT8_CODECS = ({"name": "bytes"},)
 _FLOAT64_CODECS: tuple[BytesCodecObject, ...] = (
     {"name": "bytes", "configuration": {"endian": "little"}},
 )
