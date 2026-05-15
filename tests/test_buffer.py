@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
-from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 import zarr
 from zarr.abc.buffer import ArrayLike, BufferPrototype, NDArrayLike
@@ -232,7 +231,7 @@ def test_cpu_buffer_as_scalar() -> None:
     ],
 )
 @pytest.mark.parametrize("dtype", ["int32", "float64"])
-@pytest.mark.parametrize("order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("order", ["C", "F"])
 def test_empty(
     prototype: BufferPrototype, shape: tuple[int, ...], dtype: str, order: Literal["C", "F"]
 ) -> None:

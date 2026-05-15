@@ -2,7 +2,6 @@ from typing import Literal
 
 import numpy as np
 import pytest
-from zarr_metadata.v3.codec.bytes import ENDIAN
 
 import zarr
 from zarr.abc.codec import SupportsSyncCodec
@@ -18,7 +17,7 @@ from .test_codecs import _AsyncArrayProxy
 
 @pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("endian", ENDIAN)
+@pytest.mark.parametrize("endian", ["big", "little"])
 async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "endian"
@@ -66,7 +65,7 @@ def test_bytes_codec_sync_roundtrip() -> None:
 @pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
-@pytest.mark.parametrize("dtype_store_endian", ENDIAN)
+@pytest.mark.parametrize("dtype_store_endian", ["big", "little"])
 async def test_endian_write(
     store: Store,
     dtype_input_endian: Literal[">u2", "<u2"],

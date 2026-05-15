@@ -24,7 +24,6 @@ from typing import Literal
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
-from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 import zarr
 import zarr.api.asynchronous
@@ -488,7 +487,7 @@ def test_open_with_mode_w_minus(tmp_path: Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-@pytest.mark.parametrize("order", [*ARRAY_ORDER_V2, None])
+@pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("config", [{"order": "C"}, {"order": "F"}, {}], ids=["C", "F", "None"])
 def test_array_order(
     order: MemoryOrder | None, config: dict[str, MemoryOrder | None], zarr_format: ZarrFormat

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 import pytest
-from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -73,7 +72,7 @@ def test_parse_indexing_order_invalid(data: Any) -> None:
         parse_indexing_order(data)
 
 
-@pytest.mark.parametrize("data", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("data", ["C", "F"])
 def parse_indexing_order_valid(data: Literal["C", "F"]) -> None:
     assert parse_indexing_order(data) == data
 

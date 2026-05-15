@@ -6,7 +6,6 @@ import numcodecs
 import numcodecs.abc
 import numpy as np
 import pytest
-from zarr_metadata.v3.chunk_key_encoding.v2 import V2_CHUNK_KEY_ENCODING_SEPARATOR
 
 import zarr
 from tests.test_cli.conftest import create_nested_zarr
@@ -90,7 +89,7 @@ def test_migrate_group(local_store: LocalStore) -> None:
     assert zarr_array.metadata == expected_metadata
 
 
-@pytest.mark.parametrize("separator", V2_CHUNK_KEY_ENCODING_SEPARATOR)
+@pytest.mark.parametrize("separator", [".", "/"])
 def test_migrate_nested_groups_and_arrays_in_place(
     local_store: LocalStore, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
@@ -116,7 +115,7 @@ def test_migrate_nested_groups_and_arrays_in_place(
         assert metadata.attributes == attributes
 
 
-@pytest.mark.parametrize("separator", V2_CHUNK_KEY_ENCODING_SEPARATOR)
+@pytest.mark.parametrize("separator", [".", "/"])
 async def test_migrate_nested_groups_and_arrays_separate_location(
     tmp_path: Path,
     separator: str,
@@ -253,7 +252,7 @@ async def test_overwrite_option_separate_location(
     assert paths == expected_paths
 
 
-@pytest.mark.parametrize("separator", V2_CHUNK_KEY_ENCODING_SEPARATOR)
+@pytest.mark.parametrize("separator", [".", "/"])
 def test_migrate_sub_group(
     local_store: LocalStore, separator: str, expected_v3_metadata: list[Path]
 ) -> None:

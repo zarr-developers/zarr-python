@@ -7,7 +7,6 @@ import pytest
 from numcodecs import Delta, Zlib
 from numcodecs.blosc import Blosc
 from numcodecs.zstd import Zstd
-from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 import zarr
 import zarr.core.buffer
@@ -125,7 +124,7 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None
 
 
 @pytest.mark.parametrize("filters", [[], [Delta(dtype="<i4")], [Zlib(level=2)]])
-@pytest.mark.parametrize("order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
     with config.set({"array.order": order}):
@@ -159,8 +158,8 @@ def test_create_array_defaults(store: Store) -> None:
         )
 
 
-@pytest.mark.parametrize("numpy_order", ARRAY_ORDER_V2)
-@pytest.mark.parametrize("zarr_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("numpy_order", ["C", "F"])
+@pytest.mark.parametrize("zarr_order", ["C", "F"])
 def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["C", "F"]) -> None:
     """
     Make sure zarr v2 arrays save data using the memory order given to the zarr array,

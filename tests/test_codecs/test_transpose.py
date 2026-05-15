@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from zarr_metadata.v2.array import ARRAY_ORDER_V2
 
 import zarr
 from zarr import AsyncArray, config
@@ -16,9 +15,9 @@ from zarr.storage import StorePath
 from .test_codecs import _AsyncArrayProxy
 
 
-@pytest.mark.parametrize("input_order", ARRAY_ORDER_V2)
-@pytest.mark.parametrize("runtime_write_order", ARRAY_ORDER_V2)
-@pytest.mark.parametrize("runtime_read_order", ARRAY_ORDER_V2)
+@pytest.mark.parametrize("input_order", ["F", "C"])
+@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
+@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_transpose(
