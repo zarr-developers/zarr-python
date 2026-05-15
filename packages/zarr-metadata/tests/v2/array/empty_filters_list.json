@@ -6,6 +6,5 @@
   "compressor": {"id": "gzip", "level": 1},
   "fill_value": 0,
   "order": "C",
-  "filters": [],
-  "attributes": {}
+  "filters": []
 }
