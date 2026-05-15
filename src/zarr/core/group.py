@@ -1166,7 +1166,7 @@ class AsyncGroup:
         name: str,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike = None,
+        dtype: npt.DTypeLike | None = None,
         exact: bool = False,
         **kwargs: Any,
     ) -> AnyAsyncArray:
