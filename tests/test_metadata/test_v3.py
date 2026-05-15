@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.codec.bytes import BytesCodecObject
 
 
-
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
