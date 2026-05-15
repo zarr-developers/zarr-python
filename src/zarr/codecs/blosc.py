@@ -5,11 +5,17 @@ import warnings
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict
 
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from zarr_metadata.v3.codec.blosc import (
+    BLOSC_CNAME as _BLOSC_CNAME,
+)
+from zarr_metadata.v3.codec.blosc import (
+    BLOSC_SHUFFLE as _BLOSC_SHUFFLE,
+)
 from zarr_metadata.v3.codec.blosc import (
     BloscCName as _BloscCName,
 )
@@ -39,12 +45,12 @@ if TYPE_CHECKING:
 BloscShuffleLiteral = _BloscShuffle
 """The shuffle values permitted for the blosc codec"""
 
-BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+BLOSC_SHUFFLE = _BLOSC_SHUFFLE
 
 BloscCnameLiteral = _BloscCName
 """The codec identifiers used in the blosc codec"""
 
-BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
+BLOSC_CNAME = _BLOSC_CNAME
 
 
 class BloscConfigV2(TypedDict):
