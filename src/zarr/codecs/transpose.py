@@ -8,14 +8,14 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
-from zarr.registry import register_codec
+from zarr.core.common import JSON, parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import Any, Self
+    from typing import Self
 
     from zarr.core.buffer import NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -28,11 +28,13 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
+    """Transpose codec"""
+
     is_fixed_size = True
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike) -> None:
+    def __init__(self, *, order: Iterable[int]) -> None:
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)
@@ -45,10 +47,15 @@ class TransposeCodec(ArrayArrayCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
 
-    def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGridMetadata,
+    ) -> None:
         if len(self.order) != len(shape):
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -63,7 +70,7 @@ class TransposeCodec(ArrayArrayCodec):
         ndim = array_spec.ndim
         if len(self.order) != ndim:
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -88,23 +95,34 @@ class TransposeCodec(ArrayArrayCodec):
             prototype=chunk_spec.prototype,
         )
 
+    def _decode_sync(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        inverse_order = tuple(int(i) for i in np.argsort(self.order))
+        return chunk_array.transpose(inverse_order)
+
     async def _decode_single(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        inverse_order = np.argsort(self.order)
-        return chunk_array.transpose(inverse_order)
+        return self._decode_sync(chunk_array, chunk_spec)
 
-    async def _encode_single(
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
         return chunk_array.transpose(self.order)
 
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        _chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
+        return self._encode_sync(chunk_array, _chunk_spec)
+
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
-
-
-register_codec("transpose", TransposeCodec)

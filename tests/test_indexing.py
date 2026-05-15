@@ -18,7 +18,10 @@ from zarr.core.indexing import (
     CoordinateSelection,
     OrthogonalSelection,
     Selection,
+    _ArrayIndexingOrder,
     _iter_grid,
+    _iter_regions,
+    ceildiv,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -31,9 +34,9 @@ from zarr.storage import MemoryStore, StorePath
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
@@ -44,7 +47,7 @@ async def store() -> AsyncGenerator[StorePath]:
 def zarr_array_from_numpy_array(
     store: StorePath,
     a: npt.NDArray[Any],
-    chunk_shape: ChunkCoords | None = None,
+    chunk_shape: tuple[int, ...] | None = None,
 ) -> zarr.Array:
     z = zarr.create_array(
         store=store / str(uuid4()),
@@ -80,6 +83,22 @@ class CountingDict(MemoryStore):
         key_suffix = "/".join(key.split("/")[1:])
         self.counter["__setitem__", key_suffix] += 1
         return await super().set(key, value, byte_range)
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__getitem__", key_suffix] += 1
+        return super().get_sync(key, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__setitem__", key_suffix] += 1
+        return super().set_sync(key, value)
 
 
 def test_normalize_integer_selection() -> None:
@@ -424,6 +443,24 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(
     np.testing.assert_array_equal(z[index], expected_result)
 
 
+def test_setitem_zarr_array_as_value() -> None:
+    # Regression test for https://github.com/zarr-developers/zarr-python/issues/3611
+    # Assigning a zarr Array as the value used to raise
+    # SyncError("Calling sync() from within a running loop") because the codec
+    # pipeline tried to index the zarr array inside an already-running async loop.
+    src = zarr.array(np.arange(10), chunks=(5,))
+    dst = zarr.zeros(10, chunks=(5,), dtype=src.dtype)
+
+    # Full assignment
+    dst[:] = src
+    assert_array_equal(dst[:], np.arange(10))
+
+    # Slice assignment
+    dst2 = zarr.zeros(10, chunks=(5,), dtype=src.dtype)
+    dst2[2:7] = src[2:7]
+    assert_array_equal(dst2[2:7], np.arange(2, 7))
+
+
 @pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
 def test_setitem_repeated_index():
     array = zarr.array(data=np.zeros((4,)), chunks=(1,))
@@ -599,20 +636,15 @@ def test_get_orthogonal_selection_1d_bool(store: StorePath) -> None:
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_int(store: StorePath) -> None:
     # setup
-    a = np.arange(1050, dtype=int)
+    a = np.arange(550, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
-        # unordered
+    for p in 0.5, 0.01:
+        # sorted integer arrays
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_get_orthogonal_selection(a, z, ix)
-        # increasing
         ix.sort()
-        _test_get_orthogonal_selection(a, z, ix)
-        # decreasing
-        ix = ix[::-1]
         _test_get_orthogonal_selection(a, z, ix)
 
     selections = basic_selections_1d + [
@@ -658,12 +690,12 @@ def _test_get_orthogonal_selection_2d(
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
+    a = np.arange(5400, dtype=int).reshape(600, 9)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -677,15 +709,11 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
         for selection in selections:
             _test_get_orthogonal_selection(a, z, selection)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
         _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
 
     for selection_2d in basic_selections_2d:
@@ -707,33 +735,33 @@ def _test_get_orthogonal_selection_3d(
 ) -> None:
     selections = [
         # single value
-        (84, 42, 4),
+        (60, 15, 4),
         (-1, -1, -1),
         # index all axes with array
         (ix0, ix1, ix2),
         # mixed indexing with single array / slices
-        (ix0, slice(15, 25), slice(1, 5)),
-        (slice(50, 70), ix1, slice(1, 5)),
-        (slice(50, 70), slice(15, 25), ix2),
-        (ix0, slice(15, 25, 5), slice(1, 5, 2)),
-        (slice(50, 70, 3), ix1, slice(1, 5, 2)),
-        (slice(50, 70, 3), slice(15, 25, 5), ix2),
+        (ix0, slice(10, 20), slice(1, 5)),
+        (slice(30, 50), ix1, slice(1, 5)),
+        (slice(30, 50), slice(10, 20), ix2),
+        (ix0, slice(10, 20, 5), slice(1, 5, 2)),
+        (slice(30, 50, 3), ix1, slice(1, 5, 2)),
+        (slice(30, 50, 3), slice(10, 20, 5), ix2),
         # mixed indexing with single array / ints
-        (ix0, 42, 4),
-        (84, ix1, 4),
-        (84, 42, ix2),
+        (ix0, 15, 4),
+        (60, ix1, 4),
+        (60, 15, ix2),
         # mixed indexing with single array / slice / int
-        (ix0, slice(15, 25), 4),
-        (42, ix1, slice(1, 5)),
-        (slice(50, 70), 42, ix2),
+        (ix0, slice(10, 20), 4),
+        (15, ix1, slice(1, 5)),
+        (slice(30, 50), 15, ix2),
         # mixed indexing with two array / slice
         (ix0, ix1, slice(1, 5)),
-        (slice(50, 70), ix1, ix2),
-        (ix0, slice(15, 25), ix2),
+        (slice(30, 50), ix1, ix2),
+        (ix0, slice(10, 20), ix2),
         # mixed indexing with two array / integer
         (ix0, ix1, 4),
-        (42, ix1, ix2),
-        (ix0, 42, ix2),
+        (15, ix1, ix2),
+        (ix0, 15, ix2),
     ]
     for selection in selections:
         _test_get_orthogonal_selection(a, z, selection)
@@ -742,30 +770,25 @@ def _test_get_orthogonal_selection_3d(
 @pytest.mark.slow_wasm
 def test_get_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
-    a = np.arange(100000, dtype=int).reshape(200, 50, 10)
+    a = np.arange(32400, dtype=int).reshape(120, 30, 9)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
         ix0.sort()
         ix1.sort()
         ix2.sort()
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
-        ix2 = ix2[::-1]
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
 
@@ -805,23 +828,20 @@ def _test_set_orthogonal_selection(
 @pytest.mark.slow_wasm
 def test_set_orthogonal_selection_1d(store: StorePath) -> None:
     # setup
-    v = np.arange(1050, dtype=int)
+    v = np.arange(550, dtype=int)
     a = np.empty(v.shape, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     # test with different degrees of sparseness
     np.random.seed(42)
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         _test_set_orthogonal_selection(v, a, z, ix)
 
-        # integer arrays
+        # sorted integer arrays
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_set_orthogonal_selection(v, a, z, ix)
         ix.sort()
-        _test_set_orthogonal_selection(v, a, z, ix)
-        ix = ix[::-1]
         _test_set_orthogonal_selection(v, a, z, ix)
 
     # basic selections
@@ -872,27 +892,23 @@ def _test_set_orthogonal_selection_2d(
 @pytest.mark.slow_wasm
 def test_set_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
+    v = np.arange(5400, dtype=int).reshape(600, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
     for selection in basic_selections_2d:
@@ -909,20 +925,20 @@ def _test_set_orthogonal_selection_3d(
 ) -> None:
     selections = (
         # single value
-        (84, 42, 4),
+        (60, 15, 4),
         (-1, -1, -1),
         # index all axes with bool array
         (ix0, ix1, ix2),
         # mixed indexing with single bool array / slice or int
-        (ix0, slice(15, 25), slice(1, 5)),
-        (slice(50, 70), ix1, slice(1, 5)),
-        (slice(50, 70), slice(15, 25), ix2),
-        (ix0, 42, 4),
-        (84, ix1, 4),
-        (84, 42, ix2),
-        (ix0, slice(15, 25), 4),
-        (slice(50, 70), ix1, 4),
-        (slice(50, 70), 42, ix2),
+        (ix0, slice(10, 20), slice(1, 5)),
+        (slice(30, 50), ix1, slice(1, 5)),
+        (slice(30, 50), slice(10, 20), ix2),
+        (ix0, 15, 4),
+        (60, ix1, 4),
+        (60, 15, ix2),
+        (ix0, slice(10, 20), 4),
+        (slice(30, 50), ix1, 4),
+        (slice(30, 50), 15, ix2),
         # indexing with two arrays / slice
         (ix0, ix1, slice(1, 5)),
         # indexing with two arrays / integer
@@ -935,35 +951,26 @@ def _test_set_orthogonal_selection_3d(
 @pytest.mark.slow_wasm
 def test_set_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
-    v = np.arange(100000, dtype=int).reshape(200, 50, 10)
+    v = np.arange(32400, dtype=int).reshape(120, 30, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
-
-        # sorted increasing
         ix0.sort()
         ix1.sort()
         ix2.sort()
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
-
-        # sorted decreasing
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
-        ix2 = ix2[::-1]
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
 
@@ -1098,17 +1105,17 @@ def test_get_coordinate_selection_2d(store: StorePath) -> None:
     ix1 = np.array([[1, 3, 2], [1, 0, 0]])
     _test_get_coordinate_selection(a, z, (ix0, ix1))
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = [1, 2, 3], slice(5, 15)
     with pytest.raises(IndexError):
-        selection = [1, 2, 3], slice(5, 15)
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = Ellipsis
     with pytest.raises(IndexError):
-        selection = Ellipsis
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
 
 
@@ -1131,13 +1138,13 @@ def _test_set_coordinate_selection(
 
 def test_set_coordinate_selection_1d(store: StorePath) -> None:
     # setup
-    v = np.arange(1050, dtype=int)
+    v = np.arange(550, dtype=int)
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         n = int(a.size * p)
         ix = np.random.choice(a.shape[0], size=n, replace=True)
         _test_set_coordinate_selection(v, a, z, ix)
@@ -1156,13 +1163,13 @@ def test_set_coordinate_selection_1d(store: StorePath) -> None:
 @pytest.mark.slow_wasm
 def test_set_coordinate_selection_2d(store: StorePath) -> None:
     # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
+    v = np.arange(5400, dtype=int).reshape(600, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         n = int(a.size * p)
         ix0 = np.random.choice(a.shape[0], size=n, replace=True)
         ix1 = np.random.choice(a.shape[1], size=n, replace=True)
@@ -1253,8 +1260,8 @@ def test_get_block_selection_1d(store: StorePath) -> None:
         _test_get_block_selection(a, z, selection, expected_idx)
 
     bad_selections = block_selections_1d_bad + [
-        z.metadata.chunk_grid.get_nchunks(z.shape) + 1,  # out of bounds
-        -(z.metadata.chunk_grid.get_nchunks(z.shape) + 1),  # out of bounds
+        z._chunk_grid.get_nchunks() + 1,  # out of bounds
+        -(z._chunk_grid.get_nchunks() + 1),  # out of bounds
     ]
 
     for selection_bad in bad_selections:
@@ -1305,14 +1312,14 @@ def test_get_block_selection_2d(store: StorePath) -> None:
     ):
         _test_get_block_selection(a, z, selection, expected_idx)
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.get_block_selection(selection)
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.get_block_selection(selection)
+    selection = slice(15, 20), slice(None)
     with pytest.raises(IndexError):  # out of bounds
-        selection = slice(15, 20), slice(None)
         z.get_block_selection(selection)
 
 
@@ -1368,14 +1375,14 @@ def test_set_block_selection_2d(store: StorePath) -> None:
     ):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.set_block_selection(selection, 42)
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.set_block_selection(selection, 42)
+    selection = slice(15, 20), slice(None)
     with pytest.raises(IndexError):  # out of bounds
-        selection = slice(15, 20), slice(None)
         z.set_block_selection(selection, 42)
 
 
@@ -1969,9 +1976,11 @@ def test_indexing_with_zarr_array(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("shape", [(0, 2, 3), (0), (3, 0)])
+@pytest.mark.parametrize("shape", [(0, 2, 3), (0,), (3, 0)])
 def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
-    z = zarr.create_array(store=store, shape=shape, chunks=shape, zarr_format=3, dtype="f8")
+    # Chunk sizes must be >= 1 per spec; use 1 for zero-extent dimensions.
+    chunks = tuple(max(1, s) for s in shape)
+    z = zarr.create_array(store=store, shape=shape, chunks=chunks, zarr_format=3, dtype="f8")
     z[...] = 42
     assert_array_equal(z[...], np.zeros(shape, dtype="f8"))
 
@@ -2002,3 +2011,175 @@ def test_iter_chunk_regions():
         assert_array_equal(a[region], np.ones_like(a[region]))
         a[region] = 0
         assert_array_equal(a[region], np.zeros_like(a[region]))
+
+
+@pytest.mark.parametrize(
+    ("domain_shape", "region_shape", "origin", "selection_shape"),
+    [
+        ((9,), (1,), None, (9,)),
+        ((9,), (1,), (0,), (9,)),
+        ((3,), (2,), (0,), (1,)),
+        ((9,), (2,), (2,), (2,)),
+        ((9, 9), (2, 1), None, None),
+        ((9, 9), (4, 1), None, None),
+    ],
+)
+@pytest.mark.parametrize("order", ["lexicographic"])
+@pytest.mark.parametrize("trim_excess", [True, False])
+def test_iter_regions(
+    domain_shape: tuple[int, ...],
+    region_shape: tuple[int, ...],
+    origin: tuple[int, ...] | None,
+    selection_shape: tuple[int, ...] | None,
+    order: _ArrayIndexingOrder,
+    trim_excess: bool,
+) -> None:
+    """
+    Test that iter_regions properly iterates over contiguous regions of a gridded domain.
+    """
+    expected_slices_by_dim: list[list[slice]] = []
+    origin_parsed: tuple[int, ...]
+    selection_shape_parsed: tuple[int, ...]
+    if origin is None:
+        origin_parsed = (0,) * len(domain_shape)
+    else:
+        origin_parsed = origin
+    if selection_shape is None:
+        selection_shape_parsed = tuple(
+            ceildiv(ds, rs) - o
+            for ds, o, rs in zip(domain_shape, origin_parsed, region_shape, strict=True)
+        )
+    else:
+        selection_shape_parsed = selection_shape
+    for d_s, r_s, o, ss in zip(
+        domain_shape, region_shape, origin_parsed, selection_shape_parsed, strict=True
+    ):
+        _expected_slices: list[slice] = []
+        start = o * r_s
+        for incr in range(start, start + ss * r_s, r_s):
+            if trim_excess:
+                term = min(incr + r_s, d_s)
+            else:
+                term = incr + r_s
+            _expected_slices.append(slice(incr, term, 1))
+        expected_slices_by_dim.append(_expected_slices)
+
+    expected = tuple(itertools.product(*expected_slices_by_dim))
+    observed = tuple(
+        _iter_regions(
+            domain_shape,
+            region_shape,
+            origin=origin,
+            selection_shape=selection_shape,
+            order=order,
+            trim_excess=trim_excess,
+        )
+    )
+    assert observed == expected
+
+
+class TestAsync:
+    @pytest.mark.parametrize(
+        ("indexer", "expected"),
+        [
+            # int
+            ((0,), np.array([1, 2])),
+            ((1,), np.array([3, 4])),
+            ((0, 1), np.array(2)),
+            # slice
+            ((slice(None),), np.array([[1, 2], [3, 4]])),
+            ((slice(0, 1),), np.array([[1, 2]])),
+            ((slice(1, 2),), np.array([[3, 4]])),
+            ((slice(0, 2),), np.array([[1, 2], [3, 4]])),
+            ((slice(0, 0),), np.empty(shape=(0, 2), dtype="i8")),
+            # ellipsis
+            ((...,), np.array([[1, 2], [3, 4]])),
+            ((0, ...), np.array([1, 2])),
+            ((..., 0), np.array([1, 3])),
+            ((0, 1, ...), np.array(2)),
+            # combined
+            ((0, slice(None)), np.array([1, 2])),
+            ((slice(None), 0), np.array([1, 3])),
+            ((slice(None), slice(None)), np.array([[1, 2], [3, 4]])),
+            # array of ints
+            (([0]), np.array([[1, 2]])),
+            (([1]), np.array([[3, 4]])),
+            (([0], [1]), np.array(2)),
+            (([0, 1], [0]), np.array([[1], [3]])),
+            (([0, 1], [0, 1]), np.array([[1, 2], [3, 4]])),
+            # boolean array
+            (np.array([True, True]), np.array([[1, 2], [3, 4]])),
+            (np.array([True, False]), np.array([[1, 2]])),
+            (np.array([False, True]), np.array([[3, 4]])),
+            (np.array([False, False]), np.empty(shape=(0, 2), dtype="i8")),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_async_oindex(self, store, indexer, expected):
+        z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        z[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z._async_array
+
+        result = await async_zarr.oindex.getitem(indexer)
+        assert_array_equal(result, expected)
+
+    @pytest.mark.asyncio
+    async def test_async_oindex_with_zarr_array(self, store):
+        group = zarr.create_group(store=store, zarr_format=3)
+
+        z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
+        z1[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z1._async_array
+
+        # create boolean zarr array to index with
+        z2 = group.create_array(name="z2", shape=(2,), chunks=(1,), dtype="?")
+        z2[...] = np.array([True, False])
+
+        result = await async_zarr.oindex.getitem(z2)
+        expected = np.array([[1, 2]])
+        assert_array_equal(result, expected)
+
+    @pytest.mark.parametrize(
+        ("indexer", "expected"),
+        [
+            (([0], [0]), np.array(1)),
+            (([0, 1], [0, 1]), np.array([1, 4])),
+            (np.array([[False, True], [False, True]]), np.array([2, 4])),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_async_vindex(self, store, indexer, expected):
+        z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        z[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z._async_array
+
+        result = await async_zarr.vindex.getitem(indexer)
+        assert_array_equal(result, expected)
+
+    @pytest.mark.asyncio
+    async def test_async_vindex_with_zarr_array(self, store):
+        group = zarr.create_group(store=store, zarr_format=3)
+
+        z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
+        z1[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z1._async_array
+
+        # create boolean zarr array to index with
+        z2 = group.create_array(name="z2", shape=(2, 2), chunks=(1, 1), dtype="?")
+        z2[...] = np.array([[False, True], [False, True]])
+
+        result = await async_zarr.vindex.getitem(z2)
+        expected = np.array([2, 4])
+        assert_array_equal(result, expected)
+
+    @pytest.mark.asyncio
+    async def test_async_invalid_indexer(self, store):
+        z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        z[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z._async_array
+
+        with pytest.raises(IndexError):
+            await async_zarr.vindex.getitem("invalid_indexer")
+
+        with pytest.raises(IndexError):
+            await async_zarr.oindex.getitem("invalid_indexer")

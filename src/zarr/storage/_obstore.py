@@ -4,8 +4,9 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from itertools import chain
+from operator import itemgetter
+from typing import TYPE_CHECKING, Self, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -14,18 +15,18 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer.core import BufferPrototype
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
+from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Coroutine, Iterable
+    from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
 
@@ -36,7 +37,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-class ObjectStore(Store):
+class ObjectStore[T_Store: "_UpstreamObjectStore"](Store):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -53,7 +54,7 @@ class ObjectStore(Store):
     raise an issue with any comments/concerns about the store.
     """
 
-    store: _UpstreamObjectStore
+    store: T_Store
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
@@ -63,13 +64,20 @@ class ObjectStore(Store):
         if not self.read_only == value.read_only:
             return False
 
-        return self.store == value.store
+        return self.store == value.store  # type: ignore[no-any-return]
 
-    def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
+    def __init__(self, store: T_Store, *, read_only: bool = False) -> None:
         if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
+
+    def with_read_only(self, read_only: bool = False) -> Self:
+        # docstring inherited
+        return type(self)(
+            store=self.store,
+            read_only=read_only,
+        )
 
     def __str__(self) -> str:
         return f"object_store://{self.store}"
@@ -183,37 +191,46 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        await obs.delete_async(self.store, key)
 
-    @property
-    def supports_partial_writes(self) -> bool:
-        # docstring inherited
-        return False
+        # Some obstore stores such as local filesystems, GCP and Azure raise an error
+        # when deleting a non-existent key, while others such as S3 and in-memory do
+        # not. We suppress the error to make the behavior consistent across all obstore
+        # stores. This is also in line with the behavior of the other Zarr store adapters.
+        with contextlib.suppress(FileNotFoundError):
+            await obs.delete_async(self.store, key)
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
+    async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        raise NotImplementedError
+        import obstore as obs
+
+        self._check_writable()
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+
+        metas = await obs.list(self.store, prefix).collect_async()
+        keys = [(m["path"],) for m in metas]
+        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
     def supports_listing(self) -> bool:
         # docstring inherited
         return True
 
-    def list(self) -> AsyncGenerator[str, None]:
-        # docstring inherited
+    async def _list(self, prefix: str | None = None) -> AsyncGenerator[ObjectMeta, None]:
         import obstore as obs
 
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
-        return _transform_list(objects)
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        async for batch in objects:
+            for item in batch:
+                yield item
+
+    def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
+        return (obj["path"] async for obj in self._list())
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        import obstore as obs
-
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
-        return _transform_list(objects)
+        return (obj["path"] async for obj in self._list(prefix))
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
@@ -222,20 +239,21 @@ class ObjectStore(Store):
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
+    async def getsize(self, key: str) -> int:
+        # docstring inherited
+        import obstore as obs
 
-async def _transform_list(
-    list_stream: ListStream[list[ObjectMeta]],
-) -> AsyncGenerator[str, None]:
-    """
-    Transform the result of list into an async generator of paths.
-    """
-    async for batch in list_stream:
-        for item in batch:
-            yield item["path"]
+        resp = await obs.head_async(self.store, key)
+        return resp["size"]
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        # docstring inherited
+        sizes = [obj["size"] async for obj in self._list(prefix=prefix)]
+        return sum(sizes)
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[list[ObjectMeta]]], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]], prefix: str
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.
@@ -245,10 +263,11 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
-    objects = [obj["path"].removeprefix(prefix).lstrip("/") for obj in list_result["objects"]]
-    for item in prefixes + objects:
-        yield item
+    prefix = prefix.rstrip("/")
+    for path in chain(
+        list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
+    ):
+        yield _relativize_path(path=path, prefix=prefix)
 
 
 class _BoundedRequest(TypedDict):

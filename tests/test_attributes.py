@@ -1,18 +1,29 @@
+import json
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 import pytest
 
 import zarr.core
 import zarr.core.attributes
 import zarr.storage
+from tests.conftest import deep_nan_equal
+from zarr.core.common import ZarrFormat
+
+if TYPE_CHECKING:
+    from zarr.types import AnyArray
 
 
-def test_put() -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "data", [{"inf": np.inf, "-inf": -np.inf, "nan": np.nan}, {"a": 3, "c": 4}]
+)
+def test_put(data: dict[str, Any], zarr_format: ZarrFormat) -> None:
     store = zarr.storage.MemoryStore()
-    attrs = zarr.core.attributes.Attributes(
-        zarr.Group.from_store(store, attributes={"a": 1, "b": 2})
-    )
-    attrs.put({"a": 3, "c": 4})
-    expected = {"a": 3, "c": 4}
-    assert dict(attrs) == expected
+    attrs = zarr.core.attributes.Attributes(zarr.Group.from_store(store, zarr_format=zarr_format))
+    attrs.put(data)
+    expected = json.loads(json.dumps(data, allow_nan=True))
+    assert deep_nan_equal(dict(attrs), expected)
 
 
 def test_asdict() -> None:
@@ -66,7 +77,7 @@ def test_update_no_changes() -> None:
 @pytest.mark.parametrize("group", [True, False])
 def test_del_works(group: bool) -> None:
     store = zarr.storage.MemoryStore()
-    z: zarr.Group | zarr.Array
+    z: zarr.Group | AnyArray
     if group:
         z = zarr.create_group(store)
     else:
@@ -76,7 +87,7 @@ def test_del_works(group: bool) -> None:
     del z.attrs["a"]
     assert dict(z.attrs) == {"c": 4}
 
-    z2: zarr.Group | zarr.Array
+    z2: zarr.Group | AnyArray
     if group:
         z2 = zarr.open_group(store)
     else:

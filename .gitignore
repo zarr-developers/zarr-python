@@ -49,9 +49,9 @@ coverage.xml
 # Django stuff:
 *.log
 
-# Sphinx documentation
+# Documentation
+site/
 docs/_build/
-docs/api
 docs/data
 data
 data.zip
@@ -90,3 +90,7 @@ tests/.hypothesis
 .hypothesis/
 
 zarr/version.py
+zarr.egg-info/
+
+# zarr-metadata package lockfile (a library, not an app)
+packages/zarr-metadata/uv.lock

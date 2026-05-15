@@ -18,19 +18,23 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import BasicSelection, morton_order_iter
+from zarr.core.indexing import BasicSelection, decode_morton, morton_order_iter
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.dtype import UInt8
+from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
-    from zarr.core.common import ChunkCoords, MemoryOrder
+    from zarr.core.common import MemoryOrder
+    from zarr.types import AnyAsyncArray
 
 
 @dataclass(frozen=True)
 class _AsyncArrayProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
 
     def __getitem__(self, selection: BasicSelection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
@@ -38,7 +42,7 @@ class _AsyncArrayProxy:
 
 @dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
     selection: BasicSelection
 
     async def get(self) -> NDArrayLikeOrScalar:
@@ -167,7 +171,8 @@ def test_open(store: Store) -> None:
     assert a.metadata == b.metadata
 
 
-def test_morton() -> None:
+def test_morton_exact_order() -> None:
+    """Test exact morton ordering for power-of-2 shapes."""
     assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
     assert list(morton_order_iter((2, 2, 2))) == [
         (0, 0, 0),
@@ -202,21 +207,59 @@ def test_morton() -> None:
 @pytest.mark.parametrize(
     "shape",
     [
-        [2, 2, 2],
-        [5, 2],
-        [2, 5],
-        [2, 9, 2],
-        [3, 2, 12],
-        [2, 5, 1],
-        [4, 3, 6, 2, 7],
-        [3, 2, 1, 6, 4, 5, 2],
+        (2, 2, 2),
+        (5, 2),
+        (2, 5),
+        (2, 9, 2),
+        (3, 2, 12),
+        (2, 5, 1),
+        (4, 3, 6, 2, 7),
+        (3, 2, 1, 6, 4, 5, 2),
+        (1,),
+        (1, 1),
+        (5, 1, 3),
+        (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
-def test_morton2(shape: ChunkCoords) -> None:
+def test_morton_is_permutation(shape: tuple[int, ...]) -> None:
+    """Test that morton_order_iter produces every valid coordinate exactly once."""
+    import itertools
+
+    from zarr.core.common import product
+
     order = list(morton_order_iter(shape))
-    for i, x in enumerate(order):
-        assert x not in order[:i]  # no duplicates
-        assert all(x[j] < shape[j] for j in range(len(shape)))  # all indices are within bounds
+    expected_len = product(shape)
+    # completeness: every valid coordinate is present
+    assert len(order) == expected_len
+    # no duplicates
+    assert len(set(order)) == expected_len
+    # all coordinates are within bounds
+    assert all(all(c < s for c, s in zip(coord, shape, strict=True)) for coord in order)
+    # the set of coordinates equals the full cartesian product
+    assert set(order) == set(itertools.product(*(range(s) for s in shape)))
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 2),
+        (4, 4),
+        (2, 2, 2),
+        (4, 4, 4),
+        (2, 2, 2, 2),
+    ],
+)
+def test_morton_ordering(shape: tuple[int, ...]) -> None:
+    """Test that the iteration order matches consecutive decode_morton outputs.
+
+    For power-of-2 shapes, every decode_morton output is in-bounds,
+    so the ordering should be exactly decode_morton(0), decode_morton(1), ...
+    """
+
+    order = list(morton_order_iter(shape))
+    for i, coord in enumerate(order):
+        assert coord == decode_morton(i, shape)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -290,91 +333,37 @@ async def test_dimension_names(store: Store) -> None:
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_invalid_metadata(store: Store) -> None:
-    spath2 = StorePath(store, "invalid_codec_order")
-    with pytest.raises(TypeError):
-        Array.create(
-            spath2,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
+@pytest.mark.parametrize(
+    "codecs",
+    [
+        (BytesCodec(), TransposeCodec(order=order_from_dim("F", 2))),
+        (TransposeCodec(order=order_from_dim("F", 2)),),
+    ],
+)
+def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
+    shape = (16,)
+    chunks = (16,)
+    data_type = UInt8()
+    with pytest.raises(ValueError, match="The `order` tuple must have as many entries"):
+        ArrayV3Metadata(
+            shape=shape,
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
             fill_value=0,
-            codecs=[
-                BytesCodec(),
-                TransposeCodec(order=order_from_dim("F", 2)),
-            ],
-        )
-    spath3 = StorePath(store, "invalid_order")
-    with pytest.raises(TypeError):
-        Array.create(
-            spath3,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                TransposeCodec(order="F"),  # type: ignore[arg-type]
-                BytesCodec(),
-            ],
-        )
-    spath4 = StorePath(store, "invalid_missing_bytes_codec")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath4,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                TransposeCodec(order=order_from_dim("F", 2)),
-            ],
-        )
-    spath5 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath5,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8,)),
-            ],
-        )
-    spath6 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath6,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 7)),
-            ],
-        )
-    spath7 = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(UserWarning):
-        Array.create(
-            spath7,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 8)),
-                GzipCodec(),
-            ],
+            data_type=data_type,
+            codecs=codecs,
+            attributes={},
+            dimension_names=None,
         )
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_invalid_metadata_create_array(store: Store) -> None:
-    spath = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(UserWarning):
+def test_invalid_metadata_create_array() -> None:
+    with pytest.warns(
+        ZarrUserWarning,
+        match="codec disables partial reads and writes, which may lead to inefficient performance",
+    ):
         zarr.create_array(
-            spath,
+            {},
             shape=(16, 16),
             chunks=(16, 16),
             dtype=np.dtype("uint8"),

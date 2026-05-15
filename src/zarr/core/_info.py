@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 import dataclasses
 import textwrap
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-import numcodecs.abc
-import numpy as np
-
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.core.common import ZarrFormat
-from zarr.core.metadata.v3 import DataType
+if TYPE_CHECKING:
+    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+    from zarr.abc.numcodec import Numcodec
+    from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -78,7 +79,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: np.dtype[Any] | DataType
+    _data_type: ZDType[TBaseDType, TBaseScalar]
     _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
@@ -86,9 +87,9 @@ class ArrayInfo:
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
-    _filters: tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...] = ()
+    _filters: tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...] = ()
     _serializer: ArrayBytesCodec | None = None
-    _compressors: tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...] = ()
+    _compressors: tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...] = ()
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None
@@ -116,7 +117,7 @@ class ArrayInfo:
 
         if self._chunk_shape is None:
             # for non-regular chunk grids
-            kwargs["chunk_shape"] = "<variable>"
+            kwargs["_chunk_shape"] = "<variable>"
 
         template += "\nFilters            : {_filters}"
 
@@ -131,7 +132,7 @@ class ArrayInfo:
 
         if self._count_bytes_stored is not None:
             template += "\nNo. bytes stored   : {_count_bytes_stored}"
-            kwargs["_count_stored"] = byte_info(self._count_bytes_stored)
+            kwargs["_count_bytes_stored"] = byte_info(self._count_bytes_stored)
 
         if (
             self._count_bytes is not None

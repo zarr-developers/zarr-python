@@ -8,21 +8,21 @@ Example:
     to be ``your.module.NewBytesCodec``. Donfig can be configured programmatically, by environment variables, or from
     YAML files in standard locations.
 
-    .. code-block:: python
+    ```python
+    from your.module import NewBytesCodec
+    from zarr.core.config import register_codec, config
 
-        from your.module import NewBytesCodec
-        from zarr.core.config import register_codec, config
-
-        register_codec("bytes", NewBytesCodec)
-        config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    register_codec("bytes", NewBytesCodec)
+    config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    ```
 
     Instead of setting the value programmatically with ``config.set``, you can also set the value with an environment
     variable. The environment variable ``ZARR_CODECS__BYTES`` can be set to ``your.module.NewBytesCodec``. The double
     underscore ``__`` is used to indicate nested access.
 
-    .. code-block:: bash
-
-        export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```bash
+    export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
 """
@@ -66,9 +66,28 @@ class Config(DConfig):  # type: ignore[misc]
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
-            {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+            {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
 
+
+# these keys were removed from the config as part of the 3.1.0 release.
+# these deprecations should be removed in 3.1.1 or thereabouts.
+deprecations = {
+    "array.v2_default_compressor.numeric": None,
+    "array.v2_default_compressor.string": None,
+    "array.v2_default_compressor.bytes": None,
+    "array.v2_default_filters.string": None,
+    "array.v2_default_filters.bytes": None,
+    "array.v3_default_filters.numeric": None,
+    "array.v3_default_filters.raw": None,
+    "array.v3_default_filters.bytes": None,
+    "array.v3_default_serializer.numeric": None,
+    "array.v3_default_serializer.string": None,
+    "array.v3_default_serializer.bytes": None,
+    "array.v3_default_compressors.string": None,
+    "array.v3_default_compressors.bytes": None,
+    "array.v3_default_compressors": None,
+}
 
 # The default configuration for zarr
 config = Config(
@@ -79,34 +98,9 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
-                "v2_default_compressor": {
-                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
-                    "string": {"id": "zstd", "level": 0, "checksum": False},
-                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
-                },
-                "v2_default_filters": {
-                    "numeric": None,
-                    "string": [{"id": "vlen-utf8"}],
-                    "bytes": [{"id": "vlen-bytes"}],
-                    "raw": None,
-                },
-                "v3_default_filters": {"numeric": [], "string": [], "bytes": []},
-                "v3_default_serializer": {
-                    "numeric": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "string": {"name": "vlen-utf8"},
-                    "bytes": {"name": "vlen-bytes"},
-                },
-                "v3_default_compressors": {
-                    "numeric": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "string": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "bytes": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                },
+                "read_missing_chunks": True,
+                "target_shard_size_bytes": None,
+                "rectilinear_chunks": False,
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": 1 if IS_WASM else None},
@@ -126,11 +120,33 @@ config = Config(
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+                "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
+                "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
+                "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
+                "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
+                "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
+                "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
+                "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
+                "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
+                "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
+                "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
+                "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
+                "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
+                "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
+                "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
+                "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
+                "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
+                "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
+                "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
+                "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
+                "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
+                "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
             },
-            "buffer": "zarr.core.buffer.cpu.Buffer",
-            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "buffer": "zarr.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.buffer.cpu.NDBuffer",
         }
     ],
+    deprecations=deprecations,
 )
 
 

@@ -13,14 +13,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr.abc.store import Store
-    from zarr.core.array import Array
     from zarr.core.common import ZarrFormat
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+    from zarr.types import AnyArray
 
 
 def create_nodes(
     *, store: Store, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-) -> Iterator[tuple[str, Group | Array]]:
+) -> Iterator[tuple[str, Group | AnyArray]]:
     """Create a collection of arrays and / or groups concurrently.
 
     Note: no attempt is made to validate that these arrays and / or groups collectively form a
@@ -53,7 +53,7 @@ def create_hierarchy(
     store: Store,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-) -> Iterator[tuple[str, Group | Array]]:
+) -> Iterator[tuple[str, Group | AnyArray]]:
     """
     Create a complete zarr hierarchy from a collection of metadata objects.
 
@@ -94,15 +94,17 @@ def create_hierarchy(
 
     Examples
     --------
-    >>> from zarr import create_hierarchy
-    >>> from zarr.storage import MemoryStore
-    >>> from zarr.core.group import GroupMetadata
+    ```python
+    from zarr import create_hierarchy
+    from zarr.storage import MemoryStore
+    from zarr.core.group import GroupMetadata
 
-    >>> store = MemoryStore()
-    >>> nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
-    >>> nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
-    >>> print(nodes)
+    store = MemoryStore()
+    nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
+    print(nodes)
     # {'a': GroupMetadata(attributes={'name': 'leaf'}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+    ```
     """
     coro = create_hierarchy_async(store=store, nodes=nodes, overwrite=overwrite)
 
@@ -115,7 +117,7 @@ def create_rooted_hierarchy(
     store: Store,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-) -> Group | Array:
+) -> Group | AnyArray:
     """
     Create a Zarr hierarchy with a root, and return the root node, which could be a ``Group``
     or ``Array`` instance.
@@ -140,7 +142,7 @@ def create_rooted_hierarchy(
     return _parse_async_node(async_node)
 
 
-def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
+def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyArray | Group:
     """
     Get an Array or Group from a path in a Store.
 

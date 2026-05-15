@@ -6,7 +6,7 @@ import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
@@ -19,10 +19,8 @@ if TYPE_CHECKING:
 
     counter: defaultdict[str, int]
 
-T_Store = TypeVar("T_Store", bound=Store)
 
-
-class LoggingStore(WrapperStore[T_Store]):
+class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
     """
     Store that logs all calls to another wrapped store.
 
@@ -77,6 +75,9 @@ class LoggingStore(WrapperStore[T_Store]):
         )
         return handler
 
+    def _with_store(self, store: T_Store) -> Self:
+        return type(self)(store=store, log_level=self.log_level, log_handler=self.log_handler)
+
     @contextmanager
     def log(self, hint: Any = "") -> Generator[None, None, None]:
         """Context manager to log method calls
@@ -114,11 +115,6 @@ class LoggingStore(WrapperStore[T_Store]):
     def supports_deletes(self) -> bool:
         with self.log():
             return self._store.supports_deletes
-
-    @property
-    def supports_partial_writes(self) -> bool:
-        with self.log():
-            return self._store.supports_partial_writes
 
     @property
     def supports_listing(self) -> bool:
@@ -165,7 +161,7 @@ class LoggingStore(WrapperStore[T_Store]):
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):
-            return type(self) is type(other) and self._store.__eq__(other._store)  # type: ignore[attr-defined]
+            return type(self) is type(other) and self._store.__eq__(other._store)
 
     async def get(
         self,
@@ -206,14 +202,6 @@ class LoggingStore(WrapperStore[T_Store]):
         # docstring inherited
         with self.log(key):
             return await self._store.delete(key=key)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
-    ) -> None:
-        # docstring inherited
-        keys = ",".join([k[0] for k in key_start_values])
-        with self.log(keys):
-            return await self._store.set_partial_values(key_start_values=key_start_values)
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited

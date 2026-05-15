@@ -13,6 +13,7 @@ import numpy.typing as npt
 
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -35,7 +36,7 @@ class Buffer(core.Buffer):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -72,6 +73,7 @@ class Buffer(core.Buffer):
             )
             warnings.warn(
                 msg,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         self._data = cp.asarray(array_like)
@@ -88,7 +90,7 @@ class Buffer(core.Buffer):
 
     @classmethod
     def from_buffer(cls, buffer: core.Buffer) -> Self:
-        """Create an GPU Buffer given an arbitrary Buffer
+        """Create a GPU Buffer given an arbitrary Buffer
         This will try to be zero-copy if `buffer` is already on the
         GPU and will trigger a copy if not.
 
@@ -105,14 +107,15 @@ class Buffer(core.Buffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
-    def __add__(self, other: core.Buffer) -> Self:
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("B")
-        gpu_other = Buffer(other_array)
-        gpu_other_array = gpu_other.as_array_like()
-        return self.__class__(
-            cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
-        )
+    def combine(self, others: Iterable[core.Buffer]) -> Self:
+        data = [cp.asanyarray(self._data)]
+        for other in others:
+            other_array = other.as_array_like()
+            assert other_array.dtype == np.dtype("B")
+            gpu_other = Buffer(other_array)
+            gpu_other_array = gpu_other.as_array_like()
+            data.append(cp.asanyarray(gpu_other_array))
+        return self.__class__(cp.concatenate(data))
 
 
 class NDBuffer(core.NDBuffer):
@@ -120,7 +123,7 @@ class NDBuffer(core.NDBuffer):
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -179,6 +182,12 @@ class NDBuffer(core.NDBuffer):
         return ret
 
     @classmethod
+    def empty(
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(cp.empty(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
@@ -220,5 +229,9 @@ class NDBuffer(core.NDBuffer):
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.gpu.NDBuffer")
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.gpu.NDBuffer")

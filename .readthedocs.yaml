@@ -5,22 +5,17 @@ build:
   tools:
     python: "3.12"
   jobs:
+    install:
+      - pip install --upgrade pip
+      - pip install .[remote] --group docs
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
         then
           towncrier build --version Unreleased --yes;
         fi
-
-sphinx:
-  configuration: docs/conf.py
-  fail_on_warning: true
-
-formats: all
-
-python:
-   install:
-   - method: pip
-     path: .
-     extra_requirements:
-        - docs
+    build:
+        html:
+          - mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
+mkdocs:
+  configuration: mkdocs.yml

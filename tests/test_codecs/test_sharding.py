@@ -16,8 +16,9 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
+from zarr.codecs.sharding import MAX_UINT_64, _ShardIndex
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.storage import StorePath
+from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -228,17 +229,23 @@ def test_sharding_partial_overwrite(
     assert np.array_equal(data, read_data)
 
     data += 10
-    a[:10, :10, :10] = data
+    if isinstance(store, ZipStore):
+        with pytest.warns(UserWarning, match="Duplicate name: "):
+            a[:10, :10, :10] = data
+    else:
+        a[:10, :10, :10] = data
     read_data = a[0:10, 0:10, 0:10]
     assert np.array_equal(data, read_data)
 
 
+# Zip storage raises a warning about a duplicate name, which we ignore.
+@pytest.mark.filterwarnings("ignore:Duplicate name.*:UserWarning")
 @pytest.mark.parametrize(
     "array_fixture",
     [
-        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+        ArrayRequest(shape=(127, 128, 129), dtype="uint16", order="F"),
     ],
-    indirect=["array_fixture"],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "outer_index_location",
@@ -257,24 +264,23 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
+    # compressors=None ensures no BytesBytesCodec is added, which keeps
+    # supports_partial_decode=True and exercises the partial decode path
+    a = zarr.create_array(
         spath,
-        shape=data.shape,
-        chunk_shape=(64, 64, 64),
-        dtype=data.dtype,
-        fill_value=0,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(32, 32, 32),
-                codecs=[
-                    ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
-                ],
-                index_location=outer_index_location,
-            )
-        ],
+        data=data,
+        chunks=(64,) * data.ndim,
+        compressors=None,
+        serializer=ShardingCodec(
+            chunk_shape=(32,) * data.ndim,
+            codecs=[
+                ShardingCodec(chunk_shape=(16,) * data.ndim, index_location=inner_index_location)
+            ],
+            index_location=outer_index_location,
+        ),
     )
 
-    a[:, :, :] = data
+    a[:] = data
 
     read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
     assert isinstance(read_data, NDArrayLike)
@@ -320,13 +326,10 @@ def test_nested_sharding_create_array(
         filters=None,
         compressors=None,
     )
-    print(a.metadata.to_dict())
 
-    a[:, :, :] = data
+    a[:] = data
 
-    read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
-    assert isinstance(read_data, NDArrayLike)
-    assert data.shape == read_data.shape
+    read_data = a[:]
     assert np.array_equal(data, read_data)
 
 
@@ -481,3 +484,101 @@ def test_invalid_metadata(store: Store) -> None:
             dtype=np.dtype("uint8"),
             fill_value=0,
         )
+
+
+def test_invalid_shard_shape() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            f"Chunk edge length {16} in dimension {0} is not "
+            f"divisible by the shard's inner chunk size {9}\\."
+        ),
+    ):
+        zarr.create_array(
+            {},
+            shape=(16, 16),
+            shards=(16, 16),
+            chunks=(9, 9),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+        )
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3691.
+
+    Mixed integer/list indexing on sharded arrays should return the same
+    shape and data as on equivalent chunked arrays.
+    """
+    import numpy as np
+
+    data = np.arange(200 * 100 * 10, dtype=np.uint8).reshape(200, 100, 10)
+
+    chunked = zarr.create_array(
+        store,
+        name="chunked",
+        shape=(200, 100, 10),
+        dtype=np.uint8,
+        chunks=(200, 100, 1),
+        overwrite=True,
+    )
+    chunked[:, :, :] = data
+
+    sharded = zarr.create_array(
+        store,
+        name="sharded",
+        shape=(200, 100, 10),
+        dtype=np.uint8,
+        chunks=(200, 100, 1),
+        shards=(200, 100, 10),
+        overwrite=True,
+    )
+    sharded[:, :, :] = data
+
+    # Mixed integer + list indexing
+    c = chunked[0:10, 0, [0, 1]]  # type: ignore[index]
+    s = sharded[0:10, 0, [0, 1]]  # type: ignore[index]
+    assert c.shape == s.shape == (10, 2), (  # type: ignore[union-attr]
+        f"Expected (10, 2), got chunked={c.shape}, sharded={s.shape}"  # type: ignore[union-attr]
+    )
+    np.testing.assert_array_equal(c, s)
+
+    # Multiple integer axes
+    c2 = chunked[0, 0, [0, 1, 2]]  # type: ignore[index]
+    s2 = sharded[0, 0, [0, 1, 2]]  # type: ignore[index]
+    assert c2.shape == s2.shape == (3,)  # type: ignore[union-attr]
+    np.testing.assert_array_equal(c2, s2)
+
+    # Slice + integer + slice
+    c3 = chunked[0:5, 1, 0:3]
+    s3 = sharded[0:5, 1, 0:3]
+    assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
+    np.testing.assert_array_equal(c3, s3)
+
+
+def test_sharding_zero_dimensional() -> None:
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3751"""
+    arr = zarr.create_array({}, shape=(), dtype="f4", chunks=(), shards=())
+    arr[()] = 42.0
+    assert arr[()] == pytest.approx(42.0)
+    # Overwriting should also work
+    arr[()] = 43.0
+    assert arr[()] == pytest.approx(43.0)
+
+
+def test_shard_index_get_chunk_slices_vectorized_zero_dimensional() -> None:
+    """Directly cover the 0-D path in _ShardIndex.get_chunk_slices_vectorized."""
+    # For a 0D array offsets_and_lengths has shape (2,) — reshape to (1, 2) inside.
+    index = _ShardIndex(np.array([10, 4], dtype=np.uint64))
+    chunk_coords = np.empty((1, 0), dtype=np.uint64)
+    starts, ends, valid = index.get_chunk_slices_vectorized(chunk_coords)
+    np.testing.assert_array_equal(starts, np.array([10], dtype=np.uint64))
+    np.testing.assert_array_equal(ends, np.array([14], dtype=np.uint64))
+    np.testing.assert_array_equal(valid, np.array([True]))
+
+    # Empty/unwritten chunk case
+    index_empty = _ShardIndex(np.array([MAX_UINT_64, MAX_UINT_64], dtype=np.uint64))
+    starts_e, _ends_e, valid_e = index_empty.get_chunk_slices_vectorized(chunk_coords)
+    np.testing.assert_array_equal(starts_e, np.array([MAX_UINT_64], dtype=np.uint64))
+    np.testing.assert_array_equal(valid_e, np.array([False]))
