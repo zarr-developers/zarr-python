@@ -281,6 +281,21 @@ extra-dependencies = [
 test = "pytest tests/test_docs.py -v"
 list-env = "pip list"
 
+[tool.hatch.envs.pyodide]
+description = "Test environment for Pyodide/WebAssembly (Emscripten)"
+extra-dependencies = ["pyodide-build"]
+
+[tool.hatch.envs.pyodide.scripts]
+# TODO: Update to a stable Pyodide version when we release it
+setup-xbuildenv = "pyodide xbuildenv install 314.0.0a2"
+run = [
+    "pyodide venv .venv-pyodide",
+    ".venv-pyodide/bin/pip install dist/*.whl",
+    ".venv-pyodide/bin/pip install --group test",
+    ".venv-pyodide/bin/python -m pytest tests -svra",
+]
+list-env = "pip list"
+
 [tool.ruff]
 line-length = 100
 force-exclude = true
