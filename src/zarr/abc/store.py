@@ -4,13 +4,14 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from zarr.core.sync import sync
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self
 
@@ -615,6 +616,66 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int = 10,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Read many byte ranges from `key`.
+
+        Yields one batch per underlying I/O operation, each a sequence of
+        `(input_index, Buffer | None)` tuples. Batches across yields arrive in
+        completion order, not input order. The default implementation built
+        into `Store` runs the coalescer over `self.get`, so subclasses get a
+        working implementation for free; stores that have a more efficient
+        backend (e.g. ranged HTTP, S3 byte-range fetches) should override.
+
+        Parameters
+        ----------
+        key
+            Storage key to read from.
+        byte_ranges
+            Input ranges. `None` means "the whole value".
+        prototype
+            Buffer prototype, forwarded to `self.get`.
+        max_concurrency
+            Maximum number of merged fetches in flight at once.
+        max_gap_bytes
+            Two `RangeByteRequest`s separated by at most this many bytes may
+            be merged into one fetch.
+        max_coalesced_bytes
+            Upper bound on the size of a single merged fetch.
+
+        Raises
+        ------
+        BaseExceptionGroup
+            Failures from underlying fetches are reported as a
+            `BaseExceptionGroup` (PEP 654) and should be handled with
+            `except*`. Inner exceptions include `FileNotFoundError` if any
+            fetch returns `None` (i.e. `key` is absent), and any exception
+            raised by `self.get` for the corresponding range. Pending
+            fetches are cancelled as soon as one task fails, so the group
+            typically contains a single non-`CancelledError` exception even
+            under high concurrency.
+        """
+        # Local import: zarr.core._coalesce imports symbols from this module.
+        from zarr.core._coalesce import coalesced_get
+
+        fetch = partial(self.get, key, prototype)
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
+            yield group
 
     async def getsize(self, key: str) -> int:
         """

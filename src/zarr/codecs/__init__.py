@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
+from zarr.codecs.cast_value import CastValue
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.numcodecs import (
@@ -27,6 +28,7 @@ from zarr.codecs.numcodecs import (
     Zlib,
     Zstd,
 )
+from zarr.codecs.scale_offset import ScaleOffset
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
@@ -38,9 +40,11 @@ __all__ = [
     "BloscCodec",
     "BloscShuffle",
     "BytesCodec",
+    "CastValue",
     "Crc32cCodec",
     "Endian",
     "GzipCodec",
+    "ScaleOffset",
     "ShardingCodec",
     "ShardingCodecIndexLocation",
     "TransposeCodec",
@@ -50,12 +54,14 @@ __all__ = [
 ]
 
 register_codec("blosc", BloscCodec)
+register_codec("cast_value", CastValue)
 register_codec("bytes", BytesCodec)
 
 # compatibility with earlier versions of ZEP1
 register_codec("endian", BytesCodec)
 register_codec("crc32c", Crc32cCodec)
 register_codec("gzip", GzipCodec)
+register_codec("scale_offset", ScaleOffset)
 register_codec("sharding_indexed", ShardingCodec)
 register_codec("zstd", ZstdCodec)
 register_codec("vlen-utf8", VLenUTF8Codec)

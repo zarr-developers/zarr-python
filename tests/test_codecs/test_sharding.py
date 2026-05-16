@@ -17,6 +17,7 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
+from zarr.codecs.sharding import MAX_UINT_64, _ShardIndex
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.storage import StorePath, ZipStore
 
@@ -759,7 +760,7 @@ def test_invalid_shard_shape() -> None:
             {},
             shape=(16, 16),
             shards=(16, 16),
-            chunks=(9,),
+            chunks=(9, 9),
             dtype=np.dtype("uint8"),
             fill_value=0,
         )
@@ -816,3 +817,30 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
+
+
+def test_sharding_zero_dimensional() -> None:
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3751"""
+    arr = zarr.create_array({}, shape=(), dtype="f4", chunks=(), shards=())
+    arr[()] = 42.0
+    assert arr[()] == pytest.approx(42.0)
+    # Overwriting should also work
+    arr[()] = 43.0
+    assert arr[()] == pytest.approx(43.0)
+
+
+def test_shard_index_get_chunk_slices_vectorized_zero_dimensional() -> None:
+    """Directly cover the 0-D path in _ShardIndex.get_chunk_slices_vectorized."""
+    # For a 0D array offsets_and_lengths has shape (2,) — reshape to (1, 2) inside.
+    index = _ShardIndex(np.array([10, 4], dtype=np.uint64))
+    chunk_coords = np.empty((1, 0), dtype=np.uint64)
+    starts, ends, valid = index.get_chunk_slices_vectorized(chunk_coords)
+    np.testing.assert_array_equal(starts, np.array([10], dtype=np.uint64))
+    np.testing.assert_array_equal(ends, np.array([14], dtype=np.uint64))
+    np.testing.assert_array_equal(valid, np.array([True]))
+
+    # Empty/unwritten chunk case
+    index_empty = _ShardIndex(np.array([MAX_UINT_64, MAX_UINT_64], dtype=np.uint64))
+    starts_e, _ends_e, valid_e = index_empty.get_chunk_slices_vectorized(chunk_coords)
+    np.testing.assert_array_equal(starts_e, np.array([MAX_UINT_64], dtype=np.uint64))
+    np.testing.assert_array_equal(valid_e, np.array([False]))
