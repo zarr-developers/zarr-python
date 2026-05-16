@@ -26,7 +26,6 @@ from zarr.core.dtype.common import (
     HasLength,
     HasObjectCodec,
     check_dtype_spec_v2,
-    v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import (
     check_json_str,
@@ -114,6 +113,9 @@ class FixedLengthUTF32(
 
     Wraps the ``np.dtypes.StrDType`` data type. Scalars for this data type are instances of
     ``np.str_``.
+
+    The Zarr V3 specification for this data type is defined at
+    https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/fixed_length_utf32.
 
     Attributes
     ----------
@@ -246,7 +248,6 @@ class FixedLengthUTF32(
         if zarr_format == 2:
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
-            v3_unstable_dtype_warning(self)
             return {
                 "name": self._zarr_v3_name,
                 "configuration": {"length_bytes": self.length * self.code_point_bytes},
