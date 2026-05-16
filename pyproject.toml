@@ -92,11 +92,11 @@ test = [
     "pytest-accept",
     "numpydoc",
     "hypothesis",
-    "pytest-xdist",
+    "pytest-xdist; sys_platform != 'emscripten'",
     "pytest-benchmark",
     "pytest-codspeed",
     "tomlkit",
-    "uv",
+    "uv; sys_platform != 'emscripten'",
 ]
 remote-tests = [
     {include-group = "test"},
