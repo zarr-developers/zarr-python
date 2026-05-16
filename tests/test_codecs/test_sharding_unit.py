@@ -1,19 +1,17 @@
-from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import cast
-
 import numpy as np
 import pytest
 
-from zarr.abc.store import ByteGetter, ByteRequest
 from zarr.codecs.sharding import (
     MAX_UINT_64,
     ShardingCodec,
     _ShardIndex,
+    _ShardingByteGetter,
     _ShardReader,
 )
-from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
+from zarr.storage._common import StorePath
+from zarr.storage._memory import MemoryStore
 
 # ============================================================================
 # _ShardIndex tests
@@ -181,180 +179,32 @@ def test_shard_index_is_dense_with_empty_chunks() -> None:
 
 
 # ============================================================================
-# _ShardingByteGetter.get_partial_values tests
-# ============================================================================
-
-
-async def test_sharding_byte_getter_get_partial_values_returns_slices() -> None:
-    """Test that get_partial_values returns correct slices from the shard dict."""
-    from zarr.codecs.sharding import _ShardingByteGetter
-
-    chunk_data = Buffer.from_bytes(b"AAAABBBB")
-    shard_dict: dict[tuple[int, ...], Buffer | None] = {(0,): chunk_data}
-    getter = _ShardingByteGetter(shard_dict, (0,))
-
-    from zarr.abc.store import RangeByteRequest
-
-    results = await getter.get_partial_values(
-        default_buffer_prototype(),
-        [RangeByteRequest(0, 4), RangeByteRequest(4, 8)],
-    )
-
-    assert len(results) == 2
-    assert results[0] is not None
-    assert results[0].as_numpy_array().tobytes() == b"AAAA"
-    assert results[1] is not None
-    assert results[1].as_numpy_array().tobytes() == b"BBBB"
-
-
-async def test_sharding_byte_getter_get_partial_values_missing_chunk() -> None:
-    """Test that get_partial_values returns None for a missing chunk."""
-    from zarr.codecs.sharding import _ShardingByteGetter
-
-    shard_dict: dict[tuple[int, ...], Buffer | None] = {}
-    getter = _ShardingByteGetter(shard_dict, (0,))
-
-    from zarr.abc.store import RangeByteRequest
-
-    results = await getter.get_partial_values(
-        default_buffer_prototype(),
-        [RangeByteRequest(0, 10)],
-    )
-
-    assert results == [None]
-
-
-# ============================================================================
-# StorePath.get_partial_values tests
-# ============================================================================
-
-
-async def test_store_path_get_partial_values() -> None:
-    """Test that StorePath.get_partial_values delegates to Store.get_partial_values."""
-    from zarr.abc.store import RangeByteRequest
-    from zarr.storage._common import StorePath
-    from zarr.storage._memory import MemoryStore
-
-    store = MemoryStore()
-    await store.set("key", Buffer.from_bytes(b"0123456789"))
-    path = StorePath(store, "key")
-
-    results = await path.get_partial_values(
-        default_buffer_prototype(),
-        [RangeByteRequest(0, 3), RangeByteRequest(7, 10)],
-    )
-
-    assert len(results) == 2
-    assert results[0] is not None
-    assert results[0].as_numpy_array().tobytes() == b"012"
-    assert results[1] is not None
-    assert results[1].as_numpy_array().tobytes() == b"789"
-
-
-async def test_store_path_get_partial_values_missing_key() -> None:
-    """Test that StorePath.get_partial_values returns None for a missing key."""
-    from zarr.abc.store import RangeByteRequest
-    from zarr.storage._common import StorePath
-    from zarr.storage._memory import MemoryStore
-
-    store = MemoryStore()
-    path = StorePath(store, "nonexistent")
-
-    results = await path.get_partial_values(
-        default_buffer_prototype(),
-        [RangeByteRequest(0, 10)],
-    )
-
-    assert results == [None]
-
-
-# ============================================================================
-# Mock ByteGetter for _load_partial_shard_maybe tests
-# ============================================================================
-
-
-@dataclass
-class MockByteGetter:
-    """Mock ByteGetter for testing."""
-
-    data: bytes
-    return_none: bool = False
-    get_call_count: int = 0
-    get_partial_values_call_count: int = 0
-
-    async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Buffer | None:
-        self.get_call_count += 1
-        if self.return_none:
-            return None
-        if byte_range is None:
-            return Buffer.from_bytes(self.data)
-        # For RangeByteRequest, extract start and end
-        start = getattr(byte_range, "start", 0)
-        end = getattr(byte_range, "end", len(self.data))
-        return Buffer.from_bytes(self.data[start:end])
-
-    async def get_partial_values(
-        self, prototype: BufferPrototype, byte_ranges: Iterable[ByteRequest | None]
-    ) -> list[Buffer | None]:
-        self.get_partial_values_call_count += 1
-        return [await self.get(prototype, br) for br in byte_ranges]
-
-
-@dataclass
-class MockByteGetterWithIndex:
-    """Mock ByteGetter that returns index on first get() and chunk data on get_partial_values()."""
-
-    index_data: bytes | None
-    chunk_data: bytes | None
-    get_call_count: int = 0
-    get_partial_values_call_count: int = 0
-    return_none_for_chunks: bool = False
-
-    async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Buffer | None:
-        self.get_call_count += 1
-        if self.index_data is None:
-            return None
-        return Buffer.from_bytes(self.index_data)
-
-    async def get_partial_values(
-        self, prototype: BufferPrototype, byte_ranges: Iterable[ByteRequest | None]
-    ) -> list[Buffer | None]:
-        self.get_partial_values_call_count += 1
-        if self.return_none_for_chunks or self.chunk_data is None:
-            return [None for _ in byte_ranges]
-        results: list[Buffer | None] = []
-        for br in byte_ranges:
-            if br is None:
-                results.append(Buffer.from_bytes(self.chunk_data))
-            else:
-                start = getattr(br, "start", 0)
-                end = getattr(br, "end", len(self.chunk_data))
-                results.append(Buffer.from_bytes(self.chunk_data[start:end]))
-        return results
-
-
-# ============================================================================
 # _load_partial_shard_maybe tests
+#
+# These exercise the partial-shard read path against a real MemoryStore wrapped
+# in a StorePath (the external-store branch in `_load_partial_shard_maybe`),
+# plus one test against a real `_ShardingByteGetter` (the in-memory branch used
+# by nested sharding).
 # ============================================================================
+
+
+async def _store_path_with_blob(key: str, blob: bytes) -> StorePath:
+    """Build a `StorePath` over a fresh `MemoryStore` containing `blob` at `key`."""
+    store = MemoryStore()
+    await store.set(key, Buffer.from_bytes(blob))
+    return StorePath(store, key)
 
 
 async def test_load_partial_shard_maybe_index_load_fails() -> None:
-    """Test _load_partial_shard_maybe returns None when index load fails."""
+    """Returns None when the shard key is absent (index load fails)."""
     codec = ShardingCodec(chunk_shape=(8,))
-    byte_getter = cast(ByteGetter, MockByteGetterWithIndex(index_data=None, chunk_data=None))
-
-    chunks_per_shard = (2,)
-    all_chunk_coords: set[tuple[int, ...]] = {(0,)}
+    byte_getter = StorePath(MemoryStore(), "missing")
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
-        chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
+        chunks_per_shard=(2,),
+        all_chunk_coords={(0,)},
     )
 
     assert result is None
@@ -363,81 +213,72 @@ async def test_load_partial_shard_maybe_index_load_fails() -> None:
 async def test_load_partial_shard_maybe_with_empty_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test _load_partial_shard_maybe skips chunks where get_chunk_slice returns None."""
+    """Chunks whose index entry is empty are silently skipped."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
 
-    # Create an index where chunk (1,) is empty (returns None from get_chunk_slice)
+    # Index where chunk (1,) is empty; the others point into the stored blob.
     index = _ShardIndex.create_empty(chunks_per_shard)
     index.set_chunk_slice((0,), slice(0, 100))
-    # (1,) is intentionally left empty
     index.set_chunk_slice((2,), slice(100, 200))
     index.set_chunk_slice((3,), slice(200, 300))
 
     async def mock_load_index(
-        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
     ) -> _ShardIndex:
         return index
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    chunk_data = b"x" * 300
-    byte_getter = cast(ByteGetter, MockByteGetter(data=chunk_data))
-
-    # Request chunks including the empty one
-    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
+    byte_getter = await _store_path_with_blob("shard", b"x" * 300)
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
+        all_chunk_coords={(0,), (1,), (2,)},
     )
 
     assert result is not None
-    # Only chunks (0,) and (2,) should be in result, (1,) is empty and skipped
     assert (0,) in result
-    assert (1,) not in result  # Empty chunk should be skipped
+    assert (1,) not in result  # empty in index
     assert (2,) in result
 
 
 async def test_load_partial_shard_maybe_all_chunks_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test _load_partial_shard_maybe returns empty dict when all requested chunks are empty."""
+    """Returns an empty dict when all requested chunks are empty (no I/O issued)."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
 
-    # Create an empty index (all chunks empty)
+    # Fully-empty index — `get_chunk_slice` returns None for every coord.
     index = _ShardIndex.create_empty(chunks_per_shard)
 
     async def mock_load_index(
-        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
     ) -> _ShardIndex:
         return index
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    byte_getter = cast(ByteGetter, MockByteGetter(data=b""))
-
-    # Request some chunks - all will be empty
-    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
+    # Empty store is fine — we never reach the chunk-read path when all are empty.
+    byte_getter = StorePath(MemoryStore(), "shard")
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
+        all_chunk_coords={(0,), (1,), (2,)},
     )
 
-    assert result is not None
-    assert result == {}  # All chunks were empty, so result is empty dict
+    assert result == {}
 
 
-async def test_load_partial_shard_uses_get_partial_values(
+async def test_load_partial_shard_returns_chunk_contents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that _load_partial_shard_maybe uses get_partial_values for chunk reads."""
+    """Returns the correct bytes for each requested chunk."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
 
@@ -446,76 +287,40 @@ async def test_load_partial_shard_uses_get_partial_values(
     index.set_chunk_slice((1,), slice(100, 200))
 
     async def mock_load_index(
-        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
     ) -> _ShardIndex:
         return index
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    chunk_data = b"A" * 100 + b"B" * 100
-    mock_getter = MockByteGetter(data=chunk_data)
-    byte_getter = cast(ByteGetter, mock_getter)
-
-    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
+    blob = b"A" * 100 + b"B" * 100
+    byte_getter = await _store_path_with_blob("shard", blob)
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
+        all_chunk_coords={(0,), (1,)},
     )
 
     assert result is not None
-    assert len(result) == 2
-    assert (0,) in result
-    assert (1,) in result
+    buf_0, buf_1 = result[(0,)], result[(1,)]
+    assert buf_0 is not None
+    assert buf_1 is not None
+    assert buf_0.to_bytes() == b"A" * 100
+    assert buf_1.to_bytes() == b"B" * 100
 
-    # get_partial_values should have been called exactly once
-    assert mock_getter.get_partial_values_call_count == 1
 
-
-async def test_load_partial_shard_single_chunk_read(
+async def test_load_partial_shard_shard_disappears_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test single chunk read (most common case for single element access)."""
-    codec = ShardingCodec(chunk_shape=(8,))
-    chunks_per_shard = (4,)
+    """If the shard key is missing when chunk reads run, returns None.
 
-    index = _ShardIndex.create_empty(chunks_per_shard)
-    index.set_chunk_slice((1,), slice(100, 200))
-
-    async def mock_load_index(
-        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
-    ) -> _ShardIndex:
-        return index
-
-    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
-
-    chunk_data = b"\x00" * 100 + b"E" * 100
-    byte_getter = cast(ByteGetter, MockByteGetter(data=chunk_data))
-
-    all_chunk_coords: set[tuple[int, ...]] = {(1,)}
-
-    result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,
-        prototype=default_buffer_prototype(),
-        chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
-    )
-
-    assert result is not None
-    assert (1,) in result
-    assert len(result) == 1
-
-    chunk1 = result[(1,)]
-    assert chunk1 is not None
-    assert chunk1.as_numpy_array().tobytes() == b"E" * 100
-
-
-async def test_load_partial_shard_chunk_load_returns_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test that chunks are omitted from result when get_partial_values returns None."""
+    This models a race: the index loaded successfully, but the shard was deleted
+    before the chunk-byte fetches landed. `Store.get_ranges` surfaces this as a
+    `BaseExceptionGroup` containing `FileNotFoundError`, which the codec catches
+    and converts to None to match the index-missing branch's behavior.
+    """
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
 
@@ -523,28 +328,136 @@ async def test_load_partial_shard_chunk_load_returns_none(
     index.set_chunk_slice((0,), slice(0, 100))
 
     async def mock_load_index(
-        self: ShardingCodec, byte_getter: MockByteGetterWithIndex, cps: tuple[int, ...]
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
     ) -> _ShardIndex:
         return index
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    byte_getter = cast(
-        ByteGetter,
-        MockByteGetterWithIndex(index_data=b"", chunk_data=None, return_none_for_chunks=True),
-    )
-
-    all_chunk_coords: set[tuple[int, ...]] = {(0,)}
+    # Store has no value for "shard" — `get_ranges` will raise FileNotFoundError.
+    byte_getter = StorePath(MemoryStore(), "shard")
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
-        all_chunk_coords=all_chunk_coords,
+        all_chunk_coords={(0,)},
+    )
+
+    assert result is None
+
+
+async def test_load_partial_shard_non_fnf_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-FileNotFoundError errors from get_ranges are re-raised, not swallowed.
+
+    Our `BaseExceptionGroup.split(FileNotFoundError)` keeps the "shard gone"
+    behavior for FNF only; anything else (e.g. an OSError from the underlying
+    fetch) must bubble up.
+    """
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Make the underlying store.get raise OSError. The default Store.get_ranges
+    # impl routes through self.get; coalesced_get wraps the failure in a
+    # BaseExceptionGroup, which our code re-raises (minus FNF leaves, of which
+    # there are none here).
+    async def boom(*args: object, **kwargs: object) -> Buffer | None:
+        raise OSError("injected disk error")
+
+    store = MemoryStore()
+    monkeypatch.setattr(store, "get", boom)
+    byte_getter = StorePath(store, "shard")
+
+    with pytest.RaisesGroup(pytest.RaisesExc(OSError, match="injected disk error")):
+        await codec._load_partial_shard_maybe(
+            byte_getter=byte_getter,
+            prototype=default_buffer_prototype(),
+            chunks_per_shard=chunks_per_shard,
+            all_chunk_coords={(0,)},
+        )
+
+
+async def test_load_partial_shard_nested_sharding_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested sharding: byte_getter is a `_ShardingByteGetter` over an in-memory dict."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: _ShardingByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # The "store" for an inner shard is a dict keyed by outer-chunk coords; the
+    # byte_getter reads ranges out of one entry of that dict.
+    blob = b"A" * 100 + b"B" * 100
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {(0,): Buffer.from_bytes(blob)}
+    byte_getter = _ShardingByteGetter(shard_dict, (0,))
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (1,)},
     )
 
     assert result is not None
-    assert len(result) == 0
+    buf_0, buf_1 = result[(0,)], result[(1,)]
+    assert buf_0 is not None
+    assert buf_1 is not None
+    assert buf_0.to_bytes() == b"A" * 100
+    assert buf_1.to_bytes() == b"B" * 100
+
+
+async def test_load_partial_shard_nested_sharding_missing_outer_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested sharding: outer chunk absent → `_ShardingByteGetter.get` returns None
+    → chunks are silently skipped, yielding an empty shard_dict."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: _ShardingByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Empty outer dict — _ShardingByteGetter.get(...) returns None for any range.
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {}
+    byte_getter = _ShardingByteGetter(shard_dict, (0,))
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,)},
+    )
+
+    assert result == {}
 
 
 # ============================================================================

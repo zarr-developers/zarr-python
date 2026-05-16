@@ -60,6 +60,7 @@ from zarr.core.metadata.v3 import (
     parse_codecs,
 )
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
+from zarr.storage._common import StorePath
 from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
@@ -105,14 +106,6 @@ class _ShardingByteGetter(ByteGetter):
             return value
         start, stop = _normalize_byte_range_index(value, byte_range)
         return value[start:stop]
-
-    async def get_partial_values(
-        self,
-        prototype: BufferPrototype,
-        byte_ranges: Iterable[ByteRequest | None],
-    ) -> list[Buffer | None]:
-        # Concurrency not needed, each .get() is a slice of an in-memory buffer.
-        return [await self.get(prototype, byte_range) for byte_range in byte_ranges]
 
 
 @dataclass(frozen=True)
@@ -822,27 +815,50 @@ class ShardingCodec(
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
-            return None  # shard index read failure, the ByteGetter returned None
+            return None
 
-        # Build parallel lists of chunk coordinates and byte ranges for non-empty chunks
-        chunk_coords_list: list[tuple[int, ...]] = []
-        byte_ranges: list[RangeByteRequest] = []
-        for chunk_coords in all_chunk_coords:
-            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
+        # Pair up chunks and their byte ranges as list[tuple[chunk_coord, byte_range]]
+        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
+        for chunk_coord in all_chunk_coords:
+            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
             if chunk_byte_slice is not None:
-                chunk_coords_list.append(chunk_coords)
-                byte_ranges.append(RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+                chunk_coord_byte_ranges.append(
+                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+                )
 
-        if not byte_ranges:
+        if not chunk_coord_byte_ranges:
             return {}
 
-        # Fetch all chunk byte ranges via get_partial_values
-        buffers = await byte_getter.get_partial_values(prototype, byte_ranges)
-
         shard_dict: ShardMutableMapping = {}
-        for chunk_coords, buf in zip(chunk_coords_list, buffers, strict=True):
-            if buf is not None:
-                shard_dict[chunk_coords] = buf
+        if isinstance(byte_getter, StorePath):
+            # External store: use Store.get_ranges for coalescing + concurrency.
+            byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
+            try:
+                async for group in byte_getter.store.get_ranges(
+                    byte_getter.path, byte_ranges, prototype=prototype
+                ):
+                    for idx, buf in group:
+                        if buf is not None:
+                            chunk_coord, _ = chunk_coord_byte_ranges[idx]
+                            shard_dict[chunk_coord] = buf
+            except BaseExceptionGroup as eg:
+                # `Store.get_ranges` raises FileNotFoundError (wrapped in a
+                # BaseExceptionGroup) if any underlying fetch indicates the key is
+                # absent. The shard index loaded above, so this typically means a
+                # race where the shard was deleted mid-read; treat it as "shard
+                # gone" to match the index-missing branch (return None). Anything
+                # else in the group (e.g. IO errors) is re-raised.
+                _, rest = eg.split(FileNotFoundError)
+                if rest is not None:
+                    raise rest from None
+                return None
+        else:
+            # Any other ByteGetter. In practice only `_ShardingByteGetter` for
+            # nested sharding, which slices an in-memory buffer (no I/O to coalesce).
+            for chunk_coord, byte_range in chunk_coord_byte_ranges:
+                buf = await byte_getter.get(prototype, byte_range)
+                if buf is not None:
+                    shard_dict[chunk_coord] = buf
 
         return shard_dict
 

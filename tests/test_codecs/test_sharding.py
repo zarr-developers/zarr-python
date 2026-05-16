@@ -228,18 +228,18 @@ def test_sharding_multiple_chunks_partial_shard_read(
     # for a total of 6 chunks accessed
     assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_partial_values calls (one per shard)
+    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
     assert store_mock.get.call_count == 2
-    assert store_mock.get_partial_values.call_count == 2
+    assert store_mock.get_ranges.call_count == 2
 
     store_mock.reset_mock()
 
     # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
     assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_partial_values calls (one per shard)
+    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
     assert store_mock.get.call_count == 2
-    assert store_mock.get_partial_values.call_count == 2
+    assert store_mock.get_ranges.call_count == 2
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -250,7 +250,7 @@ def test_sharding_duplicate_read_indexes(
 ) -> None:
     """
     Check that duplicate index reads are handled correctly when
-    using get_partial_values for chunk data.
+    using get_ranges for chunk data.
     """
     array_shape = (15,)
     shard_shape = (8,)
@@ -275,9 +275,9 @@ def test_sharding_duplicate_read_indexes(
     indexer = [8, 8, 12, 12]
     np.array_equal(a[indexer], data[indexer])
 
-    # 1 shard index read via store.get() + 1 get_partial_values call
+    # 1 shard index read via store.get() + 1 get_ranges call
     assert store_mock.get.call_count == 1
-    assert store_mock.get_partial_values.call_count == 1
+    assert store_mock.get_ranges.call_count == 1
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -446,14 +446,16 @@ def test_sharding_partial_shard_read__chunk_load_fails(
     a[:] = data
 
     # Set up store mock after array creation to simulate chunk load failure.
-    # Index loads still succeed (via store.get), but chunk data loads fail
-    # (via store.get_partial_values returning None for each range).
+    # Index loads still succeed (via store.get), but chunk-byte loads fail
+    # (via store.get_ranges raising BaseExceptionGroup containing FileNotFoundError —
+    # the same shape Store.get_ranges produces when a key is absent).
     store_mock.reset_mock()
 
-    async def fail_chunk_reads(prototype: Any, key_ranges: Any, **kwargs: Any) -> list[None]:
-        return [None] * len(list(key_ranges))
+    async def fail_chunk_reads(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
+        raise BaseExceptionGroup("chunk read failed", [FileNotFoundError(key)])
+        yield  # type: ignore[unreachable]  # marks this as an async generator
 
-    store_mock.get_partial_values.side_effect = fail_chunk_reads
+    store_mock.get_ranges = fail_chunk_reads
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value
