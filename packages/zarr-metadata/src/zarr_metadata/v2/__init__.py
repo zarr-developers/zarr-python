@@ -5,10 +5,12 @@ from zarr_metadata.v2.array import (
     ArrayMetadataV2,
     ArrayOrderV2,
     DataTypeMetadataV2,
+    ZArrayMetadata,
 )
+from zarr_metadata.v2.attributes import ZAttrsMetadata
 from zarr_metadata.v2.codec import CodecMetadataV2
 from zarr_metadata.v2.consolidated import ConsolidatedMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2
+from zarr_metadata.v2.group import GroupMetadataV2, ZGroupMetadata
 
 __all__ = [
     "ArrayDimensionSeparatorV2",
@@ -18,4 +20,7 @@ __all__ = [
     "ConsolidatedMetadataV2",
     "DataTypeMetadataV2",
     "GroupMetadataV2",
+    "ZArrayMetadata",
+    "ZAttrsMetadata",
+    "ZGroupMetadata",
 ]

@@ -1,7 +1,7 @@
 """Zarr v2 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -22,15 +22,18 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
 """
 
 ArrayOrderV2 = Literal["C", "F"]
-"""Permitted values for the `order` field of v2 array metadata.
+"""Literal type of permitted values for the `order` field of v2 array metadata.
 
 `"C"` (row-major) or `"F"` (column-major) — the in-chunk byte layout.
 
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
+ARRAY_ORDER_V2: Final = ("C", "F")
+"""Tuple of permitted values for the `order` field of v2 array metadata."""
+
 ArrayDimensionSeparatorV2 = Literal[".", "/"]
-"""Permitted values for the `dimension_separator` field of v2 array metadata.
+"""Literal type of permitted values for the `dimension_separator` field of v2 array metadata.
 
 `"."` (legacy default) joins chunk grid coordinates as `0.0`, `0.1`, ...
 `"/"` joins them as `0/0`, `0/1`, ... yielding nested directories.
@@ -38,17 +41,17 @@ ArrayDimensionSeparatorV2 = Literal[".", "/"]
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
+ARRAY_DIMENSION_SEPARATOR_V2: Final = (".", "/")
+"""Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
 
-class ArrayMetadataV2(TypedDict):
+
+class ZArrayMetadata(TypedDict):
     """
-    Zarr v2 array metadata document.
+    On-disk `.zarray` file content.
 
-    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
-    (user attributes). On disk, attributes live in a sibling `.zattrs` file
-    and are not part of `.zarray`; this type folds them in as the
-    `attributes` field so a single TypedDict represents the complete
-    in-memory state of a v2 array node. Consumers that read or write a
-    real `.zarray` file should split / merge `attributes` accordingly.
+    Strict shape of the JSON document persisted at `<path>/.zarray` for
+    a v2 array. User attributes live in a sibling `.zattrs` file and are
+    NOT part of this type; see `ZAttrsMetadata`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -62,7 +65,33 @@ class ArrayMetadataV2(TypedDict):
     order: ArrayOrderV2
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
-    attributes: Mapping[str, object]
+
+
+class ArrayMetadataV2(TypedDict):
+    """
+    Zarr v2 array metadata document, in-memory merged form.
+
+    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
+    (user attributes). On disk, attributes live in a sibling `.zattrs` file
+    and are not part of `.zarray`; this type folds them in as the
+    `attributes` field so a single TypedDict represents the complete
+    in-memory state of a v2 array node. Consumers that read or write a
+    real `.zarray` file should split / merge `attributes` accordingly,
+    or use `ZArrayMetadata` (strict on-disk) plus `ZAttrsMetadata` directly.
+
+    See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
+    """
+
+    zarr_format: Literal[2]
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
+    dtype: DataTypeMetadataV2
+    compressor: CodecMetadataV2 | None
+    fill_value: object
+    order: ArrayOrderV2
+    filters: tuple[CodecMetadataV2, ...] | None
+    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    attributes: NotRequired[Mapping[str, object]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
     See the class docstring for the rationale behind the merged representation.
@@ -70,8 +99,11 @@ class ArrayMetadataV2(TypedDict):
 
 
 __all__ = [
+    "ARRAY_DIMENSION_SEPARATOR_V2",
+    "ARRAY_ORDER_V2",
     "ArrayDimensionSeparatorV2",
     "ArrayMetadataV2",
     "ArrayOrderV2",
     "DataTypeMetadataV2",
+    "ZArrayMetadata",
 ]
