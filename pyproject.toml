@@ -293,7 +293,7 @@ run = [
     "pyodide venv .venv-pyodide",
     ".venv-pyodide/bin/pip install dist/*.whl",
     ".venv-pyodide/bin/pip install --group test",
-    ".venv-pyodide/bin/python -m pytest {args:tests --ignore tests/benchmarks}",
+    ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks {args:tests}",
 ]
 list-env = "pip list"
 
