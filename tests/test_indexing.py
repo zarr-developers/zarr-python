@@ -767,7 +767,6 @@ def _test_get_orthogonal_selection_3d(
         _test_get_orthogonal_selection(a, z, selection)
 
 
-@pytest.mark.slow_wasm
 def test_get_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
     a = np.arange(32400, dtype=int).reshape(120, 30, 9)
@@ -825,7 +824,6 @@ def _test_set_orthogonal_selection(
         assert_array_equal(a, z[:])
 
 
-@pytest.mark.slow_wasm
 def test_set_orthogonal_selection_1d(store: StorePath) -> None:
     # setup
     v = np.arange(550, dtype=int)
@@ -868,7 +866,6 @@ def test_set_item_1d_last_two_chunks(store: StorePath):
     np.testing.assert_equal(z["zoo"][()], np.array(1))
 
 
-@pytest.mark.slow_wasm
 def _test_set_orthogonal_selection_2d(
     v: npt.NDArray[np.int_],
     a: npt.NDArray[np.int_],
@@ -889,7 +886,6 @@ def _test_set_orthogonal_selection_2d(
         _test_set_orthogonal_selection(v, a, z, selection)
 
 
-@pytest.mark.slow_wasm
 def test_set_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
     v = np.arange(5400, dtype=int).reshape(600, 9)
@@ -948,7 +944,6 @@ def _test_set_orthogonal_selection_3d(
         _test_set_orthogonal_selection(v, a, z, selection)
 
 
-@pytest.mark.slow_wasm
 def test_set_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
     v = np.arange(32400, dtype=int).reshape(120, 30, 9)
@@ -1160,7 +1155,6 @@ def test_set_coordinate_selection_1d(store: StorePath) -> None:
             z.vindex[selection] = 42  # type:ignore[index]
 
 
-@pytest.mark.slow_wasm
 def test_set_coordinate_selection_2d(store: StorePath) -> None:
     # setup
     v = np.arange(5400, dtype=int).reshape(600, 9)
@@ -1344,7 +1338,6 @@ def _test_set_block_selection(
         assert_array_equal(a, z[:])
 
 
-@pytest.mark.slow_wasm
 def test_set_block_selection_1d(store: StorePath) -> None:
     # setup
     v = np.arange(1050, dtype=int)
@@ -1363,7 +1356,6 @@ def test_set_block_selection_1d(store: StorePath) -> None:
             z.blocks[selection_bad] = 42  # type:ignore[index]
 
 
-@pytest.mark.slow_wasm
 def test_set_block_selection_2d(store: StorePath) -> None:
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)

@@ -247,7 +247,6 @@ async def test_vindex(data: st.DataObject) -> None:
     # note: async vindex setitem not yet implemented
 
 
-@pytest.mark.slow_wasm
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_roundtrip_array_metadata_from_store(

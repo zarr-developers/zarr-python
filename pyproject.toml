@@ -454,7 +454,6 @@ markers = [
     "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
     "slow_hypothesis: slow hypothesis tests",
-    "slow_wasm: slow tests in Pyodide/WASM",
 ]
 
 [tool.repo-review]
