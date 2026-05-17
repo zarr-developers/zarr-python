@@ -9,7 +9,6 @@ import pytest
 from packaging.version import Version
 
 import zarr
-from zarr._constants import IS_WASM
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import (
@@ -72,7 +71,6 @@ async def test_blosc_evolve(dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "shuffle"
 
 
-@pytest.mark.xfail(IS_WASM, reason="Blosc size mismatch, known failure case for Pyodide/WASM")
 @pytest.mark.parametrize("shuffle", [None, "bitshuffle", "legacy-enum"])
 @pytest.mark.parametrize("typesize", [None, 1, 2])
 def test_tunable_attrs_param(
