@@ -283,6 +283,7 @@ list-env = "pip list"
 
 [tool.hatch.envs.pyodide]
 description = "Test environment for Pyodide/WebAssembly (Emscripten)"
+python = "3.14"
 extra-dependencies = ["pyodide-build"]
 
 [tool.hatch.envs.pyodide.scripts]
