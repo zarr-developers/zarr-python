@@ -44,13 +44,17 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(f.read())
 
 
-if sys.platform == "win32":
-    # Per the os.rename docs:
-    # On Windows, if dst exists a FileExistsError is always raised.
-    _safe_move = os.rename
+if sys.platform in ("win32", "emscripten"):
+    # On Windows, os.rename raises FileExistsError if dst exists, which is
+    # what we want. On Emscripten/WASM, os.link is not supported by the
+    # virtual filesystem, and os.rename is safe in the single-threaded
+    # WASM environment.
+    def _safe_move(src: Path, dst: Path) -> None:
+        os.rename(src, dst)
+
 else:
-    # On Unix, os.rename silently replace files, so instead we use os.link like
-    # atomicwrites:
+    # On Unix, os.rename silently replaces files, so instead we use os.link
+    # like atomicwrites:
     # https://github.com/untitaker/python-atomicwrites/blob/1.4.1/atomicwrites/__init__.py#L59-L60
     # This also raises FileExistsError if dst exists.
     def _safe_move(src: Path, dst: Path) -> None:
