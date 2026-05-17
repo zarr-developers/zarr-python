@@ -50,17 +50,25 @@ add types for Zarr metadata with a published spec.
 ## Releasing
 
 The package version is derived from git tags by `hatch-vcs`. Tags must
-match the pattern `zarr_metadata/v<version>` (e.g. `zarr_metadata/v0.2.0`)
+match the pattern `zarr_metadata-v<version>` (e.g. `zarr_metadata-v0.2.0`)
 so they do not collide with the main `zarr-python` release tags.
 
 To cut a release:
 
-1. Create a GitHub Release whose tag is `zarr_metadata/v<version>`,
-   targeting the commit you want to publish.
-2. Publishing the release fires the `zarr-metadata release` workflow,
-   which builds the wheel/sdist (version resolved from the tag), runs
-   an install smoke test, and publishes to PyPI via OIDC trusted
-   publishing.
+1. Create and push a tag of the form `zarr_metadata-v<version>` on the
+   commit you want to publish, e.g.:
+   ```
+   git tag zarr_metadata-v0.2.0 <commit>
+   git push origin zarr_metadata-v0.2.0
+   ```
+2. Pushing the tag fires the `zarr-metadata release` workflow, which
+   builds the wheel/sdist (version resolved from the tag), runs an
+   install smoke test, and publishes to PyPI via OIDC trusted publishing.
+
+We intentionally do *not* create a GitHub Release for `zarr-metadata`
+versions — GitHub Releases live at the repo level, and a zarr-metadata
+release would surface in the zarr-python repo's Releases UI as if it
+were a zarr-python release.
 
 To dry-run a build against TestPyPI, dispatch the workflow manually
 (`Actions` → `zarr-metadata release` → `Run workflow`). Manual dispatches

@@ -34,11 +34,11 @@ test = ["pytest", "pydantic>=2"]
 
 [tool.hatch.version]
 source = "vcs"
-tag-pattern = '^zarr_metadata/v(?P<version>.+)$'
+tag-pattern = '^zarr_metadata-v(?P<version>.+)$'
 # `git_describe_command` ensures we get the zarr_metadata tags instead of latest.
 # `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
 # test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
-raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_metadata/v*", local_scheme = "no-local-version" }
+raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_metadata-v*", local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_metadata"]
