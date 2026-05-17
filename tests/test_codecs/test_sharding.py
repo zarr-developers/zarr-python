@@ -273,7 +273,7 @@ def test_sharding_duplicate_read_indexes(
 
     # Read the same index multiple times from two chunks
     indexer = [8, 8, 12, 12]
-    np.array_equal(a[indexer], data[indexer])
+    assert np.array_equal(a[indexer], data[indexer])
 
     # 1 shard index read via store.get() + 1 get_ranges call
     assert store_mock.get.call_count == 1
