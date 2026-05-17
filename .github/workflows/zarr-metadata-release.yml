@@ -1,33 +1,15 @@
 name: zarr-metadata release
 
-# Manual-only release for now. Once we settle on a tag scheme
-# (e.g. `zarr-metadata/v0.1.0`), this workflow can grow a
-# `release:` or `push: tags:` trigger.
-#
-# Operator picks the target index at dispatch time:
-#   - `pypi`     -> https://pypi.org
-#   - `testpypi` -> https://test.pypi.org
-#
-# Both indexes reject re-uploads of an existing version, so each publish
-# requires a version bump in pyproject.toml. For TestPyPI dry-runs, use a
-# PEP 440 pre-release/dev suffix (e.g. `0.1.0.dev1`) in the source.
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'Index to publish to'
-        required: true
-        type: choice
-        default: testpypi
-        options:
-          - testpypi
-          - pypi
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.target }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,6 +24,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0          # hatch-vcs needs full history + tags
 
       - name: Install Hatch
         uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
@@ -66,9 +49,6 @@ jobs:
           name: zarr-metadata-dist
           path: dist
 
-      - name: List built artifacts
-        run: ls -la dist
-
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
@@ -84,7 +64,7 @@ jobs:
   upload_pypi:
     name: Upload to PyPI
     needs: [build, test_artifacts]
-    if: inputs.target == 'pypi'
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'zarr_metadata/')
     runs-on: ubuntu-latest
     environment:
       name: zarr-metadata-releases
@@ -109,7 +89,7 @@ jobs:
   upload_testpypi:
     name: Upload to TestPyPI
     needs: [build, test_artifacts]
-    if: inputs.target == 'testpypi'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: zarr-metadata-releases-test

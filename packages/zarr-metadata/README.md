@@ -47,6 +47,26 @@ Zarr v2 and v3 specs, consolidated metadata, and a subset of the metadata
 defined in `zarr-extensions`. We are generally open to contributions that
 add types for Zarr metadata with a published spec.
 
+## Releasing
+
+The package version is derived from git tags by `hatch-vcs`. Tags must
+match the pattern `zarr_metadata/v<version>` (e.g. `zarr_metadata/v0.2.0`)
+so they do not collide with the main `zarr-python` release tags.
+
+To cut a release:
+
+1. Create a GitHub Release whose tag is `zarr_metadata/v<version>`,
+   targeting the commit you want to publish.
+2. Publishing the release fires the `zarr-metadata release` workflow,
+   which builds the wheel/sdist (version resolved from the tag), runs
+   an install smoke test, and publishes to PyPI via OIDC trusted
+   publishing.
+
+To dry-run a build against TestPyPI, dispatch the workflow manually
+(`Actions` → `zarr-metadata release` → `Run workflow`). Manual dispatches
+build from the current commit; with no recent tag the version will look
+like `0.1.devN`, which is fine for TestPyPI.
+
 ## License
 
 [MIT](./LICENSE.txt)
