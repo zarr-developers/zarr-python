@@ -4,7 +4,7 @@ Gzip codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
-from typing import Final, Literal, NotRequired
+from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
@@ -20,11 +20,15 @@ class GzipCodecConfiguration(TypedDict):
     Configuration for the Zarr v3 `gzip` codec.
 
     `level` is an integer in the range 0-9; 0 disables compression and 9
-    is slowest with the best compression ratio. The spec does not mandate
-    a default.
+    is slowest with the best compression ratio. The codec's compressed
+    output depends on `level`, so metadata that omits it cannot
+    reproducibly identify the chunk bytes produced by a writer — `level`
+    is required for the metadata to fulfill its reproducibility role,
+    even though the spec text does not mark it required with RFC 2119
+    keywords.
     """
 
-    level: NotRequired[int]
+    level: int
 
 
 class GzipCodecObject(TypedDict):
@@ -34,11 +38,12 @@ class GzipCodecObject(TypedDict):
     configuration: GzipCodecConfiguration
 
 
-GzipCodecMetadata = GzipCodecObject | GzipCodecName
-"""Permitted JSON shapes for `gzip` codec metadata.
+GzipCodecMetadata = GzipCodecObject
+"""Permitted JSON shape for `gzip` codec metadata.
 
-The configuration has no required keys (`level` has no spec-mandated
-default but is `NotRequired`), so the short-hand-name form is permitted.
+`configuration.level` is required (it determines the codec's output bytes
+and is therefore part of the metadata's reproducibility contract), so
+only the object form is valid; the short-hand-name form is not permitted.
 """
 
 __all__ = [
