@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import os
 import pathlib
@@ -16,6 +17,22 @@ from hypothesis import HealthCheck, Verbosity, settings
 import zarr.registry
 from zarr import AsyncGroup, config
 from zarr._constants import IS_WASM
+
+if IS_WASM:
+    # Pyodide's WebLoop calls asyncio._set_running_loop(self) at __init__ time,
+    # which means that it sets itself as the running loop when the process starts.
+    # So asyncio.Runner.run() always raises "Runner.run() cannot be called from
+    # a running event loop". We monkeypatch Runner.run here to use Pyodide's
+    # run_sync, which runs the coroutines through the WebLoop. I'm unsure if we
+    # should be doing this in pytest-asyncio yet.
+    from pyodide.ffi import run_sync as _wasm_run_sync  # type: ignore[import]
+
+    def _patched_runner_run(_self: asyncio.Runner, coro, *, context=None):  # type: ignore[override]
+        if context is not None:
+            return context.run(_wasm_run_sync, coro)
+        return _wasm_run_sync(coro)
+
+    asyncio.Runner.run = _patched_runner_run  # type: ignore[method-assign]
 from zarr.abc.store import Store
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.core.array import (
