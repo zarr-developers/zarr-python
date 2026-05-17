@@ -134,6 +134,7 @@ def sync[T](
     # coroutines differently. We integrate with the existing Pyodide WebLoop which
     # schedules tasks on the browser's event loop using setTimeout():
     # https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+    # https://pyodide.org/en/stable/usage/api/python-api/webloop.html
     if IS_WASM:  # pragma: no cover
         # This code path is covered in the Pyodide/WASM CI job.
         current_loop = asyncio.get_running_loop()
@@ -143,26 +144,19 @@ def sync[T](
         if isinstance(result, (asyncio.Task, asyncio.Future)):
             raise RuntimeError(
                 dedent("""
-                Cannot use synchronous zarr API in browser-based environments without JSPI.
-                Zarr requires JavaScript Promise Integration (JSPI) to work in browsers,
-                but JSPI is not enabled in your environment.
+                Cannot use synchronous Zarr API in browser-based environments without JSPI.
+                Zarr requires JavaScript Promise Integration (JSPI) to block for asynchronous
+                operations, which is not supported or enabled in your current environment.
 
-                The available solutions are to either use Zarr's async API instead with
-                zarr.api.asynchronous, or if you want to use your existing code, follow
-                these steps (all required):
-                1. Enable JSPI in your Pyodide setup with
-                `loadPyodide({ enableRunUntilComplete: true })` AND
-                2. Use a JSPI-enabled website or browser configuration (for example, with
-                --enable-features=WebAssemblyExperimentalJSPI for Google Chrome). If you
-                are the owner of a website, you may sign up for an origin trial for JSPI.
+                The available solutions are to either use Zarr's async API instead via
+                `zarr.api.asynchronous`, or run your application in a JSPI-enabled environment.
 
-                If you are using Node.js, pass the --experimental-wasm-jspi flag
-                (available for v20+).
+                For detailed requirements and environment setup instructions, please see:
+                - The [Pyodide JSPI Blog Post](https://blog.pyodide.org/posts/jspi/)
+                - The [Pyodide 0.28 Release Notes](https://blog.pyodide.org/posts/0.28-release/)
 
-                Note: JSPI is experimental and not yet standardised across all browsers.
-                See https://webassembly.org/features/ for more information and status,
-                https://v8.dev/blog/jspi#how-can-i-use-jspi-today%3F for usage, and
-                https://v8.dev/blog/jspi-ot for more information on origin trials.
+                Note: If you are using Node.js v20 to v24, you must pass the `--experimental-wasm-jspi`
+                flag (JSPI is unflagged and enabled by default starting in Node.js v25 and later).
             """)
             )
         return result
