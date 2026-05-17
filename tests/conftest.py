@@ -18,7 +18,6 @@ import zarr.registry
 from zarr import AsyncGroup, config
 from zarr._constants import IS_WASM
 
-
 if IS_WASM:
     # Pyodide's WebLoop calls asyncio._set_running_loop(self) at __init__ time,
     # which means that it sets itself as the running loop when the process starts.
@@ -32,7 +31,7 @@ if IS_WASM:
     # the private loop's asyncgen hooks and can flip WebLoop._asyncgens_shutdown_called
     # to True. That contaminates every subsequent test with spurious "scheduled after
     # shutdown_asyncgens()" ResourceWarnings. If we get __enter__ to return early, the
-    # close() becomes a no-op, and WebLoop's asyncgen state doesn't get disturbed 
+    # close() becomes a no-op, and WebLoop's asyncgen state doesn't get disturbed
     # between tests.
     from pyodide.ffi import run_sync as _wasm_run_sync  # type: ignore[import]
 

@@ -118,7 +118,10 @@ def test_array_creates_implicit_groups(array):
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
 
 
-@pytest.mark.skipif(IS_WASM, reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()")
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -146,7 +149,10 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     # TODO test async setitem?
 
 
-@pytest.mark.skipif(IS_WASM, reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()")
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -157,7 +163,10 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], zarray[indexer])
 
 
-@pytest.mark.skipif(IS_WASM, reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()")
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -195,7 +204,10 @@ async def test_oindex(data: st.DataObject) -> None:
     # note: async oindex setitem not yet implemented
 
 
-@pytest.mark.skipif(IS_WASM, reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()")
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
