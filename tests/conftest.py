@@ -5,9 +5,9 @@ import math
 import os
 import pathlib
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -33,12 +33,17 @@ if IS_WASM:
     # shutdown_asyncgens()" ResourceWarnings. If we get __enter__ to return early, the
     # close() becomes a no-op, and WebLoop's asyncgen state doesn't get disturbed
     # between tests.
-    from pyodide.ffi import run_sync as _wasm_run_sync  # type: ignore[import]
+    from pyodide.ffi import run_sync as _wasm_run_sync
 
-    def _patched_runner_enter(self: asyncio.Runner) -> asyncio.Runner:  # type: ignore[override]
+    def _patched_runner_enter(self: asyncio.Runner) -> asyncio.Runner:
         return self  # skip _lazy_init(); WebLoop is already running
 
-    def _patched_runner_run(_self: asyncio.Runner, coro, *, context=None):  # type: ignore[override]
+    def _patched_runner_run(
+        self: asyncio.Runner,
+        coro: Coroutine[Any, Any, Any],
+        *,
+        context: contextvars.Context | None = None,
+    ) -> Any:
         if context is not None:
             return context.run(_wasm_run_sync, coro)
         return _wasm_run_sync(coro)
@@ -81,6 +86,7 @@ from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipSto
 from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
+    import contextvars
     from collections.abc import Generator
     from typing import Any, Literal
 
