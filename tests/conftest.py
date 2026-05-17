@@ -18,6 +18,7 @@ import zarr.registry
 from zarr import AsyncGroup, config
 from zarr._constants import IS_WASM
 
+
 if IS_WASM:
     # Pyodide's WebLoop calls asyncio._set_running_loop(self) at __init__ time,
     # which means that it sets itself as the running loop when the process starts.
@@ -25,14 +26,28 @@ if IS_WASM:
     # a running event loop". We monkeypatch Runner.run here to use Pyodide's
     # run_sync, which runs the coroutines through the WebLoop. I'm unsure if we
     # should be doing this in pytest-asyncio yet.
+    # We also patch __enter__ to skip _lazy_init() here. Without it, each per-test
+    # runner would create a private asyncio event loop, and its close() would call
+    # private_loop.run_until_complete(shutdown_asyncgens()), which temporarily installs
+    # the private loop's asyncgen hooks and can flip WebLoop._asyncgens_shutdown_called
+    # to True. That contaminates every subsequent test with spurious "scheduled after
+    # shutdown_asyncgens()" ResourceWarnings. If we get __enter__ to return early, the
+    # close() becomes a no-op, and WebLoop's asyncgen state doesn't get disturbed 
+    # between tests.
     from pyodide.ffi import run_sync as _wasm_run_sync  # type: ignore[import]
+
+    def _patched_runner_enter(self: asyncio.Runner) -> asyncio.Runner:  # type: ignore[override]
+        return self  # skip _lazy_init(); WebLoop is already running
 
     def _patched_runner_run(_self: asyncio.Runner, coro, *, context=None):  # type: ignore[override]
         if context is not None:
             return context.run(_wasm_run_sync, coro)
         return _wasm_run_sync(coro)
 
+    asyncio.Runner.__enter__ = _patched_runner_enter  # type: ignore[method-assign]
     asyncio.Runner.run = _patched_runner_run  # type: ignore[method-assign]
+
+
 from zarr.abc.store import Store
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.core.array import (
