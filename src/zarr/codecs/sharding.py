@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
-from operator import itemgetter
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
@@ -205,27 +204,6 @@ class _ShardIndex(NamedTuple):
                 chunk_slice.start,
                 chunk_slice.stop - chunk_slice.start,
             )
-
-    def is_dense(self, chunk_byte_length: int) -> bool:
-        sorted_offsets_and_lengths = sorted(
-            [
-                (offset, length)
-                for offset, length in self.offsets_and_lengths.reshape(-1, 2)
-                if offset != MAX_UINT_64
-            ],
-            key=itemgetter(0),
-        )
-
-        # Are all non-empty offsets unique?
-        if len(
-            {offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64}
-        ) != len(sorted_offsets_and_lengths):
-            return False
-
-        return all(
-            offset % chunk_byte_length == 0 and length == chunk_byte_length
-            for offset, length in sorted_offsets_and_lengths
-        )
 
     @classmethod
     def create_empty(cls, chunks_per_shard: tuple[int, ...]) -> _ShardIndex:
