@@ -221,8 +221,12 @@ def test_safe_move_other_platforms_no_conflict(
     orig = sys.platform
     monkeypatch.setattr(sys, "platform", platform)
     importlib.reload(_local)
-    request.addfinalizer(lambda: importlib.reload(_local))  # runs second: reload with restored platform
-    request.addfinalizer(lambda: monkeypatch.setattr(sys, "platform", orig))  # runs first: restore platform
+    request.addfinalizer(
+        lambda: importlib.reload(_local)
+    )  # runs second: reload with restored platform
+    request.addfinalizer(
+        lambda: monkeypatch.setattr(sys, "platform", orig)
+    )  # runs first: restore platform
 
     src = tmp_path / "src"
     dst = tmp_path / "dst"
@@ -243,8 +247,12 @@ def test_safe_move_emscripten_raises_if_dst_exists(
     orig = sys.platform
     monkeypatch.setattr(sys, "platform", "emscripten")
     importlib.reload(_local)
-    request.addfinalizer(lambda: importlib.reload(_local))  # runs second: reload with restored platform
-    request.addfinalizer(lambda: monkeypatch.setattr(sys, "platform", orig))  # runs first: restore platform
+    request.addfinalizer(
+        lambda: importlib.reload(_local)
+    )  # runs second: reload with restored platform
+    request.addfinalizer(
+        lambda: monkeypatch.setattr(sys, "platform", orig)
+    )  # runs first: restore platform
 
     src = tmp_path / "src"
     dst = tmp_path / "dst"
