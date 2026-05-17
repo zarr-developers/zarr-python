@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 import re
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,7 +15,7 @@ from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.core.sync import sync
 from zarr.storage import LocalStore
-from zarr.storage._local import _atomic_write
+from zarr.storage._local import _atomic_write, _safe_move
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
 
@@ -204,3 +206,51 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+@pytest.mark.parametrize("platform", ["win32", "emscripten"])
+def test_safe_move_other_platforms_no_conflict(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    platform: str,
+) -> None:
+    """_safe_move on Windows/Emscripten moves src to dst when dst does not exist."""
+    import zarr.storage._local as _local
+
+    orig = sys.platform
+    monkeypatch.setattr(sys, "platform", platform)
+    importlib.reload(_local)
+    request.addfinalizer(lambda: importlib.reload(_local))  # runs second: reload with restored platform
+    request.addfinalizer(lambda: monkeypatch.setattr(sys, "platform", orig))  # runs first: restore platform
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"hello")
+    _safe_move(src, dst)
+    assert dst.read_bytes() == b"hello"
+    assert not src.exists()
+
+
+def test_safe_move_emscripten_raises_if_dst_exists(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    """_safe_move on Emscripten raises a FileExistsError and cleans up src when dst exists."""
+    import zarr.storage._local as _local
+
+    orig = sys.platform
+    monkeypatch.setattr(sys, "platform", "emscripten")
+    importlib.reload(_local)
+    request.addfinalizer(lambda: importlib.reload(_local))  # runs second: reload with restored platform
+    request.addfinalizer(lambda: monkeypatch.setattr(sys, "platform", orig))  # runs first: restore platform
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"new")
+    dst.write_bytes(b"existing")
+    with pytest.raises(FileExistsError):
+        _safe_move(src, dst)
+    assert dst.read_bytes() == b"existing"
+    assert not src.exists()  # src was cleaned up
