@@ -16,7 +16,9 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
+from zarr.codecs.sharding import MAX_UINT_64, _ShardIndex
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.indexing import c_order_iter
 from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -554,3 +556,44 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
+
+
+def test_sharding_zero_dimensional() -> None:
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3751"""
+    arr = zarr.create_array({}, shape=(), dtype="f4", chunks=(), shards=())
+    arr[()] = 42.0
+    assert arr[()] == pytest.approx(42.0)
+    # Overwriting should also work
+    arr[()] = 43.0
+    assert arr[()] == pytest.approx(43.0)
+
+
+def test_shard_index_stores_chunks_per_shard_explicitly() -> None:
+    """_ShardIndex stores the chunk grid shape as an explicit field."""
+    index = _ShardIndex.create_empty((2, 3))
+    assert index.chunks_per_shard == (2, 3)
+
+    # 0-D: chunks_per_shard is the empty tuple, distinct from the array's rank
+    index_0d = _ShardIndex.create_empty(())
+    assert index_0d.chunks_per_shard == ()
+
+
+@pytest.mark.parametrize("chunks_per_shard", [(), (3,), (2, 3)])
+def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ...]) -> None:
+    """get_chunk_slices_vectorized works uniformly across chunk grid ranks, including 0-D."""
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    # Write the first chunk; leave the rest (if any) empty.
+    all_coords = list(c_order_iter(chunks_per_shard))
+    index.set_chunk_slice(all_coords[0], slice(10, 14))
+
+    coords_array = np.array(all_coords, dtype=np.uint64).reshape(
+        len(all_coords), len(chunks_per_shard)
+    )
+    starts, ends, valid = index.get_chunk_slices_vectorized(coords_array)
+
+    expected_valid = np.zeros(len(all_coords), dtype=bool)
+    expected_valid[0] = True
+    np.testing.assert_array_equal(valid, expected_valid)
+    assert starts[0] == 10
+    assert ends[0] == 14
+    np.testing.assert_array_equal(starts[~expected_valid], MAX_UINT_64)

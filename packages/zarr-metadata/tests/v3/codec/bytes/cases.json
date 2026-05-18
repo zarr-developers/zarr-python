@@ -11,5 +11,8 @@
     "name": "bytes",
     "configuration": {}
   },
+  "no_configuration": {
+    "name": "bytes"
+  },
   "short_hand_name": "bytes"
 }
