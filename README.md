@@ -72,7 +72,7 @@
 <tr>
   <td>Developer Chat</td>
   <td>
-    <a href="https://ossci.zulipchat.com/">
+    <a href="https://ossci.zulipchat.com/#narrow/channel/423692-Zarr-Python">
     <img src="https://img.shields.io/badge/zulip-join_chat-brightgreen.svg" />
     </a>
   </td>
