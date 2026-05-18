@@ -23,16 +23,28 @@ RoundingMode = Literal[
     "towards-negative",
     "nearest-away",
 ]
-"""Permitted values for the `rounding` configuration field.
+"""Literal type of permitted values for the `rounding` configuration field.
 
 Defaults to `"nearest-even"` if absent.
 """
 
+ROUNDING_MODE: Final = (
+    "nearest-even",
+    "towards-zero",
+    "towards-positive",
+    "towards-negative",
+    "nearest-away",
+)
+"""Tuple of permitted values for the `rounding` field of the `cast_value` codec."""
+
 OutOfRangeMode = Literal["clamp", "wrap"]
-"""Permitted values for the `out_of_range` configuration field.
+"""Literal type of permitted values for the `out_of_range` configuration field.
 
 If absent, out-of-range values are an encoding/decoding error.
 """
+
+OUT_OF_RANGE_MODE: Final = ("clamp", "wrap")
+"""Tuple of permitted values for the `out_of_range` field of the `cast_value` codec."""
 
 ScalarMapEntry = tuple[object, object]
 """A single `[input, output]` mapping in a `scalar_map` direction.
@@ -81,6 +93,8 @@ the short-hand-name form is not permitted by the spec for this codec.
 
 __all__ = [
     "CAST_VALUE_CODEC_NAME",
+    "OUT_OF_RANGE_MODE",
+    "ROUNDING_MODE",
     "CastValueCodecConfiguration",
     "CastValueCodecMetadata",
     "CastValueCodecName",
