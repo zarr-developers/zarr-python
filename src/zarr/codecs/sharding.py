@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
-from operator import itemgetter
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
@@ -123,19 +122,15 @@ class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
 
 
 class _ShardIndex(NamedTuple):
+    # the chunk grid shape of a single shard
+    chunks_per_shard: tuple[int, ...]
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
     offsets_and_lengths: npt.NDArray[np.uint64]
-
-    @property
-    def chunks_per_shard(self) -> tuple[int, ...]:
-        result = tuple(self.offsets_and_lengths.shape[0:-1])
-        # The cast is required until https://github.com/numpy/numpy/pull/27211 is merged
-        return cast("tuple[int, ...]", result)
 
     def _localize_chunk(self, chunk_coords: tuple[int, ...]) -> tuple[int, ...]:
         return tuple(
             chunk_i % shard_i
-            for chunk_i, shard_i in zip(chunk_coords, self.offsets_and_lengths.shape, strict=False)
+            for chunk_i, shard_i in zip(chunk_coords, self.chunks_per_shard, strict=False)
         )
 
     def is_all_empty(self) -> bool:
@@ -171,25 +166,24 @@ class _ShardIndex(NamedTuple):
         valid : ndarray of shape (n_chunks,)
             Boolean mask indicating which chunks are non-empty.
         """
-        # Handle 0-dimensional arrays (n_dims == 0)
+        # Handle 0-dimensional arrays (n_dims == 0): the shard holds a single
+        # chunk, so every coordinate maps to the same flat entry.
         if chunk_coords_array.shape[1] == 0:
-            # offsets_and_lengths has shape (2,) for 0D, reshape to (1, 2)
-            offsets_and_lengths = self.offsets_and_lengths.reshape(1, 2)
-            starts = offsets_and_lengths[:, 0]
-            lengths = offsets_and_lengths[:, 1]
-            valid = starts != MAX_UINT_64
-            ends = starts + lengths
-            return starts, ends, valid
+            offsets_and_lengths = self.offsets_and_lengths.reshape(-1, 2)
+            offsets_and_lengths = np.broadcast_to(
+                offsets_and_lengths, (chunk_coords_array.shape[0], 2)
+            )
+        else:
+            # Localize coordinates via modulo (vectorized)
+            shard_shape = np.array(self.chunks_per_shard, dtype=np.uint64)
+            localized = chunk_coords_array.astype(np.uint64) % shard_shape
 
-        # Localize coordinates via modulo (vectorized)
-        shard_shape = np.array(self.offsets_and_lengths.shape[:-1], dtype=np.uint64)
-        localized = chunk_coords_array.astype(np.uint64) % shard_shape
+            # Build index tuple for advanced indexing
+            index_tuple = tuple(localized[:, i] for i in range(localized.shape[1]))
 
-        # Build index tuple for advanced indexing
-        index_tuple = tuple(localized[:, i] for i in range(localized.shape[1]))
+            # Fetch all offsets and lengths at once
+            offsets_and_lengths = self.offsets_and_lengths[index_tuple]
 
-        # Fetch all offsets and lengths at once
-        offsets_and_lengths = self.offsets_and_lengths[index_tuple]
         starts = offsets_and_lengths[:, 0]
         lengths = offsets_and_lengths[:, 1]
 
@@ -211,32 +205,11 @@ class _ShardIndex(NamedTuple):
                 chunk_slice.stop - chunk_slice.start,
             )
 
-    def is_dense(self, chunk_byte_length: int) -> bool:
-        sorted_offsets_and_lengths = sorted(
-            [
-                (offset, length)
-                for offset, length in self.offsets_and_lengths
-                if offset != MAX_UINT_64
-            ],
-            key=itemgetter(0),
-        )
-
-        # Are all non-empty offsets unique?
-        if len(
-            {offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64}
-        ) != len(sorted_offsets_and_lengths):
-            return False
-
-        return all(
-            offset % chunk_byte_length == 0 and length == chunk_byte_length
-            for offset, length in sorted_offsets_and_lengths
-        )
-
     @classmethod
     def create_empty(cls, chunks_per_shard: tuple[int, ...]) -> _ShardIndex:
         offsets_and_lengths = np.zeros(chunks_per_shard + (2,), dtype="<u8", order="C")
         offsets_and_lengths.fill(MAX_UINT_64)
-        return cls(offsets_and_lengths)
+        return cls(chunks_per_shard, offsets_and_lengths)
 
 
 class _ShardReader(ShardMapping):
@@ -280,7 +253,7 @@ class _ShardReader(ShardMapping):
         return int(self.index.offsets_and_lengths.size / 2)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return c_order_iter(self.index.offsets_and_lengths.shape[:-1])
+        return c_order_iter(self.index.chunks_per_shard)
 
     def to_dict_vectorized(
         self,
@@ -298,8 +271,7 @@ class _ShardReader(ShardMapping):
         dict mapping chunk coordinate tuples to Buffer or None
         """
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
-        chunks_per_shard = tuple(self.index.offsets_and_lengths.shape[:-1])
-        chunk_coords_keys = _morton_order_keys(chunks_per_shard)
+        chunk_coords_keys = _morton_order_keys(self.index.chunks_per_shard)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
         for i, coords in enumerate(chunk_coords_keys):
@@ -712,7 +684,7 @@ class ShardingCodec(
         )
         # This cannot be None because we have the bytes already
         index_array = cast(NDBuffer, index_array)
-        return _ShardIndex(index_array.as_numpy_array())
+        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         index_bytes = next(
