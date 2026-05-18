@@ -42,7 +42,38 @@ class GroupMetadataV2(TypedDict):
     attributes: NotRequired[Mapping[str, object]]
 
 
+class GroupMetadataV2Partial(TypedDict, total=False):
+    """
+    Partial form of `GroupMetadataV2`: every field is `NotRequired`.
+
+    Field annotations mirror `GroupMetadataV2` exactly. The only difference is
+    `total=False`, which makes every key optional at the type level.
+
+    Use this when typing dicts that intentionally hold a subset of a complete
+    v2 group metadata document — e.g. test fixtures that override only a few
+    fields of a base template, or callers that build a fragment to be merged
+    into a complete document elsewhere. Provided for symmetry with the other
+    `*Partial` types; the practical effect is that `zarr_format` becomes optional.
+
+    The `NotRequired[...]` wrapper on `attributes` is intentional: keeping it
+    preserves byte-identical `__annotations__` with `GroupMetadataV2` so the
+    `==` check in `tests/test_partial_equivalence.py` passes without
+    special-casing that field (PEP 655 explicitly permits `NotRequired` inside
+    `total=False`).
+
+    Note: v2 group metadata has no `extra_items` setting (the v2 spec has no
+    extension-field concept), so this partial inherits the same closed shape.
+
+    Drift between this type and `GroupMetadataV2` is prevented by
+    `tests/test_partial_equivalence.py`.
+    """
+
+    zarr_format: Literal[2]
+    attributes: NotRequired[Mapping[str, object]]
+
+
 __all__ = [
     "GroupMetadataV2",
+    "GroupMetadataV2Partial",
     "ZGroupMetadata",
 ]

@@ -12,7 +12,7 @@ from zarr_metadata.v2.array import (
 from zarr_metadata.v2.attributes import ZAttrsMetadata
 from zarr_metadata.v2.codec import CodecMetadataV2
 from zarr_metadata.v2.consolidated import ConsolidatedMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2, ZGroupMetadata
+from zarr_metadata.v2.group import GroupMetadataV2, GroupMetadataV2Partial, ZGroupMetadata
 from zarr_metadata.v3._common import MetadataFieldV3
 from zarr_metadata.v3.array import ArrayMetadataV3, ArrayMetadataV3Partial, ExtensionFieldV3
 from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
@@ -34,6 +34,7 @@ __all__ = [
     "DataTypeMetadataV2",
     "ExtensionFieldV3",
     "GroupMetadataV2",
+    "GroupMetadataV2Partial",
     "GroupMetadataV3",
     "GroupMetadataV3Partial",
     "MetadataFieldV3",
