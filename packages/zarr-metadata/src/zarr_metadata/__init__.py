@@ -15,7 +15,7 @@ from zarr_metadata.v2.group import GroupMetadataV2, ZGroupMetadata
 from zarr_metadata.v3._common import MetadataFieldV3
 from zarr_metadata.v3.array import ArrayMetadataV3, ArrayMetadataV3Partial, ExtensionFieldV3
 from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
-from zarr_metadata.v3.group import GroupMetadataV3
+from zarr_metadata.v3.group import GroupMetadataV3, GroupMetadataV3Partial
 
 __version__ = version("zarr-metadata")
 
@@ -33,6 +33,7 @@ __all__ = [
     "ExtensionFieldV3",
     "GroupMetadataV2",
     "GroupMetadataV3",
+    "GroupMetadataV3Partial",
     "MetadataFieldV3",
     "NamedConfig",
     "ZArrayMetadata",

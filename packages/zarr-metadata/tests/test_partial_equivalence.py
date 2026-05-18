@@ -15,10 +15,12 @@ from typing import Any
 import pytest
 
 from zarr_metadata.v3.array import ArrayMetadataV3, ArrayMetadataV3Partial
+from zarr_metadata.v3.group import GroupMetadataV3, GroupMetadataV3Partial
 
 # (full, partial) pairs to check. Add new pairs here as more are introduced.
 PAIRS: list[tuple[type, type]] = [
     (ArrayMetadataV3, ArrayMetadataV3Partial),
+    (GroupMetadataV3, GroupMetadataV3Partial),
 ]
 
 
