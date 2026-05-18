@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from zarr_metadata.v2.array import ArrayMetadataV2, ArrayMetadataV2Partial
 from zarr_metadata.v3.array import ArrayMetadataV3, ArrayMetadataV3Partial
 from zarr_metadata.v3.group import GroupMetadataV3, GroupMetadataV3Partial
 
@@ -21,6 +22,7 @@ from zarr_metadata.v3.group import GroupMetadataV3, GroupMetadataV3Partial
 PAIRS: list[tuple[type, type]] = [
     (ArrayMetadataV3, ArrayMetadataV3Partial),
     (GroupMetadataV3, GroupMetadataV3Partial),
+    (ArrayMetadataV2, ArrayMetadataV2Partial),
 ]
 
 

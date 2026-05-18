@@ -98,11 +98,53 @@ class ArrayMetadataV2(TypedDict):
     """
 
 
+class ArrayMetadataV2Partial(TypedDict, total=False):
+    """
+    Partial form of `ArrayMetadataV2`: every field is `NotRequired`.
+
+    Field annotations mirror `ArrayMetadataV2` exactly. The only difference is
+    `total=False`, which makes every key optional at the type level.
+
+    Use this when typing dicts that intentionally hold a subset of a complete
+    v2 array metadata document — e.g. test fixtures that override only a few
+    fields of a base template, or callers that build a fragment to be merged
+    into a complete document elsewhere.
+
+    The `NotRequired[...]` wrappers on `dimension_separator` and `attributes`
+    are intentional: keeping them preserves byte-identical `__annotations__`
+    with `ArrayMetadataV2` so the `==` check in
+    `tests/test_partial_equivalence.py` passes without special-casing those
+    fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
+
+    Note: v2 array metadata has no `extra_items` setting (the v2 spec has no
+    extension-field concept), so this partial inherits the same closed shape.
+
+    Drift between this type and `ArrayMetadataV2` is prevented by
+    `tests/test_partial_equivalence.py`.
+    """
+
+    zarr_format: Literal[2]
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
+    dtype: DataTypeMetadataV2
+    compressor: CodecMetadataV2 | None
+    fill_value: object
+    order: ArrayOrderV2
+    filters: tuple[CodecMetadataV2, ...] | None
+    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    attributes: NotRequired[Mapping[str, object]]
+    """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
+
+    See the class docstring for the rationale behind the merged representation.
+    """
+
+
 __all__ = [
     "ARRAY_DIMENSION_SEPARATOR_V2",
     "ARRAY_ORDER_V2",
     "ArrayDimensionSeparatorV2",
     "ArrayMetadataV2",
+    "ArrayMetadataV2Partial",
     "ArrayOrderV2",
     "DataTypeMetadataV2",
     "ZArrayMetadata",

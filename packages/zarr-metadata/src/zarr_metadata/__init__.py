@@ -4,6 +4,7 @@ from zarr_metadata._common import NamedConfig
 from zarr_metadata.v2.array import (
     ArrayDimensionSeparatorV2,
     ArrayMetadataV2,
+    ArrayMetadataV2Partial,
     ArrayOrderV2,
     DataTypeMetadataV2,
     ZArrayMetadata,
@@ -23,6 +24,7 @@ __version__ = version("zarr-metadata")
 __all__ = [
     "ArrayDimensionSeparatorV2",
     "ArrayMetadataV2",
+    "ArrayMetadataV2Partial",
     "ArrayMetadataV3",
     "ArrayMetadataV3Partial",
     "ArrayOrderV2",
