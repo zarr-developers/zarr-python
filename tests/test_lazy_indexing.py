@@ -95,29 +95,29 @@ class TestEagerWrite:
 
 class TestLazyRead:
     def test_lazy_shape(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
-        v = arr.z[2:8, 5:15]
+        v = arr.lazy[2:8, 5:15]
         assert isinstance(v, zarr.Array)
         assert v.shape == (6, 10)
 
     def test_lazy_resolve(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
-        v = arr.z[2:8, 5:15]
+        v = arr.lazy[2:8, 5:15]
         result = v[...]
         np.testing.assert_array_equal(result, data[2:8, 5:15])
 
     def test_lazy_np_asarray(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
-        v = arr.z[2:8]
+        v = arr.lazy[2:8]
         result = np.asarray(v)
         np.testing.assert_array_equal(result, data[2:8])
 
     def test_lazy_composition(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
-        v = arr.z[2:12].z[3:8]
+        v = arr.lazy[2:12].lazy[3:8]
         assert v.shape == (5, 30)
         result = v[...]
         np.testing.assert_array_equal(result, data[5:10])
 
     def test_lazy_oindex(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
         idx = np.array([1, 5, 10], dtype=np.intp)
-        v = arr.z.oindex[idx, :]
+        v = arr.lazy.oindex[idx, :]
         assert isinstance(v, zarr.Array)
         assert v.shape == (3, 30)
         result = v[...]
@@ -126,39 +126,39 @@ class TestLazyRead:
     def test_lazy_vindex(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
         idx0 = np.array([1, 5, 10], dtype=np.intp)
         idx1 = np.array([2, 8, 15], dtype=np.intp)
-        v = arr.z.vindex[idx0, idx1]
+        v = arr.lazy.vindex[idx0, idx1]
         assert isinstance(v, zarr.Array)
         assert v.shape == (3,)
         result = v[...]
         np.testing.assert_array_equal(result, data[idx0, idx1])
 
-    def test_lazy_resolve_method(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
-        v = arr.z[2:8]
-        result = v.resolve()
+    def test_lazy_result_method(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
+        v = arr.lazy[2:8]
+        result = v.result()
         np.testing.assert_array_equal(result, data[2:8])
 
     def test_lazy_across_chunks(self, arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> None:
         """Lazy slice spanning multiple chunks resolves correctly."""
-        v = arr.z[3:17, 8:22]
+        v = arr.lazy[3:17, 8:22]
         result = v[...]
         np.testing.assert_array_equal(result, data[3:17, 8:22])
 
 
 class TestLazyWrite:
     def test_lazy_write(self, arr: zarr.Array[Any]) -> None:
-        arr.z[2:5, 10:20] = np.ones((3, 10), dtype="i4") * 99
+        arr.lazy[2:5, 10:20] = np.ones((3, 10), dtype="i4") * 99
         result = arr[2:5, 10:20]
         np.testing.assert_array_equal(result, np.ones((3, 10), dtype="i4") * 99)
 
     def test_lazy_oindex_write(self, arr: zarr.Array[Any]) -> None:
         idx = np.array([0, 5, 10], dtype=np.intp)
-        arr.z.oindex[idx, :] = np.zeros((3, 30), dtype="i4")
+        arr.lazy.oindex[idx, :] = np.zeros((3, 30), dtype="i4")
         result = arr.oindex[idx, :]
         np.testing.assert_array_equal(result, np.zeros((3, 30), dtype="i4"))
 
     def test_lazy_vindex_write(self, arr: zarr.Array[Any]) -> None:
         idx0 = np.array([0, 5, 10], dtype=np.intp)
         idx1 = np.array([0, 5, 10], dtype=np.intp)
-        arr.z.vindex[idx0, idx1] = np.array([77, 88, 99], dtype="i4")
+        arr.lazy.vindex[idx0, idx1] = np.array([77, 88, 99], dtype="i4")
         result = arr.vindex[idx0, idx1]
         np.testing.assert_array_equal(result, np.array([77, 88, 99], dtype="i4"))

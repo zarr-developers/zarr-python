@@ -3961,14 +3961,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return BlockIndex(self)
 
     @property
-    def z(self) -> _LazyIndexAccessor:
+    def lazy(self) -> _LazyIndexAccessor:
         """Lazy indexing accessor. Returns a new Array with composed transform, no I/O."""
         return _LazyIndexAccessor(self)
 
-    def resolve(self, prototype: BufferPrototype | None = None) -> NDArrayLikeOrScalar:
+    def result(self, prototype: BufferPrototype | None = None) -> NDArrayLikeOrScalar:
         """Read and return the data for this array view.
 
         Equivalent to ``self[...]`` but more explicit for lazy views.
+        Named after `tensorstore.Future.result`.
         """
         return self[...]
 
@@ -4190,7 +4191,7 @@ type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class _LazyOIndex:
-    """Lazy orthogonal indexing via ``array.z.oindex[...]``."""
+    """Lazy orthogonal indexing via ``array.lazy.oindex[...]``."""
 
     __slots__ = ("_array",)
 
@@ -4207,7 +4208,7 @@ class _LazyOIndex:
 
 
 class _LazyVIndex:
-    """Lazy vectorized indexing via ``array.z.vindex[...]``."""
+    """Lazy vectorized indexing via ``array.lazy.vindex[...]``."""
 
     __slots__ = ("_array",)
 
@@ -4224,7 +4225,7 @@ class _LazyVIndex:
 
 
 class _LazyIndexAccessor:
-    """Provides lazy indexing via ``array.z[...]``."""
+    """Provides lazy indexing via ``array.lazy[...]``."""
 
     __slots__ = ("_array",)
 

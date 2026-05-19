@@ -22,7 +22,7 @@ Key operations:
 
 The transform is the atomic unit that connects user-facing indexing to
 chunk-level I/O. Every ``Array`` holds a transform (identity by default).
-``Array.z[...]`` composes a new transform lazily. Reading resolves the
+``Array.lazy[...]`` composes a new transform lazily. Reading resolves the
 transform against the chunk grid via intersect + translate.
 """
 
