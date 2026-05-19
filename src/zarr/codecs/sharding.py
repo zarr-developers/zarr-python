@@ -59,6 +59,7 @@ from zarr.core.metadata.v3 import (
     parse_codecs,
 )
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
+from zarr.storage._common import StorePath
 from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
@@ -467,7 +468,7 @@ class ShardingCodec(
         all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
 
         # reading bytes of all requested chunks
-        shard_dict: ShardMapping = {}
+        shard_dict_maybe: ShardMapping | None
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(
@@ -475,24 +476,18 @@ class ShardingCodec(
                 prototype=chunk_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
-            if shard_dict_maybe is None:
-                return None
-            shard_dict = shard_dict_maybe
         else:
             # read some chunks within the shard
-            shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
-            if shard_index is None:
-                return None
-            shard_dict = {}
-            for chunk_coords in all_chunk_coords:
-                chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
-                if chunk_byte_slice:
-                    chunk_bytes = await byte_getter.get(
-                        prototype=chunk_spec.prototype,
-                        byte_range=RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
-                    )
-                    if chunk_bytes:
-                        shard_dict[chunk_coords] = chunk_bytes
+            shard_dict_maybe = await self._load_partial_shard_maybe(
+                byte_getter,
+                chunk_spec.prototype,
+                chunks_per_shard,
+                all_chunk_coords,
+            )
+
+        if shard_dict_maybe is None:
+            return None
+        shard_dict = shard_dict_maybe
 
         # decoding chunks and writing them into the output buffer
         await self.codec_pipeline.read(
@@ -778,6 +773,66 @@ class ShardingCodec(
             if shard_bytes
             else None
         )
+
+    async def _load_partial_shard_maybe(
+        self,
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+        chunks_per_shard: tuple[int, ...],
+        all_chunk_coords: set[tuple[int, ...]],
+    ) -> ShardMapping | None:
+        """
+        Read chunks from `byte_getter` for the case where the read is less than a full shard.
+        Returns a mapping of chunk coordinates to bytes or None.
+        """
+        shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
+        if shard_index is None:
+            return None
+
+        # Pair up chunks and their byte ranges as list[tuple[chunk_coord, byte_range]]
+        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
+        for chunk_coord in all_chunk_coords:
+            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
+            if chunk_byte_slice is not None:
+                chunk_coord_byte_ranges.append(
+                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+                )
+
+        if not chunk_coord_byte_ranges:
+            return {}
+
+        shard_dict: ShardMutableMapping = {}
+        if isinstance(byte_getter, StorePath):
+            # External store: use Store.get_ranges for coalescing + concurrency.
+            byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
+            try:
+                async for group in byte_getter.store.get_ranges(
+                    byte_getter.path, byte_ranges, prototype=prototype
+                ):
+                    for idx, buf in group:
+                        if buf is not None:
+                            chunk_coord, _ = chunk_coord_byte_ranges[idx]
+                            shard_dict[chunk_coord] = buf
+            except BaseExceptionGroup as eg:
+                # `Store.get_ranges` raises FileNotFoundError (wrapped in a
+                # BaseExceptionGroup) if any underlying fetch indicates the key is
+                # absent. The shard index loaded above, so this typically means a
+                # race where the shard was deleted mid-read; treat it as "shard
+                # gone" to match the index-missing branch (return None). Anything
+                # else in the group (e.g. IO errors) is re-raised.
+                _, rest = eg.split(FileNotFoundError)
+                if rest is not None:
+                    raise rest from None
+                return None
+        else:
+            # Any other ByteGetter. In practice only `_ShardingByteGetter` for
+            # nested sharding, which slices an in-memory buffer (no I/O to coalesce).
+            for chunk_coord, byte_range in chunk_coord_byte_ranges:
+                buf = await byte_getter.get(prototype, byte_range)
+                if buf is not None:
+                    shard_dict[chunk_coord] = buf
+
+        return shard_dict
 
     def compute_encoded_size(self, input_byte_length: int, shard_spec: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
