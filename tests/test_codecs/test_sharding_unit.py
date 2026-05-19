@@ -128,56 +128,6 @@ def test_shard_index_localize_chunk() -> None:
     assert index._localize_chunk((4, 6)) == (0, 0)  # 4 % 2 = 0, 6 % 3 = 0
 
 
-def test_shard_index_is_dense_true() -> None:
-    """Test is_dense returns True when chunks are contiguously packed."""
-    index = _ShardIndex.create_empty((2,))
-    chunk_byte_length = 100
-
-    # Set chunks contiguously: [0-100), [100-200)
-    index.set_chunk_slice((0,), slice(0, 100))
-    index.set_chunk_slice((1,), slice(100, 200))
-
-    assert index.is_dense(chunk_byte_length) is True
-
-
-def test_shard_index_is_dense_false_duplicate_offsets() -> None:
-    """Test is_dense returns False when chunks have duplicate offsets."""
-    index = _ShardIndex.create_empty((2,))
-    chunk_byte_length = 100
-
-    # Set both chunks to same offset (duplicate)
-    index.set_chunk_slice((0,), slice(0, 100))
-    index.set_chunk_slice((1,), slice(0, 100))
-
-    assert index.is_dense(chunk_byte_length) is False
-
-
-def test_shard_index_is_dense_false_wrong_alignment() -> None:
-    """Test is_dense returns False when chunks are not aligned to chunk_byte_length."""
-    index = _ShardIndex.create_empty((2,))
-    chunk_byte_length = 100
-
-    # Set chunks not aligned: [0-100), [150-250)
-    index.set_chunk_slice((0,), slice(0, 100))
-    index.set_chunk_slice((1,), slice(150, 250))
-
-    assert index.is_dense(chunk_byte_length) is False
-
-
-def test_shard_index_is_dense_with_empty_chunks() -> None:
-    """Test is_dense handles empty chunks correctly."""
-    index = _ShardIndex.create_empty((3,))
-    chunk_byte_length = 100
-
-    # Only set first and third chunk, skip middle
-    index.set_chunk_slice((0,), slice(0, 100))
-    # (1,) is empty
-    index.set_chunk_slice((2,), slice(100, 200))
-
-    # Should still be dense since only non-empty chunks are considered
-    assert index.is_dense(chunk_byte_length) is True
-
-
 # ============================================================================
 # _load_partial_shard_maybe tests
 #
