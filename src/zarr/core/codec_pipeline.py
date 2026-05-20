@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
@@ -187,7 +187,18 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
+        # Each codec must be evolved against the spec it will actually see
+        # at run-time, not the original array spec. Earlier array->array
+        # codecs may transform the dtype (e.g. cast_value), so the spec
+        # threaded into later codecs (the array->bytes serializer and any
+        # bytes->bytes filters) must reflect those transformations.
+        evolved: list[Codec] = []
+        spec = array_spec
+        for codec in self:
+            evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
+            evolved.append(evolved_codec)
+            spec = evolved_codec.resolve_metadata(spec)
+        return type(self).from_codecs(evolved)
 
     @classmethod
     def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
@@ -242,7 +253,7 @@ class BatchedCodecPipeline(CodecPipeline):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)

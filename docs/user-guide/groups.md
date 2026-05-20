@@ -8,8 +8,7 @@ To create a group, use the [`zarr.group`][] function:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 import zarr
-store = zarr.storage.MemoryStore()
-root = zarr.create_group(store=store)
+root = zarr.create_group(store="memory://groups-demo")
 print(root)
 ```
 
@@ -70,7 +69,7 @@ For more information on groups see the [`zarr.Group` API docs](../api/zarr/group
 ## Batch Group Creation
 
 You can also create multiple groups concurrently with a single function call. [`zarr.create_hierarchy`][] takes
-a [`zarr Storage instance`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
+a [`zarr Storage`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
 writes metadata documents to storage:
 
 ```python exec="true" session="groups" source="above" result="ansi"
@@ -105,8 +104,7 @@ Diagnostic information about arrays and groups is available via the `info`
 property. E.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
-store = zarr.storage.MemoryStore()
-root = zarr.group(store=store)
+root = zarr.group(store="memory://diagnostics-demo")
 foo = root.create_group('foo')
 bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
 bar[:] = 42

@@ -30,13 +30,12 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
-# If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
-    'typing_extensions>=4.12',
+    'typing_extensions>=4.13',
     'donfig>=0.8',
 ]
 
@@ -67,8 +66,9 @@ remote = [
     "obstore>=0.5.1",
 ]
 gpu = [
-    "cupy-cuda12x",
+    "cupy-cuda12x; sys_platform != 'darwin'",
 ]
+cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -110,10 +110,11 @@ remote-tests = [
 docs = [
     # Doc building
     "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1",
+    "mkdocs>=1.6.1,<2",
     "mkdocstrings>=0.29.1",
     "mkdocstrings-python>=1.16.10",
     "mike>=2.1.3",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
     "griffe-inherited-docstrings",
@@ -151,6 +152,9 @@ version.source = "vcs"
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
 
+[tool.hatch.envs.dev]
+dependency-groups = ["dev"]
+
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
 
@@ -165,6 +169,7 @@ matrix.deps.features = [
   {value = "remote", if = ["optional"]},
   {value = "optional", if = ["optional"]},
   {value = "cli", if = ["optional"]},
+  {value = "cast-value-rs", if = ["optional"]},
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
@@ -172,16 +177,15 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest {args:}",
+    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
     "coverage html",
 ]
 run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
 run-hypothesis = [
     "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage xml",
@@ -242,7 +246,7 @@ extra-dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
-    'typing_extensions==4.12.*',
+    'typing_extensions==4.13.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
 ]
@@ -253,6 +257,10 @@ installer = "uv"
 [tool.hatch.envs.docs]
 features = ['remote']
 dependency-groups = ['docs']
+
+[tool.hatch.envs.docs.env-vars]
+DISABLE_MKDOCS_2_WARNING = "true"
+NO_MKDOCS_2_WARNING = "true"
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve --watch src"
@@ -355,10 +363,13 @@ ignore = [
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
+files = ["src", "tests"]
 python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false
-
+pretty = true
+show_error_code_links = true
+show_error_context = true
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -371,7 +382,6 @@ module = [
     "tests.test_config",
     "tests.test_store.test_zip",
     "tests.test_store.test_local",
-    "tests.test_store.test_fsspec",
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
@@ -387,6 +397,7 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
+    "tests.test_store.test_fsspec",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
@@ -432,6 +443,7 @@ markers = [
 [tool.repo-review]
 ignore = [
 	"PC111",  # fix Python code in documentation - enable later
+    "PC140",  # we run mypy via `uv run mypy`, not via mirrors-mypy
     "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
