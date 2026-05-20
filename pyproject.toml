@@ -67,7 +67,7 @@ remote = [
     "obstore>=0.5.1",
 ]
 gpu = [
-    "cupy-cuda12x",
+    "cupy-cuda12x; sys_platform != 'darwin'",
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]

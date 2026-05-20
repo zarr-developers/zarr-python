@@ -3952,7 +3952,7 @@ cli = [
     { name = "typer" },
 ]
 gpu = [
-    { name = "cupy-cuda12x" },
+    { name = "cupy-cuda12x", marker = "sys_platform != 'darwin'" },
 ]
 optional = [
     { name = "universal-pathlib" },
@@ -4053,7 +4053,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "cast-value-rs", marker = "extra == 'cast-value-rs'" },
-    { name = "cupy-cuda12x", marker = "extra == 'gpu'" },
+    { name = "cupy-cuda12x", marker = "sys_platform != 'darwin' and extra == 'gpu'" },
     { name = "donfig", specifier = ">=0.8" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2023.10.0" },
     { name = "google-crc32c", specifier = ">=1.5" },
