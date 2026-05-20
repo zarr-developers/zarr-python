@@ -2,6 +2,41 @@
 
 <!-- towncrier release notes start -->
 
+## 3.2.2 (2026-05-20)
+
+### Features
+
+- Optimizes reading multiple chunks from a shard. Serial calls to `Store.get()`
+  in the sharding codec have been replaced with a single call to
+  `Store.get_ranges()`, which coalesces nearby byte ranges and fetches them
+  concurrently. ([#3004](https://github.com/zarr-developers/zarr-python/issues/3004))
+- Add `zarr.abc.store.Store.get_ranges` for concurrent, coalesced multi-range reads from a single key. The method is defined on the `Store` ABC with a default implementation built on `Store.get`, so every store inherits a working version; stores with native multi-range backends (e.g. `FsspecStore`) can override for efficiency. Coalescing knobs (`max_concurrency`, `max_gap_bytes`, `max_coalesced_bytes`) are passed as keyword arguments to `get_ranges`. Failures from underlying fetches surface as a `BaseExceptionGroup` (PEP 654); callers should use `except*` to filter for specific exception types such as `FileNotFoundError`. ([#3925](https://github.com/zarr-developers/zarr-python/issues/3925))
+
+### Bugfixes
+
+- Make chunk normalization properly handle `-1` as a compact representation of the
+  length of an entire axis. Reject several previously-accepted but ill-defined
+  chunk specifications: `chunks=True` (previously silently produced size-1 chunks),
+  chunk tuples shorter than the array's number of dimensions (previously padded to
+  the array's shape), and `None` as a per-dimension chunk size. These all now
+  raise informative errors. Also fix chunk handling for 0-length array dimensions,
+  and add explicit rejection of 0-length chunks. ([#3899](https://github.com/zarr-developers/zarr-python/issues/3899))
+- Handle missing consolidated metadata in leaf Group nodes. ([#3954](https://github.com/zarr-developers/zarr-python/issues/3954))
+
+### Deprecations and Removals
+
+- The `BloscShuffle` and `BloscCname` enums (`zarr.codecs.BloscShuffle`,
+  `zarr.codecs.BloscCname`) are now deprecated. Pass the equivalent literal
+  string (e.g. `"zstd"`, `"bitshuffle"`) when constructing a `BloscCodec`.
+  The enum classes remain importable but emit `DeprecationWarning` on member
+  access, and will be removed in a future release. `BloscCodec.cname` and
+  `BloscCodec.shuffle` are now plain strings rather than enum members. ([#3963](https://github.com/zarr-developers/zarr-python/issues/3963))
+
+### Misc
+
+- [#3908](https://github.com/zarr-developers/zarr-python/issues/3908), [#3972](https://github.com/zarr-developers/zarr-python/issues/3972), [#3975](https://github.com/zarr-developers/zarr-python/issues/3975), [#3979](https://github.com/zarr-developers/zarr-python/issues/3979), [#3990](https://github.com/zarr-developers/zarr-python/issues/3990)
+
+
 ## 3.2.1 (2026-05-05)
 
 ### Bugfixes
