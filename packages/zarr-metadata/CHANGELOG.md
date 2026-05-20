@@ -2,7 +2,7 @@
 
 <!-- towncrier release notes start -->
 
-## 0.2.0 (2026-05-11)
+## 0.2.0 (2026-05-19)
 
 ### Bugfixes
 
@@ -30,6 +30,15 @@
 
 ### Features
 
+- Added `ArrayMetadataV3Partial`, `GroupMetadataV3Partial`,
+  `ArrayMetadataV2Partial`, and `GroupMetadataV2Partial` — sibling
+  TypedDicts to the existing full metadata types, declared with
+  `total=False` so every field is `NotRequired`. Use these when typing
+  dicts that intentionally hold a subset of a complete metadata document
+  (test fixtures, fragment templates, in-progress builders). An
+  equivalence test pins each `Partial` to the keys and value types of
+  its full sibling so the two cannot drift.
+  ([#3982](https://github.com/zarr-developers/zarr-python/issues/3982))
 - Added three new top-level types modelling the **strict on-disk** shape
   of Zarr v2 metadata documents: `ZArrayMetadata` (the `.zarray` file),
   `ZGroupMetadata` (the `.zgroup` file), and `ZAttrsMetadata` (the
