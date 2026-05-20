@@ -4414,12 +4414,12 @@ async def init_array(
             )
 
     # Normalize the user's chunks into canonical ChunksTuple form
-    max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
-    chunks_normalized = (
-        guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
-        if chunks == "auto"
-        else normalize_chunks_nd(chunks, shape_parsed)
-    )
+
+    if chunks == "auto":
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
     # inner (sub-chunk structure for ShardingCodec, None if no sharding)
