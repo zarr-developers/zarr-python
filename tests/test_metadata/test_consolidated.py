@@ -28,6 +28,7 @@ from zarr.storage import StorePath
 if TYPE_CHECKING:
     from zarr_metadata.v2 import ConsolidatedMetadataV2, ZAttrsMetadata, ZGroupMetadata
     from zarr_metadata.v3.array import ArrayMetadataV3Partial
+    from zarr_metadata.v3.group import GroupMetadataV3
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, ZarrFormat
@@ -98,7 +99,11 @@ class TestConsolidated:
             # `consolidated_metadata` extension field; not a
             # `ConsolidatedMetadataV2` shape, so use a separately-named
             # variable.
-            zarr_json: dict[str, JSON] = {
+            # Complete v3 group document with an inline `consolidated_metadata`
+            # extension field. mypy does not honor PEP 728 `extra_items=`, so
+            # the extension key needs a `typeddict-unknown-key` suppression even
+            # though `GroupMetadataV3` permits conforming extension fields.
+            zarr_json: GroupMetadataV3 = {  # type: ignore[typeddict-unknown-key]
                 "attributes": {},
                 "zarr_format": 3,
                 "consolidated_metadata": {
