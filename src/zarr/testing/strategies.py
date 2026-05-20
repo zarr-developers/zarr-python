@@ -15,6 +15,7 @@ from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
@@ -295,15 +296,17 @@ def arrays(
     shard_shape = None
     dim_names = None
     if zarr_format == 3:
-        chunk_grid_meta = draw(chunk_grids(shape=nparray.shape), label="chunk grid")
+        chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
             chunks_param = [
                 list(dim) if isinstance(dim, tuple) else [dim]
                 for dim in chunk_grid_meta.chunk_shapes
             ]
-        else:
+        elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
+        else:
+            chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
             if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
@@ -314,7 +317,7 @@ def arrays(
                     subchunk_write_order = draw(subchunk_write_orders)
                     serializer = ShardingCodec(
                         subchunk_write_order=subchunk_write_order,
-                        codecs=[BytesCodec()],
+                        codecs=[BytesCodec(), ZstdCodec()],
                         index_codecs=[BytesCodec(), Crc32cCodec()],
                         chunk_shape=chunks_param,
                     )
