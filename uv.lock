@@ -4158,7 +4158,6 @@ test = [
 
 [[package]]
 name = "zarr-metadata"
-version = "0.1.1"
 source = { editable = "packages/zarr-metadata" }
 dependencies = [
     { name = "typing-extensions" },

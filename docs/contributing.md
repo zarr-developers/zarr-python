@@ -124,12 +124,12 @@ Both mechanisms point at the same in-tree path. They have to be declared separat
 What this means in practice:
 
 - **During local development** (whether you invoke `uv run pytest` or `hatch env run --env test.py3.12-optional run`), zarr-python resolves `zarr-metadata` from the in-tree source under `packages/zarr-metadata/`. Changes you make there are immediately visible to zarr-python without reinstalling.
-- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.1.1,<0.2`) is carried. The workspace declarations are development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
+- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.2.0,<0.3`) is carried. The workspace declarations are development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
 - **In CI**, the primary test matrix (`test.yml`) runs `hatch env run` against the in-tree zarr-metadata. A change in `packages/zarr-metadata/` that breaks zarr-python surfaces immediately, before zarr-metadata is released to PyPI. The `min_deps` job additionally exercises the published floor on every PR, so a change in zarr-python that *requires* an unreleased zarr-metadata feature also gets caught.
 
 If you change zarr-metadata, also run zarr-python's test suite. The workspace setup makes this transparent — your usual `uv run pytest` or `hatch env run` picks up the in-tree source automatically.
 
-When releasing a new zarr-metadata version that contains a breaking change, also bump zarr-python's version cap on zarr-metadata (currently `<0.2`) in the same release cycle. See [Releasing zarr-python when zarr-metadata has changed](#releasing-zarr-python-when-zarr-metadata-has-changed) below for the full procedure.
+When releasing a new zarr-metadata version that contains a breaking change, also bump zarr-python's version cap on zarr-metadata (currently `<0.3`) in the same release cycle. See [Releasing zarr-python when zarr-metadata has changed](#releasing-zarr-python-when-zarr-metadata-has-changed) below for the full procedure.
 
 ### Creating a branch
 
