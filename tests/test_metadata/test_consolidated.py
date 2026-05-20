@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -27,6 +27,7 @@ from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr_metadata.v2 import ConsolidatedMetadataV2, ZAttrsMetadata, ZGroupMetadata
+    from zarr_metadata.v3.array import ArrayMetadataV3Partial
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, ZarrFormat
@@ -157,7 +158,10 @@ class TestConsolidated:
             await consolidate_metadata(memory_store_with_hierarchy)
         group2 = await AsyncGroup.open(memory_store_with_hierarchy)
 
-        array_metadata: dict[str, JSON] = {
+        # Partial v3 array document: `shape` and `chunk_grid` are intentionally
+        # omitted and supplied per-array via spread below. `ArrayMetadataV3Partial`
+        # is the `total=False` form that types exactly this kind of fragment.
+        array_metadata: ArrayMetadataV3Partial = {
             "attributes": {},
             "chunk_key_encoding": {
                 "configuration": {"separator": "/"},
@@ -187,7 +191,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1, 2, 3)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
@@ -197,7 +201,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
@@ -207,7 +211,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "time": ArrayV3Metadata.from_dict(
@@ -217,7 +221,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (3,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "child": GroupMetadata(
@@ -226,7 +230,7 @@ class TestConsolidated:
                             metadata={
                                 "array": ArrayV3Metadata.from_dict(
                                     {
-                                        **array_metadata,
+                                        **array_metadata,  # type: ignore[dict-item]
                                         "attributes": {"key": "child"},
                                         "shape": (4, 4),
                                         "chunk_grid": {
@@ -248,7 +252,7 @@ class TestConsolidated:
                                             ),
                                             "array": ArrayV3Metadata.from_dict(
                                                 {
-                                                    **array_metadata,
+                                                    **array_metadata,  # type: ignore[dict-item]
                                                     "attributes": {"key": "grandchild"},
                                                     "shape": (4, 4),
                                                     "chunk_grid": {
@@ -308,7 +312,9 @@ class TestConsolidated:
             zarr.api.synchronous.consolidate_metadata(memory_store)
         group2 = zarr.Group.open(memory_store)
 
-        array_metadata: dict[str, JSON] = {
+        # Partial v3 array document (see `test_consolidated_metadata`): `shape`
+        # and `chunk_grid` are supplied per-array via the spreads below.
+        array_metadata: ArrayMetadataV3Partial = {
             "attributes": {},
             "chunk_key_encoding": {
                 "configuration": {"separator": "/"},
@@ -338,7 +344,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1, 2, 3)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
@@ -348,7 +354,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
@@ -358,7 +364,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                     "time": ArrayV3Metadata.from_dict(
@@ -368,7 +374,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (3,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[dict-item]
                         }
                     ),
                 },
@@ -425,7 +431,9 @@ class TestConsolidated:
         ConsolidatedMetadata.from_dict(data)
 
     def test_flatten(self) -> None:
-        array_metadata: dict[str, Any] = {
+        # Partial v3 array document (see `test_consolidated_metadata`): `shape`
+        # and `chunk_grid` are supplied per-array via the spreads below.
+        array_metadata: ArrayMetadataV3Partial = {
             "attributes": {},
             "chunk_key_encoding": {
                 "configuration": {"separator": "/"},
@@ -450,7 +458,7 @@ class TestConsolidated:
                             "configuration": {"chunk_shape": (1, 2, 3)},
                             "name": "regular",
                         },
-                        **array_metadata,
+                        **array_metadata,  # type: ignore[dict-item]
                     }
                 ),
                 "lat": ArrayV3Metadata.from_dict(
@@ -460,7 +468,7 @@ class TestConsolidated:
                             "configuration": {"chunk_shape": (1,)},
                             "name": "regular",
                         },
-                        **array_metadata,
+                        **array_metadata,  # type: ignore[dict-item]
                     }
                 ),
                 "child": GroupMetadata(
@@ -469,7 +477,7 @@ class TestConsolidated:
                         metadata={
                             "array": ArrayV3Metadata.from_dict(
                                 {
-                                    **array_metadata,
+                                    **array_metadata,  # type: ignore[dict-item]
                                     "attributes": {"key": "child"},
                                     "shape": (4, 4),
                                     "chunk_grid": {
@@ -484,7 +492,7 @@ class TestConsolidated:
                                     metadata={
                                         "array": ArrayV3Metadata.from_dict(
                                             {
-                                                **array_metadata,
+                                                **array_metadata,  # type: ignore[dict-item]
                                                 "attributes": {"key": "grandchild"},
                                                 "shape": (4, 4),
                                                 "chunk_grid": {
