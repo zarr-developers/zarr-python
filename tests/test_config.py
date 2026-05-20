@@ -59,6 +59,12 @@ def test_config_defaults_set() -> None:
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
+                "sharding": {
+                    "read": {
+                        "coalesce_max_gap_bytes": 1 << 20,
+                        "coalesce_max_bytes": 16 << 20,
+                    },
+                },
                 "json_indent": 2,
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
