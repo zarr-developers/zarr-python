@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.struct import Struct as StructMetadata
 from zarr.core.dtype import (
     Float16,
     Float64,
@@ -34,26 +37,23 @@ class TestStruct(BaseTestZDType):
         {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None},
         {"name": [["field1", ">i8"], ["field2", ">i4"]], "object_codec_id": None},
     )
-    # NOTE: not typed as zarr-metadata's `Struct`. That type models
-    # `configuration.fields` as a `tuple[StructField, ...]`, but zarr-python's
-    # `Struct.to_json` emits `fields` as a list, and the v3 round-trip test
-    # asserts `to_json(...) == valid_json_v3`. Typing the fixture would force
-    # the field entries to tuples and break that runtime equality, so the
-    # loose annotation is kept here deliberately.
-    valid_json_v3 = (
+    # `StructConfiguration.fields` is a `tuple[StructField, ...]` (a JSON array
+    # is a typed fixed-length container), and `Struct.to_json` emits a tuple to
+    # match, so the field entries are written as tuples here.
+    valid_json_v3: ClassVar[tuple[StructMetadata, ...]] = (
         {
             "name": "struct",
             "configuration": {
-                "fields": [
+                "fields": (
                     {"name": "field1", "data_type": "int32"},
                     {"name": "field2", "data_type": "float64"},
-                ]
+                )
             },
         },
         {
             "name": "struct",
             "configuration": {
-                "fields": [
+                "fields": (
                     {
                         "name": "field1",
                         "data_type": {
@@ -68,7 +68,7 @@ class TestStruct(BaseTestZDType):
                             "configuration": {"length_bytes": 32},
                         },
                     },
-                ]
+                )
             },
         },
     )
