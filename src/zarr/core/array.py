@@ -4397,11 +4397,8 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    if overwrite:
-        if store_path.store.supports_deletes:
-            await store_path.delete_dir()
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
@@ -4417,12 +4414,10 @@ async def init_array(
             )
 
     # Normalize the user's chunks into canonical ChunksTuple form
-    if chunks is None or chunks == "auto":
-        chunks_normalized = guess_chunks(
-            shape_parsed,
-            item_size,
-            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
-        )
+
+    if chunks == "auto":
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
