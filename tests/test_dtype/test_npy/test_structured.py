@@ -34,6 +34,12 @@ class TestStruct(BaseTestZDType):
         {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None},
         {"name": [["field1", ">i8"], ["field2", ">i4"]], "object_codec_id": None},
     )
+    # NOTE: not typed as zarr-metadata's `Struct`. That type models
+    # `configuration.fields` as a `tuple[StructField, ...]`, but zarr-python's
+    # `Struct.to_json` emits `fields` as a list, and the v3 round-trip test
+    # asserts `to_json(...) == valid_json_v3`. Typing the fixture would force
+    # the field entries to tuples and break that runtime equality, so the
+    # loose annotation is kept here deliberately.
     valid_json_v3 = (
         {
             "name": "struct",

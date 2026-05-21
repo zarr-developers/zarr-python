@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.float16 import Float16DataTypeName
+    from zarr_metadata.v3.data_type.float32 import Float32DataTypeName
+    from zarr_metadata.v3.data_type.float64 import Float64DataTypeName
 
 
 class _BaseTestFloat(BaseTestZDType):
@@ -36,7 +43,7 @@ class TestFloat16(_BaseTestFloat):
         {"name": ">f2", "object_codec_id": None},
         {"name": "<f2", "object_codec_id": None},
     )
-    valid_json_v3 = ("float16",)
+    valid_json_v3: ClassVar[tuple[Float16DataTypeName, ...]] = ("float16",)
     invalid_json_v2 = (
         "|f2",
         "float16",
@@ -86,7 +93,7 @@ class TestFloat32(_BaseTestFloat):
         {"name": ">f4", "object_codec_id": None},
         {"name": "<f4", "object_codec_id": None},
     )
-    valid_json_v3 = ("float32",)
+    valid_json_v3: ClassVar[tuple[Float32DataTypeName, ...]] = ("float32",)
     invalid_json_v2 = (
         "|f4",
         "float32",
@@ -136,7 +143,7 @@ class TestFloat64(_BaseTestFloat):
         {"name": ">f8", "object_codec_id": None},
         {"name": "<f8", "object_codec_id": None},
     )
-    valid_json_v3 = ("float64",)
+    valid_json_v3: ClassVar[tuple[Float64DataTypeName, ...]] = ("float64",)
     invalid_json_v2 = (
         "|f8",
         "float64",

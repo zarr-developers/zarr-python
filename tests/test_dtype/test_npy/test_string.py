@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
 import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import FixedLengthUTF32
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthUTF8
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.string import StringDataTypeName
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
@@ -18,7 +23,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             np.dtype("|S10"),
         )
         valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
-        valid_json_v3 = ("string",)
+        valid_json_v3: ClassVar[tuple[StringDataTypeName, ...]] = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -54,7 +59,7 @@ else:
             np.dtype("|S10"),
         )
         valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
-        valid_json_v3 = ("string",)
+        valid_json_v3: ClassVar[tuple[StringDataTypeName, ...]] = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
