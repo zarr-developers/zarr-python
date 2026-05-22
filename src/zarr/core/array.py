@@ -4397,11 +4397,8 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    if overwrite:
-        if store_path.store.supports_deletes:
-            await store_path.delete_dir()
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
@@ -4417,12 +4414,10 @@ async def init_array(
             )
 
     # Normalize the user's chunks into canonical ChunksTuple form
-    if chunks is None or chunks == "auto":
-        chunks_normalized = guess_chunks(
-            shape_parsed,
-            item_size,
-            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
-        )
+
+    if chunks == "auto":
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
@@ -5427,11 +5422,24 @@ async def _get_selection(
 
         # reading chunks and decoding them
         indexed_chunks = list(indexer)
+        # For regular grids, all chunks share the same ArraySpec, so build it once
+        # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+        regular_grid = chunk_grid.is_regular
+        if regular_grid:
+            regular_chunk_spec = ArraySpec(
+                shape=chunk_grid.chunk_shape,
+                dtype=metadata.dtype,
+                fill_value=metadata.fill_value,
+                config=_config,
+                prototype=prototype,
+            )
         results = await codec_pipeline.read(
             [
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
-                    _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                    regular_chunk_spec
+                    if regular_grid
+                    else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
@@ -5770,11 +5778,24 @@ async def _set_selection(
         _config = replace(_config, order=order)
 
     # merging with existing data and encoding chunks
+    # For regular grids, all chunks share the same ArraySpec, so build it once
+    # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+    regular_grid = chunk_grid.is_regular
+    if regular_grid:
+        regular_chunk_spec = ArraySpec(
+            shape=chunk_grid.chunk_shape,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=_config,
+            prototype=prototype,
+        )
     await codec_pipeline.write(
         [
             (
                 store_path / metadata.encode_chunk_key(chunk_coords),
-                _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                regular_chunk_spec
+                if regular_grid
+                else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
                 chunk_selection,
                 out_selection,
                 is_complete_chunk,

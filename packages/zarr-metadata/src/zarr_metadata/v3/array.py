@@ -62,7 +62,44 @@ class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
+class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+    """
+    Partial form of `ArrayMetadataV3`: every field is `NotRequired`.
+
+    Field annotations and `extra_items=` mirror `ArrayMetadataV3` exactly.
+    The only difference is `total=False`, which makes every key optional
+    at the type level.
+
+    Use this when typing dicts that intentionally hold a subset of a complete
+    v3 array metadata document — e.g. test fixtures that override only a few
+    fields of a base template, or callers that build a fragment to be merged
+    into a complete document elsewhere.
+
+    The `NotRequired[...]` wrappers on `attributes`, `storage_transformers`,
+    and `dimension_names` are intentional: keeping them preserves byte-identical
+    `__annotations__` with `ArrayMetadataV3` so the `==` check in
+    `tests/test_partial_equivalence.py` passes without special-casing those
+    fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
+
+    Drift between this type and `ArrayMetadataV3` is prevented by
+    `tests/test_partial_equivalence.py`.
+    """
+
+    zarr_format: Literal[3]
+    node_type: Literal["array"]
+    data_type: MetadataFieldV3
+    shape: tuple[int, ...]
+    chunk_grid: MetadataFieldV3
+    chunk_key_encoding: MetadataFieldV3
+    fill_value: object
+    codecs: tuple[MetadataFieldV3, ...]
+    attributes: NotRequired[Mapping[str, object]]
+    storage_transformers: NotRequired[tuple[MetadataFieldV3, ...]]
+    dimension_names: NotRequired[tuple[str | None, ...]]
+
+
 __all__ = [
     "ArrayMetadataV3",
+    "ArrayMetadataV3Partial",
     "ExtensionFieldV3",
 ]
