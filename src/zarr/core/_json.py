@@ -37,6 +37,23 @@ def buffer_to_json(buffer: Buffer) -> JSON:
     return cast("JSON", json.loads(buffer.to_bytes()))
 
 
+def buffer_to_json_object(buffer: Buffer) -> dict[str, JSON]:
+    """Parse the contents of a `Buffer` as a JSON object (a `dict`).
+
+    Every metadata document zarr reads is a JSON object, so this narrows the
+    `JSON` union to `dict[str, JSON]` once, here, instead of at each call site.
+
+    Raises
+    ------
+    TypeError
+        If the parsed value is not a JSON object.
+    """
+    obj = buffer_to_json(buffer)
+    if not isinstance(obj, dict):
+        raise TypeError(f"Expected a JSON object, got {type(obj).__name__}.")
+    return obj
+
+
 def json_to_buffer(obj: JSON, *, prototype: BufferPrototype | None = None) -> Buffer:
     """Serialize a JSON value into a `Buffer`.
 

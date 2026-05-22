@@ -25,11 +25,11 @@ if TYPE_CHECKING:
         ZDType,
     )
 
-import json
 from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
 
+from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
@@ -39,7 +39,7 @@ from zarr.core.common import (
     MemoryOrder,
     parse_shapelike,
 )
-from zarr.core.config import config, parse_indexing_order
+from zarr.core.config import parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -140,14 +140,9 @@ class ArrayV2Metadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
-        json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
-            ),
-            ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
-            ),
+            ZARRAY_JSON: json_to_buffer(zarray_dict, prototype=prototype),
+            ZATTRS_JSON: json_to_buffer(zattrs_dict, prototype=prototype),
         }
 
     @classmethod

@@ -3,7 +3,15 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from zarr.core._json import buffer_to_json, get_json, json_to_buffer, set_json
+import pytest
+
+from zarr.core._json import (
+    buffer_to_json,
+    buffer_to_json_object,
+    get_json,
+    json_to_buffer,
+    set_json,
+)
 from zarr.core.buffer import cpu, default_buffer_prototype
 from zarr.storage import MemoryStore
 from zarr.storage._common import StorePath
@@ -76,3 +84,16 @@ def test_buffer_to_json_on_cpu_buffer() -> None:
     """`buffer_to_json` works on a plain CPU buffer built from raw bytes."""
     buffer = cpu.Buffer.from_bytes(b'{"hello": "world"}')
     assert buffer_to_json(buffer) == {"hello": "world"}
+
+
+def test_buffer_to_json_object_returns_dict() -> None:
+    """`buffer_to_json_object` returns the parsed object as a dict."""
+    buffer = cpu.Buffer.from_bytes(b'{"node_type": "group"}')
+    assert buffer_to_json_object(buffer) == {"node_type": "group"}
+
+
+def test_buffer_to_json_object_rejects_non_object() -> None:
+    """`buffer_to_json_object` raises TypeError when the document is not an object."""
+    buffer = cpu.Buffer.from_bytes(b"[1, 2, 3]")
+    with pytest.raises(TypeError, match="Expected a JSON object"):
+        buffer_to_json_object(buffer)

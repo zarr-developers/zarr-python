@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
@@ -9,6 +8,7 @@ from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
+from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import is_regular_nd
@@ -30,7 +30,6 @@ from zarr.core.common import (
     validate_rectilinear_edges,
     validate_rectilinear_kind,
 )
-from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
@@ -606,13 +605,7 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        json_indent = config.get("json_indent")
-        d = self.to_dict()
-        return {
-            ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=True, indent=json_indent).encode()
-            )
-        }
+        return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype)}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
