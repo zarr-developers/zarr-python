@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -46,8 +46,6 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
-    _morton_order,
-    _morton_order_keys,
     c_order_iter,
     get_indexer,
     morton_order_iter,
@@ -64,7 +62,7 @@ from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Self
+    from typing import Final, Self
 
     from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -81,6 +79,15 @@ class ShardingCodecIndexLocation(Enum):
 
     start = "start"
     end = "end"
+
+
+SubchunkWriteOrder = Literal["morton", "unordered", "lexicographic", "colexicographic"]
+SUBCHUNK_WRITE_ORDER: Final[tuple[str, str, str, str]] = (
+    "morton",
+    "unordered",
+    "lexicographic",
+    "colexicographic",
+)
 
 
 def parse_index_location(data: object) -> ShardingCodecIndexLocation:
@@ -272,14 +279,13 @@ class _ShardReader(ShardMapping):
         dict mapping chunk coordinate tuples to Buffer or None
         """
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
-        chunk_coords_keys = _morton_order_keys(self.index.chunks_per_shard)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_keys):
+        for i, coords in enumerate(chunk_coords_array):
             if valid[i]:
-                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
+                result[tuple(coords.ravel())] = self.buf[int(starts[i]) : int(ends[i])]
             else:
-                result[coords] = None
+                result[tuple(coords.ravel())] = None
 
         return result
 
@@ -293,7 +299,9 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
+    rng: np.random.Generator | None
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
+    subchunk_write_order: SubchunkWriteOrder = "morton"
 
     def __init__(
         self,
@@ -302,16 +310,24 @@ class ShardingCodec(
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        subchunk_write_order: SubchunkWriteOrder = "morton",
+        rng: np.random.Generator | None = None,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
         index_location_parsed = parse_index_location(index_location)
+        if subchunk_write_order not in SUBCHUNK_WRITE_ORDER:
+            raise ValueError(
+                f"Unrecognized subchunk write order: {subchunk_write_order}. Only {SUBCHUNK_WRITE_ORDER} are allowed."
+            )
 
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
         object.__setattr__(self, "codecs", codecs_parsed)
         object.__setattr__(self, "index_codecs", index_codecs_parsed)
         object.__setattr__(self, "index_location", index_location_parsed)
+        object.__setattr__(self, "subchunk_write_order", subchunk_write_order)
+        object.__setattr__(self, "rng", rng)
 
         # Use instance-local lru_cache to avoid memory leaks
 
@@ -324,7 +340,7 @@ class ShardingCodec(
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
-        return self.to_dict()
+        return {"rng": self.rng, **self.to_dict()}
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
@@ -332,6 +348,7 @@ class ShardingCodec(
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+        object.__setattr__(self, "rng", state["rng"])
 
         # Use instance-local lru_cache to avoid memory leaks
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
@@ -511,6 +528,24 @@ class ShardingCodec(
         else:
             return out
 
+    def _subchunk_order_iter(
+        self, chunks_per_shard: tuple[int, ...], subchunk_write_order: SubchunkWriteOrder
+    ) -> Iterable[tuple[int, ...]]:
+        match subchunk_write_order:
+            case "morton":
+                subchunk_iter = morton_order_iter(chunks_per_shard)
+            case "lexicographic":
+                subchunk_iter = np.ndindex(chunks_per_shard)
+            case "colexicographic":
+                subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
+            case "unordered":
+                subchunk_list = list(np.ndindex(chunks_per_shard))
+                (self.rng if self.rng is not None else np.random.default_rng()).shuffle(
+                    subchunk_list
+                )
+                subchunk_iter = iter(subchunk_list)
+        return subchunk_iter
+
     async def _encode_single(
         self,
         shard_array: NDBuffer,
@@ -528,8 +563,7 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-
-        shard_builder = dict.fromkeys(morton_order_iter(chunks_per_shard))
+        shard_builder = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
 
         await self.codec_pipeline.write(
             [
@@ -572,7 +606,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
+            shard_dict = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -582,7 +616,7 @@ class ShardingCodec(
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance
             shard_dict = shard_reader.to_dict_vectorized(
-                np.asarray(_morton_order(chunks_per_shard))
+                np.array(list(self._subchunk_order_iter(chunks_per_shard, "lexicographic")))
             )
 
         await self.codec_pipeline.write(
@@ -621,7 +655,7 @@ class ShardingCodec(
 
         template = buffer_prototype.buffer.create_zero_length()
         chunk_start = 0
-        for chunk_coords in morton_order_iter(chunks_per_shard):
+        for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
             value = map.get(chunk_coords)
             if value is None:
                 continue
