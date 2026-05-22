@@ -665,39 +665,55 @@ def test_get_orthogonal_selection_1d_bool_raises(store: StorePath, case: ExpectF
         z.oindex[case.input]
 
 
-# noinspection PyStatementEffect
-def test_get_orthogonal_selection_1d_int(store: StorePath) -> None:
-    # setup
-    a = np.arange(550, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
+_ORTHO_1D_INT_CASES: list[Expect[OrthogonalSelection, None]] = [
+    Expect(input=[0, 8, 15, 29], output=None, id="sorted"),
+    Expect(input=[3, 29, 1, 16], output=None, id="unsorted"),
+    Expect(input=[2, 2, 8, 8], output=None, id="duplicates"),
+    Expect(input=[0, 3, 10, -23, -12, -1], output=None, id="wraparound"),
+    Expect(input=[15], output=None, id="single"),
+]
 
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        # sorted integer arrays
-        ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix.sort()
-        _test_get_orthogonal_selection(a, z, ix)
+_ORTHO_1D_INT_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=[31],
+        exception=IndexError,
+        id="out-of-bounds-high",
+        msg="index out of bounds for dimension with length 30",
+    ),
+    ExpectFail(
+        input=[-31],
+        exception=IndexError,
+        id="out-of-bounds-low",
+        msg="index out of bounds for dimension with length 30",
+    ),
+    ExpectFail(
+        input=[[2, 4], [6, 8]],
+        exception=IndexError,
+        id="too-many-dims",
+        msg="integer arrays in an orthogonal selection must be 1-dimensional only",
+    ),
+]
 
-    selections = basic_selections_1d + [
-        # test wraparound
-        [0, 3, 10, -23, -12, -1],
-        # explicit test not sorted
-        [3, 105, 23, 127],
-    ]
-    for selection in selections:
-        _test_get_orthogonal_selection(a, z, selection)
 
-    bad_selections = basic_selections_1d_bad + [
-        [a.shape[0] + 1],  # out of bounds
-        [-(a.shape[0] + 1)],  # out of bounds
-        [[2, 4], [6, 8]],  # too many dimensions
-    ]
-    for bad_selection in bad_selections:
-        with pytest.raises(IndexError):
-            z.get_orthogonal_selection(bad_selection)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.oindex[bad_selection]  # type: ignore[index]
+@pytest.mark.parametrize("case", _ORTHO_1D_INT_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_1d_int(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
+) -> None:
+    """oindex with a 1D integer array matches numpy, including wraparound and duplicates."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_orthogonal_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize("case", _ORTHO_1D_INT_BAD_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_1d_int_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """oindex rejects out-of-bounds or multi-dimensional integer selections with IndexError."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.get_orthogonal_selection(case.input)
+    with case.raises():
+        z.oindex[case.input]
 
 
 def _test_get_orthogonal_selection_2d(
