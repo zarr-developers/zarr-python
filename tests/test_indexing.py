@@ -393,6 +393,22 @@ def test_basic_2d_fancy_fallback(store: StorePath) -> None:
     np.testing.assert_array_equal(z[([0, 1], [0, 1])], a[([0, 1], [0, 1])])
 
 
+def test_get_basic_selection_1d_rejects_integer_list(store: StorePath) -> None:
+    """get_basic_selection on a 1D array rejects an integer list (basic indexing is int/slice only)."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with pytest.raises(IndexError, match="unsupported selection item for basic indexing"):
+        z.get_basic_selection([1, 0])
+
+
+def test_get_basic_selection_2d_rejects_list_in_tuple(store: StorePath) -> None:
+    """get_basic_selection on a 2D array rejects a list nested in an index tuple."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with pytest.raises(IndexError, match="unsupported selection item for basic indexing"):
+        z.get_basic_selection((slice(None), [0, 1]))
+
+
 def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
     z = zarr_array_from_numpy_array(store, np.zeros((20, 20)))
     z[[1, 2, 3], [1, 2, 3]] = 1
