@@ -13,7 +13,10 @@ from hypothesis.strategies import SearchStrategy
 import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
-from zarr.core.array import Array
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
+from zarr.codecs.zstd import ZstdCodec
+from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
@@ -125,6 +128,9 @@ array_shapes = npst.array_shapes(max_dims=4, min_side=3, max_side=5) | npst.arra
 def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
+
+
+subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(SUBCHUNK_WRITE_ORDER)
 
 
 @st.composite
@@ -255,6 +261,7 @@ def arrays(
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
+    subchunk_write_orders: SearchStrategy[SubchunkWriteOrder] = subchunk_write_orders,
     open_mode: AccessModeLiteral = "w",
 ) -> AnyArray:
     store = draw(stores, label="store")
@@ -266,20 +273,11 @@ def arrays(
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
     dim_names: None | list[str | None] = None
+    serializer: SerializerLike = "auto"
+    compressors_unsearched: CompressorsLike = "auto"
 
     # For v3 arrays, optionally use RectilinearChunkGridMetadata
     chunk_grid_meta: RegularChunkGridMetadata | RectilinearChunkGridMetadata | None = None
-    shard_shape = None
-    if zarr_format == 3:
-        chunk_grid_meta = draw(chunk_grids(shape=nparray.shape), label="chunk grid")
-
-        # Sharding is only supported with regular chunk grids, and has complex
-        # divisibility constraints that don't play well with hypothesis shrinking.
-        # Disabled for now — sharding should be tested separately.
-
-        dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
-    else:
-        dim_names = None
 
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
@@ -295,17 +293,37 @@ def arrays(
     # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
     # - v2 -> flat tuple of ints
     chunks_param: tuple[int, ...] | list[list[int]]
-    if zarr_format == 3 and chunk_grid_meta is not None:
+    shard_shape = None
+    dim_names = None
+    if zarr_format == 3:
+        chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
+        dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
             chunks_param = [
                 list(dim) if isinstance(dim, tuple) else [dim]
                 for dim in chunk_grid_meta.chunk_shapes
             ]
-        else:
+        elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
+        else:
+            chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
+
+            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+                shard_shape = draw(
+                    st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
+                    label="shard shape",
+                )
+                if shard_shape is not None:
+                    subchunk_write_order = draw(subchunk_write_orders)
+                    serializer = ShardingCodec(
+                        subchunk_write_order=subchunk_write_order,
+                        codecs=[BytesCodec(), ZstdCodec()],
+                        index_codecs=[BytesCodec(), Crc32cCodec()],
+                        chunk_shape=chunks_param,
+                    )
+                    compressors_unsearched = None
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
-
     a = root.create_array(
         array_path,
         shape=nparray.shape,
@@ -313,9 +331,10 @@ def arrays(
         shards=shard_shape,
         dtype=nparray.dtype,
         attributes=attributes,
-        # compressor=compressor,  # FIXME
+        compressors=compressors_unsearched,  # FIXME
         fill_value=fill_value,
         dimension_names=dim_names,
+        serializer=serializer,
     )
 
     assert isinstance(a, Array)
@@ -329,12 +348,15 @@ def arrays(
 
     # Verify chunks — for rectilinear grids, .chunks raises
     if zarr_format == 3:
-        if isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata):
-            assert shard_shape is None
-        else:
-            assert isinstance(a.metadata.chunk_grid, RegularChunkGridMetadata)
-            assert a.metadata.chunk_grid.chunk_shape == a.chunks
+        assert shard_shape == a.shards
+        if isinstance(a.metadata.chunk_grid, RegularChunkGridMetadata):
+            assert a.metadata.chunk_grid.chunk_shape == (
+                a.shards if shard_shape is not None else a.chunks
+            )
             assert shard_shape == a.shards
+        else:
+            assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
+            assert shard_shape is None
 
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
