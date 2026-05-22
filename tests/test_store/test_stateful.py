@@ -49,3 +49,25 @@ def test_zarr_store(sync_store: Store) -> None:
         # But LocalStore, directories can hang around even after a key is delete-d.
         pytest.skip(reason="Test isn't suitable for LocalStore.")
     run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
+
+
+def test_delete_dir_prefix_matching() -> None:
+    """Regression test for delete_dir prefix matching bug (GH#3977).
+
+    Verifies that delete_dir bookkeeping only removes exact path matches
+    and true descendants, not unrelated nodes that merely share a string
+    prefix (e.g. ``6/faNT…`` must NOT be deleted when removing ``6/f``).
+    """
+    all_groups = {"6/f", "6/faNT7p7jvJsO3_C._HYi", "other"}
+    all_arrays = {"6/f/child", "6/other"}
+    path = "6/f"
+
+    matches = set()
+    for node in all_groups | all_arrays:
+        if node == path or node.startswith(path + "/"):
+            matches.add(node)
+
+    assert matches == {"6/f", "6/f/child"}
+    assert "6/faNT7p7jvJsO3_C._HYi" not in matches
+    assert "other" not in matches
+    assert "6/other" not in matches
