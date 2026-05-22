@@ -76,7 +76,7 @@ jobs:
         hatch env run --env "$HATCH_ENV" run-coverage
 
     - name: Upload coverage
-      uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
+      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: gpu

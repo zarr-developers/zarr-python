@@ -133,7 +133,7 @@ def _reload_config() -> None:
 
 def fully_qualified_name(cls: type) -> str:
     module = cls.__module__
-    return module + "." + cls.__qualname__
+    return f"{module}.{cls.__qualname__}"
 
 
 def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:

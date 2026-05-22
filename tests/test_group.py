@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     result = await parse_store(request.param, str(tmpdir))
     if not isinstance(result, Store):
-        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
+        raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
 
 
@@ -150,7 +150,7 @@ def test_group_name_properties(
     """
     root = Group.from_store(store=StorePath(store=store, path=root_name), zarr_format=zarr_format)
     assert root.path == normalize_path(root_name)
-    assert root.name == "/" + root.path
+    assert root.name == f"/{root.path}"
     assert root.basename == root.path
 
     branch = root.create_group(branch_name)
@@ -158,7 +158,7 @@ def test_group_name_properties(
         assert branch.path == normalize_path(branch_name)
     else:
         assert branch.path == "/".join([root.path, normalize_path(branch_name)])
-    assert branch.name == "/" + branch.path
+    assert branch.name == f"/{branch.path}"
     assert branch.basename == branch_name.split("/")[-1]
 
 
@@ -732,7 +732,7 @@ def test_group_create_array(
             a[:] = data
 
     assert array.path == normalize_path(name)
-    assert array.name == "/" + array.path
+    assert array.name == f"/{array.path}"
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -1082,10 +1082,10 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
 
     #  todo: clean up the code duplication here
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zarray")
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zarray")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(f"{array_name}/zarr.json")
     else:
         raise AssertionError
 
@@ -1093,10 +1093,10 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
     await agroup.delitem(sub_group_path)
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zgroup")
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zgroup")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(f"{array_name}/zarr.json")
     else:
         raise AssertionError
 
@@ -1113,7 +1113,7 @@ async def test_asyncgroup_create_group(
 
     assert isinstance(subgroup, AsyncGroup)
     assert subgroup.path == normalize_path(name)
-    assert subgroup.name == "/" + subgroup.path
+    assert subgroup.name == f"/{subgroup.path}"
     assert subgroup.attrs == attributes
     assert subgroup.store_path.path == subgroup.path
     assert subgroup.store_path.store == store

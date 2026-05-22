@@ -30,7 +30,6 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
-# If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
@@ -67,8 +66,9 @@ remote = [
     "obstore>=0.5.1",
 ]
 gpu = [
-    "cupy-cuda12x",
+    "cupy-cuda12x; sys_platform != 'darwin'",
 ]
+cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -148,9 +148,18 @@ omit = [
 
 [tool.hatch]
 version.source = "vcs"
+# Only consider zarr-python's own `v*` tags when deriving the version. Without
+# this filter `git describe` matches the most recent tag of any shape,
+# including the `zarr_metadata-v*` tags used to release the zarr-metadata
+# subpackage — which would make a from-source build report a `0.2.x` version
+# instead of `3.x`.
+version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
+
+[tool.hatch.envs.dev]
+dependency-groups = ["dev"]
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
@@ -166,6 +175,7 @@ matrix.deps.features = [
   {value = "remote", if = ["optional"]},
   {value = "optional", if = ["optional"]},
   {value = "cli", if = ["optional"]},
+  {value = "cast-value-rs", if = ["optional"]},
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
@@ -182,7 +192,6 @@ run-coverage-html = [
 ]
 run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
 run-hypothesis = [
     "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage xml",
@@ -360,10 +369,13 @@ ignore = [
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
+files = ["src", "tests"]
 python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false
-
+pretty = true
+show_error_code_links = true
+show_error_context = true
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -376,7 +388,6 @@ module = [
     "tests.test_config",
     "tests.test_store.test_zip",
     "tests.test_store.test_local",
-    "tests.test_store.test_fsspec",
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
@@ -392,6 +403,7 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
+    "tests.test_store.test_fsspec",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
@@ -437,6 +449,7 @@ markers = [
 [tool.repo-review]
 ignore = [
 	"PC111",  # fix Python code in documentation - enable later
+    "PC140",  # we run mypy via `uv run mypy`, not via mirrors-mypy
     "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
