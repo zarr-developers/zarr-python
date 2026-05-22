@@ -47,6 +47,11 @@ def buffer_to_json_object(buffer: Buffer) -> dict[str, JSON]:
     Every metadata document zarr reads is a JSON object, so this narrows the
     `JSON` union to `dict[str, JSON]` once, here, instead of at each call site.
 
+    Parameters
+    ----------
+    buffer
+        The buffer whose contents are parsed as a JSON object.
+
     Raises
     ------
     TypeError
@@ -69,17 +74,17 @@ def json_to_buffer(
 
     Parameters
     ----------
-    obj : JSON
+    obj
         The JSON-serializable value to encode.
-    prototype : BufferPrototype, optional
+    prototype
         The buffer prototype to construct the result with. Defaults to
         `default_buffer_prototype()`.
-    indent : int, optional
+    indent
         Indentation passed to `json.dumps`. `None` (the default) writes
         without newline indentation, using json's default separators.
         Callers that want zarr's configured indentation pass
         `indent=config.get("json_indent")`.
-    allow_nan : bool, default True
+    allow_nan
         Whether to permit `NaN`/`Infinity` in the output, passed to
         `json.dumps`.
     """
@@ -93,11 +98,11 @@ async def get_json(store: Store, key: str, *, byte_range: ByteRequest | None = N
 
     Parameters
     ----------
-    store : Store
+    store
         The store to read from.
-    key : str
+    key
         The key identifying the JSON document.
-    byte_range : ByteRequest, optional
+    byte_range
         If given, read only this portion of the value. Note that a partial
         read of a JSON document may not be valid JSON.
 
