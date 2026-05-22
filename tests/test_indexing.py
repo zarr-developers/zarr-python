@@ -103,6 +103,7 @@ class CountingDict(MemoryStore):
 
 
 def test_normalize_integer_selection() -> None:
+    """normalize_integer_selection handles positive/negative indices and raises IndexError for out-of-bounds values."""
     assert 1 == normalize_integer_selection(1, 100)
     assert 99 == normalize_integer_selection(-1, 100)
     with pytest.raises(IndexError):
@@ -114,6 +115,7 @@ def test_normalize_integer_selection() -> None:
 
 
 def test_replace_ellipsis() -> None:
+    """replace_ellipsis expands Ellipsis to full slice(None) selections for 1D and 2D shapes."""
     # 1D, single item
     assert (0,) == replace_ellipsis(0, (100,))
 
@@ -162,6 +164,7 @@ def test_replace_ellipsis() -> None:
 )
 @pytest.mark.parametrize("use_out", [True, False])
 def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dtype: Any) -> None:
+    """get_basic_selection on a 0-dimensional array returns the scalar value via Ellipsis and (), including the `out` buffer path."""
     # setup
     arr_np = np.array(value, dtype=dtype)
     arr_z = zarr_array_from_numpy_array(store, arr_np)
@@ -410,6 +413,7 @@ def test_get_basic_selection_2d_rejects_list_in_tuple(store: StorePath) -> None:
 
 
 def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
+    """Paired integer-list indexing falls back to vectorized (fancy) get and set via `__getitem__`/`__setitem__`."""
     z = zarr_array_from_numpy_array(store, np.zeros((20, 20)))
     z[[1, 2, 3], [1, 2, 3]] = 1
     np.testing.assert_array_equal(
@@ -469,6 +473,7 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(
 
 
 def test_setitem_zarr_array_as_value() -> None:
+    """Assigning a zarr array as a value in `__setitem__` does not raise a SyncError (regression for GH3611)."""
     # Regression test for https://github.com/zarr-developers/zarr-python/issues/3611
     # Assigning a zarr Array as the value used to raise
     # SyncError("Calling sync() from within a running loop") because the codec
@@ -488,6 +493,7 @@ def test_setitem_zarr_array_as_value() -> None:
 
 @pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
 def test_setitem_repeated_index():
+    """oindex assignment with repeated indices writes the last value for each duplicated index position."""
     array = zarr.array(data=np.zeros((4,)), chunks=(1,))
     indexer = np.array([-1, -1, 0, 0])
     array.oindex[(indexer,)] = [0, 1, 2, 3]
@@ -573,6 +579,7 @@ def test_orthogonal_indexing_fallback_on_setitem_2d(
 
 
 def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> None:
+    """Fancy indexing that would require implicit slicing over an unspecified axis raises IndexError on a 3D array."""
     z2 = zarr_array_from_numpy_array(store, np.zeros((5, 5, 5)))
     with pytest.raises(IndexError):
         z2[[1, 2, 3], [1, 2, 3]] = 2
@@ -596,6 +603,7 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
 def test_set_basic_selection_0d(
     store: StorePath, value: Any, dtype: str | list[tuple[str, str]]
 ) -> None:
+    """set_basic_selection and `__setitem__` write scalar values correctly to a 0-dimensional array."""
     arr_np = np.array(value, dtype=dtype)
     arr_np_zeros = np.zeros_like(arr_np, dtype=dtype)
     arr_z = zarr_array_from_numpy_array(store, arr_np_zeros)
@@ -908,6 +916,7 @@ def test_get_orthogonal_selection_3d(
 
 
 def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
+    """oindex on a shape-(1, 2, 3) array correctly handles mixing integer, slice, int-list, and bool-list indexers per axis."""
     a = np.arange(6).reshape(1, 2, 3)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(1, 2, 3))
 
@@ -952,6 +961,7 @@ def test_set_orthogonal_selection_1d(
 
 
 def test_set_item_1d_last_two_chunks(store: StorePath):
+    """Regression for GH2849: `__setitem__` correctly writes to the last two chunks of a 1D array and to 0-dimensional scalar arrays."""
     # regression test for GH2849
     g = zarr.open_group(store=store, zarr_format=3, mode="w")
     a = g.create_array("bar", shape=(10,), chunks=(3,), dtype=int)
@@ -993,6 +1003,7 @@ def test_set_orthogonal_selection_3d(
 
 
 def test_orthogonal_indexing_fallback_on_get_setitem(store: StorePath) -> None:
+    """Paired integer-list indexing on a 2D array falls back to orthogonal get and set via `__getitem__`/`__setitem__`."""
     z = zarr_array_from_numpy_array(store, np.zeros((20, 20)))
     z[[1, 2, 3], [1, 2, 3]] = 1
     np.testing.assert_array_equal(
@@ -1558,6 +1569,7 @@ def test_get_selection_out(store: StorePath) -> None:
 
 @pytest.mark.xfail(reason="fields are not supported in v3")
 def test_get_selections_with_fields(store: StorePath) -> None:
+    """Would verify that basic, orthogonal, coordinate, and mask selections with structured-array `fields` arguments return the correct sub-fields (xfail: fields unsupported in v3)."""
     a = np.array(
         [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
@@ -1666,6 +1678,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
 
 @pytest.mark.xfail(reason="fields are not supported in v3")
 def test_set_selections_with_fields(store: StorePath) -> None:
+    """Would verify that basic, orthogonal, coordinate, and mask set-selections with structured-array `fields` correctly write individual fields and reject multi-field assignment (xfail: fields unsupported in v3)."""
     v = np.array(
         [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
@@ -1751,6 +1764,7 @@ def test_set_selections_with_fields(store: StorePath) -> None:
 
 
 def test_slice_selection_uints() -> None:
+    """make_slice_selection accepts unsigned integer indices without error and produces correct shape."""
     arr = np.arange(24).reshape((4, 6))
     idx = np.uint64(3)
     slice_sel = make_slice_selection((idx,))
@@ -1758,6 +1772,7 @@ def test_slice_selection_uints() -> None:
 
 
 def test_numpy_int_indexing(store: StorePath) -> None:
+    """Indexing with a plain Python int and with `np.int64` both return the correct scalar element."""
     a = np.arange(1050)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
     assert a[42] == z[42]
@@ -1792,6 +1807,7 @@ def test_numpy_int_indexing(store: StorePath) -> None:
 async def test_accessed_chunks(
     shape: tuple[int, ...], chunks: tuple[int, ...], ops: list[tuple[str, tuple[slice, ...]]]
 ) -> None:
+    """Only the chunks intersected by a slice selection are read or written, verified via a `CountingDict` store."""
     # Test that only the required chunks are accessed during basic selection operations
     # shape: array shape
     # chunks: chunk size
@@ -1943,6 +1959,7 @@ def test_iter_grid_invalid() -> None:
 
 
 def test_indexing_with_zarr_array(store: StorePath) -> None:
+    """Regression for GH2133: indexing a zarr array with another zarr array (boolean or integer) as the indexer produces the same result as indexing with the equivalent numpy array."""
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2133
     a = np.arange(10)
     za = zarr.array(a, chunks=2, store=store, path="a")
@@ -1962,6 +1979,7 @@ def test_indexing_with_zarr_array(store: StorePath) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("shape", [(0, 2, 3), (0,), (3, 0)])
 def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
+    """Arrays with zero-extent dimensions can be created and indexed without error; reading back returns the fill value."""
     # Chunk sizes must be >= 1 per spec; use 1 for zero-extent dimensions.
     chunks = tuple(max(1, s) for s in shape)
     z = zarr.create_array(store=store, shape=shape, chunks=chunks, zarr_format=3, dtype="f8")
@@ -1971,6 +1989,7 @@ def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
 
 @pytest.mark.parametrize("store", ["memory"], indirect=["store"])
 def test_vectorized_indexing_incompatible_shape(store) -> None:
+    """Regression for GH2469: vectorized set-indexing raises ValueError when the value shape is incompatible with the indexer shape."""
     # GH2469
     shape = (4, 4)
     chunks = (2, 2)
@@ -1988,6 +2007,7 @@ def test_vectorized_indexing_incompatible_shape(store) -> None:
 
 
 def test_iter_chunk_regions():
+    """_iter_chunk_regions yields slices that exactly cover each chunk, and reading/writing each region round-trips correctly."""
     chunks = (2, 3)
     a = zarr.create((10, 10), chunks=chunks)
     a[:] = 1
@@ -2100,6 +2120,7 @@ class TestAsync:
     )
     @pytest.mark.asyncio
     async def test_async_oindex(self, store, indexer, expected):
+        """The async `oindex.getitem` interface returns the correct orthogonally-indexed result for int, slice, ellipsis, array, and boolean indexers."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z._async_array
@@ -2109,6 +2130,7 @@ class TestAsync:
 
     @pytest.mark.asyncio
     async def test_async_oindex_with_zarr_array(self, store):
+        """The async `oindex.getitem` interface accepts a zarr boolean array as the indexer and returns the correct rows."""
         group = zarr.create_group(store=store, zarr_format=3)
 
         z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
@@ -2133,6 +2155,7 @@ class TestAsync:
     )
     @pytest.mark.asyncio
     async def test_async_vindex(self, store, indexer, expected):
+        """The async `vindex.getitem` interface returns the correct vectorized-indexed result for coordinate and boolean indexers."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z._async_array
@@ -2142,6 +2165,7 @@ class TestAsync:
 
     @pytest.mark.asyncio
     async def test_async_vindex_with_zarr_array(self, store):
+        """The async `vindex.getitem` interface accepts a zarr 2D boolean array as the indexer and returns the correct elements."""
         group = zarr.create_group(store=store, zarr_format=3)
 
         z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
@@ -2158,6 +2182,7 @@ class TestAsync:
 
     @pytest.mark.asyncio
     async def test_async_invalid_indexer(self, store):
+        """The async `vindex.getitem` and `oindex.getitem` interfaces raise IndexError when given an unsupported indexer type."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z._async_array
