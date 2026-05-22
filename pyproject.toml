@@ -432,6 +432,7 @@ addopts = [
     "-ra", "--strict-config", "--strict-markers",
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
+    "--ignore=src/zarr/_cli",
 ]
 filterwarnings = [
     "error",
