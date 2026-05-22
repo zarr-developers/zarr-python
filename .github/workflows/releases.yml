@@ -146,8 +146,8 @@ jobs:
             | head -1)"
 
           if [ -z "$floor" ]; then
-            echo "::error::Could not extract a `>=` floor from: $req_line"
-            echo "zarr-python's zarr-metadata requirement must include a `>=` bound so this gate has something to check."
+            echo '::error::Could not extract a >= floor from:' "$req_line"
+            echo "zarr-python's zarr-metadata requirement must include a >= bound so this gate has something to check."
             exit 1
           fi
           echo "zarr-metadata floor: $floor"

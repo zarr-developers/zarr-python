@@ -32,8 +32,6 @@ import numpy as np
 from zarr_metadata.v2.array import ArrayMetadataV2 as _ArrayMetadataV2
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-
-# Re-export the v2 array metadata JSON shape under zarr-python's historical name.
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
     JSON,
@@ -47,6 +45,7 @@ from zarr.core.metadata.common import parse_attributes
 
 # Union of acceptable types for v2 compressors
 type CompressorLikev2 = dict[str, JSON] | Numcodec | None
+# Re-export the v2 array metadata JSON shape under zarr-python's historical name.
 ArrayV2MetadataDict = _ArrayMetadataV2
 
 
