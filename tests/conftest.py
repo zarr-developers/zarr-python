@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import ZDType
 
 
-@dataclass
+@dataclass(frozen=True)
 class Expect[TIn, TOut]:
     """A test case with explicit input, expected output, and a human-readable id."""
 
@@ -73,7 +73,7 @@ class Expect[TIn, TOut]:
     id: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExpectFail[TIn]:
     """A test case that should raise an exception."""
 
