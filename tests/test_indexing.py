@@ -2118,7 +2118,6 @@ class TestAsync:
             (np.array([False, False]), np.empty(shape=(0, 2), dtype="i8")),
         ],
     )
-    @pytest.mark.asyncio
     async def test_async_oindex(self, store, indexer, expected):
         """The async `oindex.getitem` interface returns the correct orthogonally-indexed result for int, slice, ellipsis, array, and boolean indexers."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
@@ -2128,7 +2127,6 @@ class TestAsync:
         result = await async_zarr.oindex.getitem(indexer)
         assert_array_equal(result, expected)
 
-    @pytest.mark.asyncio
     async def test_async_oindex_with_zarr_array(self, store):
         """The async `oindex.getitem` interface accepts a zarr boolean array as the indexer and returns the correct rows."""
         group = zarr.create_group(store=store, zarr_format=3)
@@ -2153,7 +2151,6 @@ class TestAsync:
             (np.array([[False, True], [False, True]]), np.array([2, 4])),
         ],
     )
-    @pytest.mark.asyncio
     async def test_async_vindex(self, store, indexer, expected):
         """The async `vindex.getitem` interface returns the correct vectorized-indexed result for coordinate and boolean indexers."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
@@ -2163,7 +2160,6 @@ class TestAsync:
         result = await async_zarr.vindex.getitem(indexer)
         assert_array_equal(result, expected)
 
-    @pytest.mark.asyncio
     async def test_async_vindex_with_zarr_array(self, store):
         """The async `vindex.getitem` interface accepts a zarr 2D boolean array as the indexer and returns the correct elements."""
         group = zarr.create_group(store=store, zarr_format=3)
@@ -2180,7 +2176,6 @@ class TestAsync:
         expected = np.array([2, 4])
         assert_array_equal(result, expected)
 
-    @pytest.mark.asyncio
     async def test_async_invalid_indexer(self, store):
         """The async `vindex.getitem` and `oindex.getitem` interfaces raise IndexError when given an unsupported indexer type."""
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
