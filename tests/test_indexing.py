@@ -11,6 +11,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
+from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import (
@@ -611,26 +612,57 @@ def _test_get_orthogonal_selection(
     assert_array_equal(expect, actual)
 
 
-# noinspection PyStatementEffect
-def test_get_orthogonal_selection_1d_bool(store: StorePath) -> None:
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
+_ORTHO_1D_BOOL_CASES: list[Expect[OrthogonalSelection, None]] = [
+    Expect(input=np.zeros(30, dtype=bool), output=None, id="empty-mask"),
+    Expect(input=np.ones(30, dtype=bool), output=None, id="full-mask"),
+    Expect(input=np.arange(30) % 2 == 0, output=None, id="alternating-mask"),
+    Expect(input=np.eye(1, 30, 7, dtype=bool)[0], output=None, id="single-true"),
+    Expect(
+        input=np.isin(np.arange(30), [0, 1, 8, 15, 29]),
+        output=None,
+        id="sparse-cross-chunk",
+    ),
+]
 
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_get_orthogonal_selection(a, z, ix)
+_ORTHO_1D_BOOL_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=np.zeros(5, dtype=bool),
+        exception=IndexError,
+        id="mask-too-short",
+        msg="wrong length for dimension; expected 30, got 5",
+    ),
+    ExpectFail(
+        input=np.zeros(50, dtype=bool),
+        exception=IndexError,
+        id="mask-too-long",
+        msg="wrong length for dimension; expected 30, got 50",
+    ),
+    ExpectFail(
+        input=[[True, False], [False, True]],
+        exception=IndexError,
+        id="mask-too-many-dims",
+        msg="must be 1-dimensional only",
+    ),
+]
 
-    # test errors
-    with pytest.raises(IndexError):
-        z.oindex[np.zeros(50, dtype=bool)]  # too short
-    with pytest.raises(IndexError):
-        z.oindex[np.zeros(2000, dtype=bool)]  # too long
-    with pytest.raises(IndexError):
-        # too many dimensions
-        z.oindex[[[True, False], [False, True]]]  # type: ignore[index]
+
+@pytest.mark.parametrize("case", _ORTHO_1D_BOOL_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_1d_bool(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
+) -> None:
+    """oindex with a 1D boolean mask matches numpy across chunk boundaries."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_orthogonal_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize("case", _ORTHO_1D_BOOL_BAD_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_1d_bool_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """oindex rejects masks of the wrong length or dimensionality with IndexError."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with pytest.raises(case.exception, match=case.msg):
+        z.oindex[case.input]
 
 
 # noinspection PyStatementEffect
