@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 import zipfile
@@ -24,7 +25,7 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 class ZipStore(Store):
     """
-    Storage class using a ZIP file.
+    Store using a ZIP file.
 
     Parameters
     ----------
@@ -47,7 +48,6 @@ class ZipStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     path
     compression
@@ -56,7 +56,6 @@ class ZipStore(Store):
 
     supports_writes: bool = True
     supports_deletes: bool = False
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     path: Path
@@ -221,9 +220,6 @@ class ZipStore(Store):
         with self._lock:
             self._set(key, value)
 
-    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
-        raise NotImplementedError
-
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         with self._lock:
@@ -249,6 +245,8 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         with self._lock:
             try:
                 self._zf.getinfo(key)
@@ -259,6 +257,8 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         with self._lock:
             for key in self._zf.namelist():
                 yield key
@@ -271,6 +271,8 @@ class ZipStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         prefix = prefix.rstrip("/")
 
         keys = self._zf.namelist()
@@ -283,8 +285,20 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key.strip("/") != prefix:
-                    k = key.removeprefix(prefix + "/").split("/")[0]
+                if key.startswith(f"{prefix}/") and key.strip("/") != prefix:
+                    k = key.removeprefix(f"{prefix}/").split("/")[0]
                     if k not in seen:
                         seen.add(k)
                         yield k
+
+    async def move(self, path: Path | str) -> None:
+        """
+        Move the store to another path.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+        self.close()
+        os.makedirs(path.parent, exist_ok=True)
+        shutil.move(self.path, path)
+        self.path = path
+        await self._open()

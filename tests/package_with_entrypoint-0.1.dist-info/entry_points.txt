@@ -12,3 +12,5 @@ another_buffer = package_with_entrypoint:TestEntrypointGroup.Buffer
 another_ndbuffer = package_with_entrypoint:TestEntrypointGroup.NDBuffer
 [zarr.codec_pipeline]
 another_pipeline = package_with_entrypoint:TestEntrypointGroup.Pipeline
+[zarr.data_type]
+new_data_type = package_with_entrypoint:TestDataType

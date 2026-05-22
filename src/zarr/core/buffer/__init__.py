@@ -3,6 +3,7 @@ from zarr.core.buffer.core import (
     Buffer,
     BufferPrototype,
     NDArrayLike,
+    NDArrayLikeOrScalar,
     NDBuffer,
     default_buffer_prototype,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "Buffer",
     "BufferPrototype",
     "NDArrayLike",
+    "NDArrayLikeOrScalar",
     "NDBuffer",
     "default_buffer_prototype",
     "numpy_buffer_prototype",

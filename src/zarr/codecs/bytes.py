@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
+from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.registry import register_codec
+from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.npy.structured import Struct
 
 if TYPE_CHECKING:
     from typing import Self
@@ -32,6 +32,8 @@ default_system_endian = Endian(sys.byteorder)
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
+    """bytes codec"""
+
     is_fixed_size = True
 
     endian: Endian | None
@@ -56,7 +58,20 @@ class BytesCodec(ArrayBytesCodec):
             return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if array_spec.dtype.itemsize == 0:
+        if isinstance(array_spec.dtype, Struct):
+            if array_spec.dtype.has_multi_byte_fields():
+                if self.endian is None:
+                    warnings.warn(
+                        "Missing 'endian' for structured dtype with multi-byte fields. "
+                        "Assuming little-endian for legacy compatibility.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    return replace(self, endian=Endian.little)
+            else:
+                if self.endian is not None:
+                    return replace(self, endian=None)
+        elif not isinstance(array_spec.dtype, HasEndianness):
             if self.endian is not None:
                 return replace(self, endian=None)
         elif self.endian is None:
@@ -65,28 +80,20 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        assert isinstance(chunk_bytes, Buffer)
-        if chunk_spec.dtype.itemsize > 0:
-            if self.endian == Endian.little:
-                prefix = "<"
-            else:
-                prefix = ">"
-            dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
+        # TODO: remove endianness enum in favor of literal union
+        endian_str = self.endian.value if self.endian is not None else None
+        if isinstance(chunk_spec.dtype, HasEndianness):
+            dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
         else:
-            dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-
+            dtype = chunk_spec.dtype.to_native_dtype()
         as_array_like = chunk_bytes.as_array_like()
-        if isinstance(as_array_like, NDArrayLike):
-            as_nd_array_like = as_array_like
-        else:
-            as_nd_array_like = np.asanyarray(as_array_like)
         chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
-            as_nd_array_like.view(dtype=dtype)
+            as_array_like.view(dtype=dtype)  # type: ignore[attr-defined]
         )
 
         # ensure correct chunk shape
@@ -96,7 +103,14 @@ class BytesCodec(ArrayBytesCodec):
             )
         return chunk_array
 
-    async def _encode_single(
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -114,14 +128,15 @@ class BytesCodec(ArrayBytesCodec):
 
         nd_array = chunk_array.as_ndarray_like()
         # Flatten the nd-array (only copy if needed) and reinterpret as bytes
-        nd_array = nd_array.ravel().view(dtype="b")
+        nd_array = nd_array.ravel().view(dtype="B")
         return chunk_spec.prototype.buffer.from_array_like(nd_array)
+
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
-
-
-register_codec("bytes", BytesCodec)
-
-# compatibility with earlier versions of ZEP1
-register_codec("endian", BytesCodec)

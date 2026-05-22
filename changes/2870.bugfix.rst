@@ -1,1 +1,0 @@
-Prevent update_attributes calls from deleting old attributes

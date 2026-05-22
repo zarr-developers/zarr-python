@@ -3,68 +3,87 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
-    TypeAlias,
     TypedDict,
     cast,
     overload,
 )
 from warnings import warn
 
-import numcodecs
-import numcodecs.abc
 import numpy as np
-import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr._compat import _deprecate_positional_args
+import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.abc.store import Store, set_or_delete
+from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
     NDArrayLike,
+    NDArrayLikeOrScalar,
     NDBuffer,
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import (
+    SHARDED_INNER_CHUNK_MAX_BYTES,
+    ChunkGrid,
+    _is_rectilinear_chunks,
+    as_regular_shape,
+    guess_chunks,
+    normalize_chunks_nd,
+    resolve_outer_and_inner_chunks,
+)
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
+    parse_chunk_key_encoding,
 )
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ChunkCoords,
+    ChunksLike,
+    DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
+    ceildiv,
     concurrent_map,
-    parse_dtype,
-    parse_order,
     parse_shapelike,
     product,
 )
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import (
+    Structured,
+    VariableLengthBytes,
+    VariableLengthUTF8,
+    ZDType,
+    ZDTypeLike,
+    parse_dtype,
+)
+from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
+    AsyncOIndex,
+    AsyncVIndex,
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -81,7 +100,7 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
-    ceildiv,
+    _iter_regions,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -92,21 +111,31 @@ from zarr.core.indexing import (
 from zarr.core.metadata import (
     ArrayMetadata,
     ArrayMetadataDict,
+    ArrayMetadataJSON_V3,
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
-    ArrayV3MetadataDict,
-    T_ArrayMetadata,
 )
+from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
-    _default_compressor,
-    _default_filters,
+    CompressorLikev2,
+    get_object_codec_id,
     parse_compressor,
     parse_filters,
 )
-from zarr.core.metadata.v3 import DataType, parse_node_type_array
+from zarr.core.metadata.v3 import (
+    ChunkGridMetadata,
+    create_chunk_grid_metadata,
+    parse_node_type_array,
+)
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import (
+    ArrayNotFoundError,
+    ChunkNotFoundError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -114,28 +143,69 @@ from zarr.registry import (
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
+from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator
     from typing import Self
 
+    import numpy.typing as npt
+
     from zarr.abc.codec import CodecPipeline
+    from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingCodecIndexLocation
-    from zarr.core.group import AsyncGroup
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
-__all__ = ["create_codec_pipeline", "parse_array_metadata"]
+__all__ = [
+    "DEFAULT_FILL_VALUE",
+    "DefaultFillValue",
+    "create_codec_pipeline",
+    "parse_array_metadata",
+]
 
 logger = getLogger(__name__)
+
+
+class DefaultFillValue:
+    """
+    Sentinel class to indicate that the default fill value should be used.
+
+    This class exists because conventional values used to convey "defaultness" like ``None`` or
+    ``"auto"` are ambiguous when specifying the fill value parameter of a Zarr array.
+    The value ``None`` is ambiguous because it is a valid fill value for Zarr V2
+    (resulting in ``"fill_value": null`` in array metadata).
+    A string like ``"auto"`` is ambiguous because such a string is a valid fill value for an array
+    with a string data type.
+    An instance of this class lies outside the space of valid fill values, which means it can
+    unambiguously express that the default fill value should be used.
+    """
+
+
+DEFAULT_FILL_VALUE = DefaultFillValue()
+
+
+def _chunk_sizes_from_shape(
+    array_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], ...]:
+    """Compute dask-style chunk sizes from an array shape and uniform chunk shape."""
+    result: list[tuple[int, ...]] = []
+    for s, c in zip(array_shape, chunk_shape, strict=True):
+        nchunks = ceildiv(s, c)
+        sizes = tuple(min(c, s - i * c) for i in range(nchunks))
+        result.append(sizes)
+    return tuple(result)
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
-        if data["zarr_format"] == 3:
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 3:
             meta_out = ArrayV3Metadata.from_dict(data)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
@@ -144,19 +214,28 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
                 )
                 raise ValueError(msg)
             return meta_out
-        elif data["zarr_format"] == 2:
+        elif zarr_format == 2:
             return ArrayV2Metadata.from_dict(data)
-    raise TypeError
+        else:
+            raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
+    raise TypeError  # pragma: no cover
 
 
-def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
+    if store is not None:
+        try:
+            return get_pipeline_class().from_array_metadata_and_store(
+                array_metadata=metadata, store=store
+            )
+        except NotImplementedError:
+            pass
+
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
         return get_pipeline_class().from_codecs([v2_codec])
-    else:
-        raise TypeError
+    raise TypeError  # pragma: no cover
 
 
 async def get_array_metadata(
@@ -168,11 +247,19 @@ async def get_array_metadata(
             (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V2 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format == 3:
         zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V3 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
@@ -182,16 +269,21 @@ async def get_array_metadata(
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
-            warnings.warn(msg, stacklevel=1)
+            warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
         # set zarr_format based on which keys were found
         if zarr_json_bytes is not None:
             zarr_format = 3
         else:
             zarr_format = 2
     else:
-        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+        raise MetadataValidationError(msg)
 
     metadata_dict: dict[str, JSON]
     if zarr_format == 2:
@@ -211,7 +303,7 @@ async def get_array_metadata(
 
 
 @dataclass(frozen=True)
-class AsyncArray(Generic[T_ArrayMetadata]):
+class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     An asynchronous array class representing a chunked array stored in a Zarr store.
 
@@ -232,18 +324,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The path to the Zarr store.
     codec_pipeline : CodecPipeline
         The codec pipeline used for encoding and decoding chunks.
-    _config : ArrayConfig
+    config : ArrayConfig
         The runtime configuration of the array.
     """
 
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
-    _config: ArrayConfig
+    _chunk_grid: ChunkGrid = field(init=False)
+    config: ArrayConfig
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV2Metadata],
+        self: AsyncArrayV2,
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
@@ -251,8 +344,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV3Metadata],
-        metadata: ArrayV3Metadata | ArrayV3MetadataDict,
+        self: AsyncArrayV3,
+        metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
@@ -263,281 +356,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None:
-        if isinstance(metadata, dict):
-            zarr_format = metadata["zarr_format"]
-            # TODO: remove this when we extensively type the dict representation of metadata
-            _metadata = cast(dict[str, JSON], metadata)
-            if zarr_format == 2:
-                metadata = ArrayV2Metadata.from_dict(_metadata)
-            elif zarr_format == 3:
-                metadata = ArrayV3Metadata.from_dict(_metadata)
-            else:
-                raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
-
         metadata_parsed = parse_array_metadata(metadata)
         config_parsed = parse_array_config(config)
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "_config", config_parsed)
-        object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
-
-    # this overload defines the function signature when zarr_format is 2
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: Literal[2],
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata]: ...
-
-    # this overload defines the function signature when zarr_format is 3
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: Literal[3],
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
-
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: Literal[3] = 3,
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
-
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: ZarrFormat,
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
-
-    @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.")
-    @_deprecate_positional_args
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncodingLike
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """Method to create a new asynchronous array instance.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
-
-        Parameters
-        ----------
-        store : StoreLike
-            The store where the array will be created.
-        shape : ShapeLike
-            The shape of the array.
-        dtype : npt.DTypeLike
-            The data type of the array.
-        zarr_format : ZarrFormat, optional
-            The Zarr format version (default is 3).
-        fill_value : Any, optional
-            The fill value of the array (default is None).
-        attributes : dict[str, JSON], optional
-            The attributes of the array (default is None).
-        chunk_shape : ChunkCoords, optional
-            The shape of the array's chunks
-            Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        chunk_key_encoding : ChunkKeyEncodingLike, optional
-            A specification of how the chunk keys are represented in storage.
-            Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
-            Default is ``("default", "/")``.
-        codecs : Sequence of Codecs or dicts, optional
-            An iterable of Codec or dict serializations of Codecs. The elements of
-            this collection specify the transformation from array values to stored bytes.
-            Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
-
-            If no codecs are provided, default codecs will be used:
-
-            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
-            - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
-        dimension_names : Iterable[str], optional
-            The names of the dimensions (default is None).
-            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
-        chunks : ShapeLike, optional
-            The shape of the array's chunks.
-            Zarr format 2 only. Zarr format 3 arrays should use ``chunk_shape`` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        dimension_separator : Literal[".", "/"], optional
-            The dimension separator (default is ".").
-            Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
-        order : Literal["C", "F"], optional
-            The memory of the array (default is "C").
-            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
-            order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-        filters : list[dict[str, JSON]], optional
-            Sequence of filters to use to encode chunk data prior to compression.
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
-            are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
-        compressor : dict[str, JSON], optional
-            The compressor used to compress the data (default is None).
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
-
-            If no ``compressor`` is provided, a default compressor will be used:
-
-            - For numeric arrays, the default is ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
-        overwrite : bool, optional
-            Whether to raise an error if the store already exists (default is False).
-        data : npt.ArrayLike, optional
-            The data to be inserted into the array (default is None).
-        config : ArrayConfigLike, optional
-            Runtime configuration for the array.
-
-        Returns
-        -------
-        AsyncArray
-            The created asynchronous array instance.
-        """
-        return await cls._create(
-            store,
-            # v2 and v3
-            shape=shape,
-            dtype=dtype,
-            zarr_format=zarr_format,
-            fill_value=fill_value,
-            attributes=attributes,
-            # v3 only
-            chunk_shape=chunk_shape,
-            chunk_key_encoding=chunk_key_encoding,
-            codecs=codecs,
-            dimension_names=dimension_names,
-            # v2 only
-            chunks=chunks,
-            dimension_separator=dimension_separator,
-            order=order,
-            filters=filters,
-            compressor=compressor,
-            # runtime
-            overwrite=overwrite,
-            data=data,
-            config=config,
+        object.__setattr__(self, "config", config_parsed)
+        object.__setattr__(self, "_chunk_grid", ChunkGrid.from_metadata(metadata_parsed))
+        object.__setattr__(
+            self,
+            "codec_pipeline",
+            create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
 
     @classmethod
@@ -547,9 +376,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike | ZDType[TBaseDType, TBaseScalar],
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -560,37 +389,36 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
-        See :func:`AsyncArray.create` for more details.
-        Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+        Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
+
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
-        dtype_parsed = parse_dtype(dtype, zarr_format)
         shape = parse_shapelike(shape)
 
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        if chunks:
-            _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
-        else:
-            _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
+        # Unify the v2 (chunks) and v3 (chunk_shape) parameter names
+        _raw_chunks = chunks if chunks is not None else chunk_shape
+
         config_parsed = parse_array_config(config)
 
-        result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+        result: AnyAsyncArray
         if zarr_format == 3:
             if dimension_separator is not None:
                 raise ValueError(
@@ -600,7 +428,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead."
                 )
-            if compressor is not None:
+            if compressor != "auto":
                 raise ValueError(
                     "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead."
                 )
@@ -608,11 +436,18 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if order is not None:
                 _warn_order_kwarg()
 
+            item_size = 1
+            if isinstance(dtype_parsed, HasItemSize):
+                item_size = dtype_parsed.item_size
+            if _raw_chunks is None:
+                outer_chunks = guess_chunks(shape, item_size)
+            else:
+                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
+            chunk_grid = create_chunk_grid_metadata(outer_chunks)
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
                 dtype=dtype_parsed,
-                chunk_shape=_chunks,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
@@ -620,6 +455,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 attributes=attributes,
                 overwrite=overwrite,
                 config=config_parsed,
+                chunk_grid=chunk_grid,
             )
         elif zarr_format == 2:
             if codecs is not None:
@@ -632,11 +468,24 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
+            if _is_rectilinear_chunks(_raw_chunks):
+                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
+
+            item_size = 1
+            if isinstance(dtype_parsed, HasItemSize):
+                item_size = dtype_parsed.item_size
+            _raw = chunks or chunk_shape
+            if _raw is None:
+                outer_chunks = guess_chunks(shape, item_size)
+            else:
+                outer_chunks = normalize_chunks_nd(_raw, shape)
+            _chunks = as_regular_shape(outer_chunks)
 
             if order is None:
-                order_parsed = parse_order(zarr_config.get("array.order"))
+                order_parsed = config_parsed.order
             else:
                 order_parsed = order
+                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v2(
                 store_path,
@@ -653,7 +502,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 overwrite=overwrite,
             )
         else:
-            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         if data is not None:
             # insert user-provided data
@@ -664,41 +513,48 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @staticmethod
     def _create_metadata_v3(
         shape: ShapeLike,
-        dtype: np.dtype[Any],
-        chunk_shape: ChunkCoords,
-        fill_value: Any | None = None,
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGridMetadata,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV3Metadata:
-        """
-        Create an instance of ArrayV3Metadata.
-        """
+        """Create an instance of ArrayV3Metadata."""
+        filters: tuple[ArrayArrayCodec, ...]
+        compressors: tuple[BytesBytesCodec, ...]
 
         shape = parse_shapelike(shape)
-        codecs = list(codecs) if codecs is not None else _get_default_codecs(np.dtype(dtype))
+        if codecs is None:
+            filters = default_filters_v3(dtype)
+            serializer = default_serializer_v3(dtype)
+            compressors = default_compressors_v3(dtype)
+
+            codecs_parsed = (*filters, serializer, *compressors)
+        else:
+            codecs_parsed = tuple(codecs)
+
         chunk_key_encoding_parsed: ChunkKeyEncodingLike
         if chunk_key_encoding is None:
             chunk_key_encoding_parsed = {"name": "default", "separator": "/"}
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if dtype.kind in "UTS":
-            warn(
-                f"The dtype `{dtype}` is currently not part in the Zarr format 3 specification. It "
-                "may not be supported by other zarr implementations and may change in the future.",
-                category=UserWarning,
-                stacklevel=2,
-            )
-        chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
+        if isinstance(fill_value, DefaultFillValue) or fill_value is None:
+            # Use dtype's default scalar for DefaultFillValue sentinel
+            # For v3, None is converted to DefaultFillValue behavior
+            fill_value_parsed = dtype.default_scalar()
+        else:
+            fill_value_parsed = fill_value
+
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=chunk_grid_parsed,
+            chunk_grid=chunk_grid,
             chunk_key_encoding=chunk_key_encoding_parsed,
-            fill_value=fill_value,
-            codecs=codecs,
+            fill_value=fill_value_parsed,
+            codecs=codecs_parsed,  # type: ignore[arg-type]
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
@@ -709,10 +565,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: np.dtype[Any],
-        chunk_shape: ChunkCoords,
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGridMetadata,
         config: ArrayConfig,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: (
             ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -720,10 +576,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV3Metadata]:
+    ) -> AsyncArrayV3:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -742,7 +598,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         metadata = cls._create_metadata_v3(
             shape=shape,
             dtype=dtype,
-            chunk_shape=chunk_shape,
+            chunk_grid=chunk_grid,
             fill_value=fill_value,
             chunk_key_encoding=chunk_key_encoding,
             codecs=codecs,
@@ -756,36 +612,33 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @staticmethod
     def _create_metadata_v2(
-        shape: ChunkCoords,
-        dtype: np.dtype[Any],
-        chunks: ChunkCoords,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunks: tuple[int, ...],
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: float | None = None,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
-        compressor: dict[str, JSON] | numcodecs.abc.Codec | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+        compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
             dimension_separator = "."
 
-        dtype = parse_dtype(dtype, zarr_format=2)
-
-        # inject VLenUTF8 for str dtype if not already present
-        if np.issubdtype(dtype, np.str_):
-            filters = filters or []
-            from numcodecs.vlen import VLenUTF8
-
-            if not any(isinstance(x, VLenUTF8) or x["id"] == "vlen-utf8" for x in filters):
-                filters = list(filters) + [VLenUTF8()]
+        # Handle DefaultFillValue sentinel
+        if isinstance(fill_value, DefaultFillValue):
+            fill_value_parsed: Any = dtype.default_scalar()
+        else:
+            # For v2, preserve None as-is (backward compatibility)
+            fill_value_parsed = fill_value
 
         return ArrayV2Metadata(
             shape=shape,
-            dtype=np.dtype(dtype),
+            dtype=dtype,
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=fill_value,
+            fill_value=fill_value_parsed,
             compressor=compressor,
             filters=filters,
             attributes=attributes,
@@ -796,18 +649,18 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store_path: StorePath,
         *,
-        shape: ChunkCoords,
-        dtype: np.dtype[Any],
-        chunks: ChunkCoords,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunks: tuple[int, ...],
         order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: float | None = None,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
-        compressor: dict[str, JSON] | numcodecs.abc.Codec | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+        compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV2Metadata]:
+    ) -> AsyncArrayV2:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -815,6 +668,20 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 await ensure_no_existing_node(store_path, zarr_format=2)
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
+
+        compressor_parsed: CompressorLikev2
+        if compressor == "auto":
+            compressor_parsed = default_compressor_v2(dtype)
+        elif isinstance(compressor, BytesBytesCodec):
+            raise ValueError(
+                "Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. "
+                "Use a numcodecs codec directly instead."
+            )
+        else:
+            compressor_parsed = compressor
+
+        if filters is None:
+            filters = default_filters_v2(dtype)
 
         metadata = cls._create_metadata_v2(
             shape=shape,
@@ -824,7 +691,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator=dimension_separator,
             fill_value=fill_value,
             filters=filters,
-            compressor=compressor,
+            compressor=compressor_parsed,
             attributes=attributes,
         )
 
@@ -837,7 +704,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Create a Zarr array from a dictionary, with support for both Zarr format 2 and 3 metadata.
 
@@ -853,7 +720,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+        AsyncArrayV3 or AsyncArrayV2
             The created Zarr array, either using Zarr format 2 or 3 metadata based on the provided data.
 
         Raises
@@ -869,14 +736,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
 
         Parameters
         ----------
         store : StoreLike
-            The store containing the Zarr array.
+            The store containing the Zarr array. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
 
@@ -887,20 +756,39 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore(mode='w')
-        >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        ```python
+        import asyncio
+        import zarr
+        from zarr.core.array import AsyncArray
+
+        async def example():
+            store = zarr.storage.MemoryStore()
+            # First create an array to open
+            await zarr.api.asynchronous.create_array(
+                store=store, shape=(100, 100), dtype="int32"
+            )
+            # Now open it
+            async_arr = await AsyncArray.open(store)
+            return async_arr
+
+        async_arr = asyncio.run(example())
+        # <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        ```
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
+        _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
         return cls(store_path=store_path, metadata=_metadata_dict)
 
     @property
     def store(self) -> Store:
         return self.store_path.store
+
+    @property
+    @deprecated("Use AsyncArray.config instead.", category=ZarrDeprecationWarning)
+    def _config(self) -> ArrayConfig:
+        return self.config
 
     @property
     def ndim(self) -> int:
@@ -914,7 +802,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return len(self.metadata.shape)
 
     @property
-    def shape(self) -> ChunkCoords:
+    def shape(self) -> tuple[int, ...]:
         """Returns the shape of the Array.
 
         Returns
@@ -925,31 +813,86 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.shape
 
     @property
-    def chunks(self) -> ChunkCoords:
+    def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
         If sharding is used the inner chunk shape is returned.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
-        ChunkCoords:
+        tuple[int, ...]:
             The chunk shape of the Array.
         """
+        # TODO: move sharding awareness out of metadata
         return self.metadata.chunks
 
     @property
-    def shards(self) -> ChunkCoords | None:
-        """Returns the shard shape of the Array.
-        Returns None if sharding is not used.
+    def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension data sizes of chunks used for reading, clipped to the array extent.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
+
+        When sharding is used, returns the inner chunk sizes.
+        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
 
         Returns
         -------
-        ChunkCoords:
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
+
+        Examples
+        --------
+        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> arr.read_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            inner_chunk_shape = codecs[0].chunk_shape
+            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        return self._chunk_grid.chunk_sizes
+
+    @property
+    def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension data sizes of storage chunks, clipped to the array extent.
+
+        Always returns the outer chunk sizes, regardless of sharding.
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
+
+        Examples
+        --------
+        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> arr.write_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        return self._chunk_grid.chunk_sizes
+
+    @property
+    def shards(self) -> tuple[int, ...] | None:
+        """Returns the shard shape of the Array.
+        Returns None if sharding is not used.
+
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+
+        Returns
+        -------
+        tuple[int, ...]:
             The shard shape of the Array.
         """
         return self.metadata.shards
@@ -966,7 +909,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return np.prod(self.metadata.shape).item()
 
     @property
-    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+    def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
         """
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -994,21 +937,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.")
-    def compressor(self) -> numcodecs.abc.Codec | None:
+    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
+    def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.compressor
         raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
-    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+    def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
         """
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -1023,7 +966,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    def dtype(self) -> np.dtype[Any]:
+    def _zdtype(self) -> ZDType[TBaseDType, TBaseScalar]:
+        """
+        The zarr-specific representation of the array data type
+        """
+        if self.metadata.zarr_format == 2:
+            return self.metadata.dtype
+        else:
+            return self.metadata.data_type
+
+    @property
+    def dtype(self) -> TBaseDType:
         """Returns the data type of the array.
 
         Returns
@@ -1031,7 +984,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         np.dtype
             Data type of the array
         """
-        return self.metadata.dtype
+        return self._zdtype.to_native_dtype()
 
     @property
     def order(self) -> MemoryOrder:
@@ -1042,7 +995,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         bool
             Memory order of the array
         """
-        return self._config.order
+        if self.metadata.zarr_format == 2:
+            return self.metadata.order
+        else:
+            return self.config.order
 
     @property
     def attrs(self) -> dict[str, JSON]:
@@ -1105,33 +1061,126 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.name.split("/")[-1]
 
     @property
-    def cdata_shape(self) -> ChunkCoords:
+    def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
-        Tuple[int]
-            The shape of the chunk grid for this array.
+        tuple[int, ...]
+            The number of chunks along each dimension.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self._chunk_grid_shape
+
+    @property
+    def _chunk_grid_shape(self) -> tuple[int, ...]:
+        """
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The number of chunks along each dimension.
+        """
+        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
+        # to replace the repeated `len == 1 and isinstance` pattern.
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            # When sharding, count inner chunks across the whole array
+            chunk_shape = codecs[0].chunk_shape
+            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+        return self._chunk_grid.grid_shape
+
+    @property
+    def _shard_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the shard grid for this array.
+
+        When no shards are present this will automatically fall back to the chunk grid.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The shape of the shard grid for this array.
+        """
+        if self.shards is None:
+            shard_shape = self.chunks
+        else:
+            shard_shape = self.shards
+        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
 
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
+        The number of chunks in this array.
+
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array.
 
         Returns
         -------
         int
             The total number of chunks in the array.
         """
-        return product(self.cdata_shape)
+        return product(self._chunk_grid_shape)
+
+    @property
+    def _nshards(self) -> int:
+        """
+        The number of shards in this array.
+
+        If no shards are present this will fall back to giving the number of chunks
+
+        Returns
+        -------
+        int
+            The total number of shards or if absent, chunks in the array.
+        """
+        return product(self._shard_grid_shape)
+
+    @overload
+    def with_config(self: AsyncArrayV2, config: ArrayConfigLike) -> AsyncArrayV2: ...
+
+    @overload
+    def with_config(self: AsyncArrayV3, config: ArrayConfigLike) -> AsyncArrayV3: ...
+
+    def with_config(self, config: ArrayConfigLike) -> Self:
+        """
+        Return a copy of this Array with a new runtime configuration.
+
+        Parameters
+        ----------
+
+        config : ArrayConfigLike
+            The runtime config for the new Array. Any keys not specified will be inherited
+            from the current array's config.
+
+        Returns
+        -------
+        A new Array
+        """
+        if isinstance(config, ArrayConfig):
+            new_config = config
+        else:
+            # Merge new config with existing config, so missing keys are inherited
+            # from the current array rather than from global defaults
+            new_config = ArrayConfig(**{**self.config.to_dict(), **config})  # type: ignore[arg-type]
+        return type(self)(metadata=self.metadata, store_path=self.store_path, config=new_config)
 
     async def nchunks_initialized(self) -> int:
         """
-        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-        been persisted to the storage backend.
+        Calculate the number of chunks that have been initialized in storage.
+
+        This value is calculated as the product of the number of initialized shards and the number
+        of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
+        effectively 1, and in that case the number of chunks initialized is the same as the number
+        of stored objects associated with an array.
 
         Returns
         -------
@@ -1140,29 +1189,79 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Notes
         -----
-        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array.nchunks_initialized`.
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array.nchunks_initialized`][zarr.Array.nchunks_initialized].
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
-        >>> await arr.nchunks_initialized()
-        0
-        >>> await arr.setitem(slice(5), 1)
-        >>> await arr.nchunks_initialized()
-        3
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,))
+            count = await arr.nchunks_initialized()
+            print(f"Initial: {count}")
+            #> Initial: 0
+            await arr.setitem(slice(5), 1)
+            count = await arr.nchunks_initialized()
+            print(f"After write: {count}")
+            #> After write: 5
+            return count
+
+        result = asyncio.run(example())
+        ```
         """
-        return len(await chunks_initialized(self))
+        return await _nchunks_initialized(self)
+
+    async def _nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized in storage.
+
+        This is the number of shards that have been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Notes
+        -----
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array._nshards_initialized`][zarr.Array._nshards_initialized].
+
+        Examples
+        --------
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+            count = await arr._nshards_initialized()
+            print(f"Initial: {count}")
+            #> Initial: 0
+            await arr.setitem(slice(5), 1)
+            count = await arr._nshards_initialized()
+            print(f"After write: {count}")
+            #> After write: 3
+            return count
+
+        result = asyncio.run(example())
+        ```
+        """
+        return await _nshards_initialized(self)
 
     async def nbytes_stored(self) -> int:
-        return await self.store_path.store.getsize_prefix(self.store_path.path)
+        return await _nbytes_stored(self.store_path)
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[ChunkCoords]:
+    ) -> Iterator[tuple[int, ...]]:
         """
-        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
-        keyword is used, iteration will start at the chunk index specified by `origin`.
+        Create an iterator over the coordinates of chunks in chunk grid space.
+
+        If the `origin` keyword is used, iteration will start at the chunk index specified by `origin`.
         The default behavior is to start at the origin of the grid coordinate space.
         If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
         ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
@@ -1177,34 +1276,77 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Yields
         ------
-        chunk_coords: ChunkCoords
+        chunk_coords: tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
-        return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
+        return _iter_chunk_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
-    def _iter_chunk_keys(
+    def _iter_shard_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of shards in shard grid space.
+
+        This will fall back to chunk grid space in case no shards are present.
+
+        Note that
+
+        If the `origin` keyword is used, iteration will start at the shard index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: tuple[int, ...]
+            The coordinates of each shard in the selection or chunk in case of no shard being present.
+        """
+        return _iter_shard_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
+
+    def _iter_shard_keys(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
         """
-        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
-        limited to a contiguous region in chunk grid coordinates.
+        Iterate over the keys of the stored objects supporting this array.
+
+        Although only stored objects, e.g. shards should have keys, in case no
+        shards are present this automatically falls back to chunks.
 
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
         selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in chunk grid coordinates.
+            The shape of the selection in shard grid coordinates.
 
         Yields
         ------
         key: str
-            The storage key of each chunk in the selection.
+            The storage key of each shard in the selection or in case of no shard
+            present of each chunk although the latter case is technically incorrect.
         """
         # Iterate over the coordinates of chunks in chunk grid space.
-        for k in self._iter_chunk_coords(origin=origin, selection_shape=selection_shape):
-            # Encode the chunk key from the chunk coordinates.
-            yield self.metadata.encode_chunk_key(k)
+        return _iter_shard_keys(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_chunk_regions(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1224,15 +1366,34 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         region: tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        for cgrid_position in self._iter_chunk_coords(
-            origin=origin, selection_shape=selection_shape
-        ):
-            out: tuple[slice, ...] = ()
-            for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
-                start = c_pos * c_shape
-                stop = start + c_shape
-                out += (slice(start, stop, 1),)
-            yield out
+        return _iter_chunk_regions(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
+
+    def _iter_shard_regions(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each shard.
+
+        This will automatically fall back to chunks if no shards are present.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each shard in the selection or chunk in the
+            absence of shards.
+        """
+        return _iter_shard_regions(array=self, origin=origin, selection_shape=selection_shape)
 
     @property
     def nbytes(self) -> int:
@@ -1256,56 +1417,25 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
-        # check fields are sensible
-        out_dtype = check_fields(fields, self.dtype)
-
-        # setup output buffer
-        if out is not None:
-            if isinstance(out, NDBuffer):
-                out_buffer = out
-            else:
-                raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
-            if out_buffer.shape != indexer.shape:
-                raise ValueError(
-                    f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
-                )
-        else:
-            out_buffer = prototype.nd_buffer.create(
-                shape=indexer.shape,
-                dtype=out_dtype,
-                order=self._config.order,
-                fill_value=self.metadata.fill_value,
-            )
-        if product(indexer.shape) > 0:
-            # need to use the order from the metadata for v2
-            _config = self._config
-            if self.metadata.zarr_format == 2:
-                _config = replace(_config, order=self.metadata.order)
-
-            # reading chunks and decoding them
-            await self.codec_pipeline.read(
-                [
-                    (
-                        self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
-                        chunk_selection,
-                        out_selection,
-                        is_complete_chunk,
-                    )
-                    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
-                ],
-                out_buffer,
-                drop_axes=indexer.drop_axes,
-            )
-        return out_buffer.as_ndarray_like()
+    ) -> NDArrayLikeOrScalar:
+        return await _get_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            indexer,
+            prototype=prototype,
+            out=out,
+            fields=fields,
+        )
 
     async def getitem(
         self,
         selection: BasicSelection,
         *,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """
         Asynchronous function that retrieves a subset of the array's data based on the provided selection.
 
@@ -1318,55 +1448,106 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        NDArrayLike
+        NDArrayLikeOrScalar
             The retrieved subset of the array's data.
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore(mode='w')
-        >>>  async_arr = await zarr.api.asynchronous.create_array(
-        ...      store=store,
-        ...      shape=(100,100),
-        ...      chunks=(10,10),
-        ...      dtype='i4',
-        ...      fill_value=0)
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
-        >>> await async_arr.getitem((0,1)) # doctest: +ELLIPSIS
-        array(0, dtype=int32)
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
 
+        async def example():
+            store = zarr.storage.MemoryStore()
+            async_arr = await zarr.api.asynchronous.create_array(
+                 store=store,
+                 shape=(100,100),
+                 chunks=(10,10),
+                 dtype='i4',
+                 fill_value=0)
+            result = await async_arr.getitem((0,1))
+            print(result)
+            #> 0
+            return result
+
+        value = asyncio.run(example())
+        ```
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BasicIndexer(
+        return await _getitem(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
             selection,
-            shape=self.metadata.shape,
-            chunk_grid=self.metadata.chunk_grid,
+            prototype=prototype,
         )
-        return await self._get_selection(indexer, prototype=prototype)
+
+    async def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        return await _get_orthogonal_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            selection,
+            out=out,
+            fields=fields,
+            prototype=prototype,
+        )
+
+    async def get_mask_selection(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        return await _get_mask_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            mask,
+            out=out,
+            fields=fields,
+            prototype=prototype,
+        )
+
+    async def get_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        return await _get_coordinate_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            selection,
+            out=out,
+            fields=fields,
+            prototype=prototype,
+        )
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
         """
-        to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-
-        if ensure_parents:
-            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
-            parents = _build_parents(self)
-
-            for parent in parents:
-                awaitables.extend(
-                    [
-                        (parent.store_path / key).set_if_not_exists(value)
-                        for key, value in parent.metadata.to_buffer_dict(
-                            cpu_buffer_prototype
-                        ).items()
-                    ]
-                )
-
-        await gather(*awaitables)
+        await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
     async def _set_selection(
         self,
@@ -1376,55 +1557,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
-        # check fields are sensible
-        check_fields(fields, self.dtype)
-        fields = check_no_multi_fields(fields)
-
-        # check value shape
-        if np.isscalar(value):
-            array_like = prototype.buffer.create_zero_length().as_array_like()
-            if isinstance(array_like, np._typing._SupportsArrayFunc):
-                # TODO: need to handle array types that don't support __array_function__
-                # like PyTorch and JAX
-                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
-            value = np.asanyarray(value, dtype=self.metadata.dtype, like=array_like_)
-        else:
-            if not hasattr(value, "shape"):
-                value = np.asarray(value, self.metadata.dtype)
-            # assert (
-            #     value.shape == indexer.shape
-            # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
-            if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
-                if hasattr(value, "astype"):
-                    # Handle things that are already NDArrayLike more efficiently
-                    value = value.astype(dtype=self.metadata.dtype, order="A")
-                else:
-                    value = np.array(value, dtype=self.metadata.dtype, order="A")
-        value = cast(NDArrayLike, value)
-        # We accept any ndarray like object from the user and convert it
-        # to a NDBuffer (or subclass). From this point onwards, we only pass
-        # Buffer and NDBuffer between components.
-        value_buffer = prototype.nd_buffer.from_ndarray_like(value)
-
-        # need to use the order from the metadata for v2
-        _config = self._config
-        if self.metadata.zarr_format == 2:
-            _config = replace(_config, order=self.metadata.order)
-
-        # merging with existing data and encoding chunks
-        await self.codec_pipeline.write(
-            [
-                (
-                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
-                    chunk_selection,
-                    out_selection,
-                    is_complete_chunk,
-                )
-                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
-            ],
-            value_buffer,
-            drop_axes=indexer.drop_axes,
+        return await _set_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            indexer,
+            value,
+            prototype=prototype,
+            fields=fields,
         )
 
     async def setitem(
@@ -1466,14 +1608,29 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BasicIndexer(
+        return await _setitem(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
             selection,
-            shape=self.metadata.shape,
-            chunk_grid=self.metadata.chunk_grid,
+            value,
+            prototype=prototype,
         )
-        return await self._set_selection(indexer, value, prototype=prototype)
+
+    @property
+    def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
+        """Shortcut for orthogonal (outer) indexing, see [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for documentation and examples."""
+        return AsyncOIndex(self)
+
+    @property
+    def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
+        """Shortcut for vectorized (inner) indexing, see [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection], [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and examples."""
+        return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
@@ -1481,7 +1638,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
-        new_shape : ChunkCoords
+        new_shape : tuple[int, ...]
             The desired new shape of the array.
 
         delete_outside_chunks : bool, optional
@@ -1502,34 +1659,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -----
         - This method is asynchronous and should be awaited.
         """
-        new_shape = parse_shapelike(new_shape)
-        assert len(new_shape) == len(self.metadata.shape)
-        new_metadata = self.metadata.update_shape(new_shape)
+        return await _resize(self, new_shape, delete_outside_chunks)
 
-        if delete_outside_chunks:
-            # Remove all chunks outside of the new shape
-            old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
-            new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
-
-            async def _delete_key(key: str) -> None:
-                await (self.store_path / key).delete()
-
-            await concurrent_map(
-                [
-                    (self.metadata.encode_chunk_key(chunk_coords),)
-                    for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-                ],
-                _delete_key,
-                zarr_config.get("async.concurrency"),
-            )
-
-        # Write new metadata
-        await self._save_metadata(new_metadata)
-
-        # Update metadata (in place)
-        object.__setattr__(self, "metadata", new_metadata)
-
-    async def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+    async def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
 
         Parameters
@@ -1548,40 +1680,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The size of all dimensions other than `axis` must match between this
         array and `data`.
         """
-        # ensure data is array-like
-        if not hasattr(data, "shape"):
-            data = np.asanyarray(data)
-
-        self_shape_preserved = tuple(s for i, s in enumerate(self.shape) if i != axis)
-        data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
-        if self_shape_preserved != data_shape_preserved:
-            raise ValueError(
-                f"shape of data to append is not compatible with the array. "
-                f"The shape of the data is ({data_shape_preserved})"
-                f"and the shape of the array is ({self_shape_preserved})."
-                "All dimensions must match except for the dimension being "
-                "appended."
-            )
-        # remember old shape
-        old_shape = self.shape
-
-        # determine new shape
-        new_shape = tuple(
-            self.shape[i] if i != axis else self.shape[i] + data.shape[i]
-            for i in range(len(self.shape))
-        )
-
-        # resize
-        await self.resize(new_shape)
-
-        # store data
-        append_selection = tuple(
-            slice(None) if i != axis else slice(old_shape[i], new_shape[i])
-            for i in range(len(self.shape))
-        )
-        await self.setitem(append_selection, data)
-
-        return new_shape
+        return await _append(self, data, axis)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -1609,11 +1708,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        self.metadata.attributes.update(new_attributes)
-
-        # Write new metadata
-        await self._save_metadata(self.metadata)
-
+        await _update_attributes(self, new_attributes)
         return self
 
     def __repr__(self) -> str:
@@ -1628,10 +1723,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
-        --------
-        AsyncArray.info_complete
-            All information about a group, including dynamic information
+        Related
+        -------
+        [zarr.AsyncArray.info_complete][] - All information about a group, including dynamic information
             like the number of bytes and chunks written.
 
         Examples
@@ -1667,32 +1761,24 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
-        --------
-        AsyncArray.info
-            A property giving just the statically known information about an array.
+        Related
+        -------
+        [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
-        return self._info(
-            await self.nchunks_initialized(),
-            await self.store_path.store.getsize_prefix(self.store_path.path),
-        )
+        return await _info_complete(self)
 
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        _data_type: np.dtype[Any] | DataType
-        if isinstance(self.metadata, ArrayV2Metadata):
-            _data_type = self.metadata.dtype
-        else:
-            _data_type = self.metadata.data_type
-
+        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
-            _data_type=_data_type,
+            _data_type=self._zdtype,
+            _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
-            _chunk_shape=self.chunks,
+            _chunk_shape=chunk_shape,
             _read_only=self.read_only,
             _compressors=self.compressors,
             _filters=self.filters,
@@ -1706,141 +1792,40 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array:
-    """Instantiate an array from an initialized store."""
+class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
+    """
+    A Zarr array.
+    """
 
-    _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+    _async_array: AsyncArray[T_ArrayMetadata]
 
-    @classmethod
-    @deprecated("Use zarr.create_array instead.")
-    @_deprecate_positional_args
-    def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ChunkCoords,
-        dtype: npt.DTypeLike,
-        zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ChunkCoords | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ChunkCoords | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        # runtime
-        overwrite: bool = False,
-        config: ArrayConfigLike | None = None,
-    ) -> Array:
-        """Creates a new Array instance from an initialized store.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.create_array`.
-
-        Parameters
-        ----------
-        store : StoreLike
-            The array store that has already been initialized.
-        shape : ChunkCoords
-            The shape of the array.
-        dtype : npt.DTypeLike
-            The data type of the array.
-        chunk_shape : ChunkCoords, optional
-            The shape of the Array's chunks.
-            Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        chunk_key_encoding : ChunkKeyEncodingLike, optional
-            A specification of how the chunk keys are represented in storage.
-            Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
-            Default is ``("default", "/")``.
-        codecs : Sequence of Codecs or dicts, optional
-            An iterable of Codec or dict serializations of Codecs. The elements of
-            this collection specify the transformation from array values to stored bytes.
-            Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
-
-            If no codecs are provided, default codecs will be used:
-
-            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
-            - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
-        dimension_names : Iterable[str], optional
-            The names of the dimensions (default is None).
-            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
-        chunks : ChunkCoords, optional
-            The shape of the array's chunks.
-            Zarr format 2 only. Zarr format 3 arrays should use ``chunk_shape`` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        dimension_separator : Literal[".", "/"], optional
-            The dimension separator (default is ".").
-            Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
-        order : Literal["C", "F"], optional
-            The memory of the array (default is "C").
-            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
-            order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
-        filters : list[dict[str, JSON]], optional
-            Sequence of filters to use to encode chunk data prior to compression.
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
-            are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
-        compressor : dict[str, JSON], optional
-            Primary compressor to compress chunk data.
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
-
-            If no ``compressor`` is provided, a default compressor will be used:
-
-            - For numeric arrays, the default is ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
-        overwrite : bool, optional
-            Whether to raise an error if the store already exists (default is False).
+    @property
+    def async_array(self) -> AsyncArray[T_ArrayMetadata]:
+        """An asynchronous version of the current array.  Useful for batching requests.
 
         Returns
         -------
-        Array
-            Array created from the store.
+            An asynchronous array whose metadata + store matches that of this synchronous array.
         """
-        return cls._create(
-            store,
-            # v2 and v3
-            shape=shape,
-            dtype=dtype,
-            zarr_format=zarr_format,
-            attributes=attributes,
-            fill_value=fill_value,
-            # v3 only
-            chunk_shape=chunk_shape,
-            chunk_key_encoding=chunk_key_encoding,
-            codecs=codecs,
-            dimension_names=dimension_names,
-            # v2 only
-            chunks=chunks,
-            dimension_separator=dimension_separator,
-            order=order,
-            filters=filters,
-            compressor=compressor,
-            # runtime
-            overwrite=overwrite,
-            config=config,
-        )
+        return self._async_array
+
+    @property
+    def config(self) -> ArrayConfig:
+        """
+        The runtime configuration for this array. This is a read-only property. To modify the
+        runtime configuration, use `Array.with_config` to create a new `Array` with the modified
+        configuration.
+
+        Returns
+        -------
+        An `ArrayConfig` object that defines the runtime configuration for the array.
+        """
+        return self.async_array.config
+
+    @property
+    def _chunk_grid(self) -> ChunkGrid:
+        """The chunk grid for this array, bound to the array's shape."""
+        return self.async_array._chunk_grid
 
     @classmethod
     def _create(
@@ -1848,13 +1833,13 @@ class Array:
         store: StoreLike,
         *,
         # v2 and v3
-        shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        shape: tuple[int, ...],
+        dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
+        chunk_shape: tuple[int, ...] | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -1862,20 +1847,19 @@ class Array:
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> Array:
+    ) -> Self:
         """Creates a new Array instance from an initialized store.
-        See :func:`Array.create` for more details.
-        Deprecated in favor of :func:`zarr.create_array`.
+        Deprecated in favor of [`zarr.create_array`][].
         """
         async_array = sync(
             AsyncArray._create(
@@ -1905,7 +1889,7 @@ class Array:
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> Array:
+    ) -> Self:
         """
         Create a Zarr array from a dictionary.
 
@@ -1935,13 +1919,15 @@ class Array:
     def open(
         cls,
         store: StoreLike,
-    ) -> Array:
+    ) -> Self:
         """Opens an existing Array from a store.
 
         Parameters
         ----------
-        store : Store
-            Store containing the Array.
+        store : StoreLike
+            Store containing the Array. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
 
         Returns
         -------
@@ -1953,7 +1939,7 @@ class Array:
 
     @property
     def store(self) -> Store:
-        return self._async_array.store
+        return self.async_array.store
 
     @property
     def ndim(self) -> int:
@@ -1964,53 +1950,101 @@ class Array:
         int
             The number of dimensions in the array.
         """
-        return self._async_array.ndim
+        return self.async_array.ndim
 
     @property
-    def shape(self) -> ChunkCoords:
+    def shape(self) -> tuple[int, ...]:
         """Returns the shape of the array.
 
         Returns
         -------
-        ChunkCoords
+        tuple[int, ...]
             The shape of the array.
         """
-        return self._async_array.shape
+        return self.async_array.shape
 
     @shape.setter
-    def shape(self, value: ChunkCoords) -> None:
+    def shape(self, value: tuple[int, ...]) -> None:
         """Sets the shape of the array by calling resize."""
         self.resize(value)
 
     @property
-    def chunks(self) -> ChunkCoords:
+    def chunks(self) -> tuple[int, ...]:
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
         If sharding is used the inner chunk shape is returned.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
         tuple
             A tuple of integers representing the length of each dimension of a chunk.
         """
-        return self._async_array.chunks
+        return self.async_array.chunks
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension data sizes of chunks used for reading, clipped to the array extent.
+
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
+
+        When sharding is used, returns the inner chunk sizes.
+        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
+
+        Examples
+        --------
+        >>> arr = zarr.open_array(store)
+        >>> arr.read_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        return self.async_array.read_chunk_sizes
+
+    @property
+    def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension data sizes of storage chunks, clipped to the array extent.
+
+        Always returns the outer chunk sizes, regardless of sharding.
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
+
+        Examples
+        --------
+        >>> arr = zarr.open_array(store)
+        >>> arr.write_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        return self.async_array.write_chunk_sizes
+
+    @property
+    def shards(self) -> tuple[int, ...] | None:
         """Returns a tuple of integers describing the length of each dimension of a shard of the array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
         tuple | None
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
-        return self._async_array.shards
+        return self.async_array.shards
 
     @property
     def size(self) -> int:
@@ -2021,7 +2055,7 @@ class Array:
         int
             Total number of elements in the array.
         """
-        return self._async_array.size
+        return self.async_array.size
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -2032,16 +2066,16 @@ class Array:
         np.dtype
             The NumPy data type.
         """
-        return self._async_array.dtype
+        return self.async_array.dtype
 
     @property
     def attrs(self) -> Attributes:
-        """Returns a MutableMapping containing user-defined attributes.
+        """Returns a [MutableMapping][collections.abc.MutableMapping] containing user-defined attributes.
 
         Returns
         -------
-        attrs : MutableMapping
-            A MutableMapping object containing user-defined attributes.
+        attrs
+            A [MutableMapping][collections.abc.MutableMapping] object containing user-defined attributes.
 
         Notes
         -----
@@ -2052,113 +2086,142 @@ class Array:
     @property
     def path(self) -> str:
         """Storage path."""
-        return self._async_array.path
+        return self.async_array.path
 
     @property
     def name(self) -> str:
         """Array name following h5py convention."""
-        return self._async_array.name
+        return self.async_array.name
 
     @property
     def basename(self) -> str:
         """Final component of name."""
-        return self._async_array.basename
+        return self.async_array.basename
 
     @property
     def metadata(self) -> ArrayMetadata:
-        return self._async_array.metadata
+        return self.async_array.metadata
 
     @property
     def store_path(self) -> StorePath:
-        return self._async_array.store_path
+        return self.async_array.store_path
 
     @property
     def order(self) -> MemoryOrder:
-        return self._async_array.order
+        return self.async_array.order
 
     @property
     def read_only(self) -> bool:
-        return self._async_array.read_only
+        return self.async_array.read_only
 
     @property
     def fill_value(self) -> Any:
         return self.metadata.fill_value
 
     @property
-    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+    def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
         """
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
         """
-        return self._async_array.filters
+        return self.async_array.filters
 
     @property
     def serializer(self) -> None | ArrayBytesCodec:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
-        return self._async_array.serializer
+        return self.async_array.serializer
 
     @property
-    @deprecated("Use Array.compressors instead.")
-    def compressor(self) -> numcodecs.abc.Codec | None:
+    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
+    def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`array.compressors`][zarr.Array.compressors] instead.
         """
-        return self._async_array.compressor
+        return self.async_array.compressor
 
     @property
-    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+    def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
         """
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
         """
-        return self._async_array.compressors
+        return self.async_array.compressors
 
     @property
-    def cdata_shape(self) -> ChunkCoords:
+    def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self.async_array._chunk_grid_shape
+
+    @property
+    def _chunk_grid_shape(self) -> tuple[int, ...]:
+        """
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The number of chunks along each dimension.
+        """
+        return self.async_array._chunk_grid_shape
+
+    @property
+    def _shard_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the shard grid for this array.
+        """
+        return self.async_array._shard_grid_shape
 
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
-        """
-        return self._async_array.nchunks
+        The number of chunks in this array.
 
-    def _iter_chunk_coords(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[ChunkCoords]:
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array.
         """
-        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
-        keyword is used, iteration will start at the chunk index specified by `origin`.
-        The default behavior is to start at the origin of the grid coordinate space.
-        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
-        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
-        per python indexing conventions.
+        return self.async_array.nchunks
+
+    @property
+    def _nshards(self) -> int:
+        """
+        The number of shards in the stored representation of this array.
+        """
+        return self.async_array._nshards
+
+    @overload
+    def with_config(self: ArrayV2, config: ArrayConfigLike) -> ArrayV2: ...
+
+    @overload
+    def with_config(self: ArrayV3, config: ArrayConfigLike) -> ArrayV3: ...
+
+    def with_config(self, config: ArrayConfigLike) -> Self:
+        """
+        Return a copy of this Array with a new runtime configuration.
 
         Parameters
         ----------
-        origin : Sequence[int] | None, default=None
-            The origin of the selection relative to the array's chunk grid.
-        selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in chunk grid coordinates.
 
-        Yields
-        ------
-        chunk_coords: ChunkCoords
-            The coordinates of each chunk in the selection.
+        config : ArrayConfigLike
+            The runtime config for the new Array. Any keys not specified will be inherited
+            from the current array's config.
+
+        Returns
+        -------
+        A new Array
         """
-        yield from self._async_array._iter_chunk_coords(
-            origin=origin, selection_shape=selection_shape
-        )
+        return type(self)(self._async_array.with_config(config))
 
     @property
     def nbytes(self) -> int:
@@ -2173,34 +2236,55 @@ class Array:
         dtypes. It is not possible to determine the size of an array with variable-length elements
         from the shape and dtype alone.
         """
-        return self._async_array.nbytes
+        return self.async_array.nbytes
 
     @property
     def nchunks_initialized(self) -> int:
         """
-        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-        been persisted to the storage backend.
+        Calculate the number of chunks that have been initialized in storage.
+
+        This value is calculated as the product of the number of initialized shards and the number of
+        chunks per shard. For arrays that do not use sharding, the number of chunks per shard is effectively 1,
+        and in that case the number of chunks initialized is the same as the number of stored objects associated with an
+        array. For a direct count of the number of initialized stored objects, see ``nshards_initialized``.
 
         Returns
         -------
         nchunks_initialized : int
             The number of chunks that have been initialized.
 
-        Notes
-        -----
-        On :class:`Array` this is a (synchronous) property, unlike asynchronous function
-        :meth:`AsyncArray.nchunks_initialized`.
-
         Examples
         --------
-        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr = zarr.create_array(store={}, shape=(10,), chunks=(1,), shards=(2,))
         >>> arr.nchunks_initialized
         0
         >>> arr[:5] = 1
         >>> arr.nchunks_initialized
+        6
+        """
+        return sync(self.async_array.nchunks_initialized())
+
+    @property
+    def _nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized, i.e. the number of shards that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Examples
+        --------
+        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr._nshards_initialized
+        0
+        >>> arr[:5] = 1
+        >>> arr._nshard_initialized
         3
         """
-        return sync(self._async_array.nchunks_initialized())
+        return sync(self.async_array._nshards_initialized())
 
     def nbytes_stored(self) -> int:
         """
@@ -2210,14 +2294,44 @@ class Array:
         -------
         size : int
         """
-        return sync(self._async_array.nbytes_stored())
+        return sync(self.async_array.nbytes_stored())
 
-    def _iter_chunk_keys(
+    def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
         """
-        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        Iterate over the storage keys of each shard, relative to an optional origin, and optionally
         limited to a contiguous region in chunk grid coordinates.
+
+        If no shards are present this falls back to chunks, though in this case these are then actually
+        not storage keys.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        str
+            The storage key of each shard in the selection or chunk though chunks technically do not have
+            storage keys.
+        """
+        return self.async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
+
+    def _iter_chunk_coords(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of chunks in chunk grid space.
+
+        If the `origin` keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
 
         Parameters
         ----------
@@ -2228,12 +2342,36 @@ class Array:
 
         Yields
         ------
-        key: str
-            The storage key of each chunk in the selection.
+        tuple[int, ...]
+            The coordinates of each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_keys(
-            origin=origin, selection_shape=selection_shape
-        )
+        return self.async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
+
+    def _iter_shard_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of shards in shard grid space.
+
+        If the `origin` keyword is used, iteration will start at the shard index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        tuple[int, ...]
+            The coordinates of each shard in the selection.
+        """
+        return self.async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2250,12 +2388,31 @@ class Array:
 
         Yields
         ------
-        region: tuple[slice, ...]
+        tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_regions(
-            origin=origin, selection_shape=selection_shape
-        )
+        return self.async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
+
+    def _iter_shard_regions(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each shard or chunk if no shard is present.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each shard or if no shard is present,
+            chunk in the selection.
+        """
+        return self.async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -2268,14 +2425,15 @@ class Array:
             msg = "`copy=False` is not supported. This method always creates a copy."
             raise ValueError(msg)
 
-        arr_np = self[...]
+        arr = self[...]
+        arr_np = np.array(arr, dtype=dtype)
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
 
         return arr_np
 
-    def __getitem__(self, selection: Selection) -> NDArrayLike:
+    def __getitem__(self, selection: Selection) -> NDArrayLikeOrScalar:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2286,8 +2444,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-             An array-like containing the data for the requested region.
+        NDArrayLikeOrScalar
+             An array-like or scalar containing the data for the requested region.
 
         Examples
         --------
@@ -2395,9 +2553,9 @@ class Array:
         fields
 
         Currently the implementation for __getitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
@@ -2408,23 +2566,25 @@ class Array:
            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection], [set_basic_selection][zarr.Array.set_basic_selection]
+        [get_mask_selection][zarr.Array.get_mask_selection], [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection], [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection], [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection], [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex], [blocks][zarr.Array.blocks], [__setitem__][zarr.Array.__setitem__]
 
         """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
+            return self.vindex[cast("CoordinateSelection | MaskSelection", selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
             return self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
-            return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
+            return self.get_basic_selection(cast("BasicSelection", pure_selection), fields=fields)
 
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
@@ -2494,38 +2654,51 @@ class Array:
         fields
 
         Currently the implementation for __setitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
-           - integer indexing
-           - slice indexing
-           - mixed slice and integer indexing
-           - boolean indexing
-           - fancy indexing (vectorized list of integers)
+            - integer indexing
+            - slice indexing
+            - mixed slice and integer indexing
+            - boolean indexing
+            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__]
 
         """
+        # Converting a zarr Array to numpy here avoids a SyncError that occurs when
+        # value.__getitem__ is called inside the async codec pipeline (which already
+        # runs within a running event loop).  np.asarray triggers Array.__array__,
+        # which reads the data synchronously before we enter the async context.
+        if isinstance(value, Array):
+            value = np.asarray(value)
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
+            self.vindex[cast("CoordinateSelection | MaskSelection", selection)] = value
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
             self.set_orthogonal_selection(pure_selection, value, fields=fields)
         else:
-            self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
+            self.set_basic_selection(cast("BasicSelection", pure_selection), value, fields=fields)
 
-    @_deprecate_positional_args
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -2533,7 +2706,7 @@ class Array:
         out: NDBuffer | None = None,
         prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2551,8 +2724,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-            An array-like containing the data for the requested region.
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested region.
 
         Examples
         --------
@@ -2626,30 +2799,37 @@ class Array:
         the `fields` parameter.
 
         This method provides the implementation for accessing data via the
-        square bracket notation (__getitem__). See :func:`__getitem__` for examples
+        square bracket notation (__getitem__). See [`__getitem__`][zarr.Array.__getitem__] for examples
         using the alternative notation.
 
-        See Also
-        --------
-        set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
 
         if prototype is None:
             prototype = default_buffer_prototype()
         return sync(
-            self._async_array._get_selection(
-                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+            self.async_array._get_selection(
+                BasicIndexer(selection, self.shape, self._chunk_grid),
                 out=out,
                 fields=fields,
                 prototype=prototype,
             )
         )
 
-    @_deprecate_positional_args
     def set_basic_selection(
         self,
         selection: BasicSelection,
@@ -2729,23 +2909,30 @@ class Array:
         the `fields` parameter.
 
         This method provides the underlying implementation for modifying data via square
-        bracket notation, see :func:`__setitem__` for equivalent examples using the
+        bracket notation, see [`__setitem__`][zarr.Array.__setitem__] for equivalent examples using the
         alternative notation.
 
-        See Also
-        --------
-        get_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -2753,7 +2940,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
         columns. The selection for each dimension can be either an integer (indexing a
@@ -2775,8 +2962,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-            An array-like containing the data for the requested selection.
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested selection.
 
         Examples
         --------
@@ -2853,24 +3040,31 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
 
-    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -2966,22 +3160,28 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
-    @_deprecate_positional_args
     def get_mask_selection(
         self,
         mask: MaskSelection,
@@ -2989,7 +3189,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -3009,8 +3209,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-            An array-like containing the data for the requested selection.
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested selection.
 
         Examples
         --------
@@ -3047,24 +3247,31 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
 
-    @_deprecate_positional_args
     def set_mask_selection(
         self,
         mask: MaskSelection,
@@ -3130,20 +3337,27 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3151,7 +3365,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3169,8 +3383,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-            An array-like containing the data for the requested coordinate selection.
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested coordinate selection.
 
         Examples
         --------
@@ -3211,19 +3425,27 @@ class Array:
         before being applied. The shape of the output will be the same as the shape of
         each coordinate array after broadcasting.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
         out_array = sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
@@ -3233,7 +3455,6 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
-    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3296,18 +3517,26 @@ class Array:
         Slices are not supported. Coordinate arrays must be provided for all dimensions
         of the array.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
         # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
 
         # handle value - need ndarray-like flatten value
         if not is_scalar(value, self.dtype):
@@ -3329,9 +3558,8 @@ class Array:
                 f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_block_selection(
         self,
         selection: BasicSelection,
@@ -3339,7 +3567,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3357,8 +3585,8 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
-            An array-like containing the data for the requested block selection.
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested block selection.
 
         Examples
         --------
@@ -3413,24 +3641,30 @@ class Array:
                    [13, 14, 15, 16, 17, 18],
                    [23, 24, 25, 26, 27, 28]])
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
 
-    @_deprecate_positional_args
     def set_block_selection(
         self,
         selection: BasicSelection,
@@ -3507,42 +3741,57 @@ class Array:
 
         Slices are supported. However, only with a step size of one.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @property
     def vindex(self) -> VIndex:
-        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
-        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
-        :func:`set_mask_selection` for documentation and examples."""
+        """Shortcut for vectorized (inner) indexing, see
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and
+        examples."""
         return VIndex(self)
 
     @property
     def oindex(self) -> OIndex:
-        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
-        :func:`set_orthogonal_selection` for documentation and examples."""
+        """Shortcut for orthogonal (outer) indexing, see
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for
+        documentation and examples."""
         return OIndex(self)
 
     @property
     def blocks(self) -> BlockIndex:
-        """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
-        :func:`set_block_selection` for documentation and examples."""
+        """Shortcut for blocked chunked indexing, see
+        [get_block_selection][zarr.Array.get_block_selection] and
+        [set_block_selection][zarr.Array.set_block_selection] for documentation and
+        examples."""
         return BlockIndex(self)
 
     def resize(self, new_shape: ShapeLike) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
-        dimensions.
+        dimensions. This is an in-place operation that modifies the array.
 
         Parameters
         ----------
@@ -3560,24 +3809,24 @@ class Array:
 
         Examples
         --------
-        >>> import zarr
-        >>> z = zarr.zeros(shape=(10000, 10000),
-        >>>                chunk_shape=(1000, 1000),
-        >>>                dtype="i4",)
-        >>> z.shape
-        (10000, 10000)
-        >>> z = z.resize(20000, 1000)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2 = z.resize(50, 50)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2.shape
-        (50, 50)
+        ```python
+        import zarr
+        z = zarr.zeros(shape=(10000, 10000),
+                        chunk_shape=(1000, 1000),
+                        dtype="int32",)
+        z.shape
+        #> (10000, 10000)
+        z.resize((20000, 1000))
+        z.shape
+        #> (20000, 1000)
+        z.resize((50, 50))
+        z.shape
+        #>(50, 50)
+        ```
         """
-        sync(self._async_array.resize(new_shape))
+        sync(self.async_array.resize(new_shape))
 
-    def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+    def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
 
         Parameters
@@ -3611,9 +3860,9 @@ class Array:
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self._async_array.append(data, axis=axis))
+        return sync(self.async_array.append(data, axis=axis))
 
-    def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
         Update the array's attributes.
 
@@ -3638,11 +3887,8 @@ class Array:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        # TODO: remove this cast when type inference improves
-        new_array = sync(self._async_array.update_attributes(new_attributes))
-        # TODO: remove this cast when type inference improves
-        _new_array = cast(AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], new_array)
-        return type(self)(_new_array)
+        new_array = sync(self.async_array.update_attributes(new_attributes))
+        return type(self)(new_array)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -3656,11 +3902,10 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
-        --------
-        Array.info_complete
-            All information about a group, including dynamic information
-            like the number of bytes and chunks written.
+        Related
+        -------
+        [zarr.Array.info_complete][] - All information about a group,
+            including dynamic information like the number of bytes and chunks written.
 
         Examples
         --------
@@ -3677,7 +3922,7 @@ class Array:
         Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
         No. bytes          : 40
         """
-        return self._async_array.info
+        return self.async_array.info
 
     def info_complete(self) -> Any:
         """
@@ -3693,19 +3938,20 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
-        --------
-        Array.info
-            The statically known subset of metadata about an array.
+        Related
+        -------
+        [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
-        return sync(self._async_array.info_complete())
+        return sync(self.async_array.info_complete())
 
 
-async def chunks_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+async def _shards_initialized(
+    array: AnyAsyncArray,
 ) -> tuple[str, ...]:
     """
-    Return the keys of the chunks that have been persisted to the storage backend.
+    Return the keys of the shards that have been persisted to the storage backend.
+
+    This will fall back to chunks in case no shards are present.
 
     Parameters
     ----------
@@ -3715,169 +3961,406 @@ async def chunks_initialized(
     Returns
     -------
     chunks_initialized : tuple[str, ...]
-        The keys of the chunks that have been initialized.
+        The keys of the shards or if these are not present, chunks that have been initialized.
 
-    See Also
-    --------
-    nchunks_initialized
+    Related
+    -------
+    [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
     store_contents = [
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
-    return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
-
-
-def _build_parents(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
-) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
-
-    store = node.store_path.store
-    path = node.store_path.path
-    if not path:
-        return []
-
-    required_parts = path.split("/")[:-1]
-    parents = [
-        # the root group
-        AsyncGroup(
-            metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-            store_path=StorePath(store=store, path=""),
-        )
+    store_contents_relative = [
+        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
     ]
-
-    for i, part in enumerate(required_parts):
-        p = "/".join(required_parts[:i] + [part])
-        parents.append(
-            AsyncGroup(
-                metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-                store_path=StorePath(store=store, path=p),
-            )
-        )
-
-    return parents
+    return tuple(
+        chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
+    )
 
 
-def _get_default_codecs(
-    np_dtype: np.dtype[Any],
-) -> tuple[Codec, ...]:
-    filters, serializer, compressors = _get_default_chunk_encoding_v3(np_dtype)
-    return filters + (serializer,) + compressors
-
-
-FiltersLike: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
+type FiltersLike = (
+    Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
-    | Iterable[numcodecs.abc.Codec]
-    | numcodecs.abc.Codec
+    | Iterable[Numcodec]
+    | Numcodec
     | Literal["auto"]
     | None
 )
-CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | None
-CompressorsLike: TypeAlias = (
-    Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
-    | dict[str, JSON]
+# Union of acceptable types for users to pass in for both v2 and v3 compressors
+type CompressorLike = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
+
+type CompressorsLike = (
+    Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
+    | Mapping[str, JSON]
     | BytesBytesCodec
-    | numcodecs.abc.Codec
+    | Numcodec
     | Literal["auto"]
     | None
 )
-SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsLike: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
+type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
+
+
+async def from_array(
+    store: StoreLike,
+    *,
+    data: AnyArray | npt.ArrayLike,
+    write_data: bool = True,
+    name: str | None = None,
+    chunks: ChunksLike | Literal["auto", "keep"] = "keep",
+    shards: ShardsLike | None | Literal["keep"] = "keep",
+    filters: FiltersLike | Literal["keep"] = "keep",
+    compressors: CompressorsLike | Literal["keep"] = "keep",
+    serializer: SerializerLike | Literal["keep"] = "keep",
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+    dimension_names: DimensionNamesLike = None,
+    storage_options: dict[str, Any] | None = None,
+    overwrite: bool = False,
+    config: ArrayConfigLike | None = None,
+) -> AnyAsyncArray:
+    """Create an array from an existing array or array-like.
+
+    Parameters
+    ----------
+    store : StoreLike
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
+    data : Array | array-like
+        The array to copy.
+    write_data : bool, default True
+        Whether to copy the data from the input array to the new array.
+        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        input array, but without any data.
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        at the root of the store.
+    chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
+        Chunk shape of the array.
+        Following values are supported:
+
+        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+        - "keep": Retain the chunk grid of the data array if it is a zarr Array.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
+        - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
+          Rectilinear chunk grids are experimental and must be explicitly enabled
+          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          feature is stabilizing.
+
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
+    shards : tuple[int, ...], optional
+        Shard shape of the array.
+        Following values are supported:
+
+        - "auto": Automatically determine the shard shape based on the array's shape and chunk shape.
+        - "keep": Retain the shard shape of the data array if it is a zarr Array.
+        - tuple[int, ...]: A tuple of integers representing the shard shape.
+        - None: No sharding.
+
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
+    filters : Iterable[Codec] | Literal["auto", "keep"], optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
+
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+        order of your filters is consistent with the behavior of each filter.
+
+        The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
+        If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
+        which is to choose default filters based on the data type of the array and the Zarr format specified.
+        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple ``()``.
+        The only cases where default filters are not empty is when the Zarr format is 2, and the
+        data type is a variable-length data type like [`zarr.dtype.VariableLengthUTF8`][] or
+        [`zarr.dtype.VariableLengthUTF8`][]. In these cases, the default filters is a tuple with a
+        single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
+    compressors : Iterable[Codec] or "auto" or "keep", optional
+        List of compressors to apply to the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified) and the data is serialized into bytes.
+
+        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
+
+        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr format 2.
+
+        Following values are supported:
+
+        - Iterable[Codec]: List of compressors to apply to the array.
+        - "auto": Automatically determine the compressors based on the array's dtype.
+        - "keep": Retain the compressors of the input array if it is a zarr Array.
+
+        If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+    serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
+        Array-to-bytes codec to use for encoding the array data.
+        Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
+
+        Following values are supported:
+
+        - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
+        - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
+        - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
+          ``array.v3_default_serializer`` in [`zarr.config`][zarr.config].
+        - "keep": Retain the serializer of the input array if it is a zarr Array.
+
+    fill_value : Any, optional
+        Fill value for the array.
+        If not specified, defaults to the fill value of the data array.
+    order : {"C", "F"}, optional
+        The memory order of the array (default is "C").
+        For Zarr format 2, this parameter sets the memory order of the array.
+        For Zarr format 3, this parameter is deprecated, because memory order
+        is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        If not specified, defaults to the memory order of the data array.
+    zarr_format : {2, 3}, optional
+        The zarr format to use when saving.
+        If not specified, defaults to the zarr format of the data array.
+    attributes : dict, optional
+        Attributes for the array.
+        If not specified, defaults to the attributes of the data array.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        If not specified and the data array has the same zarr format as the target array,
+        the chunk key encoding of the data array is used.
+    dimension_names : Iterable[str | None] | None
+        The names of the dimensions (default is None).
+        Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
+        If not specified, defaults to the dimension names of the data array.
+    storage_options : dict, optional
+        If using an fsspec URL to create the store, these will be passed to the backend implementation.
+        Ignored otherwise.
+    overwrite : bool, default False
+        Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfig or ArrayConfigLike, optional
+        Runtime configuration for the array.
+
+    Returns
+    -------
+    AsyncArray
+        The array.
+
+    Examples
+    --------
+    Create an array from an existing Array::
+
+        >>> import zarr
+        >>> store = zarr.storage.MemoryStore()
+        >>> store2 = zarr.storage.LocalStore('example.zarr')
+        >>> arr = zarr.create_array(
+        >>>     store=store,
+        >>>     shape=(100,100),
+        >>>     chunks=(10,10),
+        >>>     dtype='int32',
+        >>>     fill_value=0)
+        >>> arr2 = await zarr.api.asynchronous.from_array(store2, data=arr)
+        <AsyncArray file://example.zarr shape=(100, 100) dtype=int32>
+
+    Create an array from an existing NumPy array::
+
+        >>> arr3 = await zarr.api.asynchronous.from_array(
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=np.arange(10000, dtype='i4').reshape(100, 100),
+        >>> )
+        <AsyncArray memory://123286956732800 shape=(100, 100) dtype=int32>
+
+    Create an array from any array-like object::
+
+        >>> arr4 = await zarr.api.asynchronous.from_array(
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=[[1, 2], [3, 4]],
+        >>> )
+        <AsyncArray memory://123286959761024 shape=(2, 2) dtype=int64>
+        >>> await arr4.getitem(...)
+        array([[1, 2],[3, 4]])
+
+    Create an array from an existing Array without copying the data::
+
+        >>> arr5 = await zarr.api.asynchronous.from_array(
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=Array(arr4),
+        >>>     write_data=False,
+        >>> )
+        <AsyncArray memory://140678602965568 shape=(2, 2) dtype=int64>
+        >>> await arr5.getitem(...)
+        array([[0, 0],[0, 0]])
+    """
+    mode: Literal["a"] = "a"
+    config_parsed = parse_array_config(config)
+    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
+
+    (
+        chunks,
+        shards,
+        filters,
+        compressors,
+        serializer,
+        fill_value,
+        order,
+        zarr_format,
+        chunk_key_encoding,
+        dimension_names,
+    ) = _parse_keep_array_attr(
+        data=data,
+        chunks=chunks,
+        shards=shards,
+        filters=filters,
+        compressors=compressors,
+        serializer=serializer,
+        fill_value=fill_value,
+        order=order,
+        zarr_format=zarr_format,
+        chunk_key_encoding=chunk_key_encoding,
+        dimension_names=dimension_names,
+    )
+    if not hasattr(data, "dtype") or not hasattr(data, "shape"):
+        data = np.array(data)
+
+    result = await init_array(
+        store_path=store_path,
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=chunks,
+        shards=shards,
+        filters=filters,
+        compressors=compressors,
+        serializer=serializer,
+        fill_value=fill_value,
+        order=order,
+        zarr_format=zarr_format,
+        attributes=attributes,
+        chunk_key_encoding=chunk_key_encoding,
+        dimension_names=dimension_names,
+        overwrite=overwrite,
+        config=config_parsed,
+    )
+
+    if write_data:
+        if isinstance(data, Array):
+
+            async def _copy_array_region(
+                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
+            ) -> None:
+                arr = await _data.async_array.getitem(chunk_coords)
+                await result.setitem(chunk_coords, arr)
+
+            # Stream data from the source array to the new array
+            await concurrent_map(
+                [(region, data) for region in result._iter_shard_regions()],
+                _copy_array_region,
+                zarr.core.config.config.get("async.concurrency"),
+            )
+        else:
+
+            async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
+                await result.setitem(chunk_coords, _data[chunk_coords])
+
+            # Stream data from the source array to the new array
+            await concurrent_map(
+                [(region, data) for region in result._iter_shard_regions()],
+                _copy_arraylike_region,
+                zarr.core.config.config.get("async.concurrency"),
+            )
+    return result
 
 
 async def init_array(
     *,
     store_path: StorePath,
     shape: ShapeLike,
-    dtype: npt.DTypeLike,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    dtype: ZDTypeLike,
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None,
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    config: ArrayConfigLike | None = None,
+) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
     Parameters
     ----------
     store_path : StorePath
         StorePath instance. The path attribute is the name of the array to initialize.
-    shape : ChunkCoords
+    shape : tuple[int, ...]
         Shape of the array.
-    dtype : npt.DTypeLike
+    dtype : ZDTypeLike
         Data type of the array.
-    chunks : ChunkCoords, optional
+    chunks : tuple[int, ...], optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
-    filters : Iterable[Codec], optional
+    filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of ``ArrayArrayCodec``, or dict representations
-        of ``ArrayArrayCodec``.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit default filters.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit default filters.
-    compressors : Iterable[Codec], optional
+        order of your filters is consistent with the behavior of each filter.
+
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
+    compressors : Iterable[Codec] | Literal["auto"], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
-        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
-        If no ``compressors`` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit default compressors.
+        The default value of ``"auto"`` instructs Zarr to use a default of [`zarr.codecs.ZstdCodec`][].
 
-        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-        be provided for Zarr format 2.
-        If no ``compressor`` is provided, a default compressor will be used.
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit the default compressor.
-    serializer : dict[str, JSON] | ArrayBytesCodec, optional
+        To create an array with no compressors, provide an empty iterable or the value ``None``.
+    serializer : dict[str, JSON] | ArrayBytesCodec | Literal["auto"], optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in :mod:`zarr.core.config`.
+
+        The default value of ``"auto"`` instructs Zarr to use a default codec based on the data type of the array.
+        For most data types this default codec is [`zarr.codecs.BytesCodec`][].
+        For [`zarr.dtype.VariableLengthUTF8`][], the default codec is [`zarr.codecs.VlenUTF8Codec`][].
+        For [`zarr.dtype.VariableLengthBytes`][], the default codec is [`zarr.codecs.VlenBytesCodec`][].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
@@ -3891,8 +4374,10 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfigLike or None, optional
+    config : ArrayConfigLike or None, default=None
         Configuration for this array.
+        If  ``None``, the default array runtime configuration will be used. This default
+        is stored in the global configuration object.
 
     Returns
     -------
@@ -3905,27 +4390,49 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
+    item_size = zdtype.item_size if isinstance(zdtype, HasItemSize) else 1
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    if overwrite:
-        if store_path.store.supports_deletes:
-            await store_path.delete_dir()
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
-    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
+    # Validate rectilinear chunks constraints
+    if _is_rectilinear_chunks(chunks):
+        if zarr_format == 2:
+            raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
+        if shards is not None:
+            raise ValueError(
+                "Rectilinear chunks with sharding is not supported. "
+                "Use rectilinear shards instead: "
+                "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
+            )
+
+    # Normalize the user's chunks into canonical ChunksTuple form
+
+    if chunks == "auto":
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+
+    # Resolve chunks + shards into outer_chunks (grid metadata) and
+    # inner (sub-chunk structure for ShardingCodec, None if no sharding)
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
+        array_shape=shape_parsed,
+        chunks=chunks_normalized,
+        shard_shape=shards,
+        item_size=item_size,
     )
-    chunks_out: tuple[int, ...]
+
     meta: ArrayV2Metadata | ArrayV3Metadata
     if zarr_format == 2:
-        if shard_shape_parsed is not None:
+        if inner is not None:
             msg = (
                 "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. "
                 f"Got `shard_shape={shards}` instead."
@@ -3936,20 +4443,20 @@ async def init_array(
             raise ValueError("Zarr format 2 arrays do not support `serializer`.")
 
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
-            compressor=compressors, filters=filters, dtype=np.dtype(dtype)
+            compressor=compressors, filters=filters, dtype=zdtype
         )
-
         if dimension_names is not None:
             raise ValueError("Zarr format 2 arrays do not support dimension names.")
         if order is None:
             order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
+        chunk_key_encoding_parsed = cast("V2ChunkKeyEncoding", chunk_key_encoding_parsed)
 
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
-            dtype=dtype_parsed,
-            chunks=chunk_shape_parsed,
+            dtype=zdtype,
+            chunks=as_regular_shape(outer_chunks),
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -3962,35 +4469,37 @@ async def init_array(
             compressors=compressors,
             filters=filters,
             serializer=serializer,
-            dtype=dtype_parsed,
+            dtype=zdtype,
         )
-        sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
+        sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
+        grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
-        if shard_shape_parsed is not None:
+        if inner is not None:
+            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+                chunk_shape=inner_chunks_flat, codecs=sub_codecs, index_location=index_location
             )
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
-                dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                shape=inner_chunks_flat,
+                dtype=zdtype,
+                chunk_grid=grid,
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
         else:
-            chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
+        if order is not None:
+            _warn_order_kwarg()
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
-            dtype=dtype_parsed,
+            dtype=zdtype,
             fill_value=fill_value,
-            chunk_shape=chunks_out,
+            chunk_grid=grid,
             chunk_key_encoding=chunk_key_encoding_parsed,
             codecs=codecs_out,
             dimension_names=dimension_names,
@@ -4003,99 +4512,107 @@ async def init_array(
 
 
 async def create_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array.
 
     Parameters
     ----------
-    store : str or Store
-        Store or path to directory in file system or name of zip file.
+    store : StoreLike
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords, optional
-        Shape of the array. Can be ``None`` if ``data`` is provided.
-    dtype : npt.DTypeLike | None
-        Data type of the array. Can be ``None`` if ``data`` is provided.
-    data : Array-like data to use for initializing the array. If this parameter is provided, the
-        ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-        or ``None``.
-    chunks : ChunkCoords, optional
+    shape : ShapeLike, optional
+        Shape of the array. Must be ``None`` if ``data`` is provided.
+    dtype : ZDTypeLike | None
+        Data type of the array. Must be ``None`` if ``data`` is provided.
+    data : np.ndarray, optional
+        Array-like data to use for initializing the array. If this parameter is provided, the
+        ``shape`` and ``dtype`` parameters must be ``None``.
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
-        If not specified, default are guessed based on the shape and dtype.
-    shards : ChunkCoords, optional
+        If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+        A nested list of per-dimension edge sizes creates a rectilinear grid.
+        Rectilinear chunk grids are experimental and must be explicitly enabled
+        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        feature is stabilizing.
+    shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
-    filters : Iterable[Codec], optional
+    filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of ``ArrayArrayCodec``, or dict representations
-        of ``ArrayArrayCodec``.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit default filters.
+
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in :mod:`zarr.core.config`.
-        Use ``None`` to omit default filters.
+        order of your filters is consistent with the behavior of each filter.
+
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
         If no ``compressor`` is provided, a default compressor will be used.
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
         If no ``serializer`` is provided, a default serializer will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
@@ -4112,6 +4629,7 @@ async def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+        If ``True``, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
@@ -4137,38 +4655,153 @@ async def create_array(
     >>>     fill_value=0)
     <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
-    mode: Literal["a"] = "a"
-    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
-
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
     )
-    result = await init_array(
-        store_path=store_path,
-        shape=shape_parsed,
-        dtype=dtype_parsed,
-        chunks=chunks,
-        shards=shards,
-        filters=filters,
-        compressors=compressors,
-        serializer=serializer,
-        fill_value=fill_value,
-        order=order,
-        zarr_format=zarr_format,
-        attributes=attributes,
-        chunk_key_encoding=chunk_key_encoding,
-        dimension_names=dimension_names,
-        overwrite=overwrite,
-        config=config,
-    )
-
-    if write_data is True and data_parsed is not None:
-        await result._set_selection(
-            BasicIndexer(..., shape=result.shape, chunk_grid=result.metadata.chunk_grid),
-            data_parsed,
-            prototype=default_buffer_prototype(),
+    if data_parsed is not None:
+        return await from_array(
+            store,
+            data=data_parsed,
+            write_data=write_data,
+            name=name,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            storage_options=storage_options,
+            overwrite=overwrite,
+            config=config,
         )
-    return result
+    else:
+        mode: Literal["a"] = "a"
+
+        store_path = await make_store_path(
+            store, path=name, mode=mode, storage_options=storage_options
+        )
+        return await init_array(
+            store_path=store_path,
+            shape=shape_parsed,
+            dtype=dtype_parsed,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            overwrite=overwrite,
+            config=config,
+        )
+
+
+def _parse_keep_array_attr(
+    data: AnyArray | npt.ArrayLike,
+    chunks: ChunksLike | Literal["auto", "keep"],
+    shards: ShardsLike | None | Literal["keep"],
+    filters: FiltersLike | Literal["keep"],
+    compressors: CompressorsLike | Literal["keep"],
+    serializer: SerializerLike | Literal["keep"],
+    fill_value: Any | None,
+    order: MemoryOrder | None,
+    zarr_format: ZarrFormat | None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None,
+    dimension_names: DimensionNamesLike,
+) -> tuple[
+    ChunksLike | Literal["auto"],
+    ShardsLike | None,
+    FiltersLike,
+    CompressorsLike,
+    SerializerLike,
+    Any | None,
+    MemoryOrder | None,
+    ZarrFormat,
+    ChunkKeyEncodingLike | None,
+    DimensionNamesLike,
+]:
+    if isinstance(data, Array):
+        if chunks == "keep":
+            if data._chunk_grid.is_regular:
+                chunks = data.chunks
+            else:
+                chunks = data.write_chunk_sizes
+        if shards == "keep":
+            shards = data.shards if data._chunk_grid.is_regular else None
+        if zarr_format is None:
+            zarr_format = data.metadata.zarr_format
+        if filters == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                filters = data.filters or None
+            else:
+                filters = "auto"
+        if compressors == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                compressors = data.compressors or None
+            else:
+                compressors = "auto"
+        if serializer == "keep":
+            if zarr_format == 3 and data.metadata.zarr_format == 3:
+                serializer = cast("SerializerLike", data.serializer)
+            else:
+                serializer = "auto"
+        if fill_value is None:
+            fill_value = data.fill_value
+
+        if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
+            # Can't set order="F" for v3 arrays
+            warnings.warn(
+                "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
+                "The existing order='F' of the source Zarr format 2 array will be ignored.",
+                ZarrUserWarning,
+                stacklevel=2,
+            )
+        elif order is None and zarr_format == 2:
+            order = data.order
+
+        if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
+            if isinstance(data.metadata, ArrayV2Metadata):
+                chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
+            elif isinstance(data.metadata, ArrayV3Metadata):
+                chunk_key_encoding = data.metadata.chunk_key_encoding
+        if dimension_names is None and data.metadata.zarr_format == 3:
+            dimension_names = data.metadata.dimension_names
+    else:
+        if chunks == "keep":
+            chunks = "auto"
+        if shards == "keep":
+            shards = None
+        if zarr_format is None:
+            zarr_format = 3
+        if filters == "keep":
+            filters = "auto"
+        if compressors == "keep":
+            compressors = "auto"
+        if serializer == "keep":
+            serializer = "auto"
+    # After resolving "keep" above, chunks is never "keep" at this point.
+    chunks_out: ChunksLike | Literal["auto"] = chunks
+    return (
+        chunks_out,
+        shards,
+        filters,
+        compressors,
+        serializer,
+        fill_value,
+        order,
+        zarr_format,
+        chunk_key_encoding,
+        dimension_names,
+    )
 
 
 def _parse_chunk_key_encoding(
@@ -4179,13 +4812,11 @@ def _parse_chunk_key_encoding(
     """
     if data is None:
         if zarr_format == 2:
-            result = ChunkKeyEncoding.from_dict({"name": "v2", "separator": "."})
+            data = {"name": "v2", "configuration": {"separator": "."}}
         else:
-            result = ChunkKeyEncoding.from_dict({"name": "default", "separator": "/"})
-    elif isinstance(data, ChunkKeyEncoding):
-        result = data
-    else:
-        result = ChunkKeyEncoding.from_dict(data)
+            data = {"name": "default", "configuration": {"separator": "/"}}
+    result = parse_chunk_key_encoding(data)
+
     if zarr_format == 2 and result.name != "v2":
         msg = (
             "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the "
@@ -4195,70 +4826,101 @@ def _parse_chunk_key_encoding(
     return result
 
 
-def _get_default_chunk_encoding_v3(
-    np_dtype: np.dtype[Any],
-) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+def default_filters_v3(dtype: ZDType[Any, Any]) -> tuple[ArrayArrayCodec, ...]:
     """
-    Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
+    Given a data type, return the default filters for that data type.
+
+    This is an empty tuple. No data types have default filters.
     """
-    dtype = DataType.from_numpy(np_dtype)
-    if dtype == DataType.string:
-        dtype_key = "string"
-    elif dtype == DataType.bytes:
-        dtype_key = "bytes"
-    else:
-        dtype_key = "numeric"
-
-    default_filters = zarr_config.get("array.v3_default_filters").get(dtype_key)
-    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype_key)
-    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype_key)
-
-    filters = tuple(_parse_array_array_codec(codec_dict) for codec_dict in default_filters)
-    serializer = _parse_array_bytes_codec(default_serializer)
-    compressors = tuple(_parse_bytes_bytes_codec(codec_dict) for codec_dict in default_compressors)
-
-    return filters, serializer, compressors
+    return ()
 
 
-def _get_default_chunk_encoding_v2(
-    np_dtype: np.dtype[Any],
-) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
+def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ...]:
     """
-    Get the default chunk encoding for Zarr format 2 arrays, given a dtype
+    Given a data type, return the default compressors for that data type.
+
+    This is just a tuple containing ``ZstdCodec``
     """
+    return (ZstdCodec(),)
 
-    compressor_dict = _default_compressor(np_dtype)
-    filter_dicts = _default_filters(np_dtype)
 
-    compressor = None
-    if compressor_dict is not None:
-        compressor = numcodecs.get_codec(compressor_dict)
+def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
+    """
+    Given a data type, return the default serializer for that data type.
 
-    filters = None
-    if filter_dicts is not None:
-        filters = tuple(numcodecs.get_codec(f) for f in filter_dicts)
+    The default serializer for most data types is the ``BytesCodec``, which may or may not be
+    parameterized with an endianness, depending on whether the data type has endianness. Variable
+    length strings and variable length bytes have hard-coded serializers -- ``VLenUTF8Codec`` and
+    ``VLenBytesCodec``, respectively.
 
-    return filters, compressor
+    Structured data types with multi-byte fields use ``BytesCodec`` with little-endian encoding.
+    """
+    serializer: ArrayBytesCodec = BytesCodec(endian=None)
+
+    if isinstance(dtype, HasEndianness) or (
+        isinstance(dtype, Structured) and dtype.has_multi_byte_fields()
+    ):
+        serializer = BytesCodec(endian="little")
+    elif isinstance(dtype, HasObjectCodec):
+        if dtype.object_codec_id == "vlen-bytes":
+            serializer = VLenBytesCodec()
+        elif dtype.object_codec_id == "vlen-utf8":
+            serializer = VLenUTF8Codec()
+        else:
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+            raise ValueError(msg)
+    return serializer
+
+
+def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Numcodec] | None:
+    """
+    Given a data type, return the default filters for that data type.
+
+    For data types that require an object codec, namely variable length data types,
+    this is a tuple containing the object codec. Otherwise it's ``None``.
+    """
+    if isinstance(dtype, HasObjectCodec):
+        if dtype.object_codec_id == "vlen-bytes":
+            from numcodecs import VLenBytes
+
+            return (VLenBytes(),)
+        elif dtype.object_codec_id == "vlen-utf8":
+            from numcodecs import VLenUTF8
+
+            return (VLenUTF8(),)
+        else:
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+            raise ValueError(msg)
+    return None
+
+
+def default_compressor_v2(dtype: ZDType[Any, Any]) -> Numcodec:
+    """
+    Given a data type, return the default compressors for that data type.
+
+    This is just the numcodecs ``Zstd`` codec.
+    """
+    from numcodecs import Zstd
+
+    return Zstd(level=0, checksum=False)  # type: ignore[no-any-return]
 
 
 def _parse_chunk_encoding_v2(
     *,
     compressor: CompressorsLike,
     filters: FiltersLike,
-    dtype: np.dtype[Any],
-) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
+    dtype: ZDType[TBaseDType, TBaseScalar],
+) -> tuple[tuple[Numcodec, ...] | None, Numcodec | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
     """
-    default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype)
-
-    _filters: tuple[numcodecs.abc.Codec, ...] | None
-    _compressor: numcodecs.abc.Codec | None
+    _filters: tuple[Numcodec, ...] | None
+    _compressor: Numcodec | None
 
     if compressor is None or compressor == ():
         _compressor = None
     elif compressor == "auto":
-        _compressor = default_compressor
+        _compressor = default_compressor_v2(dtype)
     elif isinstance(compressor, tuple | list) and len(compressor) == 1:
         _compressor = parse_compressor(compressor[0])
     else:
@@ -4270,18 +4932,44 @@ def _parse_chunk_encoding_v2(
     if filters is None:
         _filters = None
     elif filters == "auto":
-        _filters = default_filters
+        _filters = default_filters_v2(dtype)
     else:
         if isinstance(filters, Iterable):
             for idx, f in enumerate(filters):
-                if not isinstance(f, numcodecs.abc.Codec):
+                if not _is_numcodec(f):
                     msg = (
                         "For Zarr format 2 arrays, all elements of `filters` must be numcodecs codecs. "
                         f"Element at index {idx} has type {type(f)}, which is not a numcodecs codec."
                     )
                     raise TypeError(msg)
         _filters = parse_filters(filters)
-
+    if isinstance(dtype, HasObjectCodec):
+        # check the filters and the compressor for the object codec required for this data type
+        if _filters is None:
+            if _compressor is None:
+                object_codec_id = None
+            else:
+                object_codec_id = get_object_codec_id((_compressor.get_config(),))
+        else:
+            object_codec_id = get_object_codec_id(
+                (
+                    *[f.get_config() for f in _filters],
+                    _compressor.get_config() if _compressor is not None else None,
+                )
+            )
+        if object_codec_id is None:
+            if isinstance(dtype, VariableLengthUTF8):  # type: ignore[unreachable]
+                codec_name = "the numcodecs.VLenUTF8 codec"  # type: ignore[unreachable]
+            elif isinstance(dtype, VariableLengthBytes):  # type: ignore[unreachable]
+                codec_name = "the numcodecs.VLenBytes codec"  # type: ignore[unreachable]
+            else:
+                codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"
+            msg = (
+                f"Data type {dtype} requires {codec_name}, "
+                "but no such codec was specified in the filters or compressor parameters for "
+                "this array. "
+            )
+            raise ValueError(msg)
     return _filters, _compressor
 
 
@@ -4290,45 +4978,50 @@ def _parse_chunk_encoding_v3(
     compressors: CompressorsLike,
     filters: FiltersLike,
     serializer: SerializerLike,
-    dtype: np.dtype[Any],
+    dtype: ZDType[TBaseDType, TBaseScalar],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.
     """
-    default_array_array, default_array_bytes, default_bytes_bytes = _get_default_chunk_encoding_v3(
-        dtype
-    )
 
     if filters is None:
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
-        out_array_array = default_array_array
+        out_array_array = default_filters_v3(dtype)
     else:
         maybe_array_array: Iterable[Codec | dict[str, JSON]]
         if isinstance(filters, dict | Codec):
             maybe_array_array = (filters,)
         else:
-            maybe_array_array = cast(Iterable[Codec | dict[str, JSON]], filters)
+            maybe_array_array = cast("Iterable[Codec | dict[str, JSON]]", filters)
         out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
 
     if serializer == "auto":
-        out_array_bytes = default_array_bytes
+        out_array_bytes = default_serializer_v3(dtype)
     else:
+        # TODO: ensure that the serializer is compatible with the ndarray produced by the
+        # array-array codecs. For example, if a sequence of array-array codecs produces an
+        # array with a single-byte data type, then the serializer should not specify endiannesss.
         out_array_bytes = _parse_array_bytes_codec(serializer)
 
     if compressors is None:
         out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
     elif compressors == "auto":
-        out_bytes_bytes = default_bytes_bytes
+        out_bytes_bytes = default_compressors_v3(dtype)
     else:
         maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
         else:
-            maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
+            maybe_bytes_bytes = cast("Iterable[Codec | dict[str, JSON]]", compressors)
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
+    # TODO: ensure that the serializer is compatible with the ndarray produced by the
+    # array-array codecs. For example, if a sequence of array-array codecs produces an
+    # array with a single-byte data type, then the serializer should not specify endiannesss.
+
+    # TODO: add checks to ensure that the right serializer is used for vlen data types
     return out_array_array, out_array_bytes, out_bytes_bytes
 
 
@@ -4341,7 +5034,7 @@ def _parse_deprecated_compressor(
         if zarr_format == 3:
             warn(
                 "The `compressor` argument is deprecated. Use `compressors` instead.",
-                category=UserWarning,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         if compressor is None:
@@ -4358,8 +5051,8 @@ def _parse_data_params(
     *,
     data: np.ndarray[Any, np.dtype[Any]] | None,
     shape: ShapeLike | None,
-    dtype: npt.DTypeLike | None,
-) -> tuple[np.ndarray[Any, np.dtype[Any]] | None, ShapeLike, npt.DTypeLike]:
+    dtype: ZDTypeLike | None,
+) -> tuple[np.ndarray[Any, np.dtype[Any]] | None, ShapeLike, ZDTypeLike]:
     """
     Ensure an array-like ``data`` parameter is consistent with the ``dtype`` and ``shape``
     parameters.
@@ -4397,3 +5090,944 @@ def _parse_data_params(
             raise ValueError(msg)
         dtype_out = data.dtype
     return data, shape_out, dtype_out
+
+
+def _iter_chunk_coords(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[int, ...]]:
+    """
+    Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+    keyword is used, iteration will start at the chunk index specified by `origin`.
+    The default behavior is to start at the origin of the grid coordinate space.
+    If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+    ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+    per python indexing conventions.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    chunk_coords: tuple[int, ...]
+        The coordinates of each chunk in the selection.
+    """
+    return _iter_grid(array._chunk_grid_shape, origin=origin, selection_shape=selection_shape)
+
+
+def _iter_shard_coords(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[int, ...]]:
+    """
+    Create an iterator over the coordinates of shards in shard grid space. If the `origin`
+    keyword is used, iteration will start at the shard index specified by `origin`.
+    The default behavior is to start at the origin of the grid coordinate space.
+    If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+    ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+    per python indexing conventions.
+    If no shards are present this will iterate over the coordinates of chunks in chunk grid space
+    instead.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    chunk_coords: tuple[int, ...]
+        The coordinates of each shard in the selection or chunks if no shards are present.
+    """
+    return _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
+
+
+def _iter_shard_keys(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[str]:
+    """
+    Iterate over the storage keys of each shard, relative to an optional origin, and optionally
+    limited to a contiguous region in shard grid coordinates.
+
+    This automatically falls back to chunks when no shards are present.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    key: str
+        The storage key of each shard in the selection or chunk when no shards are present.
+    """
+    # Iterate over the coordinates of chunks in chunk grid space.
+    _iter = _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
+    return (array.metadata.encode_chunk_key(k) for k in _iter)
+
+
+def _iter_shard_regions(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over the regions spanned by each shard.
+
+    These are the smallest regions of the array that are safe to write concurrently. When
+    no shards are present this will fall back to chunks.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection relative to the array's shard grid.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in shard grid coordinates.
+
+    Yields
+    ------
+    region: tuple[slice, ...]
+        A tuple of slice objects representing the region spanned by each shard in the selection or chunk
+        when no shards are present.
+    """
+    if array.shards is None:
+        shard_shape = array.chunks
+    else:
+        shard_shape = array.shards
+
+    return _iter_regions(
+        array.shape, shard_shape, origin=origin, selection_shape=selection_shape, trim_excess=True
+    )
+
+
+def _iter_chunk_regions(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over the regions spanned by each shard.
+
+    These are the smallest regions of the array that are efficient to read concurrently.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Returns
+    -------
+    region: tuple[slice, ...]
+        A tuple of slice objects representing the region spanned by each shard in the selection.
+    """
+
+    return array._chunk_grid.iter_chunk_regions(origin=origin, selection_shape=selection_shape)
+
+
+async def _nchunks_initialized(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> int:
+    """
+    Calculate the number of chunks that have been initialized in storage.
+
+    This value is calculated as the product of the number of initialized shards and the number
+    of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
+    effectively 1, and in that case the number of chunks initialized is the same as the number
+    of stored objects associated with an array.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to inspect.
+
+    Returns
+    -------
+    nchunks_initialized : int
+        The number of chunks that have been initialized.
+    """
+    if array.shards is None:
+        chunks_per_shard = 1
+    else:
+        chunks_per_shard = product(
+            tuple(a // b for a, b in zip(array.shards, array.chunks, strict=True))
+        )
+    return (await _nshards_initialized(array)) * chunks_per_shard
+
+
+async def _nshards_initialized(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> int:
+    """
+    Calculate the number of shards that have been initialized in storage.
+
+    This is the number of shards that have been persisted to the storage backend.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to inspect.
+
+    Returns
+    -------
+    nshards_initialized : int
+        The number of shards that have been initialized.
+    """
+    return len(await _shards_initialized(array))
+
+
+async def _nbytes_stored(
+    store_path: StorePath,
+) -> int:
+    """
+    Calculate the number of bytes stored for an array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+
+    Returns
+    -------
+    nbytes_stored : int
+        The number of bytes stored.
+    """
+    return await store_path.store.getsize_prefix(store_path.path)
+
+
+def _get_chunk_spec(
+    metadata: ArrayMetadata,
+    chunk_grid: ChunkGrid,
+    chunk_coords: tuple[int, ...],
+    array_config: ArrayConfig,
+    prototype: BufferPrototype,
+) -> ArraySpec:
+    """Build an ArraySpec for a single chunk using the ChunkGrid."""
+    spec = chunk_grid[chunk_coords]
+    if spec is None:
+        raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
+    return ArraySpec(
+        shape=spec.codec_shape,
+        dtype=metadata.dtype,
+        fill_value=metadata.fill_value,
+        config=array_config,
+        prototype=prototype,
+    )
+
+
+async def _get_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    indexer: Indexer,
+    *,
+    prototype: BufferPrototype,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+) -> NDArrayLikeOrScalar:
+    """
+    Get a selection from an array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    indexer : Indexer
+        The indexer specifying the selection.
+    prototype : BufferPrototype
+        A buffer prototype to use for the retrieved data.
+    out : NDBuffer | None, optional
+        An output buffer to write the data to.
+    fields : Fields | None, optional
+        Fields to select from structured arrays.
+
+    Returns
+    -------
+    NDArrayLikeOrScalar
+        The selected data.
+    """
+    # Get dtype from metadata
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+    else:
+        zdtype = metadata.data_type
+    dtype = zdtype.to_native_dtype()
+
+    # Determine memory order
+    if metadata.zarr_format == 2:
+        order = metadata.order
+    else:
+        order = config.order
+
+    # check fields are sensible
+    out_dtype = check_fields(fields, dtype)
+
+    # setup output buffer
+    if out is not None:
+        if isinstance(out, NDBuffer):
+            out_buffer = out
+        else:
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out_buffer.shape != indexer.shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
+            )
+    else:
+        out_buffer = prototype.nd_buffer.empty(
+            shape=indexer.shape,
+            dtype=out_dtype,
+            order=order,
+        )
+    if product(indexer.shape) > 0:
+        # need to use the order from the metadata for v2
+        _config = config
+        if metadata.zarr_format == 2:
+            _config = replace(_config, order=order)
+
+        # reading chunks and decoding them
+        indexed_chunks = list(indexer)
+        # For regular grids, all chunks share the same ArraySpec, so build it once
+        # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+        regular_grid = chunk_grid.is_regular
+        if regular_grid:
+            regular_chunk_spec = ArraySpec(
+                shape=chunk_grid.chunk_shape,
+                dtype=metadata.dtype,
+                fill_value=metadata.fill_value,
+                config=_config,
+                prototype=prototype,
+            )
+        results = await codec_pipeline.read(
+            [
+                (
+                    store_path / metadata.encode_chunk_key(chunk_coords),
+                    regular_chunk_spec
+                    if regular_grid
+                    else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                    chunk_selection,
+                    out_selection,
+                    is_complete_chunk,
+                )
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
+            ],
+            out_buffer,
+            drop_axes=indexer.drop_axes,
+        )
+        if _config.read_missing_chunks is False:
+            missing_info = []
+            for i, result in enumerate(results):
+                if result["status"] == "missing":
+                    coords = indexed_chunks[i][0]
+                    key = metadata.encode_chunk_key(coords)
+                    missing_info.append(f"  chunk '{key}' (grid position {coords})")
+            if missing_info:
+                chunks_str = "\n".join(missing_info)
+                raise ChunkNotFoundError(
+                    f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
+                    f"Set the 'array.read_missing_chunks' config to True to fill "
+                    f"missing chunks with the fill value.\n"
+                    f"Missing chunks:\n{chunks_str}"
+                )
+    if isinstance(indexer, BasicIndexer) and indexer.shape == ():
+        return out_buffer.as_scalar()
+    return out_buffer.as_ndarray_like()
+
+
+async def _getitem(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    selection: BasicSelection,
+    *,
+    prototype: BufferPrototype | None = None,
+) -> NDArrayLikeOrScalar:
+    """
+    Retrieve a subset of the array's data based on the provided selection.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    selection : BasicSelection
+        A selection object specifying the subset of data to retrieve.
+    prototype : BufferPrototype, optional
+        A buffer prototype to use for the retrieved data (default is None).
+
+    Returns
+    -------
+    NDArrayLikeOrScalar
+        The retrieved subset of the array's data.
+    """
+    if prototype is None:
+        prototype = default_buffer_prototype()
+    indexer = BasicIndexer(
+        selection,
+        shape=metadata.shape,
+        chunk_grid=chunk_grid,
+    )
+    return await _get_selection(
+        store_path, metadata, codec_pipeline, config, chunk_grid, indexer, prototype=prototype
+    )
+
+
+async def _get_orthogonal_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    selection: OrthogonalSelection,
+    *,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+    prototype: BufferPrototype | None = None,
+) -> NDArrayLikeOrScalar:
+    """
+    Get an orthogonal selection from the array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    selection : OrthogonalSelection
+        The orthogonal selection specification.
+    out : NDBuffer | None, optional
+        An output buffer to write the data to.
+    fields : Fields | None, optional
+        Fields to select from structured arrays.
+    prototype : BufferPrototype | None, optional
+        A buffer prototype to use for the retrieved data.
+
+    Returns
+    -------
+    NDArrayLikeOrScalar
+        The selected data.
+    """
+    if prototype is None:
+        prototype = default_buffer_prototype()
+    indexer = OrthogonalIndexer(selection, metadata.shape, chunk_grid)
+    return await _get_selection(
+        store_path,
+        metadata,
+        codec_pipeline,
+        config,
+        chunk_grid,
+        indexer=indexer,
+        out=out,
+        fields=fields,
+        prototype=prototype,
+    )
+
+
+async def _get_mask_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    mask: MaskSelection,
+    *,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+    prototype: BufferPrototype | None = None,
+) -> NDArrayLikeOrScalar:
+    """
+    Get a mask selection from the array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    mask : MaskSelection
+        The boolean mask specifying the selection.
+    out : NDBuffer | None, optional
+        An output buffer to write the data to.
+    fields : Fields | None, optional
+        Fields to select from structured arrays.
+    prototype : BufferPrototype | None, optional
+        A buffer prototype to use for the retrieved data.
+
+    Returns
+    -------
+    NDArrayLikeOrScalar
+        The selected data.
+    """
+    if prototype is None:
+        prototype = default_buffer_prototype()
+    indexer = MaskIndexer(mask, metadata.shape, chunk_grid)
+    return await _get_selection(
+        store_path,
+        metadata,
+        codec_pipeline,
+        config,
+        chunk_grid,
+        indexer=indexer,
+        out=out,
+        fields=fields,
+        prototype=prototype,
+    )
+
+
+async def _get_coordinate_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    selection: CoordinateSelection,
+    *,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+    prototype: BufferPrototype | None = None,
+) -> NDArrayLikeOrScalar:
+    """
+    Get a coordinate selection from the array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    selection : CoordinateSelection
+        The coordinate selection specification.
+    out : NDBuffer | None, optional
+        An output buffer to write the data to.
+    fields : Fields | None, optional
+        Fields to select from structured arrays.
+    prototype : BufferPrototype | None, optional
+        A buffer prototype to use for the retrieved data.
+
+    Returns
+    -------
+    NDArrayLikeOrScalar
+        The selected data.
+    """
+    if prototype is None:
+        prototype = default_buffer_prototype()
+    indexer = CoordinateIndexer(selection, metadata.shape, chunk_grid)
+    out_array = await _get_selection(
+        store_path,
+        metadata,
+        codec_pipeline,
+        config,
+        chunk_grid,
+        indexer=indexer,
+        out=out,
+        fields=fields,
+        prototype=prototype,
+    )
+
+    if hasattr(out_array, "shape"):
+        # restore shape
+        out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
+    return out_array
+
+
+async def _set_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    indexer: Indexer,
+    value: npt.ArrayLike,
+    *,
+    prototype: BufferPrototype,
+    fields: Fields | None = None,
+) -> None:
+    """
+    Set a selection in an array.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    indexer : Indexer
+        The indexer specifying the selection.
+    value : npt.ArrayLike
+        The values to write.
+    prototype : BufferPrototype
+        A buffer prototype to use.
+    fields : Fields | None, optional
+        Fields to select from structured arrays.
+    """
+    # Get dtype from metadata
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+    else:
+        zdtype = metadata.data_type
+    dtype = zdtype.to_native_dtype()
+
+    # check fields are sensible
+    check_fields(fields, dtype)
+    fields = check_no_multi_fields(fields)
+
+    # check value shape
+    if np.isscalar(value):
+        array_like = prototype.buffer.create_zero_length().as_array_like()
+        if isinstance(array_like, np._typing._SupportsArrayFunc):
+            # TODO: need to handle array types that don't support __array_function__
+            # like PyTorch and JAX
+            array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
+        value = np.asanyarray(value, dtype=dtype, like=array_like_)
+    else:
+        if not hasattr(value, "shape"):
+            value = np.asarray(value, dtype)
+        # assert (
+        #     value.shape == indexer.shape
+        # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
+        if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
+            if hasattr(value, "astype"):
+                # Handle things that are already NDArrayLike more efficiently
+                value = value.astype(dtype=dtype, order="A")
+            else:
+                value = np.array(value, dtype=dtype, order="A")
+    value = cast("NDArrayLike", value)
+
+    # We accept any ndarray like object from the user and convert it
+    # to an NDBuffer (or subclass). From this point onwards, we only pass
+    # Buffer and NDBuffer between components.
+    value_buffer = prototype.nd_buffer.from_ndarray_like(value)
+
+    # Determine memory order
+    if metadata.zarr_format == 2:
+        order = metadata.order
+    else:
+        order = config.order
+
+    # need to use the order from the metadata for v2
+    _config = config
+    if metadata.zarr_format == 2:
+        _config = replace(_config, order=order)
+
+    # merging with existing data and encoding chunks
+    # For regular grids, all chunks share the same ArraySpec, so build it once
+    # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
+    regular_grid = chunk_grid.is_regular
+    if regular_grid:
+        regular_chunk_spec = ArraySpec(
+            shape=chunk_grid.chunk_shape,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=_config,
+            prototype=prototype,
+        )
+    await codec_pipeline.write(
+        [
+            (
+                store_path / metadata.encode_chunk_key(chunk_coords),
+                regular_chunk_spec
+                if regular_grid
+                else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                chunk_selection,
+                out_selection,
+                is_complete_chunk,
+            )
+            for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+        ],
+        value_buffer,
+        drop_axes=indexer.drop_axes,
+    )
+
+
+async def _setitem(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    chunk_grid: ChunkGrid,
+    selection: BasicSelection,
+    value: npt.ArrayLike,
+    prototype: BufferPrototype | None = None,
+) -> None:
+    """
+    Set values in the array using basic indexing.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The store path of the array.
+    metadata : ArrayMetadata
+        The array metadata.
+    codec_pipeline : CodecPipeline
+        The codec pipeline for encoding/decoding.
+    config : ArrayConfig
+        The array configuration.
+    chunk_grid : ChunkGrid
+        The chunk grid.
+    selection : BasicSelection
+        The selection defining the region of the array to set.
+    value : npt.ArrayLike
+        The values to be written into the selected region of the array.
+    prototype : BufferPrototype or None, optional
+        A prototype buffer that defines the structure and properties of the array chunks being modified.
+        If None, the default buffer prototype is used.
+    """
+    if prototype is None:
+        prototype = default_buffer_prototype()
+    indexer = BasicIndexer(
+        selection,
+        shape=metadata.shape,
+        chunk_grid=chunk_grid,
+    )
+    return await _set_selection(
+        store_path,
+        metadata,
+        codec_pipeline,
+        config,
+        chunk_grid,
+        indexer,
+        value,
+        prototype=prototype,
+    )
+
+
+async def _resize(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    new_shape: ShapeLike,
+    delete_outside_chunks: bool = True,
+) -> None:
+    """
+    Resize an array to a new shape.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to resize.
+    new_shape : ShapeLike
+        The desired new shape of the array.
+    delete_outside_chunks : bool, optional
+        If True (default), chunks that fall outside the new shape will be deleted.
+        If False, the data in those chunks will be preserved.
+    """
+    new_shape = parse_shapelike(new_shape)
+    assert len(new_shape) == len(array.metadata.shape)
+
+    new_metadata = array.metadata.update_shape(new_shape)
+    new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
+
+    # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
+    only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
+
+    if delete_outside_chunks and not only_growing:
+        # Remove all chunks outside of the new shape
+        old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
+        new_chunk_coords = set(new_chunk_grid.all_chunk_coords())
+
+        async def _delete_key(key: str) -> None:
+            await (array.store_path / key).delete()
+
+        await concurrent_map(
+            [
+                (array.metadata.encode_chunk_key(chunk_coords),)
+                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
+            ],
+            _delete_key,
+            zarr_config.get("async.concurrency"),
+        )
+
+    # Write new metadata
+    await save_metadata(array.store_path, new_metadata)
+
+    # Update metadata and chunk_grid (in place)
+    object.__setattr__(array, "metadata", new_metadata)
+    object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+
+
+async def _append(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    data: npt.ArrayLike,
+    axis: int = 0,
+) -> tuple[int, ...]:
+    """
+    Append data to an array along the specified axis.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to append to.
+    data : npt.ArrayLike
+        Data to be appended.
+    axis : int
+        Axis along which to append.
+
+    Returns
+    -------
+    new_shape : tuple[int, ...]
+        The new shape of the array after appending.
+
+    Notes
+    -----
+    The size of all dimensions other than `axis` must match between the
+    array and `data`.
+    """
+    # ensure data is array-like
+    if not hasattr(data, "shape"):
+        data = np.asanyarray(data)
+
+    self_shape_preserved = tuple(s for i, s in enumerate(array.shape) if i != axis)
+    data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
+    if self_shape_preserved != data_shape_preserved:
+        raise ValueError(
+            f"shape of data to append is not compatible with the array. "
+            f"The shape of the data is ({data_shape_preserved})"
+            f"and the shape of the array is ({self_shape_preserved})."
+            "All dimensions must match except for the dimension being "
+            "appended."
+        )
+    # remember old shape
+    old_shape = array.shape
+
+    # determine new shape
+    new_shape = tuple(
+        array.shape[i] if i != axis else array.shape[i] + data.shape[i]
+        for i in range(len(array.shape))
+    )
+
+    # resize
+    await _resize(array, new_shape)
+
+    # store data
+    append_selection = tuple(
+        slice(None) if i != axis else slice(old_shape[i], new_shape[i])
+        for i in range(len(array.shape))
+    )
+    await _setitem(
+        array.store_path,
+        array.metadata,
+        array.codec_pipeline,
+        array.config,
+        array._chunk_grid,
+        append_selection,
+        data,
+    )
+
+    return new_shape
+
+
+async def _update_attributes(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    new_attributes: dict[str, JSON],
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    """
+    Update the array's attributes.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array whose attributes to update.
+    new_attributes : dict[str, JSON]
+        A dictionary of new attributes to update or add to the array.
+
+    Returns
+    -------
+    AsyncArray
+        The array with the updated attributes.
+    """
+    array.metadata.attributes.update(new_attributes)
+
+    # Write new metadata
+    await save_metadata(array.store_path, array.metadata)
+
+    return array
+
+
+async def _info_complete(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> Any:
+    """
+    Return all the information for an array, including dynamic information like storage size.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to get info for.
+
+    Returns
+    -------
+    ArrayInfo
+        Complete information about the array including:
+        - The count of chunks initialized
+        - The sum of the bytes written
+    """
+    return array._info(
+        await _nshards_initialized(array),
+        await array.store_path.store.getsize_prefix(array.store_path.path),
+    )

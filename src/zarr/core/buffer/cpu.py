@@ -28,7 +28,7 @@ class Buffer(core.Buffer):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -49,7 +49,7 @@ class Buffer(core.Buffer):
 
     @classmethod
     def create_zero_length(cls) -> Self:
-        return cls(np.array([], dtype="b"))
+        return cls(np.array([], dtype="B"))
 
     @classmethod
     def from_buffer(cls, buffer: core.Buffer) -> Self:
@@ -86,13 +86,13 @@ class Buffer(core.Buffer):
         Parameters
         ----------
         bytes_like
-           bytes-like object
+            bytes-like object
 
         Returns
         -------
             New buffer representing `bytes_like`
         """
-        return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
+        return cls.from_array_like(np.frombuffer(bytes_like, dtype="B"))
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
@@ -107,14 +107,13 @@ class Buffer(core.Buffer):
         """
         return np.asanyarray(self._data)
 
-    def __add__(self, other: core.Buffer) -> Self:
-        """Concatenate two buffers"""
-
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("b")
-        return self.__class__(
-            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
-        )
+    def combine(self, others: Iterable[core.Buffer]) -> Self:
+        data = [np.asanyarray(self._data)]
+        for buf in others:
+            other_array = buf.as_array_like()
+            assert other_array.dtype == np.dtype("B")
+            data.append(np.asanyarray(other_array))
+        return self.__class__(np.concatenate(data))
 
 
 class NDBuffer(core.NDBuffer):
@@ -122,7 +121,7 @@ class NDBuffer(core.NDBuffer):
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -131,7 +130,7 @@ class NDBuffer(core.NDBuffer):
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
@@ -154,10 +153,17 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
-        if fill_value is None:
+        # np.zeros is much faster than np.full, and therefore using it when possible is better.
+        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
+
+    @classmethod
+    def empty(
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
@@ -223,5 +229,10 @@ def numpy_buffer_prototype() -> core.BufferPrototype:
     return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.cpu.NDBuffer")
+
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.cpu.NDBuffer")

@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from warnings import warn
 
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
+from zarr._compat import _reshape_view
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
-from zarr.core.strings import cast_to_string_dtype
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -26,14 +24,7 @@ _vlen_bytes_codec = VLenBytes()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self) -> None:
-        warn(
-            "The codec `vlen-utf8` is currently not part in the Zarr format 3 specification. It "
-            "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
-            stacklevel=2,
-        )
-        super().__init__()
+    """Variable-length UTF8 codec"""
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
@@ -49,7 +40,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -59,12 +50,18 @@ class VLenUTF8Codec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_utf8_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded.shape = chunk_spec.shape
-        # coming out of the code, we know this is safe, so don't issue a warning
-        as_string_dtype = cast_to_string_dtype(decoded, safe=True)
+        decoded = _reshape_view(decoded, chunk_spec.shape)
+        as_string_dtype = decoded.astype(chunk_spec.dtype.to_native_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
-    async def _encode_single(
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -74,6 +71,13 @@ class VLenUTF8Codec(ArrayBytesCodec):
             _vlen_utf8_codec.encode(chunk_array.as_numpy_array())
         )
 
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
+
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         # what is input_byte_length for an object dtype?
         raise NotImplementedError("compute_encoded_size is not implemented for VLen codecs")
@@ -81,15 +85,6 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class VLenBytesCodec(ArrayBytesCodec):
-    def __init__(self) -> None:
-        warn(
-            "The codec `vlen-bytes` is currently not part in the Zarr format 3 specification. It "
-            "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
-            stacklevel=2,
-        )
-        super().__init__()
-
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
@@ -104,7 +99,7 @@ class VLenBytesCodec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -114,10 +109,17 @@ class VLenBytesCodec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_bytes_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded.shape = chunk_spec.shape
+        decoded = _reshape_view(decoded, chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
 
-    async def _encode_single(
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -127,10 +129,13 @@ class VLenBytesCodec(ArrayBytesCodec):
             _vlen_bytes_codec.encode(chunk_array.as_numpy_array())
         )
 
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
+
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         # what is input_byte_length for an object dtype?
         raise NotImplementedError("compute_encoded_size is not implemented for VLen codecs")
-
-
-register_codec("vlen-utf8", VLenUTF8Codec)
-register_codec("vlen-bytes", VLenBytesCodec)

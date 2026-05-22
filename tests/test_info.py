@@ -1,11 +1,11 @@
 import textwrap
 
-import numpy as np
 import pytest
 
 from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
+from zarr.core.dtype.npy.int import Int32
 
 ZARR_FORMATS = [2, 3]
 
@@ -53,7 +53,8 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
 def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=np.dtype("int32"),
+        _data_type=Int32(),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -65,7 +66,8 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -77,7 +79,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
-@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "500000", "2.0", 5)])
+@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "488.3K", "2.0", 5)])
 def test_array_info_complete(
     zarr_format: ZarrFormat, bytes_things: tuple[int, str, int, str, str, int]
 ) -> None:
@@ -91,7 +93,8 @@ def test_array_info_complete(
     ) = bytes_things
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=np.dtype("int32"),
+        _data_type=Int32(),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -106,7 +109,8 @@ def test_array_info_complete(
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -116,7 +120,7 @@ def test_array_info_complete(
         Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
         Compressors        : ()
         No. bytes          : {count_bytes} ({count_bytes_formatted})
-        No. bytes stored   : {count_bytes_stored_formatted}
+        No. bytes stored   : {count_bytes_stored} ({count_bytes_stored_formatted})
         Storage ratio      : {storage_ratio_formatted}
         Chunks Initialized : 5""")
 
