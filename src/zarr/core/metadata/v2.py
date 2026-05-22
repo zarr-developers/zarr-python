@@ -39,7 +39,7 @@ from zarr.core.common import (
     MemoryOrder,
     parse_shapelike,
 )
-from zarr.core.config import parse_indexing_order
+from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -140,9 +140,10 @@ class ArrayV2Metadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
+        indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: json_to_buffer(zarray_dict, prototype=prototype),
-            ZATTRS_JSON: json_to_buffer(zattrs_dict, prototype=prototype),
+            ZARRAY_JSON: json_to_buffer(zarray_dict, prototype=prototype, indent=indent),
+            ZATTRS_JSON: json_to_buffer(zattrs_dict, prototype=prototype, indent=indent),
         }
 
     @classmethod

@@ -34,12 +34,29 @@ def test_json_to_buffer_uses_given_prototype() -> None:
     assert isinstance(buffer, prototype.buffer)
 
 
-def test_json_to_buffer_allows_nan() -> None:
-    """`json_to_buffer` permits NaN (writes it as `NaN`), matching zarr's policy."""
+def test_json_to_buffer_allows_nan_by_default() -> None:
+    """`json_to_buffer` permits NaN by default (writes it as `NaN`)."""
     buffer = json_to_buffer({"fill_value": math.nan})
     decoded = buffer_to_json(buffer)
     assert isinstance(decoded, dict)
     assert math.isnan(decoded["fill_value"])
+
+
+def test_json_to_buffer_allow_nan_false_rejects_nan() -> None:
+    """`json_to_buffer(allow_nan=False)` raises on a non-finite value."""
+    with pytest.raises(ValueError, match="Out of range float"):
+        json_to_buffer({"fill_value": math.nan}, allow_nan=False)
+
+
+def test_json_to_buffer_indent_controls_formatting() -> None:
+    """`json_to_buffer(indent=...)` controls whitespace in the serialized bytes."""
+    obj: JSON = {"a": 1, "b": 2}
+    compact = json_to_buffer(obj).to_bytes()
+    indented = json_to_buffer(obj, indent=2).to_bytes()
+    assert b"\n" not in compact
+    assert b"\n" in indented
+    # both still round-trip to the same value
+    assert buffer_to_json(json_to_buffer(obj, indent=2)) == obj
 
 
 async def test_get_json_reads_existing_key() -> None:

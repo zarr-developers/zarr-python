@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-import json
 import logging
 import unicodedata
 import warnings
@@ -357,12 +356,15 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        indent = config.get("json_indent")
         if self.zarr_format == 3:
-            return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype)}
+            return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
         else:
             items = {
-                ZGROUP_JSON: json_to_buffer({"zarr_format": self.zarr_format}, prototype=prototype),
-                ZATTRS_JSON: json_to_buffer(self.attributes, prototype=prototype),
+                ZGROUP_JSON: json_to_buffer(
+                    {"zarr_format": self.zarr_format}, prototype=prototype, indent=indent
+                ),
+                ZATTRS_JSON: json_to_buffer(self.attributes, prototype=prototype, indent=indent),
             }
             if self.consolidated_metadata:
                 d = {
@@ -387,10 +389,9 @@ class GroupMetadata(Metadata):
                             },
                         }
 
-                items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
-                    json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=True
-                    ).encode()
+                # The consolidated metadata blob is written compactly (no indent).
+                items[ZMETADATA_V2_JSON] = json_to_buffer(
+                    {"metadata": d, "zarr_consolidated_format": 1}, prototype=prototype
                 )
 
             return items

@@ -5,7 +5,12 @@ reading and writing JSON is a composition of the store's ``get``/``set``
 primitives with a buffer/JSON conversion, not part of the store contract.
 Keeping them as functions means stores cannot (and need not) override them,
 and the ``Store`` definition stays free of any dependency on the buffer
-prototype / global config.
+prototype.
+
+These functions are pure: the JSON encoding parameters (``indent``,
+``allow_nan``) are explicit arguments rather than read from the global config.
+Callers that want zarr's configured indentation pass
+``indent=config.get("json_indent")``.
 
 Two layers:
 
@@ -23,7 +28,6 @@ import json
 from typing import TYPE_CHECKING, cast
 
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.config import config
 
 if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest, Store
@@ -54,12 +58,14 @@ def buffer_to_json_object(buffer: Buffer) -> dict[str, JSON]:
     return obj
 
 
-def json_to_buffer(obj: JSON, *, prototype: BufferPrototype | None = None) -> Buffer:
+def json_to_buffer(
+    obj: JSON,
+    *,
+    prototype: BufferPrototype | None = None,
+    indent: int | None = None,
+    allow_nan: bool = True,
+) -> Buffer:
     """Serialize a JSON value into a `Buffer`.
-
-    The serialization policy (`indent` from `config["json_indent"]` and
-    `allow_nan=True`) is defined here, once, for every JSON document zarr
-    writes.
 
     Parameters
     ----------
@@ -68,11 +74,18 @@ def json_to_buffer(obj: JSON, *, prototype: BufferPrototype | None = None) -> Bu
     prototype : BufferPrototype, optional
         The buffer prototype to construct the result with. Defaults to
         `default_buffer_prototype()`.
+    indent : int, optional
+        Indentation passed to `json.dumps`. `None` (the default) writes
+        without newline indentation, using json's default separators.
+        Callers that want zarr's configured indentation pass
+        `indent=config.get("json_indent")`.
+    allow_nan : bool, default True
+        Whether to permit `NaN`/`Infinity` in the output, passed to
+        `json.dumps`.
     """
     if prototype is None:
         prototype = default_buffer_prototype()
-    json_indent = config.get("json_indent")
-    return prototype.buffer.from_bytes(json.dumps(obj, indent=json_indent, allow_nan=True).encode())
+    return prototype.buffer.from_bytes(json.dumps(obj, indent=indent, allow_nan=allow_nan).encode())
 
 
 async def get_json(store: Store, key: str, *, byte_range: ByteRequest | None = None) -> JSON | None:
@@ -100,7 +113,18 @@ async def get_json(store: Store, key: str, *, byte_range: ByteRequest | None = N
 
 
 async def set_json(
-    store: Store, key: str, obj: JSON, *, prototype: BufferPrototype | None = None
+    store: Store,
+    key: str,
+    obj: JSON,
+    *,
+    prototype: BufferPrototype | None = None,
+    indent: int | None = None,
+    allow_nan: bool = True,
 ) -> None:
-    """Serialize `obj` as JSON and write it to `key` in `store`."""
-    await store.set(key, json_to_buffer(obj, prototype=prototype))
+    """Serialize `obj` as JSON and write it to `key` in `store`.
+
+    `indent` and `allow_nan` are forwarded to `json_to_buffer`.
+    """
+    await store.set(
+        key, json_to_buffer(obj, prototype=prototype, indent=indent, allow_nan=allow_nan)
+    )

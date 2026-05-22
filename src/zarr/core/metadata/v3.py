@@ -30,6 +30,7 @@ from zarr.core.common import (
     validate_rectilinear_edges,
     validate_rectilinear_kind,
 )
+from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.metadata.common import parse_attributes
@@ -288,8 +289,6 @@ class RectilinearChunkGridMetadata(Metadata):
     chunk_shapes: tuple[int | tuple[int, ...], ...]
 
     def __post_init__(self) -> None:
-        from zarr.core.config import config
-
         if not config.get("array.rectilinear_chunks"):
             raise ValueError(
                 "Rectilinear chunk grids are experimental and disabled by default. "
@@ -605,7 +604,8 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype)}
+        indent = config.get("json_indent")
+        return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
