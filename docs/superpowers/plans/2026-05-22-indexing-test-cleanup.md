@@ -424,7 +424,7 @@ _ORTHO_1D_BOOL_CASES: list[Expect[OrthogonalSelection, None]] = [
     Expect(input=np.zeros(30, dtype=bool), output=None, id="empty-mask"),
     Expect(input=np.ones(30, dtype=bool), output=None, id="full-mask"),
     Expect(input=np.arange(30) % 2 == 0, output=None, id="alternating-mask"),
-    Expect(input=np.eye(1, 30, 7, dtype=bool)[0], output=None, id="single-true"),
+    Expect(input=np.arange(30) == 7, output=None, id="single-true"),
     Expect(
         input=np.isin(np.arange(30), [0, 1, 8, 15, 29]),
         output=None,
