@@ -30,7 +30,6 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
-# If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
@@ -67,7 +66,7 @@ remote = [
     "obstore>=0.5.1",
 ]
 gpu = [
-    "cupy-cuda12x",
+    "cupy-cuda12x; sys_platform != 'darwin'",
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
@@ -149,6 +148,12 @@ omit = [
 
 [tool.hatch]
 version.source = "vcs"
+# Only consider zarr-python's own `v*` tags when deriving the version. Without
+# this filter `git describe` matches the most recent tag of any shape,
+# including the `zarr_metadata-v*` tags used to release the zarr-metadata
+# subpackage — which would make a from-source build report a `0.2.x` version
+# instead of `3.x`.
+version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
@@ -444,6 +449,7 @@ markers = [
 [tool.repo-review]
 ignore = [
 	"PC111",  # fix Python code in documentation - enable later
+    "PC140",  # we run mypy via `uv run mypy`, not via mirrors-mypy
     "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
