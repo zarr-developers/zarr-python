@@ -1023,118 +1023,135 @@ def _test_get_coordinate_selection(
     assert_array_equal(expect, actual)
 
 
-coordinate_selections_1d_bad = [
-    # slice not supported
-    slice(5, 15),
-    slice(None),
-    Ellipsis,
-    # bad stuff
-    2.3,
-    "foo",
-    b"xxx",
-    None,
-    (0, 0),
-    (slice(None), slice(None)),
+_COORD_1D_CASES: list[Expect[CoordinateSelection, None]] = [
+    Expect(input=5, output=None, id="single"),
+    Expect(input=-1, output=None, id="single-negative"),
+    Expect(input=[0, 3, 10, -23, -12, -1], output=None, id="wraparound"),
+    Expect(input=[3, 25, 8, 17], output=None, id="out-of-order"),
+    Expect(input=[1, 8, 15, 29], output=None, id="sorted"),
+    Expect(input=[29, 15, 8, 1], output=None, id="reversed"),
+    Expect(input=[2, 2, 8, 8], output=None, id="duplicates"),
+    Expect(input=np.array([[2, 4], [6, 8]]), output=None, id="multi-dim"),
+]
+
+# get_coordinate_selection and vindex word their errors differently for these
+# invalid-type inputs, so these cases assert only the exception type (msg=None).
+_COORD_1D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(input=slice(5, 15), exception=IndexError, id="slice", msg=None),
+    ExpectFail(input=slice(None), exception=IndexError, id="full-slice", msg=None),
+    ExpectFail(input=Ellipsis, exception=IndexError, id="ellipsis", msg=None),
+    ExpectFail(input=2.3, exception=IndexError, id="float", msg=None),
+    ExpectFail(input="foo", exception=IndexError, id="string", msg=None),
+    ExpectFail(input=b"xxx", exception=IndexError, id="bytes", msg=None),
+    ExpectFail(input=None, exception=IndexError, id="none", msg=None),
+    ExpectFail(input=(0, 0), exception=IndexError, id="tuple-pair", msg=None),
+    ExpectFail(input=(slice(None), slice(None)), exception=IndexError, id="two-slices", msg=None),
+    ExpectFail(
+        input=[31],
+        exception=IndexError,
+        id="out-of-bounds-high",
+        msg="index out of bounds for dimension with length 30",
+    ),
+    ExpectFail(
+        input=[-31],
+        exception=IndexError,
+        id="out-of-bounds-low",
+        msg="index out of bounds for dimension with length 30",
+    ),
+]
+
+_COORD_2D_IX0 = np.array([0, 5, 11, 2, 8])
+_COORD_2D_IX1 = np.array([1, 3, 4, 0, 2])
+
+_COORD_2D_CASES: list[Expect[CoordinateSelection, None]] = [
+    Expect(input=(5, 4), output=None, id="single"),
+    Expect(input=(-1, -1), output=None, id="single-negative"),
+    Expect(input=(_COORD_2D_IX0, _COORD_2D_IX1), output=None, id="both-arrays"),
+    # scalar broadcasts in coordinate indexing (numpy and zarr agree)
+    Expect(input=(np.array([0, 5, 11]), 4), output=None, id="array-int"),
+    Expect(input=(7, np.array([0, 2, 4])), output=None, id="int-array"),
+    Expect(input=([3, 3, 4, 2, 5], [1, 3, 4, 0, 2]), output=None, id="not-monotonic-first"),
+    Expect(input=([1, 1, 2, 2, 5], [1, 3, 2, 1, 0]), output=None, id="not-monotonic-second"),
+    Expect(
+        input=(np.array([[1, 1, 2], [2, 2, 5]]), np.array([[1, 3, 2], [1, 0, 0]])),
+        output=None,
+        id="multi-dim",
+    ),
+]
+
+_COORD_2D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=(slice(5, 15), [1, 2, 3]),
+        exception=IndexError,
+        id="slice-with-array",
+        msg=None,
+    ),
+    ExpectFail(
+        input=([1, 2, 3], slice(5, 15)),
+        exception=IndexError,
+        id="array-with-slice",
+        msg=None,
+    ),
+    ExpectFail(
+        input=(Ellipsis, [1, 2, 3]),
+        exception=IndexError,
+        id="ellipsis-with-array",
+        msg=None,
+    ),
+    ExpectFail(input=Ellipsis, exception=IndexError, id="ellipsis", msg=None),
+    ExpectFail(
+        input=(np.array([12]), np.array([0])),
+        exception=IndexError,
+        id="out-of-bounds-axis0",
+        msg="index out of bounds for dimension with length 12",
+    ),
+    ExpectFail(
+        input=(np.array([0]), np.array([5])),
+        exception=IndexError,
+        id="out-of-bounds-axis1",
+        msg="index out of bounds for dimension with length 5",
+    ),
 ]
 
 
-# noinspection PyStatementEffect
-def test_get_coordinate_selection_1d(store: StorePath) -> None:
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
-        n = int(a.size * p)
-        ix = np.random.choice(a.shape[0], size=n, replace=True)
-        _test_get_coordinate_selection(a, z, ix)
-        ix.sort()
-        _test_get_coordinate_selection(a, z, ix)
-        ix = ix[::-1]
-        _test_get_coordinate_selection(a, z, ix)
-
-    selections = [
-        # test single item
-        42,
-        -1,
-        # test wraparound
-        [0, 3, 10, -23, -12, -1],
-        # test out of order
-        [3, 105, 23, 127],  # not monotonically increasing
-        # test multi-dimensional selection
-        np.array([[2, 4], [6, 8]]),
-    ]
-    for selection in selections:
-        _test_get_coordinate_selection(a, z, selection)
-
-    # test errors
-    bad_selections = coordinate_selections_1d_bad + [
-        [a.shape[0] + 1],  # out of bounds
-        [-(a.shape[0] + 1)],  # out of bounds
-    ]
-    for selection in bad_selections:
-        with pytest.raises(IndexError):
-            z.get_coordinate_selection(selection)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.vindex[selection]  # type: ignore[index]
+@pytest.mark.parametrize("case", _COORD_1D_CASES, ids=lambda c: c.id)
+def test_get_coordinate_selection_1d(
+    store: StorePath, case: Expect[CoordinateSelection, None]
+) -> None:
+    """vindex and get_coordinate_selection on a 1D array match numpy for int, list, and multi-dim selections."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_coordinate_selection(a, z, case.input)
 
 
-def test_get_coordinate_selection_2d(store: StorePath) -> None:
-    # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+@pytest.mark.parametrize("case", _COORD_1D_BAD_CASES, ids=lambda c: c.id)
+def test_get_coordinate_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """get_coordinate_selection and vindex both raise IndexError for invalid 1D selections."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.get_coordinate_selection(case.input)  # type: ignore[arg-type]
+    with case.raises():
+        z.vindex[case.input]  # type: ignore[index]
 
-    np.random.seed(42)
-    ix0: npt.ArrayLike
-    ix1: npt.ArrayLike
-    # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
-        n = int(a.size * p)
-        ix0 = np.random.choice(a.shape[0], size=n, replace=True)
-        ix1 = np.random.choice(a.shape[1], size=n, replace=True)
-        selections = [
-            # single value
-            (42, 4),
-            (-1, -1),
-            # index both axes with array
-            (ix0, ix1),
-            # mixed indexing with array / int
-            (ix0, 4),
-            (42, ix1),
-            (42, 4),
-        ]
-        for selection in selections:
-            _test_get_coordinate_selection(a, z, selection)
 
-    # not monotonically increasing (first dim)
-    ix0 = [3, 3, 4, 2, 5]
-    ix1 = [1, 3, 5, 7, 9]
-    _test_get_coordinate_selection(a, z, (ix0, ix1))
+@pytest.mark.parametrize("case", _COORD_2D_CASES, ids=lambda c: c.id)
+def test_get_coordinate_selection_2d(
+    store: StorePath, case: Expect[CoordinateSelection, None]
+) -> None:
+    """vindex and get_coordinate_selection on a 2D array match numpy for coordinate selections."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_get_coordinate_selection(a, z, case.input)
 
-    # not monotonically increasing (second dim)
-    ix0 = [1, 1, 2, 2, 5]
-    ix1 = [1, 3, 2, 1, 0]
-    _test_get_coordinate_selection(a, z, (ix0, ix1))
 
-    # multi-dimensional selection
-    ix0 = np.array([[1, 1, 2], [2, 2, 5]])
-    ix1 = np.array([[1, 3, 2], [1, 0, 0]])
-    _test_get_coordinate_selection(a, z, (ix0, ix1))
-
-    selection = slice(5, 15), [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
-    selection = [1, 2, 3], slice(5, 15)
-    with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
-    selection = Ellipsis, [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
-    selection = Ellipsis
-    with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+@pytest.mark.parametrize("case", _COORD_2D_BAD_CASES, ids=lambda c: c.id)
+def test_get_coordinate_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """get_coordinate_selection raises IndexError when slices or Ellipsis appear in a 2D coordinate selection."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.get_coordinate_selection(case.input)  # type: ignore[arg-type]
 
 
 def _test_set_coordinate_selection(
@@ -1154,59 +1171,26 @@ def _test_set_coordinate_selection(
         assert_array_equal(a, z[:])
 
 
-def test_set_coordinate_selection_1d(store: StorePath) -> None:
-    # setup
-    v = np.arange(550, dtype=int)
-    a = np.empty(v.shape, dtype=v.dtype)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        n = int(a.size * p)
-        ix = np.random.choice(a.shape[0], size=n, replace=True)
-        _test_set_coordinate_selection(v, a, z, ix)
-
-    # multi-dimensional selection
-    ix = np.array([[2, 4], [6, 8]])
-    _test_set_coordinate_selection(v, a, z, ix)
-
-    for selection in coordinate_selections_1d_bad:
-        with pytest.raises(IndexError):
-            z.set_coordinate_selection(selection, 42)  # type:ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.vindex[selection] = 42  # type:ignore[index]
-
-
-def test_set_coordinate_selection_2d(store: StorePath) -> None:
-    # setup
-    v = np.arange(5400, dtype=int).reshape(600, 9)
+@pytest.mark.parametrize("case", _COORD_1D_CASES, ids=lambda c: c.id)
+def test_set_coordinate_selection_1d(
+    store: StorePath, case: Expect[CoordinateSelection, None]
+) -> None:
+    """set_coordinate_selection and vindex assignment on a 1D array round-trip through numpy."""
+    v = np.arange(30, dtype=int)
     a = np.empty_like(v)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_set_coordinate_selection(v, a, z, case.input)
 
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        n = int(a.size * p)
-        ix0 = np.random.choice(a.shape[0], size=n, replace=True)
-        ix1 = np.random.choice(a.shape[1], size=n, replace=True)
 
-        selections = (
-            (42, 4),
-            (-1, -1),
-            # index both axes with array
-            (ix0, ix1),
-            # mixed indexing with array / int
-            (ix0, 4),
-            (42, ix1),
-        )
-        for selection in selections:
-            _test_set_coordinate_selection(v, a, z, selection)
-
-    # multi-dimensional selection
-    ix0 = np.array([[1, 2, 3], [4, 5, 6]])
-    ix1 = np.array([[1, 3, 2], [2, 0, 5]])
-    _test_set_coordinate_selection(v, a, z, (ix0, ix1))
+@pytest.mark.parametrize("case", _COORD_2D_CASES, ids=lambda c: c.id)
+def test_set_coordinate_selection_2d(
+    store: StorePath, case: Expect[CoordinateSelection, None]
+) -> None:
+    """set_coordinate_selection and vindex assignment on a 2D array round-trip through numpy."""
+    v = np.arange(60, dtype=int).reshape(12, 5)
+    a = np.empty_like(v)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_set_coordinate_selection(v, a, z, case.input)
 
 
 def _test_get_block_selection(
