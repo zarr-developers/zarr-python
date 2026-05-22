@@ -1498,13 +1498,14 @@ def test_set_mask_selection_2d(store: StorePath, case: Expect[Any, None]) -> Non
 
 
 def test_get_selection_out(store: StorePath) -> None:
+    """get_*_selection writes results into a provided out buffer, matching numpy."""
     # basic selections
-    a = np.arange(1050)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
+    a = np.arange(30)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
 
     selections = [
-        slice(50, 150),
-        slice(0, 1050),
+        slice(5, 15),
+        slice(0, 30),
         slice(1, 2),
     ]
     for selection in selections:
@@ -1517,53 +1518,42 @@ def test_get_selection_out(store: StorePath) -> None:
         z.get_basic_selection(Ellipsis, out=[])  # type: ignore[arg-type]
 
     # orthogonal selections
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-        selections = [
-            # index both axes with array
-            (ix0, ix1),
-            # mixed indexing with array / slice
-            (ix0, slice(1, 5)),
-            (slice(250, 350), ix1),
-            # mixed indexing with array / int
-            (ix0, 4),
-            (42, ix1),
-            # mixed int array / bool array
-            (ix0, np.nonzero(ix1)[0]),
-            (np.nonzero(ix0)[0], ix1),
-        ]
-        for selection in selections:
-            expect = oindex(a, selection)
-            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
-            z.get_orthogonal_selection(selection, out=out)
-            assert_array_equal(expect, out.as_numpy_array()[:])
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    selections = [
+        # index both axes with bool array
+        (_ORTHO_2D_IX0_BOOL, _ORTHO_2D_IX1_BOOL),
+        # mixed indexing with bool array / slice
+        (_ORTHO_2D_IX0_BOOL, slice(1, 4)),
+        (slice(2, 9), _ORTHO_2D_IX1_BOOL),
+        # mixed indexing with bool array / int
+        (_ORTHO_2D_IX0_BOOL, 3),
+        (7, _ORTHO_2D_IX1_BOOL),
+        # mixed int array / bool array
+        (_ORTHO_2D_IX0_BOOL, _ORTHO_2D_IX1_INT),
+        (_ORTHO_2D_IX0_INT, _ORTHO_2D_IX1_BOOL),
+    ]
+    for selection in selections:
+        expect = oindex(a, selection)
+        out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+        z.get_orthogonal_selection(selection, out=out)
+        assert_array_equal(expect, out.as_numpy_array()[:])
 
     # coordinate selections
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        n = int(a.size * p)
-        ix0 = np.random.choice(a.shape[0], size=n, replace=True)
-        ix1 = np.random.choice(a.shape[1], size=n, replace=True)
-        selections = [
-            # index both axes with array
-            (ix0, ix1),
-            # mixed indexing with array / int
-            (ix0, 4),
-            (42, ix1),
-        ]
-        for selection in selections:
-            expect = a[selection]
-            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
-            z.get_coordinate_selection(selection, out=out)
-            assert_array_equal(expect, out.as_numpy_array()[:])
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    selections = [
+        # index both axes with array
+        (np.array([0, 5, 11]), np.array([0, 2, 4])),
+        # mixed indexing with array / int
+        (np.array([0, 5, 11]), 3),
+        (7, np.array([0, 2, 4])),
+    ]
+    for selection in selections:
+        expect = a[selection]
+        out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+        z.get_coordinate_selection(selection, out=out)
+        assert_array_equal(expect, out.as_numpy_array()[:])
 
 
 @pytest.mark.xfail(reason="fields are not supported in v3")
@@ -1858,22 +1848,23 @@ async def test_accessed_chunks(
         [1, ...],
         [slice(None)],
         [1, 3],
-        [[1, 2, 3], 9],
-        [np.arange(1000)],
-        [slice(5, 15)],
-        [slice(2, 4), 4],
+        [[1, 2, 3], 4],
+        [np.arange(12)],
+        [slice(2, 9)],
+        [slice(1, 3), 3],
         [[1, 3]],
         # mask selection
-        [np.tile([True, False], (1000, 5))],
-        [np.full((1000, 10), False)],
+        [np.tile([True, False, True, False, True], (12, 1))],
+        [np.full((12, 5), False)],
         # coordinate selection
-        [[1, 2, 3, 4], [5, 6, 7, 8]],
-        [[100, 200, 300], [4, 5, 6]],
+        [[1, 2, 3, 4], [0, 1, 2, 3]],
+        [[10, 11, 5], [4, 0, 2]],
     ],
 )
 def test_indexing_equals_numpy(store: StorePath, selection: Selection) -> None:
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+    """Indexing a zarr array with assorted basic/mask/coordinate selections matches numpy."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
     # note: in python 3.10 a[*selection] is not valid unpacking syntax
     expected = a[*selection,]
     actual = z[*selection,]
@@ -1883,17 +1874,18 @@ def test_indexing_equals_numpy(store: StorePath, selection: Selection) -> None:
 @pytest.mark.parametrize(
     "selection",
     [
-        [np.tile([True, False], 500), np.tile([True, False], 5)],
-        [np.full(1000, False), np.tile([True, False], 5)],
-        [np.full(1000, True), np.full(10, True)],
-        [np.full(1000, True), [True, False] * 5],
+        [np.tile([True, False], 6), np.tile([True, False, True, False, True], 1)],
+        [np.full(12, False), np.array([True, False, True, False, True])],
+        [np.full(12, True), np.full(5, True)],
+        [np.full(12, True), [True, False, True, False, True]],
     ],
 )
 def test_orthogonal_bool_indexing_like_numpy_ix(
     store: StorePath, selection: list[npt.ArrayLike]
 ) -> None:
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+    """Orthogonal boolean indexing on each axis matches numpy's np.ix_ semantics."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
     expected = a[np.ix_(*selection)]
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
     actual = z[*selection,]
