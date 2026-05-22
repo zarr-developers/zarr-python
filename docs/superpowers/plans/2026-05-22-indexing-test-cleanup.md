@@ -264,6 +264,102 @@ EOF
 )"
 ```
 
+### Task 0.6: Make `ExpectFail.msg` optional with a `raises()` helper
+
+**Motivation:** `ExpectFail` requires a `msg: str`, and consumers do
+`pytest.raises(case.exception, match=case.msg)`. Passing `msg=""` to express
+"any message" triggers pytest's "matching against an empty string will always
+pass" warning, which this repo escalates to an error via
+`filterwarnings=["error"]`. Make "don't care about the message" expressible and
+move the `match`/escape logic into one place.
+
+**Files:**
+- Modify: `tests/conftest.py` (the `ExpectFail` dataclass)
+- Modify all 9 consumer sites: `tests/test_chunk_grids.py` (2),
+  `tests/test_metadata/test_v3.py` (2), `tests/test_codecs/test_cast_value.py`
+  (2), `tests/test_codecs/test_scale_offset.py` (2), `tests/test_indexing.py` (1)
+
+- [ ] **Step 1: Add optional `msg`/`escape` and a `raises()` method to `ExpectFail`**
+
+```python
+import re
+from contextlib import AbstractContextManager
+
+import pytest
+
+
+@dataclass(frozen=True)
+class ExpectFail[TIn]:
+    """A test case that should raise an exception.
+
+    `msg` is treated as a regex matched against the exception text (pytest's
+    native `match=` semantics). Leave it `None` to assert only the exception
+    type. Set `escape=True` when `msg` is a literal containing regex
+    metacharacters.
+    """
+
+    input: TIn
+    exception: type[Exception]
+    id: str
+    msg: str | None = None
+    escape: bool = False
+
+    def raises(self) -> AbstractContextManager[pytest.ExceptionInfo[Exception]]:
+        if self.msg is None:
+            return pytest.raises(self.exception)
+        pattern = re.escape(self.msg) if self.escape else self.msg
+        return pytest.raises(self.exception, match=pattern)
+```
+
+(Place `import re` and `import pytest` with the existing imports if not already
+present; `pytest` is certainly already imported in conftest.)
+
+- [ ] **Step 2: Update all 9 consumer sites** to use the helper. Replace each
+  `with pytest.raises(case.exception, match=re.escape(case.msg)):` and
+  `with pytest.raises(case.exception, match=case.msg):` with:
+
+```python
+    with case.raises():
+```
+
+For the two `tests/test_chunk_grids.py` sites that used `re.escape(case.msg)`:
+those three cases whose `msg` contains regex metacharacters
+(`non-integer element(s) ([3, 3],) at indices (0,)` and the two like it) must
+set `escape=True` on the `ExpectFail(...)` so the helper escapes them. All
+other chunk_grids cases stay `escape=False` (default). Remove the now-unused
+`import re` from `test_chunk_grids.py` if nothing else uses it.
+
+For `tests/test_metadata/test_v3.py`: the `msg=".*"` case (match-anything) may
+become `msg=None` (drop the field) — behavior-preserving. The
+`msg="dimension_names.*shape"` case keeps its regex `msg` with `escape=False`.
+
+- [ ] **Step 3: Run all affected suites**
+
+Run: `uv run --frozen pytest tests/test_chunk_grids.py tests/test_codecs/ tests/test_metadata/test_v3.py tests/test_indexing.py -q`
+Expected: PASS, same counts as before this task (the matching behavior is
+unchanged for every existing case; only the empty-string footgun is removed).
+
+- [ ] **Step 4: prek**
+
+Run: `prek run --all-files`
+Expected: all hooks pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "$(cat <<'EOF'
+test: make ExpectFail.msg optional with a raises() helper
+
+msg defaults to None (assert exception type only) and is treated as a regex,
+with an escape flag for literal messages. Removes the msg="" footgun that the
+repo's filterwarnings=["error"] config turned into a failure.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
 ---
 
 ## Part 1 — Rewrite the indexing test families
@@ -303,9 +399,17 @@ This task is the worked template. Tasks 1.2+ apply the same recipe and reference
    the kept oracle helper with `case.input`.
 4. Extract the bundled `pytest.raises(IndexError)` block into a separate
    `test_<family>_raises` parametrized over an `ExpectFail[Selection]` list
-   `_<FAMILY>_BAD_CASES` (each with `exception=IndexError`, an `id`, and a `msg`
-   regex — use `msg=""` to match any `IndexError` message where the original
-   only asserted the type).
+   `_<FAMILY>_BAD_CASES` (each with `exception=IndexError`, an `id`, and an
+   optional `msg`). The raises test body uses the `case.raises()` helper
+   (added in Task 0.6):
+   ```python
+   with case.raises():
+       z.oindex[case.input]
+   ```
+   `msg` is a regex matched against the error text; prefer a stable substring
+   of the real message (run the bad selection once to capture it). Omit `msg`
+   (leave it `None`) to assert only the exception type. Set `escape=True` if a
+   literal `msg` contains regex metacharacters. Never pass `msg=""`.
 5. Give both tests docstrings stating the behavior.
 
 **Files:**
@@ -329,15 +433,17 @@ _ORTHO_1D_BOOL_CASES: list[Expect[OrthogonalSelection, None]] = [
 ]
 
 _ORTHO_1D_BOOL_BAD_CASES: list[ExpectFail[Any]] = [
-    ExpectFail(input=np.zeros(5, dtype=bool), exception=IndexError, id="mask-too-short", msg=""),
-    ExpectFail(input=np.zeros(50, dtype=bool), exception=IndexError, id="mask-too-long", msg=""),
+    ExpectFail(input=np.zeros(5, dtype=bool), exception=IndexError, id="mask-too-short", msg="wrong length for dimension; expected 30, got 5"),
+    ExpectFail(input=np.zeros(50, dtype=bool), exception=IndexError, id="mask-too-long", msg="wrong length for dimension; expected 30, got 50"),
     ExpectFail(
         input=[[True, False], [False, True]],
         exception=IndexError,
         id="mask-too-many-dims",
-        msg="",
+        msg="must be 1-dimensional only",
     ),
 ]
+# msg is an optional regex matched against the real error text; omit it to
+# assert only the exception type. The raises test body uses `with case.raises():`.
 
 
 @pytest.mark.parametrize("case", _ORTHO_1D_BOOL_CASES, ids=lambda c: c.id)
@@ -355,7 +461,7 @@ def test_get_orthogonal_selection_1d_bool_raises(
     """oindex rejects masks of the wrong length or dimensionality with IndexError."""
     a = np.arange(30, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         z.oindex[case.input]
 ```
 
@@ -650,9 +756,11 @@ EOF
 - **`Selection` types** (`BasicSelection`, `OrthogonalSelection`,
   `CoordinateSelection`, `Selection`) are already imported at the top of
   `tests/test_indexing.py` — use them in the `Expect[...]` annotations.
-- **`msg=""`** in `ExpectFail` matches any message (the original error tests
-  only asserted `IndexError`, not text). Don't invent message regexes that the
-  code doesn't actually emit.
+- **Error paths use `case.raises()`** (the `ExpectFail` helper from Task 0.6),
+  not a bare `pytest.raises`. `msg` is an optional regex; use a stable
+  substring of the *actual* error (run the bad selection once to capture it),
+  or omit it to assert only the exception type. Never pass `msg=""`. Use
+  `escape=True` for literal messages containing regex metacharacters.
 - **Keep the oracle helpers.** Do not inline `_test_get_orthogonal_selection`
   etc. into the parametrized tests; calling them once per case is the design.
 - If a rewritten happy-path case turns out to disagree with numpy (the oracle
