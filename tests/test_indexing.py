@@ -1357,65 +1357,99 @@ def _test_get_mask_selection(a: npt.NDArray[Any], z: Array, selection: npt.NDArr
     assert_array_equal(expect, actual)
 
 
-mask_selections_1d_bad = [
-    # slice not supported
-    slice(5, 15),
-    slice(None),
-    Ellipsis,
-    # bad stuff
-    2.3,
-    "foo",
-    b"xxx",
-    None,
-    (0, 0),
-    (slice(None), slice(None)),
+_MASK_1D_CASES: list[Expect[Any, None]] = [
+    Expect(input=np.zeros(30, dtype=bool), output=None, id="all-false"),
+    Expect(input=np.ones(30, dtype=bool), output=None, id="all-true"),
+    Expect(input=np.arange(30) % 2 == 0, output=None, id="alternating"),
+    Expect(
+        input=np.isin(np.arange(30), [0, 7, 14, 29]),
+        output=None,
+        id="sparse-cross-chunk",
+    ),
+]
+
+# msg=None for all 1d bad cases: get_mask_selection and vindex raise different
+# messages for the same input, so no single substring satisfies both assertions.
+_MASK_1D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(input=slice(5, 15), exception=IndexError, id="slice"),
+    ExpectFail(input=slice(None), exception=IndexError, id="full-slice"),
+    ExpectFail(input=Ellipsis, exception=IndexError, id="ellipsis"),
+    ExpectFail(input=2.3, exception=IndexError, id="float"),
+    ExpectFail(input="foo", exception=IndexError, id="string"),
+    ExpectFail(input=b"xxx", exception=IndexError, id="bytes"),
+    ExpectFail(input=None, exception=IndexError, id="none"),
+    ExpectFail(input=(0, 0), exception=IndexError, id="tuple-pair"),
+    ExpectFail(input=(slice(None), slice(None)), exception=IndexError, id="two-slices"),
+    ExpectFail(input=np.zeros(5, dtype=bool), exception=IndexError, id="mask-too-short"),
+    ExpectFail(input=np.zeros(50, dtype=bool), exception=IndexError, id="mask-too-long"),
+    ExpectFail(input=[[True, False], [False, True]], exception=IndexError, id="too-many-dims"),
 ]
 
 
-# noinspection PyStatementEffect
-def test_get_mask_selection_1d(store: StorePath) -> None:
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_get_mask_selection(a, z, ix)
-
-    # test errors
-    bad_selections = mask_selections_1d_bad + [
-        np.zeros(50, dtype=bool),  # too short
-        np.zeros(2000, dtype=bool),  # too long
-        [[True, False], [False, True]],  # too many dimensions
-    ]
-    for selection in bad_selections:
-        with pytest.raises(IndexError):
-            z.get_mask_selection(selection)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.vindex[selection]  # type:ignore[index]
+def _make_sparse_2d_mask() -> npt.NDArray[np.bool_]:
+    """Build a deterministic sparse (12, 5) boolean mask with Trues at (0,0), (5,2), (11,4), (2,3)."""
+    mask = np.zeros((12, 5), dtype=bool)
+    for r, c in [(0, 0), (5, 2), (11, 4), (2, 3)]:
+        mask[r, c] = True
+    return mask
 
 
-# noinspection PyStatementEffect
-def test_get_mask_selection_2d(store: StorePath) -> None:
-    # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+_MASK_2D_CASES: list[Expect[Any, None]] = [
+    Expect(input=np.zeros((12, 5), dtype=bool), output=None, id="all-false"),
+    Expect(input=np.ones((12, 5), dtype=bool), output=None, id="all-true"),
+    Expect(
+        input=(np.add.outer(np.arange(12), np.arange(5)) % 2).astype(bool),
+        output=None,
+        id="checkerboard",
+    ),
+    Expect(
+        input=_make_sparse_2d_mask(),
+        output=None,
+        id="sparse",
+    ),
+]
 
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix = np.random.binomial(1, p, size=a.size).astype(bool).reshape(a.shape)
-        _test_get_mask_selection(a, z, ix)
+_MASK_2D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(input=np.zeros((12, 3), dtype=bool), exception=IndexError, id="too-few-cols"),
+    ExpectFail(input=np.zeros((20, 5), dtype=bool), exception=IndexError, id="too-many-rows"),
+    ExpectFail(input=[True, False], exception=IndexError, id="wrong-ndim"),
+]
 
-    # test errors
-    with pytest.raises(IndexError):
-        z.vindex[np.zeros((1000, 5), dtype=bool)]  # too short
-    with pytest.raises(IndexError):
-        z.vindex[np.zeros((2000, 10), dtype=bool)]  # too long
-    with pytest.raises(IndexError):
-        z.vindex[[True, False]]  # wrong no. dimensions
+
+@pytest.mark.parametrize("case", _MASK_1D_CASES, ids=lambda c: c.id)
+def test_get_mask_selection_1d(store: StorePath, case: Expect[Any, None]) -> None:
+    """get_mask_selection / vindex / getitem on a 1D array match numpy for boolean masks."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_mask_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize("case", _MASK_1D_BAD_CASES, ids=lambda c: c.id)
+def test_get_mask_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """get_mask_selection / vindex on a 1D array reject non-boolean-mask and mis-shaped selections."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.get_mask_selection(case.input)  # type: ignore[arg-type]
+    with case.raises():
+        z.vindex[case.input]  # type: ignore[index]
+
+
+@pytest.mark.parametrize("case", _MASK_2D_CASES, ids=lambda c: c.id)
+def test_get_mask_selection_2d(store: StorePath, case: Expect[Any, None]) -> None:
+    """get_mask_selection / vindex / getitem on a 2D array match numpy for boolean masks."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_get_mask_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize("case", _MASK_2D_BAD_CASES, ids=lambda c: c.id)
+def test_get_mask_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """vindex on a 2D array rejects masks of the wrong shape or dimensionality."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.vindex[case.input]  # type: ignore[index]
 
 
 def _test_set_mask_selection(
@@ -1434,36 +1468,33 @@ def _test_set_mask_selection(
     assert_array_equal(a, z[:])
 
 
-def test_set_mask_selection_1d(store: StorePath) -> None:
-    # setup
-    v = np.arange(1050, dtype=int)
+@pytest.mark.parametrize("case", _MASK_1D_CASES, ids=lambda c: c.id)
+def test_set_mask_selection_1d(store: StorePath, case: Expect[Any, None]) -> None:
+    """set_mask_selection / vindex / setitem on a 1D array match numpy for boolean masks."""
+    v = np.arange(30, dtype=int)
     a = np.empty_like(v)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_set_mask_selection(v, a, z, ix)
-
-    for selection in mask_selections_1d_bad:
-        with pytest.raises(IndexError):
-            z.set_mask_selection(selection, 42)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.vindex[selection] = 42  # type: ignore[index]
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_set_mask_selection(v, a, z, case.input)
 
 
-def test_set_mask_selection_2d(store: StorePath) -> None:
-    # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
+@pytest.mark.parametrize("case", _MASK_1D_BAD_CASES, ids=lambda c: c.id)
+def test_set_mask_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """set_mask_selection / vindex on a 1D array reject non-boolean-mask and mis-shaped selections."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.set_mask_selection(case.input, 42)  # type: ignore[arg-type]
+    with case.raises():
+        z.vindex[case.input] = 42  # type: ignore[index]
+
+
+@pytest.mark.parametrize("case", _MASK_2D_CASES, ids=lambda c: c.id)
+def test_set_mask_selection_2d(store: StorePath, case: Expect[Any, None]) -> None:
+    """set_mask_selection / vindex / setitem on a 2D array match numpy for boolean masks."""
+    v = np.arange(60, dtype=int).reshape(12, 5)
     a = np.empty_like(v)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
-        ix = np.random.binomial(1, p, size=a.size).astype(bool).reshape(a.shape)
-        _test_set_mask_selection(v, a, z, ix)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_set_mask_selection(v, a, z, case.input)
 
 
 def test_get_selection_out(store: StorePath) -> None:
