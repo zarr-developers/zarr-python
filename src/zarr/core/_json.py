@@ -107,9 +107,7 @@ async def get_json(store: Store, key: str, *, byte_range: ByteRequest | None = N
         The parsed JSON value, or `None` if `key` does not exist.
     """
     buffer = await store.get(key, default_buffer_prototype(), byte_range)
-    if buffer is None:
-        return None
-    return buffer_to_json(buffer)
+    return None if buffer is None else buffer_to_json(buffer)
 
 
 async def set_json(
