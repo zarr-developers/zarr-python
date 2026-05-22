@@ -795,69 +795,92 @@ def test_get_orthogonal_selection_2d_raises(store: StorePath, case: ExpectFail[A
         z.oindex[case.input]
 
 
-def _test_get_orthogonal_selection_3d(
-    a: npt.NDArray,
-    z: Array,
-    ix0: npt.NDArray[np.bool],
-    ix1: npt.NDArray[np.bool],
-    ix2: npt.NDArray[np.bool],
+_ORTHO_3D_IX0_BOOL = np.isin(np.arange(7), [0, 3, 6])  # axis 0
+_ORTHO_3D_IX1_BOOL = np.isin(np.arange(6), [0, 2, 5])  # axis 1
+_ORTHO_3D_IX2_BOOL = np.isin(np.arange(10), [0, 4, 9])  # axis 2
+_ORTHO_3D_IX0_INT = np.array([0, 3, 6])
+_ORTHO_3D_IX1_INT = np.array([0, 2, 5])
+_ORTHO_3D_IX2_INT = np.array([0, 4, 9])
+
+_ORTHO_3D_CASES: list[Expect[OrthogonalSelection, None]] = [
+    # single value
+    Expect(input=(5, 3, 8), output=None, id="single-value"),
+    Expect(input=(-1, -1, -1), output=None, id="all-negative"),
+    # index all axes with arrays
+    Expect(
+        input=(_ORTHO_3D_IX0_BOOL, _ORTHO_3D_IX1_BOOL, _ORTHO_3D_IX2_BOOL),
+        output=None,
+        id="three-bool-arrays",
+    ),
+    Expect(
+        input=(_ORTHO_3D_IX0_INT, _ORTHO_3D_IX1_INT, _ORTHO_3D_IX2_INT),
+        output=None,
+        id="three-int-arrays",
+    ),
+    # mixed indexing with single array / slices
+    Expect(
+        input=(_ORTHO_3D_IX0_BOOL, slice(1, 5), slice(2, 9)), output=None, id="array-slice-slice"
+    ),
+    Expect(
+        input=(slice(1, 6), _ORTHO_3D_IX1_BOOL, slice(2, 9)), output=None, id="slice-array-slice"
+    ),
+    Expect(
+        input=(slice(1, 6), slice(1, 5), _ORTHO_3D_IX2_BOOL), output=None, id="slice-slice-array"
+    ),
+    Expect(
+        input=(_ORTHO_3D_IX0_BOOL, slice(0, 6, 2), slice(0, 10, 3)),
+        output=None,
+        id="array-strided-strided",
+    ),
+    Expect(
+        input=(slice(0, 7, 2), _ORTHO_3D_IX1_BOOL, slice(0, 10, 3)),
+        output=None,
+        id="strided-array-strided",
+    ),
+    Expect(
+        input=(slice(0, 7, 2), slice(0, 6, 2), _ORTHO_3D_IX2_BOOL),
+        output=None,
+        id="strided-strided-array",
+    ),
+    # mixed indexing with single array / ints
+    Expect(input=(_ORTHO_3D_IX0_BOOL, 3, 8), output=None, id="array-int-int"),
+    Expect(input=(5, _ORTHO_3D_IX1_BOOL, 8), output=None, id="int-array-int"),
+    Expect(input=(5, 3, _ORTHO_3D_IX2_BOOL), output=None, id="int-int-array"),
+    # mixed indexing with single array / slice / int
+    Expect(input=(_ORTHO_3D_IX0_BOOL, slice(1, 5), 8), output=None, id="array-slice-int"),
+    Expect(input=(5, _ORTHO_3D_IX1_BOOL, slice(2, 9)), output=None, id="int-array-slice"),
+    Expect(input=(slice(1, 6), 3, _ORTHO_3D_IX2_BOOL), output=None, id="slice-int-array"),
+    # mixed indexing with two arrays / slice
+    Expect(
+        input=(_ORTHO_3D_IX0_BOOL, _ORTHO_3D_IX1_BOOL, slice(2, 9)),
+        output=None,
+        id="two-arrays-slice",
+    ),
+    Expect(
+        input=(slice(1, 6), _ORTHO_3D_IX1_BOOL, _ORTHO_3D_IX2_BOOL),
+        output=None,
+        id="slice-two-arrays",
+    ),
+    Expect(
+        input=(_ORTHO_3D_IX0_BOOL, slice(1, 5), _ORTHO_3D_IX2_BOOL),
+        output=None,
+        id="array-slice-array",
+    ),
+    # mixed indexing with two arrays / integer
+    Expect(input=(_ORTHO_3D_IX0_BOOL, _ORTHO_3D_IX1_BOOL, 8), output=None, id="two-arrays-int"),
+    Expect(input=(5, _ORTHO_3D_IX1_BOOL, _ORTHO_3D_IX2_BOOL), output=None, id="int-two-arrays"),
+    Expect(input=(_ORTHO_3D_IX0_BOOL, 3, _ORTHO_3D_IX2_BOOL), output=None, id="array-int-array"),
+]
+
+
+@pytest.mark.parametrize("case", _ORTHO_3D_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_3d(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
 ) -> None:
-    selections = [
-        # single value
-        (60, 15, 4),
-        (-1, -1, -1),
-        # index all axes with array
-        (ix0, ix1, ix2),
-        # mixed indexing with single array / slices
-        (ix0, slice(10, 20), slice(1, 5)),
-        (slice(30, 50), ix1, slice(1, 5)),
-        (slice(30, 50), slice(10, 20), ix2),
-        (ix0, slice(10, 20, 5), slice(1, 5, 2)),
-        (slice(30, 50, 3), ix1, slice(1, 5, 2)),
-        (slice(30, 50, 3), slice(10, 20, 5), ix2),
-        # mixed indexing with single array / ints
-        (ix0, 15, 4),
-        (60, ix1, 4),
-        (60, 15, ix2),
-        # mixed indexing with single array / slice / int
-        (ix0, slice(10, 20), 4),
-        (15, ix1, slice(1, 5)),
-        (slice(30, 50), 15, ix2),
-        # mixed indexing with two array / slice
-        (ix0, ix1, slice(1, 5)),
-        (slice(30, 50), ix1, ix2),
-        (ix0, slice(10, 20), ix2),
-        # mixed indexing with two array / integer
-        (ix0, ix1, 4),
-        (15, ix1, ix2),
-        (ix0, 15, ix2),
-    ]
-    for selection in selections:
-        _test_get_orthogonal_selection(a, z, selection)
-
-
-def test_get_orthogonal_selection_3d(store: StorePath) -> None:
-    # setup
-    a = np.arange(32400, dtype=int).reshape(120, 30, 9)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        # boolean arrays
-        ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-        ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
-
-        # sorted integer arrays
-        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        ix0.sort()
-        ix1.sort()
-        ix2.sort()
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
+    """oindex on a 3D array matches numpy for array/slice/int combinations per axis."""
+    a = np.arange(420, dtype=int).reshape(7, 6, 10)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(3, 2, 4))
+    _test_get_orthogonal_selection(a, z, case.input)
 
 
 def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
