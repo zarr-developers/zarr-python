@@ -716,62 +716,83 @@ def test_get_orthogonal_selection_1d_int_raises(store: StorePath, case: ExpectFa
         z.oindex[case.input]
 
 
-def _test_get_orthogonal_selection_2d(
-    a: npt.NDArray[Any], z: Array, ix0: npt.NDArray[np.bool], ix1: npt.NDArray[np.bool]
+_ORTHO_2D_IX0_BOOL = np.isin(np.arange(12), [0, 5, 11])  # rows 0, 5, 11
+_ORTHO_2D_IX1_BOOL = np.array([True, False, True, False, True])  # cols 0, 2, 4
+_ORTHO_2D_IX0_INT = np.array([0, 5, 11])
+_ORTHO_2D_IX1_INT = np.array([0, 2, 4])
+
+_ORTHO_2D_CASES: list[Expect[OrthogonalSelection, None]] = [
+    Expect(input=(_ORTHO_2D_IX0_BOOL, _ORTHO_2D_IX1_BOOL), output=None, id="both-bool"),
+    Expect(input=(_ORTHO_2D_IX0_BOOL, slice(1, 4)), output=None, id="bool-slice"),
+    Expect(input=(_ORTHO_2D_IX0_BOOL, slice(0, 5, 2)), output=None, id="bool-strided-slice"),
+    Expect(input=(slice(2, 9), _ORTHO_2D_IX1_BOOL), output=None, id="slice-bool"),
+    Expect(input=(slice(0, 12, 4), _ORTHO_2D_IX1_BOOL), output=None, id="strided-slice-bool"),
+    Expect(input=(_ORTHO_2D_IX0_BOOL, 3), output=None, id="bool-int"),
+    Expect(input=(7, _ORTHO_2D_IX1_BOOL), output=None, id="int-bool"),
+    Expect(input=(_ORTHO_2D_IX0_INT, _ORTHO_2D_IX1_INT), output=None, id="both-int"),
+    Expect(input=(_ORTHO_2D_IX0_INT, _ORTHO_2D_IX1_BOOL), output=None, id="int-array-bool-array"),
+    Expect(input=(_ORTHO_2D_IX0_BOOL, _ORTHO_2D_IX1_INT), output=None, id="bool-array-int-array"),
+    Expect(input=7, output=None, id="single-row"),
+    Expect(input=(slice(None), 3), output=None, id="single-col"),
+    Expect(input=(slice(None), slice(None)), output=None, id="full"),
+    Expect(input=slice(2, 9), output=None, id="row-slice"),
+]
+
+_ORTHO_2D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=2.3,
+        exception=IndexError,
+        id="float-index",
+        msg="unsupported selection item for orthogonal indexing",
+    ),
+    # get_orthogonal_selection and oindex raise different messages for a string
+    # selection, so assert only the exception type.
+    ExpectFail(
+        input="foo",
+        exception=IndexError,
+        id="string-index",
+        msg=None,
+    ),
+    ExpectFail(
+        input=None,
+        exception=IndexError,
+        id="none-index",
+        msg="unsupported selection item for orthogonal indexing",
+    ),
+    ExpectFail(
+        input=slice(None, None, -1),
+        exception=IndexError,
+        id="negative-step",
+        msg="only slices with step >= 1 are supported",
+    ),
+    ExpectFail(
+        input=(0, 0, 0),
+        exception=IndexError,
+        id="too-many-dims",
+        msg="too many indices for array",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", _ORTHO_2D_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_2d(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
 ) -> None:
-    selections = [
-        # index both axes with array
-        (ix0, ix1),
-        # mixed indexing with array / slice
-        (ix0, slice(1, 5)),
-        (ix0, slice(1, 5, 2)),
-        (slice(250, 350), ix1),
-        (slice(250, 350, 10), ix1),
-        # mixed indexing with array / int
-        (ix0, 4),
-        (42, ix1),
-    ]
-    for selection in selections:
-        _test_get_orthogonal_selection(a, z, selection)
+    """oindex on a 2D array matches numpy for array/slice/int combinations per axis."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_get_orthogonal_selection(a, z, case.input)
 
 
-# noinspection PyStatementEffect
-def test_get_orthogonal_selection_2d(store: StorePath) -> None:
-    # setup
-    a = np.arange(5400, dtype=int).reshape(600, 9)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        # boolean arrays
-        ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
-
-        # mixed int array / bool array
-        selections = (
-            (ix0, np.nonzero(ix1)[0]),
-            (np.nonzero(ix0)[0], ix1),
-        )
-        for selection in selections:
-            _test_get_orthogonal_selection(a, z, selection)
-
-        # sorted integer arrays
-        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        ix0.sort()
-        ix1.sort()
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
-
-    for selection_2d in basic_selections_2d:
-        _test_get_orthogonal_selection(a, z, selection_2d)
-
-    for selection_2d_bad in basic_selections_2d_bad:
-        with pytest.raises(IndexError):
-            z.get_orthogonal_selection(selection_2d_bad)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.oindex[selection_2d_bad]  # type: ignore[index]
+@pytest.mark.parametrize("case", _ORTHO_2D_BAD_CASES, ids=lambda c: c.id)
+def test_get_orthogonal_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """oindex on a 2D array rejects malformed selections with IndexError."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.get_orthogonal_selection(case.input)
+    with case.raises():
+        z.oindex[case.input]
 
 
 def _test_get_orthogonal_selection_3d(
