@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock
 
@@ -19,6 +21,7 @@ from zarr.storage._memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.array import ShardsConfigParam
+    from zarr.core.array_spec import ArrayConfigParams
 
 # ============================================================================
 # _ShardIndex tests
@@ -514,13 +517,15 @@ def test_is_total_shard_1d() -> None:
 # ============================================================================
 # Coalescing config option tests
 #
-# Asserts that the `sharding.read.coalesce_max_gap_bytes` and
-# `sharding.read.coalesce_max_bytes` config options flow through to
-# `Store.get_ranges` as `max_gap_bytes` / `max_coalesced_bytes` kwargs.
+# Assert that the `array.sharding_coalesce_max_gap_bytes` and
+# `array.sharding_coalesce_max_bytes` global config keys flow through
+# `ArrayConfig` to `Store.get_ranges` as `max_gap_bytes` /
+# `max_coalesced_bytes` kwargs, and that per-array `config={...}` overrides
+# the global default.
 # ============================================================================
 
 
-def _trigger_partial_shard_read() -> AsyncMock:
+def _trigger_partial_shard_read(array_config: ArrayConfigParams | None = None) -> AsyncMock:
     """Build a sharded array on a mocked `MemoryStore`, trigger a partial-shard
     read via the public read path, and return the `get_ranges` mock.
     """
@@ -545,6 +550,7 @@ def _trigger_partial_shard_read() -> AsyncMock:
         shards=shards,
         dtype=data.dtype,
         fill_value=-1,
+        config=array_config,
     )
     a[:] = data
 
@@ -556,12 +562,13 @@ def _trigger_partial_shard_read() -> AsyncMock:
     return cast(AsyncMock, store_mock.get_ranges)
 
 
-def test_load_partial_shard_forwards_config_to_get_ranges() -> None:
-    """`sharding.read.*` config values are forwarded to `Store.get_ranges`."""
+def test_load_partial_shard_forwards_global_config_to_get_ranges() -> None:
+    """Global `array.sharding_coalesce_*` values flow into ArrayConfig at
+    array-creation time and are forwarded to `Store.get_ranges`."""
     with config.set(
         {
-            "sharding.read.coalesce_max_gap_bytes": 4242,
-            "sharding.read.coalesce_max_bytes": 424242,
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
         }
     ):
         get_ranges_mock = _trigger_partial_shard_read()
@@ -573,6 +580,29 @@ def test_load_partial_shard_forwards_config_to_get_ranges() -> None:
         assert kwargs["max_coalesced_bytes"] == 424242
 
 
+def test_load_partial_shard_per_array_config_overrides_global() -> None:
+    """Per-array `config={...}` passed to `create_array` takes precedence over
+    the global config and is forwarded to `Store.get_ranges`."""
+    with config.set(
+        {
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
+        }
+    ):
+        get_ranges_mock = _trigger_partial_shard_read(
+            array_config={
+                "sharding_coalesce_max_gap_bytes": 99,
+                "sharding_coalesce_max_bytes": 9999,
+            },
+        )
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == 99
+        assert kwargs["max_coalesced_bytes"] == 9999
+
+
 def test_load_partial_shard_uses_config_defaults() -> None:
     """Without explicit config, defaults from `zarr.config` are forwarded."""
     get_ranges_mock = _trigger_partial_shard_read()
@@ -580,8 +610,8 @@ def test_load_partial_shard_uses_config_defaults() -> None:
     assert get_ranges_mock.call_count >= 1
     for call in get_ranges_mock.call_args_list:
         kwargs = call.kwargs
-        assert kwargs["max_gap_bytes"] == config.get("sharding.read.coalesce_max_gap_bytes")
-        assert kwargs["max_coalesced_bytes"] == config.get("sharding.read.coalesce_max_bytes")
+        assert kwargs["max_gap_bytes"] == config.get("array.sharding_coalesce_max_gap_bytes")
+        assert kwargs["max_coalesced_bytes"] == config.get("array.sharding_coalesce_max_bytes")
 
 
 async def test_load_partial_shard_explicit_kwargs_passthrough(

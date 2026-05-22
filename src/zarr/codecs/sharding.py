@@ -41,7 +41,6 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
-from zarr.core.config import config
 from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
@@ -484,8 +483,8 @@ class ShardingCodec(
                 chunk_spec.prototype,
                 chunks_per_shard,
                 all_chunk_coords,
-                max_gap_bytes=config.get("sharding.read.coalesce_max_gap_bytes"),
-                max_coalesced_bytes=config.get("sharding.read.coalesce_max_bytes"),
+                max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
+                max_coalesced_bytes=shard_spec.config.sharding_coalesce_max_bytes,
             )
 
         if shard_dict_maybe is None:
