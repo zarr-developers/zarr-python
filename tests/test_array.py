@@ -1980,14 +1980,14 @@ def test_array_repr(store: Store) -> None:
     assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
 
 
-class UnknownObjectDtype(VariableLengthUTF8):
+class UnknownObjectCodecDtype(VariableLengthUTF8):
     """A data type that requires an object codec with an unknown id, used for error-path tests."""
 
     object_codec_id = "unknown"  # type: ignore[assignment]
 
 
 @pytest.mark.parametrize(
-    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectDtype()]
+    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectCodecDtype()]
 )
 def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
     """
@@ -2014,7 +2014,7 @@ def test_unknown_object_codec_default_serializer_v3() -> None:
     Test that we get a valueerrror when trying to create the default serializer for a data type
     that requires an unknown object codec
     """
-    dtype = UnknownObjectDtype()
+    dtype = UnknownObjectCodecDtype()
     msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
     with pytest.raises(ValueError, match=re.escape(msg)):
         default_serializer_v3(dtype)
@@ -2025,7 +2025,7 @@ def test_unknown_object_codec_default_filters_v2() -> None:
     Test that we get a valueerrror when trying to create the default serializer for a data type
     that requires an unknown object codec
     """
-    dtype = UnknownObjectDtype()
+    dtype = UnknownObjectCodecDtype()
     msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
     with pytest.raises(ValueError, match=re.escape(msg)):
         default_filters_v2(dtype)
