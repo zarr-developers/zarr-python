@@ -235,6 +235,8 @@ _BASIC_1D_BAD_CASES: list[ExpectFail[Any]] = [
         msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'float'>",
         escape=True,
     ),
+    # get_basic_selection and z[...] word their errors differently for a string
+    # selection, so this case asserts only the exception type (msg=None).
     ExpectFail(
         input="foo",
         exception=IndexError,
