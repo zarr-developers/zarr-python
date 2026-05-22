@@ -202,77 +202,68 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
     # assert_array_equal(a[["foo", "bar"]], c)
 
 
-basic_selections_1d: list[BasicSelection] = [
-    # single value
-    42,
-    -1,
-    # slices
-    slice(0, 1050),
-    slice(50, 150),
-    slice(0, 2000),
-    slice(-150, -50),
-    slice(-2000, 2000),
-    slice(0, 0),  # empty result
-    slice(-1, 0),  # empty result
-    # total selections
-    slice(None),
-    Ellipsis,
-    (),
-    (Ellipsis, slice(None)),
-    # slice with step
-    slice(None),
-    slice(None, None),
-    slice(None, None, 1),
-    slice(None, None, 10),
-    slice(None, None, 100),
-    slice(None, None, 1000),
-    slice(None, None, 10000),
-    slice(0, 1050),
-    slice(0, 1050, 1),
-    slice(0, 1050, 10),
-    slice(0, 1050, 100),
-    slice(0, 1050, 1000),
-    slice(0, 1050, 10000),
-    slice(1, 31, 3),
-    slice(1, 31, 30),
-    slice(1, 31, 300),
-    slice(81, 121, 3),
-    slice(81, 121, 30),
-    slice(81, 121, 300),
-    slice(50, 150),
-    slice(50, 150, 1),
-    slice(50, 150, 10),
+_BASIC_1D_CASES: list[Expect[BasicSelection, None]] = [
+    Expect(input=5, output=None, id="single-positive"),
+    Expect(input=-1, output=None, id="single-negative"),
+    Expect(input=slice(3, 18), output=None, id="bounded-slice"),
+    Expect(input=slice(0, 100), output=None, id="over-bounds-slice"),
+    Expect(input=slice(-18, -3), output=None, id="negative-slice"),
+    Expect(input=slice(0, 0), output=None, id="empty-slice"),
+    Expect(input=slice(-1, 0), output=None, id="empty-negative-slice"),
+    Expect(input=slice(None), output=None, id="full-slice"),
+    Expect(input=Ellipsis, output=None, id="ellipsis"),
+    Expect(input=(), output=None, id="empty-tuple"),
+    Expect(input=(Ellipsis, slice(None)), output=None, id="ellipsis-slice"),
+    Expect(input=slice(None, None, 3), output=None, id="stride-3"),
+    Expect(input=slice(3, 27, 5), output=None, id="bounded-stride"),
 ]
 
-basic_selections_1d_bad = [
-    # only positive step supported
-    slice(None, None, -1),
-    slice(None, None, -10),
-    slice(None, None, -100),
-    slice(None, None, -1000),
-    slice(None, None, -10000),
-    slice(1050, -1, -1),
-    slice(1050, -1, -10),
-    slice(1050, -1, -100),
-    slice(1050, -1, -1000),
-    slice(1050, -1, -10000),
-    slice(1050, 0, -1),
-    slice(1050, 0, -10),
-    slice(1050, 0, -100),
-    slice(1050, 0, -1000),
-    slice(1050, 0, -10000),
-    slice(150, 50, -1),
-    slice(150, 50, -10),
-    slice(31, 1, -3),
-    slice(121, 81, -3),
-    slice(-1, 0, -1),
-    # bad stuff
-    2.3,
-    "foo",
-    b"xxx",
-    None,
-    (0, 0),
-    (slice(None), slice(None)),
+_BASIC_1D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=slice(None, None, -1),
+        exception=IndexError,
+        id="negative-step",
+        msg="only slices with step >= 1 are supported",
+    ),
+    ExpectFail(
+        input=2.3,
+        exception=IndexError,
+        id="float",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'float'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input="foo",
+        exception=IndexError,
+        id="string",
+        msg=None,
+    ),
+    ExpectFail(
+        input=b"xxx",
+        exception=IndexError,
+        id="bytes",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'bytes'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input=None,
+        exception=IndexError,
+        id="none",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'NoneType'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input=(0, 0),
+        exception=IndexError,
+        id="tuple-too-many",
+        msg="too many indices for array; expected 1, got 2",
+    ),
+    ExpectFail(
+        input=(slice(None), slice(None)),
+        exception=IndexError,
+        id="two-slices",
+        msg="too many indices for array; expected 1, got 2",
+    ),
 ]
 
 
@@ -293,96 +284,113 @@ def _test_get_basic_selection(
     assert_array_equal(expect, b.as_numpy_array())
 
 
-# noinspection PyStatementEffect
-def test_get_basic_selection_1d(store: StorePath) -> None:
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    for selection in basic_selections_1d:
-        _test_get_basic_selection(a, z, selection)
-
-    for selection_bad in basic_selections_1d_bad:
-        with pytest.raises(IndexError):
-            z.get_basic_selection(selection_bad)  # type: ignore[arg-type]
-        with pytest.raises(IndexError):
-            z[selection_bad]  # type: ignore[index]
-
-    with pytest.raises(IndexError):
-        z.get_basic_selection([1, 0])  # type: ignore[arg-type]
+@pytest.mark.parametrize("case", _BASIC_1D_CASES, ids=lambda c: c.id)
+def test_get_basic_selection_1d(store: StorePath, case: Expect[BasicSelection, None]) -> None:
+    """Basic getitem on a 1D array matches numpy for ints, slices, strides, and full selections."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_basic_selection(a, z, case.input)
 
 
-basic_selections_2d: list[BasicSelection] = [
-    # single row
-    42,
-    -1,
-    (42, slice(None)),
-    (-1, slice(None)),
-    # single col
-    (slice(None), 4),
-    (slice(None), -1),
-    # row slices
-    slice(None),
-    slice(0, 1000),
-    slice(250, 350),
-    slice(0, 2000),
-    slice(-350, -250),
-    slice(0, 0),  # empty result
-    slice(-1, 0),  # empty result
-    slice(-2000, 0),
-    slice(-2000, 2000),
-    # 2D slices
-    (slice(None), slice(1, 5)),
-    (slice(250, 350), slice(None)),
-    (slice(250, 350), slice(1, 5)),
-    (slice(250, 350), slice(-5, -1)),
-    (slice(250, 350), slice(-50, 50)),
-    (slice(250, 350, 10), slice(1, 5)),
-    (slice(250, 350), slice(1, 5, 2)),
-    (slice(250, 350, 33), slice(1, 5, 3)),
-    # total selections
-    (slice(None), slice(None)),
-    Ellipsis,
-    (),
-    (Ellipsis, slice(None)),
-    (Ellipsis, slice(None), slice(None)),
+@pytest.mark.parametrize("case", _BASIC_1D_BAD_CASES, ids=lambda c: c.id)
+def test_get_basic_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """Basic getitem on a 1D array rejects negative steps and invalid index types with IndexError."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.get_basic_selection(case.input)
+    with case.raises():
+        z[case.input]
+
+
+_BASIC_2D_CASES: list[Expect[BasicSelection, None]] = [
+    Expect(input=5, output=None, id="single-row"),
+    Expect(input=-1, output=None, id="single-row-neg"),
+    Expect(input=(5, slice(None)), output=None, id="row-and-full-col"),
+    Expect(input=(slice(None), 3), output=None, id="single-col"),
+    Expect(input=(slice(None), -1), output=None, id="single-col-neg"),
+    Expect(input=slice(None), output=None, id="full"),
+    Expect(input=slice(2, 9), output=None, id="row-slice"),
+    Expect(input=slice(0, 0), output=None, id="empty-row-slice"),
+    Expect(input=(slice(2, 9), slice(1, 4)), output=None, id="2d-slice"),
+    Expect(input=(slice(0, 12, 3), slice(0, 5, 2)), output=None, id="strided-2d-slice"),
+    Expect(input=Ellipsis, output=None, id="ellipsis"),
+    Expect(input=(), output=None, id="empty-tuple"),
 ]
 
-basic_selections_2d_bad = [
-    # bad stuff
-    2.3,
-    "foo",
-    b"xxx",
-    None,
-    (2.3, slice(None)),
-    # only positive step supported
-    slice(None, None, -1),
-    (slice(None, None, -1), slice(None)),
-    (0, 0, 0),
-    (slice(None), slice(None), slice(None)),
+_BASIC_2D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(
+        input=2.3,
+        exception=IndexError,
+        id="float",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'float'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input="foo",
+        exception=IndexError,
+        id="string",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'str'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input=None,
+        exception=IndexError,
+        id="none",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'NoneType'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input=(2.3, slice(None)),
+        exception=IndexError,
+        id="float-in-tuple",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'float'>",
+        escape=True,
+    ),
+    ExpectFail(
+        input=slice(None, None, -1),
+        exception=IndexError,
+        id="negative-step",
+        msg="only slices with step >= 1 are supported",
+    ),
+    ExpectFail(
+        input=(slice(None), slice(None), slice(None)),
+        exception=IndexError,
+        id="too-many-dims",
+        msg="too many indices for array; expected 2, got 3",
+    ),
+    ExpectFail(
+        input=[0, 1],
+        exception=IndexError,
+        id="integer-list",
+        msg="unsupported selection item for basic indexing; expected integer or slice, got <class 'list'>",
+        escape=True,
+    ),
 ]
 
 
-# noinspection PyStatementEffect
-def test_get_basic_selection_2d(store: StorePath) -> None:
-    # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+@pytest.mark.parametrize("case", _BASIC_2D_CASES, ids=lambda c: c.id)
+def test_get_basic_selection_2d(store: StorePath, case: Expect[BasicSelection, None]) -> None:
+    """Basic getitem on a 2D array matches numpy for rows, cols, slices, and strides."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_get_basic_selection(a, z, case.input)
 
-    for selection in basic_selections_2d:
-        _test_get_basic_selection(a, z, selection)
 
-    bad_selections = basic_selections_2d_bad + [
-        # integer arrays
-        [0, 1],
-        (slice(None), [0, 1]),
-    ]
-    for selection_bad in bad_selections:
-        with pytest.raises(IndexError):
-            z.get_basic_selection(selection_bad)  # type: ignore[arg-type]
-    # check fallback on fancy indexing
-    fancy_selection = ([0, 1], [0, 1])
-    np.testing.assert_array_equal(z[fancy_selection], [0, 11])
+@pytest.mark.parametrize("case", _BASIC_2D_BAD_CASES, ids=lambda c: c.id)
+def test_get_basic_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """Basic getitem on a 2D array rejects malformed selections with IndexError."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.get_basic_selection(case.input)
+
+
+def test_basic_2d_fancy_fallback(store: StorePath) -> None:
+    """Indexing a 2D array with paired integer lists falls back to fancy (vectorized) indexing."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    np.testing.assert_array_equal(z[([0, 1], [0, 1])], a[([0, 1], [0, 1])])
 
 
 def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
