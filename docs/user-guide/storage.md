@@ -47,7 +47,7 @@ print(group)
 `StoreLike` values can be:
 
 - a `Path` or string indicating a location on the local file system.
-  This will create a [local store](#local-store):
+  This will create a [local store](#local-store), unless the file name endswith the ".zip" suffix, in which case it creates a [zip store](#zip-store):
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
@@ -55,6 +55,10 @@ print(group)
    ```python exec="true" session="storage" source="above" result="ansi"
    from pathlib import Path
    group = zarr.open_group(store=Path('data/foo/bar'))
+   print(group)
+   ```
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.open_group(Path('data/foo.zip'), mode='w')
    print(group)
    ```
 
