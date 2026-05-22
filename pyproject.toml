@@ -414,7 +414,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests", "docs/user-guide"]
+testpaths = ["src", "tests", "docs/user-guide"]
 log_cli_level = "INFO"
 log_level = "INFO"
 xfail_strict = true
@@ -430,6 +430,8 @@ addopts = [
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
     "-ra", "--strict-config", "--strict-markers",
+    "--doctest-modules",
+    "--ignore=tests/test_regression/scripts",
 ]
 filterwarnings = [
     "error",
