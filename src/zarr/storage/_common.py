@@ -368,7 +368,7 @@ async def make_store(
 
     elif isinstance(store_like, Path) and store_like.suffix == ".zip":
         # Create a new LocalStore
-        return await ZipStore.open(root=store_like, mode=mode, read_only=_read_only)
+        return await ZipStore.open(path=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore
