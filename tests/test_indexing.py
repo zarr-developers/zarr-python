@@ -916,27 +916,15 @@ def _test_set_orthogonal_selection(
         assert_array_equal(a, z[:])
 
 
-def test_set_orthogonal_selection_1d(store: StorePath) -> None:
-    # setup
-    v = np.arange(550, dtype=int)
-    a = np.empty(v.shape, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    # test with different degrees of sparseness
-    np.random.seed(42)
-    for p in 0.5, 0.01:
-        # boolean arrays
-        ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        _test_set_orthogonal_selection(v, a, z, ix)
-
-        # sorted integer arrays
-        ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix.sort()
-        _test_set_orthogonal_selection(v, a, z, ix)
-
-    # basic selections
-    for selection in basic_selections_1d:
-        _test_set_orthogonal_selection(v, a, z, selection)
+@pytest.mark.parametrize("case", _ORTHO_1D_BOOL_CASES + _ORTHO_1D_INT_CASES, ids=lambda c: c.id)
+def test_set_orthogonal_selection_1d(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
+) -> None:
+    """set_orthogonal_selection on a 1D array round-trips through numpy for masks and int arrays."""
+    v = np.arange(30, dtype=int)
+    a = np.empty_like(v)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_set_orthogonal_selection(v, a, z, case.input)
 
 
 def test_set_item_1d_last_two_chunks(store: StorePath):
@@ -958,107 +946,26 @@ def test_set_item_1d_last_two_chunks(store: StorePath):
     np.testing.assert_equal(z["zoo"][()], np.array(1))
 
 
-def _test_set_orthogonal_selection_2d(
-    v: npt.NDArray[np.int_],
-    a: npt.NDArray[np.int_],
-    z: Array,
-    ix0: npt.NDArray[np.bool],
-    ix1: npt.NDArray[np.bool],
+@pytest.mark.parametrize("case", _ORTHO_2D_CASES, ids=lambda c: c.id)
+def test_set_orthogonal_selection_2d(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
 ) -> None:
-    selections = [
-        # index both axes with array
-        (ix0, ix1),
-        # mixed indexing with array / slice or int
-        (ix0, slice(1, 5)),
-        (slice(250, 350), ix1),
-        (ix0, 4),
-        (42, ix1),
-    ]
-    for selection in selections:
-        _test_set_orthogonal_selection(v, a, z, selection)
-
-
-def test_set_orthogonal_selection_2d(store: StorePath) -> None:
-    # setup
-    v = np.arange(5400, dtype=int).reshape(600, 9)
+    """set_orthogonal_selection on a 2D array round-trips through numpy."""
+    v = np.arange(60, dtype=int).reshape(12, 5)
     a = np.empty_like(v)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        # boolean arrays
-        ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
-
-        # sorted integer arrays
-        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        ix0.sort()
-        ix1.sort()
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
-
-    for selection in basic_selections_2d:
-        _test_set_orthogonal_selection(v, a, z, selection)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_set_orthogonal_selection(v, a, z, case.input)
 
 
-def _test_set_orthogonal_selection_3d(
-    v: npt.NDArray[np.int_],
-    a: npt.NDArray[np.int_],
-    z: Array,
-    ix0: npt.NDArray[np.bool],
-    ix1: npt.NDArray[np.bool],
-    ix2: npt.NDArray[np.bool],
+@pytest.mark.parametrize("case", _ORTHO_3D_CASES, ids=lambda c: c.id)
+def test_set_orthogonal_selection_3d(
+    store: StorePath, case: Expect[OrthogonalSelection, None]
 ) -> None:
-    selections = (
-        # single value
-        (60, 15, 4),
-        (-1, -1, -1),
-        # index all axes with bool array
-        (ix0, ix1, ix2),
-        # mixed indexing with single bool array / slice or int
-        (ix0, slice(10, 20), slice(1, 5)),
-        (slice(30, 50), ix1, slice(1, 5)),
-        (slice(30, 50), slice(10, 20), ix2),
-        (ix0, 15, 4),
-        (60, ix1, 4),
-        (60, 15, ix2),
-        (ix0, slice(10, 20), 4),
-        (slice(30, 50), ix1, 4),
-        (slice(30, 50), 15, ix2),
-        # indexing with two arrays / slice
-        (ix0, ix1, slice(1, 5)),
-        # indexing with two arrays / integer
-        (ix0, ix1, 4),
-    )
-    for selection in selections:
-        _test_set_orthogonal_selection(v, a, z, selection)
-
-
-def test_set_orthogonal_selection_3d(store: StorePath) -> None:
-    # setup
-    v = np.arange(32400, dtype=int).reshape(120, 30, 9)
+    """set_orthogonal_selection on a 3D array round-trips through numpy."""
+    v = np.arange(420, dtype=int).reshape(7, 6, 10)
     a = np.empty_like(v)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
-
-    np.random.seed(42)
-    # test with different degrees of sparseness
-    for p in 0.5, 0.01:
-        # boolean arrays
-        ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
-        ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
-
-        # sorted integer arrays
-        ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        ix0.sort()
-        ix1.sort()
-        ix2.sort()
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(3, 2, 4))
+    _test_set_orthogonal_selection(v, a, z, case.input)
 
 
 def test_orthogonal_indexing_fallback_on_get_setitem(store: StorePath) -> None:
