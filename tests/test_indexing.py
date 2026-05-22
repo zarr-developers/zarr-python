@@ -1206,122 +1206,84 @@ def _test_get_block_selection(
     assert_array_equal(expect, actual)
 
 
-block_selections_1d: list[BasicSelection] = [
-    # test single item
-    0,
-    5,
-    # test wraparound
-    -1,
-    -4,
-    # test slice
-    slice(5),
-    slice(None, 3),
-    slice(5, 6),
-    slice(-3, -1),
-    slice(None),  # Full slice
+_BLOCK_1D_CASES: list[Expect[BasicSelection, slice]] = [
+    Expect(input=0, output=slice(0, 7), id="block-0"),
+    Expect(input=2, output=slice(14, 21), id="block-mid"),
+    Expect(input=4, output=slice(28, 30), id="block-last"),
+    Expect(input=-1, output=slice(28, 30), id="block-neg-1"),
+    Expect(input=-2, output=slice(21, 28), id="block-neg-2"),
+    Expect(input=slice(3), output=slice(0, 21), id="slice-to-3"),
+    Expect(input=slice(None, 2), output=slice(0, 14), id="slice-none-2"),
+    Expect(input=slice(1, 2), output=slice(7, 14), id="slice-1-2"),
+    Expect(input=slice(-2, -1), output=slice(21, 28), id="slice-neg"),
+    Expect(input=slice(None), output=slice(0, 30), id="full"),
 ]
 
-block_selections_1d_array_projection: list[slice] = [
-    # test single item
-    slice(100),
-    slice(500, 600),
-    # test wraparound
-    slice(1000, None),
-    slice(700, 800),
-    # test slice
-    slice(500),
-    slice(None, 300),
-    slice(500, 600),
-    slice(800, 1000),
-    slice(None),
+_BLOCK_1D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(input=slice(3, 8, 2), exception=IndexError, id="strided-slice"),
+    ExpectFail(input=2.3, exception=IndexError, id="float"),
+    ExpectFail(input=b"xxx", exception=IndexError, id="bytes"),
+    ExpectFail(input=None, exception=IndexError, id="none"),
+    ExpectFail(input=(0, 0), exception=IndexError, id="tuple-pair"),
+    ExpectFail(input=(slice(None), slice(None)), exception=IndexError, id="two-slices"),
+    ExpectFail(input=[0, 5, 3], exception=IndexError, id="int-list"),
+    ExpectFail(input=5, exception=IndexError, id="out-of-bounds-high"),
+    ExpectFail(input=-6, exception=IndexError, id="out-of-bounds-low"),
 ]
 
-block_selections_1d_bad = [
-    # slice not supported
-    slice(3, 8, 2),
-    # bad stuff
-    2.3,
-    # "foo", # TODO
-    b"xxx",
-    None,
-    (0, 0),
-    (slice(None), slice(None)),
-    [0, 5, 3],
+_BLOCK_2D_CASES: list[Expect[BasicSelection, tuple[slice, slice]]] = [
+    Expect(input=(0, 0), output=(slice(0, 5), slice(0, 2)), id="single-00"),
+    Expect(input=(1, 1), output=(slice(5, 10), slice(2, 4)), id="single-mid"),
+    Expect(input=(-1, -1), output=(slice(10, 12), slice(4, 5)), id="neg"),
+    Expect(input=(slice(0, 2), 0), output=(slice(0, 10), slice(0, 2)), id="slice-rows"),
+    Expect(input=(2, slice(1, 3)), output=(slice(10, 12), slice(2, 5)), id="slice-cols"),
+    Expect(input=(slice(0, 2), slice(0, 2)), output=(slice(0, 10), slice(0, 4)), id="both-slices"),
+    Expect(input=(slice(None), slice(None)), output=(slice(0, 12), slice(0, 5)), id="full"),
 ]
 
-
-def test_get_block_selection_1d(store: StorePath) -> None:
-    # setup
-    a = np.arange(1050, dtype=int)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    for selection, expected_idx in zip(
-        block_selections_1d, block_selections_1d_array_projection, strict=True
-    ):
-        _test_get_block_selection(a, z, selection, expected_idx)
-
-    bad_selections = block_selections_1d_bad + [
-        z._chunk_grid.get_nchunks() + 1,  # out of bounds
-        -(z._chunk_grid.get_nchunks() + 1),  # out of bounds
-    ]
-
-    for selection_bad in bad_selections:
-        with pytest.raises(IndexError):
-            z.get_block_selection(selection_bad)  # type:ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.blocks[selection_bad]  # type:ignore[index]
-
-
-block_selections_2d: list[BasicSelection] = [
-    # test single item
-    (0, 0),
-    (1, 2),
-    # test wraparound
-    (-1, -1),
-    (-3, -2),
-    # test slice
-    (slice(1), slice(2)),
-    (slice(None, 2), slice(-2, -1)),
-    (slice(2, 3), slice(-2, None)),
-    (slice(-3, -1), slice(-3, -2)),
-    (slice(None), slice(None)),  # Full slice
-]
-
-block_selections_2d_array_projection: list[tuple[slice, slice]] = [
-    # test single item
-    (slice(300), slice(3)),
-    (slice(300, 600), slice(6, 9)),
-    # test wraparound
-    (slice(900, None), slice(9, None)),
-    (slice(300, 600), slice(6, 9)),
-    # test slice
-    (slice(300), slice(6)),
-    (slice(None, 600), slice(6, 9)),
-    (slice(600, 900), slice(6, None)),
-    (slice(300, 900), slice(3, 6)),
-    (slice(None), slice(None)),  # Full slice
+_BLOCK_2D_BAD_CASES: list[ExpectFail[Any]] = [
+    ExpectFail(input=(slice(5, 15), [1, 2, 3]), exception=IndexError, id="slice-with-array"),
+    ExpectFail(input=(Ellipsis, [1, 2, 3]), exception=IndexError, id="ellipsis-with-array"),
+    ExpectFail(input=(slice(15, 20), slice(None)), exception=IndexError, id="out-of-bounds"),
 ]
 
 
-def test_get_block_selection_2d(store: StorePath) -> None:
-    # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+@pytest.mark.parametrize("case", _BLOCK_1D_CASES, ids=lambda c: c.id)
+def test_get_block_selection_1d(store: StorePath, case: Expect[BasicSelection, slice]) -> None:
+    """get_block_selection / .blocks on a 1D array selects whole chunks matching the array slice."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_get_block_selection(a, z, case.input, case.output)
 
-    for selection, expected_idx in zip(
-        block_selections_2d, block_selections_2d_array_projection, strict=True
-    ):
-        _test_get_block_selection(a, z, selection, expected_idx)
 
-    selection = slice(5, 15), [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.get_block_selection(selection)
-    selection = Ellipsis, [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.get_block_selection(selection)
-    selection = slice(15, 20), slice(None)
-    with pytest.raises(IndexError):  # out of bounds
-        z.get_block_selection(selection)
+@pytest.mark.parametrize("case", _BLOCK_1D_BAD_CASES, ids=lambda c: c.id)
+def test_get_block_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """get_block_selection / .blocks on a 1D array rejects invalid block selections with IndexError."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.get_block_selection(case.input)
+    with case.raises():
+        z.blocks[case.input]
+
+
+@pytest.mark.parametrize("case", _BLOCK_2D_CASES, ids=lambda c: c.id)
+def test_get_block_selection_2d(
+    store: StorePath, case: Expect[BasicSelection, tuple[slice, slice]]
+) -> None:
+    """get_block_selection / .blocks on a 2D array selects whole chunk regions matching the array slices."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_get_block_selection(a, z, case.input, case.output)
+
+
+@pytest.mark.parametrize("case", _BLOCK_2D_BAD_CASES, ids=lambda c: c.id)
+def test_get_block_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """get_block_selection on a 2D array rejects invalid or out-of-bounds block selections with IndexError."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.get_block_selection(case.input)
 
 
 def _test_set_block_selection(
@@ -1329,7 +1291,7 @@ def _test_set_block_selection(
     a: npt.NDArray[Any],
     z: zarr.Array,
     selection: BasicSelection,
-    expected_idx: slice,
+    expected_idx: slice | tuple[slice, ...],
 ) -> None:
     for value in 42, v[expected_idx], v[expected_idx].tolist():
         # setup expectation
@@ -1345,44 +1307,44 @@ def _test_set_block_selection(
         assert_array_equal(a, z[:])
 
 
-def test_set_block_selection_1d(store: StorePath) -> None:
-    # setup
-    v = np.arange(1050, dtype=int)
-    a = np.empty(v.shape, dtype=v.dtype)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
-
-    for selection, expected_idx in zip(
-        block_selections_1d, block_selections_1d_array_projection, strict=True
-    ):
-        _test_set_block_selection(v, a, z, selection, expected_idx)
-
-    for selection_bad in block_selections_1d_bad:
-        with pytest.raises(IndexError):
-            z.set_block_selection(selection_bad, 42)  # type:ignore[arg-type]
-        with pytest.raises(IndexError):
-            z.blocks[selection_bad] = 42  # type:ignore[index]
+@pytest.mark.parametrize("case", _BLOCK_1D_CASES, ids=lambda c: c.id)
+def test_set_block_selection_1d(store: StorePath, case: Expect[BasicSelection, slice]) -> None:
+    """set_block_selection / .blocks assignment on a 1D array round-trips through numpy for each block selection."""
+    v = np.arange(30, dtype=int)
+    a = np.empty_like(v)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    _test_set_block_selection(v, a, z, case.input, case.output)
 
 
-def test_set_block_selection_2d(store: StorePath) -> None:
-    # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
-    a = np.empty(v.shape, dtype=v.dtype)
-    z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
+@pytest.mark.parametrize("case", _BLOCK_1D_BAD_CASES, ids=lambda c: c.id)
+def test_set_block_selection_1d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """set_block_selection / .blocks assignment on a 1D array rejects invalid block selections with IndexError."""
+    a = np.arange(30, dtype=int)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    with case.raises():
+        z.set_block_selection(case.input, 42)
+    with case.raises():
+        z.blocks[case.input] = 42
 
-    for selection, expected_idx in zip(
-        block_selections_2d, block_selections_2d_array_projection, strict=True
-    ):
-        _test_set_block_selection(v, a, z, selection, expected_idx)
 
-    selection = slice(5, 15), [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.set_block_selection(selection, 42)
-    selection = Ellipsis, [1, 2, 3]
-    with pytest.raises(IndexError):
-        z.set_block_selection(selection, 42)
-    selection = slice(15, 20), slice(None)
-    with pytest.raises(IndexError):  # out of bounds
-        z.set_block_selection(selection, 42)
+@pytest.mark.parametrize("case", _BLOCK_2D_CASES, ids=lambda c: c.id)
+def test_set_block_selection_2d(
+    store: StorePath, case: Expect[BasicSelection, tuple[slice, slice]]
+) -> None:
+    """set_block_selection / .blocks assignment on a 2D array round-trips through numpy for each block selection."""
+    v = np.arange(60, dtype=int).reshape(12, 5)
+    a = np.empty_like(v)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    _test_set_block_selection(v, a, z, case.input, case.output)
+
+
+@pytest.mark.parametrize("case", _BLOCK_2D_BAD_CASES, ids=lambda c: c.id)
+def test_set_block_selection_2d_raises(store: StorePath, case: ExpectFail[Any]) -> None:
+    """set_block_selection on a 2D array rejects invalid or out-of-bounds block selections with IndexError."""
+    a = np.arange(60, dtype=int).reshape(12, 5)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
+    with case.raises():
+        z.set_block_selection(case.input, 42)
 
 
 def _test_get_mask_selection(a: npt.NDArray[Any], z: Array, selection: npt.NDArray) -> None:
