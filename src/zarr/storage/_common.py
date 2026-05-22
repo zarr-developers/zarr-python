@@ -12,6 +12,7 @@ from zarr.abc.store import (
     SupportsGetSync,
     SupportsSetSync,
 )
+from zarr.core._json import get_json
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -34,6 +35,7 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import JSON
 
 
 class StorePath:
@@ -160,6 +162,23 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_json(self, *, byte_range: ByteRequest | None = None) -> JSON | None:
+        """
+        Read and parse the JSON document at this path, or None if it is absent.
+
+        Parameters
+        ----------
+        byte_range : ByteRequest, optional
+            If given, read only this portion of the value. Note that a partial
+            read of a JSON document may not be valid JSON.
+
+        Returns
+        -------
+        JSON or None
+            The parsed JSON value, or None if this path does not exist.
+        """
+        return await get_json(self.store, self.path, byte_range=byte_range)
 
     async def set(self, value: Buffer) -> None:
         """
