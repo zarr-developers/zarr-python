@@ -1,4 +1,3 @@
-import re
 from typing import Any
 
 import numpy as np
@@ -162,6 +161,7 @@ def test_chunk_layout_nested() -> None:
             exception=TypeError,
             id="rle-single-dim",
             msg="non-integer element(s) ([3, 3],) at indices (0,)",
+            escape=True,
         ),
         # Multiple non-int elements: all offending indices reported.
         ExpectFail(
@@ -169,6 +169,7 @@ def test_chunk_layout_nested() -> None:
             exception=TypeError,
             id="multiple-non-ints",
             msg="non-integer element(s) ([2, 2], [3]) at indices (1, 3)",
+            escape=True,
         ),
         # Strings are non-integers and should be reported the same way.
         ExpectFail(
@@ -176,6 +177,7 @@ def test_chunk_layout_nested() -> None:
             exception=TypeError,
             id="string-element",
             msg="non-integer element(s) ('3',) at indices (1,)",
+            escape=True,
         ),
     ],
     ids=lambda c: c.id,
@@ -183,7 +185,7 @@ def test_chunk_layout_nested() -> None:
 def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
     """Invalid 1D chunk specifications are rejected with informative error messages."""
     chunks, span = case.input
-    with pytest.raises(case.exception, match=re.escape(case.msg)):
+    with case.raises():
         normalize_chunks_1d(chunks, span=span)
 
 
@@ -217,6 +219,7 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
             exception=TypeError,
             id="rle-inner-dim",
             msg="non-integer element(s) ([3, 3],) at indices (0,)",
+            escape=True,
         ),
     ],
     ids=lambda c: c.id,
@@ -224,7 +227,7 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]]) -> None:
     """Invalid N-D chunk specifications are rejected with informative error messages."""
     chunks, shape = case.input
-    with pytest.raises(case.exception, match=re.escape(case.msg)):
+    with case.raises():
         normalize_chunks_nd(chunks, shape)
 
 

@@ -661,7 +661,7 @@ def test_get_orthogonal_selection_1d_bool_raises(store: StorePath, case: ExpectF
     """oindex rejects masks of the wrong length or dimensionality with IndexError."""
     a = np.arange(30, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         z.oindex[case.input]
 
 

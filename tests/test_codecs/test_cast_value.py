@@ -154,7 +154,7 @@ def test_construction_rejects_invalid_target_dtype() -> None:
 )
 def test_validation_rejects_invalid(case: ExpectFail[dict[str, Any]]) -> None:
     """Invalid dtype or out_of_range combinations are rejected at array creation."""
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),
@@ -410,7 +410,7 @@ def test_scalar_map_validation_rejects_invalid(case: ExpectFail[dict[str, Any]])
     """Invalid scalar_map entries are rejected at array creation."""
     import zarr
 
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),

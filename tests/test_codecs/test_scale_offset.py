@@ -100,7 +100,7 @@ def test_serialization_roundtrip() -> None:
 )
 def test_construction_rejects_non_numeric(case: ExpectFail[dict[str, Any]]) -> None:
     """Non-numeric offset or scale is rejected at construction time."""
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         ScaleOffset(**case.input)
 
 
@@ -291,7 +291,7 @@ def test_rejects_zero_scale() -> None:
 def test_rejects_unrepresentable_scale_offset(case: ExpectFail[dict[str, Any]]) -> None:
     """Scale/offset values that can't be represented in the array dtype are rejected."""
 
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),
