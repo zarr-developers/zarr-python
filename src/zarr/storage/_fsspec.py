@@ -35,6 +35,21 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
+async def _close_fs(fs: AsyncFileSystem) -> None:
+    """
+    Best-effort async close of an fsspec async filesystem owned by FsspecStore.
+
+    For filesystems that expose ``set_session()`` (e.g. s3fs) the underlying
+    aiohttp ``ClientSession`` is closed explicitly, which prevents
+    "Unclosed client session" ``ResourceWarning``s from aiohttp.  For all
+    other filesystem types the call is a no-op (not every implementation
+    manages an HTTP session directly).
+    """
+    if hasattr(fs, "set_session"):
+        session = await fs.set_session()
+        await session.close()
+
+
 def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     """Convert a sync FSSpec filesystem to an async FFSpec filesystem
 
@@ -129,6 +144,9 @@ class FsspecStore(Store):
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
+        # True only when this store created fs itself (from_url / from_mapper with new instance).
+        # Callers who supply their own fs remain responsible for its lifecycle.
+        self._owns_fs: bool = False
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
@@ -194,13 +212,17 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
-        fs = _make_async(fs_map.fs)
-        return cls(
+        original_fs = fs_map.fs
+        fs = _make_async(original_fs)
+        store = cls(
             fs=fs,
             path=fs_map.root,
             read_only=read_only,
             allowed_exceptions=allowed_exceptions,
         )
+        # _make_async returns a new instance when converting sync→async; own it.
+        store._owns_fs = fs is not original_fs
+        return store
 
     @classmethod
     def from_url(
@@ -242,7 +264,9 @@ class FsspecStore(Store):
         if not fs.async_impl:
             fs = _make_async(fs)
 
-        return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
+        store = cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
+        store._owns_fs = True
+        return store
 
     def with_read_only(self, read_only: bool = False) -> FsspecStore:
         # docstring inherited
@@ -252,6 +276,17 @@ class FsspecStore(Store):
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
         )
+
+    def close(self) -> None:
+        # docstring inherited
+        if self._owns_fs:
+            from zarr.core.sync import sync as zarr_sync
+
+            try:
+                zarr_sync(_close_fs(self.fs))
+            except Exception:
+                pass
+        super().close()
 
     async def clear(self) -> None:
         # docstring inherited
