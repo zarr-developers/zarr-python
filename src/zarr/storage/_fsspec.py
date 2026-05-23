@@ -282,10 +282,8 @@ class FsspecStore(Store):
         if self._owns_fs:
             from zarr.core.sync import sync as zarr_sync
 
-            try:
+            with suppress(Exception):
                 zarr_sync(_close_fs(self.fs))
-            except Exception:
-                pass
         super().close()
 
     async def clear(self) -> None:
