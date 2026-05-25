@@ -673,6 +673,32 @@ def test_pickle() -> None:
     assert pickle.loads(pickle.dumps(codec)) == codec
 
 
+def test_sharding_codec_equality_with_rng() -> None:
+    """Test that two ShardingCodec instances with identical rng are considered equal."""
+    rng = np.random.default_rng(42)
+    codec1 = ShardingCodec(chunk_shape=(8, 8), rng=rng)
+    codec2 = ShardingCodec(chunk_shape=(8, 8), rng=rng)
+    assert codec1 == codec2
+
+    # Two separate generators with the same seed should also be equal
+    rng_a = np.random.default_rng(12345)
+    rng_b = np.random.default_rng(12345)
+    codec_a = ShardingCodec(chunk_shape=(4, 4), rng=rng_a)
+    codec_b = ShardingCodec(chunk_shape=(4, 4), rng=rng_b)
+    assert codec_a == codec_b
+
+    # Different seed => not equal
+    rng_c = np.random.default_rng(99999)
+    codec_c = ShardingCodec(chunk_shape=(4, 4), rng=rng_c)
+    assert codec_a != codec_c
+
+    # None rng should work too
+    codec_none1 = ShardingCodec(chunk_shape=(8, 8), rng=None)
+    codec_none2 = ShardingCodec(chunk_shape=(8, 8), rng=None)
+    assert codec_none1 == codec_none2
+    assert codec_none1 != codec1
+
+
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize(
     "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]

@@ -290,6 +290,20 @@ class _ShardReader(ShardMapping):
         return result
 
 
+def _rng_eq(a: np.random.Generator | None, b: np.random.Generator | None) -> bool:
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return a.bit_generator.state == b.bit_generator.state
+
+
+def _rng_hash(rng: np.random.Generator | None) -> int:
+    if rng is None:
+        return 0
+    return hash(tuple(rng.bit_generator.state["state"]["key"]))
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -374,6 +388,28 @@ class ShardingCodec(
                 "index_location": self.index_location.value,
             },
         }
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ShardingCodec):
+            return NotImplemented
+        return (
+            self.chunk_shape == other.chunk_shape
+            and self.codecs == other.codecs
+            and self.index_codecs == other.index_codecs
+            and self.index_location == other.index_location
+            and self.subchunk_write_order == other.subchunk_write_order
+            and _rng_eq(self.rng, other.rng)
+        )
+
+    def __hash__(self) -> int:
+        return hash((
+            self.chunk_shape,
+            self.codecs,
+            self.index_codecs,
+            self.index_location,
+            self.subchunk_write_order,
+            _rng_hash(self.rng),
+        ))
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
