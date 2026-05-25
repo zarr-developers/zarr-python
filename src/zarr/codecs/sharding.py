@@ -94,6 +94,16 @@ def parse_index_location(data: object) -> ShardingCodecIndexLocation:
     return parse_enum(data, ShardingCodecIndexLocation)
 
 
+def _rng_state(rng: np.random.Generator | None) -> Mapping[str, Any] | None:
+    """Return a value-comparable snapshot of a Generator, or None.
+
+    numpy Generators have no value equality, so two Generators seeded identically are not
+    `==`. Their `bit_generator.state` is a plain dict that does compare by value, which lets
+    us compare codecs by configured seed rather than object identity.
+    """
+    return None if rng is None else rng.bit_generator.state
+
+
 @dataclass(frozen=True)
 class _ShardingByteGetter(ByteGetter):
     shard_dict: ShardMapping
@@ -340,7 +350,13 @@ class ShardingCodec(
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
-        return {"rng": self.rng, **self.to_dict()}
+        # `subchunk_write_order` and `rng` are not part of the codec metadata (`to_dict`),
+        # so they must be carried explicitly to survive a pickle round-trip.
+        return {
+            "rng": self.rng,
+            "subchunk_write_order": self.subchunk_write_order,
+            **self.to_dict(),
+        }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
@@ -349,11 +365,40 @@ class ShardingCodec(
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
         object.__setattr__(self, "rng", state["rng"])
+        object.__setattr__(self, "subchunk_write_order", state["subchunk_write_order"])
 
         # Use instance-local lru_cache to avoid memory leaks
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+
+    def __eq__(self, other: object) -> bool:
+        # numpy Generators have no value equality, so the dataclass-generated __eq__ would
+        # compare `rng` by identity. Compare by bit-generator state instead so two codecs
+        # seeded identically are equal. Everything else compares fieldwise as usual.
+        if not isinstance(other, ShardingCodec):
+            return NotImplemented
+        return (
+            self.chunk_shape == other.chunk_shape
+            and self.codecs == other.codecs
+            and self.index_codecs == other.index_codecs
+            and self.index_location == other.index_location
+            and self.subchunk_write_order == other.subchunk_write_order
+            and _rng_state(self.rng) == _rng_state(other.rng)
+        )
+
+    def __hash__(self) -> int:
+        # `rng` is excluded — its state is not hashable, and omitting it is sound since
+        # equal objects must only agree on the *fields hashed*, not all fields.
+        return hash(
+            (
+                self.chunk_shape,
+                self.codecs,
+                self.index_codecs,
+                self.index_location,
+                self.subchunk_write_order,
+            )
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:

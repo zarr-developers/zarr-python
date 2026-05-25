@@ -918,6 +918,67 @@ async def test_unordered_can_be_seeded() -> None:
 
 
 @pytest.mark.parametrize(
+    ("left", "right", "expected_equal"),
+    [
+        pytest.param(
+            ShardingCodec(chunk_shape=(4, 4), subchunk_write_order="lexicographic"),
+            ShardingCodec(chunk_shape=(4, 4), subchunk_write_order="lexicographic"),
+            True,
+            id="same-order",
+        ),
+        pytest.param(
+            ShardingCodec(chunk_shape=(4, 4), subchunk_write_order="morton"),
+            ShardingCodec(chunk_shape=(4, 4), subchunk_write_order="lexicographic"),
+            False,
+            id="different-order",
+        ),
+        pytest.param(
+            ShardingCodec(chunk_shape=(4, 4), rng=np.random.default_rng(seed=0)),
+            ShardingCodec(chunk_shape=(4, 4), rng=np.random.default_rng(seed=0)),
+            True,
+            id="same-rng-seed",
+        ),
+        pytest.param(
+            ShardingCodec(chunk_shape=(4, 4), rng=np.random.default_rng(seed=0)),
+            ShardingCodec(chunk_shape=(4, 4), rng=np.random.default_rng(seed=1)),
+            False,
+            id="different-rng-seed",
+        ),
+        pytest.param(
+            ShardingCodec(chunk_shape=(4, 4), rng=np.random.default_rng(seed=0)),
+            ShardingCodec(chunk_shape=(4, 4)),
+            False,
+            id="rng-vs-no-rng",
+        ),
+    ],
+)
+def test_eq(left: ShardingCodec, right: ShardingCodec, expected_equal: bool) -> None:
+    """Equality includes ``subchunk_write_order`` and compares ``rng`` by seed state
+    (numpy Generators have no value equality of their own, so identically-seeded
+    Generators must still produce equal codecs)."""
+    assert (left == right) is expected_equal
+
+
+def test_pickle_preserves_subchunk_write_order() -> None:
+    """``subchunk_write_order`` must survive a pickle round-trip rather than reverting
+    to the default (it is not stored in the codec metadata)."""
+    codec = ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic")
+    restored = pickle.loads(pickle.dumps(codec))
+    assert restored.subchunk_write_order == "lexicographic"
+    assert restored == codec
+
+
+def test_pickle_preserves_seeded_rng() -> None:
+    """A seeded rng must survive a pickle round-trip so unordered writes are reproducible
+    across process boundaries."""
+    codec = ShardingCodec(
+        chunk_shape=(8, 8), subchunk_write_order="unordered", rng=np.random.default_rng(seed=0)
+    )
+    restored = pickle.loads(pickle.dumps(codec))
+    assert restored == codec
+
+
+@pytest.mark.parametrize(
     "subchunk_write_order",
     get_args(SubchunkWriteOrder),
 )
