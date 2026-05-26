@@ -315,6 +315,11 @@ def arrays(
                 )
                 if shard_shape is not None:
                     subchunk_write_order = draw(subchunk_write_orders)
+                    # Drive sharding through the serializer alone: the array's (outer) chunk
+                    # grid is the shard, and the ShardingCodec splits each shard into inner
+                    # subchunks of `chunks_param`. Passing `shards=` as well would make
+                    # create_array build a second, outer ShardingCodec and nest the two,
+                    # leaving `subchunk_write_order` governing only a 1-element inner grid.
                     serializer = ShardingCodec(
                         subchunk_write_order=subchunk_write_order,
                         codecs=[BytesCodec(), ZstdCodec()],
@@ -322,13 +327,14 @@ def arrays(
                         chunk_shape=chunks_param,
                     )
                     compressors_unsearched = None
+                    chunks_param = shard_shape
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     a = root.create_array(
         array_path,
         shape=nparray.shape,
         chunks=chunks_param,
-        shards=shard_shape,
+        shards=None,
         dtype=nparray.dtype,
         attributes=attributes,
         compressors=compressors_unsearched,  # FIXME
