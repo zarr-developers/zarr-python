@@ -241,7 +241,7 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 
 def save(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -273,7 +273,7 @@ def save(
 
 def save_array(
     store: StoreLike,
-    arr: NDArrayLike,
+    arr: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -319,12 +319,12 @@ def save_array(
 
 def save_group(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayLike,
+    **kwargs: NDArrayLike[tuple[int, ...], np.dtype[Any]],
 ) -> None:
     """Save several NumPy arrays to the local file system.
 

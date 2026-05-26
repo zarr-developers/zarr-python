@@ -141,7 +141,7 @@ class NDBuffer(core.NDBuffer):
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike) -> None:
+    def __init__(self, array: NDArrayLike[tuple[int, ...], np.dtype[Any]]) -> None:
         super().__init__(array)
 
     @classmethod
@@ -155,19 +155,19 @@ class NDBuffer(core.NDBuffer):
     ) -> Self:
         # np.zeros is much faster than np.full, and therefore using it when possible is better.
         if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
-            return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
+            return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))  # type: ignore[arg-type]
         else:
-            return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
+            return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))  # type: ignore[arg-type]
 
     @classmethod
     def empty(
         cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))  # type: ignore[arg-type]
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
-        return cls.from_ndarray_like(np.asanyarray(array_like))
+        return cls.from_ndarray_like(np.asanyarray(array_like))  # type: ignore[arg-type]
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
@@ -183,7 +183,7 @@ class NDBuffer(core.NDBuffer):
         return np.asanyarray(self._data)
 
     def __getitem__(self, key: Any) -> Self:
-        return self.__class__(np.asanyarray(self._data.__getitem__(key)))
+        return self.__class__(np.asanyarray(self._data.__getitem__(key)))  # type: ignore[arg-type]
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(value, NDBuffer):

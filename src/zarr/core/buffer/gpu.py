@@ -143,7 +143,7 @@ class NDBuffer(core.NDBuffer):
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike) -> None:
+    def __init__(self, array: NDArrayLike[tuple[int, ...], np.dtype[Any]]) -> None:
         if cp is None:
             raise ImportError(
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."

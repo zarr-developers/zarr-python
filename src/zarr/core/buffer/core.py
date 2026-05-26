@@ -10,6 +10,7 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    TypeVar,
     cast,
     runtime_checkable,
 )
@@ -26,6 +27,11 @@ if TYPE_CHECKING:
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []
+
+# Type variables for shape and dtype to properly track array transformations
+Shape = TypeVar("Shape", bound=tuple[int, ...])
+DType = TypeVar("DType", bound=np.dtype)
+
 
 
 @runtime_checkable
@@ -47,11 +53,16 @@ class ArrayLike(Protocol):
 
 
 @runtime_checkable
-class NDArrayLike(Protocol):
-    """Protocol for the nd-array-like type that underlie NDBuffer"""
+class NDArrayLike(Protocol[Shape, DType]):
+    """Protocol for the nd-array-like type that underlie NDBuffer
+
+    This protocol is parameterized by Shape and DType to properly track
+    array transformations. Methods that change the shape or dtype return
+    a new NDArrayLike with the updated type parameters.
+    """
 
     @property
-    def dtype(self) -> np.dtype[Any]: ...
+    def dtype(self) -> DType: ...
 
     @property
     def ndim(self) -> int: ...
@@ -60,7 +71,7 @@ class NDArrayLike(Protocol):
     def size(self) -> int: ...
 
     @property
-    def shape(self) -> tuple[int, ...]: ...
+    def shape(self) -> Shape: ...
 
     def __len__(self) -> int: ...
 
@@ -70,29 +81,32 @@ class NDArrayLike(Protocol):
 
     def __array__(self) -> npt.NDArray[Any]: ...
 
+    # Methods that change shape - return new type with new shape
     def reshape(
         self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
-    ) -> Self: ...
+    ) -> NDArrayLike[tuple[int, ...], DType]: ...
 
-    def view(self, dtype: npt.DTypeLike) -> Self: ...
-
+    # Methods that change dtype - return new type with new dtype
+    def view(self, dtype: npt.DTypeLike) -> NDArrayLike[Shape, np.dtype]: ...
     def astype(
         self,
         dtype: npt.DTypeLike,
         order: Literal["K", "A", "C", "F"] = ...,
         *,
         copy: bool = ...,
-    ) -> Self: ...
+    ) -> NDArrayLike[Shape, np.dtype]: ...
 
+    # Methods that don't change shape or dtype
     def fill(self, value: Any) -> None: ...
 
     def copy(self) -> Self: ...
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self: ...
 
-    def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+    # ravel always returns a 1D array
+    def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> NDArrayLike[tuple[int, ...], DType]: ...
 
-    def all(self) -> bool: ...
+    def all(self, /, *, axis: int | tuple[int, ...] | None = ..., out: Any = ..., keepdims: bool = ..., where: Any = ...) -> bool: ...
 
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
@@ -107,7 +121,7 @@ class NDArrayLike(Protocol):
 
 
 ScalarType = int | float | complex | bytes | str | bool | np.generic
-NDArrayLikeOrScalar = ScalarType | NDArrayLike
+NDArrayLikeOrScalar = ScalarType | NDArrayLike[tuple[int, ...], np.dtype[Any]]
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
@@ -335,7 +349,7 @@ class NDBuffer:
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike) -> None:
+    def __init__(self, array: NDArrayLike[tuple[int, ...], np.dtype[Any]]) -> None:
         self._data = array
 
     @classmethod
@@ -376,7 +390,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast("NDArrayLike", None)
+            cast("NDArrayLike[tuple[int, ...], np.dtype[Any]]", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -415,7 +429,7 @@ class NDBuffer:
         return cls.create(shape=shape, dtype=dtype, order=order)
 
     @classmethod
-    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
+    def from_ndarray_like(cls, ndarray_like: NDArrayLike[tuple[int, ...], np.dtype[Any]]) -> Self:
         """Create a new buffer of an ndarray-like object
 
         Parameters
@@ -448,10 +462,10 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast("NDArrayLike", None)
+            cast("NDArrayLike[tuple[int, ...], np.dtype[Any]]", None)
         )  # This line will never be reached, but it satisfies the type checker
 
-    def as_ndarray_like(self) -> NDArrayLike:
+    def as_ndarray_like(self) -> NDArrayLike[tuple[int, ...], np.dtype[Any]]:
         """Returns the underlying array (host or device memory) of this buffer
 
         This will never copy data.

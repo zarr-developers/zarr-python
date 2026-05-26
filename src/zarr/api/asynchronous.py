@@ -417,7 +417,7 @@ async def open_consolidated(
 
 async def save(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -452,7 +452,7 @@ async def save(
 
 async def save_array(
     store: StoreLike,
-    arr: NDArrayLike,
+    arr: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -492,7 +492,7 @@ async def save_array(
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     if np.isscalar(arr):
-        arr = np.array(arr)
+        arr = np.array(arr)  # type: ignore[assignment]
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
@@ -511,12 +511,12 @@ async def save_array(
 
 async def save_group(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayLike[tuple[int, ...], np.dtype[Any]],
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayLike,
+    **kwargs: NDArrayLike[tuple[int, ...], np.dtype[Any]],
 ) -> None:
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.

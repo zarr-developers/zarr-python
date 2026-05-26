@@ -2663,7 +2663,7 @@ class Array(Generic[T_ArrayMetadata]):
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-    ) -> NDArrayLike:
+    ) -> NDArrayLike[tuple[int, ...], np.dtype[Any]]:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
         For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
@@ -2673,7 +2673,7 @@ class Array(Generic[T_ArrayMetadata]):
             raise ValueError(msg)
 
         arr = self[...]
-        arr_np: NDArrayLike = np.array(arr, dtype=dtype)
+        arr_np: NDArrayLike[tuple[int, ...], np.dtype[Any]] = np.array(arr, dtype=dtype)  # type: ignore[assignment]
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
@@ -3693,7 +3693,7 @@ class Array(Generic[T_ArrayMetadata]):
 
         if hasattr(out_array, "shape"):
             # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
+            out_array = np.array(out_array).reshape(indexer.sel_shape)  # type: ignore[assignment]
         return out_array
 
     def set_coordinate_selection(
@@ -4508,7 +4508,7 @@ async def from_array(
             )
         else:
 
-            async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
+            async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike[tuple[int, ...], np.dtype[Any]]) -> None:
                 await result.setitem(chunk_coords, _data[chunk_coords])
 
             # Stream data from the source array to the new array
@@ -5836,7 +5836,7 @@ async def _get_coordinate_selection(
 
     if hasattr(out_array, "shape"):
         # restore shape
-        out_array = np.array(out_array).reshape(indexer.sel_shape)
+        out_array = np.array(out_array).reshape(indexer.sel_shape)  # type: ignore[assignment]
     return out_array
 
 
@@ -5904,7 +5904,7 @@ async def _set_selection(
                 value = value.astype(dtype=dtype, order="A")
             else:
                 value = np.array(value, dtype=dtype, order="A")
-    value = cast("NDArrayLike", value)
+    value = cast("NDArrayLike[tuple[int, ...], np.dtype[Any]]", value)
 
     # We accept any ndarray like object from the user and convert it
     # to an NDBuffer (or subclass). From this point onwards, we only pass
