@@ -537,11 +537,9 @@ class ShardingCodec(
             case "colexicographic":
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
-                subchunk_list = list(np.ndindex(chunks_per_shard))
-                (self.rng if self.rng is not None else np.random.default_rng()).shuffle(
-                    subchunk_list
-                )
-                subchunk_iter = iter(subchunk_list)
+                # "unordered" promises no particular layout; today it happens to be
+                # lexicographic, but callers must not rely on that.
+                subchunk_iter = np.ndindex(chunks_per_shard)
         return subchunk_iter
 
     async def _encode_single(
