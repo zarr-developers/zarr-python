@@ -299,7 +299,6 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
-    rng: np.random.Generator | None
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
     subchunk_write_order: SubchunkWriteOrder = "morton"
 
@@ -311,7 +310,6 @@ class ShardingCodec(
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
         subchunk_write_order: SubchunkWriteOrder = "morton",
-        rng: np.random.Generator | None = None,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
@@ -327,7 +325,6 @@ class ShardingCodec(
         object.__setattr__(self, "index_codecs", index_codecs_parsed)
         object.__setattr__(self, "index_location", index_location_parsed)
         object.__setattr__(self, "subchunk_write_order", subchunk_write_order)
-        object.__setattr__(self, "rng", rng)
 
         # Use instance-local lru_cache to avoid memory leaks
 
@@ -340,7 +337,9 @@ class ShardingCodec(
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
-        return {"rng": self.rng, **self.to_dict()}
+        # `subchunk_write_order` is not part of codec metadata (`to_dict`), so carry it
+        # explicitly to survive a pickle round-trip (otherwise it reverts to `morton`).
+        return {"subchunk_write_order": self.subchunk_write_order, **self.to_dict()}
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
@@ -348,7 +347,7 @@ class ShardingCodec(
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
-        object.__setattr__(self, "rng", state["rng"])
+        object.__setattr__(self, "subchunk_write_order", state["subchunk_write_order"])
 
         # Use instance-local lru_cache to avoid memory leaks
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
