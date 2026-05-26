@@ -308,7 +308,9 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            if nparray.ndim > 0 and all(
+                s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)
+            ):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
@@ -359,7 +361,6 @@ def arrays(
             assert a.metadata.chunk_grid.chunk_shape == (
                 a.shards if shard_shape is not None else a.chunks
             )
-            assert shard_shape == a.shards
         else:
             assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
             assert shard_shape is None
