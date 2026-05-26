@@ -294,7 +294,12 @@ class _ShardReader(ShardMapping):
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):
-    """Sharding codec"""
+    """Sharding codec.
+
+    `subchunk_write_order` controls the physical order of subchunks within a shard. It is a
+    write-time setting only: it is not stored in array metadata, so reopening a sharded array
+    does not recover it (the setting reverts to the `morton` default per codec instance).
+    """
 
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
@@ -539,6 +544,8 @@ class ShardingCodec(
                 # "unordered" promises no particular layout; today it happens to be
                 # lexicographic, but callers must not rely on that.
                 subchunk_iter = np.ndindex(chunks_per_shard)
+            case _:
+                raise ValueError(f"Unrecognized subchunk write order: {subchunk_write_order!r}.")
         return subchunk_iter
 
     async def _encode_single(
