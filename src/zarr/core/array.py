@@ -847,9 +847,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> import zarr.storage
-        >>> store = zarr.storage.MemoryStore()
-        >>> arr = zarr.create_array(store, dtype="i1", shape=(100, 80), chunks=(30, 40))
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -880,8 +878,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Examples
         --------
         >>> import zarr.storage
-        >>> store = zarr.storage.MemoryStore()
-        >>> arr = zarr.create_array(store, dtype="i1", shape=(100, 80), chunks=(30, 40))
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -1463,15 +1460,15 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ...     import zarr.api.asynchronous
         ...     import zarr.storage
         ...
-        ...     store = zarr.storage.MemoryStore()
         ...     async_arr = await zarr.api.asynchronous.create_array(
-        ...          store=store,
+        ...          store={},
         ...          shape=(100,100),
         ...          chunks=(10,10),
         ...          dtype="i4",
         ...          fill_value=0,
         ...     )
-        ...     return await async_arr.getitem((0,1))
+        ...
+        ...     return await async_arr.getitem((0, 1))
 
         >>> import asyncio
         >>> asyncio.run(example())
@@ -2013,8 +2010,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Examples
         --------
         >>> import zarr
-        >>> store = zarr.storage.MemoryStore()
-        >>> arr = zarr.create_array(store, dtype="i1", shape=(100, 80), chunks=(30, 40))
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -2038,8 +2034,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Examples
         --------
         >>> import zarr
-        >>> store = zarr.storage.MemoryStore()
-        >>> arr = zarr.create_array(store, dtype="i1", shape=(100, 80), chunks=(30, 40))
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -2469,7 +2464,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(10,),
             ...     dtype=data.dtype,
@@ -2503,7 +2498,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
             >>> data = np.arange(100, dtype="uint16").reshape(10, 10)
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(10, 10),
             ...     dtype=data.dtype,
@@ -2618,7 +2613,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(100,),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5,),
             ...     dtype="i4",
             ... )
@@ -2640,7 +2635,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
             >>> z = zarr.zeros(
             ...     shape=(5, 5),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5, 5),
             ...     dtype="i4",
             ... )
@@ -2749,7 +2744,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(3,),
             ...     dtype=data.dtype,
@@ -2778,7 +2773,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
             >>> data = np.arange(1000).reshape(10, 10, 10)
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(5, 5, 5),
             ...     dtype=data.dtype,
@@ -2875,7 +2870,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(100,),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(100,),
             ...     dtype="i4",
             ... )
@@ -2897,7 +2892,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
             >>> z = zarr.zeros(
             ...     shape=(5, 5),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5, 5),
             ...     dtype="i4",
             ... )
@@ -2987,7 +2982,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=data.shape,
             ...     dtype=data.dtype,
@@ -3110,7 +3105,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(5, 5),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5, 5),
             ...     dtype="i4",
             ... )
@@ -3233,7 +3228,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=data.shape,
             ...     dtype=data.dtype,
@@ -3315,7 +3310,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(5, 5),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5, 5),
             ...     dtype="i4",
             ... )
@@ -3406,7 +3401,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(3, 3),
             ...     dtype=data.dtype,
@@ -3495,7 +3490,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(5, 5),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(5, 5),
             ...     dtype="i4",
             ... )
@@ -3607,7 +3602,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
             >>> z = zarr.create_array(
-            ...     zarr.storage.MemoryStore(),
+            ...     {},
             ...     shape=data.shape,
             ...     chunks=(3, 3),
             ...     dtype=data.dtype,
@@ -3706,7 +3701,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             >>> import zarr
             >>> z = zarr.zeros(
             ...     shape=(6, 6),
-            ...     store=zarr.storage.MemoryStore(),
+            ...     store={},
             ...     chunk_shape=(2, 2),
             ...     dtype="i4",
             ... )
@@ -4177,40 +4172,31 @@ async def from_array(
 
         >>> import asyncio
         >>> import zarr
-        >>> store = zarr.storage.MemoryStore()
-        >>> store2 = zarr.storage.LocalStore("example.zarr")
+        >>> store = zarr.storage.LocalStore("example.zarr")
         >>> arr = zarr.create_array(
-        ...     store=store,
+        ...     store={},
         ...     shape=(100,100),
         ...     chunks=(10,10),
         ...     dtype="int32",
         ...     fill_value=0,
         ... )
 
-        >>> arr2 = asyncio.run(from_array(store2, data=arr, overwrite=True))
+        >>> arr2 = asyncio.run(from_array(store, data=arr, overwrite=True))
         >>> arr2
         <AsyncArray file://example.zarr shape=(100, 100) dtype=int32>
-        >>> asyncio.run(store2.clear())  # Remove files generated by test
+        >>> asyncio.run(store.clear())  # Remove files generated by test
 
     Create an array from an existing NumPy array:
 
         >>> arr3 = asyncio.run(
-        ...     from_array(
-        ...         zarr.storage.MemoryStore(),
-        ...         data=np.arange(10000, dtype="i4").reshape(100, 100),
-        ...     )
+        ...     from_array({}, data=np.arange(10000, dtype="i4").reshape(100, 100))
         ... )
         >>> arr3
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
 
     Create an array from any array-like object:
 
-        >>> arr4 = asyncio.run(
-        ...     from_array(
-        ...         zarr.storage.MemoryStore(),
-        ...         data=[[1, 2], [3, 4]],
-        ...     )
-        ... )
+        >>> arr4 = asyncio.run(from_array({}, data=[[1, 2], [3, 4]]))
         >>> arr4
         <AsyncArray memory://... shape=(2, 2) dtype=int64>
         >>> asyncio.run(arr4.getitem(...))
@@ -4219,13 +4205,7 @@ async def from_array(
 
     Create an array from an existing Array without copying the data:
 
-        >>> arr5 = asyncio.run(
-        ...     from_array(
-        ...         zarr.storage.MemoryStore(),
-        ...         data=Array(arr4),
-        ...         write_data=False,
-        ...     )
-        ... )
+        >>> arr5 = asyncio.run(from_array({}, data=Array(arr4), write_data=False))
         >>> arr5
         <AsyncArray memory://... shape=(2, 2) dtype=int64>
         >>> asyncio.run(arr5.getitem(...))
@@ -4675,10 +4655,9 @@ async def create_array(
     --------
     >>> import asyncio
     >>> import zarr
-    >>> store = zarr.storage.MemoryStore()
     >>> asyncio.run(
     ...     zarr.api.asynchronous.create_array(
-    ...         store=store,
+    ...         store={},
     ...         shape=(100,100),
     ...         chunks=(10,10),
     ...         dtype="i4",
