@@ -337,7 +337,7 @@ def arrays(
         shards=None,
         dtype=nparray.dtype,
         attributes=attributes,
-        compressors=compressors_unsearched,  # FIXME
+        compressors=compressors_unsearched,
         fill_value=fill_value,
         dimension_names=dim_names,
         serializer=serializer,

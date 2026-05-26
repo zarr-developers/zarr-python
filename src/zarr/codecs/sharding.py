@@ -565,7 +565,9 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-        shard_builder = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
+        # The key order of this intermediate dict is immaterial; the physical layout is
+        # decided later by the `subchunk_write_order` loop in `_encode_shard_dict`.
+        shard_builder = dict.fromkeys(np.ndindex(chunks_per_shard))
 
         await self.codec_pipeline.write(
             [
@@ -608,7 +610,8 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
+            # Intermediate key order is immaterial (see `_encode_single`).
+            shard_dict = dict.fromkeys(np.ndindex(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -618,7 +621,7 @@ class ShardingCodec(
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance
             shard_dict = shard_reader.to_dict_vectorized(
-                np.array(list(self._subchunk_order_iter(chunks_per_shard, "lexicographic")))
+                np.array(list(np.ndindex(chunks_per_shard)))
             )
 
         await self.codec_pipeline.write(
