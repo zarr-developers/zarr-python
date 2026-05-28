@@ -94,8 +94,8 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
         # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
         # a work around will be needed here.
-        with pytest.raises(NotImplementedError):
-            z[0:10, 0:10] = 99
+
+        z[0:10, 0:10] = 99
 
         bar = root.create_group("bar", attributes={"hello": "world"})
         assert "hello" in dict(bar.attrs)

@@ -237,11 +237,19 @@ class ZipStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        # we choose to only raise NotImplementedError here if the key exists
-        # this allows the array/group APIs to avoid the overhead of existence checks
+        # If key is present it is replaced by an empty byte literal as a way of representing it as deleted
         self._check_writable()
         if await self.exists(key):
-            raise NotImplementedError
+            keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
+            keyinfo.compress_type = self.compression
+            if keyinfo.filename[-1] == os.sep:
+                keyinfo.external_attr = 0o40775 << 16  # drwxrwxr-x
+                keyinfo.external_attr |= 0x10
+            else:
+                keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
+
+            with self._lock:
+                self._zf.writestr(keyinfo, b"")
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
