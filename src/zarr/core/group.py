@@ -1891,12 +1891,13 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
+        >>> group = Group.from_store(zarr.storage.MemoryStore())
+        >>> a = group.create_array(name="subarray", dtype="i1", shape=(10,), chunks=(10,))
         >>> del group["subarray"]
         >>> "subarray" in group
         False
         """
+
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
@@ -1907,14 +1908,10 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
-        >>> for name in g1:
-        ...     print(name)
-        baz
-        bar
-        foo
-        quux
+        >>> d1 = g1.create_array('baz', dtype="i1", shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', dtype="i1", shape=(10,), chunks=(10,))
+        >>> sorted(g1)
+        ['bar', 'baz', 'foo', 'quux']
         """
         yield from self.keys()
 
@@ -1937,11 +1934,12 @@ class Group(SyncMixin):
 
         Examples
         --------
+        >>> import numpy as np
         >>> import zarr
         >>> group = zarr.group()
-        >>> group["foo"] = zarr.zeros((10,))
+        >>> group["foo"] = np.array(zarr.zeros((10,)))
         >>> group["foo"]
-        <Array memory://132270269438272/foo shape=(10,) dtype=float64>
+        <Array memory://.../foo shape=(10,) dtype=float64>
         """
         self._sync(self._async_group.setitem(key, value))
 
@@ -1953,10 +1951,15 @@ class Group(SyncMixin):
 
         Examples
         --------
-        >>> import zarr
-        >>> group = zarr.group()
-        >>> await group.update_attributes_async({"foo": "bar"})
-        >>> group.attrs.asdict()
+        >>> async def example():
+        ...     import zarr
+        ...
+        ...     group = zarr.group()
+        ...     new_group = await group.update_attributes_async({"foo": "bar"})
+        ...     return new_group.attrs.asdict()
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         {'foo': 'bar'}
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
@@ -2055,8 +2058,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
-        >>> group.update_attributes({"foo": "bar"})
+        >>> group = zarr.group().update_attributes({"foo": "bar"})
         >>> group.attrs.asdict()
         {'foo': 'bar'}
         """
@@ -2162,19 +2164,17 @@ class Group(SyncMixin):
         >>> import zarr
         >>> from zarr.core.group import GroupMetadata
         >>> root = zarr.create_group(store={})
-        >>> for key, val in root.create_hierarchy({'a/b/c': GroupMetadata()}):
-        ...   print(key, val)
-        ...
-        <AsyncGroup memory://123209880766144/a>
-        <AsyncGroup memory://123209880766144/a/b/c>
-        <AsyncGroup memory://123209880766144/a/b>
+        >>> sorted(root.create_hierarchy({'a/b/c': GroupMetadata()}))
+        [('a', <Group memory://.../a>),
+         ('a/b', <Group memory://.../a/b>),
+         ('a/b/c', <Group memory://.../a/b/c>)]
         """
         for key, node in self._sync_iter(
             self._async_group.create_hierarchy(nodes, overwrite=overwrite)
         ):
             yield (key, _parse_async_node(node))
 
-    def keys(self) -> Generator[str, None]:
+    def keys(self) -> Generator[str]:
         """Return an iterator over group member names.
 
         Examples
@@ -2183,14 +2183,10 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
-        >>> for name in g1.keys():
-        ...     print(name)
-        baz
-        bar
-        foo
-        quux
+        >>> d1 = g1.create_array('baz', dtype="i1", shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', dtype="i1", shape=(10,), chunks=(10,))
+        >>> sorted(g1.keys())
+        ['bar', 'baz', 'foo', 'quux']
         """
         yield from self._sync_iter(self._async_group.keys())
 
@@ -2202,14 +2198,13 @@ class Group(SyncMixin):
         >>> import zarr
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
-        >>> d1 = g1.create_array('bar', shape=(10,), chunks=(10,))
+        >>> d1 = g1.create_array('bar', dtype="i1", shape=(10,), chunks=(10,))
         >>> 'foo' in g1
         True
         >>> 'bar' in g1
         True
         >>> 'baz' in g1
         False
-
         """
         return self._sync(self._async_group.contains(member))
 
@@ -2220,10 +2215,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for name, subgroup in group.groups():
-        ...     print(name, subgroup)
-        subgroup <Group memory://132270269438272/subgroup>
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.groups())
+        [('subgroup', <Group memory://.../subgroup>)]
         """
         for name, async_group in self._sync_iter(self._async_group.groups()):
             yield name, Group(async_group)
@@ -2235,10 +2229,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for name in group.group_keys():
-        ...     print(name)
-        subgroup
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.group_keys())
+        ['subgroup']
         """
         for name, _ in self.groups():
             yield name
@@ -2250,10 +2243,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for subgroup in group.group_values():
-        ...     print(subgroup)
-        <Group memory://132270269438272/subgroup>
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.group_values())
+        [<Group memory://.../subgroup>]
         """
         for _, group in self.groups():
             yield group
@@ -2265,10 +2257,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for name, subarray in group.arrays():
-        ...     print(name, subarray)
-        subarray <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.arrays())
+        [('subarray', <Array memory://.../subarray shape=(10,) dtype=int8>)]
         """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
             yield name, Array(async_array)
@@ -2280,10 +2271,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for name in group.array_keys():
-        ...     print(name)
-        subarray
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.array_keys())
+        ['subarray']
         """
 
         for name, _ in self.arrays():
@@ -2296,10 +2286,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for subarray in group.array_values():
-        ...     print(subarray)
-        <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.array_values())
+        [<Array memory://.../subarray shape=(10,) dtype=int8>]
         """
         for _, array in self.arrays():
             yield array
@@ -2356,7 +2345,7 @@ class Group(SyncMixin):
         >>> group = zarr.group()
         >>> subgroup = group.create_group("subgroup")
         >>> subgroup
-        <Group memory://132270269438272/subgroup>
+        <Group memory://.../subgroup>
         """
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
@@ -2922,21 +2911,24 @@ async def create_hierarchy(
     Yields
     ------
     tuple[str, AsyncGroup | AsyncArray]
-        This function yields (path, node) pairs, in the order the nodes were created.
+        Yields (path, node) pairs, in the order the nodes were created.
 
     Examples
     --------
-    >>> from zarr.api.asynchronous import create_hierarchy
-    >>> from zarr.storage import MemoryStore
-    >>> from zarr.core.group import GroupMetadata
+    >>> async def example():
+    ...     from zarr.api.asynchronous import create_hierarchy
+    ...     from zarr.core.group import GroupMetadata
+    ...     from zarr.storage import MemoryStore
+    ...
+    ...     store = MemoryStore()
+    ...     nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    ...     return sorted([x async for x in create_hierarchy(store=store, nodes=nodes)])
+
     >>> import asyncio
-    >>> store = MemoryStore()
-    >>> nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
-    >>> async def run():
-        ... print(dict([x async for x in create_hierarchy(store=store, nodes=nodes)]))
-    >>> asyncio.run(run())
-    # {'a': <AsyncGroup memory://140345143770112/a>, '': <AsyncGroup memory://140345143770112>}
+    >>> asyncio.run(example())
+    [('', <AsyncGroup memory://...>), ('a', <AsyncGroup memory://.../a>)]
     """
+
     # normalize the keys to be valid paths
     nodes_normed_keys = _normalize_path_keys(nodes)
 
