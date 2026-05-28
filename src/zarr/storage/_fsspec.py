@@ -156,7 +156,7 @@ class FsspecStore(Store):
         # Callers who supply their own fs remain responsible for its lifecycle.
         self._owns_fs: bool = False
 
-        if not self.fs.async_impl:
+        if not self.fs.async_impl or not self.fs.asynchronous:
             raise TypeError("Filesystem needs to support async operations.")
         if not self.fs.asynchronous:
             warnings.warn(
