@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from contextlib import suppress
+from logging import getLogger
 from typing import TYPE_CHECKING, Any
 
 from packaging.version import parse as parse_version
@@ -17,6 +18,8 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
 from zarr.storage._utils import _dereference_path
+
+logger = getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -44,6 +47,11 @@ async def _close_fs(fs: AsyncFileSystem) -> None:
     "Unclosed client session" ``ResourceWarning``s from aiohttp.  For all
     other filesystem types the call is a no-op (not every implementation
     manages an HTTP session directly).
+
+    Note that ``set_session()`` lazily creates a session if none exists yet, so
+    closing a store that never performed any I/O may instantiate a session
+    purely to close it.  This is accepted best-effort behavior; fsspec does not
+    expose a stable, cross-implementation way to test for an existing session.
     """
     if hasattr(fs, "set_session"):
         session = await fs.set_session()
@@ -270,20 +278,32 @@ class FsspecStore(Store):
 
     def with_read_only(self, read_only: bool = False) -> FsspecStore:
         # docstring inherited
-        return type(self)(
+        new_store = type(self)(
             fs=self.fs,
             path=self.path,
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
         )
+        # The derived store shares the same fs. Transfer ownership so the
+        # surviving store closes it, and clear ours to avoid a double-close.
+        # Otherwise the common ``from_url(...).with_read_only()`` chain would
+        # drop the only owner (the unreferenced source) and leak the session.
+        new_store._owns_fs = self._owns_fs
+        self._owns_fs = False
+        return new_store
 
     def close(self) -> None:
         # docstring inherited
         if self._owns_fs:
             from zarr.core.sync import sync as zarr_sync
 
-            with suppress(Exception):
+            # Best-effort: a failure to release the session must not block close(),
+            # but log it so a genuine regression in the close path stays observable
+            # rather than silently reverting to the leaking behavior.
+            try:
                 zarr_sync(_close_fs(self.fs))
+            except Exception:
+                logger.debug("Failed to close owned filesystem %r", self.fs, exc_info=True)
         super().close()
 
     async def clear(self) -> None:

@@ -634,6 +634,31 @@ def test_from_mapper_owns_wrapped_sync_filesystem(tmp_path: pathlib.Path) -> Non
     assert store._owns_fs
 
 
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_with_read_only_transfers_filesystem_ownership(tmp_path: pathlib.Path) -> None:
+    """
+    with_read_only() must transfer fs ownership to the derived store and clear
+    it on the source, so the surviving store closes the shared fs exactly once.
+
+    In the common ``from_url(...).with_read_only()`` chain the source store is
+    immediately unreferenced; if ownership were not transferred, the only owner
+    would be garbage-collected without close() and the session would leak.
+    """
+    source = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    assert source._owns_fs
+
+    derived = source.with_read_only(read_only=True)
+
+    # Ownership moved to the survivor; the source no longer owns it (no double-close).
+    assert derived._owns_fs
+    assert not source._owns_fs
+    # The derived store shares the same underlying fs.
+    assert derived.fs is source.fs
+
+
 @pytest.mark.parametrize("asynchronous", [True, False])
 def test_make_async(asynchronous: bool) -> None:
     s3_filesystem = s3fs.S3FileSystem(
