@@ -40,10 +40,9 @@ def name_example(path: str, session: str) -> str:
     return f"{file}:{session}"
 
 
-def _markers_for(settings: dict[str, str]) -> list[pytest.MarkDecorator]:
-    """Translate a block's markers="a b" attribute into pytest mark decorators."""
-    raw = settings.get("markers", "")
-    return [getattr(pytest.mark, name) for name in raw.split() if name]
+def _marker_names(settings: dict[str, str]) -> list[str]:
+    """Parse a block's markers="a b" attribute into a list of marker names."""
+    return [name for name in settings.get("markers", "").split() if name]
 
 
 def _is_tested(settings: dict[str, str]) -> bool:
@@ -84,8 +83,7 @@ def _session_params(root: Path) -> list[Any]:
         session_name = settings.get("session", "_default")
         key = (str(example.path), session_name)
         sessions[key].append(example)
-        for mark in _markers_for(settings):
-            marks_by_session[key].add(mark.name)
+        marks_by_session[key].update(_marker_names(settings))
 
     params = []
     for key in sorted(sessions.keys(), key=lambda x: (x[0], x[1])):
@@ -162,10 +160,7 @@ def test_no_unvalidated_blocks() -> None:
     mistyped fence (e.g. exec="on") fails here, so a block can never silently opt out of
     validation -- the gap that hid the invalid create_array(mode="w") example in #4016.
 
-    Note on placement: a test="true"-only block (which markdown-exec does not execute)
-    must not sit *before* an exec="true" block of the same page's session, or it disrupts
-    markdown-exec's build-time execution of the later block. Keep test-only blocks last on
-    the page (or on a page where they are the only python block, like gpu.md)."""
+    A separate placement constraint is enforced by test_test_only_blocks_come_last."""
     offenders: list[str] = []
     for example in find_examples(str(DOCS_ROOT)):
         if not _is_published_docs(str(example.path)):
@@ -189,6 +184,44 @@ def test_no_unvalidated_blocks() -> None:
     assert not offenders, (
         'Docs python blocks must be exec="true", test="true", or exec="false" with a '
         "reason:\n" + "\n".join(offenders)
+    )
+
+
+def test_test_only_blocks_come_last() -> None:
+    """A test="true"-only block (one markdown-exec does not execute, because it lacks
+    exec="true") must not precede an exec="true" block in the same file. markdown-exec's
+    SuperFences validator rejects the unexecuted python fence, which disrupts its
+    build-time execution of any later exec="true" block on the page (observed: the
+    quickstart ZipStore example failed with FileNotFoundError, aborting `mkdocs build
+    --strict`). Enforcing the ordering here turns that build-only failure into a fast,
+    local unit failure."""
+    # Collect, per published-docs file, the start lines of test-only and exec blocks.
+    test_only: defaultdict[str, list[int]] = defaultdict(list)
+    exec_lines: defaultdict[str, list[int]] = defaultdict(list)
+    for example in find_examples(str(DOCS_ROOT)):
+        if not _is_published_docs(str(example.path)):
+            continue
+        settings = example.prefix_settings()
+        path = str(example.path)
+        if settings.get("exec") == "true":
+            exec_lines[path].append(example.start_line)
+        elif settings.get("test") == "true":
+            test_only[path].append(example.start_line)
+
+    offenders: list[str] = []
+    for path, only_lines in test_only.items():
+        rel = Path(path).relative_to(DOCS_ROOT)
+        last_exec = max(exec_lines.get(path, [0]))
+        offenders.extend(
+            f'{rel}:{line} (test="true" block precedes an exec="true" block at line {last_exec})'
+            for line in only_lines
+            if line < last_exec
+        )
+
+    assert not offenders, (
+        'A test="true"-only block must come after every exec="true" block in the same '
+        "file (markdown-exec executes the later block at build time and a preceding "
+        "unexecuted python fence breaks it):\n" + "\n".join(offenders)
     )
 
 
