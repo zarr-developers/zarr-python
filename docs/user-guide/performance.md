@@ -260,7 +260,7 @@ For example, if you're running Dask with 10 threads and Zarr's default concurren
 
 **Recommendation**: When using Dask with many threads, configure Zarr's concurrency settings:
 
-```python
+```python exec="false" reason="requires dask, which is not in the docs test environment"
 import zarr
 import dask.array as da
 
