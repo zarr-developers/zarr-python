@@ -619,7 +619,7 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
     Because the feature is still stabilizing, it is disabled by default and
     must be explicitly enabled:
 
-    ```python
+    ```python exec="true" session="arrays-rectilinear"
     import zarr
     zarr.config.set({"array.rectilinear_chunks": True})
     ```
