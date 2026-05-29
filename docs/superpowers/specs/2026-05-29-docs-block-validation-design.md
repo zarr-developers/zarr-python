@@ -100,13 +100,54 @@ marker-bound execution look hard:
 - **`tests/test_docs.py` at test time** — the validation. This is pytest, and this is
   where markers live, where infra fixtures bind, and where env-gating happens.
 
+## Two flags: `exec` (render output) vs `test` (validate)
+
+A code block can be *run* for two unrelated reasons, and conflating them breaks the
+build. They are separate fence attributes:
+
+- **`exec="true"`** — markdown-exec executes the block **at docs-build time to render its
+  output** into the published page. This is markdown-exec's own attribute (it hard-codes
+  the name `exec`, see `markdown_exec/_internal/main.py`), so we cannot rename it. Read it
+  as *"execute to render output."*
+- **`test="true"`** — **our** `tests/test_docs.py` harness executes the block **as a
+  validation test**. markdown-exec does not recognize `test=` and ignores it.
+
+Why two: a block that needs special infra to run (GPU/cupy, or S3) must be **validated in
+tests** but must **not run at build** — build runners have no GPU and no moto server, so
+an `exec="true"` GPU block makes `mkdocs build --strict` abort (`ModuleNotFoundError:
+cupy`). Separating the flags lets such a block be `test="true"` (tested) without
+`exec="true"` (so it renders as static source at build, never executed there).
+
+**Harness rule:** a block is collected as a test if `exec="true"` **OR** `test="true"`.
+So existing `exec="true"` example blocks stay tested as before (backward-compatible), and
+test-only blocks add `test="true"` without `exec`.
+
+**The combinations:**
+
+| Block | `exec` | `test` | Effect |
+|---|---|---|---|
+| Tutorial examples (quickstart, config, …) | `true` | — | Run at build (render output); also tested. |
+| GPU / S3 examples | — | `true` | Tested (under markers); rendered static at build. |
+| Non-runnable (transcript, include, wrong-import) | `false`+`reason` | — | Neither; explicit reasoned opt-out. |
+
+**Placement constraint (markdown-exec quirk).** markdown-exec's SuperFences validator
+*rejects* a `python` fence that lacks `exec="true"` (returns `False`, so it is not run at
+build). A rejected fence positioned **before** an `exec="true"` block of the same page
+disrupts markdown-exec's build-time execution of that later block — observed concretely: a
+`test="true"` S3 block placed above the quickstart `ZipStore` example made the ZipStore
+block fail at build (`FileNotFoundError`, the zip was never written) and `mkdocs build
+--strict` aborted. Fix: **a `test="true"`-only block must come last on its page** (or be
+the only python block on the page, as on `gpu.md`). The S3 example is therefore placed at
+the end of `quick-start.md`. The guard test docstring records this.
+
 ## Marker-bound execution
 
-A block declares the pytest marker it needs via a **fence attribute**, e.g.:
+A block declares the pytest marker it needs via a **fence attribute**. Marker-bound
+blocks are `test="true"` (validated) but **not** `exec="true"` (not build-run), e.g.:
 
 ````
-```python exec="true" markers="gpu"
-```python exec="true" markers="s3"
+```python test="true" markers="gpu" source="above"
+```python test="true" markers="s3" source="above"
 ````
 
 `group_examples_by_session()` parses `markers=` and emits
@@ -114,11 +155,12 @@ A block declares the pytest marker it needs via a **fence attribute**, e.g.:
 whatever that marker means** — and the two markers mean different things, which is the
 point of unifying the model rather than special-casing each:
 
-- **`gpu` — env-gate.** Default `doctest` env runs `pytest` → the gpu-marked param is
-  **skipped/deselected**, exactly like every other `gpu`-marked test in `tests/`. The
-  `gputest` env runs `pytest -m gpu` → the param **executes** against real cupy. Reuses
-  the existing `gpu` marker (`pyproject.toml` `markers` table) and `pytest -m gpu`
-  selection — no new harness concept.
+- **`gpu` — env-gate.** A registered marker does **not** auto-skip under plain `pytest`
+  (markers only *filter* when you pass `-m`). The repo's convention is
+  `pytest.importorskip("cupy")` in the test body (cf. `tests/conftest.py`), so the harness
+  calls `importorskip("cupy")` for gpu-marked docs cases: in the default `doctest` env the
+  case is **skipped** (no cupy), and `pytest -m gpu` in the `gputest` env runs it on real
+  cupy. The block is `test="true"` (not `exec="true"`), so it is never run at build.
 
 - **`s3` — infra-binding.** A new `s3` marker (must be registered in the `markers`
   table). An autouse-style fixture keyed on the marker stands up the `moto` server and
@@ -135,16 +177,15 @@ hardware env, s3 → fixture), not in the declaration mechanism.
 ## Components & data flow
 
 **`docs/` markdown** — source of truth. Each python block is in one of three declared
-states:
+states (see the two-flags table above):
 
-1. `exec="true"` (optionally `+ markers="<m>"`) — executed as a test.
-2. explicit opt-out marker **with a reason** — deliberately not executed.
+1. `exec="true"` and/or `test="true"` (optionally `+ markers="<m>"`) — validated, by
+   build-render and/or by the test harness.
+2. `exec="false"` with a `reason="..."` — explicit, documented opt-out.
 3. anything else (bare, `exec="on"`, …) — **illegal**, fails the guard.
 
-The exact spelling of the opt-out marker (e.g. `exec="false"` plus a `reason="..."`
-attribute, versus a dedicated sentinel attribute) is an implementation-plan decision.
-Requirement: it must be explicit, greppable, carry a human-readable reason, and be a
-form `markdown-exec` will not execute at build time.
+The opt-out form is `exec="false" reason="..."`: explicit, greppable, carries a
+human-readable reason, and is not executed by markdown-exec at build time.
 
 **`tests/test_docs.py`** — already-parametrized pytest harness. Changes:
 

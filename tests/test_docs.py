@@ -1,8 +1,12 @@
 """
 Tests for executable code blocks in markdown documentation.
 
-This module uses pytest-examples to validate that all Python code examples
-with exec="true" in the documentation execute successfully.
+This module uses pytest-examples to validate Python code examples in the docs. A block is
+validated if it renders output at build (exec="true") or is explicitly marked for testing
+(test="true"); see the two-flags discussion in
+docs/superpowers/specs/2026-05-29-docs-block-validation-design.md. The test_no_unvalidated_blocks
+guard ensures every python block declares one of those, or an explicit exec="false" opt-out
+with a reason, so a block can never silently skip validation.
 """
 
 from __future__ import annotations
@@ -20,25 +24,8 @@ from pytest_examples import CodeExample, EvalExample, find_examples
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-# Find all markdown files with executable code blocks
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
 SOURCES_ROOT = Path(__file__).parent.parent / "src" / "zarr"
-
-
-def find_markdown_files_with_exec() -> list[Path]:
-    """Find all markdown files containing exec="true" code blocks."""
-    markdown_files = []
-
-    for md_file in DOCS_ROOT.rglob("*.md"):
-        try:
-            content = md_file.read_text(encoding="utf-8")
-            if 'exec="true"' in content:
-                markdown_files.append(md_file)
-        except Exception:
-            # Skip files that can't be read
-            continue
-
-    return sorted(markdown_files)
 
 
 def name_example(path: str, session: str) -> str:
@@ -59,15 +46,25 @@ def _markers_for(settings: dict[str, str]) -> list[pytest.MarkDecorator]:
     return [getattr(pytest.mark, name) for name in raw.split() if name]
 
 
+def _is_tested(settings: dict[str, str]) -> bool:
+    """A block is validated by our pytest harness if it is run at build to render output
+    (exec="true") OR explicitly marked for testing (test="true"). The two flags are
+    separate on purpose: exec= drives markdown-exec's build-time rendering, while test=
+    lets a block be validated without being run at build (e.g. gpu/s3 blocks, which the
+    build environment cannot run)."""
+    return settings.get("exec") == "true" or settings.get("test") == "true"
+
+
 def _session_params(root: Path) -> list[Any]:
-    """Group exec="true" examples by (file, session) and emit one pytest.param per
-    session, carrying the union of markers declared by that session's blocks."""
+    """Group tested examples (exec="true" or test="true") by (file, session) and emit one
+    pytest.param per session, carrying the union of markers declared by that session's
+    blocks."""
     sessions: defaultdict[tuple[str, str], list[CodeExample]] = defaultdict(list)
     marks_by_session: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
 
     for example in find_examples(str(root)):
         settings = example.prefix_settings()
-        if settings.get("exec") != "true":
+        if not _is_tested(settings):
             continue
         session_name = settings.get("session", "_default")
         key = (str(example.path), session_name)
@@ -120,11 +117,13 @@ def docs_s3_backend() -> Generator[None, None, None]:
 
 
 def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
-    """A block tagged markers="s3" must surface that marker on its parametrized case,
-    so pytest can gate/bind it (e.g. attach the moto fixture)."""
+    """A test="true" block tagged markers="s3" must surface that marker on its
+    parametrized case, so pytest can gate/bind it (e.g. attach the moto fixture).
+    Uses test="true" (not exec="true") because marker-bound blocks are validated by the
+    harness without being run at build time."""
     md = tmp_path / "ex.md"
     md.write_text(
-        '```python exec="true" session="demo" markers="s3"\nimport zarr\n```\n',
+        '```python test="true" session="demo" markers="s3"\nimport zarr\n```\n',
         encoding="utf-8",
     )
     params = _session_params(md.parent)
@@ -134,11 +133,16 @@ def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
 
 
 def test_no_unvalidated_blocks() -> None:
-    """Every python code block in docs/ must declare its validation state:
-    either exec="true" (it is executed as a test) or exec="false" with a reason
-    (an explicit, documented opt-out). A bare or mistyped fence (e.g. exec="on")
-    fails here, so a block can never silently opt out of validation -- the gap
-    that hid the invalid create_array(mode="w") example in #4016."""
+    """Every python code block in docs/ must declare its validation state: exec="true"
+    (run at build to render output), test="true" (validated by this harness without being
+    run at build), or exec="false" with a reason (explicit, documented opt-out). A bare or
+    mistyped fence (e.g. exec="on") fails here, so a block can never silently opt out of
+    validation -- the gap that hid the invalid create_array(mode="w") example in #4016.
+
+    Note on placement: a test="true"-only block (which markdown-exec does not execute)
+    must not sit *before* an exec="true" block of the same page's session, or it disrupts
+    markdown-exec's build-time execution of the later block. Keep test-only blocks last on
+    the page (or on a page where they are the only python block, like gpu.md)."""
     offenders: list[str] = []
     for example in find_examples(str(DOCS_ROOT)):
         rel = Path(example.path).relative_to(DOCS_ROOT)
@@ -150,15 +154,21 @@ def test_no_unvalidated_blocks() -> None:
         settings = example.prefix_settings()
         exec_val = settings.get("exec")
         loc = f"{rel}:{example.start_line}"
-        if exec_val == "true":
+        # Validated either by build-render (exec="true") or by the test harness
+        # (test="true").
+        if _is_tested(settings):
             continue
+        # Explicit, documented opt-out from execution.
         if exec_val == "false" and settings.get("reason", "").strip():
             continue
-        offenders.append(f"{loc} (exec={exec_val!r}, reason={settings.get('reason')!r})")
+        offenders.append(
+            f"{loc} (exec={exec_val!r}, test={settings.get('test')!r}, "
+            f"reason={settings.get('reason')!r})"
+        )
 
     assert not offenders, (
-        'Docs python blocks must be exec="true" or exec="false" with a reason:\n'
-        + "\n".join(offenders)
+        'Docs python blocks must be exec="true", test="true", or exec="false" with a '
+        "reason:\n" + "\n".join(offenders)
     )
 
 
@@ -170,14 +180,15 @@ def test_documentation_examples(
     request: pytest.FixtureRequest,
 ) -> None:
     """
-    Test that all exec="true" code examples in documentation execute successfully.
+    Test that all validated code examples (exec="true" or test="true") in documentation
+    execute successfully.
 
     This test groups examples by session (file + session name) and runs them
     sequentially in the same execution context, allowing code to build on
     previous examples.
 
     This test uses pytest-examples to:
-    - Find all code examples with exec="true" in markdown files
+    - Find all code examples marked exec="true" or test="true" in markdown files
     - Group them by session
     - Execute them in order within the same context
     - Verify no exceptions are raised
@@ -195,7 +206,7 @@ def test_documentation_examples(
     examples = []
     for example in all_examples:
         settings = example.prefix_settings()
-        if settings.get("exec") != "true":
+        if not _is_tested(settings):
             continue
         if str(example.path) == file_path and settings.get("session", "_default") == session_name:
             examples.append(example)
