@@ -203,6 +203,7 @@ supplied by the `s3` fixture, not by an in-markdown setup block.
 
 ## Upstream
 
-A separate GitHub issue will capture the root-cause framing (silent opt-out hides bugs;
-`mode="w"` and `exec="on"` as two instances) and the Part B guard proposal for community
-discussion, independent of the immediate fix.
+[zarr-developers/zarr-python#4017](https://github.com/zarr-developers/zarr-python/issues/4017)
+captures the root-cause framing (silent opt-out hides bugs; `mode="w"` and `exec="on"` as
+two instances) and the Part B guard proposal for community discussion, independent of the
+immediate fix in #4016.
