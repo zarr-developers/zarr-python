@@ -188,13 +188,25 @@ def test_no_unvalidated_blocks() -> None:
 
 
 def test_test_only_blocks_come_last() -> None:
-    """A test="true"-only block (one markdown-exec does not execute, because it lacks
-    exec="true") must not precede an exec="true" block in the same file. markdown-exec's
-    SuperFences validator rejects the unexecuted python fence, which disrupts its
-    build-time execution of any later exec="true" block on the page (observed: the
-    quickstart ZipStore example failed with FileNotFoundError, aborting `mkdocs build
-    --strict`). Enforcing the ordering here turns that build-only failure into a fast,
-    local unit failure."""
+    """A conservative placement convention: a test="true"-only block must come after every
+    exec="true" block in the same file.
+
+    Mechanism (established by experiment + markdown-exec's SuperFences integration): a
+    python fence that markdown-exec does not execute -- i.e. one lacking exec="true",
+    whether test="true" or exec="false" -- placed before an exec="true" block disrupts
+    markdown-exec's build-time execution of a *later, state-dependent* block. Observed: a
+    non-exec python fence inserted before the quickstart ZipStore write/read pair made the
+    read block fail with FileNotFoundError (the write never took effect), aborting
+    `mkdocs build --strict`. The effect needs a cross-block dependency to surface, so it
+    does not affect the standalone exec="true" blocks in e.g. data_types.md/performance.md
+    that already have exec="false" opt-out blocks above them.
+
+    Because we cannot statically tell which later blocks are state-dependent, this guard
+    enforces the simple, safe convention only for the blocks we author this way
+    (test="true" marker-bound examples like s3/gpu). It is NOT a complete build-hazard
+    check -- the authoritative check is `mkdocs build --strict` (the docs:check CI job),
+    which catches the exec="false" case too. This guard just turns the common test-only
+    case into a fast, local failure."""
     # Collect, per published-docs file, the start lines of test-only and exec blocks.
     test_only: defaultdict[str, list[int]] = defaultdict(list)
     exec_lines: defaultdict[str, list[int]] = defaultdict(list)
@@ -220,8 +232,9 @@ def test_test_only_blocks_come_last() -> None:
 
     assert not offenders, (
         'A test="true"-only block must come after every exec="true" block in the same '
-        "file (markdown-exec executes the later block at build time and a preceding "
-        "unexecuted python fence breaks it):\n" + "\n".join(offenders)
+        'file: a non-executed python fence before an exec="true" block can disrupt '
+        "markdown-exec's build-time execution of a later state-dependent block (see this "
+        "test's docstring):\n" + "\n".join(offenders)
     )
 
 

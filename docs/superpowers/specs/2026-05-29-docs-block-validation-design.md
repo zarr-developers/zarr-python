@@ -130,15 +130,25 @@ test-only blocks add `test="true"` without `exec`.
 | GPU / S3 examples | — | `true` | Tested (under markers); rendered static at build. |
 | Non-runnable (transcript, include, wrong-import) | `false`+`reason` | — | Neither; explicit reasoned opt-out. |
 
-**Placement constraint (markdown-exec quirk).** markdown-exec's SuperFences validator
-*rejects* a `python` fence that lacks `exec="true"` (returns `False`, so it is not run at
-build). A rejected fence positioned **before** an `exec="true"` block of the same page
-disrupts markdown-exec's build-time execution of that later block — observed concretely: a
-`test="true"` S3 block placed above the quickstart `ZipStore` example made the ZipStore
-block fail at build (`FileNotFoundError`, the zip was never written) and `mkdocs build
---strict` aborted. Fix: **a `test="true"`-only block must come last on its page** (or be
-the only python block on the page, as on `gpu.md`). The S3 example is therefore placed at
-the end of `quick-start.md`. The guard test docstring records this.
+**Placement constraint (markdown-exec quirk).** markdown-exec registers a SuperFences
+custom fence for `python`; its validator *rejects* any fence lacking `exec="true"`
+(`exec="false"` and `test="true"` alike — both are "not executed at build"). Established by
+experiment: a rejected python fence positioned **before** an `exec="true"` block disrupts
+markdown-exec's build-time execution of a **later, state-dependent** block (regardless of
+session). Observed concretely: any non-exec python fence inserted before the quickstart
+`ZipStore` write/read pair made the read block fail (`FileNotFoundError` — the write never
+took effect) and `mkdocs build --strict` aborted. The effect only surfaces with a
+cross-block dependency, so it does **not** affect the standalone `exec="true"` blocks in
+`data_types.md`/`performance.md` that already carry `exec="false"` opt-out blocks above
+them.
+
+Because we cannot statically tell which later blocks are state-dependent, the response is
+twofold: (1) **a `test="true"`-only block must come last on its page** (or be the only
+python block, as on `gpu.md`) — a conservative convention enforced by
+`test_test_only_blocks_come_last` for the blocks we author this way; and (2) the
+**authoritative** build-hazard check is `mkdocs build --strict` (the `docs:check` CI job),
+which catches the `exec="false"` case too. The S3 example is placed at the end of
+`quick-start.md` accordingly.
 
 ## Marker-bound execution
 
