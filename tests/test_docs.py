@@ -78,49 +78,40 @@ def _session_params(root: Path) -> list[Any]:
     return params
 
 
-S3_PORT = 5556
-S3_ENDPOINT = f"http://127.0.0.1:{S3_PORT}/"
 S3_BUCKET = "example-bucket"
 
 
 @pytest.fixture
-def docs_s3_backend() -> Generator[None, None, None]:
-    """Stand up a moto mock-S3 server and set a process-wide default endpoint so docs
-    blocks can use a bare s3:// URL with no storage_options (see spike in plan Task 1)."""
-    moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
+def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
+    """Point docs S3 examples at the shared moto server (tests/conftest.py) via a
+    process-wide AWS_ENDPOINT_URL, so a block can use a bare s3:// URL with no
+    storage_options (see spike in the design notes). The server lifecycle belongs to the
+    session-scoped `moto_server` fixture; this fixture only adds the docs-specific
+    endpoint env var and a fresh bucket, and restores both on teardown."""
     s3fs = pytest.importorskip("s3fs")
     botocore = pytest.importorskip("botocore")
     requests = pytest.importorskip("requests")
 
-    # Save every env var we mutate so teardown can restore the prior process state.
-    env_keys = ("AWS_ENDPOINT_URL", "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID")
-    prev_env = {key: os.environ.get(key) for key in env_keys}
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=S3_PORT)
-    server.start()
-    try:
-        os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
-        os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
-        os.environ["AWS_ENDPOINT_URL"] = S3_ENDPOINT
+    prev_endpoint = os.environ.get("AWS_ENDPOINT_URL")
+    os.environ["AWS_ENDPOINT_URL"] = moto_server
 
-        session = botocore.session.Session()
-        client = session.create_client("s3", endpoint_url=S3_ENDPOINT, region_name="us-east-1")
-        client.create_bucket(Bucket=S3_BUCKET)
-        client.close()
-        s3fs.S3FileSystem.clear_instance_cache()
+    session = botocore.session.Session()
+    client = session.create_client("s3", endpoint_url=moto_server, region_name="us-east-1")
+    client.create_bucket(Bucket=S3_BUCKET)
+    client.close()
+    s3fs.S3FileSystem.clear_instance_cache()
+    try:
         yield
     finally:
-        # Cleanup must always run, even if the moto-api reset POST fails: stopping the
-        # server frees the fixed port and restoring the env avoids leaking state (and a
-        # stale AWS_ENDPOINT_URL) into the rest of the session.
+        # Reset moto state and restore AWS_ENDPOINT_URL; the shared server keeps running
+        # (the moto_server fixture stops it at session end).
         try:
-            requests.post(f"{S3_ENDPOINT}moto-api/reset")
+            requests.post(f"{moto_server}moto-api/reset")
         finally:
-            for key, value in prev_env.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-            server.stop()
+            if prev_endpoint is None:
+                os.environ.pop("AWS_ENDPOINT_URL", None)
+            else:
+                os.environ["AWS_ENDPOINT_URL"] = prev_endpoint
 
 
 def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
