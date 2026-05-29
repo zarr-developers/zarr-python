@@ -93,7 +93,9 @@ def docs_s3_backend() -> Generator[None, None, None]:
     botocore = pytest.importorskip("botocore")
     requests = pytest.importorskip("requests")
 
-    prev_endpoint = os.environ.get("AWS_ENDPOINT_URL")
+    # Save every env var we mutate so teardown can restore the prior process state.
+    env_keys = ("AWS_ENDPOINT_URL", "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID")
+    prev_env = {key: os.environ.get(key) for key in env_keys}
     server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=S3_PORT)
     server.start()
     try:
@@ -108,12 +110,18 @@ def docs_s3_backend() -> Generator[None, None, None]:
         s3fs.S3FileSystem.clear_instance_cache()
         yield
     finally:
-        requests.post(f"{S3_ENDPOINT}/moto-api/reset")
-        if prev_endpoint is None:
-            os.environ.pop("AWS_ENDPOINT_URL", None)
-        else:
-            os.environ["AWS_ENDPOINT_URL"] = prev_endpoint
-        server.stop()
+        # Cleanup must always run, even if the moto-api reset POST fails: stopping the
+        # server frees the fixed port and restoring the env avoids leaking state (and a
+        # stale AWS_ENDPOINT_URL) into the rest of the session.
+        try:
+            requests.post(f"{S3_ENDPOINT}moto-api/reset")
+        finally:
+            for key, value in prev_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            server.stop()
 
 
 def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
