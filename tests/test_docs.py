@@ -153,6 +153,9 @@ def test_documentation_examples(
     - Execute them in order within the same context
     - Verify no exceptions are raised
     """
+    if request.node.get_closest_marker("gpu") is not None:
+        pytest.importorskip("cupy")
+
     if request.node.get_closest_marker("s3") is not None:
         request.getfixturevalue("docs_s3_backend")
 
