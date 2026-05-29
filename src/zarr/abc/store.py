@@ -257,12 +257,20 @@ class Store(ABC):
 
         Examples
         --------
-        >>> store = await MemoryStore.open()
-        >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store.get_bytes("data", prototype=default_buffer_prototype())
-        >>> print(data)
+        >>> async def example():
+        ...     from zarr.core.buffer.cpu import Buffer
+        ...     from zarr.storage import MemoryStore
+        ...
+        ...     store = await MemoryStore.open()
+        ...     await store.set("data", Buffer.from_bytes(b"hello world"))
+        ...     # No need to specify prototype for MemoryStore
+        ...     return await store._get_bytes("data")
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         b'hello world'
         """
+
         buffer = await self.get(key, prototype, byte_range)
         if buffer is None:
             raise FileNotFoundError(key)
@@ -310,10 +318,11 @@ class Store(ABC):
 
         Examples
         --------
+        >>> from zarr.core.buffer.cpu import Buffer
+        >>> from zarr.storage import MemoryStore
         >>> store = MemoryStore()
-        >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store.get_bytes_sync("data", prototype=default_buffer_prototype())
-        >>> print(data)
+        >>> store.set_sync("data", Buffer.from_bytes(b"hello world"))
+        >>> store._get_bytes_sync("data")  # No need to specify prototype for MemoryStore
         b'hello world'
         """
 
@@ -359,11 +368,18 @@ class Store(ABC):
 
         Examples
         --------
-        >>> store = await MemoryStore.open()
-        >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store.get_json("zarr.json", prototype=default_buffer_prototype())
-        >>> print(data)
+        >>> async def example():
+        ...     from zarr.core.buffer.cpu import Buffer
+        ...     from zarr.storage import MemoryStore
+        ...
+        ...     store = await MemoryStore.open()
+        ...     metadata = {"zarr_format": 3, "node_type": "array"}
+        ...     await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        ...     # No need to specify prototype for MemoryStore
+        ...     return await store._get_json("zarr.json")
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
@@ -415,11 +431,12 @@ class Store(ABC):
 
         Examples
         --------
+        >>> from zarr.core.buffer.cpu import Buffer
+        >>> from zarr.storage import MemoryStore
         >>> store = MemoryStore()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store.get_json_sync("zarr.json", prototype=default_buffer_prototype())
-        >>> print(data)
+        >>> store.set_sync("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> store._get_json_sync("zarr.json")  # No need to specify prototype for MemoryStore
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
