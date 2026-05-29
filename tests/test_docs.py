@@ -3,8 +3,9 @@ Tests for executable code blocks in markdown documentation.
 
 This module uses pytest-examples to validate Python code examples in the docs. A block is
 validated if it renders output at build (exec="true") or is explicitly marked for testing
-(test="true"); see the two-flags discussion in
-docs/superpowers/specs/2026-05-29-docs-block-validation-design.md. The test_no_unvalidated_blocks
+(test="true"). The two flags are separate on purpose: exec= drives markdown-exec's
+build-time rendering, while test= lets a block be validated without being run at build
+(e.g. gpu/s3 examples the build environment cannot run). The test_no_unvalidated_blocks
 guard ensures every python block declares one of those, or an explicit exec="false" opt-out
 with a reason, so a block can never silently skip validation.
 """
