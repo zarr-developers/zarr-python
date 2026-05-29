@@ -296,7 +296,7 @@ extra-dependencies = ["pyodide-build"]
 # TODO: Update to a stable Pyodide version when we release it
 setup-xbuildenv = "pyodide xbuildenv install 314.0.0a2"
 run = [
-    "pyodide venv .venv-pyodide",
+    "pyodide venv .venv-pyodide --clear",
     ".venv-pyodide/bin/pip install dist/*.whl",
     ".venv-pyodide/bin/pip install --group test",
     ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks {args:tests}",
