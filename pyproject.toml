@@ -204,6 +204,10 @@ list-env = "pip list"
 template = "test"
 extra-dependencies = [
     "universal_pathlib",
+    # Needed so tests/test_docs.py is collectable under `pytest -m gpu`; otherwise its
+    # module-level importorskip("pytest_examples") skips the whole module and the gpu
+    # docs example is never executed on GPU hardware.
+    "pytest-examples",
 ]
 features = ["gpu"]
 
