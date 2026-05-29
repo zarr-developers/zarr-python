@@ -131,11 +131,13 @@ Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Googl
 using external libraries like [s3fs](https://s3fs.readthedocs.io) or
 [gcsfs](https://gcsfs.readthedocs.io):
 
-```python
+```python exec="true" session="s3demo" markers="s3" source="above"
+import zarr
+import numpy as np
 
-import s3fs
-
-z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4")
+z = zarr.create_array(
+    "s3://example-bucket/foo", shape=(100, 100), chunks=(10, 10), dtype="f4"
+)
 z[:, :] = np.random.random((100, 100))
 ```
 
