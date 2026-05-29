@@ -4,6 +4,7 @@ import os
 import shutil
 import threading
 import time
+import warnings
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -122,7 +123,35 @@ class ZipStore(Store):
         # docstring inherited
         super().close()
         with self._lock:
+            self._dedup_central_directory()
             self._zf.close()
+
+    def _dedup_central_directory(self) -> None:
+        """Remove duplicate entries from the zip central directory.
+
+        When an array is resized or metadata is updated multiple times, ZipStore
+        writes a new entry for the same key each time (ZIP files are append-only).
+        This leaves duplicate filenames in the central directory, which confuses
+        many zip readers and wastes space.  Before closing, we keep only the
+        *last* (most recent) entry for every filename so that the on-disk central
+        directory is clean.
+
+        ``NameToInfo`` is already a ``{filename: latest_ZipInfo}`` mapping because
+        each ``writestr``/``write`` call does ``NameToInfo[name] = zinfo``, so
+        later writes overwrite earlier ones.  We therefore only need to rebuild
+        ``filelist`` from the values of ``NameToInfo``; ``NameToInfo`` itself
+        requires no update.
+
+        The new list is computed before being assigned so that the ZipFile object
+        is never left in an inconsistent state if an exception is raised.
+        """
+        if self._zf.mode not in ("w", "a", "x"):
+            return
+        # namelist() and getinfo() are public API.
+        # dict.fromkeys preserves first-seen order while deduplicating names;
+        # getinfo() returns the latest ZipInfo for each name (NameToInfo[name]).
+        unique_names = dict.fromkeys(self._zf.namelist())
+        self._zf.filelist = [self._zf.getinfo(name) for name in unique_names]
 
     async def clear(self) -> None:
         # docstring inherited
@@ -205,7 +234,12 @@ class ZipStore(Store):
             keyinfo.external_attr |= 0x10  # MS-DOS directory flag
         else:
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
-        self._zf.writestr(keyinfo, value.to_bytes())
+        # ZIP files are append-only; writing an existing key creates a second entry.
+        # We intentionally allow this and remove duplicates in _dedup_central_directory()
+        # when the store is closed.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            self._zf.writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
