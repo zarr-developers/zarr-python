@@ -129,6 +129,20 @@ git commit -m "test: spike s3 default-endpoint mechanism for docs (no storage_op
 Result: <env-var | fsspec-config | fallback-to-storage_options>"
 ```
 
+### RESULT (completed 2026-05-29, commit 460385d)
+
+- **Mechanism A won:** `os.environ["AWS_ENDPOINT_URL"] = ENDPOINT` (+ dummy
+  `AWS_SECRET_ACCESS_KEY`/`AWS_ACCESS_KEY_ID`) makes a bare
+  `create_array("s3://...")` reach moto with no `storage_options`. `clear_instance_cache()`
+  alone sufficed; the `set_session()`/`skip_instance_cache` dance from `test_fsspec.py`
+  was not needed for a single fixture. No event-loop or teardown warnings observed.
+- **PLAN CORRECTION (important):** the `doctest` hatch env does **NOT** install moto.
+  `moto[s3,server]` is only in the `remote-tests` dependency group; the `doctest` env
+  (`pyproject.toml` ~line 277-284) has only `s3fs` + `pytest-examples` as extras. **Task 3
+  MUST add `moto[s3,server]` and `requests` to `[tool.hatch.envs.doctest] extra-dependencies`**,
+  or any moto-backed doctest will silently `importorskip`-skip — defeating the purpose.
+  Task 4's verification must assert the S3 case **runs**, not skips.
+
 ---
 
 ## Task 2: Register the `s3` pytest marker
@@ -484,10 +498,23 @@ Change the fence from ```` ```python ```` to:
 
 (Body unchanged: `import cupy as cp`, `zarr.config.enable_gpu()`, `create_array("memory://gpu-demo", ...)`, etc.)
 
+> **PLAN CORRECTION (found during execution, commit 010d99a):** a registered marker
+> does NOT auto-skip a test under plain `pytest` — markers only *filter* when you pass
+> `-m`. Without a guard, the gpu block runs and FAILS with `ModuleNotFoundError: cupy`
+> (cupy is darwin-excluded). The repo's real convention is `pytest.importorskip("cupy")`
+> in the test body (cf. `tests/conftest.py:183`). So Task 7 also adds to
+> `test_documentation_examples` (mirroring the `s3` binding):
+> ```python
+>     if request.node.get_closest_marker("gpu") is not None:
+>         pytest.importorskip("cupy")
+> ```
+> This converts the missing-cupy hard error into a proper SKIP in the default env, while
+> `-m gpu` in the `gputest` env still collects+runs it on real hardware.
+
 - [ ] **Step 2: Confirm it is SKIPPED in the default doctest env (no GPU)**
 
-Run: `hatch run doctest:test "tests/test_docs.py::test_documentation_examples[gpu.md:gpu-demo]" -v`
-Expected: SKIPPED (the `gpu` marker is deselected without `-m gpu`), **not** an error, **not** absent.
+Run: `hatch -e doctest run pytest "tests/test_docs.py::test_documentation_examples[user-guide/gpu.md:gpu-demo]" -v`
+Expected: SKIPPED (via `importorskip("cupy")`), **not** an error, **not** absent.
 
 - [ ] **Step 3: Confirm it is COLLECTED for the gpu selection**
 
