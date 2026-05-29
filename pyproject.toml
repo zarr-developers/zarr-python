@@ -277,9 +277,8 @@ readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
 features = ['remote']
-dependency-groups = ['test']
+dependency-groups = ['remote-tests']
 extra-dependencies = [
-    "s3fs>=2023.10.0",
     "pytest-examples",
 ]
 
