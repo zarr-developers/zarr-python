@@ -12,7 +12,7 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can format the code nicely using markdown, e.g.:
 
-```python
+```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
 import zarr
 g = zarr.group()
 # etc.
@@ -225,10 +225,10 @@ hatch --env docs run serve
 
 #### Adding executable code blocks in the documentation
 
-Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="true"` to a code block header for it to be executed when the docs are built. For example:
 
 ````md
-```python exec="on"
+```python exec="true"
 print("Hello world")
 ```
 ````
