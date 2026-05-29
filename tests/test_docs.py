@@ -55,19 +55,6 @@ def _is_tested(settings: dict[str, str]) -> bool:
     return settings.get("exec") == "true" or settings.get("test") == "true"
 
 
-def _is_published_docs(path: str) -> bool:
-    """Whether a code example belongs to the published documentation. docs/superpowers/
-    holds design-doc caches (plans/specs) that are not in the mkdocs nav; both the test
-    collector and the guard exclude it so they agree on what counts as real docs."""
-    try:
-        rel = Path(path).relative_to(DOCS_ROOT)
-    except ValueError:
-        # Path is outside DOCS_ROOT (e.g. a tmp_path fixture in unit tests); treat it as
-        # in-scope so such tests exercise the normal path.
-        return True
-    return not (rel.parts and rel.parts[0] == "superpowers")
-
-
 def _session_params(root: Path) -> list[Any]:
     """Group tested examples (exec="true" or test="true") by (file, session) and emit one
     pytest.param per session, carrying the union of markers declared by that session's
@@ -76,8 +63,6 @@ def _session_params(root: Path) -> list[Any]:
     marks_by_session: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
 
     for example in find_examples(str(root)):
-        if not _is_published_docs(str(example.path)):
-            continue
         settings = example.prefix_settings()
         if not _is_tested(settings):
             continue
@@ -164,8 +149,6 @@ def test_no_unvalidated_blocks() -> None:
     A separate placement constraint is enforced by test_test_only_blocks_come_last."""
     offenders: list[str] = []
     for example in find_examples(str(DOCS_ROOT)):
-        if not _is_published_docs(str(example.path)):
-            continue
         rel = Path(example.path).relative_to(DOCS_ROOT)
         settings = example.prefix_settings()
         exec_val = settings.get("exec")
@@ -212,8 +195,6 @@ def test_test_only_blocks_come_last() -> None:
     test_only: defaultdict[str, list[int]] = defaultdict(list)
     exec_lines: defaultdict[str, list[int]] = defaultdict(list)
     for example in find_examples(str(DOCS_ROOT)):
-        if not _is_published_docs(str(example.path)):
-            continue
         settings = example.prefix_settings()
         path = str(example.path)
         if settings.get("exec") == "true":
