@@ -30,8 +30,8 @@ with no signal when a block opts out.
 
 | Block | Why bare | Disposition |
 |---|---|---|
-| `docs/quick-start.md:134` (S3) | hits real S3 | **Execute against moto** mock-S3 |
-| `docs/user-guide/gpu.md:19` | needs cupy + GPU | **Execute, gated on `gpu` marker** (runs in `gputest` env) |
+| `docs/quick-start.md:134` (S3) | hits real S3 | **Execute, `markers="s3"`** (moto infra, default doctest env) |
+| `docs/user-guide/gpu.md:19` | needs cupy + GPU | **Execute, `markers="gpu"`** (runs in `gputest` env) |
 | `docs/user-guide/performance.md:207` | left bare | **`exec="true"`** (plain `zarr.config.set`) |
 | `docs/user-guide/performance.md:237` | left bare | **`exec="true"`** |
 | `docs/user-guide/performance.md:263` | left bare | **`exec="true"`** (uses dask + a local array path) |
@@ -55,15 +55,17 @@ Two complementary parts.
 Not one mechanism — a triage. Each block gets the treatment that fits *why* it is not
 executing:
 
-- **Make executable against fakes** — the S3 example. Reuse the repo's existing `moto`
-  mock-S3 pattern from `tests/test_store/test_fsspec.py` so the block runs for real in
-  CI with no real-cloud contact. Execution validates the whole write path, not just the
-  signature; `mode="w"` dies by construction.
+- **Make executable against fakes** — the S3 example, via `markers="s3"`. The marker
+  binds the block to the repo's existing `moto` mock-S3 infra (pattern from
+  `tests/test_store/test_fsspec.py`) so it runs for real in CI with no real-cloud
+  contact. Execution validates the whole write path, not just the signature; `mode="w"`
+  dies by construction. See "Marker-bound execution".
 - **Just turn on** — the config/open blocks (`performance.md` ×3, `arrays.md:622`,
   `cli.md:48`) are plain runnable API calls; flip them to `exec="true"`.
 - **Fix the typo** — `contributing.md:231` `exec="on"` → `exec="true"`.
-- **Execute, env-gated** — the GPU block. It *can* run, but only in the `gputest` env
-  (cupy + GPU hardware), not the default `doctest` env. See "Env-gated execution".
+- **Execute, env-gated** — the GPU block, via `markers="gpu"`. It *can* run, but only in
+  the `gputest` env (cupy + GPU hardware), not the default `doctest` env. See
+  "Marker-bound execution".
 - **Explicit opt-out** — blocks that genuinely cannot run anywhere and are not
   executable Python: REPL transcript, `--8<--` include, intentionally-wrong import,
   pseudocode. These get a *documented, greppable* opt-out marker carrying a reason.
@@ -90,31 +92,45 @@ Therefore everything pytest already provides for gating tests (markers, `-m` sel
 skips) is available; the design uses it rather than inventing harness concepts.
 
 There are two distinct executors of docs blocks, and conflating them is what made
-env-gating look hard:
+marker-bound execution look hard:
 
 - **`markdown-exec` at docs-build time** — runs blocks to render output into the
-  published site. Build runners have no cupy, so a GPU block must render as static
-  source here (no build-time execution).
+  published site. Build runners have no cupy (and the S3 setup is test infra), so a
+  marker-bound block must render as static source here (no build-time execution).
 - **`tests/test_docs.py` at test time** — the validation. This is pytest, and this is
-  where markers live and where env-gating happens.
+  where markers live, where infra fixtures bind, and where env-gating happens.
 
-## Env-gated execution
+## Marker-bound execution
 
 A block declares the pytest marker it needs via a **fence attribute**, e.g.:
 
 ````
 ```python exec="true" markers="gpu"
+```python exec="true" markers="s3"
 ````
 
 `group_examples_by_session()` parses `markers=` and emits
-`pytest.param(session_key, marks=pytest.mark.gpu)`. Then:
+`pytest.param(session_key, marks=pytest.mark.<m>)`. The marker then **binds the case to
+whatever that marker means** — and the two markers mean different things, which is the
+point of unifying the model rather than special-casing each:
 
-- Default `doctest` env runs `pytest` → the gpu-marked param is **skipped/deselected**,
-  exactly like every other `gpu`-marked test in `tests/`.
-- The `gputest` env runs `pytest -m gpu` → the param **executes** against real cupy.
+- **`gpu` — env-gate.** Default `doctest` env runs `pytest` → the gpu-marked param is
+  **skipped/deselected**, exactly like every other `gpu`-marked test in `tests/`. The
+  `gputest` env runs `pytest -m gpu` → the param **executes** against real cupy. Reuses
+  the existing `gpu` marker (`pyproject.toml` `markers` table) and `pytest -m gpu`
+  selection — no new harness concept.
 
-This reuses the existing `gpu` marker (`pyproject.toml`, `markers` table) and the existing
-`pytest -m gpu` selection — no new harness concept.
+- **`s3` — infra-binding.** A new `s3` marker (must be registered in the `markers`
+  table). An autouse-style fixture keyed on the marker stands up the `moto` server and
+  registers a default endpoint, so an `s3`-marked docs case runs against the fake S3
+  with no real-cloud contact. Because the infra is just pip deps already present in the
+  `doctest` env (`s3fs`, `moto[s3,server]`), the case **runs in the default doctest
+  run** — the marker binds infra, it does not gate the case out. The moto/endpoint
+  plumbing lives in named pytest fixtures, not a hidden markdown setup block.
+
+Both blocks therefore follow one rule: *declare the marker; the harness binds the marker
+to the infra/env it needs.* The asymmetry is in what each marker resolves to (gpu →
+hardware env, s3 → fixture), not in the declaration mechanism.
 
 ## Components & data flow
 
@@ -133,39 +149,49 @@ form `markdown-exec` will not execute at build time.
 **`tests/test_docs.py`** — already-parametrized pytest harness. Changes:
 
 - `group_examples_by_session()` parses the `markers=` attribute and emits
-  `pytest.param(..., marks=pytest.mark.<m>)` so env-gating rides existing marker machinery.
+  `pytest.param(..., marks=pytest.mark.<m>)` so marker-binding rides existing marker
+  machinery.
+- A marker-keyed fixture for `s3` that stands up the `moto` server and registers a
+  default endpoint (pattern lifted from `tests/test_store/test_fsspec.py`), applied to
+  `s3`-marked docs cases.
 - New guard test `test_no_unvalidated_blocks` — walks every python block in `docs/`,
   asserts each is `exec="true"` or carries the explicit opt-out marker. Fails on
   bare/typo'd blocks.
 
-**`docs/quick-start.md` S3 session** — a hidden setup block (`exec="true"`, no `source=`,
-matching the existing setup block at `quick-start.md:8`) starts a `moto` server and
-registers a default endpoint so the *visible* `create_array("s3://...")` block runs
-against the fake. Pattern lifted from `tests/test_store/test_fsspec.py`.
+**`pyproject.toml`** — register the new `s3` marker in the `markers` table (alongside
+`gpu`).
+
+**`docs/quick-start.md` S3 block** — gains `markers="s3"`. The visible code stays a clean
+`create_array("s3://...")`; the moto server and default-endpoint registration are
+supplied by the `s3` fixture, not by an in-markdown setup block.
 
 ## Risks & spikes (resolve during implementation; do not guess)
 
 1. **Default S3 endpoint without `storage_options`.** Existing tests always pass
-   `endpoint_url` explicitly (`test_fsspec.py:131`). Confirm a setup block can register
+   `endpoint_url` explicitly (`test_fsspec.py:131`). Confirm the `s3` fixture can register
    a *process-wide* default endpoint (via `fsspec.config` or `AWS_ENDPOINT_URL`) so the
-   visible `create_array("s3://...")` works clean. **Fallback:** show the honest
-   `storage_options={"endpoint_url": ...}` form in the visible block.
+   visible `create_array("s3://...")` works clean with no `storage_options`. **Fallback:**
+   show the honest `storage_options={"endpoint_url": ...}` form in the visible block.
 
 2. **`markdown-exec` + unknown `markers=` attribute.** Confirm the build-time renderer
-   ignores `markers=` (or is told to), and decide how a `gpu` block renders in the
-   published site without cupy (render source only, no build-time execution).
-   **Fallback:** a per-session marker map in `test_docs.py`, keeping markdown untouched.
+   ignores `markers=` (or is told to), and that marker-bound blocks render as static
+   source in the published site (render source only, no build-time execution — the build
+   has neither cupy nor the moto fixture). **Fallback:** a per-session marker map in
+   `test_docs.py`, keeping markdown untouched.
 
-3. **moto teardown in the docs session.** `s3fs`/`aiobotocore` finalizers are known to be
-   noisy at teardown (see the filterwarnings note in `pyproject.toml`). Ensure the docs
-   session's moto server starts/stops cleanly without leaking into other sessions.
+3. **moto teardown / loop affinity in the docs session.** `s3fs`/`aiobotocore` finalizers
+   are noisy at teardown and s3fs instances bind to the event loop they were created on
+   (see the filterwarnings note in `pyproject.toml` and the loop comments in
+   `test_fsspec.py`). Ensure the docs `s3` fixture starts/stops moto cleanly and does not
+   leak across sessions/tests.
 
 ## Testing the change
 
 - Guard test is self-validating: after remediation, the full docs suite passes with zero
   bare/typo'd blocks.
 - Negative check: temporarily introduce a bare block, confirm the guard fails, remove it.
-- S3 block: `hatch run doctest:test` runs it green against moto.
+- S3 block: `hatch run doctest:test` runs it green against moto in the default doctest
+  env (the `s3` marker binds the fixture; it is not gated out).
 - GPU block: `pytest -m gpu` in `gputest` executes it; the default `doctest` run reports
   it **skipped**, not absent.
 
