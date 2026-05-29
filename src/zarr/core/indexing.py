@@ -1584,6 +1584,33 @@ def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]
     return iter(_morton_order_keys(tuple(chunk_shape)))
 
 
+@lru_cache(maxsize=16)
+def _lexicographic_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
+    # Lexicographic (C-order) coordinates, computed vectorized and cached so that
+    # the sharding codec's per-shard chunk grid is not rebuilt on every call.
+    # Equivalent to `np.array(list(np.ndindex(chunk_shape)))` but without the
+    # Python-level iteration over every coordinate.
+    n_dims = len(chunk_shape)
+    if n_dims == 0:
+        # A 0-d shard holds a single chunk addressed by the empty coordinate, so
+        # the coordinate array has one row and zero columns. np.indices(()) cannot
+        # express this, so build it directly. Matches list(np.ndindex(())) == [()].
+        order = np.empty((1, 0), dtype=np.intp)
+    else:
+        order = np.indices(chunk_shape, dtype=np.intp).reshape(n_dims, -1).T
+    order.flags.writeable = False
+    return order
+
+
+@lru_cache(maxsize=16)
+def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
+
+
+def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+    return iter(_lexicographic_order_keys(tuple(chunk_shape)))
+
+
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
 

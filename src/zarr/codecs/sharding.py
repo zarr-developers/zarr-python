@@ -46,8 +46,11 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
+    _lexicographic_order,
+    _lexicographic_order_keys,
     c_order_iter,
     get_indexer,
+    lexicographic_order_iter,
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import (
@@ -266,6 +269,7 @@ class _ShardReader(ShardMapping):
     def to_dict_vectorized(
         self,
         chunk_coords_array: npt.NDArray[np.integer[Any]],
+        chunk_coords_keys: tuple[tuple[int, ...], ...],
     ) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
 
@@ -273,6 +277,11 @@ class _ShardReader(ShardMapping):
         ----------
         chunk_coords_array : ndarray of shape (n_chunks, n_dims)
             Array of chunk coordinates for vectorized index lookup.
+        chunk_coords_keys : tuple of coordinate tuples
+            The same coordinates as `chunk_coords_array`, in the same order, as
+            plain tuples for use as dict keys. Passed in (rather than derived
+            row-by-row from the array) so the cached value can be reused instead
+            of rebuilding 35k tuples on every write.
 
         Returns
         -------
@@ -281,11 +290,11 @@ class _ShardReader(ShardMapping):
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_array):
+        for i, coords in enumerate(chunk_coords_keys):
             if valid[i]:
-                result[tuple(coords.ravel())] = self.buf[int(starts[i]) : int(ends[i])]
+                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
             else:
-                result[tuple(coords.ravel())] = None
+                result[coords] = None
 
         return result
 
@@ -533,7 +542,7 @@ class ShardingCodec(
             case "morton":
                 subchunk_iter = morton_order_iter(chunks_per_shard)
             case "lexicographic":
-                subchunk_iter = np.ndindex(chunks_per_shard)
+                subchunk_iter = lexicographic_order_iter(chunks_per_shard)
             case "colexicographic":
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
@@ -612,9 +621,12 @@ class ShardingCodec(
                 chunks_per_shard=chunks_per_shard,
             )
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
-            # Use vectorized lookup for better performance
+            # Use vectorized lookup for better performance. The lexicographic
+            # coordinate array and keys are cached, so neither is rebuilt on
+            # every write.
             shard_dict = shard_reader.to_dict_vectorized(
-                np.array(list(self._subchunk_order_iter(chunks_per_shard, "lexicographic")))
+                _lexicographic_order(chunks_per_shard),
+                _lexicographic_order_keys(chunks_per_shard),
             )
 
         await self.codec_pipeline.write(
