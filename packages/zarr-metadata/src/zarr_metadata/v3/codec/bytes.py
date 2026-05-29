@@ -15,7 +15,10 @@ BytesCodecName = Literal["bytes"]
 """Literal type of the `name` field of the `bytes` codec."""
 
 Endian = Literal["little", "big"]
-"""Byte order of multi-byte numeric data."""
+"""Literal type of byte order of multi-byte numeric data."""
+
+ENDIAN: Final = ("little", "big")
+"""Tuple of permitted values for the `endian` field of the `bytes` codec."""
 
 
 class BytesCodecConfiguration(TypedDict):
@@ -29,10 +32,16 @@ class BytesCodecConfiguration(TypedDict):
 
 
 class BytesCodecObject(TypedDict):
-    """`bytes` codec metadata in object form."""
+    """`bytes` codec metadata in object form.
+
+    `configuration` is itself optional — when no configuration fields are
+    set, the entire `configuration` key may be omitted. This matches the
+    bare-string short-hand form (`BytesCodecName`) at the canonical data
+    level; both encodings describe a `bytes` codec with default settings.
+    """
 
     name: BytesCodecName
-    configuration: BytesCodecConfiguration
+    configuration: NotRequired[BytesCodecConfiguration]
 
 
 BytesCodecMetadata = BytesCodecObject | BytesCodecName
@@ -40,11 +49,13 @@ BytesCodecMetadata = BytesCodecObject | BytesCodecName
 
 The configuration has no required keys (`endian` is conditionally required
 at runtime based on data type), so the spec's short-hand-name form is
-permitted in addition to the object form.
+permitted in addition to the object form, and the object form may itself
+omit `configuration` entirely.
 """
 
 __all__ = [
     "BYTES_CODEC_NAME",
+    "ENDIAN",
     "BytesCodecConfiguration",
     "BytesCodecMetadata",
     "BytesCodecName",

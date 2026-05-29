@@ -24,5 +24,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
-      - name: Check changelog entries
+      - name: Check zarr-python changelog entries
         run: uv run --no-sync python ci/check_changelog_entries.py
+
+      - name: Check zarr-metadata changelog entries
+        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-metadata/changes
