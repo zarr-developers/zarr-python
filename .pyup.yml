@@ -1,0 +1,15 @@
+# pyup.io config file
+# see https://pyup.io/docs/configuration/ for all available options
+
+schedule: every month
+
+requirements:
+  - requirements_dev_minimal.txt:
+      pin: True
+      update: all
+  - requirements_dev_numpy.txt:
+      pin: True
+      update: all
+  - requirements_dev_optional.txt:
+      pin: True
+      update: all

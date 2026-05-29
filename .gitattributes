@@ -1,0 +1,3 @@
+*.py linguist-language=python
+*.ipynb linguist-documentation
+.git_archival.txt export-subst

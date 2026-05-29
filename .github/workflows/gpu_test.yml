@@ -1,0 +1,83 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: GPU Test
+
+on:
+  push:
+    branches: [ main, 3.1.x ]
+  pull_request:
+    branches: [ main, 3.1.x ]
+  workflow_dispatch:
+
+env:
+  LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: py=${{ matrix.python-version }}
+    environment:
+      name: codecov-upload
+      deployment: false
+    runs-on: gpu-runner
+    strategy:
+      matrix:
+        python-version: ['3.12']
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
+    # - name: cuda-toolkit
+    #   uses: Jimver/cuda-toolkit@v0.2.16
+    #   id: cuda-toolkit
+    #   with:
+    #     cuda: '12.4.1'
+    - name: Set up CUDA
+      run: |
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo apt-get -y install cuda-toolkit-12-6
+        echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+    - name: GPU check
+      run: |
+        nvidia-smi
+        echo $PATH
+        echo $LD_LIBRARY_PATH
+        nvcc -V
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    - name: Install Hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
+    - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
+      run: |
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
+    - name: Run Tests
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
+      run: |
+        hatch env run --env "$HATCH_ENV" run-coverage
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: gpu
+        verbose: true # optional (default = false)

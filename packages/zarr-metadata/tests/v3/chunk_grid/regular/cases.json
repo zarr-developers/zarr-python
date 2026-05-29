@@ -1,0 +1,14 @@
+{
+  "1d": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [10]}
+  },
+  "2d": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [10, 20]}
+  },
+  "3d": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [5, 10, 15]}
+  }
+}

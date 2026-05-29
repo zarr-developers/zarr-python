@@ -1,0 +1,82 @@
+name: Bug Report
+description: Report incorrect behaviour in the library.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide the following information.
+  - type: input
+    id: Zarr-version
+    attributes:
+      label: Zarr version
+      description: Value of ``zarr.__version__``
+      placeholder: v2.10.2, v2.11.3, v2.12.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Numcodecs-version
+    attributes:
+      label: Numcodecs version
+      description: Value of ``numcodecs.__version__``
+      placeholder: v0.8.1, v0.9.0, v0.10.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Python-version
+    attributes:
+      label: Python Version
+      description: Version of Python interpreter
+      placeholder: 3.10, 3.11, 3.12 etc.
+    validations:
+      required: true
+  - type: input
+    id: OS
+    attributes:
+      label: Operating System
+      description: Operating System
+      placeholder: (Linux/Windows/Mac)
+    validations:
+      required: true
+  - type: input
+    id: installation
+    attributes:
+      label: Installation
+      description: How was Zarr installed?
+      placeholder: e.g., "using pip into virtual environment", or "using conda"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain why the current behavior is a problem, what the expected output/behaviour is, and why the expected output/behaviour is a better solution.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, reproducible code sample. Must list dependencies in [inline script metadata](https://packaging.python.org/en/latest/specifications/inline-script-metadata/#example). When put in a file named `issue.py` calling `uv run issue.py` should show the issue.
+      value: |
+        ```python
+        # /// script
+        # requires-python = ">=3.12"
+        # dependencies = [
+        #   "zarr@git+https://github.com/zarr-developers/zarr-python.git@main",
+        # ]
+        # ///
+        #
+        # This script automatically imports the development branch of zarr to check for issues
+
+        import zarr
+        # your reproducer code
+        # zarr.print_debug_info()
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: additional-output
+    attributes:
+      label: Additional output
+      description: If you think it might be relevant, please provide the output from ``pip freeze`` or ``conda env export`` depending on which was used to install Zarr.

@@ -1,0 +1,16 @@
+[zarr.codecs]
+test = package_with_entrypoint:TestEntrypointCodec
+[zarr.codecs.test]
+another_codec = package_with_entrypoint:TestEntrypointGroup.Codec
+[zarr]
+codec_pipeline = package_with_entrypoint:TestEntrypointCodecPipeline
+ndbuffer = package_with_entrypoint:TestEntrypointNDBuffer
+buffer = package_with_entrypoint:TestEntrypointBuffer
+[zarr.buffer]
+another_buffer = package_with_entrypoint:TestEntrypointGroup.Buffer
+[zarr.ndbuffer]
+another_ndbuffer = package_with_entrypoint:TestEntrypointGroup.NDBuffer
+[zarr.codec_pipeline]
+another_pipeline = package_with_entrypoint:TestEntrypointGroup.Pipeline
+[zarr.data_type]
+new_data_type = package_with_entrypoint:TestDataType
