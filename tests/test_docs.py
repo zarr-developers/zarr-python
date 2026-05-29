@@ -133,6 +133,35 @@ def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
     assert any(m.name == "s3" for m in marks)
 
 
+def test_no_unvalidated_blocks() -> None:
+    """Every python code block in docs/ must declare its validation state:
+    either exec="true" (it is executed as a test) or exec="false" with a reason
+    (an explicit, documented opt-out). A bare or mistyped fence (e.g. exec="on")
+    fails here, so a block can never silently opt out of validation -- the gap
+    that hid the invalid create_array(mode="w") example in #4016."""
+    offenders: list[str] = []
+    for example in find_examples(str(DOCS_ROOT)):
+        rel = Path(example.path).relative_to(DOCS_ROOT)
+        # docs/superpowers/ holds design-doc caches (plans/specs), not published
+        # documentation -- it is not in the mkdocs nav -- so its illustrative
+        # fences are not subject to the execution guard.
+        if rel.parts and rel.parts[0] == "superpowers":
+            continue
+        settings = example.prefix_settings()
+        exec_val = settings.get("exec")
+        loc = f"{rel}:{example.start_line}"
+        if exec_val == "true":
+            continue
+        if exec_val == "false" and settings.get("reason", "").strip():
+            continue
+        offenders.append(f"{loc} (exec={exec_val!r}, reason={settings.get('reason')!r})")
+
+    assert not offenders, (
+        'Docs python blocks must be exec="true" or exec="false" with a reason:\n'
+        + "\n".join(offenders)
+    )
+
+
 # Get all example sessions
 @pytest.mark.parametrize("session_key", _session_params(DOCS_ROOT))
 def test_documentation_examples(
