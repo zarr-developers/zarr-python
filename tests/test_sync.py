@@ -13,6 +13,7 @@ from zarr.core.sync import (
     _get_loop,
     cleanup_resources,
     loop,
+    run,
     sync,
 )
 
@@ -163,3 +164,97 @@ def test_cleanup_resources_idempotent() -> None:
     _get_executor()  # trigger resource creation (iothread, loop, thread-pool)
     cleanup_resources()
     cleanup_resources()
+
+
+# --- public `zarr.run` API ---------------------------------------------------
+# `zarr.run` is the supported public bridge for running async zarr operations
+# from synchronous code. It is a thin wrapper over the internal `sync`; these
+# tests pin the public contract independently of the internal function.
+
+
+def test_run_returns_coroutine_result() -> None:
+    """`zarr.run` returns the value the coroutine resolves to."""
+    foo = AsyncMock(return_value="foo")
+    assert run(foo()) == "foo"
+    foo.assert_awaited_once()
+
+
+def test_run_is_public() -> None:
+    """`run` is exported at the top level and is the same object as the internal one."""
+    assert zarr.run is run
+    assert "run" in zarr.__all__
+
+
+def test_run_propagates_exception() -> None:
+    """An exception raised inside the coroutine propagates to the caller."""
+    foo = AsyncMock(side_effect=ValueError("foo-bar"))
+    with pytest.raises(ValueError, match="foo-bar"):
+        run(foo())
+    foo.assert_awaited_once()
+
+
+def test_run_timeout() -> None:
+    """`zarr.run` raises `TimeoutError` if the coroutine exceeds `timeout`."""
+    duration = 0.02
+
+    async def foo() -> None:
+        await asyncio.sleep(duration)
+
+    with pytest.raises(asyncio.TimeoutError):
+        run(foo(), timeout=duration / 10)
+
+
+@pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
+def test_run_raises_runtimeerror_inside_running_loop() -> None:
+    """Calling `zarr.run` from within a running loop raises `RuntimeError`.
+
+    This mirrors `asyncio.run`'s behavior for the same misuse, and hides the
+    internal `SyncError` from the public surface.
+    """
+
+    def inner() -> str:
+        # plain (not async) on purpose: an un-awaited inner coroutine would be
+        # garbage-collected during a later test and surface as a spurious
+        # "coroutine was never awaited" failure. Mirrors the internal-`sync`
+        # test above.
+        return "inner"
+
+    async def outer() -> str:
+        return run(inner())  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError):
+        run(outer())
+
+
+def test_run_inside_running_loop_does_not_leak_syncerror() -> None:
+    """The internal `SyncError` is not surfaced to callers of `zarr.run`."""
+
+    def inner() -> str:
+        return "inner"
+
+    async def outer() -> str:
+        return run(inner())  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError) as excinfo:
+        run(outer())
+    # SyncError is preserved as the cause but is not the raised type.
+    assert not isinstance(excinfo.value, SyncError)
+    assert isinstance(excinfo.value.__cause__, SyncError)
+
+
+def test_run_composes_with_gather() -> None:
+    """The headline downstream pattern: run several coroutines concurrently.
+
+    The `gather` is constructed inside a coroutine so it binds to zarr's loop
+    rather than the calling thread (which has no running loop).
+    """
+
+    async def double(x: int) -> int:
+        await asyncio.sleep(0)
+        return x * 2
+
+    async def run_all() -> list[int]:
+        return await asyncio.gather(*(double(i) for i in range(5)))
+
+    results = run(run_all())
+    assert results == [0, 2, 4, 6, 8]
