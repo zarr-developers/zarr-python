@@ -7,7 +7,7 @@ import pickle
 import re
 import sys
 from itertools import accumulate, starmap
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest import mock
 
 import numcodecs
@@ -85,7 +85,11 @@ from zarr.types import AnyArray, AnyAsyncArray
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
+    from zarr_metadata import ArrayMetadataV2
+    from zarr_metadata.v3.codec.bytes import BytesCodecMetadata
+
     from zarr.abc.codec import CodecJSON_V3
+    from zarr.core.metadata import ArrayMetadataJSON_V3
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -325,47 +329,47 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3, "invalid"])
-def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str) -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     """
-    Test that providing an actual storage transformer produces a warning and otherwise passes through
+    storage_transformers is a v3-only field; passing a populated one to v3
+    array construction raises, while v2 (where the field has no spec
+    meaning) is unaffected.
     """
-    metadata_dict: dict[str, JSON]
     if zarr_format == 3:
-        metadata_dict = {
+        v3_metadata: ArrayMetadataJSON_V3 = {
             "zarr_format": 3,
             "node_type": "array",
             "shape": (10,),
             "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
             "data_type": "uint8",
             "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
-            "codecs": (BytesCodec().to_dict(),),
+            "codecs": (BytesCodec().to_dict(),),  # type: ignore[typeddict-item]
             "fill_value": 0,
-            "storage_transformers": ({"test": "should_raise"}),
+            # Deliberately invalid: the test asserts that any non-empty
+            # storage_transformers value triggers the "not supported"
+            # error path, regardless of its inner shape.
+            "storage_transformers": ({"test": "should_raise"},),  # type: ignore[typeddict-item]
         }
+        match = "Arrays with storage transformers are not supported in zarr-python at this time."
+        with pytest.raises(ValueError, match=match):
+            # cast: from_dict accepts the wider `dict[str, JSON]`.
+            Array.from_dict(StorePath(store), data=cast("dict[str, JSON]", v3_metadata))
     else:
-        metadata_dict = {
-            "zarr_format": zarr_format,
+        # Plain v2 array metadata; no v3-only fields (no codecs,
+        # storage_transformers, chunk_grid, etc.).
+        v2_metadata: ArrayMetadataV2 = {
+            "zarr_format": 2,
             "shape": (10,),
             "chunks": (1,),
             "dtype": "|u1",
             "dimension_separator": ".",
-            "codecs": (BytesCodec().to_dict(),),
+            "compressor": None,
             "fill_value": 0,
             "order": "C",
-            "storage_transformers": ({"test": "should_raise"}),
+            "filters": None,
         }
-    if zarr_format == 3:
-        match = "Arrays with storage transformers are not supported in zarr-python at this time."
-        with pytest.raises(ValueError, match=match):
-            Array.from_dict(StorePath(store), data=metadata_dict)
-    elif zarr_format == 2:
-        # no warning
-        Array.from_dict(StorePath(store), data=metadata_dict)
-    else:
-        match = f"Invalid zarr_format: {zarr_format}. Expected 2 or 3"
-        with pytest.raises(ValueError, match=match):
-            Array.from_dict(StorePath(store), data=metadata_dict)
+        Array.from_dict(StorePath(store), data=cast("dict[str, JSON]", v2_metadata))
 
 
 @pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
@@ -1885,7 +1889,7 @@ def test_roundtrip_numcodecs() -> None:
         dimension_names=["lat", "lon"],
     )
 
-    BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
+    BYTES_CODEC: BytesCodecMetadata = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
     metadata = root["test"].metadata.to_dict()

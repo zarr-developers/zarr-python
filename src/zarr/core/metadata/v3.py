@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
 
 from typing_extensions import TypedDict
+from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
@@ -139,14 +140,12 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
-class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
-    """
-    This class models allowed extra fields in array metadata.
-    They must have ``must_understand`` set to ``False``, and may contain
-    arbitrary additional JSON data.
-    """
+AllowedExtraField = ExtensionFieldV3
+"""Alias for `zarr_metadata.v3.array.ExtensionFieldV3`.
 
-    must_understand: Literal[False]
+`must_understand` is typed as `bool` to match the spec (extension authors that
+*understand* a field may produce `True`); the runtime guard
+`check_allowed_extra_field` enforces that zarr-python only accepts `False`."""
 
 
 def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
@@ -421,25 +420,13 @@ def parse_chunk_grid(
     raise ValueError(f"Unknown chunk grid name: {name!r}")
 
 
-class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
-    """
-    A typed dictionary model for zarr v3 array metadata.
+ArrayMetadataJSON_V3 = ArrayMetadataV3
+"""Alias for `zarr_metadata.v3.array.ArrayMetadataV3`, the TypedDict modeling
+the v3 array metadata document.
 
-    Extra keys are permitted if they conform to ``AllowedExtraField``
-    (i.e. they are mappings with ``must_understand: false``).
-    """
-
-    zarr_format: Literal[3]
-    node_type: Literal["array"]
-    data_type: str | NamedConfig[str, Mapping[str, JSON]]
-    shape: tuple[int, ...]
-    chunk_grid: str | NamedConfig[str, Mapping[str, JSON]]
-    chunk_key_encoding: str | NamedConfig[str, Mapping[str, JSON]]
-    fill_value: JSON
-    codecs: tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]
-    attributes: NotRequired[Mapping[str, JSON]]
-    storage_transformers: NotRequired[tuple[str | NamedConfig[str, Mapping[str, JSON]], ...]]
-    dimension_names: NotRequired[tuple[str | None, ...]]
+Used throughout zarr-python under this name to avoid visual collision with
+the `ArrayV3Metadata` dataclass — the two differ only in word order. Extra
+keys are permitted on this dict if they conform to `ExtensionFieldV3`."""
 
 
 """
@@ -671,6 +658,12 @@ class ArrayV3Metadata(Metadata):
         )
 
     def to_dict(self) -> dict[str, JSON]:
+        """Serialize as a JSON-shaped dict matching `ArrayMetadataJSON_V3`.
+
+        Return type is `dict[str, JSON]` rather than `ArrayMetadataJSON_V3` so
+        the result composes with other zarr-python metadata serialisation
+        paths that traffic in `dict[str, JSON]` (notably consolidated metadata).
+        """
         out_dict = super().to_dict()
         extra_fields = out_dict.pop("extra_fields")
         out_dict = out_dict | extra_fields  # type: ignore[operator]

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.struct import Struct as StructMetadata
 from zarr.core.dtype import (
     Float16,
     Float64,
@@ -34,20 +37,23 @@ class TestStruct(BaseTestZDType):
         {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None},
         {"name": [["field1", ">i8"], ["field2", ">i4"]], "object_codec_id": None},
     )
-    valid_json_v3 = (
+    # `StructConfiguration.fields` is a `tuple[StructField, ...]` (a JSON array
+    # is a typed fixed-length container), and `Struct.to_json` emits a tuple to
+    # match, so the field entries are written as tuples here.
+    valid_json_v3: ClassVar[tuple[StructMetadata, ...]] = (
         {
             "name": "struct",
             "configuration": {
-                "fields": [
+                "fields": (
                     {"name": "field1", "data_type": "int32"},
                     {"name": "field2", "data_type": "float64"},
-                ]
+                )
             },
         },
         {
             "name": "struct",
             "configuration": {
-                "fields": [
+                "fields": (
                     {
                         "name": "field1",
                         "data_type": {
@@ -62,7 +68,7 @@ class TestStruct(BaseTestZDType):
                             "configuration": {"length_bytes": 32},
                         },
                     },
-                ]
+                )
             },
         },
     )

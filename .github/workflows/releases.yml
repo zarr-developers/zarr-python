@@ -63,9 +63,119 @@ jobs:
           ls
           ls dist
 
+  # ---------------------------------------------------------------------------
+  # Pre-publish gate: confirm zarr-metadata's required floor is on PyPI.
+  #
+  # zarr-python and zarr-metadata co-develop in this monorepo. During local
+  # development zarr-metadata is resolved from packages/zarr-metadata/ via the
+  # uv workspace (see [tool.uv.sources] in pyproject.toml). The wheel we are
+  # about to publish, however, only carries a version-range requirement
+  # (e.g. `zarr-metadata>=0.1.1,<0.2`); end users will resolve that against
+  # PyPI.
+  #
+  # The failure mode this job catches: a zarr-python PR added code that
+  # depends on a zarr-metadata feature that has been merged into
+  # packages/zarr-metadata/ but not yet released to PyPI. CI passed because
+  # the workspace override resolved to the in-tree copy, but a user installing
+  # the resulting zarr-python wheel would get a published zarr-metadata that
+  # lacks the feature, and zarr-python would fail at import or first use.
+  #
+  # The mitigation here is a presence check on PyPI: extract the floor of
+  # zarr-python's zarr-metadata requirement from the wheel's METADATA file,
+  # and refuse to upload if that exact version is not yet on PyPI. This is
+  # analogous to what `cargo publish` does automatically against crates.io,
+  # but expressed as a CI step because twine has no built-in equivalent.
+  #
+  # When you bump zarr-metadata to a new version that zarr-python depends on,
+  # the required release order is:
+  #   1. release zarr-metadata to PyPI;
+  #   2. bump the floor in zarr-python's [project.dependencies];
+  #   3. release zarr-python.
+  # This job will fail at step 3 if step 1 was skipped.
+  # ---------------------------------------------------------------------------
+  verify_pypi_dependency:
+    name: Verify zarr-metadata floor is on PyPI
+    needs: [build_artifacts]
+    runs-on: ubuntu-latest
+    # Run only on actual releases. Pull-request and push-to-main runs go
+    # through CI without this gate, since their wheels are never uploaded.
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: releases
+          path: dist
+
+      - name: Check zarr-metadata floor is published on PyPI
+        run: |
+          # The wheel's METADATA file lives at zarr-*.dist-info/METADATA inside
+          # the wheel. `unzip -p` writes a file's contents to stdout without
+          # extracting; the glob matches whichever dist-info dir is inside.
+          metadata="$(unzip -p dist/zarr-*.whl '*.dist-info/METADATA')"
+
+          # Pick the Requires-Dist line for zarr-metadata. The wheel may have
+          # several Requires-Dist lines for different extras; we want the one
+          # that applies unconditionally (no `; extra == "..."` marker).
+          # Match `Requires-Dist: zarr-metadata` followed by anything that
+          # ends a project name in PEP 508: a version operator (<, >, =, !,
+          # ~), whitespace, `[` (extras), `;` (markers), `(` (legacy
+          # parenthesized version), or end-of-line. The character class
+          # excludes letters/digits/underscore/hyphen, so a hypothetical
+          # `zarr-metadata-ext` dep would not match.
+          req_line="$(printf '%s' "$metadata" \
+            | grep -E '^Requires-Dist: zarr-metadata([^A-Za-z0-9_-]|$)' \
+            | grep -v 'extra ==' \
+            || true)"
+
+          if [ -z "$req_line" ]; then
+            echo "::error::Could not find an unconditional Requires-Dist line for zarr-metadata in the built wheel."
+            echo "Wheel METADATA Requires-Dist lines:"
+            printf '%s' "$metadata" | grep '^Requires-Dist:' || true
+            exit 1
+          fi
+          echo "Requires-Dist line: $req_line"
+
+          # Extract the floor: the version after `>=`. Version specifiers in
+          # PEP 440 are comma-separated (e.g. `>=0.1.1, <0.2`); the floor is
+          # the bound after the first `>=`. `grep -oE '>=[^,]+'` captures
+          # `>=0.1.1` (everything up to the comma), then we strip the
+          # operator and surrounding whitespace.
+          floor="$(printf '%s' "$req_line" \
+            | grep -oE '>=[[:space:]]*[^,]+' \
+            | sed 's/^>=[[:space:]]*//; s/[[:space:]]*$//' \
+            | head -1)"
+
+          if [ -z "$floor" ]; then
+            echo '::error::Could not extract a >= floor from:' "$req_line"
+            echo "zarr-python's zarr-metadata requirement must include a >= bound so this gate has something to check."
+            exit 1
+          fi
+          echo "zarr-metadata floor: $floor"
+
+          # PyPI's JSON API returns 200 if the named version exists and 404
+          # if it doesn't. -s silences progress output; -o /dev/null discards
+          # the body; -w %%{http_code} prints just the status. Any non-200
+          # response means the floor has not been published yet.
+          status="$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://pypi.org/pypi/zarr-metadata/${floor}/json")"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::zarr-metadata ${floor} is not available on PyPI (HTTP ${status})."
+            echo ""
+            echo "The wheel about to be uploaded declares it requires zarr-metadata ${floor} or later,"
+            echo "but no such release exists on PyPI. Publish zarr-metadata ${floor} first, then"
+            echo "re-run this release workflow."
+            exit 1
+          fi
+          echo "OK: zarr-metadata ${floor} is on PyPI; safe to upload zarr-python."
+
   upload_pypi:
     name: Upload to PyPI
-    needs: [build_artifacts, test_dist_pypi]
+    # Depend on the new gate so the upload step does not run if the floor
+    # is missing from PyPI. The gate runs only on releases (see its `if:`
+    # condition); on PR / push runs it is skipped, and skipped jobs in a
+    # `needs:` list are treated as satisfied by GitHub Actions.
+    needs: [build_artifacts, test_dist_pypi, verify_pypi_dependency]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     environment:

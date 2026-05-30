@@ -4,7 +4,7 @@ import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
+from zarr_metadata.v2.array import ArrayMetadataV2 as _ArrayMetadataV2
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_key_encodings import parse_separator
@@ -42,18 +43,10 @@ from zarr.core.common import (
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
-
-class ArrayV2MetadataDict(TypedDict):
-    """
-    A typed dictionary model for Zarr format 2 metadata.
-    """
-
-    zarr_format: Literal[2]
-    attributes: dict[str, JSON]
-
-
 # Union of acceptable types for v2 compressors
 type CompressorLikev2 = dict[str, JSON] | Numcodec | None
+# Re-export the v2 array metadata JSON shape under zarr-python's historical name.
+ArrayV2MetadataDict = _ArrayMetadataV2
 
 
 @dataclass(frozen=True, kw_only=True)
