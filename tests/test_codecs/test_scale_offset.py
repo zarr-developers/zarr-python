@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import zarr
-from tests.test_codecs.conftest import Expect, ExpectErr
+from tests.conftest import Expect, ExpectFail
 from zarr.codecs.scale_offset import (
     ScaleOffset,
     _decode,
@@ -24,42 +24,46 @@ from zarr.storage._memory import MemoryStore
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input=ScaleOffset(), expected={"name": "scale_offset"}),
+        Expect(input=ScaleOffset(), output={"name": "scale_offset"}, id="default"),
         Expect(
             input=ScaleOffset(offset=5),
-            expected={"name": "scale_offset", "configuration": {"offset": 5}},
+            output={"name": "scale_offset", "configuration": {"offset": 5}},
+            id="offset-only",
         ),
         Expect(
             input=ScaleOffset(scale=0.1),
-            expected={"name": "scale_offset", "configuration": {"scale": 0.1}},
+            output={"name": "scale_offset", "configuration": {"scale": 0.1}},
+            id="scale-only",
         ),
         Expect(
             input=ScaleOffset(offset=5, scale=0.1),
-            expected={"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}},
+            output={"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}},
+            id="both",
         ),
     ],
-    ids=["default", "offset-only", "scale-only", "both"],
+    ids=lambda c: c.id,
 )
 def test_to_dict(case: Expect[ScaleOffset, dict[str, Any]]) -> None:
     """to_dict produces the expected JSON structure."""
-    assert case.input.to_dict() == case.expected
+    assert case.input.to_dict() == case.output
 
 
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input={"name": "scale_offset"}, expected=(0, 1)),
+        Expect(input={"name": "scale_offset"}, output=(0, 1), id="no-config"),
         Expect(
             input={"name": "scale_offset", "configuration": {"offset": 3, "scale": 2}},
-            expected=(3, 2),
+            output=(3, 2),
+            id="with-config",
         ),
     ],
-    ids=["no-config", "with-config"],
+    ids=lambda c: c.id,
 )
 def test_from_dict(case: Expect[dict[str, Any], tuple[int | float, int | float]]) -> None:
     """from_dict deserializes configuration with correct values and defaults."""
     codec = ScaleOffset.from_dict(case.input)
-    expected_offset, expected_scale = case.expected
+    expected_offset, expected_scale = case.output
     assert codec.offset == expected_offset
     assert codec.scale == expected_scale
 
@@ -79,38 +83,42 @@ def test_serialization_roundtrip() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(
+        ExpectFail(
             input={"offset": [1, 2]},
+            exception=TypeError,
+            id="list-offset",
             msg="offset must be a number or string",
-            exception_cls=TypeError,
         ),
-        ExpectErr(
-            input={"scale": [1, 2]}, msg="scale must be a number or string", exception_cls=TypeError
+        ExpectFail(
+            input={"scale": [1, 2]},
+            exception=TypeError,
+            id="list-scale",
+            msg="scale must be a number or string",
         ),
     ],
-    ids=["list-offset", "list-scale"],
+    ids=lambda c: c.id,
 )
-def test_construction_rejects_non_numeric(case: ExpectErr[dict[str, Any]]) -> None:
+def test_construction_rejects_non_numeric(case: ExpectFail[dict[str, Any]]) -> None:
     """Non-numeric offset or scale is rejected at construction time."""
-    with pytest.raises(case.exception_cls, match=case.msg):
+    with case.raises():
         ScaleOffset(**case.input)
 
 
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input={"offset": 5, "scale": 2}, expected=(5, 2)),
-        Expect(input={"offset": 0.5, "scale": 0.1}, expected=(0.5, 0.1)),
+        Expect(input={"offset": 5, "scale": 2}, output=(5, 2), id="int"),
+        Expect(input={"offset": 0.5, "scale": 0.1}, output=(0.5, 0.1), id="float"),
     ],
-    ids=["int", "float"],
+    ids=lambda c: c.id,
 )
 def test_construction_accepts_numeric(
     case: Expect[dict[str, Any], tuple[int | float, int | float]],
 ) -> None:
     """Integer and float values are accepted for both parameters."""
     codec = ScaleOffset(**case.input)
-    assert codec.offset == case.expected[0]
-    assert codec.scale == case.expected[1]
+    assert codec.offset == case.output[0]
+    assert codec.scale == case.output[1]
 
 
 # ---------------------------------------------------------------------------
@@ -259,28 +267,31 @@ def test_rejects_zero_scale() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(
+        ExpectFail(
             input={"dtype": "int32", "offset": 1.5, "scale": 1},
+            exception=ValueError,
+            id="float-offset-for-int",
             msg="offset value 1.5 is not representable",
-            exception_cls=ValueError,
         ),
-        ExpectErr(
+        ExpectFail(
             input={"dtype": "int32", "offset": 0, "scale": 0.5},
+            exception=ValueError,
+            id="float-scale-for-int",
             msg="scale value 0.5 is not representable",
-            exception_cls=ValueError,
         ),
-        ExpectErr(
+        ExpectFail(
             input={"dtype": "int16", "offset": "NaN", "scale": 1},
+            exception=ValueError,
+            id="nan-offset-for-int",
             msg="offset value 'NaN' is not representable",
-            exception_cls=ValueError,
         ),
     ],
-    ids=["float-offset-for-int", "float-scale-for-int", "nan-offset-for-int"],
+    ids=lambda c: c.id,
 )
-def test_rejects_unrepresentable_scale_offset(case: ExpectErr[dict[str, Any]]) -> None:
+def test_rejects_unrepresentable_scale_offset(case: ExpectFail[dict[str, Any]]) -> None:
     """Scale/offset values that can't be represented in the array dtype are rejected."""
 
-    with pytest.raises(case.exception_cls, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),
