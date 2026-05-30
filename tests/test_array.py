@@ -53,7 +53,7 @@ from zarr.core.chunk_grids import (
     resolve_outer_and_inner_chunks,
 )
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat, ceildiv
+from zarr.core.common import ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -80,7 +80,7 @@ from zarr.errors import (
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
 from zarr.storage._logging import LoggingStore
-from zarr.types import AnyArray, AnyAsyncArray
+from zarr.types import JSON, AnyArray, AnyAsyncArray, ZarrFormat
 
 from .test_dtype.conftest import zdtype_examples
 
