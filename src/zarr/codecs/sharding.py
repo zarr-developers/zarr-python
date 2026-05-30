@@ -725,7 +725,37 @@ class ShardingCodec(
                 shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
 
         # Merge, encode, and store each affected inner chunk into shard_dict.
+        #
+        # Scalar fast path: when the written value is a scalar broadcast, every
+        # *complete* inner chunk is byte-for-byte identical — same fill, same
+        # empty-check, same encoded bytes. Compute that outcome once and reuse it
+        # for all complete chunks instead of re-merging, re-checking, and
+        # re-encoding tens of thousands of identical chunks. Incomplete (edge)
+        # chunks still merge against their own existing data individually.
+        # `_sentinel` distinguishes "not computed yet" from a memoized `None`
+        # (an empty chunk).
+        _sentinel = object()
+        scalar_complete_result: Buffer | None | object = _sentinel
+
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
+            if is_scalar and is_complete_chunk:
+                if scalar_complete_result is _sentinel:
+                    chunk_array = chunk_spec.prototype.nd_buffer.create(
+                        shape=self.chunk_shape,
+                        dtype=shard_spec.dtype.to_native_dtype(),
+                        order=shard_spec.order,
+                        fill_value=fill_value,
+                    )
+                    chunk_array[chunk_sel] = value
+                    if skip_empty and chunk_array.all_equal(fill_value):
+                        scalar_complete_result = None
+                    else:
+                        scalar_complete_result = inner_transform.encode_chunk(
+                            chunk_array, chunk_spec
+                        )
+                shard_dict[chunk_coords] = scalar_complete_result  # type: ignore[assignment]
+                continue
+
             chunk_value = value if is_scalar else value[out_sel]
 
             if is_complete_chunk and not is_scalar:
