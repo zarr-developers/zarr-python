@@ -80,9 +80,10 @@ def _atomic_write(
 
 def _put_range(path: Path, value: Buffer, start: int) -> None:
     """Write bytes at a specific offset within an existing file."""
+    view = value.as_buffer_like()
     with path.open("r+b") as f:
         f.seek(start)
-        f.write(value.as_numpy_array().tobytes())
+        f.write(view)
 
 
 def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
