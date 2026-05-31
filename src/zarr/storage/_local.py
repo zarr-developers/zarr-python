@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import io
 import os
 import shutil
@@ -44,18 +45,38 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(f.read())
 
 
-if sys.platform == "win32":
+def _safe_move_win32(src: Path, dst: Path) -> None:
     # Per the os.rename docs:
     # On Windows, if dst exists a FileExistsError is always raised.
-    _safe_move = os.rename
-else:
-    # On Unix, os.rename silently replace files, so instead we use os.link like
-    # atomicwrites:
+    os.rename(src, dst)
+
+
+def _safe_move_emscripten(src: Path, dst: Path) -> None:
+    # Emscripten does not support hard links. os.rename silently replaces the
+    # destination, so we guard with an explicit existence check. The check is
+    # not atomic, but WASM is single-threaded anyway so no concurrent writer can
+    # race between the check and the rename.
+    if dst.exists():
+        src.unlink(missing_ok=True)
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), str(dst))
+    os.rename(src, dst)
+
+
+def _safe_move_posix(src: Path, dst: Path) -> None:
+    # On Unix, os.rename silently replaces files, so instead we use os.link
+    # like atomicwrites:
     # https://github.com/untitaker/python-atomicwrites/blob/1.4.1/atomicwrites/__init__.py#L59-L60
     # This also raises FileExistsError if dst exists.
-    def _safe_move(src: Path, dst: Path) -> None:
-        os.link(src, dst)
-        os.unlink(src)
+    os.link(src, dst)
+    os.unlink(src)
+
+
+if sys.platform == "win32":  # pragma: no cover
+    _safe_move = _safe_move_win32
+elif sys.platform == "emscripten":  # pragma: no cover
+    _safe_move = _safe_move_emscripten
+else:
+    _safe_move = _safe_move_posix
 
 
 @contextlib.contextmanager

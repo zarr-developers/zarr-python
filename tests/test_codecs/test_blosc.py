@@ -9,6 +9,7 @@ import pytest
 from packaging.version import Version
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import (
@@ -127,7 +128,11 @@ async def test_typesize() -> None:
     msg = f"Blosc size mismatch.  First 10 bytes: {bytes[:20]!r} and last 10 bytes: {bytes[-20:]!r}"
     if Version(numcodecs.__version__) >= Version("0.16.0"):
         expected_size = 402
-        assert size == expected_size, msg
+    elif IS_WASM:
+        # We have numcodecs 0.15.1 in Pyodide right now, which uses a Blosc build without
+        # threading/SIMD instructions. It produces a slightly different compressed output.
+        # Not sure how much of the effect is based on this difference.
+        expected_size = 10209
     else:
         expected_size = 10216
     assert size == expected_size, msg
