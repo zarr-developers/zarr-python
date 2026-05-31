@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 import weakref
@@ -49,6 +50,8 @@ class MemoryStore(Store, SupportsSetRange):
     supports_listing: bool = True
 
     _store_dict: MutableMapping[str, Buffer]
+    _key_locks: dict[str, asyncio.Lock]
+    _key_locks_sync: dict[str, threading.Lock]
 
     def __init__(
         self,
@@ -60,6 +63,8 @@ class MemoryStore(Store, SupportsSetRange):
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
+        self._key_locks = {}
+        self._key_locks_sync = {}
 
     def with_read_only(self, read_only: bool = False) -> MemoryStore:
         # docstring inherited
@@ -206,13 +211,17 @@ class MemoryStore(Store, SupportsSetRange):
     async def set_range(self, key: str, value: Buffer, start: int) -> None:
         self._check_writable()
         await self._ensure_open()
-        self._set_range_impl(key, value, start)
+        lock = self._key_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            self._set_range_impl(key, value, start)
 
     def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
         self._check_writable()
         if not self._is_open:
             self._is_open = True
-        self._set_range_impl(key, value, start)
+        lock = self._key_locks_sync.setdefault(key, threading.Lock())
+        with lock:
+            self._set_range_impl(key, value, start)
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
@@ -729,6 +738,8 @@ class ManagedMemoryStore(MemoryStore):
         # Get or create a managed dict from the registry
         self._store_dict, self._name = _managed_store_dict_registry.get_or_create(name)
         self.path = normalize_path(path)
+        self._key_locks = {}
+        self._key_locks_sync = {}
 
     def __str__(self) -> str:
         return _join_paths([f"memory://{self._name}", self.path])
@@ -764,6 +775,8 @@ class ManagedMemoryStore(MemoryStore):
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)
+        store._key_locks = {}
+        store._key_locks_sync = {}
         return store
 
     def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
