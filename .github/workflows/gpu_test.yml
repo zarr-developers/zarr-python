@@ -12,6 +12,8 @@ on:
 
 env:
   LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
+  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 permissions:
   contents: read

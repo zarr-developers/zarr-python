@@ -18,6 +18,8 @@ concurrency:
 
 env:
   FORCE_COLOR: 3
+  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 jobs:
 

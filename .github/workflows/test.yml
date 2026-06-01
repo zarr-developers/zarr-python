@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Use the uv from astral-sh/setup-uv; without an explicit path hatch
+  # bootstraps its own (pyapp) uv, which fails on non-3.12 runners.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
