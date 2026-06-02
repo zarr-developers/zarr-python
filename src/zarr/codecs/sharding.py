@@ -50,7 +50,6 @@ from zarr.core.indexing import (
     _lexicographic_order_keys,
     c_order_iter,
     get_indexer,
-    lexicographic_order_iter,
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import (
@@ -537,7 +536,10 @@ class ShardingCodec(
             case "morton":
                 subchunk_iter = morton_order_iter(chunks_per_shard)
             case "lexicographic":
-                subchunk_iter = lexicographic_order_iter(chunks_per_shard)
+                # _lexicographic_order_keys returns the cached tuple of coords in
+                # C order; iterate it directly rather than via a wrapper that
+                # only hid the (already materialized) tuple behind iter().
+                subchunk_iter = iter(_lexicographic_order_keys(chunks_per_shard))
             case "colexicographic":
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
@@ -565,7 +567,7 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-        shard_builder = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
+        shard_builder = dict.fromkeys(_lexicographic_order_keys(chunks_per_shard))
 
         await self.codec_pipeline.write(
             [
@@ -608,7 +610,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
+            shard_dict = dict.fromkeys(_lexicographic_order_keys(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,

@@ -1581,7 +1581,7 @@ def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], .
 
 
 def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_morton_order_keys(tuple(chunk_shape)))
+    return iter(_morton_order_keys(chunk_shape))
 
 
 @lru_cache(maxsize=16)
@@ -1605,10 +1605,6 @@ def _lexicographic_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
 @lru_cache(maxsize=16)
 def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
-
-
-def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_lexicographic_order_keys(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
