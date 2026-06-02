@@ -1575,13 +1575,17 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     return order
 
 
+def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+    # Lazily yield the chunk grid coordinates in Morton (Z) order. The lazy
+    # generator is the primitive; `_morton_order_keys` collects it into a cached
+    # tuple for callers that need every coordinate repeatedly. Mirrors
+    # `lexicographic_order_iter` / `_lexicographic_order_keys`.
+    return (tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
+
+
 @lru_cache(maxsize=16)
 def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
-    return tuple(tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
-
-
-def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_morton_order_keys(chunk_shape))
+    return tuple(morton_order_iter(chunk_shape))
 
 
 @lru_cache(maxsize=16)
