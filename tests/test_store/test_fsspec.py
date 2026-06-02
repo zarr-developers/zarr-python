@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +9,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from tests.conftest import MOTO_ENDPOINT_URL
 from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -52,31 +52,23 @@ pytestmark = [
 fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
-moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
-moto = pytest.importorskip("moto")
+# Skip this module entirely when moto is absent; the server itself comes from the shared
+# `moto_server` fixture in tests/conftest.py.
+pytest.importorskip("moto")
 botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
-port = 5555
-endpoint_url = f"http://127.0.0.1:{port}/"
+# The moto server itself is the session-scoped `moto_server` fixture in tests/conftest.py;
+# this module reuses its endpoint rather than standing up its own server.
+endpoint_url = MOTO_ENDPOINT_URL
 
 
-@pytest.fixture(scope="module")
-def s3_base() -> Generator[None, None, None]:
-    # writable local S3 system
-
-    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
-    server.start()
-    if "AWS_SECRET_ACCESS_KEY" not in os.environ:
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
-    if "AWS_ACCESS_KEY_ID" not in os.environ:
-        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
-
-    yield
-    server.stop()
+@pytest.fixture
+def s3_base(moto_server: str) -> str:
+    """Reuse the shared session-scoped moto server (see tests/conftest.py)."""
+    return moto_server
 
 
 def get_boto3_client() -> botocore.client.BaseClient:
