@@ -1608,7 +1608,7 @@ def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, 
 
 
 def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_lexicographic_order_keys(tuple(chunk_shape)))
+    return iter(_lexicographic_order_keys(chunk_shape))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
