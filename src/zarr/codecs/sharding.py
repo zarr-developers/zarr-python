@@ -48,8 +48,8 @@ from zarr.core.indexing import (
     SelectorTuple,
     _lexicographic_order,
     _lexicographic_order_keys,
-    c_order_iter,
     get_indexer,
+    lexicographic_order_iter,
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import (
@@ -263,7 +263,7 @@ class _ShardReader(ShardMapping):
         return int(self.index.offsets_and_lengths.size / 2)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return c_order_iter(self.index.chunks_per_shard)
+        return lexicographic_order_iter(self.index.chunks_per_shard)
 
     def to_dict_vectorized(self) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
@@ -536,10 +536,7 @@ class ShardingCodec(
             case "morton":
                 subchunk_iter = morton_order_iter(chunks_per_shard)
             case "lexicographic":
-                # _lexicographic_order_keys returns the cached tuple of coords in
-                # C order; iterate it directly rather than via a wrapper that
-                # only hid the (already materialized) tuple behind iter().
-                subchunk_iter = iter(_lexicographic_order_keys(chunks_per_shard))
+                subchunk_iter = lexicographic_order_iter(chunks_per_shard)
             case "colexicographic":
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
@@ -692,7 +689,8 @@ class ShardingCodec(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
         return len(all_chunk_coords) == product(chunks_per_shard) and all(
-            chunk_coords in all_chunk_coords for chunk_coords in c_order_iter(chunks_per_shard)
+            chunk_coords in all_chunk_coords
+            for chunk_coords in lexicographic_order_iter(chunks_per_shard)
         )
 
     def _is_complete_shard_write(

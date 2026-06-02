@@ -21,7 +21,7 @@ from zarr.codecs import (
 )
 from zarr.codecs.sharding import MAX_UINT_64, SubchunkWriteOrder, _ShardIndex, _ShardReader
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.core.indexing import c_order_iter
+from zarr.core.indexing import lexicographic_order_iter
 from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -978,7 +978,7 @@ def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ..
     """get_chunk_slices_vectorized works uniformly across chunk grid ranks, including 0-D."""
     index = _ShardIndex.create_empty(chunks_per_shard)
     # Write the first chunk; leave the rest (if any) empty.
-    all_coords = list(c_order_iter(chunks_per_shard))
+    all_coords = list(lexicographic_order_iter(chunks_per_shard))
     index.set_chunk_slice(all_coords[0], slice(10, 14))
 
     coords_array = np.array(all_coords, dtype=np.uint64).reshape(
@@ -1003,7 +1003,7 @@ def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> N
     lexicographic coordinate as a key, with the stored bytes for present chunks
     and ``None`` for empty ones.
     """
-    all_coords = list(c_order_iter(chunks_per_shard))
+    all_coords = list(lexicographic_order_iter(chunks_per_shard))
     # Lay two chunks back-to-back in the buffer; leave the rest (if any) empty.
     payload = b"abcdXY"
     index = _ShardIndex.create_empty(chunks_per_shard)

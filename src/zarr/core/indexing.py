@@ -1607,8 +1607,21 @@ def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, 
     return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
 
 
+def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+    # Iterate the chunk grid in lexicographic (row-major / C) order. The full
+    # coordinate tuple is built once and cached on `chunk_shape` (see
+    # _lexicographic_order_keys), so repeated calls for the same shape — e.g. one
+    # per shard write — reuse it rather than rebuilding tens of thousands of
+    # tuples each time.
+    return iter(_lexicographic_order_keys(chunk_shape))
+
+
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return itertools.product(*(range(x) for x in chunks_per_shard))
+    # Soft-deprecated alias for `lexicographic_order_iter`. "C order" names the
+    # memory layout rather than the ordering; prefer `lexicographic_order_iter`,
+    # which describes what the iterator yields. Kept for backwards compatibility;
+    # new code should call `lexicographic_order_iter` directly.
+    return lexicographic_order_iter(chunks_per_shard)
 
 
 def get_indexer(
