@@ -1602,18 +1602,22 @@ def _lexicographic_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     return order
 
 
+def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+    # Lazily yield the chunk grid coordinates in lexicographic (row-major / C)
+    # order. This is the primitive: callers that only need a prefix (e.g. an
+    # early-exit `all(...)`) pay only for the coordinates they consume, instead
+    # of materializing the whole grid. Callers that need every coordinate
+    # repeatedly for the same shape should use `_lexicographic_order_keys`, which
+    # caches the fully collected tuple.
+    return (tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
+
+
 @lru_cache(maxsize=16)
 def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
-    return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
-
-
-def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    # Iterate the chunk grid in lexicographic (row-major / C) order. The full
-    # coordinate tuple is built once and cached on `chunk_shape` (see
-    # _lexicographic_order_keys), so repeated calls for the same shape — e.g. one
-    # per shard write — reuse it rather than rebuilding tens of thousands of
-    # tuples each time.
-    return iter(_lexicographic_order_keys(chunk_shape))
+    # Eagerly collect `lexicographic_order_iter` into a tuple, cached per shape so
+    # the per-shard chunk grid is built once and reused across writes (the hot
+    # path feeds this straight into `dict.fromkeys`).
+    return tuple(lexicographic_order_iter(chunk_shape))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
