@@ -266,27 +266,22 @@ class _ShardReader(ShardMapping):
     def __iter__(self) -> Iterator[tuple[int, ...]]:
         return c_order_iter(self.index.chunks_per_shard)
 
-    def to_dict_vectorized(
-        self,
-        chunk_coords_array: npt.NDArray[np.integer[Any]],
-        chunk_coords_keys: tuple[tuple[int, ...], ...],
-    ) -> dict[tuple[int, ...], Buffer | None]:
+    def to_dict_vectorized(self) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
 
-        Parameters
-        ----------
-        chunk_coords_array : ndarray of shape (n_chunks, n_dims)
-            Array of chunk coordinates for vectorized index lookup.
-        chunk_coords_keys : tuple of coordinate tuples
-            The same coordinates as `chunk_coords_array`, in the same order, as
-            plain tuples for use as dict keys. Passed in (rather than derived
-            row-by-row from the array) so the cached value can be reused instead
-            of rebuilding 35k tuples on every write.
+        The full per-shard chunk coordinate grid (both the array used for the
+        vectorized index lookup and the plain tuples used as dict keys) is
+        cached on `chunks_per_shard`, so neither is rebuilt on every call. For a
+        shard with tens of thousands of chunks this avoids reconstructing that
+        many tuples on every partial write.
 
         Returns
         -------
         dict mapping chunk coordinate tuples to Buffer or None
         """
+        chunks_per_shard = self.index.chunks_per_shard
+        chunk_coords_array = _lexicographic_order(chunks_per_shard)
+        chunk_coords_keys = _lexicographic_order_keys(chunks_per_shard)
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
@@ -624,10 +619,7 @@ class ShardingCodec(
             # Use vectorized lookup for better performance. The lexicographic
             # coordinate array and keys are cached, so neither is rebuilt on
             # every write.
-            shard_dict = shard_reader.to_dict_vectorized(
-                _lexicographic_order(chunks_per_shard),
-                _lexicographic_order_keys(chunks_per_shard),
-            )
+            shard_dict = shard_reader.to_dict_vectorized()
 
         await self.codec_pipeline.write(
             [
