@@ -1901,6 +1901,17 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
         return AsyncArray(self.metadata, self.store_path, self.config)
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Array):
+            return NotImplemented
+        return (
+            self.metadata == other.metadata
+            and self.store_path == other.store_path
+            and self.config == other.config
+        )
+
+    __hash__ = None  # type: ignore[assignment]
+
     @property
     def _zdtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         """
