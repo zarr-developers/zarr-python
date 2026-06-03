@@ -250,7 +250,12 @@ def test_sharded_morton_write_single_chunk(
     """
     import numpy as np
 
-    from zarr.core.indexing import _morton_order, morton_order_coords
+    from zarr.core.indexing import (
+        _lexicographic_order,
+        _morton_order,
+        lexicographic_order_coords,
+        morton_order_coords,
+    )
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -272,8 +277,14 @@ def test_sharded_morton_write_single_chunk(
     indexer = (slice(1), slice(1), slice(1))
 
     def write_with_cache_clear() -> None:
+        # Clear every coordinate cache the write path touches, not just morton:
+        # the sharded write also builds the lexicographic grid (dict.fromkeys /
+        # to_dict_vectorized), so a partial clear would leave that path warm and
+        # under-report the cold build cost.
         _morton_order.cache_clear()
         morton_order_coords.cache_clear()
+        _lexicographic_order.cache_clear()
+        lexicographic_order_coords.cache_clear()
         data[indexer] = write_data
 
     benchmark(write_with_cache_clear)
@@ -289,10 +300,12 @@ def test_sharded_morton_write_single_chunk_warm_cache(
     """Benchmark a single-chunk shard write with the chunk-order cache warm.
 
     Unlike ``test_sharded_morton_write_single_chunk``, this does NOT clear the
-    order cache between iterations, so it measures the amortized per-write cost
-    that the cache exists to optimize: writing many shards of the same shape to
-    one array, where only the first write pays to build the coordinate grid and
-    every subsequent write reuses it.
+    order cache between iterations: it warms the cache once, then repeatedly
+    writes the same single chunk. This isolates the amortized per-write cost the
+    cache exists to optimize — the regime where the coordinate grid was already
+    built (by an earlier write to this shard, or to any same-shaped shard) and is
+    reused rather than rebuilt. Repeated writes to one shard and writes spread
+    across many same-shaped shards exercise that cache reuse identically.
 
     This is the regime the cold benchmark cannot see. A regression that rebuilds
     the per-shard coordinate tuples on every write (rather than reusing the

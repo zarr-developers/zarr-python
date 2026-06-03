@@ -47,6 +47,7 @@ from zarr.core.indexing import (
     ChunkProjection,
     SelectorTuple,
     _lexicographic_order,
+    colexicographic_order_coords,
     get_indexer,
     lexicographic_order_coords,
     morton_order_coords,
@@ -548,7 +549,7 @@ class ShardingCodec(
             case "lexicographic":
                 subchunk_iter = lexicographic_order_coords(chunks_per_shard)
             case "colexicographic":
-                subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
+                subchunk_iter = colexicographic_order_coords(chunks_per_shard)
             case "unordered":
                 subchunk_list = list(np.ndindex(chunks_per_shard))
                 (self.rng if self.rng is not None else np.random.default_rng()).shuffle(
@@ -699,11 +700,11 @@ class ShardingCodec(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
         # `all_chunk_coords` comes from an indexer over this shard's chunk grid, so
-        # it is always a subset of that grid (guaranteed by `validate`, which
-        # requires the shard shape to be divisible by the inner chunk shape). A
-        # subset whose size equals the grid's is the whole grid, so the count check
-        # alone proves totality — no need to membership-test every coordinate.
-        assert all_chunk_coords <= set(lexicographic_order_coords(chunks_per_shard))
+        # it is always a subset of that grid (`validate` requires the shard shape to
+        # be divisible by the inner chunk shape, so the indexer cannot produce an
+        # out-of-grid coordinate). A subset whose size equals the grid's is the
+        # whole grid, so the count check alone proves totality — no need to build
+        # and membership-test the full coordinate set on this hot path.
         return len(all_chunk_coords) == product(chunks_per_shard)
 
     def _is_complete_shard_write(

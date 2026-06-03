@@ -1619,6 +1619,15 @@ def lexicographic_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...],
     return tuple(map(tuple, _lexicographic_order(shape).tolist()))
 
 
+@lru_cache(maxsize=16)
+def colexicographic_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    # The grid coordinates in colexicographic (column-major / F) order, as a cached
+    # sequence: the first axis varies fastest. Equivalent to reversing each axis,
+    # taking lexicographic order, and reversing the coordinates back. Cached per
+    # shape like its siblings so shard writes don't rebuild it.
+    return tuple(c[::-1] for c in lexicographic_order_coords(shape[::-1]))
+
+
 def get_indexer(
     selection: SelectionWithFields, shape: tuple[int, ...], chunk_grid: ChunkGrid
 ) -> Indexer:
