@@ -1,6 +1,7 @@
 import itertools
 import json
 import numbers
+import warnings
 from collections.abc import Generator
 from typing import Any
 
@@ -131,7 +132,9 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # async get
-    async_zarray = zarray._async_array
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        async_zarray = zarray.async_array
     actual = await async_zarray.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 
@@ -173,7 +176,9 @@ async def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[npindexer], actual)
 
     # async get
-    async_zarray = zarray._async_array
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        async_zarray = zarray.async_array
     actual = await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
@@ -214,7 +219,9 @@ async def test_vindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # async get
-    async_zarray = zarray._async_array
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        async_zarray = zarray.async_array
     actual = await async_zarray.vindex.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 

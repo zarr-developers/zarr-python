@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import warnings
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -2110,7 +2111,9 @@ class TestAsync:
     async def test_async_oindex(self, store, indexer, expected):
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
-        async_zarr = z._async_array
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            async_zarr = z.async_array
 
         result = await async_zarr.oindex.getitem(indexer)
         assert_array_equal(result, expected)
@@ -2121,7 +2124,9 @@ class TestAsync:
 
         z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
         z1[...] = np.array([[1, 2], [3, 4]])
-        async_zarr = z1._async_array
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            async_zarr = z1.async_array
 
         # create boolean zarr array to index with
         z2 = group.create_array(name="z2", shape=(2,), chunks=(1,), dtype="?")
@@ -2143,7 +2148,9 @@ class TestAsync:
     async def test_async_vindex(self, store, indexer, expected):
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
-        async_zarr = z._async_array
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            async_zarr = z.async_array
 
         result = await async_zarr.vindex.getitem(indexer)
         assert_array_equal(result, expected)
@@ -2154,7 +2161,9 @@ class TestAsync:
 
         z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
         z1[...] = np.array([[1, 2], [3, 4]])
-        async_zarr = z1._async_array
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            async_zarr = z1.async_array
 
         # create boolean zarr array to index with
         z2 = group.create_array(name="z2", shape=(2, 2), chunks=(1, 1), dtype="?")
@@ -2168,7 +2177,9 @@ class TestAsync:
     async def test_async_invalid_indexer(self, store):
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
-        async_zarr = z._async_array
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            async_zarr = z.async_array
 
         with pytest.raises(IndexError):
             await async_zarr.vindex.getitem("invalid_indexer")
