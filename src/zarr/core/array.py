@@ -3975,13 +3975,11 @@ async def _shards_initialized(
     [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
-    store_contents_relative = {
-        _relativize_path(path=key, prefix=array.store_path.path)
-        async for key in array.store_path.store.list_prefix(prefix=array.store_path.path)
-    }
-    return tuple(
-        chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
-    )
+    # Thin wrapper over the shared discovery core, projected to keys. The "list"
+    # strategy preserves this function's historical behavior (a single prefix
+    # listing); see [shards_initialized][zarr.shards_initialized] for the public,
+    # strategy-aware entry point.
+    return tuple(key for _, key in await _initialized_shards(array, strategy="list"))
 
 
 # When the array has at most this many possible shards, ``shards_initialized``
