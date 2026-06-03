@@ -266,7 +266,14 @@ class FsspecStore(Store):
             from fsspec.core import url_to_fs
 
         opts = storage_options or {}
-        opts = {"asynchronous": True, **opts}
+        # ``skip_instance_cache=True`` forces a fresh filesystem instance instead of
+        # an fsspec instance-cached one. Without it, two ``from_url`` calls with the
+        # same URL/options receive the *same* cached ``AsyncFileSystem``; closing one
+        # store (which we mark as owning the fs) would tear down the shared aiohttp
+        # session out from under the other store — and any other fsspec consumer in
+        # the process. By skipping the cache we own an instance no one else shares, so
+        # ``close()`` is safe.
+        opts = {"asynchronous": True, "skip_instance_cache": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
         if not fs.async_impl:

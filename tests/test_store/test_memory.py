@@ -611,6 +611,22 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
         assert observed.to_bytes() == b"AAXXAAYYAA"
         assert store._store_dict["subdir/k"].to_bytes() == b"AAXXAAYYAA"
 
+    def test_set_range_locks_shared_by_name(self) -> None:
+        """Instances sharing a backing dict (same name) share the set_range lock dicts.
+
+        The registry shares the data across same-name handles, so it must share the
+        locks too — otherwise concurrent set_range from two handles would not serialize.
+        """
+        a = ManagedMemoryStore(name="lock-share-test")
+        b = ManagedMemoryStore.from_url("memory://lock-share-test")
+        c = a.with_read_only(not a.read_only)
+        assert a._key_locks is b._key_locks
+        assert a._key_locks_sync is b._key_locks_sync
+        assert a._key_locks is c._key_locks
+        # A differently named store has independent locks.
+        other = ManagedMemoryStore(name="lock-share-test-other")
+        assert other._key_locks is not a._key_locks
+
     async def test_path_list_operations(self) -> None:
         """Test that list operations filter by path prefix."""
         store = ManagedMemoryStore(name="list-test")

@@ -614,6 +614,13 @@ class _ManagedStoreDictRegistry:
         self._registry: weakref.WeakValueDictionary[str, _ManagedStoreDict] = (
             weakref.WeakValueDictionary()
         )
+        # set_range per-key lock dicts, shared by name so every ManagedMemoryStore
+        # bound to the same backing dict serializes set_range against the others (the
+        # registry shares the data, so it must share the locks too). Keyed by name
+        # (_ManagedStoreDict is an unhashable dict subclass) and pruned when the
+        # corresponding dict has been collected.
+        self._key_locks: dict[str, dict[str, asyncio.Lock]] = {}
+        self._key_locks_sync: dict[str, dict[str, threading.Lock]] = {}
         self._counter = 0
         self._lock = threading.Lock()
 
@@ -682,6 +689,24 @@ class _ManagedStoreDictRegistry:
             The store dict if found, None otherwise.
         """
         return self._registry.get(name)
+
+    def get_key_locks(self, name: str) -> tuple[dict[str, asyncio.Lock], dict[str, threading.Lock]]:
+        """
+        Get the shared set_range per-key lock dicts for a store name.
+
+        All ManagedMemoryStore instances resolving to the same name get the same lock
+        dicts, so their set_range calls serialize against each other. Created on first
+        use; stale entries (whose backing dict has been collected) are pruned.
+        """
+        with self._lock:
+            stale = [n for n in self._key_locks if n not in self._registry]
+            for n in stale:
+                del self._key_locks[n]
+                self._key_locks_sync.pop(n, None)
+            return (
+                self._key_locks.setdefault(name, {}),
+                self._key_locks_sync.setdefault(name, {}),
+            )
 
 
 _managed_store_dict_registry = _ManagedStoreDictRegistry()
@@ -753,8 +778,12 @@ class ManagedMemoryStore(MemoryStore):
         # Get or create a managed dict from the registry
         self._store_dict, self._name = _managed_store_dict_registry.get_or_create(name)
         self.path = normalize_path(path)
-        self._key_locks = {}
-        self._key_locks_sync = {}
+        # Share the per-key set_range locks with every other store backed by the same
+        # dict, so concurrent set_range from different handles to the same name actually
+        # serialize.
+        self._key_locks, self._key_locks_sync = _managed_store_dict_registry.get_key_locks(
+            self._name
+        )
 
     def __str__(self) -> str:
         return _join_paths([f"memory://{self._name}", self.path])
@@ -790,8 +819,7 @@ class ManagedMemoryStore(MemoryStore):
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)
-        store._key_locks = {}
-        store._key_locks_sync = {}
+        store._key_locks, store._key_locks_sync = _managed_store_dict_registry.get_key_locks(name)
         return store
 
     def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
