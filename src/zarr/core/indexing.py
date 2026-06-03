@@ -1582,7 +1582,10 @@ def morton_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     # every shard write, so it is built once (vectorized, via `_morton_order`) and
     # cached per shape rather than recomputed. Indexable and `len`-able; iterate it
     # directly where an iterator is needed.
-    return tuple(tuple(int(x) for x in row) for row in _morton_order(shape))
+    #
+    # `.tolist()` converts the whole array to native Python ints in one C-level
+    # call; building the tuples row-by-row with `int(x)` is ~9x slower.
+    return tuple(map(tuple, _morton_order(shape).tolist()))
 
 
 @lru_cache(maxsize=16)
@@ -1610,7 +1613,10 @@ def lexicographic_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...],
     # reused in full on every shard write, so it is built once (vectorized, via
     # `_lexicographic_order`) and cached per shape. Indexable and `len`-able;
     # iterate it directly where an iterator is needed.
-    return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(shape))
+    #
+    # `.tolist()` converts the whole array to native Python ints in one C-level
+    # call; building the tuples row-by-row with `int(x)` is ~9x slower.
+    return tuple(map(tuple, _lexicographic_order(shape).tolist()))
 
 
 def get_indexer(

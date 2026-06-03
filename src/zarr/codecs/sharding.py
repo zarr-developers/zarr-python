@@ -278,6 +278,16 @@ class _ShardReader(ShardMapping):
         dict mapping chunk coordinate tuples to Buffer or None
         """
         chunks_per_shard = self.index.chunks_per_shard
+        # The same chunk-grid coordinates are needed in two forms, and neither can
+        # stand in for the other:
+        #   - `chunk_coords_array`: an (n_chunks, n_dims) numpy array, fed to the
+        #     vectorized index lookup, which does modulo + advanced indexing on it.
+        #     A list of tuples can't be used for that without first being arrayified.
+        #   - `chunk_coords_keys`: the same coordinates as hashable Python tuples,
+        #     used as the result dict's keys. numpy array rows are unhashable
+        #     (mutable), so they can't key a dict.
+        # Both are cached per shape (see indexing.py), so neither is rebuilt here;
+        # row i of the array and key i refer to the same chunk.
         chunk_coords_array = _lexicographic_order(chunks_per_shard)
         chunk_coords_keys = lexicographic_order_coords(chunks_per_shard)
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
