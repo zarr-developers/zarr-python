@@ -277,3 +277,54 @@ def test_sharded_morton_write_single_chunk(
         data[indexer] = write_data
 
     benchmark(write_with_cache_clear)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_write_single_chunk_warm_cache(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark a single-chunk shard write with the chunk-order cache warm.
+
+    Unlike ``test_sharded_morton_write_single_chunk``, this does NOT clear the
+    order cache between iterations, so it measures the amortized per-write cost
+    that the cache exists to optimize: writing many shards of the same shape to
+    one array, where only the first write pays to build the coordinate grid and
+    every subsequent write reuses it.
+
+    This is the regime the cold benchmark cannot see. A regression that rebuilds
+    the per-shard coordinate tuples on every write (rather than reusing the
+    cached sequence) is invisible to the cold benchmark but shows up here.
+    """
+    import numpy as np
+
+    from zarr.core.indexing import _morton_order, morton_order_coords
+
+    shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
+    chunks = (1,) * 3  # 1x1x1 chunks: chunks_per_shard = shards
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    write_data = np.ones((1, 1, 1), dtype="uint8")
+    indexer = (slice(1), slice(1), slice(1))
+
+    # Warm the cache once up front; the timed writes then hit the warm path.
+    _morton_order.cache_clear()
+    morton_order_coords.cache_clear()
+    data[indexer] = write_data
+
+    def write_warm() -> None:
+        data[indexer] = write_data
+
+    benchmark(write_warm)
