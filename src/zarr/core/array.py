@@ -308,8 +308,9 @@ async def get_array_metadata(
 class SupportsArrayState(Protocol):
     """The structural surface the module-level array helpers rely on.
 
-    Both `AsyncArray` and `Array` satisfy this protocol, which lets the
-    helper functions operate on either class.
+    `AsyncArray` satisfies this protocol. The unified `Array` class is being
+    migrated to satisfy it as well so the same helpers can operate on either
+    class.
     """
 
     @property
