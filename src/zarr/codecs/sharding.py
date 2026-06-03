@@ -47,10 +47,9 @@ from zarr.core.indexing import (
     ChunkProjection,
     SelectorTuple,
     _lexicographic_order,
-    _lexicographic_order_keys,
     get_indexer,
-    lexicographic_order_iter,
-    morton_order_iter,
+    lexicographic_order_coords,
+    morton_order_coords,
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
@@ -263,7 +262,7 @@ class _ShardReader(ShardMapping):
         return int(self.index.offsets_and_lengths.size / 2)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return lexicographic_order_iter(self.index.chunks_per_shard)
+        return iter(lexicographic_order_coords(self.index.chunks_per_shard))
 
     def to_dict_vectorized(self) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
@@ -280,7 +279,7 @@ class _ShardReader(ShardMapping):
         """
         chunks_per_shard = self.index.chunks_per_shard
         chunk_coords_array = _lexicographic_order(chunks_per_shard)
-        chunk_coords_keys = _lexicographic_order_keys(chunks_per_shard)
+        chunk_coords_keys = lexicographic_order_coords(chunks_per_shard)
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
@@ -532,11 +531,12 @@ class ShardingCodec(
     def _subchunk_order_iter(
         self, chunks_per_shard: tuple[int, ...], subchunk_write_order: SubchunkWriteOrder
     ) -> Iterable[tuple[int, ...]]:
+        subchunk_iter: Iterable[tuple[int, ...]]
         match subchunk_write_order:
             case "morton":
-                subchunk_iter = morton_order_iter(chunks_per_shard)
+                subchunk_iter = morton_order_coords(chunks_per_shard)
             case "lexicographic":
-                subchunk_iter = lexicographic_order_iter(chunks_per_shard)
+                subchunk_iter = lexicographic_order_coords(chunks_per_shard)
             case "colexicographic":
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
@@ -564,7 +564,7 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-        shard_builder = dict.fromkeys(_lexicographic_order_keys(chunks_per_shard))
+        shard_builder = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
 
         await self.codec_pipeline.write(
             [
@@ -607,7 +607,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(_lexicographic_order_keys(chunks_per_shard))
+            shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -688,10 +688,13 @@ class ShardingCodec(
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
-        return len(all_chunk_coords) == product(chunks_per_shard) and all(
-            chunk_coords in all_chunk_coords
-            for chunk_coords in lexicographic_order_iter(chunks_per_shard)
-        )
+        # `all_chunk_coords` comes from an indexer over this shard's chunk grid, so
+        # it is always a subset of that grid (guaranteed by `validate`, which
+        # requires the shard shape to be divisible by the inner chunk shape). A
+        # subset whose size equals the grid's is the whole grid, so the count check
+        # alone proves totality — no need to membership-test every coordinate.
+        assert all_chunk_coords <= set(lexicographic_order_coords(chunks_per_shard))
+        return len(all_chunk_coords) == product(chunks_per_shard)
 
     def _is_complete_shard_write(
         self,

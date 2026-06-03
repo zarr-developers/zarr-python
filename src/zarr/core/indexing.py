@@ -1521,19 +1521,19 @@ def decode_morton_vectorized(
 
 
 @lru_cache(maxsize=16)
-def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
-    n_total = product(chunk_shape)
-    n_dims = len(chunk_shape)
+def _morton_order(shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
+    n_total = product(shape)
+    n_dims = len(shape)
     if n_total == 0:
         out = np.empty((0, n_dims), dtype=np.intp)
         out.flags.writeable = False
         return out
 
     # Ceiling hypercube: smallest power-of-2 hypercube whose Morton codes span
-    # all valid coordinates in chunk_shape. (c-1).bit_length() gives the number
+    # all valid coordinates in shape. (c-1).bit_length() gives the number
     # of bits needed to index c values (0 for singleton dims). n_z = 2**total_bits
     # is the size of this hypercube.
-    total_bits = sum((c - 1).bit_length() for c in chunk_shape)
+    total_bits = sum((c - 1).bit_length() for c in shape)
     n_z = 1 << total_bits if total_bits > 0 else 1
 
     # Decode all Morton codes in the ceiling hypercube, then filter to valid coords.
@@ -1544,8 +1544,8 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
         # Ceiling strategy: decode all n_z codes vectorized, filter in-bounds.
         # Works well when the overgeneration ratio n_z/n_total is small (≤4).
         z_values = np.arange(n_z, dtype=np.intp)
-        all_coords = decode_morton_vectorized(z_values, chunk_shape)
-        shape_arr = np.array(chunk_shape, dtype=np.intp)
+        all_coords = decode_morton_vectorized(z_values, shape)
+        shape_arr = np.array(shape, dtype=np.intp)
         valid_mask = np.all(all_coords < shape_arr, axis=1)
         order = all_coords[valid_mask]
     else:
@@ -1554,11 +1554,11 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
         # larger overgeneration penalty for near-miss shapes like (33,33,33).
         # Cost: O(n_total * bits) encode + O(n_total log n_total) sort,
         # vs O(n_z * bits) = O(8 * n_total * bits) for ceiling.
-        grids = np.meshgrid(*[np.arange(c, dtype=np.intp) for c in chunk_shape], indexing="ij")
+        grids = np.meshgrid(*[np.arange(c, dtype=np.intp) for c in shape], indexing="ij")
         all_coords = np.stack([g.ravel() for g in grids], axis=1)
 
         # Encode all coordinates to Morton codes (vectorized).
-        bits_per_dim = tuple((c - 1).bit_length() for c in chunk_shape)
+        bits_per_dim = tuple((c - 1).bit_length() for c in shape)
         max_coord_bits = max(bits_per_dim)
         z_codes = np.zeros(n_total, dtype=np.intp)
         output_bit = 0
@@ -1575,61 +1575,42 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     return order
 
 
-def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    # Lazily yield the chunk grid coordinates in Morton (Z) order. The lazy
-    # generator is the primitive; `_morton_order_keys` collects it into a cached
-    # tuple for callers that need every coordinate repeatedly. Mirrors
-    # `lexicographic_order_iter` / `_lexicographic_order_keys`.
-    return (tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
+@lru_cache(maxsize=16)
+def morton_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    # The grid coordinates in Morton (Z) order, as a cached sequence. The
+    # coordinate set of a finite grid has a known length and is reused in full on
+    # every shard write, so it is built once (vectorized, via `_morton_order`) and
+    # cached per shape rather than recomputed. Indexable and `len`-able; iterate it
+    # directly where an iterator is needed.
+    return tuple(tuple(int(x) for x in row) for row in _morton_order(shape))
 
 
 @lru_cache(maxsize=16)
-def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
-    return tuple(morton_order_iter(chunk_shape))
-
-
-@lru_cache(maxsize=16)
-def _lexicographic_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
+def _lexicographic_order(shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     # Lexicographic (C-order) coordinates, computed vectorized and cached so that
     # the sharding codec's per-shard chunk grid is not rebuilt on every call.
-    # Equivalent to `np.array(list(np.ndindex(chunk_shape)))` but without the
+    # Equivalent to `np.array(list(np.ndindex(shape)))` but without the
     # Python-level iteration over every coordinate.
-    n_dims = len(chunk_shape)
+    n_dims = len(shape)
     if n_dims == 0:
         # A 0-d shard holds a single chunk addressed by the empty coordinate, so
         # the coordinate array has one row and zero columns. np.indices(()) cannot
         # express this, so build it directly. Matches list(np.ndindex(())) == [()].
         order = np.empty((1, 0), dtype=np.intp)
     else:
-        order = np.indices(chunk_shape, dtype=np.intp).reshape(n_dims, -1).T
+        order = np.indices(shape, dtype=np.intp).reshape(n_dims, -1).T
     order.flags.writeable = False
     return order
 
 
-def lexicographic_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    # Lazily yield the chunk grid coordinates in lexicographic (row-major / C)
-    # order. This is the primitive: callers that only need a prefix (e.g. an
-    # early-exit `all(...)`) pay only for the coordinates they consume, instead
-    # of materializing the whole grid. Callers that need every coordinate
-    # repeatedly for the same shape should use `_lexicographic_order_keys`, which
-    # caches the fully collected tuple.
-    return (tuple(int(x) for x in row) for row in _lexicographic_order(chunk_shape))
-
-
 @lru_cache(maxsize=16)
-def _lexicographic_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
-    # Eagerly collect `lexicographic_order_iter` into a tuple, cached per shape so
-    # the per-shard chunk grid is built once and reused across writes (the hot
-    # path feeds this straight into `dict.fromkeys`).
-    return tuple(lexicographic_order_iter(chunk_shape))
-
-
-def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    # Soft-deprecated alias for `lexicographic_order_iter`. "C order" names the
-    # memory layout rather than the ordering; prefer `lexicographic_order_iter`,
-    # which describes what the iterator yields. Kept for backwards compatibility;
-    # new code should call `lexicographic_order_iter` directly.
-    return lexicographic_order_iter(chunks_per_shard)
+def lexicographic_order_coords(shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    # The grid coordinates in lexicographic (row-major / C) order, as a cached
+    # sequence. The coordinate set of a finite grid has a known length and is
+    # reused in full on every shard write, so it is built once (vectorized, via
+    # `_lexicographic_order`) and cached per shape. Indexable and `len`-able;
+    # iterate it directly where an iterator is needed.
+    return tuple(tuple(int(x) for x in row) for row in _lexicographic_order(shape))
 
 
 def get_indexer(
