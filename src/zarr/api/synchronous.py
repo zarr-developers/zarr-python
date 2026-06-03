@@ -66,9 +66,11 @@ __all__ = [
     "open_consolidated",
     "open_group",
     "open_like",
+    "read_regions",
     "save",
     "save_array",
     "save_group",
+    "shards_initialized",
     "tree",
     "zeros",
     "zeros_like",
@@ -1426,3 +1428,99 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
         The new array.
     """
     return Array(sync(async_api.zeros_like(a, **kwargs)))
+
+
+def _as_async_array(array: Array | AsyncArray[Any]) -> AsyncArray[Any]:
+    return array._async_array if isinstance(array, Array) else array
+
+
+def shards_initialized(
+    array: Array | AsyncArray[Any],
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> tuple[str, ...]:
+    """
+    Return the storage keys of the shards that have been persisted to the store.
+
+    This reports storage at the granularity of stored objects: for sharded arrays it
+    returns shard keys (the objects that actually exist in the store), and for unsharded
+    arrays it returns chunk keys. To fetch and decode the populated regions, pass the
+    result of this function (or its regions) to [read_regions][zarr.read_regions].
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist.
+
+        - ``"list"`` issues a single ``store.list_prefix`` call and keeps the keys that
+          belong to this array's shard grid (ignoring metadata and any other objects
+          under the same prefix).
+        - ``"probe"`` checks the existence of each possible shard key individually and
+          concurrently. This avoids listing a prefix that may hold many unrelated
+          objects, and is faster when the array has few possible shards.
+        - ``"auto"`` uses ``"probe"`` when the array has at most a small number of
+          possible shards and ``"list"`` otherwise.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The storage keys of the populated shards (or chunks, when unsharded),
+        in chunk-grid order.
+
+    See Also
+    --------
+    read_regions : Read and decode the populated regions of an array.
+    """
+    return sync(async_api.shards_initialized(_as_async_array(array), strategy=strategy))
+
+
+def read_regions(
+    array: Array | AsyncArray[Any],
+    regions: Iterable[tuple[slice, ...]] | None = None,
+    *,
+    concurrency: int | None = None,
+) -> list[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
+    """
+    Read and decode array regions, returning a list of ``(region, data)`` pairs.
+
+    This is the spatially-resolved companion to [shards_initialized][zarr.shards_initialized]:
+    each pair associates a region (a tuple of slices into the array) with the decoded data
+    for that region, letting callers operate on only the populated parts of a sparse array
+    without materializing the full array. For lazy, streaming consumption use the
+    asynchronous [zarr.api.asynchronous.read_regions][] instead, which yields each pair as
+    soon as its data is available.
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to read from.
+    regions : iterable of tuple of slice, optional
+        The regions to read. Each region is a tuple of slices, one per array dimension.
+        If omitted, defaults to the regions spanned by the populated shards of ``array``
+        (i.e. every region that holds data).
+    concurrency : int, optional
+        The maximum number of regions read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Returns
+    -------
+    list[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]
+        Each region paired with its decoded data, in completion order (not necessarily
+        the order of ``regions``).
+
+    See Also
+    --------
+    shards_initialized : Discover which shards of an array are populated.
+    """
+
+    async def _collect() -> list[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
+        return [
+            item
+            async for item in async_api.read_regions(
+                _as_async_array(array), regions, concurrency=concurrency
+            )
+        ]
+
+    return sync(_collect())

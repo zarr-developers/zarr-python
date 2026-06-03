@@ -18,6 +18,8 @@ from zarr.core.array import (
     create_array,
     from_array,
     get_array_metadata,
+    read_regions,
+    shards_initialized,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
@@ -87,9 +89,11 @@ __all__ = [
     "open_consolidated",
     "open_group",
     "open_like",
+    "read_regions",
     "save",
     "save_array",
     "save_group",
+    "shards_initialized",
     "tree",
     "zeros",
     "zeros_like",

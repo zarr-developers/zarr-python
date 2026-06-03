@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from asyncio import gather
+from asyncio import Semaphore, as_completed, ensure_future, gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -146,7 +146,7 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Iterator
     from typing import Self
 
     import numpy.typing as npt
@@ -3975,15 +3975,181 @@ async def _shards_initialized(
     [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
-    store_contents = [
-        x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
-    ]
-    store_contents_relative = [
-        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
-    ]
+    store_contents_relative = {
+        _relativize_path(path=key, prefix=array.store_path.path)
+        async for key in array.store_path.store.list_prefix(prefix=array.store_path.path)
+    }
     return tuple(
         chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
     )
+
+
+# When the array has at most this many possible shards, ``shards_initialized``
+# probes each key individually rather than listing the prefix. Probing avoids
+# paying for a prefix listing that may contain many unrelated objects, and is
+# cheap when there are few keys to check.
+_PROBE_THRESHOLD = 64
+
+
+async def _initialized_shards(
+    array: AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> list[tuple[tuple[int, ...], str]]:
+    """
+    Discover the populated shards of an array, returning ``(coords, key)`` pairs in
+    chunk-grid order. This is the shared core of [shards_initialized][zarr.shards_initialized]
+    (which projects to keys) and [read_regions][zarr.read_regions] (which projects to regions).
+    """
+    coords = list(_iter_shard_coords(array))
+    keys = [array.metadata.encode_chunk_key(c) for c in coords]
+
+    if strategy == "auto":
+        strategy = "probe" if len(coords) <= _PROBE_THRESHOLD else "list"
+
+    if strategy == "list":
+        # A single prefix listing, filtered to keys that belong to this array's
+        # shard grid. Non-chunk objects under the same prefix (metadata, etc.)
+        # are excluded by the intersection, addressing the case where the prefix
+        # holds many unrelated objects.
+        contents = {
+            _relativize_path(path=key, prefix=array.store_path.path)
+            async for key in array.store_path.store.list_prefix(prefix=array.store_path.path)
+        }
+        return [(c, k) for c, k in zip(coords, keys, strict=True) if k in contents]
+    elif strategy == "probe":
+        # Per-key existence checks, concurrently. Preferable when the prefix may
+        # contain many unrelated objects, or when there are few keys to check.
+        present = await concurrent_map(
+            [(array.store_path / k,) for k in keys],
+            lambda store_path: store_path.exists(),
+            zarr_config.get("async.concurrency"),
+        )
+        return [
+            (c, k)
+            for (c, k), is_present in zip(zip(coords, keys, strict=True), present, strict=True)
+            if is_present
+        ]
+    else:
+        raise ValueError(
+            f"Unknown strategy {strategy!r}. Expected one of 'auto', 'list', or 'probe'."
+        )
+
+
+async def shards_initialized(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> tuple[str, ...]:
+    """
+    Return the storage keys of the shards that have been persisted to the store.
+
+    This reports storage at the granularity of stored objects: for sharded arrays it
+    returns shard keys (the objects that actually exist in the store), and for unsharded
+    arrays it returns chunk keys. To fetch and decode the populated regions, pass the
+    result of this function (or its regions) to [read_regions][zarr.read_regions].
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist.
+
+        - ``"list"`` issues a single ``store.list_prefix`` call and keeps the keys that
+          belong to this array's shard grid (ignoring metadata and any other objects
+          under the same prefix).
+        - ``"probe"`` checks the existence of each possible shard key individually and
+          concurrently. This avoids listing a prefix that may hold many unrelated
+          objects, and is faster when the array has few possible shards.
+        - ``"auto"`` uses ``"probe"`` when the array has at most a small number of
+          possible shards and ``"list"`` otherwise.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The storage keys of the populated shards (or chunks, when unsharded),
+        in chunk-grid order.
+
+    See Also
+    --------
+    read_regions : Read and decode the populated regions of an array.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+    return tuple(key for _, key in await _initialized_shards(array, strategy=strategy))
+
+
+async def _initialized_regions(
+    array: AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> list[tuple[slice, ...]]:
+    """Return the array regions spanned by each populated shard, in chunk-grid order."""
+    shard_shape = array.shards if array.shards is not None else array.chunks
+    return [
+        tuple(
+            slice(c * s, min((c + 1) * s, dim))
+            for c, s, dim in zip(coords, shard_shape, array.shape, strict=True)
+        )
+        for coords, _ in await _initialized_shards(array, strategy=strategy)
+    ]
+
+
+async def read_regions(
+    array: AnyArray | AnyAsyncArray,
+    regions: Iterable[tuple[slice, ...]] | None = None,
+    *,
+    concurrency: int | None = None,
+) -> AsyncIterator[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
+    """
+    Concurrently read and decode array regions, yielding each ``(region, data)`` pair
+    as soon as its data is available.
+
+    This is the spatially-resolved companion to [shards_initialized][zarr.shards_initialized]:
+    each yielded value pairs a region (a tuple of slices into the array) with the decoded
+    data for that region, so callers can stream over only the populated parts of a sparse
+    array without materializing the full array.
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to read from.
+    regions : iterable of tuple of slice, optional
+        The regions to read. Each region is a tuple of slices, one per array dimension.
+        If omitted, defaults to the regions spanned by the populated shards of ``array``
+        (i.e. every region that holds data).
+    concurrency : int, optional
+        The maximum number of regions read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Yields
+    ------
+    tuple[tuple[slice, ...], NDArrayLikeOrScalar]
+        A region and its decoded data, in completion order (not necessarily the order
+        of ``regions``).
+
+    See Also
+    --------
+    shards_initialized : Discover which shards of an array are populated.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+    if concurrency is None:
+        concurrency = zarr_config.get("async.concurrency")
+
+    region_list = await _initialized_regions(array) if regions is None else list(regions)
+
+    semaphore = Semaphore(concurrency)
+
+    async def _read(
+        region: tuple[slice, ...],
+    ) -> tuple[tuple[slice, ...], NDArrayLikeOrScalar]:
+        async with semaphore:
+            return region, await array.getitem(region)
+
+    for future in as_completed([ensure_future(_read(region)) for region in region_list]):
+        yield await future
 
 
 type FiltersLike = (
