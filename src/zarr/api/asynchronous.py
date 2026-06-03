@@ -18,6 +18,7 @@ from zarr.core.array import (
     create_array,
     from_array,
     get_array_metadata,
+    initialized_regions,
     read_regions,
     shards_initialized,
 )
@@ -81,6 +82,7 @@ __all__ = [
     "full",
     "full_like",
     "group",
+    "initialized_regions",
     "load",
     "ones",
     "ones_like",
