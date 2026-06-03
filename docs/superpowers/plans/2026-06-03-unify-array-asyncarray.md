@@ -10,6 +10,18 @@
 
 ---
 
+## Execution log / deviations (kept current during implementation)
+
+- **Task 3 absorbed extra work** that the original decomposition under-anticipated, because the new `Array.__init__` signature and the removal of the `_async_array` attribute have repo-wide blast radius (the pre-commit hook type-checks the *whole* repo):
+  - Converted ALL external `Array(async_array)` construction sites to `Array._from_async_array(...)` in `src/zarr/api/synchronous.py` and `src/zarr/core/group.py` — **this is the entirety of Task 7**, so Task 7 is effectively complete after Task 3.
+  - Migrated the `_async_array`-referencing tests (`tests/test_array.py`, `tests/test_api/test_asynchronous.py`, `tests/test_codec_pipeline.py`) and removed a now-unused `# type: ignore` in `src/zarr/testing/stateful.py` — **this is part of Task 8**.
+  - Fixed downstream typing fallout: `src/zarr/core/attributes.py` (`cast` to `JSON`), `src/zarr/metadata/migrate_v3.py` (narrow on `isinstance(zarr_v2, Group)` instead of on `.metadata`), `tests/test_codecs/test_vlen.py` (`type: ignore[unreachable]`).
+  - **Added `Array.__eq__`** (compares `metadata`, `store_path`, `config`; `__hash__ = None`) — the old `@dataclass(frozen=False)` auto-generated equality that the plain-class rewrite dropped, breaking `test_serializable_sync_array`.
+- **KNOWN INTERIM-RED STATE after Task 3:** 12 tests fail — the `test_resize_*` and `test_append_*` families. Cause: the *sync* `Array.resize`/`append` still call `sync(self.async_array.<x>(...))`, but `async_array` is now a deprecated property that reconstructs a **throwaway** `AsyncArray` each access, so the mutation never lands on `self`. **Task 6 fixes this** by routing sync `resize`/`append` through `self._runner.run(self.<x>_async(...))`, which mutates `self` in place. The `shape` setter (which calls `self.resize`) is fixed transitively. Until Task 6, these 12 failures are expected; Task 9 must confirm they are GONE.
+- Commits so far: Task 1 `5f6d4983`; Task 2 `2edd5a72` + docstring `7702eaf1`; Task 3 `ca9d1946` + eq fix `ca5fc345`.
+
+---
+
 ## File Structure
 
 - `src/zarr/core/sync.py` — add `Runner` Protocol + `SyncRunner` class.
