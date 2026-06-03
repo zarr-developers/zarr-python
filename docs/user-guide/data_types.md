@@ -360,7 +360,7 @@ print(type(a.dtype))
 
 But if we inspect the metadata for the array, we can see the Zarr data type object:
 
-```python
+```python exec="false" reason="REPL output transcript, not executable source"
 type(a.metadata.data_type)
 <class 'zarr.core.dtype.npy.int.Int64'>
 ```
