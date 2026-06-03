@@ -18,11 +18,11 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
-    SupportsSetRange,
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
+from zarr.storage._utils import _check_set_range_bounds
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
@@ -96,6 +96,12 @@ def _put_range(path: Path, value: Buffer, start: int) -> None:
     """Write bytes at a specific offset within an existing file."""
     view = value.as_buffer_like()
     with path.open("r+b") as f:
+        # Validate bounds before writing: a bare seek+write would silently extend the
+        # file (zero-filling any gap), but the SupportsSetRange contract requires the
+        # write to fit within the existing value, so we fail consistently with
+        # MemoryStore instead.
+        existing_length = f.seek(0, os.SEEK_END)
+        _check_set_range_bounds(existing_length, start, len(value))
         f.seek(start)
         f.write(view)
 
@@ -108,7 +114,7 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
-class LocalStore(Store, SupportsSetRange):
+class LocalStore(Store):
     """
     Store for the local file system.
 

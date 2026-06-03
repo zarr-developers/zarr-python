@@ -7,11 +7,12 @@ import weakref
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import ByteRequest, Store, SupportsSetRange
+from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import (
+    _check_set_range_bounds,
     _join_paths,
     _normalize_byte_range_index,
     normalize_path,
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
-class MemoryStore(Store, SupportsSetRange):
+class MemoryStore(Store):
     """
     Store for local memory.
 
@@ -202,6 +203,7 @@ class MemoryStore(Store, SupportsSetRange):
     def _set_range_impl(self, key: str, value: Buffer, start: int) -> None:
         buf = self._store_dict[key]
         target = buf.as_numpy_array()
+        _check_set_range_bounds(len(target), start, len(value))
         if not target.flags.writeable:
             target = target.copy()
             self._store_dict[key] = buf.__class__(target)
@@ -566,6 +568,19 @@ class GpuMemoryStore(MemoryStore):
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
 
+    # ``GpuMemoryStore`` deliberately does not support byte-range writes, so it must
+    # not satisfy ``SupportsSetRange``. The inherited ``MemoryStore`` implementation
+    # mutates a *host* copy of the GPU buffer (via ``as_numpy_array``) and would
+    # silently lose the write, and there is no use case for in-place byte-range writes
+    # into GPU memory (the intended ``set_range`` consumer targets cpu/local storage).
+    # Disclaiming the inherited methods by setting them to ``None`` makes
+    # ``isinstance(gpu_store, SupportsSetRange)`` return ``False`` (``runtime_checkable``
+    # treats a ``None`` attribute as "method absent"). This works because
+    # ``MemoryStore`` satisfies the protocol structurally rather than by nominal
+    # inheritance; mirrors the ``__hash__ = None`` idiom.
+    set_range = None  # type: ignore[assignment]
+    set_range_sync = None  # type: ignore[assignment]
+
 
 # -----------------------------------------------------------------------------
 # ManagedMemoryStore and its registry
@@ -859,6 +874,14 @@ class ManagedMemoryStore(MemoryStore):
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         return await super().set_if_not_exists(_join_paths([self.path, key]), value)
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        return await super().set_range(_join_paths([self.path, key]), value, start)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        return super().set_range_sync(_join_paths([self.path, key]), value, start)
 
     async def delete(self, key: str) -> None:
         # docstring inherited

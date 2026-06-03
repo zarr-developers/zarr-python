@@ -213,6 +213,23 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert result is not None
         assert result.to_bytes() == expected
 
+    @pytest.mark.parametrize(
+        ("start", "patch"),
+        [(9, b"XX"), (10, b"X"), (0, b"ZZZZZZZZZZZ")],
+        ids=["overhang", "past-end", "too-long"],
+    )
+    async def test_set_range_out_of_bounds(
+        self, store: LocalStore, start: int, patch: bytes
+    ) -> None:
+        """A write that does not fit within the existing value raises, not extends."""
+        await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        with pytest.raises(ValueError, match="does not fit within the existing value"):
+            await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        # The file is left unchanged (not zero-filled / extended).
+        result = await store.get("test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == b"AAAAAAAAAA"
+
     async def test_set_range_not_open(self, store_not_open: LocalStore) -> None:
         """set_range auto-opens a closed store."""
         assert not store_not_open._is_open

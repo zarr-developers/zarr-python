@@ -178,6 +178,20 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         assert result is not None
         assert result.to_bytes() == expected
 
+    @pytest.mark.parametrize(
+        ("start", "patch"),
+        [(9, b"XX"), (10, b"X"), (0, b"ZZZZZZZZZZZ")],
+        ids=["overhang", "past-end", "too-long"],
+    )
+    async def test_set_range_out_of_bounds(
+        self, store: MemoryStore, start: int, patch: bytes
+    ) -> None:
+        """A write that does not fit within the existing value raises consistently."""
+        store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        with pytest.raises(ValueError, match="does not fit within the existing value"):
+            await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        assert store._store_dict["test/key"].to_bytes() == b"AAAAAAAAAA"
+
     async def test_set_range_not_open(self, store_not_open: MemoryStore) -> None:
         """set_range auto-opens a closed store."""
         assert not store_not_open._is_open
@@ -295,6 +309,18 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
+
+    def test_set_range_not_supported(self, store: GpuMemoryStore) -> None:
+        """GpuMemoryStore deliberately does not satisfy SupportsSetRange.
+
+        Capability detection via isinstance must report False so a consumer (e.g. the
+        sharding codec) does not select it and crash. The methods are disclaimed
+        (set to None), so isinstance returns False rather than a false positive.
+        """
+        # mypy statically knows GpuMemoryStore cannot satisfy the protocol (the methods
+        # are None), which is exactly what we want — but it then flags this runtime
+        # assertion as unreachable. Keep the runtime check as a regression guard.
+        assert not isinstance(store, SupportsSetRange)  # type: ignore[unreachable]
 
 
 class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
@@ -564,6 +590,26 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
         result2 = await store.get("subdir/key")
         assert result2 is not None
         assert result2.to_bytes() == b"value"
+
+    def test_supports_set_range(self, store: ManagedMemoryStore) -> None:
+        assert isinstance(store, SupportsSetRange)
+
+    async def test_set_range_applies_path_prefix(self) -> None:
+        """set_range must prepend the store's path prefix, matching set/get.
+
+        Regression: an unprefixed inherited set_range would target the wrong key.
+        """
+        store = ManagedMemoryStore(name="set-range-path-test", path="subdir")
+        await store.set("k", self.buffer_cls.from_bytes(b"AAAAAAAAAA"))
+        # set() writes to the prefixed backing key.
+        assert "subdir/k" in store._store_dict
+        await store.set_range("k", self.buffer_cls.from_bytes(b"XX"), start=2)
+        store.set_range_sync("k", self.buffer_cls.from_bytes(b"YY"), start=6)
+        # Both writes landed on the same prefixed value that set/get use.
+        observed = await store.get("k")
+        assert observed is not None
+        assert observed.to_bytes() == b"AAXXAAYYAA"
+        assert store._store_dict["subdir/k"].to_bytes() == b"AAXXAAYYAA"
 
     async def test_path_list_operations(self) -> None:
         """Test that list operations filter by path prefix."""
