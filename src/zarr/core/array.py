@@ -11,9 +11,11 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    Protocol,
     TypedDict,
     cast,
     overload,
+    runtime_checkable,
 )
 from warnings import warn
 
@@ -300,6 +302,46 @@ async def get_array_metadata(
         parse_node_type_array(metadata_dict.get("node_type"))
 
     return metadata_dict
+
+
+@runtime_checkable
+class SupportsArrayState(Protocol):
+    """The structural surface the module-level array helpers rely on.
+
+    Both `AsyncArray` and `Array` satisfy this protocol, which lets the
+    helper functions operate on either class.
+    """
+
+    @property
+    def metadata(self) -> ArrayMetadata: ...
+    @property
+    def store_path(self) -> StorePath: ...
+    @property
+    def codec_pipeline(self) -> CodecPipeline: ...
+    @property
+    def config(self) -> ArrayConfig: ...
+    @property
+    def _chunk_grid(self) -> ChunkGrid: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+    @property
+    def chunks(self) -> tuple[int, ...]: ...
+    @property
+    def shards(self) -> tuple[int, ...] | None: ...
+
+    def _iter_shard_keys(
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
+    ) -> Iterator[str]: ...
+
+    def _info(
+        self,
+        count_chunks_initialized: int | None = None,
+        count_bytes_stored: int | None = None,
+    ) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -3953,7 +3995,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
 
 async def _shards_initialized(
-    array: AnyAsyncArray,
+    array: SupportsArrayState,
 ) -> tuple[str, ...]:
     """
     Return the keys of the shards that have been persisted to the storage backend.
@@ -5265,7 +5307,7 @@ def _iter_chunk_regions(
 
 
 async def _nchunks_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
 ) -> int:
     """
     Calculate the number of chunks that have been initialized in storage.
@@ -5295,7 +5337,7 @@ async def _nchunks_initialized(
 
 
 async def _nshards_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
 ) -> int:
     """
     Calculate the number of shards that have been initialized in storage.
@@ -5871,7 +5913,7 @@ async def _setitem(
 
 
 async def _resize(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
     new_shape: ShapeLike,
     delete_outside_chunks: bool = True,
 ) -> None:
@@ -5923,7 +5965,7 @@ async def _resize(
 
 
 async def _append(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
     data: npt.ArrayLike,
     axis: int = 0,
 ) -> tuple[int, ...]:
@@ -5994,9 +6036,9 @@ async def _append(
 
 
 async def _update_attributes(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
     new_attributes: dict[str, JSON],
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> SupportsArrayState:
     """
     Update the array's attributes.
 
@@ -6021,7 +6063,7 @@ async def _update_attributes(
 
 
 async def _info_complete(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: SupportsArrayState,
 ) -> Any:
     """
     Return all the information for an array, including dynamic information like storage size.
