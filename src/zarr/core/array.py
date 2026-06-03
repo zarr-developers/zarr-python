@@ -130,7 +130,7 @@ from zarr.core.metadata.v3 import (
     create_chunk_grid_metadata,
     parse_node_type_array,
 )
-from zarr.core.sync import sync
+from zarr.core.sync import Runner, SyncRunner, sync
 from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
@@ -1840,42 +1840,98 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
 
-# TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
-@dataclass(frozen=False)
 class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     A Zarr array.
     """
 
-    _async_array: AsyncArray[T_ArrayMetadata]
+    metadata: T_ArrayMetadata
+    store_path: StorePath
+    config: ArrayConfig
+    codec_pipeline: CodecPipeline
+    _chunk_grid: ChunkGrid
+    _runner: Runner
+
+    def __init__(
+        self,
+        metadata: ArrayMetadata | ArrayMetadataDict,
+        store_path: StorePath,
+        config: ArrayConfigLike | None = None,
+        *,
+        runner: Runner | None = None,
+    ) -> None:
+        metadata_parsed = parse_array_metadata(metadata)
+        config_parsed = parse_array_config(config)
+        object.__setattr__(self, "metadata", metadata_parsed)
+        object.__setattr__(self, "store_path", store_path)
+        object.__setattr__(self, "config", config_parsed)
+        object.__setattr__(self, "_chunk_grid", ChunkGrid.from_metadata(metadata_parsed))
+        object.__setattr__(
+            self,
+            "codec_pipeline",
+            create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
+        )
+        object.__setattr__(self, "_runner", runner if runner is not None else SyncRunner())
+
+    @classmethod
+    def _from_async_array(
+        cls,
+        async_array: AsyncArray[T_ArrayMetadata],
+        *,
+        runner: Runner | None = None,
+    ) -> Self:
+        return cls(
+            metadata=async_array.metadata,
+            store_path=async_array.store_path,
+            config=async_array.config,
+            runner=runner,
+        )
 
     @property
     def async_array(self) -> AsyncArray[T_ArrayMetadata]:
-        """An asynchronous version of the current array.  Useful for batching requests.
+        """An asynchronous version of this array.
 
-        Returns
-        -------
-            An asynchronous array whose metadata + store matches that of this synchronous array.
+        Deprecated: use the `*_async` methods on `Array` instead. This property
+        will be removed in a future release.
         """
-        return self._async_array
+        warnings.warn(
+            "Array.async_array is deprecated; use the *_async methods on Array instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return AsyncArray(self.metadata, self.store_path, self.config)
 
     @property
-    def config(self) -> ArrayConfig:
+    def _zdtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         """
-        The runtime configuration for this array. This is a read-only property. To modify the
-        runtime configuration, use `Array.with_config` to create a new `Array` with the modified
-        configuration.
-
-        Returns
-        -------
-        An `ArrayConfig` object that defines the runtime configuration for the array.
+        The zarr-specific representation of the array data type
         """
-        return self.async_array.config
+        if self.metadata.zarr_format == 2:
+            return self.metadata.dtype
+        else:
+            return self.metadata.data_type
 
-    @property
-    def _chunk_grid(self) -> ChunkGrid:
-        """The chunk grid for this array, bound to the array's shape."""
-        return self.async_array._chunk_grid
+    def _info(
+        self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
+    ) -> Any:
+        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
+        return ArrayInfo(
+            _zarr_format=self.metadata.zarr_format,
+            _data_type=self._zdtype,
+            _fill_value=self.metadata.fill_value,
+            _shape=self.shape,
+            _order=self.order,
+            _shard_shape=self.shards,
+            _chunk_shape=chunk_shape,
+            _read_only=self.read_only,
+            _compressors=self.compressors,
+            _filters=self.filters,
+            _serializer=self.serializer,
+            _store_type=type(self.store_path.store).__name__,
+            _count_bytes=self.nbytes,
+            _count_bytes_stored=count_bytes_stored,
+            _count_chunks_initialized=count_chunks_initialized,
+        )
 
     @classmethod
     def _create(
@@ -1932,7 +1988,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 config=config,
             ),
         )
-        return cls(async_array)
+        return cls._from_async_array(async_array)
 
     @classmethod
     def from_dict(
@@ -1963,7 +2019,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             If the dictionary data is invalid or missing required fields for array creation.
         """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
-        return cls(async_array)
+        return cls._from_async_array(async_array)
 
     @classmethod
     def open(
@@ -1985,7 +2041,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Array opened from the store.
         """
         async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
+        return cls._from_async_array(async_array)
 
     @property
     def store(self) -> Store:
@@ -2151,14 +2207,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
-        return self.async_array.metadata
-
-    @property
-    def store_path(self) -> StorePath:
-        return self.async_array.store_path
-
-    @property
     def order(self) -> MemoryOrder:
         return self.async_array.order
 
@@ -2273,7 +2321,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         A new Array
         """
-        return type(self)(self._async_array.with_config(config))
+        if isinstance(config, ArrayConfig):
+            new_config = config
+        else:
+            new_config = ArrayConfig(**{**self.config.to_dict(), **config})  # type: ignore[arg-type]
+        return type(self)(
+            metadata=self.metadata,
+            store_path=self.store_path,
+            config=new_config,
+            runner=self._runner,
+        )
 
     @property
     def nbytes(self) -> int:
@@ -3935,7 +3992,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
           overwritten by the new values.
         """
         new_array = sync(self.async_array.update_attributes(new_attributes))
-        return type(self)(new_array)
+        return type(self)._from_async_array(new_array)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"

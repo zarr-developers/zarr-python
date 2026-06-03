@@ -36,7 +36,8 @@ async def test_read_returns_get_results(
     if write_slice is not None:
         arr[write_slice] = 0
 
-    async_arr = arr._async_array
+    with pytest.warns(DeprecationWarning, match="async_array is deprecated"):
+        async_arr = arr.async_array
     pipeline = async_arr.codec_pipeline
     metadata = async_arr.metadata
 

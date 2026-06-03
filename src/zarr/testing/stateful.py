@@ -168,7 +168,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             chunks=chunks_param,
             dtype=a.dtype,
             fill_value=a.fill_value,
-            dimension_names=a.metadata.dimension_names,  # type: ignore[union-attr]
+            dimension_names=a.metadata.dimension_names,
             compressors=None,
         )
         arr[:] = a[:]

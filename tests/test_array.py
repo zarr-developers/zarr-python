@@ -2308,7 +2308,9 @@ def test_with_config(config: ArrayConfigParams) -> None:
     source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
     source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
 
-    new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
+    with pytest.warns(DeprecationWarning, match="async_array is deprecated"):
+        async_array = source_array.async_array
+    new_async_array_config_dict = async_array.with_config(config).config.to_dict()
     new_array_config_dict = source_array.with_config(config).config.to_dict()
 
     for key in source_config:

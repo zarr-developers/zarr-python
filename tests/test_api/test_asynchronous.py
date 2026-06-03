@@ -70,7 +70,7 @@ def test_get_shape_chunks(
                 compressors=None,
                 filters=None,
                 zarr_format=2,
-            )._async_array,
+            ),
             {
                 "chunks": (10,),
                 "shape": (100,),

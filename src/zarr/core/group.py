@@ -127,7 +127,7 @@ def _parse_async_node(
 ) -> AnyArray | Group:
     """Wrap an AsyncArray in an Array, or an AsyncGroup in a Group."""
     if isinstance(node, AsyncArray):
-        return Array(node)
+        return Array._from_async_array(node)
     elif isinstance(node, AsyncGroup):
         return Group(node)
     else:
@@ -1844,7 +1844,7 @@ class Group(SyncMixin):
         """
         obj = self._sync(self._async_group.getitem(path))
         if isinstance(obj, AsyncArray):
-            return Array(obj)
+            return Array._from_async_array(obj)
         else:
             return Group(obj)
 
@@ -2269,7 +2269,7 @@ class Group(SyncMixin):
         [('subarray', <Array memory://.../subarray shape=(10,) dtype=int8>)]
         """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
-            yield name, Array(async_array)
+            yield name, Array._from_async_array(async_array)
 
     def array_keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2653,7 +2653,7 @@ class Group(SyncMixin):
         compressors = _parse_deprecated_compressor(
             compressor, compressors, zarr_format=self.metadata.zarr_format
         )
-        return Array(
+        return Array._from_async_array(
             self._sync(
                 self._async_group.create_array(
                     name=name,
@@ -2694,7 +2694,9 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.require_array(name, shape=shape, **kwargs))
+        )
 
     def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
@@ -2715,7 +2717,9 @@ class Group(SyncMixin):
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-        return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.empty(name=name, shape=shape, **kwargs))
+        )
 
     def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
@@ -2734,7 +2738,9 @@ class Group(SyncMixin):
         Array
             The new array.
         """
-        return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs))
+        )
 
     def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
@@ -2753,7 +2759,9 @@ class Group(SyncMixin):
         Array
             The new array.
         """
-        return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.ones(name=name, shape=shape, **kwargs))
+        )
 
     def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
@@ -2776,7 +2784,7 @@ class Group(SyncMixin):
         Array
             The new array.
         """
-        return Array(
+        return Array._from_async_array(
             self._sync(
                 self._async_group.full(name=name, shape=shape, fill_value=fill_value, **kwargs)
             )
@@ -2806,7 +2814,9 @@ class Group(SyncMixin):
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-        return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.empty_like(name=name, data=data, **kwargs))
+        )
 
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of zeros like `data`.
@@ -2826,7 +2836,9 @@ class Group(SyncMixin):
             The new array.
         """
 
-        return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs))
+        )
 
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of ones like `data`.
@@ -2845,7 +2857,9 @@ class Group(SyncMixin):
         Array
             The new array.
         """
-        return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.ones_like(name=name, data=data, **kwargs))
+        )
 
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
@@ -2864,7 +2878,9 @@ class Group(SyncMixin):
         Array
             The new array.
         """
-        return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
+        return Array._from_async_array(
+            self._sync(self._async_group.full_like(name=name, data=data, **kwargs))
+        )
 
     def move(self, source: str, dest: str) -> None:
         """Move a sub-group or sub-array from one path to another.

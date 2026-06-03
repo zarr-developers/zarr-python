@@ -221,7 +221,7 @@ def open(
         )
     )
     if isinstance(obj, AsyncArray):
-        return Array(obj)
+        return Array._from_async_array(obj)
     else:
         return Group(obj)
 
@@ -391,7 +391,7 @@ def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyArray:
         The new array.
     """
 
-    return Array(sync(async_api.array(data=data, **kwargs)))
+    return Array._from_async_array(sync(async_api.array(data=data, **kwargs)))
 
 
 def group(
@@ -760,7 +760,7 @@ def create(
     z : Array
         The array.
     """
-    return Array(
+    return Array._from_async_array(
         sync(
             async_api.create(
                 shape=shape,
@@ -944,7 +944,7 @@ def create_array(
     # <Array memory://... shape=(100, 100) dtype=int32>
     ```
     """
-    return Array(
+    return Array._from_async_array(
         sync(
             zarr.core.array.create_array(
                 store,
@@ -1165,7 +1165,7 @@ def from_array(
     array([[0, 0], [0, 0]])
     """
 
-    return Array(
+    return Array._from_async_array(
         sync(
             zarr.core.array.from_array(
                 store,
@@ -1214,7 +1214,7 @@ def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    return Array(sync(async_api.empty(shape, **kwargs)))
+    return Array._from_async_array(sync(async_api.empty(shape, **kwargs)))
 
 
 # TODO: move ArrayLike to common module
@@ -1241,7 +1241,7 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    return Array(sync(async_api.empty_like(a, **kwargs)))
+    return Array._from_async_array(sync(async_api.empty_like(a, **kwargs)))
 
 
 # TODO: add type annotations for kwargs and fill_value
@@ -1262,7 +1262,9 @@ def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.full(shape=shape, fill_value=fill_value, **kwargs)))
+    return Array._from_async_array(
+        sync(async_api.full(shape=shape, fill_value=fill_value, **kwargs))
+    )
 
 
 # TODO: move ArrayLike to common module
@@ -1282,7 +1284,7 @@ def full_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.full_like(a, **kwargs)))
+    return Array._from_async_array(sync(async_api.full_like(a, **kwargs)))
 
 
 # TODO: add type annotations for kwargs
@@ -1301,7 +1303,7 @@ def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.ones(shape, **kwargs)))
+    return Array._from_async_array(sync(async_api.ones(shape, **kwargs)))
 
 
 # TODO: add type annotations for kwargs
@@ -1320,7 +1322,7 @@ def ones_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.ones_like(a, **kwargs)))
+    return Array._from_async_array(sync(async_api.ones_like(a, **kwargs)))
 
 
 # TODO: update this once async_api.open_array is fully implemented
@@ -1356,7 +1358,7 @@ def open_array(
     AsyncArray
         The opened array.
     """
-    return Array(
+    return Array._from_async_array(
         sync(
             async_api.open_array(
                 store=store,
@@ -1387,7 +1389,7 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyArray:
     AsyncArray
         The opened array.
     """
-    return Array(sync(async_api.open_like(a, path=path, **kwargs)))
+    return Array._from_async_array(sync(async_api.open_like(a, path=path, **kwargs)))
 
 
 # TODO: add type annotations for kwargs
@@ -1406,7 +1408,7 @@ def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.zeros(shape=shape, **kwargs)))
+    return Array._from_async_array(sync(async_api.zeros(shape=shape, **kwargs)))
 
 
 # TODO: add type annotations for kwargs
@@ -1425,4 +1427,4 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     Array
         The new array.
     """
-    return Array(sync(async_api.zeros_like(a, **kwargs)))
+    return Array._from_async_array(sync(async_api.zeros_like(a, **kwargs)))
