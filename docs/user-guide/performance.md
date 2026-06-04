@@ -259,9 +259,9 @@ coroutines — for example to reuse an event loop you already manage, or to
 integrate with another async framework. A runner is any object with a
 `run(coro)` method that awaits the coroutine and returns its result:
 
-```python
+```python exec="true" session="performance" source="above"
 import zarr
-from zarr.core.sync import Runner, SyncRunner
+from zarr.core.sync import SyncRunner
 
 
 class MyRunner:
