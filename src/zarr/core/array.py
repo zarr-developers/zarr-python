@@ -1859,13 +1859,31 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     def __init__(
         self,
-        metadata: ArrayMetadata | ArrayMetadataDict,
-        store_path: StorePath,
+        metadata: ArrayMetadata | ArrayMetadataDict | AsyncArray[T_ArrayMetadata],
+        store_path: StorePath | None = None,
         config: ArrayConfigLike | None = None,
         *,
         runner: Runner | None = None,
     ) -> None:
-        metadata_parsed = parse_array_metadata(metadata)
+        metadata_in: ArrayMetadata | ArrayMetadataDict
+        if isinstance(metadata, AsyncArray):
+            # Legacy construction form: Array(async_array). Deprecated.
+            warnings.warn(
+                "Array(async_array) is deprecated; construct an Array directly "
+                "with Array(metadata, store_path, config=...), or use "
+                "Array._from_async_array(async_array).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            async_array = metadata
+            metadata_in = async_array.metadata
+            store_path = async_array.store_path
+            config = async_array.config
+        else:
+            metadata_in = metadata
+        if store_path is None:
+            raise TypeError("store_path is required when constructing an Array from metadata")
+        metadata_parsed = parse_array_metadata(metadata_in)
         config_parsed = parse_array_config(config)
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)

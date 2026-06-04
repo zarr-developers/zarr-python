@@ -171,3 +171,29 @@ def test_set_orthogonal_selection_async() -> None:
     arr._runner.run(arr.set_orthogonal_selection_async(([0, 2], slice(None)), 7))  # type: ignore[arg-type]
     expected = arr.get_orthogonal_selection(([0, 2], slice(None)))  # type: ignore[arg-type]
     np.testing.assert_array_equal(expected, np.full((2, 4), 7, dtype="i4"))
+
+
+def test_legacy_array_from_async_array_constructor() -> None:
+    # Array(async_array) is the deprecated legacy construction form. It should
+    # still work but emit a DeprecationWarning.
+    base = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        aa = base.async_array  # a real AsyncArray
+    with pytest.warns(DeprecationWarning, match="Array\\(async_array\\)"):
+        arr = Array(aa)
+    assert isinstance(arr, Array)
+    assert arr.metadata == aa.metadata
+    assert arr.store_path == aa.store_path
+    assert isinstance(arr._runner, SyncRunner)
+
+
+def test_legacy_array_constructor_passes_runner() -> None:
+    base = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        aa = base.async_array
+    runner = SyncRunner()
+    with pytest.warns(DeprecationWarning, match="Array\\(async_array\\)"):
+        arr = Array(aa, runner=runner)
+    assert arr._runner is runner
