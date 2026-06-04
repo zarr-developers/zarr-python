@@ -219,6 +219,7 @@ def test_morton_exact_order() -> None:
         (1, 1),
         (5, 1, 3),
         (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
 def test_morton_is_permutation(shape: tuple[int, ...]) -> None:

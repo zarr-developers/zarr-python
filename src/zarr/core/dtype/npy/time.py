@@ -9,7 +9,6 @@ from typing import (
     Self,
     TypedDict,
     TypeGuard,
-    TypeVar,
     cast,
     get_args,
     overload,
@@ -18,7 +17,7 @@ from typing import (
 import numpy as np
 from typing_extensions import ReadOnly
 
-from zarr.core.common import NamedConfig
+from zarr.core.common import NamedRequiredConfig
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
@@ -90,16 +89,6 @@ def check_json_time(data: JSON) -> TypeGuard[Literal["NaT"] | int]:
     return check_json_int(data) or data == "NaT"
 
 
-BaseTimeDType_co = TypeVar(
-    "BaseTimeDType_co",
-    bound=np.dtypes.TimeDelta64DType | np.dtypes.DateTime64DType,
-    covariant=True,
-)
-BaseTimeScalar_co = TypeVar(
-    "BaseTimeScalar_co", bound=np.timedelta64 | np.datetime64, covariant=True
-)
-
-
 class TimeConfig(TypedDict):
     """
     The configuration for the numpy.timedelta64 or numpy.datetime64 data type in Zarr V3.
@@ -122,14 +111,14 @@ class TimeConfig(TypedDict):
     scale_factor: ReadOnly[int]
 
 
-class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
+class DateTime64JSON_V3(NamedRequiredConfig[Literal["numpy.datetime64"], TimeConfig]):
     """
     The JSON representation of the ``numpy.datetime64`` data type in Zarr V3.
 
     References
     ----------
     This representation is defined in the ``numpy.datetime64``
-    [specification document](https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-datetime64).
+    [specification document](https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64).
 
     Examples
     --------
@@ -139,20 +128,20 @@ class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
         "configuration": {
             "unit": "ms",
             "scale_factor": 1
-            }
+        }
     }
     ```
     """
 
 
-class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
+class TimeDelta64JSON_V3(NamedRequiredConfig[Literal["numpy.timedelta64"], TimeConfig]):
     """
     The JSON representation of the ``TimeDelta64`` data type in Zarr V3.
 
     References
     ----------
     This representation is defined in the numpy.timedelta64
-    [specification document](https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-timedelta64).
+    [specification document](https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.timedelta64).
 
     Examples
     --------
@@ -162,7 +151,7 @@ class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
         "configuration": {
             "unit": "ms",
             "scale_factor": 1
-            }
+        }
     }
     ```
     """
@@ -217,7 +206,10 @@ class DateTime64JSON_V2(DTypeConfig_V2[str, None]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, HasItemSize):
+class TimeDTypeBase[
+    DType: np.dtypes.TimeDelta64DType | np.dtypes.DateTime64DType,
+    Scalar: np.timedelta64 | np.datetime64,
+](ZDType[DType, Scalar], HasEndianness, HasItemSize):
     """
     A base class for data types that represent time via the NumPy TimeDelta64 and DateTime64 data
     types.
@@ -275,7 +267,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
-    def to_native_dtype(self) -> BaseTimeDType_co:
+    def to_native_dtype(self) -> DType:
         # Numpy does not allow creating datetime64 or timedelta64 via
         # np.dtypes.{dtype_name}()
         # so we use np.dtype with a formatted string.
@@ -285,7 +277,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
 
         Returns
         -------
-        BaseTimeDType_co
+        DType
             A NumPy data type object representing the time data type with
             the specified unit, scale factor, and byte order.
         """
@@ -545,7 +537,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         numpy.timedelta64
             The input data cast as a numpy timedelta64 scalar.
         """
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+        # numpy 2.x stub: timedelta64(scalar, formatted_unit_str) is runtime-valid
+        # but no overload matches the dynamic f-string unit argument.
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
 
     def cast_scalar(self, data: object) -> np.timedelta64:
         """
@@ -553,6 +547,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         raise a TypeError.
         """
         if self._check_scalar(data):
+            if isinstance(data, np.timedelta64) and np.isnat(data):
+                # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+                return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
             return self._cast_scalar_unchecked(data)
         msg = (
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
@@ -567,7 +564,8 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         This method provides a default value for the timedelta64 scalar, which is
         a 'Not-a-Time' (NaT) value.
         """
-        return np.timedelta64("NaT")
+        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+        return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         """
@@ -591,7 +589,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             If the input JSON is not a valid representation of a scalar for this data type.
         """
         if check_json_time(data):
-            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+            # numpy 2.x stub: timedelta64(scalar, formatted_unit_str) is runtime-valid
+            # but no overload matches the dynamic f-string unit argument.
+            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
 
@@ -818,7 +818,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         numpy.datetime64
             The input cast to a NumPy datetime scalar.
         """
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+        # numpy 2.x stub: datetime64(scalar, formatted_unit_str) is runtime-valid
+        # but no overload matches the dynamic f-string unit argument.
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
 
     def cast_scalar(self, data: object) -> np.datetime64:
         """
@@ -857,7 +859,8 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             The default scalar value, which is a 'Not-a-Time' (NaT) value
         """
 
-        return np.datetime64("NaT")
+        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
+        return np.datetime64("NaT", self.unit)  # type: ignore[arg-type]
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         """

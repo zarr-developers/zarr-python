@@ -6,7 +6,7 @@ import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
@@ -19,10 +19,8 @@ if TYPE_CHECKING:
 
     counter: defaultdict[str, int]
 
-T_Store = TypeVar("T_Store", bound=Store)
 
-
-class LoggingStore(WrapperStore[T_Store]):
+class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
     """
     Store that logs all calls to another wrapped store.
 
@@ -163,7 +161,7 @@ class LoggingStore(WrapperStore[T_Store]):
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):
-            return type(self) is type(other) and self._store.__eq__(other._store)  # type: ignore[attr-defined]
+            return type(self) is type(other) and self._store.__eq__(other._store)
 
     async def get(
         self,

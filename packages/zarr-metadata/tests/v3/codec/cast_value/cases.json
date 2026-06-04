@@ -1,0 +1,60 @@
+{
+  "minimal": {
+    "name": "cast_value",
+    "configuration": {"data_type": "uint8"}
+  },
+  "named_config_dtype": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": {
+        "name": "numpy.datetime64",
+        "configuration": {"unit": "ns", "scale_factor": 1}
+      }
+    }
+  },
+  "with_rounding": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": "int16",
+      "rounding": "towards-zero"
+    }
+  },
+  "with_out_of_range_clamp": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": "int8",
+      "out_of_range": "clamp"
+    }
+  },
+  "with_out_of_range_wrap": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": "uint8",
+      "out_of_range": "wrap"
+    }
+  },
+  "with_scalar_map_encode_only": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": "uint8",
+      "scalar_map": {
+        "encode": [["NaN", 0]]
+      }
+    }
+  },
+  "numpy_compat_full_example": {
+    "name": "cast_value",
+    "configuration": {
+      "data_type": "uint8",
+      "rounding": "towards-zero",
+      "out_of_range": "wrap",
+      "scalar_map": {
+        "encode": [
+          ["NaN", 0],
+          ["+Infinity", 0],
+          ["-Infinity", 0]
+        ]
+      }
+    }
+  }
+}

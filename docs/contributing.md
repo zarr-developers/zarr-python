@@ -12,7 +12,7 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can format the code nicely using markdown, e.g.:
 
-```python
+```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
 import zarr
 g = zarr.group()
 # etc.
@@ -205,7 +205,7 @@ When submitting a pull request, coverage will also be collected across all suppo
 
 ### Documentation
 
-Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.11.
+Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.12.
 
 Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is written in the Markdown markup language (.md files) in the `docs` folder. The documentation consists both of prose and API documentation. All user-facing classes and functions are included in the API documentation, under the `docs/api` folder using the [mkdocstrings](https://mkdocstrings.github.io/) extension. Add any new public functions or classes to the relevant markdown file in `docs/api/*.md`. Any new features or important usage information should be included in the user-guide (`docs/user-guide`). Any changes should also be included as a new file in the `changes` directory.
 
@@ -225,10 +225,10 @@ hatch --env docs run serve
 
 #### Adding executable code blocks in the documentation
 
-Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="true"` to a code block header for it to be executed when the docs are built. For example:
 
 ````md
-```python exec="on"
+```python exec="true"
 print("Hello world")
 ```
 ````
@@ -253,9 +253,67 @@ renders as:
 print("Hello world")
 ```
 
+#### Validating code blocks: `exec` vs `test`
+
+Every Python code block in the documentation is checked by a test
+(`tests/test_docs.py`) so that examples cannot quietly rot — the bug that motivated
+this was an example calling `zarr.create_array(..., mode="w")`, an argument that does
+not exist, which went unnoticed because nothing ran it. A block declares *how* it is
+validated using one of two independent attributes:
+
+  - **`exec="true"`** — Markdown Exec runs the block **at docs-build time to render its
+    output** into the page. This is the attribute described above; it is also what the
+    test suite executes. Use it for ordinary examples whose output should appear in the
+    docs.
+  - **`test="true"`** — the block is **run by the test suite only**, *not* at build time.
+    Use this for an example that should be validated but cannot run in the docs-build
+    environment — for example one that needs a GPU or a cloud backend. Markdown Exec
+    leaves a `test="true"` block as a static, syntax-highlighted snippet (it never
+    executes it), while the test suite still runs it (see the marker note below).
+
+A block may carry both (`exec="true" test="true"`), though in practice `exec="true"`
+already implies it is tested, so you rarely need `test="true"` alongside it.
+
+The two attributes are kept separate on purpose: `exec=` controls *build-time rendering*
+and `test=` controls *test-time validation*. Tagging a GPU/cloud example `exec="true"`
+would make `mkdocs build` try to run it on a machine without that infrastructure and fail
+the build; `test="true"` lets it be validated without being built.
+
+##### Opting a block out of validation
+
+A handful of blocks genuinely cannot run and are not executable Python — a REPL
+transcript, a deliberately-incorrect "before" snippet, a `--8<--` file include. Mark
+these explicitly by opening the fence with
+`exec="false" reason="REPL output transcript, not executable source"` (supply a reason
+that fits the block).
+
+`exec="false"` with a non-empty `reason` is an explicit, greppable opt-out. A test
+(`test_no_unvalidated_blocks`) requires **every** Python block to be either `exec="true"`,
+`test="true"`, or `exec="false"` with a reason — so a block can never silently skip
+validation. A bare ` ```python ` fence, or a typo like `exec="on"`, fails that test.
+
+##### Marker-bound blocks (GPU, S3)
+
+A `test="true"` block that needs special infrastructure declares a pytest marker with
+`markers="..."`, which binds it to that infrastructure in the test suite:
+
+  - `markers="gpu"` — run only under `pytest -m gpu` (the GPU CI environment); skipped
+    elsewhere via `importorskip("cupy")`.
+  - `markers="s3"` — run against a mock S3 (moto) backend supplied by a test fixture, so
+    the example can use a bare `s3://…` URL with no test-only connection details on show.
+
+##### Placement of `test="true"` blocks
+
+Because Markdown Exec does not execute a `test="true"` (or `exec="false"`) block, placing
+one *before* an `exec="true"` block on the same page can disrupt the build-time execution
+of that later block. Put `test="true"` blocks **after** all `exec="true"` blocks on the
+page (or on a page where they are the only Python block). The `test_test_only_blocks_come_last`
+test enforces this, and the CI docs build runs with `--strict` so any such breakage fails
+the build rather than passing as a warning.
+
 #### Building documentation without executing code blocks
 
-Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec plugin](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132) in the mkdocs configuration file. This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
 
 ### Changelog
 
@@ -311,10 +369,43 @@ The Zarr library is an implementation of a file format standard defined external
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
+
+## Experimental API policy
+
+The `zarr.experimental` namespace contains features that are under active development and may change without notice. When contributing to or depending on experimental features, please keep the following in mind:
+
+### For contributors
+
+When adding a new feature to `zarr.experimental`:
+
+1. Place the feature under `src/zarr/experimental/` and export it from `src/zarr/experimental/__init__.py`.
+2. Document the feature in `docs/user-guide/experimental.md` and note clearly that it is experimental.
+3. Add a changelog entry categorized as `feature`.
+
+We aim to either **promote** or **remove** experimental features within **6 months** of their addition. To promote a feature to stable:
+
+1. Move it from `zarr.experimental` to the appropriate stable module.
+2. Keep a deprecated re-export in `zarr.experimental` for one minor release.
+3. Update the documentation to reflect the stable location.
+
+### For users
+
+Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
+
 ## Release procedure
 
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+### Preparing a release
+
+Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
+
+1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
+2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
+3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
+4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
+5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Benchmarks
 

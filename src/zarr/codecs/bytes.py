@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -9,6 +10,7 @@ from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.npy.structured import Struct
 
 if TYPE_CHECKING:
     from typing import Self
@@ -56,7 +58,20 @@ class BytesCodec(ArrayBytesCodec):
             return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if not isinstance(array_spec.dtype, HasEndianness):
+        if isinstance(array_spec.dtype, Struct):
+            if array_spec.dtype.has_multi_byte_fields():
+                if self.endian is None:
+                    warnings.warn(
+                        "Missing 'endian' for structured dtype with multi-byte fields. "
+                        "Assuming little-endian for legacy compatibility.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    return replace(self, endian=Endian.little)
+            else:
+                if self.endian is not None:
+                    return replace(self, endian=None)
+        elif not isinstance(array_spec.dtype, HasEndianness):
             if self.endian is not None:
                 return replace(self, endian=None)
         elif self.endian is None:

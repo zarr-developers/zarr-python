@@ -36,12 +36,23 @@ The partitioning of an array's elements into [chunks](#chunk). In Zarr V3, the
 chunk grid is defined in the array [metadata](#metadata) and determines the
 boundaries of each storage object.
 
+Zarr V3 supports two chunk grid types:
+
+- **Regular**: All chunks have the same shape (the last chunk along each
+  dimension may be smaller than the declared size).
+- **Rectilinear** *(experimental)*: Each dimension can have different chunk
+  sizes, specified as a list of edge lengths per dimension. Enable with
+  `zarr.config.set({'array.rectilinear_chunks': True})`.
+
 When sharding is used, the chunk grid defines the [shard](#shard) boundaries,
 not the inner chunk boundaries. The inner chunk shape is defined within the
 [sharding codec](#shard).
 
 **API**: The `chunk_grid` field in array metadata contains the storage-level
-grid.
+grid. [`Array.chunks`][zarr.Array.chunks] returns the chunk shape for regular
+grids. For all grid types, `Array.read_chunk_sizes` and `Array.write_chunk_sizes`
+return the per-dimension chunk sizes in dask-style `tuple[tuple[int, ...], ...]`
+format.
 
 ### Shard
 
@@ -104,7 +115,9 @@ The following properties are available on [`zarr.Array`][]:
 
 | Property | Description |
 |----------|-------------|
-| `.chunks` | Chunk shape — the inner chunk shape when sharding is used |
+| `.chunks` | Chunk shape — the inner chunk shape when sharding is used. Raises for rectilinear grids |
 | `.shards` | Shard shape, or `None` if no sharding |
+| `.read_chunk_sizes` | Per-dimension chunk data sizes (`tuple[tuple[int, ...], ...]`). Works for all grid types |
+| `.write_chunk_sizes` | Per-dimension storage chunk sizes (`tuple[tuple[int, ...], ...]`). Works for all grid types |
 | `.nchunks` | Total number of independently compressible units across the array |
 | `.cdata_shape` | Number of independently compressible units per dimension |
