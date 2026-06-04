@@ -147,6 +147,24 @@ class _ShardIndex(NamedTuple):
     def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
         return np.not_equal(self.offsets_and_lengths[..., 0], MAX_UINT_64)
 
+    def is_dense(self, chunk_byte_length: int) -> bool:
+        """True when every chunk is present, fixed-length, and uniquely placed.
+
+        Used to gate the vectorized whole-shard decode: a dense fixed-size shard
+        is a regular grid of equal-length payloads, so it can be reshaped/scattered
+        in bulk rather than decoded chunk-by-chunk.
+        """
+        offsets = self.offsets_and_lengths[..., 0].reshape(-1)
+        lengths = self.offsets_and_lengths[..., 1].reshape(-1)
+        # all present
+        if bool(np.any(offsets == MAX_UINT_64)):
+            return False
+        # all the same fixed length
+        if not bool(np.all(lengths == chunk_byte_length)):
+            return False
+        # offsets unique (no two chunks share a slot)
+        return int(np.unique(offsets).size) == int(offsets.size)
+
     def get_chunk_slice(self, chunk_coords: tuple[int, ...]) -> tuple[int, int] | None:
         localized_chunk = self._localize_chunk(chunk_coords)
         chunk_start, chunk_len = self.offsets_and_lengths[localized_chunk]
@@ -455,7 +473,7 @@ class ShardingCodec(
         index_transform = self._get_index_chunk_transform(chunks_per_shard)
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         index_array = index_transform.decode_chunk(index_bytes, index_spec)
-        return _ShardIndex(index_array.as_numpy_array())
+        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
 
     def _encode_shard_index_sync(self, index: _ShardIndex) -> Buffer:
         """Encode shard index synchronously using ChunkTransform."""
@@ -655,7 +673,7 @@ class ShardingCodec(
                 # The decoded index may be a view of a read-only buffer (e.g.
                 # mmap-backed reads from LocalStore). Copy so set_chunk_slice
                 # below can mutate it.
-                index = _ShardIndex(shard_reader.index.offsets_and_lengths.copy())
+                index = _ShardIndex(chunks_per_shard, shard_reader.index.offsets_and_lengths.copy())
 
                 # Inner chunks are written in Morton (Z-curve) order, and
                 # because they're fixed-size we can compute a chunk's byte
@@ -971,6 +989,90 @@ class ShardingCodec(
                 subchunk_iter = iter(subchunk_list)
         return subchunk_iter
 
+    def _decode_full_shard_bulk(
+        self,
+        shard_bytes: Buffer,
+        shard_spec: ArraySpec,
+        indexer: Any,
+    ) -> NDBuffer | None:
+        """Vectorized whole-shard decode for dense, fixed-size, uncompressed shards.
+
+        Returns the assembled shard array, or None if the fast path does not
+        apply (so the caller falls back to the per-chunk loop). Conditions:
+        - inner codec chain is fixed-size (no compression / variable-length);
+        - the inner array->bytes codec is a plain BytesCodec (decode is a dtype/
+          endian view, no reordering), with no array->array or extra bytes->bytes
+          codecs except an optional trailing crc32c (which only appends bytes per
+          chunk and does not alter the leading payload);
+        - the stored index is dense (every chunk present, equal fixed length,
+          contiguous) so the data section is a regular grid of chunk payloads.
+
+        Chunk positions are read from the stored index, so this is correct for
+        any ``subchunk_write_order`` (morton / lexicographic / colexicographic /
+        unordered).
+        """
+        # --- gate on a trivial, fixed-size inner codec chain ---
+        if not self._inner_codecs_fixed_size:
+            return None
+        non_crc = [c for c in self.codecs if not isinstance(c, Crc32cCodec)]
+        if len(non_crc) != 1 or not isinstance(non_crc[0], BytesCodec):
+            return None
+
+        chunks_per_shard = self._get_chunks_per_shard(shard_spec)
+        chunk_spec = self._get_chunk_spec(shard_spec)
+        n_chunks = product(chunks_per_shard)
+        if n_chunks == 0:
+            return None
+
+        # Only valid when the read is the ENTIRE shard contiguously (output shape
+        # equals the shard shape). A strided/fancy read may touch all chunks but
+        # not want the whole grid laid out densely — those must use the per-chunk
+        # path so chunk_selection / out_selection are honored.
+        if tuple(indexer.shape) != tuple(shard_spec.shape):
+            return None
+        chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
+        crc_len = chunk_byte_length - chunk_spec.dtype.item_size * product(self.chunk_shape)  # type: ignore[attr-defined]
+
+        shard_index_size = self._shard_index_size(chunks_per_shard)
+        if len(shard_bytes) != n_chunks * chunk_byte_length + shard_index_size:
+            return None  # not a dense fixed-size shard
+
+        # --- decode the index; require dense layout ---
+        if self.index_location == ShardingCodecIndexLocation.start:
+            index_bytes = shard_bytes[:shard_index_size]
+        else:
+            index_bytes = shard_bytes[-shard_index_size:]
+        index = self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        if not index.is_dense(chunk_byte_length):
+            return None
+
+        # --- bulk reconstruct ---
+        # Decode the inner array->bytes codec on the WHOLE data section at once
+        # (it is a plain BytesCodec: a dtype/endian view). The index gives each
+        # chunk's absolute byte offset within the blob; with a dense fixed-size
+        # layout the payload length is the encoded item-bytes of one chunk.
+        native_dtype = shard_spec.dtype.to_native_dtype()
+        raw = shard_bytes.as_numpy_array().view(np.uint8)
+        payload = chunk_byte_length - crc_len  # bytes of the dtype payload per chunk
+        cs = self.chunk_shape
+        # Endianness: the on-disk byte order is the BytesCodec's; decode via the
+        # inner transform on a single chunk would honor it, but for the bulk view
+        # we read with the stored dtype (item_size matches) then let numpy assign
+        # into the native-dtype output, which performs any needed byte swap.
+        stored_dtype = chunk_spec.dtype.to_native_dtype()
+
+        offsets = index.offsets_and_lengths[..., 0].reshape(-1)  # localized coords, C-order
+        coords_c = list(np.ndindex(chunks_per_shard))
+        out = shard_spec.prototype.nd_buffer.empty(
+            shape=indexer.shape, dtype=native_dtype, order=shard_spec.order
+        )
+        for flat, coord in enumerate(coords_c):
+            start = int(offsets[flat])
+            chunk = raw[start : start + payload].view(stored_dtype).reshape(cs)
+            sel = tuple(slice(c * s, c * s + s) for c, s in zip(coord, cs, strict=True))
+            out[sel] = chunk
+        return out
+
     def _decode_partial_sync(
         self,
         byte_getter: Any,
@@ -1016,6 +1118,17 @@ class ShardingCodec(
             shard_bytes = byte_getter.get_sync(prototype=chunk_spec.prototype)
             if shard_bytes is None:
                 return None
+            # Bulk fast path: a whole-shard read of a dense, fixed-size shard
+            # (no compression/filters) is just the data section reshaped and
+            # reordered into the grid -- no per-chunk decode/scatter loop.
+            # Order-agnostic: chunk positions come from the stored index, so it
+            # is correct for any subchunk_write_order. Falls through on any
+            # mismatch (compression, partial shard, non-trivial inner codec).
+            bulk = self._decode_full_shard_bulk(shard_bytes, shard_spec, indexer)
+            if bulk is not None:
+                if hasattr(indexer, "sel_shape"):
+                    return bulk.reshape(indexer.sel_shape)
+                return bulk
             shard_reader = self._shard_reader_from_bytes_sync(shard_bytes, chunks_per_shard)
             shard_dict: ShardMapping = shard_reader
         else:
