@@ -2056,7 +2056,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def store(self) -> Store:
-        return self.async_array.store
+        return self.store_path.store
 
     @property
     def ndim(self) -> int:
@@ -2067,7 +2067,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the array.
         """
-        return self.async_array.ndim
+        return len(self.metadata.shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -2078,7 +2078,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The shape of the array.
         """
-        return self.async_array.shape
+        return self.metadata.shape
 
     @shape.setter
     def shape(self, value: tuple[int, ...]) -> None:
@@ -2098,7 +2098,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             A tuple of integers representing the length of each dimension of a chunk.
         """
-        return self.async_array.chunks
+        # TODO: move sharding awareness out of metadata
+        return self.metadata.chunks
 
     @property
     def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
@@ -2124,7 +2125,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
-        return self.async_array.read_chunk_sizes
+
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            inner_chunk_shape = codecs[0].chunk_shape
+            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        return self._chunk_grid.chunk_sizes
 
     @property
     def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
@@ -2148,7 +2156,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
-        return self.async_array.write_chunk_sizes
+
+        return self._chunk_grid.chunk_sizes
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -2163,7 +2172,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple | None
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
-        return self.async_array.shards
+        return self.metadata.shards
 
     @property
     def size(self) -> int:
@@ -2174,7 +2183,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array.
         """
-        return self.async_array.size
+        return np.prod(self.metadata.shape).item()
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -2185,7 +2194,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         np.dtype
             The NumPy data type.
         """
-        return self.async_array.dtype
+        return self._zdtype.to_native_dtype()
 
     @property
     def attrs(self) -> Attributes:
@@ -2205,25 +2214,33 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def path(self) -> str:
         """Storage path."""
-        return self.async_array.path
+        return self.store_path.path
 
     @property
     def name(self) -> str:
         """Array name following h5py convention."""
-        return self.async_array.name
+        # follow h5py convention: add leading slash
+        name = self.path
+        if not name.startswith("/"):
+            name = "/" + name
+        return name
 
     @property
     def basename(self) -> str:
         """Final component of name."""
-        return self.async_array.basename
+        return self.name.split("/")[-1]
 
     @property
     def order(self) -> MemoryOrder:
-        return self.async_array.order
+        if self.metadata.zarr_format == 2:
+            return self.metadata.order
+        else:
+            return self.config.order
 
     @property
     def read_only(self) -> bool:
-        return self.async_array.read_only
+        # Backwards compatibility for 2.x
+        return self.store_path.read_only
 
     @property
     def fill_value(self) -> Any:
@@ -2235,14 +2252,27 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
         """
-        return self.async_array.filters
+        if self.metadata.zarr_format == 2:
+            filters = self.metadata.filters
+            if filters is None:
+                return ()
+            return filters
+
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
+        )
 
     @property
     def serializer(self) -> None | ArrayBytesCodec:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
-        return self.async_array.serializer
+        if self.metadata.zarr_format == 2:
+            return None
+
+        return next(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayBytesCodec)
+        )
 
     @property
     @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
@@ -2254,7 +2284,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
             Use [`array.compressors`][zarr.Array.compressors] instead.
         """
-        return self.async_array.compressor
+        if self.metadata.zarr_format == 2:
+            return self.metadata.compressor
+        raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
@@ -2262,7 +2294,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
         """
-        return self.async_array.compressors
+        if self.metadata.zarr_format == 2:
+            if self.metadata.compressor is not None:
+                return (self.metadata.compressor,)
+            return ()
+
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, BytesBytesCodec)
+        )
 
     @property
     def cdata_shape(self) -> tuple[int, ...]:
@@ -2271,7 +2310,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         When sharding is used, this counts inner chunks (not shards) per dimension.
         """
-        return self.async_array._chunk_grid_shape
+        return self._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
@@ -2285,14 +2324,27 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        return self.async_array._chunk_grid_shape
+        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
+        # to replace the repeated `len == 1 and isinstance` pattern.
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            # When sharding, count inner chunks across the whole array
+            chunk_shape = codecs[0].chunk_shape
+            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+        return self._chunk_grid.grid_shape
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
         """
         The shape of the shard grid for this array.
         """
-        return self.async_array._shard_grid_shape
+        if self.shards is None:
+            shard_shape = self.chunks
+        else:
+            shard_shape = self.shards
+        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
 
     @property
     def nchunks(self) -> int:
@@ -2302,14 +2354,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Note that if a sharding codec is used, then the number of chunks may exceed the number of
         stored objects supporting this array.
         """
-        return self.async_array.nchunks
+        return product(self._chunk_grid_shape)
 
     @property
     def _nshards(self) -> int:
         """
         The number of shards in the stored representation of this array.
         """
-        return self.async_array._nshards
+        return product(self._shard_grid_shape)
 
     @overload
     def with_config(self: ArrayV2, config: ArrayConfigLike) -> ArrayV2: ...
@@ -2356,7 +2408,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         dtypes. It is not possible to determine the size of an array with variable-length elements
         from the shape and dtype alone.
         """
-        return self.async_array.nbytes
+        return self.size * self.dtype.itemsize
 
     @property
     def nchunks_initialized(self) -> int:
@@ -2439,7 +2491,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             The storage key of each shard in the selection or chunk though chunks technically do not have
             storage keys.
         """
-        return self.async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
+        # Iterate over the coordinates of chunks in chunk grid space.
+        return _iter_shard_keys(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_chunk_coords(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2465,7 +2522,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
-        return self.async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
+        return _iter_chunk_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_shard_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2491,7 +2552,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The coordinates of each shard in the selection.
         """
-        return self.async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
+        return _iter_shard_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_chunk_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2511,7 +2576,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        return self.async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
+        return _iter_chunk_regions(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_shard_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2532,7 +2601,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             A tuple of slice objects representing the region spanned by each shard or if no shard is present,
             chunk in the selection.
         """
-        return self.async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
+        return _iter_shard_regions(array=self, origin=origin, selection_shape=selection_shape)
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
