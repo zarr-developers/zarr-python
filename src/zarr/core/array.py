@@ -4102,28 +4102,25 @@ async def initialized_regions(
 
 async def read_regions(
     array: AnyArray | AnyAsyncArray,
-    regions: Iterable[tuple[slice, ...]] | None = None,
+    regions: Iterable[tuple[slice, ...]],
     *,
     concurrency: int | None = None,
 ) -> AsyncIterator[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
     """
-    Concurrently read and decode array regions, yielding each ``(region, data)`` pair
-    as soon as its data is available.
+    Concurrently read and decode a collection of array regions, yielding each
+    ``(region, data)`` pair as soon as its data is available.
 
     Each yielded value pairs a region (a tuple of slices into the array) with the decoded
-    data for that region. If ``regions`` is omitted, it defaults to the populated regions
-    of the array (see [initialized_regions][zarr.initialized_regions]), so callers can
-    stream over only the populated parts of a sparse array without materializing the full
-    array.
+    data for that region. The regions to read are supplied by the caller; pass the result
+    of [initialized_regions][zarr.initialized_regions] to read only the populated parts of
+    a sparse array without materializing the full array.
 
     Parameters
     ----------
     array : Array or AsyncArray
         The array to read from.
-    regions : iterable of tuple of slice, optional
+    regions : iterable of tuple of slice
         The regions to read. Each region is a tuple of slices, one per array dimension.
-        If omitted, defaults to the regions spanned by the populated shards of ``array``
-        (i.e. every region that holds data).
     concurrency : int, optional
         The maximum number of regions read concurrently. Defaults to the
         ``async.concurrency`` config value.
@@ -4144,8 +4141,6 @@ async def read_regions(
     if concurrency is None:
         concurrency = zarr_config.get("async.concurrency")
 
-    region_list = await initialized_regions(array) if regions is None else list(regions)
-
     semaphore = Semaphore(concurrency)
 
     async def _read(
@@ -4154,7 +4149,7 @@ async def read_regions(
         async with semaphore:
             return region, await array.getitem(region)
 
-    for future in as_completed([ensure_future(_read(region)) for region in region_list]):
+    for future in as_completed([ensure_future(_read(region)) for region in regions]):
         yield await future
 
 

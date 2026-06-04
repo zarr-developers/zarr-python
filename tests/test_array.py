@@ -2500,16 +2500,14 @@ def test_initialized_regions_values(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
-def test_read_regions_default_reconstructs_baseline(store: Store, setup_name: str) -> None:
-    """With no explicit regions, ``read_regions`` reads the populated regions; scattering
-    them onto a fill-valued array reproduces the full ``arr[:]`` read exactly."""
+def test_read_initialized_regions_reconstructs_baseline(store: Store, setup_name: str) -> None:
+    """Reading the initialized regions and scattering them onto a fill-valued array
+    reproduces the full ``arr[:]`` read exactly."""
     arr, baseline = _CA_SETUPS[setup_name](store)
-    results = zarr.read_regions(arr)
+    results = zarr.read_regions(arr, zarr.initialized_regions(arr))
     result = _ca_pack(arr, results, baseline)
     assert np.array_equal(result, baseline)
     assert result.dtype == baseline.dtype
-    # the default region set is exactly the initialized regions
-    assert len(results) == len(zarr.initialized_regions(arr))
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

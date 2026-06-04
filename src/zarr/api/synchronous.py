@@ -1512,28 +1512,27 @@ def initialized_regions(
 
 def read_regions(
     array: Array | AsyncArray[Any],
-    regions: Iterable[tuple[slice, ...]] | None = None,
+    regions: Iterable[tuple[slice, ...]],
     *,
     concurrency: int | None = None,
 ) -> list[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
     """
-    Read and decode array regions, returning a list of ``(region, data)`` pairs.
+    Read and decode a collection of array regions, returning a list of ``(region, data)``
+    pairs.
 
     Each pair associates a region (a tuple of slices into the array) with the decoded data
-    for that region. If ``regions`` is omitted, it defaults to the populated regions of the
-    array (see [initialized_regions][zarr.initialized_regions]), letting callers operate on
-    only the populated parts of a sparse array without materializing the full array. For
-    lazy, streaming consumption use the asynchronous [zarr.api.asynchronous.read_regions][]
-    instead, which yields each pair as soon as its data is available.
+    for that region. The regions to read are supplied by the caller; pass the result of
+    [initialized_regions][zarr.initialized_regions] to read only the populated parts of a
+    sparse array without materializing the full array. For lazy, streaming consumption use
+    the asynchronous [zarr.api.asynchronous.read_regions][] instead, which yields each pair
+    as soon as its data is available.
 
     Parameters
     ----------
     array : Array or AsyncArray
         The array to read from.
-    regions : iterable of tuple of slice, optional
+    regions : iterable of tuple of slice
         The regions to read. Each region is a tuple of slices, one per array dimension.
-        If omitted, defaults to the regions spanned by the populated shards of ``array``
-        (i.e. every region that holds data).
     concurrency : int, optional
         The maximum number of regions read concurrently. Defaults to the
         ``async.concurrency`` config value.

@@ -11,7 +11,7 @@ from operator import getitem
 
 import pytest
 
-from zarr import create_array, read_regions
+from zarr import create_array, initialized_regions, read_regions
 
 indexers = (
     (0,) * 3,
@@ -298,9 +298,9 @@ def test_sparse_read(
     """Benchmark reading a sparse array (most chunks empty) two ways.
 
     ``full`` is the stock ``arr[:]`` read, which issues a store request for every chunk
-    including the empty ones; ``read_regions`` touches only the populated chunks. The gap
-    is largest on ``memory_get_latency``, where each skipped empty-chunk request avoids a
-    round-trip.
+    including the empty ones; ``read_regions`` discovers the populated regions and reads
+    only those. The gap is largest on ``memory_get_latency``, where each skipped
+    empty-chunk request avoids a round-trip.
     """
     n_chunks = 256
     chunk = 16
@@ -321,4 +321,4 @@ def test_sparse_read(
     if reader == "full":
         benchmark(getitem, data, slice(None))
     else:
-        benchmark(read_regions, data)
+        benchmark(lambda: read_regions(data, initialized_regions(data)))
