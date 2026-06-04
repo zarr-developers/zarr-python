@@ -10,6 +10,7 @@ import pytest
 import zarr
 from zarr.core.array import Array, AsyncArray
 from zarr.core.sync import Runner, SyncRunner
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -197,3 +198,78 @@ def test_legacy_array_constructor_passes_runner() -> None:
     with pytest.warns(DeprecationWarning, match="Array\\(async_array\\)"):
         arr = Array(aa, runner=runner)
     assert arr._runner is runner
+
+
+def test_array_constructor_requires_store_path() -> None:
+    # Constructing an Array from metadata without a store_path must error.
+    arr = _make_array()
+    md = arr.metadata
+    with pytest.raises(TypeError, match="store_path is required"):
+        Array(md)
+
+
+def test_array_eq_non_array_is_false() -> None:
+    # Array.__eq__ returns NotImplemented for non-Array operands; Python then
+    # falls back to identity comparison, yielding False.
+    arr = _make_array()
+    assert (arr == 42) is False
+    assert (arr == object()) is False
+    assert (arr != object()) is True
+
+
+def test_array_eq_other_array_true() -> None:
+    # Two Arrays viewing the same state compare equal (exercises the True branch).
+    arr = _make_array()
+    other = Array(metadata=arr.metadata, store_path=arr.store_path, config=arr.config)
+    assert arr == other
+
+
+def test_compressor_v2_returns_without_error() -> None:
+    arr2 = zarr.create_array(store={}, shape=(8,), chunks=(4,), dtype="i4", zarr_format=2)
+    with pytest.warns(ZarrDeprecationWarning):
+        # The value may be a codec or None depending on defaults; just confirm
+        # the v2 branch returns rather than raising.
+        _ = arr2.compressor
+
+
+def test_compressor_v3_raises_typeerror() -> None:
+    arr3 = zarr.create_array(store={}, shape=(8,), chunks=(4,), dtype="i4", zarr_format=3)
+    with (
+        pytest.warns(ZarrDeprecationWarning),
+        pytest.raises(TypeError, match="not available for Zarr format 3"),
+    ):
+        _ = arr3.compressor
+
+
+def test_filters_v2_non_none() -> None:
+    # A v2 array created with explicit filters should report them via .filters.
+    from numcodecs import Delta
+
+    arr = zarr.create_array(
+        store={},
+        shape=(8,),
+        chunks=(4,),
+        dtype="i4",
+        zarr_format=2,
+        filters=[Delta(dtype="i4")],
+    )
+    filters = arr.filters
+    assert filters == (Delta(dtype="i4"),)
+
+
+def test_array_open_roundtrip() -> None:
+    store = MemoryStore()
+    created = zarr.create_array(store=store, shape=(8,), chunks=(4,), dtype="i4", fill_value=0)
+    opened = Array.open(store)
+    assert isinstance(opened, Array)
+    assert opened.metadata == created.metadata
+    assert isinstance(opened._runner, SyncRunner)
+
+
+def test_array_create_roundtrip() -> None:
+    # The Array._create classmethod returns a sync Array via _from_async_array.
+    store = MemoryStore()
+    arr = Array._create(store=store, shape=(8,), dtype="i4", chunk_shape=(4,), zarr_format=3)
+    assert isinstance(arr, Array)
+    assert arr.shape == (8,)
+    assert isinstance(arr._runner, SyncRunner)

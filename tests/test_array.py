@@ -2376,3 +2376,47 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+def test_read_chunk_sizes_sharded() -> None:
+    """For a sharded array, read_chunk_sizes reports the inner-chunk sizes and
+    cdata_shape / _chunk_grid_shape count inner chunks across the whole array.
+
+    This exercises the sharding branch of read_chunk_sizes and _chunk_grid_shape.
+    """
+    shape = (30, 20)
+    shard_shape = (10, 20)
+    chunk_shape = (5, 4)
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        dtype="i1",
+    )
+
+    # Inner-chunk sizes, clipped to the array extent (no boundary remainder here).
+    expected_read = (
+        (5, 5, 5, 5, 5, 5),
+        (4, 4, 4, 4, 4),
+    )
+    assert arr.read_chunk_sizes == expected_read
+
+    # write_chunk_sizes reports the shard (outer) chunk sizes.
+    assert arr.write_chunk_sizes == ((10, 10, 10), (20,))
+
+    # cdata_shape / _chunk_grid_shape count inner chunks across the whole array.
+    expected_grid = tuple(starmap(ceildiv, zip(shape, chunk_shape, strict=True)))
+    assert arr._chunk_grid_shape == expected_grid
+    assert arr.cdata_shape == expected_grid
+
+    # The AsyncArray shares the same helpers, so the sharded paths agree.
+    aa = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert aa.read_chunk_sizes == expected_read
+    assert aa.cdata_shape == expected_grid
+
+    # Unsharded AsyncArray exercises the non-sharding fallback of the same helpers.
+    unsharded = zarr.create_array(store=MemoryStore(), shape=(30, 20), chunks=(5, 4), dtype="i1")
+    aa_unsharded = AsyncArray(unsharded.metadata, unsharded.store_path, unsharded.config)
+    assert aa_unsharded.read_chunk_sizes == unsharded.read_chunk_sizes
+    assert aa_unsharded.cdata_shape == unsharded.cdata_shape
