@@ -155,7 +155,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
-    from zarr.codecs.sharding import ShardingCodecIndexLocation
+    from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -200,6 +200,20 @@ def _chunk_sizes_from_shape(
         sizes = tuple(min(c, s - i * c) for i in range(nchunks))
         result.append(sizes)
     return tuple(result)
+
+
+def _sharding_codec(metadata: ArrayMetadata) -> ShardingCodec | None:
+    """Return the array's sharding codec, or `None` if the array is not sharded.
+
+    An array is considered sharded when its metadata declares exactly one codec
+    and that codec is a `ShardingCodec`.
+    """
+    from zarr.codecs.sharding import ShardingCodec
+
+    codecs: tuple[Codec, ...] = getattr(metadata, "codecs", ())
+    if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        return codecs[0]
+    return None
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
@@ -333,7 +347,6 @@ class SupportsArrayState(Protocol):
 
     def _iter_shard_keys(
         self,
-        *,
         origin: Sequence[int] | None = None,
         selection_shape: Sequence[int] | None = None,
     ) -> Iterator[str]: ...
@@ -895,12 +908,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ((30, 30, 30, 10), (40, 40))
         """
 
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            inner_chunk_shape = codecs[0].chunk_shape
-            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        codec = _sharding_codec(self.metadata)
+        if codec is not None:
+            return _chunk_sizes_from_shape(self.shape, codec.chunk_shape)
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -1132,15 +1142,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
-        # to replace the repeated `len == 1 and isinstance` pattern.
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        codec = _sharding_codec(self.metadata)
+        if codec is not None:
             # When sharding, count inner chunks across the whole array
-            chunk_shape = codecs[0].chunk_shape
-            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+            return tuple(starmap(ceildiv, zip(self.shape, codec.chunk_shape, strict=True)))
         return self._chunk_grid.grid_shape
 
     @property
@@ -1366,7 +1371,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
     def _iter_shard_keys(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
         """
         Iterate over the keys of the stored objects supporting this array.
@@ -2126,12 +2131,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ((30, 30, 30, 10), (40, 40))
         """
 
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            inner_chunk_shape = codecs[0].chunk_shape
-            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        codec = _sharding_codec(self.metadata)
+        if codec is not None:
+            return _chunk_sizes_from_shape(self.shape, codec.chunk_shape)
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -2324,15 +2326,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
-        # to replace the repeated `len == 1 and isinstance` pattern.
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        codec = _sharding_codec(self.metadata)
+        if codec is not None:
             # When sharding, count inner chunks across the whole array
-            chunk_shape = codecs[0].chunk_shape
-            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+            return tuple(starmap(ceildiv, zip(self.shape, codec.chunk_shape, strict=True)))
         return self._chunk_grid.grid_shape
 
     @property
@@ -4529,7 +4526,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
           overwritten by the new values.
         """
         self._runner.run(self.update_attributes_async(new_attributes))
-        return self
+        return type(self)(
+            metadata=self.metadata,
+            store_path=self.store_path,
+            config=self.config,
+            runner=self._runner,
+        )
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -4939,7 +4941,7 @@ async def from_array(
 
     Create an array from an existing Array without copying the data:
 
-        >>> arr5 = asyncio.run(from_array({}, data=Array._from_async_array(arr4), write_data=False))
+        >>> arr5 = asyncio.run(from_array({}, data=Array(metadata=arr4.metadata, store_path=arr4.store_path, config=arr4.config), write_data=False))
         >>> arr5
         <AsyncArray memory://... shape=(2, 2) dtype=int64>
         >>> asyncio.run(arr5.getitem(...))
