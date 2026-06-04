@@ -2662,6 +2662,34 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             fields=fields,
         )
 
+    async def get_basic_selection_async(
+        self,
+        selection: BasicSelection = Ellipsis,
+        *,
+        out: NDBuffer | None = None,
+        prototype: BufferPrototype | None = None,
+        fields: Fields | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_basic_selection_async(
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
+        return await self._set_selection(indexer, value, fields=fields, prototype=prototype)
+
     async def getitem_async(
         self,
         selection: BasicSelection,
@@ -3221,15 +3249,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         """
 
-        if prototype is None:
-            prototype = default_buffer_prototype()
         return self._runner.run(
-            self._get_selection(
-                BasicIndexer(selection, self.shape, self._chunk_grid),
-                out=out,
-                fields=fields,
-                prototype=prototype,
-            )
+            self.get_basic_selection_async(selection, out=out, prototype=prototype, fields=fields)
         )
 
     def set_basic_selection(
@@ -3330,10 +3351,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
-        self._runner.run(self._set_selection(indexer, value, fields=fields, prototype=prototype))
+        return self._runner.run(
+            self.set_basic_selection_async(selection, value, fields=fields, prototype=prototype)
+        )
 
     def get_orthogonal_selection(
         self,
@@ -3458,11 +3478,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return self._runner.run(
-            self._get_selection(indexer=indexer, out=out, fields=fields, prototype=prototype)
+            self.get_orthogonal_selection_async(
+                selection, out=out, fields=fields, prototype=prototype
+            )
         )
 
     def set_orthogonal_selection(
@@ -3574,11 +3593,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
         [__setitem__][zarr.Array.__setitem__]
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return self._runner.run(
-            self._set_selection(indexer, value, fields=fields, prototype=prototype)
+            self.set_orthogonal_selection_async(
+                selection, value, fields=fields, prototype=prototype
+            )
         )
 
     def get_mask_selection(
@@ -3662,11 +3680,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
         """
 
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
         return self._runner.run(
-            self._get_selection(indexer=indexer, out=out, fields=fields, prototype=prototype)
+            self.get_mask_selection_async(mask, out=out, fields=fields, prototype=prototype)
         )
 
     def set_mask_selection(
@@ -3749,10 +3764,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        self._runner.run(self._set_selection(indexer, value, fields=fields, prototype=prototype))
+        return self._runner.run(
+            self.set_mask_selection_async(mask, value, fields=fields, prototype=prototype)
+        )
 
     def get_coordinate_selection(
         self,
@@ -3837,17 +3851,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-        out_array = self._runner.run(
-            self._get_selection(indexer=indexer, out=out, fields=fields, prototype=prototype)
+        return self._runner.run(
+            self.get_coordinate_selection_async(
+                selection, out=out, fields=fields, prototype=prototype
+            )
         )
-
-        if hasattr(out_array, "shape"):
-            # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
-        return out_array
 
     def set_coordinate_selection(
         self,
@@ -3926,32 +3934,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-
-        # handle value - need ndarray-like flatten value
-        if not is_scalar(value, self.dtype):
-            try:
-                from numcodecs.compat import ensure_ndarray_like
-
-                value = ensure_ndarray_like(value)  # TODO replace with agnostic
-            except TypeError:
-                # Handle types like `list` or `tuple`
-                value = np.array(value)  # TODO replace with agnostic
-        if hasattr(value, "shape") and len(value.shape) > 1:
-            value = np.array(value).reshape(-1)
-
-        if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
-        ):
-            raise ValueError(
-                f"Attempting to set a selection of {indexer.sel_shape[0]} "
-                f"elements with an array of {value.shape[0]} elements."
+        return self._runner.run(
+            self.set_coordinate_selection_async(
+                selection, value, fields=fields, prototype=prototype
             )
-
-        self._runner.run(self._set_selection(indexer, value, fields=fields, prototype=prototype))
+        )
 
     def get_block_selection(
         self,
@@ -4048,11 +4035,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
         [__setitem__][zarr.Array.__setitem__]
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         return self._runner.run(
-            self._get_selection(indexer=indexer, out=out, fields=fields, prototype=prototype)
+            self.get_block_selection_async(selection, out=out, fields=fields, prototype=prototype)
         )
 
     def set_block_selection(
@@ -4146,10 +4130,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
-        self._runner.run(self._set_selection(indexer, value, fields=fields, prototype=prototype))
+        return self._runner.run(
+            self.set_block_selection_async(selection, value, fields=fields, prototype=prototype)
+        )
 
     @property
     def vindex(self) -> VIndex:
