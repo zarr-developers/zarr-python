@@ -165,7 +165,7 @@ async def test_array_like_creation(
     assert new_arr.shape == expect_shape
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype
-    assert np.all(Array(new_arr)[:] == expect_fill)
+    assert np.all(Array._from_async_array(new_arr)[:] == expect_fill)
 
 
 # TODO: parametrize over everything this function takes
@@ -232,7 +232,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
     arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
     assert isinstance(arr2, zarr.Array)
 
-    assert arr2.async_array.config.write_empty_chunks is True
+    assert arr2.config.write_empty_chunks is True
 
     arr2[0:5] = np.zeros(5)
     assert arr2.nchunks_initialized == 1

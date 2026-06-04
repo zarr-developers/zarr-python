@@ -4473,7 +4473,7 @@ async def from_array(
 
     Create an array from an existing Array without copying the data:
 
-        >>> arr5 = asyncio.run(from_array({}, data=Array(arr4), write_data=False))
+        >>> arr5 = asyncio.run(from_array({}, data=Array._from_async_array(arr4), write_data=False))
         >>> arr5
         <AsyncArray memory://... shape=(2, 2) dtype=int64>
         >>> asyncio.run(arr5.getitem(...))
@@ -4534,9 +4534,9 @@ async def from_array(
         if isinstance(data, Array):
 
             async def _copy_array_region(
-                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
+                chunk_coords: tuple[int, ...] | slice, _data: Array[Any]
             ) -> None:
-                arr = await _data.async_array.getitem(chunk_coords)
+                arr = await _data.getitem_async(chunk_coords)
                 await result.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array

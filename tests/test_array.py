@@ -381,7 +381,7 @@ def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -
     if test_cls == Array:
         observed = arr.nchunks
     else:
-        observed = arr.async_array.nchunks
+        observed = arr.nchunks
     assert observed == expected
 
 
@@ -415,8 +415,8 @@ async def test_nchunks_initialized(
             observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr.async_array._nshards_initialized()
-            assert observed == await arr.async_array.nchunks_initialized() // chunks_per_shard
+            observed = await arr._nshards_initialized_async()
+            assert observed == await arr.nchunks_initialized_async() // chunks_per_shard
         assert observed == expected
 
     # delete chunks
@@ -426,8 +426,8 @@ async def test_nchunks_initialized(
             observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr.async_array._nshards_initialized()
-            assert observed == await arr.async_array.nchunks_initialized() // chunks_per_shard
+            observed = await arr._nshards_initialized_async()
+            assert observed == await arr.nchunks_initialized_async() // chunks_per_shard
         expected = arr._nshards - idx - 1
         assert observed == expected
 
@@ -453,7 +453,7 @@ async def test_chunks_initialized(
     )
     for keys, region in zip(chunks_accumulated, arr._iter_shard_regions(), strict=False):
         arr[region] = 1
-        observed = sorted(await _shards_initialized(arr.async_array))
+        observed = sorted(await _shards_initialized(arr))
         expected = sorted(keys)
         assert observed == expected
 
@@ -505,7 +505,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -523,7 +523,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -549,7 +549,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -961,7 +961,7 @@ def test_write_empty_chunks_behavior(
         config={"write_empty_chunks": write_empty_chunks},
     )
 
-    assert arr.async_array.config.write_empty_chunks == write_empty_chunks
+    assert arr.config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
@@ -1032,7 +1032,7 @@ async def test_nbytes(
     store = MemoryStore()
     arr = zarr.create_array(store=store, shape=shape, dtype=dtype, fill_value=0)
     if array_type == "async":
-        assert arr.async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+        assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
     else:
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
 
@@ -2081,7 +2081,7 @@ def test_chunk_grid_shape(
     shard_grid_shape = tuple(starmap(ceildiv, zip(array_shape, _shard_shape, strict=True)))
     assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
-    assert arr.async_array.cdata_shape == chunk_grid_shape
+    assert arr.cdata_shape == chunk_grid_shape
     assert arr._shard_grid_shape == shard_grid_shape
     assert arr._nshards == np.prod(shard_grid_shape)
 
@@ -2112,7 +2112,7 @@ def test_iter_chunk_coords(
     observed = tuple(_iter_chunk_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_coords())
-    assert observed == tuple(arr.async_array._iter_chunk_coords())
+    assert observed == tuple(arr._iter_chunk_coords())
 
 
 @pytest.mark.parametrize(
@@ -2145,7 +2145,7 @@ def test_iter_shard_coords(
     observed = tuple(_iter_shard_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_coords())
-    assert observed == tuple(arr.async_array._iter_shard_coords())
+    assert observed == tuple(arr._iter_shard_coords())
 
 
 @pytest.mark.parametrize(
@@ -2180,7 +2180,7 @@ def test_iter_shard_keys(
     observed = tuple(_iter_shard_keys(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_keys())
-    assert observed == tuple(arr.async_array._iter_shard_keys())
+    assert observed == tuple(arr._iter_shard_keys())
 
 
 @pytest.mark.parametrize(
@@ -2216,7 +2216,7 @@ def test_iter_shard_regions(
     observed = tuple(_iter_shard_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_regions())
-    assert observed == tuple(arr.async_array._iter_shard_regions())
+    assert observed == tuple(arr._iter_shard_regions())
 
 
 @pytest.mark.parametrize(
@@ -2245,7 +2245,7 @@ def test_iter_chunk_regions(
     observed = tuple(_iter_chunk_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_regions())
-    assert observed == tuple(arr.async_array._iter_chunk_regions())
+    assert observed == tuple(arr._iter_chunk_regions())
 
 
 @pytest.mark.parametrize("num_shards", [1, 3])
