@@ -113,3 +113,22 @@ def test_custom_runner_invoked_on_read() -> None:
     )
     _ = arr[2:6]
     assert runner.calls > 0
+
+
+def test_resize_async() -> None:
+    arr = _make_array()
+    arr._runner.run(arr.resize_async((16,)))
+    assert arr.shape == (16,)
+
+
+def test_update_attributes_async() -> None:
+    arr = _make_array()
+    arr._runner.run(arr.update_attributes_async({"foo": "bar"}))
+    assert arr.metadata.attributes["foo"] == "bar"
+
+
+def test_nchunks_initialized_async() -> None:
+    arr = _make_array()
+    arr[:] = np.arange(8, dtype="i4")
+    n = arr._runner.run(arr.nchunks_initialized_async())
+    assert n == arr.nchunks_initialized

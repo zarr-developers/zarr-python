@@ -2434,7 +2434,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.nchunks_initialized
         6
         """
-        return sync(self.async_array.nchunks_initialized())
+        return self._runner.run(self.nchunks_initialized_async())
 
     @property
     def _nshards_initialized(self) -> int:
@@ -2456,7 +2456,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr._nshards_initialized
         3
         """
-        return sync(self.async_array._nshards_initialized())
+        return self._runner.run(self._nshards_initialized_async())
 
     def nbytes_stored(self) -> int:
         """
@@ -2466,7 +2466,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         size : int
         """
-        return sync(self.async_array.nbytes_stored())
+        return self._runner.run(self.nbytes_stored_async())
 
     def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -4074,7 +4074,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         #>(50, 50)
         ```
         """
-        sync(self.async_array.resize(new_shape))
+        self._runner.run(self.resize_async(new_shape))
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
@@ -4110,7 +4110,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self.async_array.append(data, axis=axis))
+        return self._runner.run(self.append_async(data, axis=axis))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -4137,8 +4137,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        new_array = sync(self.async_array.update_attributes(new_attributes))
-        return type(self)._from_async_array(new_array)
+        self._runner.run(self.update_attributes_async(new_attributes))
+        return self
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -4175,7 +4175,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 40
         """
-        return self.async_array.info
+        return self._info()
 
     def info_complete(self) -> Any:
         """
@@ -4195,7 +4195,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
-        return sync(self.async_array.info_complete())
+        return self._runner.run(self.info_complete_async())
+
+    async def resize_async(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
+        return await _resize(self, new_shape, delete_outside_chunks)
+
+    async def append_async(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
+        return await _append(self, data, axis)
+
+    async def update_attributes_async(self, new_attributes: dict[str, JSON]) -> Self:
+        await _update_attributes(self, new_attributes)
+        return self
+
+    async def nchunks_initialized_async(self) -> int:
+        return await _nchunks_initialized(self)
+
+    async def _nshards_initialized_async(self) -> int:
+        return await _nshards_initialized(self)
+
+    async def nbytes_stored_async(self) -> int:
+        return await _nbytes_stored(self.store_path)
+
+    async def info_complete_async(self) -> Any:
+        return await _info_complete(self)
 
 
 async def _shards_initialized(
