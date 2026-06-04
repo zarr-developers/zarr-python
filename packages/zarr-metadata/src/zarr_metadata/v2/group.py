@@ -41,7 +41,7 @@ class GroupMetadataV2(TypedDict):
     """
 
     zarr_format: Literal[2]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
 
 
 class GroupMetadataV2Partial(TypedDict, total=False):

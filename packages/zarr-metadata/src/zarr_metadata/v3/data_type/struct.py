@@ -9,6 +9,9 @@ from typing import Final, Literal
 
 from typing_extensions import ReadOnly, TypedDict
 
+from zarr_metadata._common import JSONValue
+from zarr_metadata.v3._common import MetadataFieldV3
+
 STRUCT_DATA_TYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""
 
@@ -30,7 +33,7 @@ class StructField(TypedDict):
     """
 
     name: ReadOnly[str]
-    data_type: ReadOnly[object]
+    data_type: ReadOnly[MetadataFieldV3]
 
 
 class StructConfiguration(TypedDict):
@@ -46,7 +49,7 @@ class Struct(TypedDict):
     configuration: StructConfiguration
 
 
-StructFillValue = Mapping[str, object]
+StructFillValue = Mapping[str, JSONValue]
 """Permitted JSON shape of the `fill_value` field for `struct`.
 
 A JSON object mapping each field name to that field's fill value. Field
