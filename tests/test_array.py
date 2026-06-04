@@ -2557,3 +2557,16 @@ async def test_shards_initialized_async(store: Store) -> None:
     arr, _ = _ca_sparse_1d(store)
     keys = await zarr.api.asynchronous.shards_initialized(arr._async_array)
     assert set(keys) == {"c/1", "c/5"}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+async def test_async_chunk_access_accepts_sync_array(store: Store) -> None:
+    """The async API also accepts a synchronous ``Array``, unwrapping it to the
+    underlying async array."""
+    arr, _ = _ca_sparse_1d(store)
+    keys = await zarr.api.asynchronous.shards_initialized(arr)
+    regions = await zarr.api.asynchronous.initialized_regions(arr)
+    results = [pair async for pair in zarr.api.asynchronous.read_regions(arr, regions)]
+    assert set(keys) == {"c/1", "c/5"}
+    assert set(regions) == {(slice(8, 16, 1),), (slice(40, 48, 1),)}
+    assert len(results) == 2
