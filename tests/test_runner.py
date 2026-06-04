@@ -4,6 +4,7 @@ import asyncio
 import warnings
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pytest
 
 import zarr
@@ -78,3 +79,37 @@ def test_from_async_array_roundtrip() -> None:
     arr2 = Array._from_async_array(aa)
     assert arr2.metadata == arr.metadata
     assert isinstance(arr2._runner, SyncRunner)
+
+
+def test_getitem_sync_async_equivalence() -> None:
+    arr = _make_array()
+    arr[:] = np.arange(8, dtype="i4")
+    sync_result = arr[2:6]
+    async_via_runner = arr._runner.run(arr.getitem_async(slice(2, 6)))
+    np.testing.assert_array_equal(sync_result, async_via_runner)
+
+
+def test_setitem_async_roundtrip() -> None:
+    arr = _make_array()
+    arr._runner.run(arr.setitem_async(slice(0, 4), np.arange(4, dtype="i4")))
+    np.testing.assert_array_equal(arr[0:4], np.arange(4, dtype="i4"))
+
+
+def test_custom_runner_invoked_on_read() -> None:
+    # The runner injected into Array is actually used by sync reads.
+    class RecordingRunner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+            self.calls += 1
+            return SyncRunner().run(coro)
+
+    runner = RecordingRunner()
+    base = _make_array()
+    base[:] = np.arange(8, dtype="i4")
+    arr = Array(
+        metadata=base.metadata, store_path=base.store_path, config=base.config, runner=runner
+    )
+    _ = arr[2:6]
+    assert runner.calls > 0
