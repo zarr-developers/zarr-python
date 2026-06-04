@@ -1431,12 +1431,12 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     return Array(sync(async_api.zeros_like(a, **kwargs)))
 
 
-def _as_async_array(array: Array | AsyncArray[Any]) -> AsyncArray[Any]:
+def _as_async_array(array: Array[Any] | AsyncArray[Any]) -> AsyncArray[Any]:
     return array._async_array if isinstance(array, Array) else array
 
 
 def shards_initialized(
-    array: Array | AsyncArray[Any],
+    array: Array[Any] | AsyncArray[Any],
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
 ) -> tuple[str, ...]:
@@ -1479,7 +1479,7 @@ def shards_initialized(
 
 
 def initialized_regions(
-    array: Array | AsyncArray[Any],
+    array: Array[Any] | AsyncArray[Any],
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
 ) -> list[tuple[slice, ...]]:
@@ -1511,7 +1511,7 @@ def initialized_regions(
 
 
 def read_regions(
-    array: Array | AsyncArray[Any],
+    array: Array[Any] | AsyncArray[Any],
     regions: Iterable[tuple[slice, ...]],
     *,
     concurrency: int | None = None,

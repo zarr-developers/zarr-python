@@ -2379,7 +2379,7 @@ async def test_create_array_chunks_3d(
 # --- shards_initialized / initialized_regions / read_regions ---------------------------
 
 
-def _ca_sparse_1d(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_sparse_1d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=42)
     # populate two non-adjacent chunks (chunks 1 and 5)
     arr[8:16] = np.arange(8, dtype="int32")
@@ -2387,20 +2387,20 @@ def _ca_sparse_1d(store: Store) -> tuple[Array, np.ndarray]:
     return arr, np.asarray(arr[:])
 
 
-def _ca_dense_1d(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_dense_1d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=0)
     arr[:] = np.arange(32, dtype="int32")
     return arr, np.asarray(arr[:])
 
 
-def _ca_sparse_2d(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_sparse_2d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     arr = zarr.create_array(store=store, shape=(8, 8), chunks=(2, 2), dtype="int32", fill_value=-1)
     arr[0:2, 0:2] = np.ones((2, 2), dtype="int32")
     arr[4:6, 4:6] = np.full((2, 2), 7, dtype="int32")
     return arr, np.asarray(arr[:])
 
 
-def _ca_sharded_sparse(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_sharded_sparse(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     # chunks (2, 2) within shards (4, 4): the shard grid is 2x2 over the 8x8 array.
     arr = zarr.create_array(
         store=store, shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="int32", fill_value=42
@@ -2410,12 +2410,12 @@ def _ca_sharded_sparse(store: Store) -> tuple[Array, np.ndarray]:
     return arr, np.asarray(arr[:])
 
 
-def _ca_all_empty(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_all_empty(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=7)
     return arr, np.asarray(arr[:])
 
 
-def _ca_all_populated(store: Store) -> tuple[Array, np.ndarray]:
+def _ca_all_populated(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
     arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=0)
     arr[:] = np.arange(32, dtype="int32")
     return arr, np.asarray(arr[:])
@@ -2432,7 +2432,11 @@ _CA_SETUPS = {
 _CA_STRATEGIES = ["auto", "list", "probe"]
 
 
-def _ca_pack(arr: Array, results: list, baseline: np.ndarray) -> np.ndarray:
+def _ca_pack(
+    arr: Array[Any],
+    results: list[tuple[tuple[slice, ...], Any]],
+    baseline: npt.NDArray[Any],
+) -> npt.NDArray[Any]:
     """Scatter ``(region, data)`` pairs onto a fill-valued array."""
     out = np.full(baseline.shape, arr.fill_value, dtype=baseline.dtype)
     for region, data in results:
@@ -2443,7 +2447,9 @@ def _ca_pack(arr: Array, results: list, baseline: np.ndarray) -> np.ndarray:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
 @pytest.mark.parametrize("strategy", _CA_STRATEGIES)
-def test_shards_initialized_strategies_agree(store: Store, setup_name: str, strategy: str) -> None:
+def test_shards_initialized_strategies_agree(
+    store: Store, setup_name: str, strategy: Literal["auto", "list", "probe"]
+) -> None:
     """Every strategy reports the same set of populated keys."""
     arr, _ = _CA_SETUPS[setup_name](store)
     keys = set(zarr.shards_initialized(arr, strategy=strategy))
