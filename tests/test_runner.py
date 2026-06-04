@@ -132,3 +132,42 @@ def test_nchunks_initialized_async() -> None:
     arr[:] = np.arange(8, dtype="i4")
     n = arr._runner.run(arr.nchunks_initialized_async())
     assert n == arr.nchunks_initialized
+
+
+def test_orthogonal_selection_async_roundtrip() -> None:
+    arr = zarr.create_array(
+        store=MemoryStore(), shape=(4, 4), chunks=(2, 2), dtype="i4", fill_value=0
+    )
+    arr[:] = np.arange(16, dtype="i4").reshape(4, 4)
+    expected = arr.get_orthogonal_selection(([0, 2], slice(None)))  # type: ignore[arg-type]
+    actual = arr._runner.run(arr.get_orthogonal_selection_async(([0, 2], slice(None))))  # type: ignore[arg-type]
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_coordinate_selection_async_roundtrip() -> None:
+    arr = zarr.create_array(
+        store=MemoryStore(), shape=(4, 4), chunks=(2, 2), dtype="i4", fill_value=0
+    )
+    arr[:] = np.arange(16, dtype="i4").reshape(4, 4)
+    expected = arr.get_coordinate_selection(([0, 1], [0, 1]))
+    actual = arr._runner.run(arr.get_coordinate_selection_async(([0, 1], [0, 1])))
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_block_selection_async_roundtrip() -> None:
+    arr = zarr.create_array(
+        store=MemoryStore(), shape=(4, 4), chunks=(2, 2), dtype="i4", fill_value=0
+    )
+    arr[:] = np.arange(16, dtype="i4").reshape(4, 4)
+    expected = arr.get_block_selection((0, 0))
+    actual = arr._runner.run(arr.get_block_selection_async((0, 0)))
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_set_orthogonal_selection_async() -> None:
+    arr = zarr.create_array(
+        store=MemoryStore(), shape=(4, 4), chunks=(2, 2), dtype="i4", fill_value=0
+    )
+    arr._runner.run(arr.set_orthogonal_selection_async(([0, 2], slice(None)), 7))  # type: ignore[arg-type]
+    expected = arr.get_orthogonal_selection(([0, 2], slice(None)))  # type: ignore[arg-type]
+    np.testing.assert_array_equal(expected, np.full((2, 4), 7, dtype="i4"))

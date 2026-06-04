@@ -2111,11 +2111,7 @@ class TestAsync:
     async def test_async_oindex(self, store, indexer, expected):
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            async_zarr = z.async_array
-
-        result = await async_zarr.oindex.getitem(indexer)
+        result = await z.get_orthogonal_selection_async(indexer)
         assert_array_equal(result, expected)
 
     @pytest.mark.asyncio

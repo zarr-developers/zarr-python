@@ -1,7 +1,6 @@
 import itertools
 import json
 import numbers
-import warnings
 from collections.abc import Generator
 from typing import Any
 
@@ -132,10 +131,7 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # async get
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        async_zarray = zarray.async_array
-    actual = await async_zarray.getitem(indexer)
+    actual = await zarray.getitem_async(indexer)
     assert_array_equal(nparray[indexer], actual)
 
     # sync set
@@ -176,10 +172,7 @@ async def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[npindexer], actual)
 
     # async get
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        async_zarray = zarray.async_array
-    actual = await async_zarray.oindex.getitem(zindexer)
+    actual = await zarray.get_orthogonal_selection_async(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
     # sync get
@@ -219,10 +212,7 @@ async def test_vindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # async get
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        async_zarray = zarray.async_array
-    actual = await async_zarray.vindex.getitem(indexer)
+    actual = await zarray.get_coordinate_selection_async(indexer)
     assert_array_equal(nparray[indexer], actual)
 
     # sync set

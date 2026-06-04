@@ -2696,6 +2696,145 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             prototype=prototype,
         )
 
+    async def get_orthogonal_selection_async(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_orthogonal_selection_async(
+        self,
+        selection: OrthogonalSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        await self._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_mask_selection_async(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_mask_selection_async(
+        self,
+        mask: MaskSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        await self._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_coordinate_selection_async(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        out_array = await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
+        return out_array
+
+    async def set_coordinate_selection_async(
+        self,
+        selection: CoordinateSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+
+        # handle value - need ndarray-like flatten value
+        if not is_scalar(value, self.dtype):
+            try:
+                from numcodecs.compat import ensure_ndarray_like
+
+                value = ensure_ndarray_like(value)  # TODO replace with agnostic
+            except TypeError:
+                # Handle types like `list` or `tuple`
+                value = np.array(value)  # TODO replace with agnostic
+        if hasattr(value, "shape") and len(value.shape) > 1:
+            value = np.array(value).reshape(-1)
+
+        if not is_scalar(value, self.dtype) and (
+            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+        ):
+            raise ValueError(
+                f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                f"elements with an array of {value.shape[0]} elements."
+            )
+
+        await self._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_block_selection_async(
+        self,
+        selection: BasicSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_block_selection_async(
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        await self._set_selection(indexer, value, fields=fields, prototype=prototype)
+
     def __getitem__(self, selection: Selection) -> NDArrayLikeOrScalar:
         """Retrieve data for an item or region of the array.
 
