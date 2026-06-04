@@ -8,6 +8,7 @@ from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata.v3.array import ExtensionFieldV3
 
 
@@ -22,7 +23,7 @@ class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[
 
     zarr_format: Literal[3]
     node_type: Literal["group"]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
 
 
 class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
@@ -50,7 +51,7 @@ class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV
 
     zarr_format: Literal[3]
     node_type: Literal["group"]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
 
 
 __all__ = [

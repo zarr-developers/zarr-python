@@ -5,7 +5,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 
 from collections.abc import Mapping
 
-ZAttrsMetadata = Mapping[str, object]
+from zarr_metadata._common import JSONValue
+
+ZAttrsMetadata = Mapping[str, JSONValue]
 """On-disk `.zattrs` file content.
 
 A JSON object holding user-defined attributes for a v2 array or group.

@@ -5,6 +5,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata.v2.codec import CodecMetadataV2
 
 DataTypeMetadataV2 = str | tuple[tuple[str, str] | tuple[str, str, tuple[int, ...]], ...]
@@ -61,7 +62,7 @@ class ZArrayMetadata(TypedDict):
     chunks: tuple[int, ...]
     dtype: DataTypeMetadataV2
     compressor: CodecMetadataV2 | None
-    fill_value: object
+    fill_value: JSONValue
     order: ArrayOrderV2
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
@@ -87,11 +88,11 @@ class ArrayMetadataV2(TypedDict):
     chunks: tuple[int, ...]
     dtype: DataTypeMetadataV2
     compressor: CodecMetadataV2 | None
-    fill_value: object
+    fill_value: JSONValue
     order: ArrayOrderV2
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
     See the class docstring for the rationale behind the merged representation.
@@ -128,11 +129,11 @@ class ArrayMetadataV2Partial(TypedDict, total=False):
     chunks: tuple[int, ...]
     dtype: DataTypeMetadataV2
     compressor: CodecMetadataV2 | None
-    fill_value: object
+    fill_value: JSONValue
     order: ArrayOrderV2
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
     See the class docstring for the rationale behind the merged representation.

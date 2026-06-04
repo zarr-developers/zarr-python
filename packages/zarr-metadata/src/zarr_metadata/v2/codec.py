@@ -7,8 +7,10 @@ In v2, compressors and filters are numcodecs configuration dicts: a required
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
 
-class CodecMetadataV2(TypedDict, extra_items=object):  # type: ignore[call-arg]
+
+class CodecMetadataV2(TypedDict, extra_items=JSONValue):  # type: ignore[call-arg]
     """
     A numcodecs configuration dict, used as a v2 compressor or filter.
 
