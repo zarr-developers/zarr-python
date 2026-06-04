@@ -1868,6 +1868,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata_in: ArrayMetadata | ArrayMetadataDict
         if isinstance(metadata, AsyncArray):
             # Legacy construction form: Array(async_array). Deprecated.
+            if store_path is not None or config is not None:
+                raise TypeError(
+                    "When constructing an Array from an AsyncArray (deprecated), "
+                    "store_path and config must not also be provided; they are taken "
+                    "from the AsyncArray."
+                )
             warnings.warn(
                 "Array(async_array) is deprecated; construct an Array directly "
                 "with Array(metadata, store_path, config=...), or use "
@@ -2544,7 +2550,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
     def _iter_shard_coords(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of shards in shard grid space.
@@ -4663,7 +4669,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             The array with the updated attributes.
         """
         await _update_attributes(self, new_attributes)
-        return self
+        return type(self)(
+            metadata=self.metadata,
+            store_path=self.store_path,
+            config=self.config,
+            runner=self._runner,
+        )
 
     async def nchunks_initialized_async(self) -> int:
         """Asynchronously calculate the number of chunks that have been initialized in storage.

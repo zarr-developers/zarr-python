@@ -128,6 +128,17 @@ def test_update_attributes_async() -> None:
     assert arr.metadata.attributes["foo"] == "bar"
 
 
+def test_legacy_constructor_rejects_extra_store_path() -> None:
+    base = _make_array()
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("ignore", DeprecationWarning)
+        aa = base.async_array
+    with pytest.raises(TypeError, match="must not also be provided"):
+        Array(aa, store_path=base.store_path)
+
+
 def test_nchunks_initialized_async() -> None:
     arr = _make_array()
     arr[:] = np.arange(8, dtype="i4")
