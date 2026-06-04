@@ -96,3 +96,5 @@ zarr.egg-info/
 .claude/
 CLAUDE.md
 docs/superpowers/
+# zarr-metadata package lockfile (a library, not an app)
+packages/zarr-metadata/uv.lock

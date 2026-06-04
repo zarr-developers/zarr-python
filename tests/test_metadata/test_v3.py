@@ -5,14 +5,17 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_grids import is_regular_1d, is_regular_nd
 from zarr.core.config import config
-from zarr.core.dtype import UInt8
+from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
+from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
@@ -101,6 +104,60 @@ def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(zarr.registry, "_codec_registries", defaultdict(Registry))
     with pytest.raises(UnknownCodecError):
         parse_codecs([{"name": "unknown"}])
+
+
+# ---------------------------------------------------------------------------
+# Chunk-grid regularity helpers
+# ---------------------------------------------------------------------------
+
+# Cases used for both list/tuple (Python-sequence path) and ndarray (vectorized
+# path) of `is_regular_1d`. Parametrizing the input form ensures both branches
+# are exercised by the same suite of edge cases.
+_REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
+    Expect(input=[], output=True, id="empty"),
+    Expect(input=[10], output=True, id="single-chunk"),
+    Expect(input=[10, 10, 10], output=True, id="all-equal"),
+    Expect(input=[10, 10, 10, 7], output=True, id="smaller-boundary"),
+    Expect(input=[10, 10, 10, 10], output=True, id="exact-multiple"),
+    Expect(input=[10, 5, 10], output=False, id="middle-mismatch"),
+    Expect(input=[10, 10, 10, 12], output=False, id="last-larger"),
+    # The first chunk anchors the size; later mismatches in the middle fail
+    # before the boundary check.
+    Expect(input=[5, 10, 5], output=False, id="middle-larger"),
+]
+
+
+@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
+def test_is_regular_1d_sequence(case: Expect[list[int], bool]) -> None:
+    """`is_regular_1d` accepts plain Python sequences and uses the iterative path."""
+    # list and tuple both go through the non-ndarray branch.
+    assert is_regular_1d(case.input) is case.output
+    assert is_regular_1d(tuple(case.input)) is case.output
+
+
+@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
+def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
+    """`is_regular_1d` accepts int64 ndarrays and uses the vectorized path."""
+    arr = np.asarray(case.input, dtype=np.int64)
+    assert is_regular_1d(arr) is case.output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=[[10, 10, 10], [5, 5]], output=True, id="all-regular"),
+        Expect(input=[[10, 10, 7], [5, 5, 5, 3]], output=True, id="all-regular-with-boundary"),
+        Expect(input=[[10, 10, 10], [5, 8, 5]], output=False, id="second-dim-irregular"),
+        Expect(input=[[10, 5, 10], [5, 5]], output=False, id="first-dim-irregular"),
+        Expect(input=[], output=True, id="zero-dims"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_is_regular_nd_sequence(case: Expect[list[list[int]], bool]) -> None:
+    """`is_regular_nd` returns True iff every per-dim spec is regular."""
+    assert is_regular_nd(case.input) is case.output
+    # Same result via ndarray inputs.
+    assert is_regular_nd([np.asarray(d, dtype=np.int64) for d in case.input]) is case.output
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +334,74 @@ def test_init_extra_fields_collision() -> None:
             dimension_names=None,
             extra_fields=extra_fields,  # type: ignore[arg-type]
         )
+
+
+# ---------------------------------------------------------------------------
+# Equality
+# ---------------------------------------------------------------------------
+
+
+def test_eq_nan_fill_value() -> None:
+    """Two metadata objects with an identical NaN fill_value compare equal.
+
+    NaN is not equal to itself under IEEE 754, so the default dataclass __eq__
+    reports two otherwise-identical metadata objects as unequal. Metadata
+    equality must treat matching NaN fill values as equal (see issue #2929).
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+
+
+def test_eq_distinct_fill_value() -> None:
+    """Metadata objects that differ only in fill_value do not compare equal."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=1.0))  # type: ignore[arg-type]
+    assert a != b
+
+
+@pytest.mark.parametrize("fill_value", ["Infinity", "-Infinity"])
+def test_eq_inf_fill_value(fill_value: str) -> None:
+    """Two metadata objects with an identical infinite fill_value compare equal."""
+    a = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    b = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    assert a == b
+
+
+def test_hash_consistent_with_eq_nan_fill_value() -> None:
+    """Equal metadata objects with a NaN fill_value hash equal.
+
+    NaN hashes by identity, so a field-based hash would break the
+    ``a == b implies hash(a) == hash(b)`` invariant for objects that compare
+    equal under the to_dict-based __eq__.
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_non_metadata() -> None:
+    """Comparison against a non-metadata object returns False rather than erroring."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    assert a != object()
+
+
+def test_eq_across_zarr_formats() -> None:
+    """A v2 and v3 metadata describing the same array do not compare equal.
+
+    Each __eq__ guards on its own concrete type and returns NotImplemented
+    otherwise, so the two versions are never equal even when they describe the
+    same array.
+    """
+    v3 = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    v2 = ArrayV2Metadata(shape=(4, 4), dtype=Float64(), chunks=(4, 4), fill_value=0.0, order="C")
+    assert v2 != v3
+    assert v3 != v2
 
 
 # ---------------------------------------------------------------------------

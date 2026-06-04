@@ -39,7 +39,7 @@ the following actions in order:
    - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
      directly from `numcodecs`:
 
-     ```python
+     ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
      from numcodecs import Blosc
      # instead of:
      # from zarr import Blosc
@@ -126,7 +126,7 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 ### The Store class
 
-The Store API has changed significant in Zarr-Python 3.
+The Store API has changed significantly in Zarr-Python 3.
 
 #### The base store class
 

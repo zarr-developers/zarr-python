@@ -262,7 +262,7 @@ here, it's possible to create it yourself: see [Adding New Data Types](#adding-n
 
 ### Example Usage
 
-This section will demonstrates the basic usage of Zarr data types.
+This section will demonstrate the basic usage of Zarr data types.
 
 Create a `ZDType` from a native data type:
 
@@ -360,7 +360,7 @@ print(type(a.dtype))
 
 But if we inspect the metadata for the array, we can see the Zarr data type object:
 
-```python
+```python exec="false" reason="REPL output transcript, not executable source"
 type(a.metadata.data_type)
 <class 'zarr.core.dtype.npy.int.Int64'>
 ```

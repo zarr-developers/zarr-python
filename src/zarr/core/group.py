@@ -235,8 +235,6 @@ class ConsolidatedMetadata:
         # array metadata of its immediate children.
         # In the example, the group at `/a/b` will have consolidated metadata
         # for its children `array-0` and `array-1`.
-        #
-        # metadata = dict(metadata)
 
         keys = sorted(metadata, key=lambda k: k.count("/"))
         grouped = {
@@ -269,13 +267,17 @@ class ConsolidatedMetadata:
                 # These are already present, either thanks to being an array in the
                 # root, or by being collected as a child in the else clause
                 continue
-            children_keys = list(children_keys)
-            # We pop from metadata, since we're *moving* this under group
-            children = {
-                child_key.split("/")[-1]: metadata.pop(child_key)
-                for child_key in children_keys
-                if child_key != key
-            }
+            children: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
+            # We pop from metadata, since we're *moving* this under group.
+            # While doing this, normalize leaf groups to carry empty consolidated metadata.
+            for child_key in children_keys:
+                if child_key == key:
+                    continue
+                child = metadata.pop(child_key)
+                if isinstance(child, GroupMetadata) and child.consolidated_metadata is None:
+                    child = replace(child, consolidated_metadata=ConsolidatedMetadata(metadata={}))
+                children[child_key.split("/")[-1]] = child
+
             parent[name] = replace(
                 node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
             )
@@ -1062,9 +1064,9 @@ class AsyncGroup:
             dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-            the order if your filters is consistent with the behavior of each filter.
+            order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            The default value of ``"auto"`` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -1077,7 +1079,7 @@ class AsyncGroup:
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in [`zarr.config`][zarr.config].
@@ -1099,7 +1101,7 @@ class AsyncGroup:
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
-            The memory of the array (default is "C").
+            The memory order of the array (default is "C").
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -1164,7 +1166,7 @@ class AsyncGroup:
         name: str,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike = None,
+        dtype: npt.DTypeLike | None = None,
         exact: bool = False,
         **kwargs: Any,
     ) -> AnyAsyncArray:
@@ -1896,12 +1898,13 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
+        >>> group = Group.from_store(zarr.storage.MemoryStore())
+        >>> a = group.create_array(name="subarray", dtype="i1", shape=(10,), chunks=(10,))
         >>> del group["subarray"]
         >>> "subarray" in group
         False
         """
+
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
@@ -1912,14 +1915,10 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
-        >>> for name in g1:
-        ...     print(name)
-        baz
-        bar
-        foo
-        quux
+        >>> d1 = g1.create_array('baz', dtype="i1", shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', dtype="i1", shape=(10,), chunks=(10,))
+        >>> sorted(g1)
+        ['bar', 'baz', 'foo', 'quux']
         """
         yield from self.keys()
 
@@ -1942,11 +1941,12 @@ class Group(SyncMixin):
 
         Examples
         --------
+        >>> import numpy as np
         >>> import zarr
         >>> group = zarr.group()
-        >>> group["foo"] = zarr.zeros((10,))
+        >>> group["foo"] = np.array(zarr.zeros((10,)))
         >>> group["foo"]
-        <Array memory://132270269438272/foo shape=(10,) dtype=float64>
+        <Array memory://.../foo shape=(10,) dtype=float64>
         """
         self._sync(self._async_group.setitem(key, value))
 
@@ -1958,10 +1958,15 @@ class Group(SyncMixin):
 
         Examples
         --------
-        >>> import zarr
-        >>> group = zarr.group()
-        >>> await group.update_attributes_async({"foo": "bar"})
-        >>> group.attrs.asdict()
+        >>> async def example():
+        ...     import zarr
+        ...
+        ...     group = zarr.group()
+        ...     new_group = await group.update_attributes_async({"foo": "bar"})
+        ...     return new_group.attrs.asdict()
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         {'foo': 'bar'}
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
@@ -2060,8 +2065,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
-        >>> group.update_attributes({"foo": "bar"})
+        >>> group = zarr.group().update_attributes({"foo": "bar"})
         >>> group.attrs.asdict()
         {'foo': 'bar'}
         """
@@ -2167,19 +2171,17 @@ class Group(SyncMixin):
         >>> import zarr
         >>> from zarr.core.group import GroupMetadata
         >>> root = zarr.create_group(store={})
-        >>> for key, val in root.create_hierarchy({'a/b/c': GroupMetadata()}):
-        ...   print(key, val)
-        ...
-        <AsyncGroup memory://123209880766144/a>
-        <AsyncGroup memory://123209880766144/a/b/c>
-        <AsyncGroup memory://123209880766144/a/b>
+        >>> sorted(root.create_hierarchy({'a/b/c': GroupMetadata()}))
+        [('a', <Group memory://.../a>),
+         ('a/b', <Group memory://.../a/b>),
+         ('a/b/c', <Group memory://.../a/b/c>)]
         """
         for key, node in self._sync_iter(
             self._async_group.create_hierarchy(nodes, overwrite=overwrite)
         ):
             yield (key, _parse_async_node(node))
 
-    def keys(self) -> Generator[str, None]:
+    def keys(self) -> Generator[str]:
         """Return an iterator over group member names.
 
         Examples
@@ -2188,14 +2190,10 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
-        >>> for name in g1.keys():
-        ...     print(name)
-        baz
-        bar
-        foo
-        quux
+        >>> d1 = g1.create_array('baz', dtype="i1", shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', dtype="i1", shape=(10,), chunks=(10,))
+        >>> sorted(g1.keys())
+        ['bar', 'baz', 'foo', 'quux']
         """
         yield from self._sync_iter(self._async_group.keys())
 
@@ -2207,14 +2205,13 @@ class Group(SyncMixin):
         >>> import zarr
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
-        >>> d1 = g1.create_array('bar', shape=(10,), chunks=(10,))
+        >>> d1 = g1.create_array('bar', dtype="i1", shape=(10,), chunks=(10,))
         >>> 'foo' in g1
         True
         >>> 'bar' in g1
         True
         >>> 'baz' in g1
         False
-
         """
         return self._sync(self._async_group.contains(member))
 
@@ -2225,10 +2222,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for name, subgroup in group.groups():
-        ...     print(name, subgroup)
-        subgroup <Group memory://132270269438272/subgroup>
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.groups())
+        [('subgroup', <Group memory://.../subgroup>)]
         """
         for name, async_group in self._sync_iter(self._async_group.groups()):
             yield name, Group(async_group)
@@ -2240,10 +2236,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for name in group.group_keys():
-        ...     print(name)
-        subgroup
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.group_keys())
+        ['subgroup']
         """
         for name, _ in self.groups():
             yield name
@@ -2255,10 +2250,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_group("subgroup")
-        >>> for subgroup in group.group_values():
-        ...     print(subgroup)
-        <Group memory://132270269438272/subgroup>
+        >>> subgroup = group.create_group("subgroup")
+        >>> list(group.group_values())
+        [<Group memory://.../subgroup>]
         """
         for _, group in self.groups():
             yield group
@@ -2270,10 +2264,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for name, subarray in group.arrays():
-        ...     print(name, subarray)
-        subarray <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.arrays())
+        [('subarray', <Array memory://.../subarray shape=(10,) dtype=int8>)]
         """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
             yield name, Array(async_array)
@@ -2285,10 +2278,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for name in group.array_keys():
-        ...     print(name)
-        subarray
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.array_keys())
+        ['subarray']
         """
 
         for name, _ in self.arrays():
@@ -2301,10 +2293,9 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
-        >>> for subarray in group.array_values():
-        ...     print(subarray)
-        <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
+        >>> list(group.array_values())
+        [<Array memory://.../subarray shape=(10,) dtype=int8>]
         """
         for _, array in self.arrays():
             yield array
@@ -2361,7 +2352,7 @@ class Group(SyncMixin):
         >>> group = zarr.group()
         >>> subgroup = group.create_group("subgroup")
         >>> subgroup
-        <Group memory://132270269438272/subgroup>
+        <Group memory://.../subgroup>
         """
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
@@ -2445,9 +2436,9 @@ class Group(SyncMixin):
             dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-            the order if your filters is consistent with the behavior of each filter.
+            order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            The default value of ``"auto"`` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -2460,7 +2451,7 @@ class Group(SyncMixin):
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in [`zarr.config`][].
@@ -2482,7 +2473,7 @@ class Group(SyncMixin):
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
-            The memory of the array (default is "C").
+            The memory order of the array (default is "C").
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -2589,9 +2580,9 @@ class Group(SyncMixin):
             dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-            the order if your filters is consistent with the behavior of each filter.
+            order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            The default value of ``"auto"`` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -2604,7 +2595,7 @@ class Group(SyncMixin):
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in [`zarr.config`][zarr.config].
@@ -2626,7 +2617,7 @@ class Group(SyncMixin):
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
-            The memory of the array (default is "C").
+            The memory order of the array (default is "C").
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -2927,21 +2918,24 @@ async def create_hierarchy(
     Yields
     ------
     tuple[str, AsyncGroup | AsyncArray]
-        This function yields (path, node) pairs, in the order the nodes were created.
+        Yields (path, node) pairs, in the order the nodes were created.
 
     Examples
     --------
-    >>> from zarr.api.asynchronous import create_hierarchy
-    >>> from zarr.storage import MemoryStore
-    >>> from zarr.core.group import GroupMetadata
+    >>> async def example():
+    ...     from zarr.api.asynchronous import create_hierarchy
+    ...     from zarr.core.group import GroupMetadata
+    ...     from zarr.storage import MemoryStore
+    ...
+    ...     store = MemoryStore()
+    ...     nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    ...     return sorted([x async for x in create_hierarchy(store=store, nodes=nodes)])
+
     >>> import asyncio
-    >>> store = MemoryStore()
-    >>> nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
-    >>> async def run():
-        ... print(dict([x async for x in create_hierarchy(store=store, nodes=nodes)]))
-    >>> asyncio.run(run())
-    # {'a': <AsyncGroup memory://140345143770112/a>, '': <AsyncGroup memory://140345143770112>}
+    >>> asyncio.run(example())
+    [('', <AsyncGroup memory://...>), ('a', <AsyncGroup memory://.../a>)]
     """
+
     # normalize the keys to be valid paths
     nodes_normed_keys = _normalize_path_keys(nodes)
 

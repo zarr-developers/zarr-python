@@ -18,6 +18,8 @@ concurrency:
 
 env:
   FORCE_COLOR: 3
+  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 jobs:
 
@@ -54,6 +56,8 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
     - name: Install Hatch
       uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
       with:
@@ -67,7 +71,7 @@ jobs:
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
-      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
@@ -87,13 +91,13 @@ jobs:
     - name: Save cached hypothesis directory
       id: save-hypothesis-cache
       if: always() && steps.status.outcome != 'skipped'
-      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
+      uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests

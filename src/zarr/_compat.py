@@ -102,7 +102,7 @@ def _reshape_view(arr: "NDArray[Any]", shape: tuple[int, ...]) -> "NDArray[Any]"
         If a view cannot be created (the array is not contiguous) on NumPy >= 2.1.
     """
     if Version(np.__version__) >= Version("2.1"):
-        return arr.reshape(shape, copy=False)  # type: ignore[call-overload, no-any-return]
+        return arr.reshape(shape, copy=False)
     else:
         arr.shape = shape
         return arr

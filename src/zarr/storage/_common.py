@@ -369,7 +369,7 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str) and parsed is not None:
-        if parsed.scheme == "memory":
+        if parsed.scheme == "memory" and not _has_fsspec:
             # Create or get a ManagedMemoryStore
             return ManagedMemoryStore(name=parsed.name, path=parsed.path, read_only=_read_only)
         elif parsed.scheme == "file" or not parsed.scheme:
