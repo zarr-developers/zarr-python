@@ -2670,6 +2670,28 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve data for an item or region of the array.
+
+        This is the asynchronous variant of [`get_basic_selection`][zarr.Array.get_basic_selection].
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            A selection specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested region.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
@@ -2685,6 +2707,28 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify data for an item or region of the array.
+
+        This is the asynchronous variant of [`set_basic_selection`][zarr.Array.set_basic_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            A tuple specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
@@ -2696,6 +2740,26 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         *,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve data for an item or region of the array.
+
+        This is the asynchronous variant of basic indexing via square bracket notation
+        (see [`__getitem__`][zarr.Array.__getitem__] and
+        [`get_basic_selection`][zarr.Array.get_basic_selection]).
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            A selection specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested region.
+        """
         return await _getitem(
             self.store_path,
             self.metadata,
@@ -2713,6 +2777,27 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         *,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify data for an item or region of the array.
+
+        This is the asynchronous variant of basic indexing via square bracket notation
+        (see [`__setitem__`][zarr.Array.__setitem__] and
+        [`set_basic_selection`][zarr.Array.set_basic_selection]).
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            A selection specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         return await _setitem(
             self.store_path,
             self.metadata,
@@ -2732,6 +2817,30 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve data by making a selection for each dimension of the array.
+
+        This is the asynchronous variant of
+        [`get_orthogonal_selection`][zarr.Array.get_orthogonal_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested selection.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
@@ -2747,6 +2856,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify data via a selection for each dimension of the array.
+
+        This is the asynchronous variant of
+        [`set_orthogonal_selection`][zarr.Array.set_orthogonal_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
+        value : npt.ArrayLike
+            An array-like array containing the data to be stored in the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
@@ -2760,6 +2892,30 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve a selection of individual items via a Boolean mask array.
+
+        This is the asynchronous variant of
+        [`get_mask_selection`][zarr.Array.get_mask_selection].
+
+        Parameters
+        ----------
+        mask : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested selection.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
@@ -2775,6 +2931,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify a selection of individual items via a Boolean mask array.
+
+        This is the asynchronous variant of
+        [`set_mask_selection`][zarr.Array.set_mask_selection].
+
+        Parameters
+        ----------
+        mask : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
@@ -2788,6 +2967,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve a selection of individual items by their coordinates.
+
+        This is the asynchronous variant of
+        [`get_coordinate_selection`][zarr.Array.get_coordinate_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested coordinate selection.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
@@ -2808,6 +3010,28 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify a selection of individual items by their coordinates.
+
+        This is the asynchronous variant of
+        [`set_coordinate_selection`][zarr.Array.set_coordinate_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         # setup indexer
@@ -2843,6 +3067,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        """Asynchronously retrieve a selection of individual blocks by their chunk indices.
+
+        This is the asynchronous variant of
+        [`get_block_selection`][zarr.Array.get_block_selection].
+
+        Parameters
+        ----------
+        selection : int or slice or tuple of int or slice
+            An integer (coordinate) or slice for each dimension of the array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLikeOrScalar
+            An array-like or scalar containing the data for the requested block selection.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
@@ -2858,6 +3105,28 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """Asynchronously modify a selection of individual blocks by their chunk indices.
+
+        This is the asynchronous variant of
+        [`set_block_selection`][zarr.Array.set_block_selection].
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) or slice for each dimension of the array.
+        value : npt.ArrayLike
+            An array-like containing the data to be stored in the block selection.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Returns
+        -------
+        None
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
@@ -4320,25 +4589,100 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self._runner.run(self.info_complete_async())
 
     async def resize_async(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
+        """Asynchronously change the shape of the array by growing or shrinking one or more dimensions.
+
+        This is the asynchronous variant of [`resize`][zarr.Array.resize].
+
+        Parameters
+        ----------
+        new_shape : tuple
+            New shape of the array.
+        delete_outside_chunks : bool, default True
+            If True, chunks that fall entirely outside the new array shape are deleted from
+            the underlying store.
+
+        Returns
+        -------
+        None
+        """
         return await _resize(self, new_shape, delete_outside_chunks)
 
     async def append_async(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
+        """Asynchronously append `data` to `axis`.
+
+        This is the asynchronous variant of [`append`][zarr.Array.append].
+
+        Parameters
+        ----------
+        data : array-like
+            Data to be appended.
+        axis : int
+            Axis along which to append.
+
+        Returns
+        -------
+        new_shape : tuple
+            The new shape of the array after appending the data.
+        """
         return await _append(self, data, axis)
 
     async def update_attributes_async(self, new_attributes: dict[str, JSON]) -> Self:
+        """Asynchronously update the array's attributes.
+
+        This is the asynchronous variant of [`update_attributes`][zarr.Array.update_attributes].
+
+        Parameters
+        ----------
+        new_attributes : dict
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        Array
+            The array with the updated attributes.
+        """
         await _update_attributes(self, new_attributes)
         return self
 
     async def nchunks_initialized_async(self) -> int:
+        """Asynchronously calculate the number of chunks that have been initialized in storage.
+
+        This is the asynchronous variant of the
+        [`nchunks_initialized`][zarr.Array.nchunks_initialized] property.
+
+        Returns
+        -------
+        nchunks_initialized : int
+            The number of chunks that have been initialized.
+        """
         return await _nchunks_initialized(self)
 
     async def _nshards_initialized_async(self) -> int:
         return await _nshards_initialized(self)
 
     async def nbytes_stored_async(self) -> int:
+        """Asynchronously determine the size, in bytes, of the array actually written to the store.
+
+        This is the asynchronous variant of [`nbytes_stored`][zarr.Array.nbytes_stored].
+
+        Returns
+        -------
+        size : int
+            The size, in bytes, of the array actually written to the store.
+        """
         return await _nbytes_stored(self.store_path)
 
     async def info_complete_async(self) -> Any:
+        """Asynchronously return all the information about an array, including information from the Store.
+
+        This is the asynchronous variant of [`info_complete`][zarr.Array.info_complete].
+
+        Returns
+        -------
+        ArrayInfo
+            All information about the array, including dynamic information read from the store.
+        """
         return await _info_complete(self)
 
 
