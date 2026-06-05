@@ -827,18 +827,29 @@ register_pipeline(BatchedCodecPipeline)
 
 @dataclass(frozen=True)
 class FusedCodecPipeline(CodecPipeline):
-    """Codec pipeline that uses the codec chain directly.
+    """Codec pipeline that runs codec compute synchronously, in bulk.
 
-    Separates IO from compute without an intermediate layout abstraction.
-    The ShardingCodec handles shard IO internally via its `_decode_sync`
-    and `_encode_sync` methods, so the pipeline simply:
+    This is an opt-in alternative to `BatchedCodecPipeline`. The win is NOT
+    "separating IO from compute" — the codecs (notably `ShardingCodec`) still
+    perform their own storage IO. The win is replacing the batched pipeline's
+    per-chunk *async scheduling* (≈one coroutine per chunk, which dominates real
+    codec work) with synchronous, batched/coalesced execution:
 
-    1. Fetches the raw blob from the store (one key per chunk/shard).
-    2. Decodes/encodes through the codec chain (pure compute).
-    3. Writes the result back.
+    1. When every codec implements `SupportsSyncCodec`, a `ChunkTransform`
+       runs the codec chain synchronously (no event loop, no per-chunk coroutine)
+       — optionally across a thread pool for CPU-heavy decode/encode.
+    2. Sharded reads/writes use the codec's synchronous IO methods: byte-range
+       reads coalesced via `Store.get_ranges_sync`, byte-range writes via
+       `set_range_sync`, and a vectorized whole-shard bulk decode for dense,
+       fixed-size, uncompressed shards.
+    3. When the store lacks synchronous IO (e.g. ZipStore) the pipeline falls
+       back to the async path, equivalent to `BatchedCodecPipeline`.
 
-    A `ChunkTransform` wraps the codec chain for fast synchronous
-    decode/encode when all codecs support `SupportsSyncCodec`.
+    IO ownership: the sharding codec holds the byte getter/setter and reads/
+    writes storage directly (the same model as zarrs; unlike tensorstore, which
+    keeps codecs storage-free). A storage-free codec is a possible future
+    direction (see the pure-codec design notes) but is explicitly NOT what this
+    pipeline does.
     """
 
     codecs: tuple[Codec, ...]
