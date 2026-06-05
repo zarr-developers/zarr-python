@@ -13,7 +13,7 @@ from typing_extensions import TypeAliasType, TypedDict
 
 JSONValue = TypeAliasType(
     "JSONValue",
-    "int | float | bool | None | str | tuple[JSONValue, ...] | Mapping[str, JSONValue]",  # type: ignore[reportInvalidTypeForm]
+    "int | float | bool | None | str | list[JSONValue] | tuple[JSONValue, ...] | Mapping[str, JSONValue]",  # type: ignore[reportInvalidTypeForm]
 )
 """A recursive type alias for JSON-encodable values.
 
