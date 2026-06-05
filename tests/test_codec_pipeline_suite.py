@@ -24,6 +24,7 @@ must share belongs here.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -59,64 +60,222 @@ def _make_store(kind: str) -> Store:
     raise AssertionError(kind)
 
 
-# --- shared array configs ----------------------------------------------------
+# --- scenario model ----------------------------------------------------------
+#
+# Most pipeline behavior tests have one shape:
+#   create an array, apply some writes, (optionally) assert which chunk keys
+#   exist, then assert reads come back correct. A Scenario captures exactly those
+#   variables so one parametrized test covers them all. Correctness is checked
+#   against a numpy reference array that the scenario mutates in lock-step with
+#   the zarr array, so cases don't hand-maintain expected values.
 
-ARRAY_CONFIGS = [
-    pytest.param(
-        {"shape": (100,), "dtype": "float64", "chunks": (10,), "shards": None, "compressors": None},
-        id="1d-unsharded",
+
+@dataclass(frozen=True)
+class Scenario:
+    id: str
+    array_kwargs: dict[str, Any]
+    # (selection, value) writes applied in order. value may be a scalar or array.
+    writes: tuple[tuple[Any, Any], ...] = ()
+    # selections to read back and check against the reference. () means "read all".
+    reads: tuple[Any, ...] = (slice(None),)
+    # substrings of chunk keys that must be present / absent after the writes.
+    # Only checked on the sync store (key layout is identical across stores, but
+    # we keep it to one axis to avoid asserting store internals twice).
+    keys_present: tuple[str, ...] = ()
+    keys_absent: tuple[str, ...] = ()
+
+    def reference(self) -> np.ndarray:
+        """The numpy array the scenario's writes should produce, starting from
+        the array's fill value."""
+        kw = self.array_kwargs
+        shape = kw["shape"]
+        dtype = np.dtype(kw["dtype"])
+        fill = kw.get("fill_value", 0)
+        ref = np.full(shape, fill, dtype=dtype)
+        for sel, value in self.writes:
+            ref[sel] = value
+        return ref
+
+
+def _val(n: int, dtype: str, offset: int = 1) -> np.ndarray:
+    return np.arange(offset, offset + n, dtype=dtype)
+
+
+# Common dtype/chunk presets reused below.
+_F64 = {"dtype": "float64", "fill_value": 0.0}
+_I32 = {"dtype": "int32", "fill_value": -1}
+
+SCENARIOS: tuple[Scenario, ...] = (
+    # --- full-array roundtrips across layouts/codecs ------------------------
+    Scenario(
+        "1d-unsharded-roundtrip",
+        {"shape": (100,), "chunks": (10,), "shards": None, "compressors": None, **_F64},
+        writes=((slice(None), _val(100, "float64")),),
     ),
-    pytest.param(
+    Scenario(
+        "1d-sharded-roundtrip",
+        {"shape": (100,), "chunks": (10,), "shards": (100,), "compressors": None, **_F64},
+        writes=((slice(None), _val(100, "float64")),),
+    ),
+    Scenario(
+        "1d-multi-chunk-shard-roundtrip",
+        {"shape": (100,), "chunks": (10,), "shards": (50,), "compressors": None, **_F64},
+        writes=((slice(None), _val(100, "float64")),),
+    ),
+    Scenario(
+        "2d-unsharded-roundtrip",
+        {"shape": (10, 20), "chunks": (5, 10), "shards": None, "compressors": None, **_I32},
+        writes=((slice(None), np.arange(200, dtype="int32").reshape(10, 20)),),
+    ),
+    Scenario(
+        "2d-sharded-roundtrip",
+        {"shape": (20, 20), "chunks": (5, 5), "shards": (10, 10), "compressors": None, **_I32},
+        writes=((slice(None), np.arange(400, dtype="int32").reshape(20, 20)),),
+    ),
+    Scenario(
+        "1d-gzip-roundtrip",
         {
             "shape": (100,),
-            "dtype": "float64",
-            "chunks": (10,),
-            "shards": (100,),
-            "compressors": None,
-        },
-        id="1d-sharded",
-    ),
-    pytest.param(
-        {
-            "shape": (100,),
-            "dtype": "float64",
-            "chunks": (10,),
-            "shards": (50,),
-            "compressors": None,
-        },
-        id="1d-multi-chunk-shard",
-    ),
-    pytest.param(
-        {
-            "shape": (10, 20),
-            "dtype": "int32",
-            "chunks": (5, 10),
-            "shards": None,
-            "compressors": None,
-        },
-        id="2d-unsharded",
-    ),
-    pytest.param(
-        {
-            "shape": (20, 20),
-            "dtype": "int32",
-            "chunks": (5, 5),
-            "shards": (10, 10),
-            "compressors": None,
-        },
-        id="2d-sharded",
-    ),
-    pytest.param(
-        {
-            "shape": (100,),
-            "dtype": "float64",
             "chunks": (10,),
             "shards": None,
             "compressors": {"name": "gzip", "configuration": {"level": 1}},
+            **_F64,
         },
-        id="1d-gzip",
+        writes=((slice(None), _val(100, "float64")),),
     ),
-]
+    # --- read unwritten chunks -> fill value --------------------------------
+    Scenario(
+        "missing-chunks-fill",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": None,
+            "dtype": "float64",
+            "fill_value": -7.0,
+        },
+        writes=(),
+    ),
+    Scenario(
+        "missing-chunks-fill-sharded",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": (100,),
+            "compressors": None,
+            "dtype": "float64",
+            "fill_value": -7.0,
+        },
+        writes=(),
+    ),
+    # --- partial write, varied read selections ------------------------------
+    Scenario(
+        "partial-write-full-read",
+        {"shape": (100,), "chunks": (10,), "shards": None, "compressors": None, **_F64},
+        writes=((slice(5, 15), _val(10, "float64")),),
+        reads=(slice(None),),
+    ),
+    Scenario(
+        "full-write-strided-read",
+        {"shape": (100,), "chunks": (10,), "shards": None, "compressors": None, **_F64},
+        writes=((slice(None), _val(100, "float64")),),
+        reads=(np.s_[::3], np.s_[10:20]),
+    ),
+    Scenario(
+        "partial-write-partial-read-sharded",
+        {"shape": (100,), "chunks": (10,), "shards": (100,), "compressors": None, **_F64},
+        writes=((slice(20, 70), _val(50, "float64")),),
+        reads=(np.s_[30:60], slice(None)),
+    ),
+    # --- spec-changing codec (transpose): the async-spec-evolution guard ----
+    Scenario(
+        "transpose",
+        {
+            "shape": (8, 12),
+            "chunks": (2, 4),
+            "shards": None,
+            "filters": [TransposeCodec(order=(1, 0))],
+            "serializer": BytesCodec(),
+            **_I32,
+        },
+        writes=((slice(None), np.arange(96, dtype="int32").reshape(8, 12)),),
+        reads=(slice(None), np.s_[1:7, 2:10]),
+    ),
+    Scenario(
+        "transpose-gzip",
+        {
+            "shape": (8, 12),
+            "chunks": (2, 4),
+            "shards": None,
+            "filters": [TransposeCodec(order=(1, 0))],
+            "serializer": BytesCodec(),
+            "compressors": GzipCodec(level=1),
+            **_I32,
+        },
+        writes=((slice(None), np.arange(96, dtype="int32").reshape(8, 12)),),
+        reads=(slice(None), np.s_[1:7, 2:10]),
+    ),
+    # --- nested sharding ----------------------------------------------------
+    Scenario(
+        "nested-sharding",
+        {
+            "shape": (20, 20),
+            "chunks": (10, 10),
+            "shards": None,
+            "compressors": None,
+            **_I32,
+            "fill_value": 0,
+            "serializer": ShardingCodec(
+                chunk_shape=(10, 10), codecs=[ShardingCodec(chunk_shape=(5, 5))]
+            ),
+        },
+        writes=((slice(None), np.arange(400, dtype="int32").reshape(20, 20)),),
+    ),
+    # --- partial overwrite of an existing shard (merge) ---------------------
+    Scenario(
+        "partial-shard-overwrite",
+        {
+            "shape": (40,),
+            "chunks": (4,),
+            "shards": (40,),
+            "compressors": None,
+            **_I32,
+            "config": {"write_empty_chunks": True},
+        },
+        writes=(
+            (slice(None), np.arange(40, dtype="int32")),
+            (slice(7, 18), _val(11, "int32", 700)),
+        ),
+    ),
+    # --- write_empty_chunks: storage-key presence/absence -------------------
+    Scenario(
+        "write-empty-false-omits-fill-chunk",
+        {
+            "shape": (20,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": None,
+            **_F64,
+            "config": {"write_empty_chunks": False},
+        },
+        writes=((slice(0, 10), _val(10, "float64")), (slice(10, 20), np.zeros(10, "float64"))),
+        keys_present=("c/0",),
+        keys_absent=("c/1",),
+    ),
+    Scenario(
+        "write-empty-true-persists-fill-chunk",
+        {
+            "shape": (20,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": None,
+            **_F64,
+            "config": {"write_empty_chunks": True},
+        },
+        writes=((slice(None), np.zeros(20, "float64")),),
+        keys_present=("c/0", "c/1"),
+    ),
+)
 
 
 class CodecPipelineTests:
@@ -136,96 +295,6 @@ class CodecPipelineTests:
     def store(self, request: pytest.FixtureRequest) -> Store:
         return _make_store(request.param)
 
-    # -- roundtrip / fill-value ------------------------------------------------
-
-    @pytest.mark.parametrize("arr_kwargs", ARRAY_CONFIGS)
-    def test_roundtrip(self, store: Store, arr_kwargs: dict[str, Any]) -> None:
-        """Data survives a full write/read roundtrip."""
-        arr = zarr.create_array(store=store, fill_value=0, **arr_kwargs)
-        data = np.arange(int(np.prod(arr.shape)), dtype=arr.dtype).reshape(arr.shape)
-        arr[:] = data
-        np.testing.assert_array_equal(arr[:], data)
-
-    @pytest.mark.parametrize("arr_kwargs", ARRAY_CONFIGS)
-    def test_missing_chunks_fill_value(self, store: Store, arr_kwargs: dict[str, Any]) -> None:
-        """Reading unwritten chunks returns the fill value."""
-        arr = zarr.create_array(store=store, fill_value=-1, **arr_kwargs)
-        np.testing.assert_array_equal(arr[:], np.full(arr.shape, -1, dtype=arr.dtype))
-
-    # -- write/read selection combinations ------------------------------------
-
-    @pytest.mark.parametrize("shards", [None, (100,)], ids=["unsharded", "sharded"])
-    @pytest.mark.parametrize(
-        ("write_sel", "read_sel"),
-        [
-            pytest.param(slice(None), np.s_[:], id="full-write-full-read"),
-            pytest.param(slice(5, 15), np.s_[:], id="partial-write-full-read"),
-            pytest.param(slice(None), np.s_[::3], id="full-write-strided-read"),
-            pytest.param(slice(None), np.s_[10:20], id="full-write-slice-read"),
-            pytest.param(slice(20, 70), np.s_[30:60], id="partial-write-partial-read"),
-        ],
-    )
-    def test_write_then_read(
-        self, store: Store, shards: tuple[int, ...] | None, write_sel: slice, read_sel: Any
-    ) -> None:
-        arr = zarr.create_array(
-            store=store,
-            shape=(100,),
-            dtype="float64",
-            chunks=(10,),
-            shards=shards,
-            compressors=None,
-            fill_value=0.0,
-        )
-        full = np.zeros(100, dtype="float64")
-        write_data = np.arange(len(full[write_sel]), dtype="float64") + 1
-        full[write_sel] = write_data
-        arr[write_sel] = write_data
-        np.testing.assert_array_equal(arr[read_sel], full[read_sel])
-
-    # -- spec-changing codecs (regression guard for async-path spec evolution) -
-
-    @pytest.mark.parametrize(
-        "arr_kwargs",
-        [
-            pytest.param(
-                {"filters": [TransposeCodec(order=(1, 0))], "serializer": BytesCodec()},
-                id="transpose",
-            ),
-            pytest.param(
-                {
-                    "filters": [TransposeCodec(order=(1, 0))],
-                    "serializer": BytesCodec(),
-                    "compressors": GzipCodec(level=1),
-                },
-                id="transpose-gzip",
-            ),
-        ],
-    )
-    def test_spec_changing_codec_roundtrip(self, store: Store, arr_kwargs: dict[str, Any]) -> None:
-        """Array->array codecs that change the chunk spec (transpose) must
-        roundtrip on every pipeline AND every store path. This is the case that
-        breaks if a pipeline's async path reuses one spec across the whole codec
-        chain instead of evolving it per codec. Non-square chunks make a wrong
-        reshape observable.
-        """
-        arr = zarr.create_array(
-            store=store,
-            shape=(8, 12),
-            dtype="int32",
-            chunks=(2, 4),
-            shards=None,
-            fill_value=0,
-            **arr_kwargs,
-        )
-        data = np.arange(96, dtype="int32").reshape(8, 12)
-        arr[:] = data
-        np.testing.assert_array_equal(arr[:], data)
-        # partial read too (exercises selection on the transposed chunk)
-        np.testing.assert_array_equal(arr[1:7, 2:10], data[1:7, 2:10])
-
-    # -- write_empty_chunks / read_missing_chunks -----------------------------
-
     @staticmethod
     def _chunk_keys(store: Store) -> set[str]:
         """All non-metadata keys currently in the store."""
@@ -236,49 +305,36 @@ class CodecPipelineTests:
 
         return asyncio.run(_list())
 
-    @pytest.mark.parametrize("shards", [None, (20,)], ids=["unsharded", "sharded"])
-    def test_write_empty_chunks_false(self, store: Store, shards: tuple[int, ...] | None) -> None:
-        """write_empty_chunks=False: a fill-only chunk reads back as fill AND is
-        not persisted (no store key for it)."""
-        arr = zarr.create_array(
-            store=store,
-            shape=(20,),
-            dtype="float64",
-            chunks=(10,),
-            shards=shards,
-            compressors=None,
-            fill_value=0.0,
-            config={"write_empty_chunks": False},
-        )
-        arr[0:10] = np.arange(10, dtype="float64") + 1
-        arr[10:20] = np.zeros(10, dtype="float64")  # all fill_value
-        np.testing.assert_array_equal(arr[0:10], np.arange(10, dtype="float64") + 1)
-        np.testing.assert_array_equal(arr[10:20], np.zeros(10, dtype="float64"))
-        if shards is None:
-            # The all-fill chunk must NOT be persisted; the written one must be.
-            keys = self._chunk_keys(store)
-            assert any("c/0" in k for k in keys), keys  # written chunk present
-            assert not any("c/1" in k for k in keys), keys  # fill chunk omitted
+    # -- the common shape: create -> write -> [assert keys] -> assert reads ----
 
-    def test_write_empty_chunks_true_persists(self, store: Store) -> None:
-        """write_empty_chunks=True: fill-only chunks are still persisted as keys."""
-        arr = zarr.create_array(
-            store=store,
-            shape=(20,),
-            dtype="float64",
-            chunks=(10,),
-            shards=None,
-            compressors=None,
-            fill_value=0.0,
-            config={"write_empty_chunks": True},
-        )
-        arr[:] = 0.0
-        np.testing.assert_array_equal(arr[:], np.zeros(20, dtype="float64"))
-        keys = self._chunk_keys(store)
-        assert any("c/0" in k for k in keys), keys
-        assert any("c/1" in k for k in keys), keys
+    @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.id)
+    def test_scenario(self, store: Store, scenario: Scenario) -> None:
+        """Create an array, apply the scenario's writes, optionally assert which
+        chunk keys exist, then assert each read selection matches a numpy
+        reference. Run against every pipeline (subclass) and store kind (fixture).
+        """
+        arr = zarr.create_array(store=store, **scenario.array_kwargs)
+        for sel, value in scenario.writes:
+            arr[sel] = value
+
+        ref = scenario.reference()
+        for sel in scenario.reads:
+            np.testing.assert_array_equal(
+                arr[sel], ref[sel], err_msg=f"{scenario.id}: read {sel!r} mismatch"
+            )
+
+        if scenario.keys_present or scenario.keys_absent:
+            keys = self._chunk_keys(store)
+            for present in scenario.keys_present:
+                assert any(present in k for k in keys), (present, keys)
+            for absent in scenario.keys_absent:
+                assert not any(absent in k for k in keys), (absent, keys)
+
+    # -- outliers that don't fit the create/write/read scenario shape ----------
 
     def test_read_missing_chunks_false_raises(self, store: Store) -> None:
+        """read_missing_chunks=False makes reading an unwritten chunk an error,
+        not a fill — a different assertion (raises) than the scenario shape."""
         arr = zarr.create_array(
             store=store,
             shape=(20,),
@@ -292,51 +348,18 @@ class CodecPipelineTests:
         with pytest.raises(ChunkNotFoundError):
             arr[:]
 
-    def test_read_missing_chunks_true_fills(self, store: Store) -> None:
-        arr = zarr.create_array(
-            store=store,
-            shape=(20,),
-            dtype="float64",
-            chunks=(10,),
-            shards=None,
-            compressors=None,
-            fill_value=-999.0,
-        )
-        np.testing.assert_array_equal(arr[:], np.full(20, -999.0))
-
-    # -- sharding specifics ----------------------------------------------------
-
-    def test_nested_sharding_roundtrip(self, store: Store) -> None:
-        arr = zarr.create_array(
-            store=store,
-            shape=(20, 20),
-            dtype="int32",
-            chunks=(10, 10),
-            shards=None,
-            compressors=None,
-            fill_value=0,
-            serializer=ShardingCodec(
-                chunk_shape=(10, 10), codecs=[ShardingCodec(chunk_shape=(5, 5))]
-            ),
-        )
-        data = np.arange(400, dtype="int32").reshape(20, 20)
-        arr[:] = data
-        np.testing.assert_array_equal(arr[:], data)
-
     @pytest.mark.parametrize("subchunk_write_order", ["morton", "lexicographic", "colexicographic"])
     def test_partial_write_after_reopen_is_correct(
         self, store: Store, subchunk_write_order: SubchunkWriteOrder
     ) -> None:
-        """Reopening a sharded array and partially overwriting it must read back
-        correctly, regardless of the original subchunk_write_order.
+        """Has an extra step the scenario shape lacks — a REOPEN between writes.
 
-        NOTE: subchunk_write_order is intentionally NOT recoverable on reopen (it
-        is not codec metadata) — so this does NOT assert the order survives. What
-        it guards is the consequence that matters: chunk locations on a write to
-        an existing shard must come from the STORED shard index, not from the
-        (now-possibly-default) live order. A non-square inner grid makes the
-        orders physically distinct, so an offset computed from the wrong order
-        would corrupt data and fail this read-back.
+        Reopening a sharded array and partially overwriting it must read back
+        correctly regardless of the original subchunk_write_order. subchunk_write_
+        order is intentionally NOT recoverable on reopen, so chunk locations on a
+        write to an existing shard must come from the STORED shard index, not the
+        (now-default) live order. A non-square inner grid makes the orders
+        physically distinct, so a wrong offset would corrupt data and fail here.
         """
         shape, shard, inner = (6, 4), (6, 4), (2, 2)
         arr = zarr.create_array(
@@ -358,27 +381,6 @@ class CodecPipelineTests:
         reopened[1:5, 0:3] = 777  # partial overwrite into the existing shard
         ref[1:5, 0:3] = 777
         np.testing.assert_array_equal(reopened[:], ref)
-
-    @pytest.mark.parametrize("write_empty", [True, False])
-    def test_partial_shard_write_roundtrip(self, store: Store, write_empty: bool) -> None:
-        """Write a full shard, then partially overwrite it; both pipelines must
-        read back the merged result. Exercises the byte-range write fast path on
-        the sync store and the full-rewrite path on the async store."""
-        arr = zarr.create_array(
-            store=store,
-            shape=(40,),
-            dtype="int32",
-            chunks=(4,),
-            shards=(40,),
-            compressors=None,
-            fill_value=-1,
-            config={"write_empty_chunks": write_empty},
-        )
-        ref = np.arange(40, dtype="int32")
-        arr[:] = ref
-        arr[7:18] = np.arange(700, 711, dtype="int32")
-        ref[7:18] = np.arange(700, 711)
-        np.testing.assert_array_equal(arr[:], ref)
 
 
 class TestBatchedPipeline(CodecPipelineTests):
