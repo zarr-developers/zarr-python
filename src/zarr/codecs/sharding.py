@@ -629,13 +629,9 @@ class ShardingCodec(
         calling convention of the async partial-encode path used by
         `BatchedCodecPipeline`.
 
-        When inner codecs are fixed-size and the store supports
-        `set_range_sync`, partial writes update only the affected inner
-        chunks at their deterministic byte offsets.  Otherwise falls back
-        to a full shard rewrite.
+        Loads the existing shard, merges the written region into the affected
+        inner chunks, and rewrites the whole shard.
         """
-        from zarr.abc.store import SupportsSetRange
-
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
@@ -658,79 +654,6 @@ class ShardingCodec(
 
         is_scalar = len(value.shape) == 0
 
-        # --- Byte-range fast path ---
-        # Only safe when we don't need to skip empty chunks: byte-range
-        # writes leave chunk presence unchanged (writes a fixed-size
-        # data slot for every affected chunk). Compacting empty chunks
-        # away requires rewriting the whole shard.
-        store = byte_setter.store if hasattr(byte_setter, "store") else None
-        if (
-            not is_complete
-            and not skip_empty
-            and self._inner_codecs_fixed_size
-            and isinstance(store, SupportsSetRange)
-        ):
-            chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
-            n_chunks = product(chunks_per_shard)
-            shard_index_size = self._shard_index_size(chunks_per_shard)
-            total_data_size = n_chunks * chunk_byte_length
-            total_shard_size = total_data_size + shard_index_size
-
-            existing = byte_setter.get_sync(prototype=shard_spec.prototype)
-            if existing is not None and len(existing) == total_shard_size:
-                key = byte_setter.path if hasattr(byte_setter, "path") else str(byte_setter)
-                shard_reader = self._shard_reader_from_bytes_sync(existing, chunks_per_shard)
-                # The decoded index may be a view of a read-only buffer (e.g.
-                # mmap-backed reads from LocalStore). Copy so set_chunk_slice
-                # below can mutate it.
-                index = _ShardIndex(chunks_per_shard, shard_reader.index.offsets_and_lengths.copy())
-
-                # Each chunk's byte offset comes from the STORED shard index, which
-                # records the actual on-disk layout. We must NOT recompute offsets
-                # from self.subchunk_write_order: that order is not persisted in the
-                # codec metadata (it is lost on reopen, reverting to the default),
-                # so a recomputed offset can disagree with where the chunk actually
-                # lives and overwrite the wrong slot. The index is the persisted
-                # source of truth. The shard is dense here (len == total_shard_size),
-                # so every chunk has a valid slice; we keep writes in-place at those
-                # offsets, so presence/layout is unchanged.
-                def _byte_offset(coords: tuple[int, ...]) -> int:
-                    sl = index.get_chunk_slice(coords)
-                    assert sl is not None  # dense shard: every chunk is present
-                    return sl[0]
-
-                for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
-                    byte_offset = _byte_offset(chunk_coords)
-                    chunk_value = value if is_scalar else value[out_sel]
-
-                    if is_complete_chunk and not is_scalar:
-                        chunk_array = chunk_value
-                    else:
-                        # Decode existing inner chunk, then merge new data
-                        existing_chunk_bytes = existing[
-                            byte_offset : byte_offset + chunk_byte_length
-                        ]
-                        chunk_array = inner_transform.decode_chunk(
-                            existing_chunk_bytes, chunk_spec
-                        ).copy()
-                        chunk_array[chunk_sel] = chunk_value
-
-                    encoded = inner_transform.encode_chunk(chunk_array, chunk_spec)
-                    if encoded is not None:
-                        store.set_range_sync(key, encoded, byte_offset)
-                        index.set_chunk_slice(
-                            chunk_coords,
-                            slice(byte_offset, byte_offset + chunk_byte_length),
-                        )
-
-                index_bytes = self._encode_shard_index_sync(index)
-                if self.index_location == ShardingCodecIndexLocation.start:
-                    store.set_range_sync(key, index_bytes, 0)
-                else:
-                    store.set_range_sync(key, index_bytes, total_data_size)
-                return
-
-        # --- Full shard rewrite path ---
         # Load existing inner-chunk bytes into a dict (same structure as
         # the async path's shard_dict).
         if is_complete:
@@ -1462,26 +1385,6 @@ class ShardingCodec(
             raw_byte_length *= s
         raw_byte_length *= chunk_spec.dtype.item_size  # type: ignore[attr-defined]
         return int(self.codec_pipeline.compute_encoded_size(raw_byte_length, chunk_spec))
-
-    def _chunk_byte_offset(
-        self,
-        chunk_coords: tuple[int, ...],
-        chunks_per_shard: tuple[int, ...],
-        chunk_byte_length: int,
-    ) -> int:
-        """Byte offset of an inner chunk within a dense shard blob.
-
-        NOTE: assumes morton storage order. With the new ``subchunk_write_order``
-        (#3826) this is only valid for morton-ordered shards; callers using the
-        fixed-size byte-range fast path must guard on that, or derive ranks from
-        ``_subchunk_order_iter(self.subchunk_write_order)``.
-        """
-        rank_map = {c: r for r, c in enumerate(morton_order_iter(chunks_per_shard))}
-        rank = rank_map[chunk_coords]
-        offset = rank * chunk_byte_length
-        if self.index_location == ShardingCodecIndexLocation.start:
-            offset += self._shard_index_size(chunks_per_shard)
-        return offset
 
     async def _load_partial_shard_maybe(
         self,
