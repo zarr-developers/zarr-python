@@ -1153,6 +1153,34 @@ class FusedCodecPipeline(CodecPipeline):
         ):
             return self.read_sync(batch, out, drop_axes, max_workers=_resolve_max_workers())
 
+        # Non-sync store (e.g. ZipStore): can't use the sync fast path. But if the
+        # array-bytes codec supports partial decoding (sharding), still route
+        # through the async partial-decode path — it fetches only the needed
+        # inner-chunk byte ranges (coalesced via get_ranges), matching
+        # BatchedCodecPipeline. Without this, the whole-shard _async_read_fallback
+        # below would over-read and diverge from the batched pipeline's IO.
+        if self.supports_partial_decode:
+            assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
+            chunk_array_batch = await self.array_bytes_codec.decode_partial(
+                [
+                    (byte_getter, chunk_selection, chunk_spec)
+                    for byte_getter, chunk_spec, chunk_selection, *_ in batch
+                ]
+            )
+            results: list[GetResult] = []
+            for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
+                chunk_array_batch, batch, strict=False
+            ):
+                if chunk_array is not None:
+                    if drop_axes:
+                        chunk_array = chunk_array.squeeze(axis=drop_axes)
+                    out[out_selection] = chunk_array
+                    results.append(GetResult(status="present"))
+                else:
+                    out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
+            return tuple(results)
+
         return await _async_read_fallback(self, batch, out, drop_axes)
 
     async def write(

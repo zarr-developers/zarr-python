@@ -28,6 +28,64 @@ from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 
+def _reads_are_sync(store_mock: AsyncMock) -> bool:
+    """True when the partial-shard read for this store+pipeline goes through the
+    synchronous methods (get_sync / get_ranges_sync). That requires BOTH the
+    configured pipeline to be the sync (Fused) one AND the store to support sync
+    reads — a Fused read against a non-sync store (e.g. ZipStore) falls back to
+    the async path. Lets the partial-shard-read tests assert the same intent
+    against whichever method family is actually exercised."""
+    from zarr.abc.store import SupportsGetSync
+    from zarr.core.config import config
+
+    pipeline_is_sync = "Fused" in config.get("codec_pipeline.path")
+    # store_mock wraps the real store; check the wrapped class for sync support.
+    wrapped = getattr(store_mock, "_mock_wraps", store_mock)
+    return pipeline_is_sync and isinstance(wrapped, SupportsGetSync)
+
+
+def _index_read_count(store_mock: AsyncMock) -> int:
+    """Number of shard-index reads, regardless of sync/async pipeline."""
+    method = store_mock.get_sync if _reads_are_sync(store_mock) else store_mock.get
+    return int(method.call_count)
+
+
+def _range_read_count(store_mock: AsyncMock) -> int:
+    """Number of coalesced chunk-data reads, regardless of sync/async pipeline."""
+    method = store_mock.get_ranges_sync if _reads_are_sync(store_mock) else store_mock.get_ranges
+    return int(method.call_count)
+
+
+def _fail_index_read(store_mock: AsyncMock) -> None:
+    """Simulate the shard-index load returning nothing, for the active path."""
+    if _reads_are_sync(store_mock):
+        store_mock.get_sync.return_value = None
+    else:
+        store_mock.get.return_value = None
+
+
+def _fail_chunk_reads(
+    store_mock: AsyncMock, key_absent_exc: type[Exception] = FileNotFoundError
+) -> None:
+    """Simulate chunk-data loads failing (key absent), for the active path.
+
+    Async get_ranges raises a BaseExceptionGroup; the sync get_ranges_sync mirrors
+    that contract, so both inject a FileNotFoundError-bearing group."""
+    if _reads_are_sync(store_mock):
+
+        def fail_sync(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
+            raise BaseExceptionGroup("chunk read failed", [key_absent_exc(key)])
+
+        store_mock.get_ranges_sync = fail_sync
+    else:
+
+        async def fail_async(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
+            raise BaseExceptionGroup("chunk read failed", [key_absent_exc(key)])
+            yield  # type: ignore[unreachable]  # marks this as an async generator
+
+        store_mock.get_ranges = fail_async
+
+
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize(
@@ -231,18 +289,18 @@ def test_sharding_multiple_chunks_partial_shard_read(
     # for a total of 6 chunks accessed
     assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
-    assert store_mock.get.call_count == 2
-    assert store_mock.get_ranges.call_count == 2
+    # 2 shard index reads + 2 coalesced chunk-data reads (one per shard)
+    assert _index_read_count(store_mock) == 2
+    assert _range_read_count(store_mock) == 2
 
     store_mock.reset_mock()
 
     # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
     assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
-    assert store_mock.get.call_count == 2
-    assert store_mock.get_ranges.call_count == 2
+    # 2 shard index reads + 2 coalesced chunk-data reads (one per shard)
+    assert _index_read_count(store_mock) == 2
+    assert _range_read_count(store_mock) == 2
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -278,9 +336,9 @@ def test_sharding_duplicate_read_indexes(
     indexer = [8, 8, 12, 12]
     assert np.array_equal(a[indexer], data[indexer])
 
-    # 1 shard index read via store.get() + 1 get_ranges call
-    assert store_mock.get.call_count == 1
-    assert store_mock.get_ranges.call_count == 1
+    # 1 shard index read + 1 coalesced chunk-data read
+    assert _index_read_count(store_mock) == 1
+    assert _range_read_count(store_mock) == 1
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -369,8 +427,6 @@ def test_sharding_partial_shard_read__index_load_fails(
     fill_value = -999
 
     store_mock = AsyncMock(wraps=store, spec=store.__class__)
-    # loading the index is the first call to .get() so returning None will simulate an index load failure
-    store_mock.get.return_value = None
 
     a = zarr.create_array(
         StorePath(store_mock),
@@ -382,6 +438,10 @@ def test_sharding_partial_shard_read__index_load_fails(
         fill_value=fill_value,
     )
     a[:] = data
+
+    # Loading the index returns None -> simulate an index load failure, on
+    # whichever read method the active pipeline uses (get / get_sync).
+    _fail_index_read(store_mock)
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value
@@ -449,16 +509,12 @@ def test_sharding_partial_shard_read__chunk_load_fails(
     a[:] = data
 
     # Set up store mock after array creation to simulate chunk load failure.
-    # Index loads still succeed (via store.get), but chunk-byte loads fail
-    # (via store.get_ranges raising BaseExceptionGroup containing FileNotFoundError —
-    # the same shape Store.get_ranges produces when a key is absent).
+    # Index loads still succeed, but chunk-byte loads fail (the coalesced range
+    # read raises a BaseExceptionGroup containing FileNotFoundError — the same
+    # shape produced when a key is absent), on whichever read method the active
+    # pipeline uses (get_ranges / get_ranges_sync).
     store_mock.reset_mock()
-
-    async def fail_chunk_reads(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
-        raise BaseExceptionGroup("chunk read failed", [FileNotFoundError(key)])
-        yield  # type: ignore[unreachable]  # marks this as an async generator
-
-    store_mock.get_ranges = fail_chunk_reads
+    _fail_chunk_reads(store_mock)
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value

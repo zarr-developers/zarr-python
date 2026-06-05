@@ -21,7 +21,9 @@ from zarr.abc.store import (
     ByteRequest,
     ByteSetter,
     RangeByteRequest,
+    Store,
     SuffixByteRequest,
+    SupportsGetSync,
 )
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -814,9 +816,9 @@ class ShardingCodec(
     ) -> Buffer | None:
         """Sync version of _encode_shard_dict.
 
-        Pack the encoded inner chunks (in Morton order) into a contiguous
-        data section, build a shard index that points each present chunk
-        at its offset/length within that section, and concatenate.
+        Pack the encoded inner chunks (in the codec's ``subchunk_write_order``)
+        into a contiguous data section, build a shard index that points each
+        present chunk at its offset/length within that section, and concatenate.
 
         Returns `None` for an all-empty shard (no chunks present).
         """
@@ -825,11 +827,12 @@ class ShardingCodec(
         template = buffer_prototype.buffer.create_zero_length()
         chunk_start = 0
 
-        # First pass: lay out present chunks in the data section. Offsets
-        # here are relative to the start of the data section, not the start
-        # of the final blob — they get shifted in the index-at-start branch
+        # First pass: lay out present chunks in the data section, in the
+        # configured subchunk_write_order (matching the async _encode_shard_dict).
+        # Offsets here are relative to the start of the data section, not the
+        # start of the final blob — they get shifted in the index-at-start branch
         # below to account for the index-bytes prefix.
-        for chunk_coords in morton_order_iter(chunks_per_shard):
+        for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
             value = shard_dict.get(chunk_coords)
             if value is None or len(value) == 0:
                 continue
@@ -1132,31 +1135,15 @@ class ShardingCodec(
             shard_reader = self._shard_reader_from_bytes_sync(shard_bytes, chunks_per_shard)
             shard_dict: ShardMapping = shard_reader
         else:
-            shard_index_size = self._shard_index_size(chunks_per_shard)
-            if self.index_location == ShardingCodecIndexLocation.start:
-                index_bytes = byte_getter.get_sync(
-                    prototype=numpy_buffer_prototype(),
-                    byte_range=RangeByteRequest(0, shard_index_size),
-                )
-            else:
-                index_bytes = byte_getter.get_sync(
-                    prototype=numpy_buffer_prototype(),
-                    byte_range=SuffixByteRequest(shard_index_size),
-                )
-            if index_bytes is None:
+            # Partial read: fetch only the touched inner chunks, coalescing
+            # adjacent byte ranges (mirrors the async _load_partial_shard_maybe
+            # / #3004). Returns None if the shard is absent.
+            partial = self._load_partial_shard_maybe_sync(
+                byte_getter, chunk_spec.prototype, chunks_per_shard, all_chunk_coords
+            )
+            if partial is None:
                 return None
-            shard_index = self._decode_shard_index_sync(index_bytes, chunks_per_shard)
-            shard_dict_mut: dict[tuple[int, ...], Buffer | None] = {}
-            for chunk_coords in all_chunk_coords:
-                chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
-                if chunk_byte_slice is not None:
-                    chunk_bytes = byte_getter.get_sync(
-                        prototype=chunk_spec.prototype,
-                        byte_range=RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
-                    )
-                    if chunk_bytes is not None:
-                        shard_dict_mut[chunk_coords] = chunk_bytes
-            shard_dict = shard_dict_mut
+            shard_dict = partial
 
         # Decode each needed inner chunk and scatter into out.
         fill_value = shard_spec.fill_value
@@ -1529,6 +1516,81 @@ class ShardingCodec(
             # nested sharding, which slices an in-memory buffer (no I/O to coalesce).
             for chunk_coord, byte_range in chunk_coord_byte_ranges:
                 buf = await byte_getter.get(prototype, byte_range)
+                if buf is not None:
+                    shard_dict[chunk_coord] = buf
+
+        return shard_dict
+
+    def _load_shard_index_maybe_sync(
+        self, byte_getter: Any, chunks_per_shard: tuple[int, ...]
+    ) -> _ShardIndex | None:
+        """Sync counterpart of `_load_shard_index_maybe`."""
+        shard_index_size = self._shard_index_size(chunks_per_shard)
+        if self.index_location == ShardingCodecIndexLocation.start:
+            index_bytes = byte_getter.get_sync(
+                prototype=numpy_buffer_prototype(),
+                byte_range=RangeByteRequest(0, shard_index_size),
+            )
+        else:
+            index_bytes = byte_getter.get_sync(
+                prototype=numpy_buffer_prototype(),
+                byte_range=SuffixByteRequest(shard_index_size),
+            )
+        if index_bytes is not None:
+            return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        return None
+
+    def _load_partial_shard_maybe_sync(
+        self,
+        byte_getter: Any,
+        prototype: BufferPrototype,
+        chunks_per_shard: tuple[int, ...],
+        all_chunk_coords: set[tuple[int, ...]],
+    ) -> ShardMapping | None:
+        """Sync counterpart of `_load_partial_shard_maybe` (the #3004 read path).
+
+        Reads the shard index, then fetches only the touched inner chunks via the
+        store's coalescing `get_ranges_sync` (merging adjacent ranges into fewer
+        reads), matching the async path's IO shape without an event loop.
+        """
+        shard_index = self._load_shard_index_maybe_sync(byte_getter, chunks_per_shard)
+        if shard_index is None:
+            return None
+
+        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
+        for chunk_coord in all_chunk_coords:
+            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
+            if chunk_byte_slice is not None:
+                chunk_coord_byte_ranges.append(
+                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+                )
+
+        if not chunk_coord_byte_ranges:
+            return {}
+
+        shard_dict: ShardMutableMapping = {}
+        store = byte_getter.store if hasattr(byte_getter, "store") else None
+        if isinstance(store, Store) and isinstance(store, SupportsGetSync):
+            # External store: coalesce via get_ranges_sync (mirrors get_ranges).
+            byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
+            try:
+                for idx, buf in store.get_ranges_sync(
+                    byte_getter.path, byte_ranges, prototype=prototype
+                ):
+                    if buf is not None:
+                        chunk_coord, _ = chunk_coord_byte_ranges[idx]
+                        shard_dict[chunk_coord] = buf
+            except BaseExceptionGroup as eg:
+                # Mirror the async path: a FileNotFoundError means the shard was
+                # deleted mid-read -> treat as "gone" (None). Re-raise anything else.
+                _, rest = eg.split(FileNotFoundError)
+                if rest is not None:
+                    raise rest from None
+                return None
+        else:
+            # Nested sharding: an in-memory _ShardingByteGetter, no IO to coalesce.
+            for chunk_coord, byte_range in chunk_coord_byte_ranges:
+                buf = byte_getter.get_sync(prototype=prototype, byte_range=byte_range)
                 if buf is not None:
                     shard_dict[chunk_coord] = buf
 
