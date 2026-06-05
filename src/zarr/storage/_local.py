@@ -55,13 +55,13 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
     else:
         # Fallback to seek/read for systems without pread (e.g., Windows)
         with path.open("rb") as f:
-            size = f.seek(0, io.SEEK_END)
             if isinstance(byte_range, RangeByteRequest):
                 f.seek(byte_range.start)
                 return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
             elif isinstance(byte_range, OffsetByteRequest):
                 f.seek(byte_range.offset)
             elif isinstance(byte_range, SuffixByteRequest):
+                size = f.seek(0, io.SEEK_END)
                 f.seek(max(0, size - byte_range.suffix))
             else:
                 raise TypeError(f"Unexpected byte_range, got {byte_range}.")
