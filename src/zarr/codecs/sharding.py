@@ -567,19 +567,24 @@ class ShardingCodec(
     ) -> Buffer | None:
         """Encode a full shard synchronously.
 
-        Sync counterpart to `_encode_single`. Iterates inner chunks in
-        Morton (Z-curve) order — that's the canonical layout the shard
-        index expects — and encodes each through the inner `ChunkTransform`.
-        Empty inner chunks become `None` entries when `write_empty_chunks`
-        is False, signalling `_encode_shard_dict_sync` to elide them
-        from the data section and mark them empty in the shard index.
+        Sync counterpart to ``_encode_single``. This is reached when a
+        ``ShardingCodec`` is an *inner* codec of another sharding codec (nested
+        sharding): the outer codec encodes each inner chunk through its
+        ``ChunkTransform``, which calls this method on the inner ``ShardingCodec``.
 
-        Returns `None` if every inner chunk was elided (an all-empty
-        shard) — callers treat that as "delete the shard key".
+        Each inner chunk is encoded through the inner ``ChunkTransform`` and
+        collected into an intermediate ``dict``. The dict's key order is
+        immaterial — the physical on-disk layout is decided downstream by the
+        ``subchunk_write_order`` loop in ``_encode_shard_dict_sync`` (this method
+        does NOT impose a layout). Empty inner chunks become ``None`` entries when
+        ``write_empty_chunks`` is False, signalling ``_encode_shard_dict_sync`` to
+        elide them from the data section and mark them empty in the shard index.
+
+        Returns ``None`` if every inner chunk was elided (an all-empty shard) —
+        callers treat that as "delete the shard key".
 
         For a partial write that only touches some inner chunks, use
-        `_encode_partial_sync` instead — it patches affected slots in
-        place when possible.
+        ``_encode_partial_sync`` instead.
         """
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -592,6 +597,8 @@ class ShardingCodec(
             chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
         )
 
+        # Key order here is immaterial; _encode_shard_dict_sync lays the present
+        # chunks out in subchunk_write_order.
         shard_builder: dict[tuple[int, ...], Buffer | None] = dict.fromkeys(
             morton_order_iter(chunks_per_shard)
         )
