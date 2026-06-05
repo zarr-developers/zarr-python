@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +9,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from tests.conftest import MOTO_ENDPOINT_URL
 from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -36,7 +36,9 @@ pytestmark = [
     pytest.mark.filterwarnings(
         re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
     ),
-    # TODO: fix these warnings
+    # FsspecStore.from_url() and from_mapper() now close the aiohttp session on store.close().
+    # This filter covers stores that are GC'd without an explicit close() call, and any
+    # residual sessions from aiobotocore's ClientCreatorContext (a separate upstream issue).
     pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
     pytest.mark.filterwarnings(
         "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
@@ -50,31 +52,23 @@ pytestmark = [
 fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
-moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
-moto = pytest.importorskip("moto")
+# Skip this module entirely when moto is absent; the server itself comes from the shared
+# `moto_server` fixture in tests/conftest.py.
+pytest.importorskip("moto")
 botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
-port = 5555
-endpoint_url = f"http://127.0.0.1:{port}/"
+# The moto server itself is the session-scoped `moto_server` fixture in tests/conftest.py;
+# this module reuses its endpoint rather than standing up its own server.
+endpoint_url = MOTO_ENDPOINT_URL
 
 
-@pytest.fixture(scope="module")
-def s3_base() -> Generator[None, None, None]:
-    # writable local S3 system
-
-    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
-    server.start()
-    if "AWS_SECRET_ACCESS_KEY" not in os.environ:
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
-    if "AWS_ACCESS_KEY_ID" not in os.environ:
-        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
-
-    yield
-    server.stop()
+@pytest.fixture
+def s3_base(moto_server: str) -> str:
+    """Reuse the shared session-scoped moto server (see tests/conftest.py)."""
+    return moto_server
 
 
 def get_boto3_client() -> botocore.client.BaseClient:
@@ -282,6 +276,75 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             match="This method is only available for stores that support deletes.",
         ):
             await store.delete_dir("test_prefix")
+
+    # ── Filesystem lifecycle (ownership) ──────────────────────────────────────
+
+    def test_from_url_owns_filesystem(self) -> None:
+        """FsspecStore.from_url() creates the async fs; it must own it."""
+        store = FsspecStore.from_url(
+            f"s3://{test_bucket_name}/lifecycle/",
+            storage_options={"endpoint_url": endpoint_url, "anon": False},
+        )
+        assert store._owns_fs
+        store.close()
+
+    async def test_from_url_close_releases_store(self) -> None:
+        """
+        close() on a from_url() store must succeed without error and mark the
+        store as closed.  For the owned filesystem, _close_fs() is invoked to
+        release the underlying S3 client / aiohttp connection pool.
+        """
+        store = FsspecStore.from_url(
+            f"s3://{test_bucket_name}/lifecycle/",
+            storage_options={"endpoint_url": endpoint_url, "anon": False},
+        )
+        # Materialise the S3 client and connection pool.
+        await store.set("probe", cpu.Buffer.from_bytes(b"x"))
+
+        store.close()
+
+        assert not store._is_open
+
+    def test_direct_construction_does_not_own_filesystem(self) -> None:
+        """Direct FsspecStore() must not claim ownership — the caller owns the fs."""
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
+            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
+        )
+        store = FsspecStore(fs=fs, path=path)
+        assert not store._owns_fs
+
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
+    def test_from_upath_does_not_own_filesystem(self) -> None:
+        """from_upath() uses the UPath's existing fs; the store must not own it."""
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/foo/bar/",
+            endpoint_url=endpoint_url,
+            anon=False,
+            asynchronous=True,
+        )
+        store = FsspecStore.from_upath(path)
+        assert not store._owns_fs
+
+    def test_from_mapper_does_not_own_already_async_filesystem(self) -> None:
+        """from_mapper() with an already-async fs must not claim ownership."""
+        s3_filesystem = s3fs.S3FileSystem(
+            asynchronous=True,
+            endpoint_url=endpoint_url,
+            anon=False,
+            skip_instance_cache=True,
+        )
+        mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/")
+        store = FsspecStore.from_mapper(mapper)
+        # _make_async returns the same instance for an already-async fs.
+        assert not store._owns_fs
 
 
 def array_roundtrip(store: FsspecStore) -> None:
@@ -510,6 +573,82 @@ def test_open_s3map_raises() -> None:
         match="'storage_options' is only used when the store is passed as an FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
+
+
+async def test_close_fs_closes_s3_client() -> None:
+    """
+    _close_fs() must call set_session() and then close() on the returned
+    S3 client.  This is verified with mocks to avoid a real S3 connection.
+    """
+    from unittest.mock import AsyncMock
+
+    from zarr.storage._fsspec import _close_fs
+
+    mock_client = AsyncMock()
+    mock_fs = AsyncMock()
+    mock_fs.set_session = AsyncMock(return_value=mock_client)
+
+    await _close_fs(mock_fs)
+
+    mock_fs.set_session.assert_called_once()
+    mock_client.close.assert_called_once()
+
+
+async def test_close_fs_no_op_for_fs_without_set_session() -> None:
+    """_close_fs() must be a no-op for filesystems that don't expose set_session()."""
+    from unittest.mock import AsyncMock
+
+    from zarr.storage._fsspec import _close_fs
+
+    mock_fs = AsyncMock(spec=[])  # empty spec — no set_session attribute
+    await _close_fs(mock_fs)  # must not raise
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_from_mapper_owns_wrapped_sync_filesystem(tmp_path: pathlib.Path) -> None:
+    """
+    from_mapper() with a sync fs must wrap it in AsyncFileSystemWrapper and
+    claim ownership so that close() cleans it up.
+
+    The local filesystem is synchronous; _make_async() produces a new
+    AsyncFileSystemWrapper instance — a different object from the original fs.
+    """
+    import fsspec as _fsspec
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    fs = _fsspec.filesystem("file", auto_mkdir=True)
+    mapper = fs.get_mapper(str(tmp_path))
+    store = FsspecStore.from_mapper(mapper)
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store._owns_fs
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_with_read_only_transfers_filesystem_ownership(tmp_path: pathlib.Path) -> None:
+    """
+    with_read_only() must transfer fs ownership to the derived store and clear
+    it on the source, so the surviving store closes the shared fs exactly once.
+
+    In the common ``from_url(...).with_read_only()`` chain the source store is
+    immediately unreferenced; if ownership were not transferred, the only owner
+    would be garbage-collected without close() and the session would leak.
+    """
+    source = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    assert source._owns_fs
+
+    derived = source.with_read_only(read_only=True)
+
+    # Ownership moved to the survivor; the source no longer owns it (no double-close).
+    assert derived._owns_fs
+    assert not source._owns_fs
+    # The derived store shares the same underlying fs.
+    assert derived.fs is source.fs
 
 
 @pytest.mark.parametrize("asynchronous", [True, False])
