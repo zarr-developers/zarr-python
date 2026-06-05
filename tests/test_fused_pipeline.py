@@ -194,36 +194,6 @@ def test_sync_write_async_read_roundtrip() -> None:
     )
 
 
-def test_sync_transform_encode_decode_roundtrip() -> None:
-    """Sync transform can encode and decode a chunk."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.dtype import Float64
-
-    codecs = (BytesCodec(),)
-    pipeline = FusedCodecPipeline.from_codecs(codecs)
-    zdtype = Float64()
-    spec = ArraySpec(
-        shape=(100,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0.0),
-        prototype=default_buffer_prototype(),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-    )
-    pipeline = pipeline.evolve_from_array_spec(spec)
-    assert pipeline._sync_transform is not None
-
-    # Encode
-    proto = default_buffer_prototype()
-    data = proto.nd_buffer.from_numpy_array(np.arange(100, dtype="float64"))
-    encoded = pipeline._sync_transform.encode_chunk(data, spec)
-    assert encoded is not None
-
-    # Decode
-    decoded = pipeline._sync_transform.decode_chunk(encoded, spec)
-    np.testing.assert_array_equal(decoded.as_numpy_array(), np.arange(100, dtype="float64"))
-
-
 def test_partial_shard_write_uses_set_range() -> None:
     """Partial shard writes with fixed-size codecs should use set_range_sync.
 

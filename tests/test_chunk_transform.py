@@ -1,3 +1,13 @@
+"""Unit tests for ChunkTransform -- the per-chunk synchronous codec chain.
+
+ChunkTransform is the data structure FusedCodecPipeline uses to encode/decode a
+single chunk through a sequence of codecs synchronously. These tests exercise it
+directly (no pipeline, no store): construction and its rejection of codecs that
+lack a synchronous implementation, encode/decode roundtrips across codec chains,
+compute_encoded_size, and None short-circuiting when an array->array codec
+returns None. End-to-end pipeline behavior lives in the pipeline test modules.
+"""
+
 from __future__ import annotations
 
 from typing import Any
