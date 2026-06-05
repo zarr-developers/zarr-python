@@ -308,20 +308,13 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if nparray.ndim > 0 and all(
-                s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)
-            ):
+            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
                 )
                 if shard_shape is not None:
                     subchunk_write_order = draw(subchunk_write_orders)
-                    # Drive sharding through the serializer alone: the array's (outer) chunk
-                    # grid is the shard, and the ShardingCodec splits each shard into inner
-                    # subchunks of `chunks_param`. Passing `shards=` as well would make
-                    # create_array build a second, outer ShardingCodec and nest the two,
-                    # leaving `subchunk_write_order` governing only a 1-element inner grid.
                     serializer = ShardingCodec(
                         subchunk_write_order=subchunk_write_order,
                         codecs=[BytesCodec(), ZstdCodec()],
@@ -329,17 +322,16 @@ def arrays(
                         chunk_shape=chunks_param,
                     )
                     compressors_unsearched = None
-                    chunks_param = shard_shape
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     a = root.create_array(
         array_path,
         shape=nparray.shape,
         chunks=chunks_param,
-        shards=None,
+        shards=shard_shape,
         dtype=nparray.dtype,
         attributes=attributes,
-        compressors=compressors_unsearched,
+        compressors=compressors_unsearched,  # FIXME
         fill_value=fill_value,
         dimension_names=dim_names,
         serializer=serializer,
@@ -361,6 +353,7 @@ def arrays(
             assert a.metadata.chunk_grid.chunk_shape == (
                 a.shards if shard_shape is not None else a.chunks
             )
+            assert shard_shape == a.shards
         else:
             assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
             assert shard_shape is None
