@@ -298,8 +298,10 @@ class TestCacheStore:
             "max_size",
             "current_size",
             "cache_set_data",
+            "cache_missing",
             "tracked_keys",
             "cached_keys",
+            "missing_keys",
         }
         assert set(info.keys()) == expected_keys
 
@@ -1047,3 +1049,142 @@ class TestCacheStore:
         # Key is gone from source
         result = await cached_store.get("key", proto)
         assert result is None
+
+
+class TestCacheStoreNegativeCaching:
+    """Tests for opt-in negative (missing-key) caching (``cache_missing=True``)."""
+
+    async def test_basic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A second get of an absent key is served from the negative cache without a
+        source round-trip."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        calls = {"n": 0}
+        orig_get = source.get
+
+        async def counting_get(*args: object, **kwargs: object) -> object:
+            calls["n"] += 1
+            return await orig_get(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(source, "get", counting_get)
+
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+        after_first = calls["n"]
+
+        assert await cs.get("c/0", proto) is None
+        assert calls["n"] == after_first  # no further source access
+        assert cs.cache_stats()["negative_hits"] == 1
+
+    async def test_disabled_by_default(self) -> None:
+        """With the default ``cache_missing=False`` nothing is remembered."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 0
+        assert cs.cache_stats()["negative_hits"] == 0
+
+    async def test_evicted_on_set(self) -> None:
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+
+        await cs.set("c/0", CPUBuffer.from_bytes(b"value"))
+        assert cs.cache_info()["missing_keys"] == 0
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    async def test_evicted_on_set_if_not_exists(self) -> None:
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+
+        await cs.set_if_not_exists("c/0", CPUBuffer.from_bytes(b"value"))
+        assert cs.cache_info()["missing_keys"] == 0
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    async def test_respects_ttl(self) -> None:
+        """A negative entry expires after ``max_age_seconds`` so a key written to the
+        source out-of-band becomes visible again."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_age_seconds=1)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+
+        # an external writer adds the key directly to the source store
+        await source.set("c/0", CPUBuffer.from_bytes(b"late"))
+
+        # before TTL: still reported missing from the negative cache
+        assert await cs.get("c/0", proto) is None
+        await asyncio.sleep(1.1)
+
+        # after TTL: the stale negative entry is bypassed, source is consulted
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"late"
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_bounded(self) -> None:
+        """``max_missing_keys`` bounds the negative cache, evicting LRU entries."""
+        cs = CacheStore(
+            MemoryStore(), cache_store=MemoryStore(), cache_missing=True, max_missing_keys=10
+        )
+        proto = default_buffer_prototype()
+        for i in range(25):
+            assert await cs.get(f"c/{i}", proto) is None
+
+        assert cs.cache_info()["missing_keys"] == 10
+        assert cs.cache_stats()["evictions"] >= 15
+        # the 10 most-recently-seen keys are retained (LRU)
+        for i in range(15, 25):
+            assert f"c/{i}" in cs._state.missing_keys
+        for i in range(15):
+            assert f"c/{i}" not in cs._state.missing_keys
+
+    async def test_byte_range_unaffected(self) -> None:
+        """Byte-range misses do not populate the negative cache."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto, byte_range=RangeByteRequest(0, 4)) is None
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_stats_and_info(self) -> None:
+        """``negative_hits``/``missing_keys``/``cache_missing`` are surfaced and the
+        positive ``hit_rate`` is unaffected by negative hits."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        await cs.set("present", CPUBuffer.from_bytes(b"x"))
+        assert (await cs.get("present", proto)) is not None  # positive hit
+        assert await cs.get("absent", proto) is None  # records miss
+        assert await cs.get("absent", proto) is None  # negative hit
+
+        info = cs.cache_info()
+        stats = cs.cache_stats()
+        assert info["cache_missing"] is True
+        assert info["missing_keys"] == 1
+        assert stats["negative_hits"] == 1
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1  # negative hit counts as neither hit nor miss
+        assert stats["hit_rate"] == 0.5
+
+    async def test_delete_does_not_record(self) -> None:
+        """Deleting a key does not create a negative entry (deletion != checked-absent)."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
+        await cs.delete("c/0")
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_max_missing_keys_validated(self) -> None:
+        with pytest.raises(ValueError, match="max_missing_keys"):
+            CacheStore(MemoryStore(), cache_store=MemoryStore(), max_missing_keys=0)

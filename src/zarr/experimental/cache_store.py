@@ -30,8 +30,14 @@ class _CacheState:
     hits: int = 0
     misses: int = 0
     evictions: int = 0
+    negative_hits: int = 0
     key_insert_times: dict[_CacheEntryKey, float] = field(default_factory=dict)
     range_cache: dict[str, dict[ByteRequest, Buffer]] = field(default_factory=dict)
+    # Negative cache: full keys known to be absent in the source store, mapped to
+    # their (monotonic) insertion time for freshness. OrderedDict gives O(1) LRU
+    # eviction via popitem(last=False). Kept separate from the byte-size accounting
+    # above (negative entries carry no data) and bounded by ``max_missing_keys``.
+    missing_keys: OrderedDict[str, float] = field(default_factory=OrderedDict)
 
 
 class CacheStore(WrapperStore[Store]):
@@ -62,6 +68,23 @@ class CacheStore(WrapperStore[Store]):
         Note: Individual values larger than max_size will not be cached.
     cache_set_data : bool, optional
         Whether to cache data when it's written to the store. Default is True.
+    cache_missing : bool, optional
+        Whether to remember full-key misses (negative caching). When True, a full-key
+        ``get`` that finds the key absent in the source store records that absence, so
+        subsequent ``get``s for the same key return ``None`` without a source round-trip.
+        This benefits repeated reads of sparse arrays (most chunks absent). Negative
+        entries respect ``max_age_seconds`` and are evicted when the key is written
+        (``set``/``set_if_not_exists``). Only full-key reads are affected (not byte-range
+        reads or ``exists``). Default is False.
+
+        Note: with ``max_age_seconds="infinity"`` a remembered miss never expires, so a
+        key written to the source by another process would stay invisible through this
+        cache. Pair ``cache_missing=True`` with a finite ``max_age_seconds`` if the source
+        may be written concurrently.
+    max_missing_keys : int, optional
+        Maximum number of negative (missing-key) entries to retain when
+        ``cache_missing`` is True. When exceeded, the least recently used missing keys
+        are evicted. Bounds memory for large sparse scans. Default is 100,000.
 
     Examples
     --------
@@ -91,6 +114,8 @@ class CacheStore(WrapperStore[Store]):
     max_age_seconds: int | Literal["infinity"]
     max_size: int | None
     cache_set_data: bool
+    cache_missing: bool
+    max_missing_keys: int
     _state: _CacheState
 
     def __init__(
@@ -101,6 +126,8 @@ class CacheStore(WrapperStore[Store]):
         max_age_seconds: int | str = "infinity",
         max_size: int | None = None,
         cache_set_data: bool = True,
+        cache_missing: bool = False,
+        max_missing_keys: int = 100_000,
     ) -> None:
         super().__init__(store)
 
@@ -110,6 +137,9 @@ class CacheStore(WrapperStore[Store]):
                 "The cache_store must support deletes for CacheStore to function properly."
             )
             raise ValueError(msg)
+
+        if max_missing_keys < 1:
+            raise ValueError("max_missing_keys must be a positive integer")
 
         self._cache = cache_store
         # Validate and set max_age_seconds
@@ -121,6 +151,8 @@ class CacheStore(WrapperStore[Store]):
             self.max_age_seconds = max_age_seconds
         self.max_size = max_size
         self.cache_set_data = cache_set_data
+        self.cache_missing = cache_missing
+        self.max_missing_keys = max_missing_keys
         self._state = _CacheState()
 
     def _with_store(self, store: Store) -> Self:
@@ -136,6 +168,8 @@ class CacheStore(WrapperStore[Store]):
             max_age_seconds=self.max_age_seconds,
             max_size=self.max_size,
             cache_set_data=self.cache_set_data,
+            cache_missing=self.cache_missing,
+            max_missing_keys=self.max_missing_keys,
         )
         store._state = self._state
         return store
@@ -150,6 +184,34 @@ class CacheStore(WrapperStore[Store]):
         now = time.monotonic()
         elapsed = now - self._state.key_insert_times.get(entry_key, 0)
         return elapsed < self.max_age_seconds
+
+    def _is_missing_fresh(self, key: str) -> bool:
+        """Check if a negative (missing-key) entry is still fresh.
+
+        Mirrors ``_is_key_fresh`` but reads the negative-cache insertion time.
+        """
+        if self.max_age_seconds == "infinity":
+            return True
+        elapsed = time.monotonic() - self._state.missing_keys.get(key, 0.0)
+        return elapsed < self.max_age_seconds
+
+    def _record_missing(self, key: str) -> None:
+        """Record *key* as known-missing, evicting the oldest entries past the cap.
+
+        Must be called while holding ``self._state.lock``.
+        """
+        self._state.missing_keys[key] = time.monotonic()
+        self._state.missing_keys.move_to_end(key)
+        while len(self._state.missing_keys) > self.max_missing_keys:
+            self._state.missing_keys.popitem(last=False)
+            self._state.evictions += 1
+
+    def _evict_missing(self, key: str) -> None:
+        """Drop any negative entry for *key* (it is now present or being written).
+
+        Must be called while holding ``self._state.lock``.
+        """
+        self._state.missing_keys.pop(key, None)
 
     async def _accommodate_value(self, value_size: int) -> None:
         """Ensure there is enough space in the cache for a new value.
@@ -266,6 +328,10 @@ class CacheStore(WrapperStore[Store]):
                 await self._cache.delete(key)
                 async with self._state.lock:
                     self._remove_from_tracking(key)
+                    # The key is absent in the source: remember the miss so a repeat
+                    # read can short-circuit without a source round-trip.
+                    if self.cache_missing:
+                        self._record_missing(key)
             else:
                 entry_key: _CacheEntryKey = (key, byte_range)
                 async with self._state.lock:
@@ -279,6 +345,10 @@ class CacheStore(WrapperStore[Store]):
             if byte_range is None:
                 await self._cache.set(key, result)
                 await self._track_entry(key, result)
+                # A value now exists for this key: drop any stale negative entry.
+                if self.cache_missing:
+                    async with self._state.lock:
+                        self._evict_missing(key)
             else:
                 entry_key = (key, byte_range)
                 self._state.range_cache.setdefault(key, {})[byte_range] = result
@@ -351,6 +421,17 @@ class CacheStore(WrapperStore[Store]):
         Buffer | None
             The retrieved data, or None if not found
         """
+        # Negative cache fast-path (full-key reads only): a fresh "known absent" record
+        # short-circuits to None without consulting the positive cache or the source.
+        # Checked here, before the positive-entry freshness gate, because a negative-only
+        # key has no positive entry and would otherwise be routed straight to the source.
+        if self.cache_missing and byte_range is None:
+            async with self._state.lock:
+                if key in self._state.missing_keys and self._is_missing_fresh(key):
+                    self._state.negative_hits += 1
+                    self._state.missing_keys.move_to_end(key)
+                    return None
+
         entry_key: _CacheEntryKey = (key, byte_range) if byte_range is not None else key
         if not self._is_key_fresh(entry_key):
             return await self._get_no_cache(key, prototype, byte_range)
@@ -369,9 +450,12 @@ class CacheStore(WrapperStore[Store]):
             The data to store
         """
         await super().set(key, value)
-        # Invalidate all cached byte-range entries (source data changed)
+        # Invalidate all cached byte-range entries (source data changed) and drop any
+        # negative entry — the key now has a value.
         async with self._state.lock:
             self._invalidate_range_entries(key)
+            if self.cache_missing:
+                self._evict_missing(key)
         if self.cache_set_data:
             await self._cache.set(key, value)
             await self._track_entry(key, value)
@@ -379,6 +463,26 @@ class CacheStore(WrapperStore[Store]):
             await self._cache.delete(key)
             async with self._state.lock:
                 self._remove_from_tracking(key)
+
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        """
+        Store data only if the key does not already exist in the source store.
+
+        Parameters
+        ----------
+        key : str
+            The key to store under
+        value : Buffer
+            The data to store
+        """
+        await super().set_if_not_exists(key, value)
+        # Whether or not the write happened, any negative entry is now unsafe: either
+        # we just wrote the key, or it already existed (so the record was already
+        # wrong). Evicting unconditionally is always safe. We do not populate the
+        # positive cache here — there is no guaranteed-fresh value to store.
+        if self.cache_missing:
+            async with self._state.lock:
+                self._evict_missing(key)
 
     async def delete(self, key: str) -> None:
         """
@@ -407,18 +511,26 @@ class CacheStore(WrapperStore[Store]):
             "max_size": self.max_size,
             "current_size": self._state.current_size,
             "cache_set_data": self.cache_set_data,
+            "cache_missing": self.cache_missing,
             "tracked_keys": len(self._state.key_insert_times),
             "cached_keys": len(self._state.cache_order),
+            "missing_keys": len(self._state.missing_keys),
         }
 
     def cache_stats(self) -> dict[str, Any]:
-        """Return cache performance statistics."""
+        """Return cache performance statistics.
+
+        ``hit_rate`` reflects positive-cache hits over positive lookups only; a
+        negative-cache hit (an absent key served from the negative cache) is reported
+        separately as ``negative_hits`` and is counted as neither a hit nor a miss.
+        """
         total_requests = self._state.hits + self._state.misses
         hit_rate = self._state.hits / total_requests if total_requests > 0 else 0.0
         return {
             "hits": self._state.hits,
             "misses": self._state.misses,
             "evictions": self._state.evictions,
+            "negative_hits": self._state.negative_hits,
             "total_requests": total_requests,
             "hit_rate": hit_rate,
         }
@@ -435,7 +547,9 @@ class CacheStore(WrapperStore[Store]):
             self._state.cache_order.clear()
             self._state.key_sizes.clear()
             self._state.range_cache.clear()
+            self._state.missing_keys.clear()
             self._state.current_size = 0
+            self._state.negative_hits = 0
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""
