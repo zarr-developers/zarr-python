@@ -5,7 +5,12 @@ Guidance for AI coding agents working in this repository. Human contributors sho
 ## Project overview
 
 `zarr-python` (PyPI package `zarr`) implements chunked, compressed, N-dimensional arrays for Python. This is the 3.x line, which reads and writes both Zarr format v2 and v3 data. Requires Python >= 3.12. The public API is re-exported from `src/zarr/__init__.py` (`Array`, `Group`, `create_array`, `open`, etc.).
+## Related projects
 
+`zarr-python` depends on the contents of the Zarr [v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html) and Zarr [v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html) storage specifications. We are committed to compliance with the specs, and also consistency with other Zarr implementations, namely:
+-  [TensorStore](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html) (C++ / Python)
+- [Zarrs](https://github.com/zarrs/zarrs) (Rust)
+- [Zarrita](https://github.com/manzt/zarrita.js/) (Javascript)
 ## Environment and common commands
 
 Development uses **hatch** (with `uv` as the installer) for managed environments, and `uv` directly for ad-hoc commands. The canonical test environments are named `test.py3.{12,13,14}-{minimal,optional}`; `optional` pulls in remote stores (fsspec, obstore, s3fs), the CLI, and universal-pathlib.
