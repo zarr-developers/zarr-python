@@ -61,7 +61,7 @@ def test_config_defaults_set() -> None:
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
-                    "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+                    "path": "zarr.core.codec_pipeline.FusedCodecPipeline",
                     "batch_size": 1,
                     "max_workers": None,
                 },
@@ -190,7 +190,16 @@ def test_config_codec_implementation(store: Store) -> None:
     _mock = Mock()
 
     class MockBloscCodec(BloscCodec):
+        # Record a call from whichever encode entry point the active codec
+        # pipeline uses: the async `_encode_single` (BatchedCodecPipeline) or the
+        # synchronous `_encode_sync` (FusedCodecPipeline, the default). Overriding
+        # both keeps this test ("the configured codec is actually used")
+        # independent of which pipeline is the default.
         async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            _mock.call()
+            return None
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
             return None
 
