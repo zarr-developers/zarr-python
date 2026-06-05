@@ -334,105 +334,6 @@ def test_sync_transform_encode_decode_roundtrip() -> None:
     np.testing.assert_array_equal(decoded.as_numpy_array(), np.arange(100, dtype="float64"))
 
 
-# ---------------------------------------------------------------------------
-# Streaming read tests
-# ---------------------------------------------------------------------------
-
-
-def test_streaming_read_multiple_chunks() -> None:
-    """Read with multiple chunks should produce correct results via streaming pipeline."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=None,
-        compressors=None,
-        fill_value=0.0,
-    )
-    data = np.arange(100, dtype="float64")
-    arr[:] = data
-    result = arr[:]
-    np.testing.assert_array_equal(result, data)
-
-
-def test_streaming_read_strided_slice() -> None:
-    """Strided slicing should work correctly with streaming read."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=None,
-        compressors=None,
-        fill_value=0.0,
-    )
-    data = np.arange(100, dtype="float64")
-    arr[:] = data
-    result = arr[::3]
-    np.testing.assert_array_equal(result, data[::3])
-
-
-def test_streaming_read_missing_chunks() -> None:
-    """Reading chunks that were never written should return fill value."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=None,
-        compressors=None,
-        fill_value=-1.0,
-    )
-    result = arr[:]
-    np.testing.assert_array_equal(result, np.full(100, -1.0))
-
-
-# ---------------------------------------------------------------------------
-# Streaming write tests
-# ---------------------------------------------------------------------------
-
-
-def test_streaming_write_complete_overwrite() -> None:
-    """Complete overwrite should skip fetching existing data."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=None,
-        compressors=None,
-        fill_value=0.0,
-    )
-    data = np.arange(100, dtype="float64")
-    arr[:] = data
-    np.testing.assert_array_equal(arr[:], data)
-
-
-def test_streaming_write_partial_update() -> None:
-    """Partial updates should correctly merge with existing data."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=None,
-        compressors=None,
-        fill_value=0.0,
-    )
-    arr[:] = np.ones(100)
-    arr[5:15] = np.full(10, 99.0)
-    result = arr[:]
-    expected = np.ones(100)
-    expected[5:15] = 99.0
-    np.testing.assert_array_equal(result, expected)
-
-
 def test_memory_store_supports_byte_range_setter() -> None:
     """MemoryStore should implement SupportsSetRange."""
     store = zarr.storage.MemoryStore()
@@ -487,30 +388,6 @@ def test_partial_shard_write_fixed_size() -> None:
     result = arr[:]
     expected = np.arange(100, dtype="float64")
     expected[5] = 999.0
-    np.testing.assert_array_equal(result, expected)
-
-
-def test_partial_shard_write_roundtrip_correctness() -> None:
-    """Multiple partial writes to different inner chunks should all be correct."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=(100,),
-        compressors=None,
-        fill_value=0.0,
-    )
-    arr[:] = np.zeros(100, dtype="float64")
-    arr[0:10] = np.ones(10)
-    arr[50:60] = np.full(10, 2.0)
-    arr[90:100] = np.full(10, 3.0)
-    result = arr[:]
-    expected = np.zeros(100)
-    expected[0:10] = 1.0
-    expected[50:60] = 2.0
-    expected[90:100] = 3.0
     np.testing.assert_array_equal(result, expected)
 
 

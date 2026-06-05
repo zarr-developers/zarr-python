@@ -226,10 +226,20 @@ class CodecPipelineTests:
 
     # -- write_empty_chunks / read_missing_chunks -----------------------------
 
+    @staticmethod
+    def _chunk_keys(store: Store) -> set[str]:
+        """All non-metadata keys currently in the store."""
+        import asyncio
+
+        async def _list() -> set[str]:
+            return {k async for k in store.list() if "zarr.json" not in k}
+
+        return asyncio.run(_list())
+
     @pytest.mark.parametrize("shards", [None, (20,)], ids=["unsharded", "sharded"])
-    def test_write_empty_chunks_false_roundtrip(
-        self, store: Store, shards: tuple[int, ...] | None
-    ) -> None:
+    def test_write_empty_chunks_false(self, store: Store, shards: tuple[int, ...] | None) -> None:
+        """write_empty_chunks=False: a fill-only chunk reads back as fill AND is
+        not persisted (no store key for it)."""
         arr = zarr.create_array(
             store=store,
             shape=(20,),
@@ -244,8 +254,14 @@ class CodecPipelineTests:
         arr[10:20] = np.zeros(10, dtype="float64")  # all fill_value
         np.testing.assert_array_equal(arr[0:10], np.arange(10, dtype="float64") + 1)
         np.testing.assert_array_equal(arr[10:20], np.zeros(10, dtype="float64"))
+        if shards is None:
+            # The all-fill chunk must NOT be persisted; the written one must be.
+            keys = self._chunk_keys(store)
+            assert any("c/0" in k for k in keys), keys  # written chunk present
+            assert not any("c/1" in k for k in keys), keys  # fill chunk omitted
 
     def test_write_empty_chunks_true_persists(self, store: Store) -> None:
+        """write_empty_chunks=True: fill-only chunks are still persisted as keys."""
         arr = zarr.create_array(
             store=store,
             shape=(20,),
@@ -258,6 +274,9 @@ class CodecPipelineTests:
         )
         arr[:] = 0.0
         np.testing.assert_array_equal(arr[:], np.zeros(20, dtype="float64"))
+        keys = self._chunk_keys(store)
+        assert any("c/0" in k for k in keys), keys
+        assert any("c/1" in k for k in keys), keys
 
     def test_read_missing_chunks_false_raises(self, store: Store) -> None:
         arr = zarr.create_array(
