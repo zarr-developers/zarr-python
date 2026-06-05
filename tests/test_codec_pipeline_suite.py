@@ -143,6 +143,29 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         writes=((slice(None), _val(100, "float64")),),
     ),
+    Scenario(
+        "1d-zstd-roundtrip",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": {"name": "zstd", "configuration": {"level": 1}},
+            **_F64,
+        },
+        writes=((slice(None), _val(100, "float64")),),
+    ),
+    Scenario(
+        "1d-float32-roundtrip",
+        {
+            "shape": (50,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": None,
+            "dtype": "float32",
+            "fill_value": 0.0,
+        },
+        writes=((slice(None), _val(50, "float32")),),
+    ),
     # --- read unwritten chunks -> fill value --------------------------------
     Scenario(
         "missing-chunks-fill",

@@ -8,39 +8,12 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.abc.store import SupportsSetRange
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.buffer import cpu
 from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.storage import MemoryStore, StorePath
-
-
-def _create_array(
-    shape: tuple[int, ...],
-    dtype: str = "float64",
-    chunks: tuple[int, ...] | None = None,
-    codecs: tuple[Any, ...] = (BytesCodec(),),
-    fill_value: object = 0,
-) -> zarr.Array[Any]:
-    """Create a zarr array using FusedCodecPipeline."""
-    if chunks is None:
-        chunks = shape
-
-    _ = FusedCodecPipeline.from_codecs(codecs)
-
-    return zarr.create_array(
-        StorePath(MemoryStore()),
-        shape=shape,
-        dtype=dtype,
-        chunks=chunks,
-        filters=[c for c in codecs if not isinstance(c, BytesCodec)],
-        serializer=BytesCodec() if any(isinstance(c, BytesCodec) for c in codecs) else "auto",
-        compressors=None,
-        fill_value=fill_value,
-    )
 
 
 @pytest.mark.parametrize(
@@ -81,100 +54,14 @@ def test_evolve_from_array_spec() -> None:
     assert evolved._sync_transform is not None
 
 
-@pytest.mark.parametrize(
-    ("dtype", "shape"),
-    [
-        ("float64", (100,)),
-        ("float32", (50,)),
-        ("int32", (200,)),
-        ("float64", (10, 10)),
-    ],
-    ids=["f64-1d", "f32-1d", "i32-1d", "f64-2d"],
-)
-def test_read_write_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
-    """Data written through FusedCodecPipeline can be read back correctly via async path."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
-    from zarr.core.sync import sync
-
-    store = MemoryStore()
-    zdtype = get_data_type_from_native_dtype(np.dtype(dtype))
-    spec = ArraySpec(
-        shape=shape,
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
-
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
-    pipeline = pipeline.evolve_from_array_spec(spec)
-
-    # Write
-    data = np.arange(int(np.prod(shape)), dtype=dtype).reshape(shape)
-    value = CPUNDBuffer.from_numpy_array(data)
-    chunk_selection = tuple(slice(0, s) for s in shape)
-    out_selection = chunk_selection
-
-    store_path = StorePath(store, "c/0")
-    sync(
-        pipeline.write(
-            [(store_path, spec, chunk_selection, out_selection, True)],
-            value,
-        )
-    )
-
-    # Read
-    out = CPUNDBuffer.from_numpy_array(np.zeros(shape, dtype=dtype))
-    sync(
-        pipeline.read(
-            [(store_path, spec, chunk_selection, out_selection, True)],
-            out,
-        )
-    )
-
-    np.testing.assert_array_equal(data, out.as_numpy_array())
-
-
-def test_read_missing_chunk_fills() -> None:
-    """Reading a missing chunk fills with the fill value."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
-    from zarr.core.sync import sync
-
-    store = MemoryStore()
-    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
-    spec = ArraySpec(
-        shape=(10,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(42.0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
-
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
-    pipeline = pipeline.evolve_from_array_spec(spec)
-
-    out = CPUNDBuffer.from_numpy_array(np.zeros(10, dtype="float64"))
-    store_path = StorePath(store, "c/0")
-    chunk_sel = (slice(0, 10),)
-
-    sync(
-        pipeline.read(
-            [(store_path, spec, chunk_sel, chunk_sel, True)],
-            out,
-        )
-    )
-
-    np.testing.assert_array_equal(out.as_numpy_array(), np.full(10, 42.0))
-
-
 # ---------------------------------------------------------------------------
 # Sync path tests
+#
+# These exercise FusedCodecPipeline's synchronous API (write_sync / read_sync /
+# _sync_transform), which has no equivalent on BatchedCodecPipeline -- so they
+# cannot live in the pipeline-agnostic CodecPipelineTests suite. The async
+# roundtrip / fill-value behaviour is covered there (test_scenario) across both
+# pipelines and sync/async stores.
 # ---------------------------------------------------------------------------
 
 
@@ -332,63 +219,6 @@ def test_sync_transform_encode_decode_roundtrip() -> None:
     # Decode
     decoded = pipeline._sync_transform.decode_chunk(encoded, spec)
     np.testing.assert_array_equal(decoded.as_numpy_array(), np.arange(100, dtype="float64"))
-
-
-def test_memory_store_supports_byte_range_setter() -> None:
-    """MemoryStore should implement SupportsSetRange."""
-    store = zarr.storage.MemoryStore()
-    assert isinstance(store, SupportsSetRange)
-
-
-async def test_memory_store_set_range() -> None:
-    """MemoryStore.set_range should overwrite bytes at the given offset."""
-    store = zarr.storage.MemoryStore()
-    await store._ensure_open()
-    buf = cpu.Buffer.from_bytes(b"AAAAAAAAAA")  # 10 bytes
-    await store.set("test/key", buf)
-
-    patch = cpu.Buffer.from_bytes(b"XX")
-    await store.set_range("test/key", patch, start=3)
-
-    result = await store.get("test/key", prototype=cpu.buffer_prototype)
-    assert result is not None
-    assert result.to_bytes() == b"AAAXXAAAAA"
-
-
-def test_sharding_codec_inner_codecs_fixed_size_no_compression() -> None:
-    """Inner codecs without compression should be fixed-size."""
-    from zarr.codecs.sharding import ShardingCodec
-
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
-    assert codec._inner_codecs_fixed_size is True
-
-
-def test_sharding_codec_inner_codecs_fixed_size_with_compression() -> None:
-    """Inner codecs with compression should NOT be fixed-size."""
-    from zarr.codecs.sharding import ShardingCodec
-
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
-    assert codec._inner_codecs_fixed_size is False
-
-
-def test_partial_shard_write_fixed_size() -> None:
-    """Writing a single element to a shard with fixed-size codecs should work correctly."""
-    store = zarr.storage.MemoryStore()
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,),
-        dtype="float64",
-        chunks=(10,),
-        shards=(100,),
-        compressors=None,
-        fill_value=0.0,
-    )
-    arr[:] = np.arange(100, dtype="float64")
-    arr[5] = 999.0
-    result = arr[:]
-    expected = np.arange(100, dtype="float64")
-    expected[5] = 999.0
-    np.testing.assert_array_equal(result, expected)
 
 
 def test_partial_shard_write_uses_set_range() -> None:

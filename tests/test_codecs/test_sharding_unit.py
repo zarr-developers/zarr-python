@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.sharding import (
     MAX_UINT_64,
     ShardingCodec,
@@ -486,3 +488,20 @@ def test_is_total_shard_1d() -> None:
     # Partial
     partial_coords: set[tuple[int, ...]] = {(0,), (2,)}
     assert codec._is_total_shard(partial_coords, chunks_per_shard) is False
+
+
+# ============================================================================
+# _inner_codecs_fixed_size tests
+# ============================================================================
+
+
+def test_inner_codecs_fixed_size_no_compression() -> None:
+    """Inner codecs without compression should be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    assert codec._inner_codecs_fixed_size is True
+
+
+def test_inner_codecs_fixed_size_with_compression() -> None:
+    """Inner codecs with compression should NOT be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
+    assert codec._inner_codecs_fixed_size is False
