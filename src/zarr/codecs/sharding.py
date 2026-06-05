@@ -401,9 +401,12 @@ class ShardingCodec(
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        from zarr.core.codec_pipeline import BatchedCodecPipeline
-
-        return BatchedCodecPipeline.from_codecs(self.codecs)
+        # Resolve against the configured pipeline (registry default), matching the
+        # rest of this module's use of get_pipeline_class — NOT a hard-coded
+        # BatchedCodecPipeline. This restores main's behavior (#2179) that the
+        # branch had reverted: the inner sub-chunk pipeline follows the same
+        # codec_pipeline.path config as the outer array.
+        return get_pipeline_class().from_codecs(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
         return {
