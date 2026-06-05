@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -14,6 +14,9 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.storage import MemoryStore, StorePath
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.parametrize(
@@ -298,3 +301,141 @@ def test_partial_shard_write_falls_back_for_compressed() -> None:
     expected = np.arange(100, dtype="float64")
     expected[5] = 999.0
     np.testing.assert_array_equal(arr[:], expected)
+
+
+def test_partial_shard_write_skips_set_range_when_write_empty_chunks_false() -> None:
+    """The byte-range fast path must NOT fire under the default write_empty_chunks=False.
+
+    The fast path assumes a fixed, dense shard layout. With empty-chunk skipping
+    (the default) a chunk can transition present<->absent, so an in-place
+    byte-range overwrite would corrupt the layout. The complement of
+    test_partial_shard_write_uses_set_range (which uses write_empty_chunks=True).
+    """
+    from unittest.mock import patch
+
+    store = zarr.storage.MemoryStore()
+    arr = zarr.create_array(
+        store=store,
+        shape=(100,),
+        dtype="float64",
+        chunks=(10,),
+        shards=(100,),
+        compressors=None,
+        fill_value=0.0,
+        # default config: write_empty_chunks=False
+    )
+    if not isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline):
+        pytest.skip("byte-range write optimization is specific to FusedCodecPipeline")
+    arr[:] = np.arange(100, dtype="float64")
+
+    with patch.object(type(store), "set_range_sync", wraps=store.set_range_sync) as mock_set_range:
+        arr[5] = 999.0
+
+    assert mock_set_range.call_count == 0, (
+        "byte-range fast path was taken with write_empty_chunks=False; "
+        "this would produce a dense layout incompatible with empty-chunk skipping"
+    )
+
+    expected = np.arange(100, dtype="float64")
+    expected[5] = 999.0
+    np.testing.assert_array_equal(arr[:], expected)
+
+
+def test_partial_shard_write_handles_readonly_store_buffers(tmp_path: Path) -> None:
+    """The byte-range path decodes the shard index from a store buffer and mutates
+    it; LocalStore returns read-only buffers, so the path must copy before writing.
+
+    Without the copy, the partial write raises
+    ``ValueError: assignment destination is read-only``. Fused-only because only
+    the Fused byte-range path decodes+mutates a shard index in place.
+    """
+    store = zarr.storage.LocalStore(tmp_path / "data.zarr")
+    arr = zarr.create_array(
+        store=store,
+        shape=(16,),
+        chunks=(4,),
+        shards=(8,),
+        dtype="float64",
+        compressors=None,
+        fill_value=0.0,
+        config={"write_empty_chunks": True},
+    )
+    if not isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline):
+        pytest.skip("byte-range write optimization is specific to FusedCodecPipeline")
+    arr[:] = np.arange(16, dtype="float64")
+    arr[2] = 42.0  # triggers the byte-range path against a read-only store buffer
+    assert arr[2] == 42.0
+
+
+def test_chunk_transform_uses_runtime_prototype() -> None:
+    """ChunkTransform must pass each codec the prototype from the runtime chunk_spec,
+    not one captured at evolve time. Constructs ChunkTransform directly (a
+    Fused-internal data structure with no BatchedCodecPipeline equivalent).
+    """
+    from zarr.abc.codec import BytesBytesCodec
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+    from zarr.core.codec_pipeline import ChunkTransform
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    class _PrototypeRecordingCodec(BytesBytesCodec):  # type: ignore[misc,unused-ignore]
+        """A no-op BB codec that records the prototype it was called with."""
+
+        is_fixed_size = True
+        seen_prototypes: list[object]
+
+        def __init__(self) -> None:
+            object.__setattr__(self, "seen_prototypes", [])
+
+        def to_dict(self) -> dict[str, Any]:
+            return {"name": "_prototype_recording", "configuration": {}}
+
+        @classmethod
+        def from_dict(cls, data: dict[str, Any]) -> _PrototypeRecordingCodec:
+            return cls()
+
+        def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+            return input_byte_length
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            self.seen_prototypes.append(chunk_spec.prototype)
+            return chunk_bytes
+
+        def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+            self.seen_prototypes.append(chunk_spec.prototype)
+            return chunk_bytes
+
+        async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            return self._encode_sync(chunk_bytes, chunk_spec)
+
+        async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+            return self._decode_sync(chunk_bytes, chunk_spec)
+
+    recording = _PrototypeRecordingCodec()
+    transform = ChunkTransform(codecs=(BytesCodec(), recording))
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+
+    def _spec(prototype: BufferPrototype) -> ArraySpec:
+        return ArraySpec(
+            shape=(10,),
+            dtype=zdtype,
+            fill_value=zdtype.cast_scalar(0.0),
+            config=ArrayConfig(order="C", write_empty_chunks=False),
+            prototype=prototype,
+        )
+
+    proto_default = default_buffer_prototype()
+    # A distinct BufferPrototype instance with the same buffer/nd_buffer types --
+    # fails an identity check but works at runtime.
+    proto_other = BufferPrototype(buffer=proto_default.buffer, nd_buffer=proto_default.nd_buffer)
+    assert proto_other is not proto_default
+
+    arr = proto_default.nd_buffer.from_numpy_array(np.arange(10, dtype="float64"))
+    transform.encode_chunk(arr, _spec(proto_default))
+    transform.encode_chunk(arr, _spec(proto_other))
+
+    assert recording.seen_prototypes[0] is proto_default
+    assert recording.seen_prototypes[1] is proto_other, (
+        "ChunkTransform did not pass the runtime prototype to the codec"
+    )

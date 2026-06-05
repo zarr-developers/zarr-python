@@ -298,6 +298,13 @@ SCENARIOS: tuple[Scenario, ...] = (
         writes=((slice(None), np.zeros(20, "float64")),),
         keys_present=("c/0", "c/1"),
     ),
+    # default config (no explicit write_empty_chunks) must still skip fill chunks
+    Scenario(
+        "default-config-omits-fill-chunk",
+        {"shape": (20,), "chunks": (10,), "shards": None, "compressors": None, **_F64},
+        writes=((slice(10, 20), np.zeros(10, "float64")),),
+        keys_absent=("c/1",),
+    ),
 )
 
 
@@ -404,6 +411,59 @@ class CodecPipelineTests:
         reopened[1:5, 0:3] = 777  # partial overwrite into the existing shard
         ref[1:5, 0:3] = 777
         np.testing.assert_array_equal(reopened[:], ref)
+
+    def test_empty_shard_deleted_after_overwrite_to_fill(self, store: Store) -> None:
+        """A shard written with real data and then fully overwritten back to the
+        fill value must have its store key deleted, not left as a stale blob.
+
+        This has a mid-sequence key assertion (present after write 1, absent
+        after write 2) that the create/write/read scenario shape can't express.
+        """
+        arr = zarr.create_array(
+            store=store,
+            shape=(16,),
+            chunks=(4,),
+            shards=(8,),
+            dtype="float64",
+            compressors=None,
+            fill_value=0.0,
+        )
+        arr[0:8] = np.arange(8, dtype="float64") + 1
+        assert any("c/0" in k for k in self._chunk_keys(store))
+        arr[0:8] = 0.0
+        assert not any("c/0" in k for k in self._chunk_keys(store)), (
+            "shard should be deleted when fully overwritten to fill value"
+        )
+
+    def test_read_write_methods_do_not_branch_on_sharding_codec_type(self) -> None:
+        """Pipeline read/write must dispatch on supports_partial_encode/decode,
+        not isinstance(ShardingCodec) — a static guard against type-branching.
+
+        Scoped to this pipeline's own read/write methods (other helpers, e.g.
+        metadata validation, may legitimately isinstance-check ShardingCodec).
+        """
+        import inspect
+        import re
+
+        from zarr.registry import get_pipeline_class
+
+        # The autouse _use_pipeline fixture has set codec_pipeline.path to this
+        # subclass's pipeline; resolve the class it points at and guard that.
+        # reload_config=False so the fixture's config override is honored
+        # (reload_config=True re-reads the base config, ignoring the override).
+        cls = get_pipeline_class(reload_config=False)
+
+        pattern = re.compile(r"isinstance\s*\([^)]*ShardingCodec[^)]*\)")
+        for method_name in ("read", "write", "read_sync", "write_sync"):
+            method = getattr(cls, method_name, None)
+            if method is None:
+                continue
+            matches = pattern.findall(inspect.getsource(method))
+            assert not matches, (
+                f"{cls.__name__}.{method_name} contains an isinstance check on "
+                f"ShardingCodec; use supports_partial_encode/decode instead. "
+                f"Matches: {matches}"
+            )
 
 
 class TestBatchedPipeline(CodecPipelineTests):
