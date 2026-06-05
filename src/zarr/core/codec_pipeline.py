@@ -930,10 +930,10 @@ class FusedCodecPipeline(CodecPipeline):
     1. When every codec implements `SupportsSyncCodec`, a `ChunkTransform`
        runs the codec chain synchronously (no event loop, no per-chunk coroutine)
        — optionally across a thread pool for CPU-heavy decode/encode.
-    2. Sharded reads/writes use the codec's synchronous IO methods: byte-range
-       reads coalesced via `Store.get_ranges_sync`, byte-range writes via
-       `set_range_sync`, and a vectorized whole-shard bulk decode for dense,
-       fixed-size, uncompressed shards.
+    2. Sharded reads use the codec's synchronous IO methods: byte-range reads
+       coalesced via `Store.get_ranges_sync`, and a vectorized whole-shard bulk
+       decode for dense, fixed-size, uncompressed shards. Sharded writes go
+       through the codec's synchronous full-shard-rewrite path.
     3. When the store lacks synchronous IO (e.g. ZipStore) the pipeline falls
        back to the async path, equivalent to `BatchedCodecPipeline`.
 
