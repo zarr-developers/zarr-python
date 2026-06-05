@@ -5379,38 +5379,6 @@ def _get_chunk_spec(
     )
 
 
-def _get_default_chunk_spec(
-    metadata: ArrayMetadata,
-    chunk_grid: ChunkGrid,
-    array_config: ArrayConfig,
-    prototype: BufferPrototype,
-) -> ArraySpec | None:
-    """Build an ArraySpec for the regular (non-edge) chunk shape, or None if not regular.
-
-    For regular grids, all chunks have the same codec_shape, so we can
-    build the ArraySpec once and reuse it for every chunk — avoiding the
-    per-chunk ChunkGrid.__getitem__ + ArraySpec construction overhead.
-
-    > **Note**
-    >
-    > Ideally the per-chunk ArraySpec would not exist at all: dtype,
-    > fill_value, config, and prototype are constant across chunks —
-    > only the shape varies (and only for edge chunks). A cleaner
-    > design would pass a single ArraySpec plus a per-chunk shape
-    > override, which ChunkTransform.decode_chunk already supports
-    > via its `chunk_shape` parameter.
-    """
-    if chunk_grid.is_regular:
-        return ArraySpec(
-            shape=chunk_grid.chunk_shape,
-            dtype=metadata.dtype,
-            fill_value=metadata.fill_value,
-            config=array_config,
-            prototype=prototype,
-        )
-    return None
-
-
 async def _get_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
