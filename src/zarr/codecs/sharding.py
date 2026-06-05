@@ -1362,13 +1362,6 @@ class ShardingCodec(
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
         return None
 
-    async def _load_shard_index(
-        self, byte_getter: ByteGetter, chunks_per_shard: tuple[int, ...]
-    ) -> _ShardIndex:
-        return (
-            await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
-        ) or _ShardIndex.create_empty(chunks_per_shard)
-
     async def _load_full_shard_maybe(
         self, byte_getter: ByteGetter, prototype: BufferPrototype, chunks_per_shard: tuple[int, ...]
     ) -> _ShardReader | None:
