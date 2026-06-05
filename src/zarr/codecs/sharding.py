@@ -685,25 +685,19 @@ class ShardingCodec(
                 # below can mutate it.
                 index = _ShardIndex(chunks_per_shard, shard_reader.index.offsets_and_lengths.copy())
 
-                # Inner chunks are written in `self.subchunk_write_order`, and
-                # because they're fixed-size we can compute a chunk's byte offset
-                # deterministically from its rank in that order without consulting
-                # the shard index. This is what makes byte-range patching safe: the
-                # slot for a given chunk is always at the same offset regardless of
-                # which other chunks are present. (Must match the layout produced by
-                # `_encode_shard_dict_sync` / the async `_encode_shard_dict`.)
-                rank_map = {
-                    c: r
-                    for r, c in enumerate(
-                        self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order)
-                    )
-                }
-
+                # Each chunk's byte offset comes from the STORED shard index, which
+                # records the actual on-disk layout. We must NOT recompute offsets
+                # from self.subchunk_write_order: that order is not persisted in the
+                # codec metadata (it is lost on reopen, reverting to the default),
+                # so a recomputed offset can disagree with where the chunk actually
+                # lives and overwrite the wrong slot. The index is the persisted
+                # source of truth. The shard is dense here (len == total_shard_size),
+                # so every chunk has a valid slice; we keep writes in-place at those
+                # offsets, so presence/layout is unchanged.
                 def _byte_offset(coords: tuple[int, ...]) -> int:
-                    offset = rank_map[coords] * chunk_byte_length
-                    if self.index_location == ShardingCodecIndexLocation.start:
-                        offset += shard_index_size
-                    return offset
+                    sl = index.get_chunk_slice(coords)
+                    assert sl is not None  # dense shard: every chunk is present
+                    return sl[0]
 
                 for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
                     byte_offset = _byte_offset(chunk_coords)

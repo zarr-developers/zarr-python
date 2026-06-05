@@ -117,6 +117,33 @@ def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[
     return [codec.resolve_metadata(chunk_spec) for chunk_spec in chunk_specs]
 
 
+def resolve_aa_specs(
+    aa_codecs: tuple[Codec, ...], chunk_spec: ArraySpec
+) -> tuple[tuple[ArraySpec, ...], ArraySpec]:
+    """Resolve the per-stage chunk specs for a single chunk's codec chain.
+
+    Threads ``chunk_spec`` forward through the array->array codecs via
+    ``resolve_metadata`` (each codec sees the spec produced by the previous one),
+    returning ``(aa_specs, ab_spec)``:
+
+    * ``aa_specs[i]`` is the spec the i-th AA codec operates on (its *input* on
+      encode / *output* on decode);
+    * ``ab_spec`` is the spec after all AA codecs — what the array->bytes codec
+      and the bytes->bytes codecs operate on.
+
+    This is the single source of truth for per-stage spec evolution, shared by
+    the synchronous ``ChunkTransform`` and the asynchronous
+    ``AsyncChunkTransform``. It is pure metadata (only ``resolve_metadata``), so
+    it places no synchronous-codec requirement on the codecs.
+    """
+    aa_specs: list[ArraySpec] = []
+    spec = chunk_spec
+    for aa_codec in aa_codecs:
+        aa_specs.append(spec)
+        spec = aa_codec.resolve_metadata(spec)
+    return tuple(aa_specs), spec
+
+
 def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
     fill_value = chunk_spec.fill_value
     if fill_value is None:
@@ -382,12 +409,7 @@ class ChunkTransform:
             assert self._cached_ab_spec is not None
             return self._cached_aa_specs, self._cached_ab_spec
 
-        aa_specs: list[ArraySpec] = []
-        spec = chunk_spec
-        for aa_codec in self._aa_codecs:
-            aa_specs.append(spec)
-            spec = aa_codec.resolve_metadata(spec)  # type: ignore[attr-defined]
-        aa_specs_t = tuple(aa_specs)
+        aa_specs_t, spec = resolve_aa_specs(cast("tuple[Codec, ...]", self._aa_codecs), chunk_spec)
         self._cached_key = key
         self._cached_aa_specs = aa_specs_t
         self._cached_ab_spec = spec
@@ -459,6 +481,76 @@ class ChunkTransform:
             byte_length = codec.compute_encoded_size(byte_length, array_spec)
             array_spec = codec.resolve_metadata(array_spec)
         return byte_length
+
+
+@dataclass(slots=True, kw_only=True)
+class AsyncChunkTransform:
+    """A per-chunk asynchronous codec chain — the async mirror of ChunkTransform.
+
+    Decodes/encodes a SINGLE chunk through the full codec chain, awaiting each
+    codec's per-chunk async method (`_decode_single`/`_encode_single`) with the
+    correctly-evolved per-stage spec (via the shared `resolve_aa_specs`).
+
+    Unlike ChunkTransform it places no `SupportsSyncCodec` requirement on the
+    codecs, so it works for async-only codecs. Unlike the batched codec API it
+    operates on one chunk at a time — the mini-batch fan-out is a
+    BatchedCodecPipeline concern and deliberately not reintroduced here.
+    """
+
+    codecs: tuple[Codec, ...]
+
+    _aa_codecs: tuple[ArrayArrayCodec, ...] = field(init=False, repr=False, compare=False)
+    _ab_codec: ArrayBytesCodec = field(init=False, repr=False, compare=False)
+    _bb_codecs: tuple[BytesBytesCodec, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        aa, ab, bb = codecs_from_list(list(self.codecs))
+        self._aa_codecs = aa
+        self._ab_codec = ab
+        self._bb_codecs = bb
+
+    async def decode_chunk(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        """Decode one chunk through the chain (bb -> ab -> aa), async."""
+        aa_specs, ab_spec = resolve_aa_specs(self._aa_codecs, chunk_spec)
+
+        data: Buffer = chunk_bytes
+        for bb_codec in reversed(self._bb_codecs):
+            data = await bb_codec._decode_single(data, ab_spec)
+
+        chunk_array: NDBuffer = await self._ab_codec._decode_single(data, ab_spec)
+
+        for aa_codec, aa_spec in zip(reversed(self._aa_codecs), reversed(aa_specs), strict=True):
+            chunk_array = await aa_codec._decode_single(chunk_array, aa_spec)
+
+        return chunk_array
+
+    async def encode_chunk(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        """Encode one chunk through the chain (aa -> ab -> bb), async.
+
+        Returns None if any stage drops the chunk (e.g. an all-fill chunk under
+        write_empty_chunks=False), matching ChunkTransform.encode_chunk.
+        """
+        aa_specs, ab_spec = resolve_aa_specs(self._aa_codecs, chunk_spec)
+
+        aa_data: NDBuffer = chunk_array
+        for aa_codec, aa_spec in zip(self._aa_codecs, aa_specs, strict=True):
+            aa_result = await aa_codec._encode_single(aa_data, aa_spec)
+            if aa_result is None:
+                return None
+            aa_data = aa_result
+
+        ab_result = await self._ab_codec._encode_single(aa_data, ab_spec)
+        if ab_result is None:
+            return None
+
+        bb_data: Buffer = ab_result
+        for bb_codec in self._bb_codecs:
+            bb_result = await bb_codec._encode_single(bb_data, ab_spec)
+            if bb_result is None:
+                return None
+            bb_data = bb_result
+
+        return bb_data
 
 
 @dataclass(frozen=True)
@@ -927,41 +1019,33 @@ class FusedCodecPipeline(CodecPipeline):
         self,
         chunk_bytes_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
     ) -> Iterable[NDBuffer | None]:
-        chunk_bytes_batch: Iterable[Buffer | None]
-        chunk_bytes_batch, chunk_specs = _unzip2(chunk_bytes_and_specs)
-
-        for bb_codec in self.bytes_bytes_codecs[::-1]:
-            chunk_bytes_batch = await bb_codec.decode(
-                zip(chunk_bytes_batch, chunk_specs, strict=False)
-            )
-        chunk_array_batch = await self.array_bytes_codec.decode(
-            zip(chunk_bytes_batch, chunk_specs, strict=False)
-        )
-        for aa_codec in self.array_array_codecs[::-1]:
-            chunk_array_batch = await aa_codec.decode(
-                zip(chunk_array_batch, chunk_specs, strict=False)
-            )
-        return chunk_array_batch
+        # Decode each chunk through AsyncChunkTransform, which threads the
+        # per-stage spec correctly (via resolve_aa_specs). This is the single
+        # source of truth for async per-chunk decode; earlier this method
+        # reused one flat `chunk_specs` across every codec stage, which silently
+        # corrupted/crashed spec-changing codecs (transpose/cast/scale_offset)
+        # on the async fallback path.
+        transform = AsyncChunkTransform(codecs=self.codecs)
+        out: list[NDBuffer | None] = []
+        for chunk_bytes, chunk_spec in chunk_bytes_and_specs:
+            if chunk_bytes is None:
+                out.append(None)
+            else:
+                out.append(await transform.decode_chunk(chunk_bytes, chunk_spec))
+        return out
 
     async def encode(
         self,
         chunk_arrays_and_specs: Iterable[tuple[NDBuffer | None, ArraySpec]],
     ) -> Iterable[Buffer | None]:
-        chunk_array_batch: Iterable[NDBuffer | None]
-        chunk_array_batch, chunk_specs = _unzip2(chunk_arrays_and_specs)
-
-        for aa_codec in self.array_array_codecs:
-            chunk_array_batch = await aa_codec.encode(
-                zip(chunk_array_batch, chunk_specs, strict=False)
-            )
-        chunk_bytes_batch = await self.array_bytes_codec.encode(
-            zip(chunk_array_batch, chunk_specs, strict=False)
-        )
-        for bb_codec in self.bytes_bytes_codecs:
-            chunk_bytes_batch = await bb_codec.encode(
-                zip(chunk_bytes_batch, chunk_specs, strict=False)
-            )
-        return chunk_bytes_batch
+        transform = AsyncChunkTransform(codecs=self.codecs)
+        out: list[Buffer | None] = []
+        for chunk_array, chunk_spec in chunk_arrays_and_specs:
+            if chunk_array is None:
+                out.append(None)
+            else:
+                out.append(await transform.encode_chunk(chunk_array, chunk_spec))
+        return out
 
     # -- sync read/write --
 
