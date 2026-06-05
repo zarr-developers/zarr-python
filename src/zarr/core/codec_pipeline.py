@@ -72,10 +72,13 @@ def _resolve_max_workers() -> int:
 def _get_pool(max_workers: int) -> ThreadPoolExecutor:
     """Get or create the module-level thread pool, sized to `max_workers`.
 
-    The pool grows on demand — if a request arrives for more workers than
-    the current pool has, the existing pool is shut down and replaced.
-    Shrinking requests reuse the existing larger pool (it just leaves
-    workers idle).
+    The pool grows on demand — if a request arrives for more workers than the
+    current pool has, it is replaced with a larger one. The previous pool is NOT
+    shut down here: another thread may be holding a reference to it and about to
+    submit (`shutdown` would make its `pool.map` raise "cannot schedule new
+    futures after shutdown"). The orphaned pool finishes its in-flight tasks and
+    is garbage-collected once no caller references it. The pool only grows, never
+    shrinks (a shrink request reuses the larger pool, leaving workers idle).
 
     Callers that want sequential execution should not call this — they
     should run the task list inline. `max_workers` must be >= 1.
@@ -86,8 +89,8 @@ def _get_pool(max_workers: int) -> ThreadPoolExecutor:
     if _pool is None or _pool_size < max_workers:
         with _pool_lock:
             if _pool is None or _pool_size < max_workers:
-                if _pool is not None:
-                    _pool.shutdown(wait=False)
+                # Replace without shutting down the old pool (see docstring):
+                # avoids a race with a concurrent in-flight pool.map on it.
                 _pool = ThreadPoolExecutor(max_workers=max_workers)
                 _pool_size = max_workers
     return _pool
@@ -355,9 +358,7 @@ class ChunkTransform:
         self._ab_codec = cast("SupportsSyncCodec[NDBuffer, Buffer]", ab)
         self._bb_codecs = cast("tuple[SupportsSyncCodec[Buffer, Buffer], ...]", tuple(bb))
 
-    _cached_key: tuple[tuple[int, ...], int] | None = field(
-        init=False, repr=False, compare=False, default=None
-    )
+    _cached_key: ArraySpec | None = field(init=False, repr=False, compare=False, default=None)
     _cached_aa_specs: tuple[ArraySpec, ...] | None = field(
         init=False, repr=False, compare=False, default=None
     )
@@ -366,16 +367,16 @@ class ChunkTransform:
     def _resolve_specs(self, chunk_spec: ArraySpec) -> tuple[tuple[ArraySpec, ...], ArraySpec]:
         """Return per-AA-codec input specs and the AB spec for `chunk_spec`.
 
-        The codec chain only changes `shape` (via TransposeCodec etc.) —
-        `prototype`, `dtype`, `fill_value`, and `config` are
-        invariant. We cache the resolved spec chain keyed on
-        `(chunk_spec.shape, id(chunk_spec))`, and reuse it directly
-        when the same `chunk_spec` is passed again. For a different
-        `chunk_spec` with the same shape, we recompute (cheap).
+        The resolved chain depends only on the value of `chunk_spec`, so we cache
+        it keyed on `chunk_spec` itself (ArraySpec is a frozen, hashable dataclass
+        — value identity). Keying on `id(chunk_spec)` would be unsafe: ids are
+        recycled after garbage collection, so a freed spec's id reused by a
+        different spec (same shape, different prototype/dtype/config) could yield
+        a stale hit. Value identity avoids that entirely.
         """
         if not self._aa_codecs:
             return (), chunk_spec
-        key = (chunk_spec.shape, id(chunk_spec))
+        key = chunk_spec
         if self._cached_key == key:
             assert self._cached_aa_specs is not None
             assert self._cached_ab_spec is not None

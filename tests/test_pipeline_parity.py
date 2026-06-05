@@ -39,8 +39,10 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.sharding import ShardingCodec
+from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
 from zarr.core.config import config as zarr_config
 from zarr.storage import MemoryStore
 
@@ -71,6 +73,22 @@ CodecConfig = dict[str, Any]
 CODEC_CONFIGS: list[tuple[str, CodecConfig]] = [
     ("bytes-only", {"compressors": None}),
     ("gzip", {"compressors": GzipCodec(level=1)}),
+    # Big-endian serializer: the on-disk byte order is carried by the BytesCodec,
+    # not the dtype. Guards the bulk whole-shard decode against ignoring endian
+    # (it would otherwise reinterpret big-endian bytes as native — silent
+    # corruption). dtype is int32 so endianness is observable.
+    (
+        "bytes-big-endian",
+        {"compressors": None, "serializer": BytesCodec(endian="big"), "dtype": "int32"},
+    ),
+    # crc32c as a bytes->bytes codec after the serializer: the bulk fast path
+    # must NOT silently drop checksum verification (it falls through to the
+    # per-chunk path). Parity still requires identical bytes + contents across
+    # pipelines. (crc32c is a BytesBytesCodec, so it goes in `compressors`.)
+    (
+        "bytes-crc32c",
+        {"compressors": [Crc32cCodec()], "serializer": BytesCodec(), "dtype": "int32"},
+    ),
 ]
 
 
@@ -216,15 +234,16 @@ def _write_under_pipeline(
     """
     # Strip private metadata keys (e.g. "_codec_ids") before passing to create_array.
     array_layout = {k: v for k, v in layout.items() if not k.startswith("_")}
+    # dtype defaults to float64 but a codec config may override it (e.g. an
+    # endian-sensitive int dtype). Merge so the override wins without a dup kwarg.
+    create_kwargs = {"dtype": "float64", **array_layout, **codec_kwargs}
     store = MemoryStore()
     with zarr_config.set({"codec_pipeline.path": pipeline_path}):
         arr = zarr.create_array(
             store=store,
-            dtype="float64",
-            fill_value=0.0,
+            fill_value=0,
             config={"write_empty_chunks": write_empty_chunks},
-            **array_layout,
-            **codec_kwargs,
+            **create_kwargs,
         )
         for sel, val in sequence:
             arr[sel] = val
@@ -383,3 +402,76 @@ def test_pipeline_read_parity(
             f"for selection {selection!r}"
         ),
     )
+
+
+@pytest.mark.parametrize("subchunk_write_order", SUBCHUNK_WRITE_ORDER)
+@pytest.mark.parametrize("index_location", ["start", "end"])
+def test_pipeline_parity_subchunk_write_order(
+    subchunk_write_order: SubchunkWriteOrder, index_location: str
+) -> None:
+    """Both pipelines must agree across every subchunk_write_order, including a
+    PARTIAL write into an already-dense fixed-size shard.
+
+    This is the regression net for the byte-range write fast path, which derives
+    each chunk's physical slot from its rank in subchunk_write_order. A wrong
+    (e.g. hardcoded morton) assumption corrupts non-default orders silently, so
+    we assert both identical contents AND identical stored bytes across pipelines.
+    write_empty_chunks=True keeps every slot present, making the shard dense and
+    the byte-range write path eligible.
+    """
+    # 2D, fixed-size (no compression). The shard (array `chunks`) must hold
+    # MULTIPLE inner chunks, and be non-square, so morton / lexicographic /
+    # colexicographic produce physically DIFFERENT layouts — with one inner
+    # chunk per shard all orders coincide and a wrong-order bug is invisible.
+    # inner chunk = (2, 2); shard = (6, 4) -> a 3x2 grid of inner chunks.
+    shape, shard_shape, inner_chunk = (12, 8), (6, 4), (2, 2)
+    serializer = ShardingCodec(
+        chunk_shape=inner_chunk,
+        codecs=[BytesCodec()],
+        index_location=index_location,
+        subchunk_write_order=subchunk_write_order,
+    )
+    ref = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
+
+    def run(pipeline_path: str) -> tuple[dict[str, bytes], Any]:
+        store = MemoryStore()
+        with zarr_config.set({"codec_pipeline.path": pipeline_path}):
+            arr = zarr.create_array(
+                store=store,
+                shape=shape,
+                chunks=shard_shape,  # array "chunks" == shard size for a ShardingCodec serializer
+                dtype="int32",
+                fill_value=-1,
+                serializer=serializer,
+                compressors=None,
+                config={"write_empty_chunks": True},
+            )
+            arr[:] = ref  # dense full write
+            arr[3:9, 1:6] = 777  # partial write INTO the dense shard
+            contents = arr[...]
+        return _store_snapshot(store), contents
+
+    batched_bytes, batched_contents = run(_BATCHED)
+    sync_bytes, sync_contents = run(_FUSED)
+
+    # Contents must always match across pipelines and equal the reference —
+    # this catches a wrong-order byte-range write (it corrupts the data).
+    expected = ref.copy()
+    expected[3:9, 1:6] = 777
+    np.testing.assert_array_equal(batched_contents, expected)
+    np.testing.assert_array_equal(
+        sync_contents,
+        batched_contents,
+        err_msg=f"pipeline contents diverged for subchunk_write_order={subchunk_write_order!r}",
+    )
+    # For the DETERMINISTIC orders, the two pipelines must also produce
+    # byte-identical shards (a stronger check that the physical layout matches).
+    # `unordered` shuffles chunk placement with a random RNG per write, so two
+    # independent writes legitimately differ at the byte level — skip the byte
+    # check there (contents equality above is the meaningful guarantee).
+    if subchunk_write_order != "unordered":
+        assert sync_bytes == batched_bytes, (
+            f"pipelines wrote different bytes for subchunk_write_order={subchunk_write_order!r} "
+            f"(index_location={index_location!r}) — byte-range write fast path likely assumed "
+            f"the wrong physical chunk order"
+        )

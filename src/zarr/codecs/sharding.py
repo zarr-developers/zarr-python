@@ -43,6 +43,7 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
+from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
@@ -660,6 +661,12 @@ class ShardingCodec(
             not is_complete
             and not skip_empty
             and self._inner_codecs_fixed_size
+            # The byte-range fast path computes each chunk's slot from its rank in
+            # the deterministic write order. `unordered` shuffles chunk placement
+            # per write with no recoverable rank, so its slots can only be learned
+            # from the stored index — exclude it and fall through to the index-
+            # driven full-rewrite path below.
+            and self.subchunk_write_order != "unordered"
             and isinstance(store, SupportsSetRange)
         ):
             chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
@@ -677,13 +684,19 @@ class ShardingCodec(
                 # below can mutate it.
                 index = _ShardIndex(chunks_per_shard, shard_reader.index.offsets_and_lengths.copy())
 
-                # Inner chunks are written in Morton (Z-curve) order, and
-                # because they're fixed-size we can compute a chunk's byte
-                # offset deterministically from its rank without consulting
-                # the shard index. This is what makes byte-range patching
-                # safe: the slot for a given chunk is always at the same
-                # offset regardless of which other chunks are present.
-                rank_map = {c: r for r, c in enumerate(morton_order_iter(chunks_per_shard))}
+                # Inner chunks are written in `self.subchunk_write_order`, and
+                # because they're fixed-size we can compute a chunk's byte offset
+                # deterministically from its rank in that order without consulting
+                # the shard index. This is what makes byte-range patching safe: the
+                # slot for a given chunk is always at the same offset regardless of
+                # which other chunks are present. (Must match the layout produced by
+                # `_encode_shard_dict_sync` / the async `_encode_shard_dict`.)
+                rank_map = {
+                    c: r
+                    for r, c in enumerate(
+                        self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order)
+                    )
+                }
 
                 def _byte_offset(coords: tuple[int, ...]) -> int:
                     offset = rank_map[coords] * chunk_byte_length
@@ -1003,23 +1016,30 @@ class ShardingCodec(
         Returns the assembled shard array, or None if the fast path does not
         apply (so the caller falls back to the per-chunk loop). Conditions:
         - inner codec chain is fixed-size (no compression / variable-length);
-        - the inner array->bytes codec is a plain BytesCodec (decode is a dtype/
-          endian view, no reordering), with no array->array or extra bytes->bytes
-          codecs except an optional trailing crc32c (which only appends bytes per
-          chunk and does not alter the leading payload);
+        - the inner codec chain is exactly a single BytesCodec — decode is a
+          dtype/endian view with no reordering. A trailing crc32c is NOT accepted
+          (the bulk path can't verify per-chunk checksums, so crc shards keep the
+          per-chunk path's corruption detection);
         - the stored index is dense (every chunk present, equal fixed length,
           contiguous) so the data section is a regular grid of chunk payloads.
 
         Chunk positions are read from the stored index, so this is correct for
         any ``subchunk_write_order`` (morton / lexicographic / colexicographic /
-        unordered).
+        unordered). The on-disk byte order is taken from the BytesCodec's
+        ``endian``, so big- and little-endian shards both decode correctly.
         """
         # --- gate on a trivial, fixed-size inner codec chain ---
         if not self._inner_codecs_fixed_size:
             return None
-        non_crc = [c for c in self.codecs if not isinstance(c, Crc32cCodec)]
-        if len(non_crc) != 1 or not isinstance(non_crc[0], BytesCodec):
+        # The inner chain must be exactly a single BytesCodec (a dtype/endian
+        # view, no reordering). A trailing Crc32cCodec is excluded on purpose:
+        # the bulk path would have to strip-and-discard the per-chunk checksum
+        # bytes, silently dropping the corruption detection the per-chunk path
+        # enforces (Crc32cCodec._decode_sync raises on mismatch). crc-protected
+        # shards therefore fall through to the per-chunk path.
+        if len(self.codecs) != 1 or not isinstance(self.codecs[0], BytesCodec):
             return None
+        ab_codec = self.codecs[0]
 
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
@@ -1034,7 +1054,6 @@ class ShardingCodec(
         if tuple(indexer.shape) != tuple(shard_spec.shape):
             return None
         chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
-        crc_len = chunk_byte_length - chunk_spec.dtype.item_size * product(self.chunk_shape)  # type: ignore[attr-defined]
 
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if len(shard_bytes) != n_chunks * chunk_byte_length + shard_index_size:
@@ -1050,19 +1069,24 @@ class ShardingCodec(
             return None
 
         # --- bulk reconstruct ---
-        # Decode the inner array->bytes codec on the WHOLE data section at once
-        # (it is a plain BytesCodec: a dtype/endian view). The index gives each
-        # chunk's absolute byte offset within the blob; with a dense fixed-size
-        # layout the payload length is the encoded item-bytes of one chunk.
+        # The index gives each chunk's absolute byte offset within the blob; with
+        # a dense, crc-free, fixed-size layout the payload length is exactly the
+        # encoded item-bytes of one chunk.
         native_dtype = shard_spec.dtype.to_native_dtype()
         raw = shard_bytes.as_numpy_array().view(np.uint8)
-        payload = chunk_byte_length - crc_len  # bytes of the dtype payload per chunk
+        payload = chunk_byte_length
         cs = self.chunk_shape
-        # Endianness: the on-disk byte order is the BytesCodec's; decode via the
-        # inner transform on a single chunk would honor it, but for the bulk view
-        # we read with the stored dtype (item_size matches) then let numpy assign
-        # into the native-dtype output, which performs any needed byte swap.
-        stored_dtype = chunk_spec.dtype.to_native_dtype()
+
+        # On-disk byte order is carried by the BytesCodec's `endian`, NOT by the
+        # data type (zarr v3). Build the read-view dtype from the codec's endian
+        # exactly as BytesCodec._decode_sync does, so a big-endian shard read on a
+        # little-endian host (or vice versa) is interpreted correctly. Assigning
+        # into the native-dtype `out` then performs any needed byteswap.
+        endian_str = ab_codec.endian.value if ab_codec.endian is not None else None
+        if isinstance(chunk_spec.dtype, HasEndianness):
+            stored_dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
+        else:
+            stored_dtype = chunk_spec.dtype.to_native_dtype()
 
         offsets = index.offsets_and_lengths[..., 0].reshape(-1)  # localized coords, C-order
         coords_c = list(np.ndindex(chunks_per_shard))
