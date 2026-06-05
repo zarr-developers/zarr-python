@@ -665,12 +665,6 @@ class ShardingCodec(
             not is_complete
             and not skip_empty
             and self._inner_codecs_fixed_size
-            # The byte-range fast path computes each chunk's slot from its rank in
-            # the deterministic write order. `unordered` shuffles chunk placement
-            # per write with no recoverable rank, so its slots can only be learned
-            # from the stored index — exclude it and fall through to the index-
-            # driven full-rewrite path below.
-            and self.subchunk_write_order != "unordered"
             and isinstance(store, SupportsSetRange)
         ):
             chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)

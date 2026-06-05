@@ -464,14 +464,15 @@ def test_pipeline_parity_subchunk_write_order(
         batched_contents,
         err_msg=f"pipeline contents diverged for subchunk_write_order={subchunk_write_order!r}",
     )
-    # For the DETERMINISTIC orders, the two pipelines must also produce
-    # byte-identical shards (a stronger check that the physical layout matches).
-    # `unordered` shuffles chunk placement with a random RNG per write, so two
-    # independent writes legitimately differ at the byte level — skip the byte
-    # check there (contents equality above is the meaningful guarantee).
-    if subchunk_write_order != "unordered":
-        assert sync_bytes == batched_bytes, (
-            f"pipelines wrote different bytes for subchunk_write_order={subchunk_write_order!r} "
-            f"(index_location={index_location!r}) — byte-range write fast path likely assumed "
-            f"the wrong physical chunk order"
-        )
+    # The two pipelines must also produce byte-identical shards — a stronger
+    # check that they agree on physical layout. This holds for EVERY order
+    # (without special-casing any by name): both pipelines lay chunks out via
+    # the same `_subchunk_order_iter`, so for a given codec instance they must
+    # land on the same bytes whatever that order resolves to. We make no
+    # assumption here about what any particular order "means" — only that the
+    # two implementations agree.
+    assert sync_bytes == batched_bytes, (
+        f"pipelines wrote different bytes for subchunk_write_order={subchunk_write_order!r} "
+        f"(index_location={index_location!r}) — byte-range write fast path likely assumed "
+        f"the wrong physical chunk order"
+    )
