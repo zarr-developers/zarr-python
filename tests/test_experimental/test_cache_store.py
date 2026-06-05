@@ -1078,9 +1078,19 @@ class TestCacheStoreNegativeCaching:
         assert calls["n"] == after_first  # no further source access
         assert cs.cache_stats()["negative_hits"] == 1
 
-    async def test_disabled_by_default(self) -> None:
-        """With the default ``cache_missing=False`` nothing is remembered."""
+    async def test_enabled_by_default(self) -> None:
+        """Negative caching is on by default (opt-out)."""
         cs = CacheStore(MemoryStore(), cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+        assert cs.cache_missing is True
+        assert await cs.get("c/0", proto) is None
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+        assert cs.cache_stats()["negative_hits"] == 1
+
+    async def test_can_be_disabled(self) -> None:
+        """With ``cache_missing=False`` nothing is remembered."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=False)
         proto = default_buffer_prototype()
         assert await cs.get("c/0", proto) is None
         assert await cs.get("c/0", proto) is None
@@ -1134,23 +1144,6 @@ class TestCacheStoreNegativeCaching:
         assert result.to_bytes() == b"late"
         assert cs.cache_info()["missing_keys"] == 0
 
-    async def test_bounded(self) -> None:
-        """``max_missing_keys`` bounds the negative cache, evicting LRU entries."""
-        cs = CacheStore(
-            MemoryStore(), cache_store=MemoryStore(), cache_missing=True, max_missing_keys=10
-        )
-        proto = default_buffer_prototype()
-        for i in range(25):
-            assert await cs.get(f"c/{i}", proto) is None
-
-        assert cs.cache_info()["missing_keys"] == 10
-        assert cs.cache_stats()["evictions"] >= 15
-        # the 10 most-recently-seen keys are retained (LRU)
-        for i in range(15, 25):
-            assert f"c/{i}" in cs._state.missing_keys
-        for i in range(15):
-            assert f"c/{i}" not in cs._state.missing_keys
-
     async def test_byte_range_unaffected(self) -> None:
         """Byte-range misses do not populate the negative cache."""
         cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
@@ -1184,7 +1177,3 @@ class TestCacheStoreNegativeCaching:
         cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
         await cs.delete("c/0")
         assert cs.cache_info()["missing_keys"] == 0
-
-    async def test_max_missing_keys_validated(self) -> None:
-        with pytest.raises(ValueError, match="max_missing_keys"):
-            CacheStore(MemoryStore(), cache_store=MemoryStore(), max_missing_keys=0)

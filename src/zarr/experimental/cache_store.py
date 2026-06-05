@@ -33,11 +33,11 @@ class _CacheState:
     negative_hits: int = 0
     key_insert_times: dict[_CacheEntryKey, float] = field(default_factory=dict)
     range_cache: dict[str, dict[ByteRequest, Buffer]] = field(default_factory=dict)
-    # Negative cache: full keys known to be absent in the source store, mapped to
-    # their (monotonic) insertion time for freshness. OrderedDict gives O(1) LRU
-    # eviction via popitem(last=False). Kept separate from the byte-size accounting
-    # above (negative entries carry no data) and bounded by ``max_missing_keys``.
-    missing_keys: OrderedDict[str, float] = field(default_factory=OrderedDict)
+    # Negative cache: full keys known to be absent in the source store, mapped to their
+    # (monotonic) insertion time. Used to short-circuit repeat reads of absent keys.
+    # Entries carry no data, so they are kept out of the byte-size accounting above;
+    # staleness is bounded by ``max_age_seconds``.
+    missing_keys: dict[str, float] = field(default_factory=dict)
 
 
 class CacheStore(WrapperStore[Store]):
@@ -75,16 +75,19 @@ class CacheStore(WrapperStore[Store]):
         This benefits repeated reads of sparse arrays (most chunks absent). Negative
         entries respect ``max_age_seconds`` and are evicted when the key is written
         (``set``/``set_if_not_exists``). Only full-key reads are affected (not byte-range
-        reads or ``exists``). Default is False.
+        reads or ``exists``). Default is True.
 
-        Note: with ``max_age_seconds="infinity"`` a remembered miss never expires, so a
-        key written to the source by another process would stay invisible through this
-        cache. Pair ``cache_missing=True`` with a finite ``max_age_seconds`` if the source
-        may be written concurrently.
-    max_missing_keys : int, optional
-        Maximum number of negative (missing-key) entries to retain when
-        ``cache_missing`` is True. When exceeded, the least recently used missing keys
-        are evicted. Bounds memory for large sparse scans. Default is 100,000.
+        Notes:
+
+        - With ``max_age_seconds="infinity"`` (the default) a remembered miss never
+          expires, so a key written to the source by another process stays invisible
+          through this cache. Pair ``cache_missing=True`` with a finite
+          ``max_age_seconds`` if the source may be written concurrently.
+        - Like the positive cache (which is unbounded when ``max_size is None``), the
+          negative cache is bounded only by ``max_age_seconds``. With an infinite TTL,
+          a scan over a very large sparse key space will accumulate one small entry per
+          absent key. Set a finite ``max_age_seconds`` (or ``cache_missing=False``) for
+          such workloads.
 
     Examples
     --------
@@ -115,7 +118,6 @@ class CacheStore(WrapperStore[Store]):
     max_size: int | None
     cache_set_data: bool
     cache_missing: bool
-    max_missing_keys: int
     _state: _CacheState
 
     def __init__(
@@ -126,8 +128,7 @@ class CacheStore(WrapperStore[Store]):
         max_age_seconds: int | str = "infinity",
         max_size: int | None = None,
         cache_set_data: bool = True,
-        cache_missing: bool = False,
-        max_missing_keys: int = 100_000,
+        cache_missing: bool = True,
     ) -> None:
         super().__init__(store)
 
@@ -137,9 +138,6 @@ class CacheStore(WrapperStore[Store]):
                 "The cache_store must support deletes for CacheStore to function properly."
             )
             raise ValueError(msg)
-
-        if max_missing_keys < 1:
-            raise ValueError("max_missing_keys must be a positive integer")
 
         self._cache = cache_store
         # Validate and set max_age_seconds
@@ -152,7 +150,6 @@ class CacheStore(WrapperStore[Store]):
         self.max_size = max_size
         self.cache_set_data = cache_set_data
         self.cache_missing = cache_missing
-        self.max_missing_keys = max_missing_keys
         self._state = _CacheState()
 
     def _with_store(self, store: Store) -> Self:
@@ -169,7 +166,6 @@ class CacheStore(WrapperStore[Store]):
             max_size=self.max_size,
             cache_set_data=self.cache_set_data,
             cache_missing=self.cache_missing,
-            max_missing_keys=self.max_missing_keys,
         )
         store._state = self._state
         return store
@@ -196,15 +192,12 @@ class CacheStore(WrapperStore[Store]):
         return elapsed < self.max_age_seconds
 
     def _record_missing(self, key: str) -> None:
-        """Record *key* as known-missing, evicting the oldest entries past the cap.
+        """Record *key* as known-missing (absent in the source store).
 
-        Must be called while holding ``self._state.lock``.
+        Must be called while holding ``self._state.lock``. Staleness is bounded by
+        ``max_age_seconds`` via ``_is_missing_fresh``.
         """
         self._state.missing_keys[key] = time.monotonic()
-        self._state.missing_keys.move_to_end(key)
-        while len(self._state.missing_keys) > self.max_missing_keys:
-            self._state.missing_keys.popitem(last=False)
-            self._state.evictions += 1
 
     def _evict_missing(self, key: str) -> None:
         """Drop any negative entry for *key* (it is now present or being written).
@@ -429,7 +422,6 @@ class CacheStore(WrapperStore[Store]):
             async with self._state.lock:
                 if key in self._state.missing_keys and self._is_missing_fresh(key):
                     self._state.negative_hits += 1
-                    self._state.missing_keys.move_to_end(key)
                     return None
 
         entry_key: _CacheEntryKey = (key, byte_range) if byte_range is not None else key
