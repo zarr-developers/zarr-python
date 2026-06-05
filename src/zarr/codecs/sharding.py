@@ -567,24 +567,24 @@ class ShardingCodec(
     ) -> Buffer | None:
         """Encode a full shard synchronously.
 
-        Sync counterpart to ``_encode_single``. This is reached when a
-        ``ShardingCodec`` is an *inner* codec of another sharding codec (nested
+        Sync counterpart to `_encode_single`. This is reached when a
+        `ShardingCodec` is an *inner* codec of another sharding codec (nested
         sharding): the outer codec encodes each inner chunk through its
-        ``ChunkTransform``, which calls this method on the inner ``ShardingCodec``.
+        `ChunkTransform`, which calls this method on the inner `ShardingCodec`.
 
-        Each inner chunk is encoded through the inner ``ChunkTransform`` and
-        collected into an intermediate ``dict``. The dict's key order is
+        Each inner chunk is encoded through the inner `ChunkTransform` and
+        collected into an intermediate `dict`. The dict's key order is
         immaterial — the physical on-disk layout is decided downstream by the
-        ``subchunk_write_order`` loop in ``_encode_shard_dict_sync`` (this method
-        does NOT impose a layout). Empty inner chunks become ``None`` entries when
-        ``write_empty_chunks`` is False, signalling ``_encode_shard_dict_sync`` to
+        `subchunk_write_order` loop in `_encode_shard_dict_sync` (this method
+        does NOT impose a layout). Empty inner chunks become `None` entries when
+        `write_empty_chunks` is False, signalling `_encode_shard_dict_sync` to
         elide them from the data section and mark them empty in the shard index.
 
-        Returns ``None`` if every inner chunk was elided (an all-empty shard) —
+        Returns `None` if every inner chunk was elided (an all-empty shard) —
         callers treat that as "delete the shard key".
 
         For a partial write that only touches some inner chunks, use
-        ``_encode_partial_sync`` instead.
+        `_encode_partial_sync` instead.
         """
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -754,7 +754,7 @@ class ShardingCodec(
     ) -> Buffer | None:
         """Sync version of _encode_shard_dict.
 
-        Pack the encoded inner chunks (in the codec's ``subchunk_write_order``)
+        Pack the encoded inner chunks (in the codec's `subchunk_write_order`)
         into a contiguous data section, build a shard index that points each
         present chunk at its offset/length within that section, and concatenate.
 
@@ -949,9 +949,9 @@ class ShardingCodec(
           contiguous) so the data section is a regular grid of chunk payloads.
 
         Chunk positions are read from the stored index, so this is correct for
-        any ``subchunk_write_order`` (morton / lexicographic / colexicographic /
+        any `subchunk_write_order` (morton / lexicographic / colexicographic /
         unordered). The on-disk byte order is taken from the BytesCodec's
-        ``endian``, so big- and little-endian shards both decode correctly.
+        `endian`, so big- and little-endian shards both decode correctly.
         """
         # --- gate on a trivial, fixed-size inner codec chain ---
         if not self._inner_codecs_fixed_size:

@@ -122,18 +122,18 @@ def resolve_aa_specs(
 ) -> tuple[tuple[ArraySpec, ...], ArraySpec]:
     """Resolve the per-stage chunk specs for a single chunk's codec chain.
 
-    Threads ``chunk_spec`` forward through the array->array codecs via
-    ``resolve_metadata`` (each codec sees the spec produced by the previous one),
-    returning ``(aa_specs, ab_spec)``:
+    Threads `chunk_spec` forward through the array->array codecs via
+    `resolve_metadata` (each codec sees the spec produced by the previous one),
+    returning `(aa_specs, ab_spec)`:
 
-    * ``aa_specs[i]`` is the spec the i-th AA codec operates on (its *input* on
+    * `aa_specs[i]` is the spec the i-th AA codec operates on (its *input* on
       encode / *output* on decode);
-    * ``ab_spec`` is the spec after all AA codecs — what the array->bytes codec
+    * `ab_spec` is the spec after all AA codecs — what the array->bytes codec
       and the bytes->bytes codecs operate on.
 
     This is the single source of truth for per-stage spec evolution, shared by
-    the synchronous ``ChunkTransform`` and the asynchronous
-    ``AsyncChunkTransform``. It is pure metadata (only ``resolve_metadata``), so
+    the synchronous `ChunkTransform` and the asynchronous
+    `AsyncChunkTransform`. It is pure metadata (only `resolve_metadata`), so
     it places no synchronous-codec requirement on the codecs.
     """
     aa_specs: list[ArraySpec] = []
