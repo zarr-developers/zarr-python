@@ -328,80 +328,17 @@ def test_pipeline_parity(
 
 
 # ---------------------------------------------------------------------------
-# Read parity: cover partial reads (not just full reads as in the matrix above)
+# Partial-read parity across subchunk write orders
 # ---------------------------------------------------------------------------
-
-
-def _read_selections(shape: tuple[int, ...]) -> list[tuple[str, Any]]:
-    """Selections that exercise the partial-decode path differently."""
-    if len(shape) == 1:
-        n = shape[0]
-        return [
-            ("scalar-first", (0,)),
-            ("scalar-mid", (n // 2,)),
-            ("partial-slice", (slice(n // 4, 3 * n // 4),)),
-            ("strided", (slice(0, n, 3),)),
-            ("full", (slice(None),)),
-        ]
-    return [
-        ("scalar-first", (0,) * len(shape)),
-        ("scalar-mid", tuple(s // 2 for s in shape)),
-        ("partial-slice", tuple(slice(s // 4, 3 * s // 4) for s in shape)),
-        ("full", (slice(None),) * len(shape)),
-    ]
-
-
-def _read_matrix() -> Iterator[Any]:
-    for codec_id, codec_kwargs in CODEC_CONFIGS:
-        for layout_id, layout in LAYOUT_CONFIGS:
-            allowed = layout.get("_codec_ids")
-            if allowed is not None and codec_id not in allowed:
-                continue
-            for sel_id, sel in _read_selections(layout["shape"]):
-                yield pytest.param(
-                    codec_kwargs,
-                    layout,
-                    sel,
-                    id=f"{layout_id}-{codec_id}-{sel_id}",
-                )
-
-
-@pytest.mark.parametrize(
-    ("codec_kwargs", "layout", "selection"),
-    list(_read_matrix()),
-)
-def test_pipeline_read_parity(
-    codec_kwargs: CodecConfig,
-    layout: LayoutConfig,
-    selection: Any,
-) -> None:
-    """Partial reads via FusedCodecPipeline must match BatchedCodecPipeline.
-
-    The full-write/full-read parity test above doesn't exercise partial
-    reads (e.g. a single element from a sharded array), which take a
-    different code path (``_decode_partial_single`` on the sharding
-    codec). This test fills the array under one pipeline and reads
-    arbitrary selections under both, asserting equality.
-    """
-    # Fill under batched (the canonical pipeline) so the contents are
-    # well-defined regardless of the codec under test.
-    store, _full = _write_under_pipeline(
-        _BATCHED, codec_kwargs, layout, _full_overwrite(layout["shape"]), True
-    )
-
-    with zarr_config.set({"codec_pipeline.path": _BATCHED}):
-        batched_arr = zarr.open_array(store=store, mode="r")[selection]
-    with zarr_config.set({"codec_pipeline.path": _FUSED}):
-        sync_arr = zarr.open_array(store=store, mode="r")[selection]
-
-    np.testing.assert_array_equal(
-        sync_arr,
-        batched_arr,
-        err_msg=(
-            f"FusedCodecPipeline read returned different result than BatchedCodecPipeline "
-            f"for selection {selection!r}"
-        ),
-    )
+#
+# Note: general partial-read coverage (scalar single-element and strided reads
+# from sharded arrays, which hit the sharding codec's partial-decode path) lives
+# in tests/test_codec_pipeline_suite.py as Scenarios. Those run each pipeline
+# against a numpy reference -- strictly stronger than checking the two pipelines
+# only against each other, and they cover both the sync (_decode_partial_sync)
+# and async (_decode_partial_single) partial-decode variants. What remains here
+# is the cross-pipeline byte-identical-layout check, which the per-pipeline
+# suite structurally cannot express.
 
 
 @pytest.mark.parametrize("subchunk_write_order", SUBCHUNK_WRITE_ORDER)

@@ -210,6 +210,20 @@ SCENARIOS: tuple[Scenario, ...] = (
         writes=((slice(20, 70), _val(50, "float64")),),
         reads=(np.s_[30:60], slice(None)),
     ),
+    # scalar single-element reads from a sharded array hit the sharding codec's
+    # partial-decode path (_decode_partial_single), distinct from slice reads.
+    Scenario(
+        "sharded-scalar-reads-1d",
+        {"shape": (100,), "chunks": (10,), "shards": (50,), "compressors": None, **_F64},
+        writes=((slice(None), _val(100, "float64")),),
+        reads=(np.s_[0], np.s_[50], np.s_[99], np.s_[::3]),
+    ),
+    Scenario(
+        "sharded-scalar-reads-2d",
+        {"shape": (20, 20), "chunks": (5, 5), "shards": (10, 10), "compressors": None, **_I32},
+        writes=((slice(None), np.arange(400, dtype="int32").reshape(20, 20)),),
+        reads=(np.s_[0, 0], np.s_[10, 10], np.s_[19, 19]),
+    ),
     # --- spec-changing codec (transpose): the async-spec-evolution guard ----
     Scenario(
         "transpose",
