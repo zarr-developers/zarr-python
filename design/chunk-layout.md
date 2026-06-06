@@ -2,7 +2,7 @@
 
 Version: 2
 
-Design document for adding a public, typed chunk-structure introspection API to **zarr-python**: a `ChunkLayout` object that distills the chunk grid metadata and sharding codec configuration of an array into the form consumers can feed back into `create_array`.
+Design document for adding a public, typed chunk-structure introspection API to **zarr-python**: a `ChunkLayout` object that distills the *declared* chunk structure of an array — its chunk grid metadata together with the chunk-structuring codecs in its pipeline — into the form consumers can feed back into `create_array`. (The *observed* chunk layout depends on the full codec pipeline and on store capabilities; that is the effective-granularity question, scoped as future work below.)
 
 **Related:**
 
@@ -118,7 +118,11 @@ class ChunkLayout:
 
     @property
     def innermost(self) -> ChunkLayout:
-        """The innermost level: the smallest independently decodable unit."""
+        """The innermost level of declared subdivision.
+
+        Whether this unit is independently decodable depends on the
+        full codec pipeline, not on the declared structure alone.
+        """
         return self.inner.innermost if self.inner is not None else self
 ```
 
@@ -132,7 +136,7 @@ Notes on the field choices:
 ### Level semantics
 
 - `layout` itself (level 0) describes **storage granularity**: the units in which data is stored — the shard shape when sharding is active, the chunk shape otherwise.
-- `layout.innermost` describes the smallest unit that can be decoded independently *by structure*; whether it is also the effective read unit depends on the codec pipeline (see "Relationship to effective granularities").
+- `layout.innermost` describes the innermost *declared* subdivision; whether it is independently decodable, and whether it is the effective read unit, depends on the full codec pipeline (a bytes→bytes codec after a sharding codec makes the whole shard the decode unit — see "Relationship to effective granularities").
 - When `inner is None`, those are the same object and there is exactly one level.
 - The names `innermost`/`levels` are deliberately not `read_level`/`write_level`: the effective read and write granularities are not, in general, properties of the declared structure alone, and if reading at intermediate levels of a nested-sharding hierarchy becomes possible, any level in `levels` is addressable by index with no level privileged by name.
 
@@ -190,7 +194,7 @@ def from_metadata(cls, metadata: ArrayV2Metadata | ArrayV3Metadata) -> ChunkLayo
     if isinstance(metadata, ArrayV2Metadata):
         return ChunkLayout(chunks=metadata.chunks)
     inner: ChunkLayout | None = None
-    if len(metadata.codecs) == 1:
+    if metadata.codecs:
         inner = metadata.codecs[0].inner_chunk_layout()
     grid = metadata.chunk_grid
     if isinstance(grid, RegularChunkGridMetadata):
@@ -201,6 +205,8 @@ def from_metadata(cls, metadata: ArrayV2Metadata | ArrayV3Metadata) -> ChunkLayo
 ```
 
 (Canonicalization in `__post_init__` means the `RectilinearChunkGridMetadata` arm produces a layout with `is_regular == True` when the declared edges happen to be uniform — the metadata kind is deliberately not observable from the layout.)
+
+**Why the *first* codec, rather than a sole codec?** The existing accessors gate on `len(codecs) == 1 and isinstance(codecs[0], ShardingCodec)`, so `.shards` reports `None` for a pipeline like `[sharding, gzip]` — an *effective*-granularity judgment (the trailing gzip makes the whole shard the decode unit, so reporting the inner shape could mislead) baked into what is otherwise a structural accessor. `ChunkLayout` is declared-only, so it draws the boundary structurally instead: trailing bytes→bytes codecs cannot *create* chunk structure — their effect on access belongs to the effective granularities — so `[sharding, gzip]` declares its subdivision (`is_sharded == True`, two levels), intentionally diverging from `.shards` (`None`) on such pipelines. Conversely, an array→array codec *before* a chunk-structuring codec changes the coordinate mapping between the codec's configured shapes and array dimensions, so a non-first chunk-structuring codec is treated as opaque (`inner is None`) until codec capabilities can express that mapping. The sole-codec gate is the intersection of both rules; the first-codec rule is each rule applied for its own structural reason.
 
 **Extensibility hook for sharding-like codecs.** Rather than the `isinstance(codecs[0], ShardingCodec)` checks scattered through the codebase today (`array.py`, `metadata/v3.py`), the codec ABC gains one method with a default:
 
@@ -241,7 +247,7 @@ class Array:  # and AsyncArray
     def is_sharded(self) -> bool:
         """True if this array's chunks have internal sub-chunk structure (sharding)."""
         codecs = getattr(self.metadata, "codecs", ())
-        return len(codecs) == 1 and codecs[0].inner_chunk_layout() is not None
+        return bool(codecs) and codecs[0].inner_chunk_layout() is not None
 ```
 
 `Array.is_sharded` answers #4036 in one hop. It is deliberately derived from the codec hook, *not* from `chunk_layout`: sharding is a codec property, independent of the grid, so `is_sharded` keeps answering correctly even for a future grid kind that `from_metadata` cannot distill (where `chunk_layout` raises `TypeError`). For every distillable configuration the two agree (see Testing). Construction from metadata is O(ndim) and allocation-light, so `chunk_layout` is computed on demand rather than cached at `__init__` like `_chunk_grid`; caching via the `object.__setattr__` pattern already used for `_chunk_grid` is a drop-in change if profiling ever warrants it.
@@ -336,6 +342,7 @@ No proposal in the 4.0 planning set covers declared chunk-structure introspectio
 - Validation: ndim mismatch, non-positive sizes, empty edge tuples → expected exceptions.
 - Codec hook: a stub third-party codec overriding `inner_chunk_layout` is detected; nested `ShardingCodec` produces three levels.
 - `Array.is_sharded` agrees with `chunk_layout.is_sharded` for every distillable configuration, and still answers (rather than raises) for a stub unrecognized chunk grid metadata type where `chunk_layout` raises `TypeError`.
+- First-codec rule: `[sharding, gzip]` yields `is_sharded == True` with two levels (documented divergence from `.shards`, which returns `None` there); a pipeline with an array→array codec before the sharding codec yields a single opaque level.
 - Doc snippets exercised under `pytest --doctest-modules` like the existing accessor examples.
 
 ## Open questions
