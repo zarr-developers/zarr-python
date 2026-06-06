@@ -381,7 +381,7 @@ Read:  store → decode to codec_shape → slice via chunk_selection → user da
 
 ### Sharding
 
-The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as extent and the subchunk shape as `FixedDimension`. Each shard is self-contained — it doesn't need to know whether the outer grid is regular or rectilinear. Validation checks that every unique edge length per dimension is divisible by the inner chunk size, using `dim._unique_edge_lengths` for efficient polymorphic iteration (O(1) for fixed dimensions, lazy-deduplicated for varying).
+The sharding codec models each shard as a self-contained array region with its own chunk grid: the shard's shape is the extent, tiled by the inner chunk shape as a regular grid. A shard never needs to know whether the outer grid is regular or rectilinear. How that per-shard grid is realized — a `ChunkGrid` instance per shard operation (the current implementation), instances cached by shard shape, or pure index arithmetic — is an implementation choice this design does not fix. Validation enforces one invariant: every distinct shard edge length per dimension is divisible by the inner chunk size (currently iterated via `dim._unique_edge_lengths`, O(1) for fixed dimensions, lazily deduplicated for varying).
 
 ```
 Level 1 — Outer chunk grid (shard boundaries): regular or rectilinear
