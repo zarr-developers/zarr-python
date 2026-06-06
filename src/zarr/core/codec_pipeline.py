@@ -975,7 +975,22 @@ class FusedCodecPipeline(CodecPipeline):
         )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        evolved_codecs = tuple(c.evolve_from_array_spec(array_spec=array_spec) for c in self.codecs)
+        # Each codec must be evolved against the spec it will actually see at
+        # run-time, not the original array spec. Earlier array->array codecs may
+        # transform the dtype (e.g. cast_value int8 -> int16), so the spec
+        # threaded into later codecs (the array->bytes serializer and any
+        # bytes->bytes filters) must reflect those transformations. Evolving
+        # every codec against the unthreaded original spec strips the BytesCodec
+        # serializer's `endian` (it sees the single-byte source dtype) and then
+        # fails at decode time on the multi-byte target. This mirrors
+        # BatchedCodecPipeline.evolve_from_array_spec.
+        evolved_list: list[Codec] = []
+        spec = array_spec
+        for codec in self.codecs:
+            evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
+            evolved_list.append(evolved_codec)
+            spec = evolved_codec.resolve_metadata(spec)
+        evolved_codecs = tuple(evolved_list)
         aa, ab, bb = codecs_from_list(evolved_codecs)
 
         try:
