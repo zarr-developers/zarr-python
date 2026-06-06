@@ -673,12 +673,13 @@ class ShardingCodec(
                 shard_reader_fb = self._shard_reader_from_bytes_sync(
                     existing_bytes, chunks_per_shard
                 )
-                shard_dict = {}
-                for coords in morton_order_iter(chunks_per_shard):
-                    try:
-                        shard_dict[coords] = shard_reader_fb[coords]
-                    except KeyError:
-                        shard_dict[coords] = None
+                # Build the dict with one vectorized index lookup over all chunks,
+                # matching the async _encode_partial_single path. A per-coordinate
+                # __getitem__ loop here is O(n_chunks) Python overhead that dominates
+                # partial writes into shards with many inner chunks.
+                shard_dict = shard_reader_fb.to_dict_vectorized(
+                    np.array(list(np.ndindex(chunks_per_shard)))
+                )
             else:
                 shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
 
