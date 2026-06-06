@@ -37,6 +37,14 @@ jobs:
         uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
         with:
           manifest-path: xarray/pixi.toml
+          # Solve and install only the environment our steps use. With no
+          # committed pixi.lock, a bare `pixi install` solves every environment
+          # in xarray's manifest, including `mypy-upstream`, which sources
+          # numcodecs from git and fails under newer pixi with
+          # `meson-python: error: Unknown option "pixi-conda-environment"` —
+          # before any test runs. Naming the environment makes setup-pixi run
+          # `pixi install -e test-py313`, which never touches that env.
+          environments: test-py313
 
       - name: Install zarr-python from branch
         working-directory: xarray
