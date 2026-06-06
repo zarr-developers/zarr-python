@@ -4055,7 +4055,7 @@ requires-dist = [
     { name = "obstore", marker = "extra == 'remote'", specifier = ">=0.5.1" },
     { name = "packaging", specifier = ">=22.0" },
     { name = "typer", marker = "extra == 'cli'" },
-    { name = "typing-extensions", specifier = ">=4.13" },
+    { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
