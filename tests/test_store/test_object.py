@@ -104,7 +104,7 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         # list_dir("g") should not raise even though "g/" looks like the prefix itself.
         result = [k async for k in store.list_dir("g")]
         # The entry should not appear as an empty string or raise.
-        assert "" not in result
+        assert result == []
 
 
 @pytest.mark.slow_hypothesis
