@@ -106,7 +106,10 @@ config = Config(
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.FusedCodecPipeline",
                 "batch_size": 1,
-                "max_workers": None,
+                # Default to sequential (no thread pool). Threading-by-default is a
+                # separate, larger change (downstream thread-safety, oversubscription
+                # on many-core nodes); opt in with codec_pipeline.max_workers > 1.
+                "max_workers": 1,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",

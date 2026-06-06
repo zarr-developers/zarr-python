@@ -43,22 +43,28 @@ _pool_lock = threading.Lock()
 def _resolve_max_workers() -> int:
     """Resolve `codec_pipeline.max_workers` config to an effective worker count.
 
-    `None` means "auto" → `os.cpu_count()` (or 1 if unavailable).
-    Values < 1 are clamped to 1 (sequential).
+    The default is `1` (sequential, no thread pool). `None` means "auto" →
+    `os.cpu_count()` (or 1 if unavailable). Values < 1 are clamped to 1.
 
     Notes
     -----
-    The default (`None` → `cpu_count`) is tuned for large chunks
-    (≳ 1 MB encoded) where per-chunk decode + scatter is real work and
-    threading helps. For small chunks (≲ 64 KB) the per-task pool
-    overhead (≈ 30-50 µs submit + worker handoff) outweighs the work
-    and threading slows things down by 1.5-3x. If your workload uses
-    many small chunks, set `codec_pipeline.max_workers=1` explicitly:
+    Threading is opt-in. The default is sequential because parallelism here is
+    not universally a win and carries downstream risk: enabling it runs custom
+    stores/codecs concurrently, and on many-core nodes a pool sized to
+    `cpu_count` can oversubscribe workloads that already parallelize at a higher
+    level (dask, MPI). It also slows small chunks (≲ 64 KB) by 1.5-3x, where the
+    per-task pool overhead (≈ 30-50 µs submit + worker handoff) outweighs the
+    work.
 
-        zarr.config.set({"codec_pipeline.max_workers": 1})
+    For large chunks (≳ 1 MB encoded) where per-chunk decode + scatter is real
+    work, threading helps; opt in with an explicit positive count, or `None` for
+    auto (`os.cpu_count()`):
 
-    Approximate breakeven on uncompressed reads: 256-512 KB per chunk.
-    Compressed chunks shift the threshold lower because decode is real
+        zarr.config.set({"codec_pipeline.max_workers": 8})
+        zarr.config.set({"codec_pipeline.max_workers": None})  # auto -> cpu_count
+
+    Approximate breakeven on uncompressed reads:
+    256-512 KB per chunk; compressed chunks shift it lower because decode is real
     CPU work that benefits from parallelism.
     """
     import os as _os

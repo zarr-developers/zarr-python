@@ -63,7 +63,7 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.FusedCodecPipeline",
                     "batch_size": 1,
-                    "max_workers": None,
+                    "max_workers": 1,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
