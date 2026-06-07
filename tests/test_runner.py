@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, _AsyncArrayView
 from zarr.core.sync import Runner, SyncRunner
 from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore
@@ -83,6 +83,26 @@ def test_update_attributes_through_async_handle_updates_array() -> None:
         aa = arr.async_array
     arr._runner.run(aa.update_attributes({"foo": "bar"}))
     assert arr.metadata.attributes["foo"] == "bar"
+
+
+def test_async_handle_with_config_returns_detached_async_array() -> None:
+    # Unlike the async_array handle itself (a state-sharing view), with_config
+    # forks an independent, real AsyncArray: it must not be a view, and later
+    # mutations of the parent Array must not leak into it.
+    arr = zarr.create_array(store=MemoryStore(), shape=(4,), chunks=(2,), dtype="i4")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        forked = arr.async_array.with_config({"order": "C"})
+
+    # (b) a real AsyncArray, not another view bound to the parent
+    assert type(forked) is AsyncArray
+    assert not isinstance(forked, _AsyncArrayView)
+
+    # (a) the fork is detached: resizing the parent does not move the fork
+    assert forked.shape == (4,)
+    arr.resize((8,))
+    assert forked.shape == (4,)
+    assert arr.shape == (8,)
 
 
 def test_array_owns_state() -> None:

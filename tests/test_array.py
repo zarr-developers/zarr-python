@@ -2421,3 +2421,61 @@ def test_read_chunk_sizes_sharded() -> None:
     aa_unsharded = AsyncArray(unsharded.metadata, unsharded.store_path, unsharded.config)
     assert aa_unsharded.read_chunk_sizes == unsharded.read_chunk_sizes
     assert aa_unsharded.cdata_shape == unsharded.cdata_shape
+
+
+# Scalar/derived properties reimplemented byte-for-byte on both Array and
+# AsyncArray. Because the two implementations are independent, they can drift
+# silently; this list pins them to agree by value across the format/sharding
+# matrix below. (compressor is excluded: it is deprecated and raises on v3.)
+_SHARED_ARRAY_PROPERTIES = [
+    "_chunk_grid_shape",
+    "_nshards",
+    "_shard_grid_shape",
+    "_zdtype",
+    "basename",
+    "cdata_shape",
+    "chunks",
+    "compressors",
+    "dtype",
+    "filters",
+    "name",
+    "nbytes",
+    "nchunks",
+    "ndim",
+    "order",
+    "path",
+    "read_chunk_sizes",
+    "read_only",
+    "serializer",
+    "shape",
+    "shards",
+    "size",
+    "store",
+    "write_chunk_sizes",
+]
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "sharded"),
+    [(2, False), (3, False), (3, True)],  # v2 has no sharding
+)
+@pytest.mark.parametrize("prop", _SHARED_ARRAY_PROPERTIES)
+def test_sync_async_property_parity(prop: str, zarr_format: ZarrFormat, sharded: bool) -> None:
+    """Array.<prop> and AsyncArray.<prop> must return equal values.
+
+    Guards against the duplicated property bodies on the two classes drifting:
+    a fix applied to one but not the other would make this fail.
+    """
+    kwargs: dict[str, Any] = {
+        "store": MemoryStore(),
+        "shape": (8, 8),
+        "dtype": "i4",
+        "zarr_format": zarr_format,
+    }
+    if sharded:
+        kwargs.update(chunks=(2, 2), shards=(4, 4))
+    else:
+        kwargs.update(chunks=(4, 4))
+    arr = zarr.create_array(**kwargs)
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert getattr(arr, prop) == getattr(async_arr, prop)
