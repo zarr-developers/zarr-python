@@ -2757,11 +2757,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         *,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        """Asynchronously retrieve data for an item or region of the array.
+        """Asynchronously retrieve data for an item or region of the array using basic indexing.
 
-        This is the asynchronous variant of basic indexing via square bracket notation
-        (see [`__getitem__`][zarr.Array.__getitem__] and
-        [`get_basic_selection`][zarr.Array.get_basic_selection]).
+        This is the asynchronous counterpart of
+        [`get_basic_selection`][zarr.Array.get_basic_selection]. Unlike the synchronous
+        [`__getitem__`][zarr.Array.__getitem__], it does **not** route fancy or orthogonal
+        selections; only basic indexing (int, slice, ellipsis) is supported. For advanced
+        indexers use [`get_orthogonal_selection_async`][zarr.Array.get_orthogonal_selection_async],
+        [`get_coordinate_selection_async`][zarr.Array.get_coordinate_selection_async], or
+        [`get_mask_selection_async`][zarr.Array.get_mask_selection_async].
 
         Parameters
         ----------
@@ -2794,11 +2798,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         *,
         prototype: BufferPrototype | None = None,
     ) -> None:
-        """Asynchronously modify data for an item or region of the array.
+        """Asynchronously modify data for an item or region of the array using basic indexing.
 
-        This is the asynchronous variant of basic indexing via square bracket notation
-        (see [`__setitem__`][zarr.Array.__setitem__] and
-        [`set_basic_selection`][zarr.Array.set_basic_selection]).
+        This is the asynchronous counterpart of
+        [`set_basic_selection`][zarr.Array.set_basic_selection]. Unlike the synchronous
+        [`__setitem__`][zarr.Array.__setitem__], it does **not** route fancy or orthogonal
+        selections; only basic indexing (int, slice, ellipsis) is supported. For advanced
+        indexers use [`set_orthogonal_selection_async`][zarr.Array.set_orthogonal_selection_async],
+        [`set_coordinate_selection_async`][zarr.Array.set_coordinate_selection_async], or
+        [`set_mask_selection_async`][zarr.Array.set_mask_selection_async].
 
         Parameters
         ----------
