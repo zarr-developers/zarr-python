@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +39,50 @@ def _make_array() -> Array[Any]:
 def test_array_has_default_sync_runner() -> None:
     arr = _make_array()
     assert isinstance(arr._runner, SyncRunner)
+
+
+def test_async_array_handle_identity_stable() -> None:
+    # Regression: on main, arr.async_array returned the single shared backing
+    # object, so repeated access yielded the same object. Accessing it twice
+    # must return the same handle.
+    arr = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        assert arr.async_array is arr.async_array
+
+
+def test_resize_through_async_handle_updates_array() -> None:
+    # Regression: resizing through the async_array handle must update the parent
+    # Array's view, because they share one mutable state cell. On main this
+    # worked because there was a single backing object.
+    arr = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        aa = arr.async_array
+    arr._runner.run(aa.resize((16,)))
+    assert arr.shape == (16,)
+
+
+def test_resize_through_array_updates_held_async_handle() -> None:
+    # Regression: a previously fetched async_array handle must observe a resize
+    # performed through the parent Array, since they share state.
+    arr = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        aa = arr.async_array
+    arr.resize((16,))
+    assert aa.shape == (16,)
+
+
+def test_update_attributes_through_async_handle_updates_array() -> None:
+    # Regression: updating attributes through the async_array handle must be
+    # visible on the parent Array.
+    arr = _make_array()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        aa = arr.async_array
+    arr._runner.run(aa.update_attributes({"foo": "bar"}))
+    assert arr.metadata.attributes["foo"] == "bar"
 
 
 def test_array_owns_state() -> None:
@@ -284,3 +329,62 @@ def test_array_create_roundtrip() -> None:
     assert isinstance(arr, Array)
     assert arr.shape == (8,)
     assert isinstance(arr._runner, SyncRunner)
+
+
+# Each `*_async` method on `Array` mirrors a synchronous counterpart. The sync
+# method is a one-line delegation through the runner, so behavior cannot drift,
+# but their *signatures* can drift if a parameter is added to one side only.
+# This table lists the pairs whose signatures legitimately differ, with the
+# reason, so they are excluded from the parity check below. Everything not
+# listed here must keep its parameters in lock-step.
+_PARITY_EXCEPTIONS = {
+    # __getitem__/__setitem__ are the dunder counterparts; the async variants
+    # additionally accept `prototype` and use a narrower `selection` type.
+    "getitem",
+    "setitem",
+    # resize_async exposes `delete_outside_chunks`; sync resize hardcodes it.
+    "resize",
+}
+
+
+def _async_method_pairs() -> list[tuple[str, str]]:
+    """Discover (sync_name, async_name) method pairs to check for signature parity.
+
+    Returns pairs where both members are introspectable functions (so property
+    counterparts such as `nchunks_initialized` are skipped) and the sync name is
+    not in the exceptions table.
+    """
+    pairs: list[tuple[str, str]] = []
+    for async_name in dir(Array):
+        if not async_name.endswith("_async"):
+            continue
+        sync_name = async_name[: -len("_async")]
+        if sync_name in _PARITY_EXCEPTIONS:
+            continue
+        sync_attr = inspect.getattr_static(Array, sync_name, None)
+        async_attr = inspect.getattr_static(Array, async_name, None)
+        if not inspect.isfunction(sync_attr) or not inspect.isfunction(async_attr):
+            # e.g. the sync counterpart is a property (nchunks_initialized)
+            continue
+        pairs.append((sync_name, async_name))
+    return pairs
+
+
+@pytest.mark.parametrize(("sync_name", "async_name"), _async_method_pairs())
+def test_sync_async_signature_parity(sync_name: str, async_name: str) -> None:
+    """Each Array.<foo> and Array.<foo>_async must share the same parameters.
+
+    Guards against a parameter being added to one variant of a sync/async pair
+    but not the other, which would silently desynchronize the two APIs.
+    """
+    sync_params = inspect.signature(getattr(Array, sync_name)).parameters
+    async_params = inspect.signature(getattr(Array, async_name)).parameters
+    assert list(sync_params) == list(async_params), (
+        f"Array.{sync_name} and Array.{async_name} have diverging parameters: "
+        f"{list(sync_params)} != {list(async_params)}"
+    )
+
+
+def test_parity_check_covers_methods() -> None:
+    """The parity discovery must actually find pairs, so the check isn't a no-op."""
+    assert len(_async_method_pairs()) > 0

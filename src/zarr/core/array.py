@@ -357,6 +357,8 @@ class SupportsArrayState(Protocol):
         count_bytes_stored: int | None = None,
     ) -> Any: ...
 
+    def _rebind_state(self, metadata: ArrayMetadata, chunk_grid: ChunkGrid) -> None: ...
+
 
 @dataclass(frozen=True)
 class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
@@ -424,6 +426,17 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+
+    def _rebind_state(self, metadata: ArrayMetadata, chunk_grid: ChunkGrid) -> None:
+        """Rebind the array's mutable state (metadata and chunk grid) in place.
+
+        This is the single seam through which post-construction state changes
+        (e.g. resize) flow. Subclasses that share state with another array
+        (such as the view returned by `Array.async_array`) override this to
+        forward the rebind to the object that owns the state.
+        """
+        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "_chunk_grid", chunk_grid)
 
     @classmethod
     async def _create(
@@ -1825,24 +1838,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
-        return ArrayInfo(
-            _zarr_format=self.metadata.zarr_format,
-            _data_type=self._zdtype,
-            _fill_value=self.metadata.fill_value,
-            _shape=self.shape,
-            _order=self.order,
-            _shard_shape=self.shards,
-            _chunk_shape=chunk_shape,
-            _read_only=self.read_only,
-            _compressors=self.compressors,
-            _filters=self.filters,
-            _serializer=self.serializer,
-            _store_type=type(self.store_path.store).__name__,
-            _count_bytes=self.nbytes,
-            _count_bytes_stored=count_bytes_stored,
-            _count_chunks_initialized=count_chunks_initialized,
-        )
+        return _array_info(self, count_chunks_initialized, count_bytes_stored)
 
 
 class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
@@ -1916,19 +1912,36 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             runner=runner,
         )
 
+    def _rebind_state(self, metadata: ArrayMetadata, chunk_grid: ChunkGrid) -> None:
+        """Rebind this array's mutable state (metadata and chunk grid) in place.
+
+        This is the single seam through which post-construction state changes
+        (e.g. resize) flow, so that a shared async handle stays in sync.
+        """
+        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "_chunk_grid", chunk_grid)
+
     @property
     def async_array(self) -> AsyncArray[T_ArrayMetadata]:
         """An asynchronous version of this array.
 
         Deprecated: use the `*_async` methods on `Array` instead. This property
         will be removed in a future release.
+
+        The returned handle is a view that shares this array's mutable state:
+        mutations through either object (e.g. `resize`) are visible on the
+        other, and repeated access returns the same object.
         """
         warnings.warn(
             "Array.async_array is deprecated; use the *_async methods on Array instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return AsyncArray(self.metadata, self.store_path, self.config)
+        cached = self.__dict__.get("_async_array_view")
+        if cached is None:
+            cached = _AsyncArrayView(self)
+            object.__setattr__(self, "_async_array_view", cached)
+        return cached
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Array):
@@ -1954,24 +1967,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
-        return ArrayInfo(
-            _zarr_format=self.metadata.zarr_format,
-            _data_type=self._zdtype,
-            _fill_value=self.metadata.fill_value,
-            _shape=self.shape,
-            _order=self.order,
-            _shard_shape=self.shards,
-            _chunk_shape=chunk_shape,
-            _read_only=self.read_only,
-            _compressors=self.compressors,
-            _filters=self.filters,
-            _serializer=self.serializer,
-            _store_type=type(self.store_path.store).__name__,
-            _count_bytes=self.nbytes,
-            _count_bytes_stored=count_bytes_stored,
-            _count_chunks_initialized=count_chunks_initialized,
-        )
+        return _array_info(self, count_chunks_initialized, count_bytes_stored)
 
     @classmethod
     def _create(
@@ -2862,11 +2858,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested selection.
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
-        return await self._get_selection(
-            indexer=indexer, out=out, fields=fields, prototype=prototype
+        return await _get_orthogonal_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            selection,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
     async def set_orthogonal_selection_async(
@@ -2937,11 +2938,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested selection.
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        return await self._get_selection(
-            indexer=indexer, out=out, fields=fields, prototype=prototype
+        return await _get_mask_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            mask,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
     async def set_mask_selection_async(
@@ -3011,17 +3017,17 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested coordinate selection.
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-        out_array = await self._get_selection(
-            indexer=indexer, out=out, fields=fields, prototype=prototype
+        return await _get_coordinate_selection(
+            self.store_path,
+            self.metadata,
+            self.codec_pipeline,
+            self.config,
+            self._chunk_grid,
+            selection,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
-
-        if hasattr(out_array, "shape"):
-            # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
-        return out_array
 
     async def set_coordinate_selection_async(
         self,
@@ -4715,6 +4721,86 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             All information about the array, including dynamic information read from the store.
         """
         return await _info_complete(self)
+
+
+class _AsyncArrayView(AsyncArray):  # type: ignore[type-arg]
+    """A backwards-compatibility view of an `Array` as an `AsyncArray`.
+
+    Returned by the deprecated `Array.async_array` property. It shares the
+    parent `Array`'s mutable state instead of holding its own copy, so a
+    mutation through either object (e.g. `resize`, `update_attributes`) is
+    visible on the other. This is throwaway scaffolding: when `AsyncArray` is
+    eventually removed, this class and the `async_array` property go with it,
+    and nothing on `Array` depends on either.
+    """
+
+    _parent: Array[Any]
+
+    def __init__(self, parent: Array[Any]) -> None:
+        # Deliberately does not call AsyncArray.__init__: this view holds no
+        # state of its own. Every state attribute reads through the parent.
+        object.__setattr__(self, "_parent", parent)
+
+    @property
+    def metadata(self) -> ArrayMetadata:
+        return cast("ArrayMetadata", self._parent.metadata)
+
+    @property
+    def store_path(self) -> StorePath:
+        return self._parent.store_path
+
+    @property
+    def config(self) -> ArrayConfig:
+        return self._parent.config
+
+    @property
+    def codec_pipeline(self) -> CodecPipeline:
+        return self._parent.codec_pipeline
+
+    @property
+    def _chunk_grid(self) -> ChunkGrid:
+        return self._parent._chunk_grid
+
+    def _rebind_state(self, metadata: ArrayMetadata, chunk_grid: ChunkGrid) -> None:
+        # Forward state rebinds to the parent Array, which owns the state.
+        self._parent._rebind_state(metadata, chunk_grid)
+
+    def with_config(self, config: ArrayConfigLike) -> AsyncArray[Any]:
+        # with_config forks a new, independent array (matching the historical
+        # AsyncArray.with_config semantics), so return a real AsyncArray rather
+        # than another view bound to this parent. `type(self)(...)` cannot be
+        # used here because this view's __init__ takes a parent, not metadata.
+        return AsyncArray(self.metadata, self.store_path, self.config).with_config(config)
+
+
+def _array_info(
+    array: AsyncArray[Any] | Array[Any],
+    count_chunks_initialized: int | None = None,
+    count_bytes_stored: int | None = None,
+) -> ArrayInfo:
+    """Build the statically known `ArrayInfo` for an array.
+
+    Shared by `AsyncArray._info` and `Array._info` so the construction lives in
+    one place.
+    """
+    chunk_shape = array.chunks if array._chunk_grid.is_regular else None
+    return ArrayInfo(
+        _zarr_format=array.metadata.zarr_format,
+        _data_type=array._zdtype,
+        _fill_value=array.metadata.fill_value,
+        _shape=array.shape,
+        _order=array.order,
+        _shard_shape=array.shards,
+        _chunk_shape=chunk_shape,
+        _read_only=array.read_only,
+        _compressors=array.compressors,
+        _filters=array.filters,
+        _serializer=array.serializer,
+        _store_type=type(array.store_path.store).__name__,
+        _count_bytes=array.nbytes,
+        _count_bytes_stored=count_bytes_stored,
+        _count_chunks_initialized=count_chunks_initialized,
+    )
 
 
 async def _shards_initialized(
@@ -6683,8 +6769,7 @@ async def _resize(
     await save_metadata(array.store_path, new_metadata)
 
     # Update metadata and chunk_grid (in place)
-    object.__setattr__(array, "metadata", new_metadata)
-    object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+    array._rebind_state(new_metadata, new_chunk_grid)
 
 
 async def _append(
