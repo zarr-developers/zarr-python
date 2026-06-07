@@ -94,6 +94,18 @@ class ZipStore(Store):
 
         self._lock = threading.RLock()
 
+        if self._zmode == "r" and not self.path.exists():
+            # zipfile.ZipFile requires the file to exist in read mode,
+            # but other stores can be opened in read mode without IO.
+            # create an empty zip file so that the store can be opened.
+            with zipfile.ZipFile(
+                self.path,
+                mode="w",
+                compression=self.compression,
+                allowZip64=self.allowZip64,
+            ):
+                pass
+
         self._zf = zipfile.ZipFile(
             self.path,
             mode=self._zmode,
