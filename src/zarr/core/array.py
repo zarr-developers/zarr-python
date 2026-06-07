@@ -1874,7 +1874,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "Array(async_array) is deprecated; construct an Array directly "
                 "with Array(metadata, store_path, config=...), or use "
                 "Array._from_async_array(async_array).",
-                DeprecationWarning,
+                ZarrDeprecationWarning,
                 stacklevel=2,
             )
             async_array = metadata
@@ -1934,7 +1934,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         warnings.warn(
             "Array.async_array is deprecated; use the *_async methods on Array instead.",
-            DeprecationWarning,
+            ZarrDeprecationWarning,
             stacklevel=2,
         )
         cached = self.__dict__.get("_async_array_view")
@@ -4555,13 +4555,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        self._runner.run(self.update_attributes_async(new_attributes))
-        return type(self)(
-            metadata=self.metadata,
-            store_path=self.store_path,
-            config=self.config,
-            runner=self._runner,
-        )
+        return self._runner.run(self.update_attributes_async(new_attributes))
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"

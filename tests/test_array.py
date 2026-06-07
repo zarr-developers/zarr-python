@@ -368,11 +368,12 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -> None:
+def test_nchunks(test_cls: type[Array[Any]] | type[AsyncArray[Any]], nchunks: int) -> None:
     """
-    Test that nchunks returns the number of chunks defined for the array.
+    Test that nchunks returns the number of chunks defined for the array, on both
+    the sync Array and the AsyncArray.
     """
     store = MemoryStore()
     shape = 100
@@ -381,7 +382,7 @@ def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -
     if test_cls == Array:
         observed = arr.nchunks
     else:
-        observed = arr.nchunks
+        observed = AsyncArray(arr.metadata, arr.store_path, arr.config).nchunks
     assert observed == expected
 
 
