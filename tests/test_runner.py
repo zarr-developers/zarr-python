@@ -10,6 +10,7 @@ import pytest
 
 import zarr
 from zarr.core.array import Array, AsyncArray, _AsyncArrayView
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.sync import Runner, SyncRunner
 from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore
@@ -408,3 +409,46 @@ def test_sync_async_signature_parity(sync_name: str, async_name: str) -> None:
 def test_parity_check_covers_methods() -> None:
     """The parity discovery must actually find pairs, so the check isn't a no-op."""
     assert len(_async_method_pairs()) > 0
+
+
+# Consumers migrating off AsyncArray call `await async_array.getitem(...)` /
+# `.setitem(...)`. The drop-in replacements are `Array.getitem_async` /
+# `setitem_async`, so those must match the AsyncArray methods *exactly* —
+# including each parameter's kind (positional-or-keyword vs keyword-only), which
+# the within-Array name-only parity test above does not check.
+_ASYNC_MIGRATION_PAIRS = [
+    ("getitem", "getitem_async"),
+    ("setitem", "setitem_async"),
+]
+
+
+@pytest.mark.parametrize(("async_array_name", "array_async_name"), _ASYNC_MIGRATION_PAIRS)
+def test_array_async_matches_async_array_signature(
+    async_array_name: str, array_async_name: str
+) -> None:
+    """Array.<x>_async must be a drop-in for AsyncArray.<x>, parameter kinds included.
+
+    A keyword-only vs positional-or-keyword divergence would break callers that
+    pass an argument (e.g. `prototype`) positionally, even though the parameter
+    names match.
+    """
+    async_array_params = inspect.signature(getattr(AsyncArray, async_array_name)).parameters
+    array_async_params = inspect.signature(getattr(Array, array_async_name)).parameters
+    async_array_kinds = [(name, p.kind) for name, p in async_array_params.items()]
+    array_async_kinds = [(name, p.kind) for name, p in array_async_params.items()]
+    assert async_array_kinds == array_async_kinds, (
+        f"Array.{array_async_name} is not a drop-in for AsyncArray.{async_array_name}: "
+        f"{array_async_kinds} != {async_array_kinds}"
+    )
+
+
+def test_setitem_async_accepts_positional_prototype() -> None:
+    """`prototype` must be passable positionally, matching AsyncArray.setitem.
+
+    Mirrors the historical call `await async_array.setitem(sel, value, prototype)`.
+    """
+    arr = _make_array()
+    arr._runner.run(
+        arr.setitem_async(slice(0, 4), np.arange(4, dtype="i4"), default_buffer_prototype())
+    )
+    np.testing.assert_array_equal(arr[0:4], np.arange(4, dtype="i4"))

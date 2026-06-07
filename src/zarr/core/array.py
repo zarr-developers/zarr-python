@@ -2795,7 +2795,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         self,
         selection: BasicSelection,
         value: npt.ArrayLike,
-        *,
         prototype: BufferPrototype | None = None,
     ) -> None:
         """Asynchronously modify data for an item or region of the array using basic indexing.
