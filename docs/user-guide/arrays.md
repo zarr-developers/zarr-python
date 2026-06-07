@@ -74,6 +74,40 @@ print(z[:])
 More information about NumPy-style indexing can be found in the
 [NumPy documentation](https://numpy.org/doc/stable/user/basics.indexing.html).
 
+### Asynchronous access
+
+The indexing and I/O operations shown above are synchronous: they block until the
+data has been read or written. Every such operation also has an asynchronous
+counterpart on the `Array`, named with an `_async` suffix, which returns a
+coroutine you can `await`. These are useful for issuing many requests
+concurrently from `async` code without going through Zarr's synchronous wrapper.
+
+```python exec="true" session="arrays" source="above" result="ansi"
+import asyncio
+
+
+async def read_corner(arr):
+    return await arr.getitem_async((0, 0))
+
+
+print(asyncio.run(read_corner(z)))
+```
+
+Counterparts exist for the full read/write surface, including the advanced
+indexers described below — for example `getitem_async`, `setitem_async`,
+`get_orthogonal_selection_async`, `get_coordinate_selection_async`,
+`get_block_selection_async`, and the matching setters, as well as `resize_async`,
+`append_async`, and `update_attributes_async`. Each synchronous method is
+implemented by running its `_async` counterpart through the array's runner; see
+[Custom event loops with runner](performance.md#custom-event-loops-with-runner)
+in the performance guide for how to control which event loop executes them.
+
+!!! note
+
+    Earlier versions of Zarr exposed the asynchronous API through a separate
+    `AsyncArray` object reachable via the `Array.async_array` property. That
+    property is now deprecated in favor of the `_async` methods on `Array`.
+
 ## Persistent arrays
 
 In the examples above, compressed data for each chunk of the array was stored in

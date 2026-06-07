@@ -246,6 +246,43 @@ thread pool (see the Dask section below). Increasing it may improve throughput
 in CPU-bound workloads where many synchronous-to-async dispatches happen
 concurrently.
 
+### Custom event loops with `runner`
+
+Every `Array` method that touches storage is implemented as an asynchronous
+coroutine. A synchronous call like `z[...]` runs that coroutine to completion
+through the array's *runner*. By default the runner is a `SyncRunner`, which
+submits the coroutine to Zarr's shared background event loop (the same mechanism
+described above, governed by `threading.max_workers`).
+
+You can supply your own runner to control which event loop executes the
+coroutines — for example to reuse an event loop you already manage, or to
+integrate with another async framework. A runner is any object with a
+`run(coro)` method that awaits the coroutine and returns its result:
+
+```python exec="true" session="performance" source="above"
+import zarr
+from zarr.core.sync import SyncRunner
+
+
+class MyRunner:
+    def run(self, coro):
+        # Execute `coro` on the event loop of your choice and return its result.
+        return SyncRunner().run(coro)
+
+
+z = zarr.create_array(store={}, shape=(100,), chunks=(10,), dtype="i4")
+z_custom = zarr.Array(
+    metadata=z.metadata,
+    store_path=z.store_path,
+    config=z.config,
+    runner=MyRunner(),
+)
+```
+
+`Runner` is a [`typing.Protocol`][], so a custom runner does not need to subclass
+anything — it only needs a compatible `run` method. When `runner` is omitted (or
+`None`), the array uses the default `SyncRunner`.
+
 ### Using Zarr with Dask
 
 [Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's concurrency settings.

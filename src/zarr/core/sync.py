@@ -6,7 +6,7 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from typing_extensions import ParamSpec
 
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 P = ParamSpec("P")
+T = TypeVar("T")
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 
@@ -158,6 +159,25 @@ def sync[T](
         raise return_result
     else:
         return return_result
+
+
+@runtime_checkable
+class Runner(Protocol):
+    """A `Runner` executes a coroutine and returns the awaited result.
+
+    Implement this protocol to plug a custom event loop into `Array`.
+    """
+
+    def run(self, coro: Coroutine[Any, Any, T]) -> T: ...
+
+
+class SyncRunner:
+    """The default `Runner`. Runs coroutines on Zarr's shared background event
+    loop via `sync`.
+    """
+
+    def run(self, coro: Coroutine[Any, Any, T]) -> T:
+        return sync(coro)
 
 
 def _get_loop() -> asyncio.AbstractEventLoop:
