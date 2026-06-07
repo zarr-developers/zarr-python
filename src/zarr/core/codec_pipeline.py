@@ -150,6 +150,74 @@ def resolve_aa_specs(
     return tuple(aa_specs), spec
 
 
+def evolve_codecs(codecs: Iterable[Codec], array_spec: ArraySpec) -> tuple[Codec, ...]:
+    """Evolve a codec chain against ``array_spec``, threading the spec forward.
+
+    Each codec is evolved against the spec produced by the previous one — NOT
+    the original ``array_spec`` — because earlier array->array codecs may
+    transform the chunk spec (e.g. ``cast_value`` widening int8 -> int16). A
+    later codec (notably the array->bytes serializer) must be evolved against
+    the spec it will actually see at run time; evolving every codec against the
+    unthreaded original spec would, for example, strip a ``BytesCodec``'s
+    ``endian`` (it sees the single-byte source dtype) and then fail at decode
+    time on the multi-byte target.
+
+    This is the single source of truth for pipeline-construction-time codec
+    evolution, shared by every ``CodecPipeline.evolve_from_array_spec``. (The
+    per-chunk decode/encode counterpart is ``resolve_aa_specs``.)
+    """
+    evolved: list[Codec] = []
+    spec = array_spec
+    for codec in codecs:
+        evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
+        evolved.append(evolved_codec)
+        spec = evolved_codec.resolve_metadata(spec)
+    return tuple(evolved)
+
+
+def pipeline_supports_partial_decode(
+    array_bytes_codec: ArrayBytesCodec,
+    *,
+    array_array_codecs: tuple[ArrayArrayCodec, ...],
+    bytes_bytes_codecs: tuple[BytesBytesCodec, ...],
+    require_no_aa_bb: bool,
+) -> bool:
+    """Whether a codec pipeline can decode a partial selection without a full read.
+
+    Requires the array->bytes codec to implement
+    ``ArrayBytesCodecPartialDecodeMixin``. When ``require_no_aa_bb`` is True it
+    additionally requires no array->array / bytes->bytes codecs, because those
+    can change the slice<->byte-range correspondence (an AA codec can make the
+    selection non-contiguous, a BB codec can rewrite the bytes), making partial
+    decode infeasible.
+
+    NOTE: the two pipelines currently pass different ``require_no_aa_bb`` values
+    (Batched: True; Fused: False). That divergence is intentional-for-now and
+    tracked separately; this function centralizes the predicate without changing
+    either pipeline's behavior.
+    """
+    if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
+        return False
+    return isinstance(array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
+
+
+def pipeline_supports_partial_encode(
+    array_bytes_codec: ArrayBytesCodec,
+    *,
+    array_array_codecs: tuple[ArrayArrayCodec, ...],
+    bytes_bytes_codecs: tuple[BytesBytesCodec, ...],
+    require_no_aa_bb: bool,
+) -> bool:
+    """Whether a codec pipeline can encode a partial selection without a full rewrite.
+
+    Mirror of ``pipeline_supports_partial_decode`` for encoding. See its note re:
+    the per-pipeline ``require_no_aa_bb`` divergence.
+    """
+    if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
+        return False
+    return isinstance(array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
+
+
 def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
     fill_value = chunk_spec.fill_value
     if fill_value is None:
@@ -574,18 +642,7 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        # Each codec must be evolved against the spec it will actually see
-        # at run-time, not the original array spec. Earlier array->array
-        # codecs may transform the dtype (e.g. cast_value), so the spec
-        # threaded into later codecs (the array->bytes serializer and any
-        # bytes->bytes filters) must reflect those transformations.
-        evolved: list[Codec] = []
-        spec = array_spec
-        for codec in self:
-            evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
-            evolved.append(evolved_codec)
-            spec = evolved_codec.resolve_metadata(spec)
-        return type(self).from_codecs(evolved)
+        return type(self).from_codecs(evolve_codecs(self, array_spec))
 
     @classmethod
     def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
@@ -600,34 +657,22 @@ class BatchedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
-        """Determines whether the codec pipeline supports partial decoding.
-
-        Currently, only codec pipelines with a single ArrayBytesCodec that supports
-        partial decoding can support partial decoding. This limitation is due to the fact
-        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
-        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
-        selections cannot be attributed to byte ranges anymore which renders partial
-        decoding infeasible.
-
-        This limitation may softened in the future."""
-        return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
-            self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin
+        # Only a single ArrayBytesCodec that supports partial decoding, and no
+        # AA/BB codecs (they break the slice<->byte-range correspondence).
+        return pipeline_supports_partial_decode(
+            self.array_bytes_codec,
+            array_array_codecs=self.array_array_codecs,
+            bytes_bytes_codecs=self.bytes_bytes_codecs,
+            require_no_aa_bb=True,
         )
 
     @property
     def supports_partial_encode(self) -> bool:
-        """Determines whether the codec pipeline supports partial encoding.
-
-        Currently, only codec pipelines with a single ArrayBytesCodec that supports
-        partial encoding can support partial encoding. This limitation is due to the fact
-        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
-        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
-        selections cannot be attributed to byte ranges anymore which renders partial
-        encoding infeasible.
-
-        This limitation may softened in the future."""
-        return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
-            self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin
+        return pipeline_supports_partial_encode(
+            self.array_bytes_codec,
+            array_array_codecs=self.array_array_codecs,
+            bytes_bytes_codecs=self.bytes_bytes_codecs,
+            require_no_aa_bb=True,
         )
 
     def __iter__(self) -> Iterator[Codec]:
@@ -975,22 +1020,7 @@ class FusedCodecPipeline(CodecPipeline):
         )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        # Each codec must be evolved against the spec it will actually see at
-        # run-time, not the original array spec. Earlier array->array codecs may
-        # transform the dtype (e.g. cast_value int8 -> int16), so the spec
-        # threaded into later codecs (the array->bytes serializer and any
-        # bytes->bytes filters) must reflect those transformations. Evolving
-        # every codec against the unthreaded original spec strips the BytesCodec
-        # serializer's `endian` (it sees the single-byte source dtype) and then
-        # fails at decode time on the multi-byte target. This mirrors
-        # BatchedCodecPipeline.evolve_from_array_spec.
-        evolved_list: list[Codec] = []
-        spec = array_spec
-        for codec in self.codecs:
-            evolved_codec = codec.evolve_from_array_spec(array_spec=spec)
-            evolved_list.append(evolved_codec)
-            spec = evolved_codec.resolve_metadata(spec)
-        evolved_codecs = tuple(evolved_list)
+        evolved_codecs = evolve_codecs(self.codecs, array_spec)
         aa, ab, bb = codecs_from_list(evolved_codecs)
 
         try:
@@ -1012,11 +1042,24 @@ class FusedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
-        return isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
+        # NOTE: unlike BatchedCodecPipeline this does NOT require the AA/BB codec
+        # lists to be empty (require_no_aa_bb=False). That divergence is tracked
+        # separately; see pipeline_supports_partial_decode.
+        return pipeline_supports_partial_decode(
+            self.array_bytes_codec,
+            array_array_codecs=self.array_array_codecs,
+            bytes_bytes_codecs=self.bytes_bytes_codecs,
+            require_no_aa_bb=False,
+        )
 
     @property
     def supports_partial_encode(self) -> bool:
-        return isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
+        return pipeline_supports_partial_encode(
+            self.array_bytes_codec,
+            array_array_codecs=self.array_array_codecs,
+            bytes_bytes_codecs=self.bytes_bytes_codecs,
+            require_no_aa_bb=False,
+        )
 
     def validate(
         self,
