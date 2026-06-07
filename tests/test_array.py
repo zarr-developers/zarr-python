@@ -6,6 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
+import warnings
 from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -18,6 +19,7 @@ from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
+import zarr.core.array
 from tests.conftest import skip_object_dtype
 from zarr import Array, Group
 from zarr.abc.store import Store
@@ -2374,3 +2376,148 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+# Names of the public synchronous Array methods that must have an awaitable
+# ``*_async`` twin. The async API is additive: it lives alongside the sync API
+# on the same class, and the public ``AsyncArray`` is preserved.
+_ASYNC_TWIN_METHODS = [
+    "getitem",
+    "setitem",
+    "get_basic_selection",
+    "set_basic_selection",
+    "get_orthogonal_selection",
+    "set_orthogonal_selection",
+    "get_mask_selection",
+    "set_mask_selection",
+    "get_coordinate_selection",
+    "set_coordinate_selection",
+    "get_block_selection",
+    "set_block_selection",
+    "resize",
+    "append",
+    "update_attributes",
+    "nchunks_initialized",
+    "nbytes_stored",
+    "info_complete",
+]
+
+
+@pytest.mark.parametrize("name", _ASYNC_TWIN_METHODS)
+def test_array_async_twin_exists(name: str) -> None:
+    """Every public sync Array method exposes an awaitable ``*_async`` twin.
+
+    Guards the additive async surface: it must stay in lockstep with the sync
+    API. ``getitem``/``setitem`` are exposed via the ``__getitem__``/``__setitem__``
+    dunders on the sync side but as named ``*_async`` methods on the async side.
+    """
+    twin = getattr(Array, f"{name}_async", None)
+    assert twin is not None, f"Array.{name}_async is missing"
+    assert inspect.iscoroutinefunction(twin), f"Array.{name}_async must be a coroutine function"
+
+
+def test_array_friendly_constructor_keeps_asyncarray() -> None:
+    """The friendly constructor builds (and holds) an AsyncArray internally.
+
+    Demonstrates that a first-class ``Array`` constructor only requires ``Array``
+    to *accept* metadata/store_path/config -- not to stop wrapping an
+    ``AsyncArray``. No ``Runner`` or shared-state-view machinery is involved.
+    """
+    from zarr.core.array import AsyncArray
+
+    src = zarr.create_array({}, shape=(8,), chunks=(4,), dtype="i4")
+
+    # friendly form
+    friendly = Array(src.metadata, src.store_path)
+    assert isinstance(friendly, Array)
+    assert isinstance(friendly._async_array, AsyncArray)
+    assert friendly.shape == (8,)
+    assert not hasattr(friendly, "_runner")
+
+    # legacy form still works
+    legacy = Array(src._async_array)
+    assert legacy.shape == (8,)
+
+    # mixing the forms is rejected
+    with pytest.raises(TypeError):
+        Array(src._async_array, src.store_path)
+    with pytest.raises(TypeError):
+        Array(src.metadata)
+
+
+def _async_array_handle(arr: Array[Any]) -> AsyncArray[Any]:
+    # ``Array.async_array`` may emit a DeprecationWarning in newer versions; the
+    # contract tests below assert what the handle does while it exists, not
+    # whether it warns.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return arr.async_array
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_async_array_identity_is_stable(store: MemoryStore) -> None:
+    """``Array.async_array`` must return the same live handle on every access."""
+    z = zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    assert _async_array_handle(z) is _async_array_handle(z)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_resize_through_async_array_updates_array(store: MemoryStore) -> None:
+    """Mutations made through ``async_array`` must stay coupled to the parent Array.
+
+    A detached handle would update the store metadata while ``Array.metadata``
+    stays stale, so subsequent indexing silently uses the old shape.
+    """
+    z = zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    z[:] = np.arange(8, dtype="i4")
+    sync(_async_array_handle(z).resize((16,)))
+    assert z.shape == (16,)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
+    assert result.shape == (16,)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_resize_through_array_visible_via_async_array(store: MemoryStore) -> None:
+    """A handle obtained before a mutation must see the post-mutation metadata."""
+    z = zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    aa = _async_array_handle(z)
+    z.resize((16,))
+    assert aa.metadata.shape == (16,)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_update_attributes_through_async_array_updates_array(store: MemoryStore) -> None:
+    """Attribute updates through ``async_array`` must be visible on the parent Array."""
+    z = zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    sync(_async_array_handle(z).update_attributes({"foo": "bar"}))
+    assert z.attrs["foo"] == "bar"
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("entry_point", ["create", "open"])
+def test_codec_pipeline_built_once_per_sync_entry(
+    store: Store, entry_point: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sync create/open entry points must build the codec pipeline exactly once.
+
+    A wrapper layer that re-derives state already built by an inner constructor
+    doubles the cost of every open/create and group member access.
+    """
+    calls = 0
+    real = zarr.core.array.create_codec_pipeline
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return real(*args, **kwargs)
+
+    if entry_point == "open":
+        zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+
+    monkeypatch.setattr(zarr.core.array, "create_codec_pipeline", counting)
+    if entry_point == "create":
+        zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    else:
+        zarr.open_array(store, mode="r")
+    assert calls == 1
