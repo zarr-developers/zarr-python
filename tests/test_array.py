@@ -2479,3 +2479,39 @@ def test_sync_async_property_parity(prop: str, zarr_format: ZarrFormat, sharded:
     arr = zarr.create_array(**kwargs)
     async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
     assert getattr(arr, prop) == getattr(async_arr, prop)
+
+
+def test_sync_async_property_parity_non_default_order() -> None:
+    """Array.order and AsyncArray.order agree for a non-default (v3, "F") order.
+
+    The matrix parity test above builds both objects with the default config, so
+    `order` (which reads `self.config.order` on v3) is compared against an
+    identical config and could not catch drift on a non-default order. This pins
+    that branch with an explicitly non-default value.
+    """
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(8, 8),
+        chunks=(4, 4),
+        dtype="i4",
+        zarr_format=3,
+        config={"order": "F"},
+    )
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert arr.order == "F"  # the value is genuinely non-default
+    assert arr.order == async_arr.order
+
+
+def test_sync_async_property_parity_read_only() -> None:
+    """Array.read_only and AsyncArray.read_only agree for a read-only store.
+
+    `read_only` reads `self.store_path.read_only`; the matrix parity test only
+    uses writable stores, so it always compares False == False. This exercises
+    the read-only branch divergently.
+    """
+    store = MemoryStore()
+    zarr.create_array(store=store, shape=(8, 8), chunks=(4, 4), dtype="i4")
+    arr = zarr.open_array(store=store, mode="r")
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert arr.read_only is True  # the value is genuinely non-default
+    assert arr.read_only == async_arr.read_only
