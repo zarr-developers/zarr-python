@@ -44,11 +44,13 @@ from zarr.core.dtype import (
     parse_data_type,  # noqa: F401
     parse_dtype,
 )
+from zarr.core.dtype.common import DTypeSpec_V2, check_dtype_spec_v2
 
 __all__ = [
     "Bool",
     "Complex64",
     "Complex128",
+    "DTypeSpec_V2",
     "DateTime64",
     "DateTime64JSON_V2",
     "DateTime64JSON_V3",
@@ -85,6 +87,7 @@ __all__ = [
     "VariableLengthUTF8",
     "VariableLengthUTF8JSON_V2",
     "ZDType",
+    "check_dtype_spec_v2",
     "data_type_registry",
     "parse_dtype",
 ]
