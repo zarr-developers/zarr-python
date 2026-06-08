@@ -591,6 +591,51 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+@st.composite
+def block_indices(
+    draw: st.DrawFn, *, shape: tuple[int, ...], chunks: tuple[int, ...]
+) -> tuple[tuple[int | slice, ...], tuple[slice, ...]]:
+    """
+    Strategy for block-selection indexers over a *regular* chunk grid.
+
+    Block indexing addresses whole chunks on the block grid rather than
+    individual elements. It only supports integers and step-1 slices over the
+    grid (strided block slices are rejected), so neither newaxis, ellipsis, nor
+    a step is generated here. The array-space translation below assumes a
+    regular (uniform) chunk grid, so ``shape`` must be evenly tiled by
+    ``chunks`` up to a possibly-smaller last chunk per dimension. Every
+    dimension must have at least one chunk (``size >= 1``).
+
+    Returns
+    -------
+    block_indexer
+        A tuple of ints / step-1 slices addressing whole chunks, suitable for
+        ``Array.blocks`` / ``Array.get_block_selection`` / ``set_block_selection``.
+    array_indexer
+        The equivalent array-space selection (a tuple of slices) for indexing
+        the corresponding numpy array, used as the comparison oracle.
+    """
+    grid_shape = tuple(-(-s // c) for s, c in zip(shape, chunks, strict=True))  # ceil division
+    block_indexer: list[int | slice] = []
+    array_indexer: list[slice] = []
+    for size, chunk, nchunks in zip(shape, chunks, grid_shape, strict=True):
+        if draw(st.booleans()):
+            # a single block, sometimes addressed from the end with a negative index
+            block = draw(st.integers(min_value=-nchunks, max_value=nchunks - 1))
+            block_indexer.append(block)
+            start = (block % nchunks) * chunk
+            array_indexer.append(slice(start, min(start + chunk, size)))
+        else:
+            # a contiguous run of whole blocks (possibly empty). The start must
+            # reference an existing chunk: block indexing rejects a slice that
+            # starts at nchunks, unlike numpy which treats arr[len:len] as empty.
+            start_block = draw(st.integers(min_value=0, max_value=nchunks - 1))
+            stop_block = draw(st.integers(min_value=start_block, max_value=nchunks))
+            block_indexer.append(slice(start_block, stop_block))
+            array_indexer.append(slice(start_block * chunk, min(stop_block * chunk, size)))
+    return tuple(block_indexer), tuple(array_indexer)
+
+
 def key_ranges(
     keys: SearchStrategy[str] = node_names, max_size: int = sys.maxsize
 ) -> SearchStrategy[list[tuple[str, RangeByteRequest]]]:
