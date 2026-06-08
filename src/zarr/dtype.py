@@ -2,7 +2,6 @@ from zarr.core.dtype import (
     Bool,
     Complex64,
     Complex128,
-    DataTypeValidationError,
     DateTime64,
     DateTime64JSON_V2,
     DateTime64JSON_V3,
@@ -50,7 +49,6 @@ __all__ = [
     "Bool",
     "Complex64",
     "Complex128",
-    "DataTypeValidationError",
     "DateTime64",
     "DateTime64JSON_V2",
     "DateTime64JSON_V3",
@@ -90,3 +88,19 @@ __all__ = [
     "data_type_registry",
     "parse_dtype",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.dtype is deprecated. "
+            "Use zarr.errors.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
