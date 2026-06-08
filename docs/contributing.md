@@ -339,51 +339,15 @@ Pull requests should not be merged until all CI checks have passed (GitHub Actio
 
 Before merging, the milestone must be set to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
 
-### Self-merging low-risk pull requests
+### Self-merging pull requests
 
-The general expectation is that a pull request opened by a core developer is ideally reviewed and approved by at least one other core developer before being merged. For a defined set of low-risk changes, however, a core developer may merge their own pull request without a second reviewer, provided the conditions below are met. The aim is to reduce review load on routine changes so that reviewer attention can be focused where it matters.
+The default is that a pull request opened by a core developer is reviewed and approved by at least one other core developer before it is merged. We trust core developers to use their judgment, though, and we would rather bias toward action than make routine changes wait on review they do not really need.
 
-#### Conditions
+So a core developer may merge their own pull request whenever they judge the change to be low-risk, provided the standard merge requirements are met — CI is green against code that has had the latest `main` merged in, and the milestone is set — and other core developers have had a fair chance to weigh in. As a rule of thumb, leave the pull request open for a few days before self-merging, unless it is genuinely trivial or time-sensitive. If you are confident a change is fine, merge it; if you have real doubts, ask for a review.
 
-A core developer may self-merge their own pull request only when **all** of the following hold:
+Some changes warrant more caution, and a second reviewer is usually worth seeking even when you could self-merge: changes to the public API, anything touching data-format or on-disk compatibility, and performance-sensitive code. These are the most expensive to get wrong and the hardest to reverse. Reverts, by contrast, are cheap — if a self-merged change turns out to be a mistake, reverting it is itself a low-risk change that any core developer can make, and the reworked version can go through normal review. When something recently merged is actively causing harm — a broken `main`, a release blocker, or data corruption — fix it fast and request review after the fact rather than waiting.
 
-1. The change falls into one of the eligible categories listed below.
-2. The standard merge requirements above are met — all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest `main` merged in, and the milestone is set.
-3. The pull request has been open for at least **24 hours, not counting Saturdays or Sundays (UTC)**, with no unresolved objection from another core developer. This ensures the change is visible during at least one working day, so other core developers have a realistic chance to object.
-4. The author has applied the `self-merge-eligible` label. Any core developer may remove this label, which returns the pull request to the standard review process. Removing the label does not require justification.
-
-The label is a claim that others can veto, not a private decision. If there is any doubt about whether a change qualifies, it does not qualify — request a review.
-
-#### Eligible categories
-
-- **Typo and prose-only documentation fixes**, where the change is limited to wording and the correctness is evident from the diff. This does **not** cover substantive documentation changes describing Zarr semantics (chunking, codec pipelines, format details), which are judgement calls and require review.
-- **Dependency version bumps that CI fully exercises**, including automated bumps. Patch- and minor-level bumps are the intended case. Major-version bumps of a core dependency are excluded, as behaviour may change in ways the test suite does not cover.
-- **Changelog/news fragments** and **pure CI or workflow configuration changes** whose correctness is confirmed by a green CI run.
-- **Reverts of a recently merged pull request** that is causing problems. Reverting to a previously-reviewed state is eligible even if the reverted pull request touched the public API or data format, since the prior state was already reviewed and the revert is reversible by definition.
-- **Internal-only refactors** with no public API change and no behaviour change, **only where test coverage over the touched code is high**. If coverage in the affected area is thin, this category does not apply.
-- **Low-blast-radius bug fixes**, where the fix is localized, its correctness is evident from the diff, and it is accompanied by a regression test. "Blast radius" is the range of users and code paths a regression in the fix could affect: a fix confined to a narrow, well-tested internal path has low blast radius. A fix that changes a public signature or documented behavior, alters the data format, or lands in a performance-sensitive path does not — those fall under the categories below.
-- **New experimental features** added entirely within `zarr.experimental`: a purely additive, opt-in feature that changes no existing behavior or signatures and that nothing existing routes through by default. Such features carry no stability guarantee (see [Experimental API policy](#experimental-api-policy)), so the interface commitment that normally requires review is absent. *Promoting* a feature out of `zarr.experimental` to a stable module is not covered here and always requires review.
-
-#### Categories that always require a second reviewer
-
-The following are never eligible for self-merge, regardless of CI status:
-
-- Changes to the **public API** — the exported, documented surface (the names in `zarr`'s `__all__` and the documented behavior of their signatures), as distinct from private modules such as `zarr.core`. Almost all code is *connected* to the public API by being reachable from it, but a change counts here only if it alters that observable contract: an exported name, a public signature, or documented behavior. Promoting a feature from `zarr.experimental` to a stable module is included. API stability is a core review concern and CI cannot catch a working-but-poor interface.
-- Changes touching **data format compatibility** or the on-disk format. These are the most expensive to get wrong and the hardest to reverse, since they affect users' stored data.
-- **Performance-sensitive code**, where a correct-but-slow change can pass CI silently.
-- Any change the author is **uncertain** about, or that another core developer has asked to review.
-
-These categories apply per package, not only to `zarr-python` core. The subpackages under `packages/` — such as [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata) — are separately versioned and have their own public API, so routine changes there (documentation fixes, dependency bumps, well-tested internal changes) are self-merge-eligible on the same terms as in core. Being "outside core" does not by itself lower the bar: `zarr-metadata`'s types mirror the on-disk format, so changes to them are **data format** changes and always require review.
-
-#### Emergency fixes
-
-When a recently introduced problem is actively causing harm — a broken `main`, a release blocker, data corruption, or a failing downstream integration — a core developer may self-merge a minimal fix immediately, without waiting out the window in condition 3. This is the one path that may touch an otherwise not-eligible area (for example, a fix to the data-format read path) when the cost of waiting exceeds the cost of a fast, reviewed-after-the-fact change. In exchange:
-
-- The change should be the smallest fix that resolves the immediate problem; any follow-up cleanup goes in a separate, normally-reviewed pull request.
-- The author must request post-merge review from another core developer, and flag prominently when the fix touches the data format, the public API, or performance-sensitive code.
-- If a reviewer objects, the change is reverted (itself self-merge-eligible) and reworked under the standard process.
-
-This path trades up-front review for speed when the cost of waiting is high.
+This policy exists to lower the cost of routine work and to help newer core developers grow comfortable merging changes. It is not a license to merge past an unresolved objection: if another core developer asks to review a change, give them that chance.
 
 ### Release procedure
 
