@@ -531,3 +531,31 @@ def deep_nan_equal(a: object, b: object) -> bool:
     if isinstance(a, Sequence) and isinstance(b, Sequence):
         return all(deep_nan_equal(a[i], b[i]) for i in range(len(a)))
     return nan_equal(a, b)
+
+
+# Shared mock-S3 (moto) backend. A single server is reused across the whole test session by
+# every test that needs S3 -- both the fsspec store tests and the documentation examples --
+# instead of each module standing up its own. Consumers create their own buckets and choose
+# how the endpoint reaches the client (explicit storage_options vs. the AWS_ENDPOINT_URL
+# env var) on top of this fixture.
+MOTO_SERVER_PORT = 5555
+MOTO_ENDPOINT_URL = f"http://127.0.0.1:{MOTO_SERVER_PORT}/"
+
+
+@pytest.fixture(scope="session")
+def moto_server() -> Generator[str, None, None]:
+    """Start a session-scoped moto S3 server and yield its endpoint URL.
+
+    importorskip lives inside the fixture so moto is only required when a test actually
+    requests an S3 backend, not for the whole test session."""
+    moto_server_mod = pytest.importorskip("moto.moto_server.threaded_moto_server")
+
+    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_SERVER_PORT)
+    server.start()
+    # moto needs *some* credentials present; use throwaway values if the environment has none.
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
+    try:
+        yield MOTO_ENDPOINT_URL
+    finally:
+        server.stop()

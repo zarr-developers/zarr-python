@@ -39,7 +39,7 @@ the following actions in order:
    - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
      directly from `numcodecs`:
 
-     ```python
+     ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
      from numcodecs import Blosc
      # instead of:
      # from zarr import Blosc
