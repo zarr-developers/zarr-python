@@ -22,14 +22,10 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import (
-    DTypeConfig_V2,
-    DTypeJSON,
-    check_dtype_spec_v2,
-)
+from zarr.core.dtype.common import check_dtype_spec_v2
 from zarr.dtype import ZDType, data_type_registry
 from zarr.errors import DataTypeValidationError
+from zarr.types import JSON, DTypeConfig_V2, DTypeJSON, ZarrFormat
 
 # This is the int2 array data type
 int2_dtype_cls = type(np.dtype("int2"))
