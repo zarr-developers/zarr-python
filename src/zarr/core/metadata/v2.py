@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
         ZDType,
     )
 
-import json
 from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
@@ -238,6 +238,19 @@ class ArrayV2Metadata(Metadata):
         zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]
 
         return zarray_dict
+
+    def __eq__(self, other: object) -> bool:
+        # The default dataclass __eq__ compares fields directly, which is wrong for a NaN
+        # fill_value: NaN != NaN under IEEE 754. Comparing the JSON-serialized form instead
+        # treats matching NaN (and inf) fill values as equal. See issue #2929.
+        if not isinstance(other, ArrayV2Metadata):
+            return NotImplemented
+        return self.to_dict() == other.to_dict()
+
+    def __hash__(self) -> int:
+        # Hash the JSON-serialized form to stay consistent with __eq__: equal metadata
+        # must hash equally, which a field-based hash violates for a NaN fill_value.
+        return hash(json.dumps(self.to_dict(), sort_keys=True))
 
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype

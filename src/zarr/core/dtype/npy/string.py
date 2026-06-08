@@ -38,8 +38,6 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType
 
-_NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
-
 
 @runtime_checkable
 class SupportsStr(Protocol):
@@ -451,28 +449,31 @@ class VariableLengthUTF8JSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8
     """
 
 
-# VariableLengthUTF8 is defined in two places, conditioned on the version of NumPy.
-# If NumPy 2 is installed, then VariableLengthUTF8 is defined with the NumPy variable length
-# string dtype as the native dtype. Otherwise, VariableLengthUTF8 is defined with the NumPy object
-# dtype as the native dtype.
-class UTF8Base[DType: TBaseDType](ZDType[DType, str], HasObjectCodec):
+@dataclass(frozen=True, kw_only=True)
+class VariableLengthUTF8(ZDType[np.dtypes.StringDType, str], HasObjectCodec):  # type: ignore[type-var]
     """
-    A base class for variable-length UTF-8 string data types.
+    A Zarr data type for arrays containing variable-length UTF-8 strings.
 
-    Not intended for direct use, but as a base for concrete implementations.
+    Wraps the ``np.dtypes.StringDType`` data type. Scalars for this data type are instances
+    of ``str``.
+
 
     Attributes
     ----------
-    object_codec_id : ClassVar[Literal["vlen-utf8"]]
+    dtype_cls : Type[np.dtypes.StringDType]
+        The NumPy dtype class for this data type.
+    _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
+        The name of this data type in Zarr V3.
+    object_codec_id : ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
         The object codec ID for this data type.
 
     References
     ----------
-    This data type does not have a Zarr V3 specification.
+    https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/string
 
-    The Zarr V2 data type specification can be found [here](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
     """
 
+    dtype_cls = np.dtypes.StringDType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["string"]] = "string"
     object_codec_id: ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
 
@@ -480,7 +481,8 @@ class UTF8Base[DType: TBaseDType](ZDType[DType, str], HasObjectCodec):
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
         Create an instance of this data type from a compatible NumPy data type.
-
+        We reject NumPy StringDType instances that have the `na_object` field set,
+        because this is not representable by the Zarr `string` data type.
 
         Parameters
         ----------
@@ -496,12 +498,32 @@ class UTF8Base[DType: TBaseDType](ZDType[DType, str], HasObjectCodec):
         ------
         DataTypeValidationError
             If the input is not compatible with this data type.
+        ValueError
+            If the input is `numpy.dtypes.StringDType` and has `na_object` set.
         """
         if cls._check_native_dtype(dtype):
+            if hasattr(dtype, "na_object"):
+                msg = (
+                    f"Zarr data type resolution from {dtype} failed. "
+                    "Attempted to resolve a zarr data type from a `numpy.dtypes.StringDType` "
+                    "with `na_object` set, which is not supported."
+                )
+                raise ValueError(msg)
             return cls()
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
+
+    def to_native_dtype(self) -> np.dtypes.StringDType:
+        """
+        Create a NumPy string dtype from this VariableLengthUTF8 ZDType.
+
+        Returns
+        -------
+        np.dtypes.StringDType
+            The NumPy string dtype.
+        """
+        return self.dtype_cls()
 
     @classmethod
     def _check_json_v2(
@@ -719,109 +741,3 @@ class UTF8Base[DType: TBaseDType](ZDType[DType, str], HasObjectCodec):
             f"data type {self}."
         )
         raise TypeError(msg)  # pragma: no cover
-
-
-if _NUMPY_SUPPORTS_VLEN_STRING:
-
-    @dataclass(frozen=True, kw_only=True)
-    class VariableLengthUTF8(UTF8Base[np.dtypes.StringDType]):  # type: ignore[type-var]
-        """
-        A Zarr data type for arrays containing variable-length UTF-8 strings.
-
-        Wraps the ``np.dtypes.StringDType`` data type. Scalars for this data type are instances
-        of ``str``.
-
-
-        Attributes
-        ----------
-        dtype_cls : Type[np.dtypes.StringDType]
-            The NumPy dtype class for this data type.
-        _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
-            The name of this data type in Zarr V3.
-        object_codec_id : ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
-            The object codec ID for this data type.
-        """
-
-        dtype_cls = np.dtypes.StringDType  # type: ignore[assignment]
-
-        @classmethod
-        def from_native_dtype(cls, dtype: TBaseDType) -> Self:
-            """
-            Create an instance of this data type from a compatible NumPy data type.
-            We reject NumPy StringDType instances that have the `na_object` field set,
-            because this is not representable by the Zarr `string` data type.
-
-            Parameters
-            ----------
-            dtype : TBaseDType
-                The native data type.
-
-            Returns
-            -------
-            Self
-                An instance of this data type.
-
-            Raises
-            ------
-            DataTypeValidationError
-                If the input is not compatible with this data type.
-            ValueError
-                If the input is `numpy.dtypes.StringDType` and has `na_object` set.
-            """
-            if cls._check_native_dtype(dtype):
-                if hasattr(dtype, "na_object"):
-                    msg = (
-                        f"Zarr data type resolution from {dtype} failed. "
-                        "Attempted to resolve a zarr data type from a `numpy.dtypes.StringDType` "
-                        "with `na_object` set, which is not supported."
-                    )
-                    raise ValueError(msg)
-                return cls()
-            raise DataTypeValidationError(
-                f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
-            )
-
-        def to_native_dtype(self) -> np.dtypes.StringDType:
-            """
-            Create a NumPy string dtype from this VariableLengthUTF8 ZDType.
-
-            Returns
-            -------
-            np.dtypes.StringDType
-                The NumPy string dtype.
-            """
-            return self.dtype_cls()
-
-else:
-    # Numpy pre-2 does not have a variable length string dtype, so we use the Object dtype instead.
-    @dataclass(frozen=True, kw_only=True)
-    class VariableLengthUTF8(UTF8Base[np.dtypes.ObjectDType]):  # type: ignore[no-redef]
-        """
-        A Zarr data type for arrays containing variable-length UTF-8 strings.
-
-        Wraps the ``np.dtypes.ObjectDType`` data type. Scalars for this data type are instances
-        of ``str``.
-
-
-        Attributes
-        ----------
-        dtype_cls : Type[np.dtypes.ObjectDType]
-            The NumPy dtype class for this data type.
-        _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
-            The name of this data type in Zarr V3.
-        object_codec_id : ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
-            The object codec ID for this data type.
-        """
-
-        dtype_cls = np.dtypes.ObjectDType
-
-        def to_native_dtype(self) -> np.dtypes.ObjectDType:
-            """
-            Create a NumPy object dtype from this VariableLengthUTF8 ZDType.
-
-            Returns
-            -------
-            np.dtypes.ObjectDType
-                The NumPy object dtype.
-            """
-            return self.dtype_cls()

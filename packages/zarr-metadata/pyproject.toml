@@ -16,18 +16,31 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
+keywords = ["zarr"]
 dependencies = [
     "typing_extensions>=4.13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/zarr-developers/zarr-python"
+Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"
+Issues = "https://github.com/zarr-developers/zarr-python/issues"
+Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md"
+Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/README.md"
 
 [dependency-groups]
 test = ["pytest", "pydantic>=2"]
@@ -74,3 +87,15 @@ include = ["src"]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.11"
+
+[tool.towncrier]
+# Fragments for this package live alongside the package source, separate
+# from the parent zarr-python `changes/` directory, so a PR touching only
+# `packages/zarr-metadata/` produces a release note for this package only.
+directory = "changes"
+filename = "CHANGELOG.md"
+package = "zarr_metadata"
+underlines = ["", "", ""]
+title_format = "## {version} ({project_date})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+start_string = "<!-- towncrier release notes start -->\n"

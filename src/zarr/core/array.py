@@ -878,10 +878,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
+
         from zarr.codecs.sharding import ShardingCodec
 
         codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
@@ -907,10 +908,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> import zarr.storage
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
+
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -1484,26 +1487,25 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        ```python
-        import asyncio
-        import zarr.api.asynchronous
+        >>> async def example():
+        ...     import zarr.api.asynchronous
+        ...     import zarr.storage
+        ...
+        ...     async_arr = await zarr.api.asynchronous.create_array(
+        ...          store={},
+        ...          shape=(100,100),
+        ...          chunks=(10,10),
+        ...          dtype="i4",
+        ...          fill_value=0,
+        ...     )
+        ...
+        ...     return await async_arr.getitem((0, 1))
 
-        async def example():
-            store = zarr.storage.MemoryStore()
-            async_arr = await zarr.api.asynchronous.create_array(
-                 store=store,
-                 shape=(100,100),
-                 chunks=(10,10),
-                 dtype='i4',
-                 fill_value=0)
-            result = await async_arr.getitem((0,1))
-            print(result)
-            #> 0
-            return result
-
-        value = asyncio.run(example())
-        ```
+        >>> import asyncio
+        >>> asyncio.run(example())
+        np.int32(0)
         """
+
         return await _getitem(
             self.store_path,
             self.metadata,
@@ -1795,20 +1797,25 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-
-        >>> arr = await zarr.api.asynchronous.create(
-        ...     path="array", shape=(3, 4, 5), chunks=(2, 2, 2))
+        >>> import asyncio
+        >>> arr = asyncio.run(
+        ...     zarr.api.asynchronous.create(
+        ...         path="array", shape=(3, 4, 5), chunks=(2, 2, 2)
+        ...     )
         ... )
         >>> arr.info
         Type               : Array
         Zarr format        : 3
-        Data type          : DataType.float64
+        Data type          : Float64(endianness='little')
+        Fill value         : 0.0
         Shape              : (3, 4, 5)
         Chunk shape        : (2, 2, 2)
         Order              : C
         Read-only          : False
         Store type         : MemoryStore
-        Codecs             : [{'endian': <Endian.little: 'little'>}]
+        Filters            : ()
+        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 480
         """
         return self._info()
@@ -2072,7 +2079,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = zarr.open_array(store)
+        >>> import zarr
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -2095,7 +2103,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = zarr.open_array(store)
+        >>> import zarr
+        >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
@@ -2325,7 +2334,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = zarr.create_array(store={}, shape=(10,), chunks=(1,), shards=(2,))
+        >>> arr = zarr.create_array(store={}, dtype="i1", shape=(10,), chunks=(1,), shards=(2,))
         >>> arr.nchunks_initialized
         0
         >>> arr[:5] = 1
@@ -2347,11 +2356,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr = zarr.create(shape=(10,), chunks=(2,))
         >>> arr._nshards_initialized
         0
         >>> arr[:5] = 1
-        >>> arr._nshard_initialized
+        >>> arr._nshards_initialized
         3
         """
         return sync(self.async_array._nshards_initialized())
@@ -2519,66 +2528,66 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 1-dimensional array::
+        Setup a 1-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(10,),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(10,),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve a single item::
+        Retrieve a single item:
 
             >>> z[5]
-            5
+            array(5, dtype=uint16)
 
-        Retrieve a region via slicing::
+        Retrieve a region via slicing:
 
             >>> z[:5]
-            array([0, 1, 2, 3, 4])
+            array([0, 1, 2, 3, 4], dtype=uint16)
             >>> z[-5:]
-            array([95, 96, 97, 98, 99])
+            array([95, 96, 97, 98, 99], dtype=uint16)
             >>> z[5:10]
-            array([5, 6, 7, 8, 9])
+            array([5, 6, 7, 8, 9], dtype=uint16)
             >>> z[5:10:2]
-            array([5, 7, 9])
+            array([5, 7, 9], dtype=uint16)
             >>> z[::2]
-            array([ 0,  2,  4, ..., 94, 96, 98])
+            array([ 0,  2,  4, ..., 94, 96, 98], dtype=uint16)
 
-        Load the entire array into memory::
+        Load the entire array into memory:
 
             >>> z[...]
-            array([ 0,  1,  2, ..., 97, 98, 99])
+            array([ 0,  1,  2, ..., 97, 98, 99], dtype=uint16)
 
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> data = np.arange(100, dtype="uint16").reshape(10, 10)
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(10, 10),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(10, 10),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve an item::
+        Retrieve an item:
 
             >>> z[2, 2]
-            22
+            array(22, dtype=uint16)
 
-        Retrieve a region via slicing::
+        Retrieve a region via slicing:
 
             >>> z[1:3, 1:3]
             array([[11, 12],
-                   [21, 22]])
+                   [21, 22]], dtype=uint16)
             >>> z[1:3, :]
             array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
-                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]], dtype=uint16)
             >>> z[:, 1:3]
             array([[ 1,  2],
                    [11, 12],
@@ -2589,19 +2598,19 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [61, 62],
                    [71, 72],
                    [81, 82],
-                   [91, 92]])
+                   [91, 92]], dtype=uint16)
             >>> z[0:5:2, 0:5:2]
             array([[ 0,  2,  4],
                    [20, 22, 24],
-                   [40, 42, 44]])
+                   [40, 42, 44]], dtype=uint16)
             >>> z[::2, ::2]
             array([[ 0,  2,  4,  6,  8],
                    [20, 22, 24, 26, 28],
                    [40, 42, 44, 46, 48],
                    [60, 62, 64, 66, 68],
-                   [80, 82, 84, 86, 88]])
+                   [80, 82, 84, 86, 88]], dtype=uint16)
 
-        Load the entire array into memory::
+        Load the entire array into memory:
 
             >>> z[...]
             array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9],
@@ -2613,7 +2622,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [60, 61, 62, 63, 64, 65, 66, 67, 68, 69],
                    [70, 71, 72, 73, 74, 75, 76, 77, 78, 79],
                    [80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
-                   [90, 91, 92, 93, 94, 95, 96, 97, 98, 99]])
+                   [90, 91, 92, 93, 94, 95, 96, 97, 98, 99]], dtype=uint16)
 
         Notes
         -----
@@ -2646,8 +2655,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [get_orthogonal_selection][zarr.Array.get_orthogonal_selection], [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
         [get_block_selection][zarr.Array.get_block_selection], [set_block_selection][zarr.Array.set_block_selection],
         [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex], [blocks][zarr.Array.blocks], [__setitem__][zarr.Array.__setitem__]
-
         """
+
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             return self.vindex[cast("CoordinateSelection | MaskSelection", selection)]
@@ -2669,43 +2678,43 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 1-dimensional array::
+        Setup a 1-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(100,),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5,),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(100,),
+            ...     store={},
+            ...     chunk_shape=(5,),
+            ...     dtype="i4",
+            ... )
 
-        Set all array elements to the same scalar value::
+        Set all array elements to the same scalar value:
 
             >>> z[...] = 42
             >>> z[...]
-            array([42, 42, 42, ..., 42, 42, 42])
+            array([42, 42, 42, ..., 42, 42, 42], dtype=int32)
 
-        Set a portion of the array::
+        Set a portion of the array:
 
             >>> z[:10] = np.arange(10)
             >>> z[-10:] = np.arange(10)[::-1]
             >>> z[...]
-            array([ 0, 1, 2, ..., 2, 1, 0])
+            array([ 0, 1, 2, ..., 2, 1, 0], dtype=int32)
 
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> z = zarr.zeros(
-            >>>        shape=(5, 5),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5, 5),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(5, 5),
+            ...     store={},
+            ...     chunk_shape=(5, 5),
+            ...     dtype="i4",
+            ... )
 
-        Set all array elements to the same scalar value::
+        Set all array elements to the same scalar value:
 
             >>> z[...] = 42
 
-        Set a portion of the array::
+        Set a portion of the array:
 
             >>> z[0, :] = np.arange(z.shape[1])
             >>> z[:, 0] = np.arange(z.shape[0])
@@ -2714,7 +2723,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [ 1, 42, 42, 42, 42],
                    [ 2, 42, 42, 42, 42],
                    [ 3, 42, 42, 42, 42],
-                   [ 4, 42, 42, 42, 42]])
+                   [ 4, 42, 42, 42, 42]], dtype=int32)
 
         Notes
         -----
@@ -2781,8 +2790,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Parameters
         ----------
-        selection : tuple
-            A tuple specifying the requested item or region for each dimension of the
+        selection : BasicSelection
+            A selection specifying the requested item or region for each dimension of the
             array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
         out : NDBuffer, optional
             If given, load the selected data directly into this buffer.
@@ -2799,67 +2808,67 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 1-dimensional array::
+        Setup a 1-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(3,),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(3,),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve a single item::
+        Retrieve a single item:
 
             >>> z.get_basic_selection(5)
-            5
+            np.uint16(5)
 
-        Retrieve a region via slicing::
+        Retrieve a region via slicing:
 
             >>> z.get_basic_selection(slice(5))
-            array([0, 1, 2, 3, 4])
+            array([0, 1, 2, 3, 4], dtype=uint16)
             >>> z.get_basic_selection(slice(-5, None))
-            array([95, 96, 97, 98, 99])
+            array([95, 96, 97, 98, 99], dtype=uint16)
             >>> z.get_basic_selection(slice(5, 10))
-            array([5, 6, 7, 8, 9])
+            array([5, 6, 7, 8, 9], dtype=uint16)
             >>> z.get_basic_selection(slice(5, 10, 2))
-            array([5, 7, 9])
+            array([5, 7, 9], dtype=uint16)
             >>> z.get_basic_selection(slice(None, None, 2))
-            array([  0,  2,  4, ..., 94, 96, 98])
+            array([  0,  2,  4, ..., 94, 96, 98], dtype=uint16)
 
-        Setup a 3-dimensional array::
+        Setup a 3-dimensional array:
 
             >>> data = np.arange(1000).reshape(10, 10, 10)
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(5, 5, 5),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(5, 5, 5),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve an item::
+        Retrieve an item:
 
             >>> z.get_basic_selection((1, 2, 3))
-            123
+            np.int64(123)
 
-        Retrieve a region via slicing and Ellipsis::
+        Retrieve a region via slicing and Ellipsis:
 
             >>> z.get_basic_selection((slice(1, 3), slice(1, 3), 0))
             array([[110, 120],
                    [210, 220]])
-            >>> z.get_basic_selection(0, (slice(1, 3), slice(None)))
+            >>> z.get_basic_selection((0, slice(1, 3), slice(None)))
             array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
                    [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
-            >>> z.get_basic_selection((..., 5))
-            array([[  2  12  22  32  42  52  62  72  82  92]
-                   [102 112 122 132 142 152 162 172 182 192]
+            >>> z.get_basic_selection((..., 2))
+            array([[  2,  12,  22,  32,  42,  52,  62,  72,  82,  92],
+                   [102, 112, 122, 132, 142, 152, 162, 172, 182, 192],
                    ...
-                   [802 812 822 832 842 852 862 872 882 892]
-                   [902 912 922 932 942 952 962 972 982 992]]
+                   [802, 812, 822, 832, 842, 852, 862, 872, 882, 892],
+                   [902, 912, 922, 932, 942, 952, 962, 972, 982, 992]])
 
         Notes
         -----
@@ -2931,43 +2940,43 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 1-dimensional array::
+        Setup a 1-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(100,),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(100,),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(100,),
+            ...     store={},
+            ...     chunk_shape=(100,),
+            ...     dtype="i4",
+            ... )
 
-        Set all array elements to the same scalar value::
+        Set all array elements to the same scalar value:
 
             >>> z.set_basic_selection(..., 42)
             >>> z[...]
-            array([42, 42, 42, ..., 42, 42, 42])
+            array([42, 42, 42, ..., 42, 42, 42], dtype=int32)
 
-        Set a portion of the array::
+        Set a portion of the array:
 
             >>> z.set_basic_selection(slice(10), np.arange(10))
             >>> z.set_basic_selection(slice(-10, None), np.arange(10)[::-1])
             >>> z[...]
-            array([ 0, 1, 2, ..., 2, 1, 0])
+            array([ 0, 1, 2, ..., 2, 1, 0], dtype=int32)
 
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> z = zarr.zeros(
-            >>>        shape=(5, 5),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5, 5),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(5, 5),
+            ...     store={},
+            ...     chunk_shape=(5, 5),
+            ...     dtype="i4",
+            ... )
 
-        Set all array elements to the same scalar value::
+        Set all array elements to the same scalar value:
 
             >>> z.set_basic_selection(..., 42)
 
-        Set a portion of the array::
+        Set a portion of the array:
 
             >>> z.set_basic_selection((0, slice(None)), np.arange(z.shape[1]))
             >>> z.set_basic_selection((slice(None), 0), np.arange(z.shape[0]))
@@ -2976,7 +2985,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [ 1, 42, 42, 42, 42],
                    [ 2, 42, 42, 42, 42],
                    [ 3, 42, 42, 42, 42],
-                   [ 4, 42, 42, 42, 42]])
+                   [ 4, 42, 42, 42, 42]], dtype=int32)
 
         Notes
         -----
@@ -3050,21 +3059,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=data.shape,
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
         Retrieve rows and columns via any combination of int, slice, integer array and/or
-        Boolean array::
+        Boolean array:
 
             >>> z.get_orthogonal_selection(([1, 4], slice(None)))
             array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
@@ -3091,7 +3100,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [41, 44]])
 
         For convenience, the orthogonal selection functionality is also available via the
-        `oindex` property, e.g.::
+        `oindex` property, e.g.:
 
             >>> z.oindex[[1, 4], :]
             array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
@@ -3179,18 +3188,18 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(5, 5),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5, 5),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(5, 5),
+            ...     store={},
+            ...     chunk_shape=(5, 5),
+            ...     dtype="i4",
+            ... )
 
 
-        Set data for a selection of rows::
+        Set data for a selection of rows:
 
             >>> z.set_orthogonal_selection(([1, 4], slice(None)), 1)
             >>> z[...]
@@ -3198,9 +3207,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 1, 1, 1, 1],
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0],
-                   [1, 1, 1, 1, 1]])
+                   [1, 1, 1, 1, 1]], dtype=int32)
 
-        Set data for a selection of columns::
+        Set data for a selection of columns:
 
             >>> z.set_orthogonal_selection((slice(None), [1, 4]), 2)
             >>> z[...]
@@ -3208,9 +3217,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 2, 1, 1, 2],
                    [0, 2, 0, 0, 2],
                    [0, 2, 0, 0, 2],
-                   [1, 2, 1, 1, 2]])
+                   [1, 2, 1, 1, 2]], dtype=int32)
 
-        Set data for a selection of rows and columns::
+        Set data for a selection of rows and columns:
 
             >>> z.set_orthogonal_selection(([1, 4], [1, 4]), 3)
             >>> z[...]
@@ -3218,9 +3227,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 3, 1, 1, 3],
                    [0, 2, 0, 0, 2],
                    [0, 2, 0, 0, 2],
-                   [1, 3, 1, 1, 3]])
+                   [1, 3, 1, 1, 3]], dtype=int32)
 
-        Set data from a 2D array::
+        Set data from a 2D array:
 
             >>> values = np.arange(10).reshape(2, 5)
             >>> z.set_orthogonal_selection(([0, 3], ...), values)
@@ -3229,10 +3238,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 3, 1, 1, 3],
                    [0, 2, 0, 0, 2],
                    [5, 6, 7, 8, 9],
-                   [1, 3, 1, 1, 3]])
+                   [1, 3, 1, 1, 3]], dtype=int32)
 
-        For convenience, this functionality is also available via the `oindex` property.
-        E.g.::
+        For convenience, this functionality is also available via the `oindex` property:
 
             >>> z.oindex[[1, 4], [1, 4]] = 4
             >>> z[...]
@@ -3240,7 +3248,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 4, 1, 1, 4],
                    [0, 2, 0, 0, 2],
                    [5, 6, 7, 8, 9],
-                   [1, 4, 1, 1, 4]])
+                   [1, 4, 1, 1, 4]], dtype=int32)
 
         Notes
         -----
@@ -3308,20 +3316,20 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=data.shape,
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve items by specifying a mask::
+        Retrieve items by specifying a mask:
 
             >>> sel = np.zeros_like(z, dtype=bool)
             >>> sel[1, 1] = True
@@ -3330,7 +3338,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             array([11, 44])
 
         For convenience, the mask selection functionality is also available via the
-        `vindex` property, e.g.::
+        `vindex` property:
 
             >>> z.vindex[sel]
             array([11, 44])
@@ -3407,17 +3415,17 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(5, 5),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5, 5),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(5, 5),
+            ...     store={},
+            ...     chunk_shape=(5, 5),
+            ...     dtype="i4",
+            ... )
 
-        Set data for a selection of items::
+        Set data for a selection of items:
 
             >>> sel = np.zeros_like(z, dtype=bool)
             >>> sel[1, 1] = True
@@ -3428,10 +3436,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [0, 1, 0, 0, 0],
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0],
-                   [0, 0, 0, 0, 1]])
+                   [0, 0, 0, 0, 1]], dtype=int32)
 
-        For convenience, this functionality is also available via the `vindex` property.
-        E.g.::
+        For convenience, this functionality is also available via the `vindex` property:
 
             >>> z.vindex[sel] = 2
             >>> z[...]
@@ -3439,7 +3446,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [0, 2, 0, 0, 0],
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0],
-                   [0, 0, 0, 0, 2]])
+                   [0, 0, 0, 0, 2]], dtype=int32)
 
         Notes
         -----
@@ -3515,29 +3522,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(3, 3),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(3, 3),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve items by specifying their coordinates::
+        Retrieve items by specifying their coordinates:
 
             >>> z.get_coordinate_selection(([1, 4], [1, 4]))
-            array([11, 44])
+            array([11, 44], dtype=uint16)
 
         For convenience, the coordinate selection functionality is also available via the
-        `vindex` property, e.g.::
+        `vindex` property:
 
             >>> z.vindex[[1, 4], [1, 4]]
-            array([11, 44])
+            array([11, 44], dtype=uint16)
 
         Notes
         -----
@@ -3634,17 +3641,17 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(5, 5),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(5, 5),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(5, 5),
+            ...     store={},
+            ...     chunk_shape=(5, 5),
+            ...     dtype="i4",
+            ... )
 
-        Set data for a selection of items::
+        Set data for a selection of items:
 
             >>> z.set_coordinate_selection(([1, 4], [1, 4]), 1)
             >>> z[...]
@@ -3652,10 +3659,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [0, 1, 0, 0, 0],
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0],
-                   [0, 0, 0, 0, 1]])
+                   [0, 0, 0, 0, 1]], dtype=int32)
 
-        For convenience, this functionality is also available via the `vindex` property.
-        E.g.::
+        For convenience, this functionality is also available via the `vindex` property:
 
             >>> z.vindex[[1, 4], [1, 4]] = 2
             >>> z[...]
@@ -3663,7 +3669,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [0, 2, 0, 0, 0],
                    [0, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0],
-                   [0, 0, 0, 0, 2]])
+                   [0, 0, 0, 0, 2]], dtype=int32)
 
         Notes
         -----
@@ -3762,40 +3768,40 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Setup a 2-dimensional array::
+        Setup a 2-dimensional array:
 
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
             >>> z = zarr.create_array(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunks=(3, 3),
-            >>>        dtype=data.dtype,
-            >>>        )
+            ...     {},
+            ...     shape=data.shape,
+            ...     chunks=(3, 3),
+            ...     dtype=data.dtype,
+            ... )
             >>> z[:] = data
 
-        Retrieve items by specifying their block coordinates::
+        Retrieve items by specifying their block coordinates:
 
             >>> z.get_block_selection((1, slice(None)))
             array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
                    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
-                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]], dtype=uint16)
 
-        Which is equivalent to::
+        Which is equivalent to:
 
             >>> z[3:6, :]
             array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
                    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
-                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]], dtype=uint16)
 
         For convenience, the block selection functionality is also available via the
-        `blocks` property, e.g.::
+        `blocks` property:
 
             >>> z.blocks[1]
             array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
                    [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
-                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]], dtype=uint16)
 
         Notes
         -----
@@ -3805,13 +3811,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Slices are supported. However, only with a step size of one.
 
-        Block index arrays may be multidimensional to index multidimensional arrays.
-        For example::
+        Block index arrays may be multidimensional to index multidimensional arrays:
 
             >>> z.blocks[0, 1:3]
             array([[ 3,  4,  5,  6,  7,  8],
                    [13, 14, 15, 16, 17, 18],
-                   [23, 24, 25, 26, 27, 28]])
+                   [23, 24, 25, 26, 27, 28]], dtype=uint16)
 
         Related
         -------
@@ -3863,17 +3868,17 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        Set up a 2-dimensional array::
+        Set up a 2-dimensional array:
 
             >>> import zarr
             >>> z = zarr.zeros(
-            >>>        shape=(6, 6),
-            >>>        store=StorePath(MemoryStore(mode="w")),
-            >>>        chunk_shape=(2, 2),
-            >>>        dtype="i4",
-            >>>       )
+            ...     shape=(6, 6),
+            ...     store={},
+            ...     chunk_shape=(2, 2),
+            ...     dtype="i4",
+            ... )
 
-        Set data for a selection of items::
+        Set data for a selection of items:
 
             >>> z.set_block_selection((1, 0), 1)
             >>> z[...]
@@ -3882,10 +3887,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 1, 0, 0, 0, 0],
                    [1, 1, 0, 0, 0, 0],
                    [0, 0, 0, 0, 0, 0],
-                   [0, 0, 0, 0, 0, 0]])
+                   [0, 0, 0, 0, 0, 0]], dtype=int32)
 
-        For convenience, this functionality is also available via the `blocks` property.
-        E.g.::
+        For convenience, this functionality is also available via the `blocks` property:
 
             >>> z.blocks[2, 1] = 4
             >>> z[...]
@@ -3894,7 +3898,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 1, 0, 0, 0, 0],
                    [1, 1, 0, 0, 0, 0],
                    [0, 0, 4, 4, 0, 0],
-                   [0, 0, 4, 4, 0, 0]])
+                   [0, 0, 4, 4, 0, 0]], dtype=int32)
 
             >>> z.blocks[:, 2] = 7
             >>> z[...]
@@ -3903,7 +3907,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                    [1, 1, 0, 0, 7, 7],
                    [1, 1, 0, 0, 7, 7],
                    [0, 0, 4, 4, 7, 7],
-                   [0, 0, 4, 4, 7, 7]])
+                   [0, 0, 4, 4, 7, 7]], dtype=int32)
 
         Notes
         -----
@@ -4034,7 +4038,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         --------
         >>> import numpy as np
         >>> import zarr
-        >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+        >>> a = np.arange(10000000, dtype="i4").reshape(10000, 1000)
         >>> z = zarr.array(a, chunks=(1000, 100))
         >>> z.shape
         (10000, 1000)
@@ -4102,13 +4106,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.info
         Type               : Array
         Zarr format        : 3
-        Data type          : DataType.float32
+        Data type          : Float32(endianness='little')
+        Fill value         : 0.0
         Shape              : (10,)
         Chunk shape        : (2,)
         Order              : C
         Read-only          : False
         Store type         : MemoryStore
-        Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
+        Filters            : ()
+        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 40
         """
         return self.async_array.info
@@ -4409,48 +4416,49 @@ async def from_array(
 
     Examples
     --------
-    Create an array from an existing Array::
+    Create an array from an existing Array:
 
+        >>> import asyncio
         >>> import zarr
-        >>> store = zarr.storage.MemoryStore()
-        >>> store2 = zarr.storage.LocalStore('example.zarr')
+        >>> store = zarr.storage.LocalStore("example.zarr")
         >>> arr = zarr.create_array(
-        >>>     store=store,
-        >>>     shape=(100,100),
-        >>>     chunks=(10,10),
-        >>>     dtype='int32',
-        >>>     fill_value=0)
-        >>> arr2 = await zarr.api.asynchronous.from_array(store2, data=arr)
+        ...     store={},
+        ...     shape=(100,100),
+        ...     chunks=(10,10),
+        ...     dtype="int32",
+        ...     fill_value=0,
+        ... )
+
+        >>> arr2 = asyncio.run(from_array(store, data=arr, overwrite=True))
+        >>> arr2
         <AsyncArray file://example.zarr shape=(100, 100) dtype=int32>
+        >>> asyncio.run(store.clear())  # Remove files generated by test
 
-    Create an array from an existing NumPy array::
+    Create an array from an existing NumPy array:
 
-        >>> arr3 = await zarr.api.asynchronous.from_array(
-        >>>     zarr.storage.MemoryStore(),
-        >>>     data=np.arange(10000, dtype='i4').reshape(100, 100),
-        >>> )
-        <AsyncArray memory://123286956732800 shape=(100, 100) dtype=int32>
+        >>> arr3 = asyncio.run(
+        ...     from_array({}, data=np.arange(10000, dtype="i4").reshape(100, 100))
+        ... )
+        >>> arr3
+        <AsyncArray memory://... shape=(100, 100) dtype=int32>
 
-    Create an array from any array-like object::
+    Create an array from any array-like object:
 
-        >>> arr4 = await zarr.api.asynchronous.from_array(
-        >>>     zarr.storage.MemoryStore(),
-        >>>     data=[[1, 2], [3, 4]],
-        >>> )
-        <AsyncArray memory://123286959761024 shape=(2, 2) dtype=int64>
-        >>> await arr4.getitem(...)
-        array([[1, 2],[3, 4]])
+        >>> arr4 = asyncio.run(from_array({}, data=[[1, 2], [3, 4]]))
+        >>> arr4
+        <AsyncArray memory://... shape=(2, 2) dtype=int64>
+        >>> asyncio.run(arr4.getitem(...))
+        array([[1, 2],
+               [3, 4]])
 
-    Create an array from an existing Array without copying the data::
+    Create an array from an existing Array without copying the data:
 
-        >>> arr5 = await zarr.api.asynchronous.from_array(
-        >>>     zarr.storage.MemoryStore(),
-        >>>     data=Array(arr4),
-        >>>     write_data=False,
-        >>> )
-        <AsyncArray memory://140678602965568 shape=(2, 2) dtype=int64>
-        >>> await arr5.getitem(...)
-        array([[0, 0],[0, 0]])
+        >>> arr5 = asyncio.run(from_array({}, data=Array(arr4), write_data=False))
+        >>> arr5
+        <AsyncArray memory://... shape=(2, 2) dtype=int64>
+        >>> asyncio.run(arr5.getitem(...))
+        array([[0, 0],
+               [0, 0]])
     """
     mode: Literal["a"] = "a"
     config_parsed = parse_array_config(config)
@@ -4645,11 +4653,8 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    if overwrite:
-        if store_path.store.supports_deletes:
-            await store_path.delete_dir()
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
@@ -4665,12 +4670,10 @@ async def init_array(
             )
 
     # Normalize the user's chunks into canonical ChunksTuple form
-    if chunks is None or chunks == "auto":
-        chunks_normalized = guess_chunks(
-            shape_parsed,
-            item_size,
-            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
-        )
+
+    if chunks == "auto":
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
@@ -4898,15 +4901,18 @@ async def create_array(
 
     Examples
     --------
+    >>> import asyncio
     >>> import zarr
-    >>> store = zarr.storage.MemoryStore(mode='w')
-    >>> async_arr = await zarr.api.asynchronous.create_array(
-    >>>     store=store,
-    >>>     shape=(100,100),
-    >>>     chunks=(10,10),
-    >>>     dtype='i4',
-    >>>     fill_value=0)
-    <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
+    >>> asyncio.run(
+    ...     zarr.api.asynchronous.create_array(
+    ...         store={},
+    ...         shape=(100,100),
+    ...         chunks=(10,10),
+    ...         dtype="i4",
+    ...         fill_value=0
+    ...     )
+    ... )
+    <AsyncArray memory://... shape=(100, 100) dtype=int32>
     """
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
@@ -5320,7 +5326,7 @@ def _parse_data_params(
         shape_out = shape
         if dtype is None:
             msg = (
-                "The data parameter was set to None, but dtype was not specified."
+                "The data parameter was set to None, but dtype was not specified. "
                 "Either provide an array-like value for data, or specify dtype."
             )
             raise ValueError(msg)

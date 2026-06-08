@@ -69,7 +69,6 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
-from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -1982,23 +1981,14 @@ def test_array_repr(store: Store) -> None:
     assert str(arr) == f"<Array {store} shape={shape} dtype={dtype} domain={domain}>"
 
 
-class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
+class UnknownObjectCodecDtype(VariableLengthUTF8):
+    """A data type that requires an object codec with an unknown id, used for error-path tests."""
+
     object_codec_id = "unknown"  # type: ignore[assignment]
-
-    def to_native_dtype(self) -> np.dtypes.ObjectDType:
-        """
-        Create a NumPy object dtype from this VariableLengthUTF8 ZDType.
-
-        Returns
-        -------
-        np.dtypes.ObjectDType
-            The NumPy object dtype.
-        """
-        return np.dtype("o")  # type: ignore[return-value]
 
 
 @pytest.mark.parametrize(
-    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectDtype()]
+    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectCodecDtype()]
 )
 def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
     """
@@ -2025,7 +2015,7 @@ def test_unknown_object_codec_default_serializer_v3() -> None:
     Test that we get a valueerrror when trying to create the default serializer for a data type
     that requires an unknown object codec
     """
-    dtype = UnknownObjectDtype()
+    dtype = UnknownObjectCodecDtype()
     msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
     with pytest.raises(ValueError, match=re.escape(msg)):
         default_serializer_v3(dtype)
@@ -2036,7 +2026,7 @@ def test_unknown_object_codec_default_filters_v2() -> None:
     Test that we get a valueerrror when trying to create the default serializer for a data type
     that requires an unknown object codec
     """
-    dtype = UnknownObjectDtype()
+    dtype = UnknownObjectCodecDtype()
     msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
     with pytest.raises(ValueError, match=re.escape(msg)):
         default_filters_v2(dtype)
