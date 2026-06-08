@@ -204,6 +204,10 @@ list-env = "pip list"
 template = "test"
 extra-dependencies = [
     "universal_pathlib",
+    # Needed so tests/test_docs.py is collectable under `pytest -m gpu`; otherwise its
+    # module-level importorskip("pytest_examples") skips the whole module and the gpu
+    # docs example is never executed on GPU hardware.
+    "pytest-examples",
 ]
 features = ["gpu"]
 
@@ -257,7 +261,7 @@ extra-dependencies = [
     'obstore==0.5.*',
 ]
 
-[tool.hatch.envs.defaults]
+[tool.hatch.envs.default]
 installer = "uv"
 
 [tool.hatch.envs.docs]
@@ -277,9 +281,8 @@ readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
 features = ['remote']
-dependency-groups = ['test']
+dependency-groups = ['remote-tests']
 extra-dependencies = [
-    "s3fs>=2023.10.0",
     "pytest-examples",
 ]
 
@@ -446,6 +449,7 @@ filterwarnings = [
 markers = [
     "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
+    "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
 ]
 

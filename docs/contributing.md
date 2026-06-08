@@ -12,7 +12,7 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can format the code nicely using markdown, e.g.:
 
-```python
+```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
 import zarr
 g = zarr.group()
 # etc.
@@ -225,10 +225,10 @@ hatch --env docs run serve
 
 #### Adding executable code blocks in the documentation
 
-Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="true"` to a code block header for it to be executed when the docs are built. For example:
 
 ````md
-```python exec="on"
+```python exec="true"
 print("Hello world")
 ```
 ````
@@ -252,6 +252,64 @@ renders as:
 ```python exec="true" session="contributing" source="above" result="ansi"
 print("Hello world")
 ```
+
+#### Validating code blocks: `exec` vs `test`
+
+Every Python code block in the documentation is checked by a test
+(`tests/test_docs.py`) so that examples cannot quietly rot — the bug that motivated
+this was an example calling `zarr.create_array(..., mode="w")`, an argument that does
+not exist, which went unnoticed because nothing ran it. A block declares *how* it is
+validated using one of two independent attributes:
+
+  - **`exec="true"`** — Markdown Exec runs the block **at docs-build time to render its
+    output** into the page. This is the attribute described above; it is also what the
+    test suite executes. Use it for ordinary examples whose output should appear in the
+    docs.
+  - **`test="true"`** — the block is **run by the test suite only**, *not* at build time.
+    Use this for an example that should be validated but cannot run in the docs-build
+    environment — for example one that needs a GPU or a cloud backend. Markdown Exec
+    leaves a `test="true"` block as a static, syntax-highlighted snippet (it never
+    executes it), while the test suite still runs it (see the marker note below).
+
+A block may carry both (`exec="true" test="true"`), though in practice `exec="true"`
+already implies it is tested, so you rarely need `test="true"` alongside it.
+
+The two attributes are kept separate on purpose: `exec=` controls *build-time rendering*
+and `test=` controls *test-time validation*. Tagging a GPU/cloud example `exec="true"`
+would make `mkdocs build` try to run it on a machine without that infrastructure and fail
+the build; `test="true"` lets it be validated without being built.
+
+##### Opting a block out of validation
+
+A handful of blocks genuinely cannot run and are not executable Python — a REPL
+transcript, a deliberately-incorrect "before" snippet, a `--8<--` file include. Mark
+these explicitly by opening the fence with
+`exec="false" reason="REPL output transcript, not executable source"` (supply a reason
+that fits the block).
+
+`exec="false"` with a non-empty `reason` is an explicit, greppable opt-out. A test
+(`test_no_unvalidated_blocks`) requires **every** Python block to be either `exec="true"`,
+`test="true"`, or `exec="false"` with a reason — so a block can never silently skip
+validation. A bare ` ```python ` fence, or a typo like `exec="on"`, fails that test.
+
+##### Marker-bound blocks (GPU, S3)
+
+A `test="true"` block that needs special infrastructure declares a pytest marker with
+`markers="..."`, which binds it to that infrastructure in the test suite:
+
+  - `markers="gpu"` — run only under `pytest -m gpu` (the GPU CI environment); skipped
+    elsewhere via `importorskip("cupy")`.
+  - `markers="s3"` — run against a mock S3 (moto) backend supplied by a test fixture, so
+    the example can use a bare `s3://…` URL with no test-only connection details on show.
+
+##### Placement of `test="true"` blocks
+
+Because Markdown Exec does not execute a `test="true"` (or `exec="false"`) block, placing
+one *before* an `exec="true"` block on the same page can disrupt the build-time execution
+of that later block. Put `test="true"` blocks **after** all `exec="true"` blocks on the
+page (or on a page where they are the only Python block). The `test_test_only_blocks_come_last`
+test enforces this, and the CI docs build runs with `--strict` so any such breakage fails
+the build rather than passing as a warning.
 
 #### Building documentation without executing code blocks
 
