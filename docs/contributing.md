@@ -361,15 +361,29 @@ The label is a claim that others can veto, not a private decision. If there is a
 - **Changelog/news fragments** and **pure CI or workflow configuration changes** whose correctness is confirmed by a green CI run.
 - **Reverts of a recently merged pull request** that is causing problems. Reverting to a previously-reviewed state is eligible even if the reverted pull request touched the public API or data format, since the prior state was already reviewed and the revert is reversible by definition.
 - **Internal-only refactors** with no public API change and no behaviour change, **only where test coverage over the touched code is high**. If coverage in the affected area is thin, this category does not apply.
+- **Low-blast-radius bug fixes**, where the fix is localized, its correctness is evident from the diff, and it is accompanied by a regression test. "Blast radius" is the range of users and code paths a regression in the fix could affect: a fix confined to a narrow, well-tested internal path has low blast radius. A fix that changes a public signature or documented behavior, alters the data format, or lands in a performance-sensitive path does not — those fall under the categories below.
+- **New experimental features** added entirely within `zarr.experimental`: a purely additive, opt-in feature that changes no existing behavior or signatures and that nothing existing routes through by default. Such features carry no stability guarantee (see [Experimental API policy](#experimental-api-policy)), so the interface commitment that normally requires review is absent. *Promoting* a feature out of `zarr.experimental` to a stable module is not covered here and always requires review.
 
 #### Categories that always require a second reviewer
 
 The following are never eligible for self-merge, regardless of CI status:
 
-- Changes touching the **public API**, or the promotion of a feature from `zarr.experimental` to a stable module. API stability is a core review concern and CI cannot catch a working-but-poor interface.
+- Changes to the **public API** — the exported, documented surface (the names in `zarr`'s `__all__` and the documented behavior of their signatures), as distinct from private modules such as `zarr.core`. Almost all code is *connected* to the public API by being reachable from it, but a change counts here only if it alters that observable contract: an exported name, a public signature, or documented behavior. Promoting a feature from `zarr.experimental` to a stable module is included. API stability is a core review concern and CI cannot catch a working-but-poor interface.
 - Changes touching **data format compatibility** or the on-disk format. These are the most expensive to get wrong and the hardest to reverse, since they affect users' stored data.
 - **Performance-sensitive code**, where a correct-but-slow change can pass CI silently.
 - Any change the author is **uncertain** about, or that another core developer has asked to review.
+
+These categories apply per package, not only to `zarr-python` core. The subpackages under `packages/` — such as [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata) — are separately versioned and have their own public API, so routine changes there (documentation fixes, dependency bumps, well-tested internal changes) are self-merge-eligible on the same terms as in core. Being "outside core" does not by itself lower the bar: `zarr-metadata`'s types mirror the on-disk format, so changes to them are **data format** changes and always require review.
+
+#### Emergency fixes
+
+When a recently introduced problem is actively causing harm — a broken `main`, a release blocker, data corruption, or a failing downstream integration — a core developer may self-merge a minimal fix immediately, without waiting out the window in condition 3. This is the one path that may touch an otherwise not-eligible area (for example, a fix to the data-format read path) when the cost of waiting exceeds the cost of a fast, reviewed-after-the-fact change. In exchange:
+
+- The change should be the smallest fix that resolves the immediate problem; any follow-up cleanup goes in a separate, normally-reviewed pull request.
+- The author must request post-merge review from another core developer, and flag prominently when the fix touches the data format, the public API, or performance-sensitive code.
+- If a reviewer objects, the change is reverted (itself self-merge-eligible) and reworked under the standard process.
+
+This path trades up-front review for speed when the cost of waiting is high.
 
 ### Release procedure
 
