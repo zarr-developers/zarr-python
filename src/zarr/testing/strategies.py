@@ -598,41 +598,58 @@ def block_indices(
     """
     Strategy for block-selection indexers over a *regular* chunk grid.
 
-    Block indexing addresses whole chunks on the block grid rather than
-    individual elements. It only supports integers and step-1 slices over the
-    grid (strided block slices are rejected), so neither newaxis, ellipsis, nor
-    a step is generated here. The array-space translation below assumes a
-    regular (uniform) chunk grid, so ``shape`` must be evenly tiled by
-    ``chunks`` up to a possibly-smaller last chunk per dimension. Every
-    dimension must have at least one chunk (``size >= 1``).
+    Block indexing is basic indexing applied to the block grid (the grid of
+    chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
+    count -- mirroring how ``orthogonal_indices`` reuses ``basic_indices`` per
+    axis. Block indexing only supports integers and step-1 slices whose start
+    references an existing chunk, so strided slices and slices starting at the
+    grid edge are filtered out. The array-space translation assumes a regular
+    (uniform) chunk grid, so ``shape`` must be evenly tiled by ``chunks`` up to a
+    possibly-smaller last chunk per dimension, and every dimension must have at
+    least one chunk (``size >= 1``).
 
     Returns
     -------
     block_indexer
-        A tuple of ints / step-1 slices addressing whole chunks, suitable for
-        ``Array.blocks`` / ``Array.get_block_selection`` / ``set_block_selection``.
+        A per-axis tuple of ints / step-1 slices addressing whole chunks,
+        suitable for ``Array.blocks`` / ``get_block_selection`` / ``set_block_selection``.
     array_indexer
         The equivalent array-space selection (a tuple of slices) for indexing
         the corresponding numpy array, used as the comparison oracle.
     """
     grid_shape = tuple(-(-s // c) for s, c in zip(shape, chunks, strict=True))  # ceil division
+
+    def supported(nchunks: int) -> Callable[[tuple[Any, ...]], bool]:
+        # Block indexing only accepts step-1 slices whose start references an
+        # existing chunk (a slice starting at nchunks raises, unlike numpy).
+        def predicate(value: tuple[Any, ...]) -> bool:
+            dim_sel = value[0]
+            if isinstance(dim_sel, slice):
+                if dim_sel.step not in (None, 1):
+                    return False
+                start = dim_sel.start or 0
+                return 0 <= (start + nchunks if start < 0 else start) < nchunks
+            return True
+
+        return predicate
+
     block_indexer: list[int | slice] = []
     array_indexer: list[slice] = []
     for size, chunk, nchunks in zip(shape, chunks, grid_shape, strict=True):
-        if draw(st.booleans()):
-            # a single block, sometimes addressed from the end with a negative index
-            block = draw(st.integers(min_value=-nchunks, max_value=nchunks - 1))
-            block_indexer.append(block)
-            start = (block % nchunks) * chunk
-            array_indexer.append(slice(start, min(start + chunk, size)))
+        (dim_sel,) = draw(
+            basic_indices(min_dims=1, shape=(nchunks,), allow_ellipsis=False)
+            # normalize bare ints / slices to a 1-tuple, skip the empty tuple
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)
+            .filter(bool)
+            .filter(supported(nchunks))
+        )
+        block_indexer.append(dim_sel)
+        if isinstance(dim_sel, slice):
+            start, stop, _ = dim_sel.indices(nchunks)
+            array_indexer.append(slice(start * chunk, min(stop * chunk, size)))
         else:
-            # a contiguous run of whole blocks (possibly empty). The start must
-            # reference an existing chunk: block indexing rejects a slice that
-            # starts at nchunks, unlike numpy which treats arr[len:len] as empty.
-            start_block = draw(st.integers(min_value=0, max_value=nchunks - 1))
-            stop_block = draw(st.integers(min_value=start_block, max_value=nchunks))
-            block_indexer.append(slice(start_block, stop_block))
-            array_indexer.append(slice(start_block * chunk, min(stop_block * chunk, size)))
+            block = dim_sel % nchunks
+            array_indexer.append(slice(block * chunk, min((block + 1) * chunk, size)))
     return tuple(block_indexer), tuple(array_indexer)
 
 
