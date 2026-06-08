@@ -327,13 +327,64 @@ Alternatively, you can manually create the files in the `changes` directory usin
 
 See the [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) docs for more.
 
-## Merging pull requests
+## Project governance
+
+This section documents the processes that core developers follow to maintain the project. The current core developers are listed in [`TEAM.md`](https://github.com/zarr-developers/zarr-python/blob/main/TEAM.md).
+
+### Merging pull requests
 
 Pull requests submitted by an external contributor should be reviewed and approved by at least one core developer before being merged. Ideally, pull requests submitted by a core developer should be reviewed and approved by at least one other core developer before being merged.
 
 Pull requests should not be merged until all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest main merged in.
 
 Before merging, the milestone must be set to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
+
+### Self-merging low-risk pull requests
+
+The general expectation is that a pull request opened by a core developer is ideally reviewed and approved by at least one other core developer before being merged. For a defined set of low-risk changes, however, a core developer may merge their own pull request without a second reviewer, provided the conditions below are met. The aim is to reduce review load on routine changes so that reviewer attention can be focused where it matters.
+
+#### Conditions
+
+A core developer may self-merge their own pull request only when **all** of the following hold:
+
+1. The change falls into one of the eligible categories listed below.
+2. The standard merge requirements above are met — all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest `main` merged in, and the milestone is set.
+3. The pull request has been open for at least **24 hours, not counting Saturdays or Sundays (UTC)**, with no unresolved objection from another core developer. This ensures the change is visible during at least one working day, so other core developers have a realistic chance to object.
+4. The author has applied the `self-merge-eligible` label. Any core developer may remove this label, which returns the pull request to the standard review process. Removing the label does not require justification.
+
+The label is a claim that others can veto, not a private decision. If there is any doubt about whether a change qualifies, it does not qualify — request a review.
+
+#### Eligible categories
+
+- **Typo and prose-only documentation fixes**, where the change is limited to wording and the correctness is evident from the diff. This does **not** cover substantive documentation changes describing Zarr semantics (chunking, codec pipelines, format details), which are judgement calls and require review.
+- **Dependency version bumps that CI fully exercises**, including automated bumps. Patch- and minor-level bumps are the intended case. Major-version bumps of a core dependency are excluded, as behaviour may change in ways the test suite does not cover.
+- **Changelog/news fragments** and **pure CI or workflow configuration changes** whose correctness is confirmed by a green CI run.
+- **Reverts of a recently merged pull request** that is causing problems. Reverting to a previously-reviewed state is eligible even if the reverted pull request touched the public API or data format, since the prior state was already reviewed and the revert is reversible by definition.
+- **Internal-only refactors** with no public API change and no behaviour change, **only where test coverage over the touched code is high**. If coverage in the affected area is thin, this category does not apply.
+
+#### Categories that always require a second reviewer
+
+The following are never eligible for self-merge, regardless of CI status:
+
+- Changes touching the **public API**, or the promotion of a feature from `zarr.experimental` to a stable module. API stability is a core review concern and CI cannot catch a working-but-poor interface.
+- Changes touching **data format compatibility** or the on-disk format. These are the most expensive to get wrong and the hardest to reverse, since they affect users' stored data.
+- **Performance-sensitive code**, where a correct-but-slow change can pass CI silently.
+- Any change the author is **uncertain** about, or that another core developer has asked to review.
+
+### Release procedure
+
+Open an issue on GitHub announcing the release using the release checklist template:
+[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+#### Preparing a release
+
+Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
+
+1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
+2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
+3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
+4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
+5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Compatibility and versioning policies
 
@@ -391,21 +442,6 @@ We aim to either **promote** or **remove** experimental features within **6 mont
 ### For users
 
 Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
-
-## Release procedure
-
-Open an issue on GitHub announcing the release using the release checklist template:
-[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
-
-### Preparing a release
-
-Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
-
-1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
-2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
-3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
-4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
-5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Benchmarks
 
