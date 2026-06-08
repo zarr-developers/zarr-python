@@ -3769,7 +3769,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         examples."""
         return BlockIndex(self)
 
-    def resize(self, new_shape: ShapeLike) -> None:
+    def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
         dimensions. This is an in-place operation that modifies the array.
@@ -3778,6 +3778,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ----------
         new_shape : tuple
             New shape of the array.
+        delete_outside_chunks : bool, optional
+            If True (default), chunks that fall entirely outside the new array
+            shape are deleted from the underlying store. If False, those chunks
+            are left in place.
 
         Notes
         -----
@@ -3805,7 +3809,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         #>(50, 50)
         ```
         """
-        sync(self.resize_async(new_shape))
+        sync(self.resize_async(new_shape, delete_outside_chunks=delete_outside_chunks))
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.

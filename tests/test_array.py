@@ -7,6 +7,7 @@ import pickle
 import re
 import sys
 import warnings
+from collections.abc import Callable
 from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -2414,6 +2415,59 @@ def test_array_async_twin_exists(name: str) -> None:
     twin = getattr(Array, f"{name}_async", None)
     assert twin is not None, f"Array.{name}_async is missing"
     assert inspect.iscoroutinefunction(twin), f"Array.{name}_async must be a coroutine function"
+
+
+def _param_defaults(fn: Callable[..., Any]) -> dict[str, object]:
+    """Map each non-``self`` parameter of ``fn`` to its default (or ``inspect._empty``)."""
+    return {
+        name: param.default
+        for name, param in inspect.signature(fn).parameters.items()
+        if name != "self"
+    }
+
+
+# Twins whose sync counterpart is the ``__getitem__``/``__setitem__`` dunder.
+# The dunder exposes a deliberately narrower surface than the async twin, so we
+# compare against the basic-selection method and only require that the twin
+# loses none of its parameters (subset, not equality).
+_DUNDER_TWIN_SYNC_SOURCE = {
+    "getitem": "get_basic_selection",
+    "setitem": "set_basic_selection",
+}
+
+
+@pytest.mark.parametrize("name", _ASYNC_TWIN_METHODS)
+def test_array_async_twin_signature_matches_sync(name: str) -> None:
+    """An ``*_async`` twin must expose the same call surface as its sync method.
+
+    Existence alone (see [`test_array_async_twin_exists`]) does not stop a twin
+    from drifting: a parameter present on one side but not the other lets a
+    capability silently disappear from one API. This pins parameter names *and*
+    defaults so the sync and async surfaces stay in lockstep.
+    """
+    async_params = _param_defaults(getattr(Array, f"{name}_async"))
+
+    if name in _DUNDER_TWIN_SYNC_SOURCE:
+        sync_source = _param_defaults(getattr(Array, _DUNDER_TWIN_SYNC_SOURCE[name]))
+        missing = set(sync_source) - set(async_params)
+        assert not missing, (
+            f"Array.{name}_async drops parameters {missing} exposed by the sync selection surface"
+        )
+        return
+
+    sync_attr = inspect.getattr_static(Array, name)
+    if isinstance(sync_attr, property):
+        sync_fn = sync_attr.fget
+        assert sync_fn is not None, f"Array.{name} property has no getter"
+    else:
+        sync_fn = sync_attr
+    sync_params = _param_defaults(sync_fn)
+
+    assert sync_params == async_params, (
+        f"Array.{name} and Array.{name}_async have diverging signatures:\n"
+        f"  sync : {sync_params}\n"
+        f"  async: {async_params}"
+    )
 
 
 def test_array_friendly_constructor_keeps_asyncarray() -> None:
