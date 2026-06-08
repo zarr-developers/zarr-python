@@ -272,7 +272,9 @@ def test_block_indexing(data: st.DataObject) -> None:
     zarray = zarr.create_array(store=store, shape=nparray.shape, chunks=chunks, dtype=nparray.dtype)
     zarray[...] = nparray
 
-    block_indexer, array_indexer = data.draw(block_indices(shape=nparray.shape, chunks=chunks))
+    block_indexer, array_indexer = data.draw(
+        block_indices(chunk_grid_shape=zarray.cdata_shape, chunks=chunks)
+    )
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
