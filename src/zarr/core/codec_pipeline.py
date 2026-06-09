@@ -1121,11 +1121,7 @@ class FusedCodecPipeline(CodecPipeline):
             if chunk_bytes is None:
                 out.append(None)
             else:
-                out.append(
-                    (await async_transform.decode_chunk(chunk_bytes, chunk_spec))
-                    if self.sync_transform is None
-                    else self.sync_transform.decode_chunk(chunk_bytes, chunk_spec)
-                )
+                out.append(await async_transform.decode_chunk(chunk_bytes, chunk_spec))
         return out
 
     def decode_sync(
@@ -1137,7 +1133,7 @@ class FusedCodecPipeline(CodecPipeline):
             raise RuntimeError("Do not call this method without a sync transform")
         pool = _get_pool(_resolve_max_workers())
         return pool.map(
-            lambda cb, cs: None if cb is None else transform.decode_chunk(cb, cs),
+            lambda item: None if item[0] is None else transform.decode_chunk(item[0], item[1]),
             chunk_bytes_and_specs,
         )
 
@@ -1151,11 +1147,7 @@ class FusedCodecPipeline(CodecPipeline):
             if chunk_array is None:
                 out.append(None)
             else:
-                out.append(
-                    (await async_transform.encode_chunk(chunk_array, chunk_spec))
-                    if self.sync_transform is None
-                    else self.sync_transform.encode_chunk(chunk_array, chunk_spec)
-                )
+                out.append(await async_transform.encode_chunk(chunk_array, chunk_spec))
         return out
 
     def encode_sync(
@@ -1167,7 +1159,7 @@ class FusedCodecPipeline(CodecPipeline):
             raise RuntimeError("Do not call this method without a sync transform")
         pool = _get_pool(_resolve_max_workers())
         return pool.map(
-            lambda cb, cs: None if cb is None else transform.encode_chunk(cb, cs),
+            lambda item: None if item[0] is None else transform.encode_chunk(item[0], item[1]),
             chunk_arrays_and_specs,
         )
 
