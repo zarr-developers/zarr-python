@@ -39,7 +39,7 @@ def test_evolve_from_array_spec() -> None:
     from zarr.core.dtype import get_data_type_from_native_dtype
 
     pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
-    assert pipeline._sync_transform is None
+    assert pipeline.sync_transform is None
 
     zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
     spec = ArraySpec(
@@ -50,14 +50,14 @@ def test_evolve_from_array_spec() -> None:
         prototype=default_buffer_prototype(),
     )
     evolved = pipeline.evolve_from_array_spec(spec)
-    assert evolved._sync_transform is not None
+    assert evolved.sync_transform is not None
 
 
 # ---------------------------------------------------------------------------
 # Sync path tests
 #
 # These exercise FusedCodecPipeline's synchronous API (write_sync / read_sync /
-# _sync_transform), which has no equivalent on BatchedCodecPipeline -- so they
+# sync_transform), which has no equivalent on BatchedCodecPipeline -- so they
 # cannot live in the pipeline-agnostic CodecPipelineTests suite. The async
 # roundtrip / fill-value behaviour is covered there (test_scenario) across both
 # pipelines and sync/async stores.

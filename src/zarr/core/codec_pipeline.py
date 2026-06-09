@@ -300,12 +300,20 @@ async def _async_read_fallback(
         lambda byte_getter, prototype: byte_getter.get(prototype),
         config.get("async.concurrency"),
     )
-    chunk_array_batch = await pipeline.decode(
-        [
-            (chunk_bytes, chunk_spec)
-            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
-        ],
-    )
+    if isinstance(pipeline, FusedCodecPipeline) and pipeline.sync_transform is not None:
+        chunk_array_batch = pipeline.decode_sync(
+            (
+                (chunk_bytes, chunk_spec)
+                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+            ),
+        )
+    else:
+        chunk_array_batch = await pipeline.decode(
+            [
+                (chunk_bytes, chunk_spec)
+                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+            ],
+        )
     results: list[GetResult] = []
     for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
         chunk_array_batch, batch, strict=False
@@ -362,13 +370,23 @@ async def _async_write_fallback(
         _read_key,
         config.get("async.concurrency"),
     )
-    chunk_array_decoded = await pipeline.decode(
-        [
-            (chunk_bytes, chunk_spec)
-            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
-        ],
-    )
 
+    if use_sync := (
+        isinstance(pipeline, FusedCodecPipeline) and pipeline.sync_transform is not None
+    ):
+        chunk_array_decoded = pipeline.decode_sync(
+            (
+                (chunk_bytes, chunk_spec)
+                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+            ),
+        )
+    else:
+        chunk_array_decoded = await pipeline.decode(
+            [
+                (chunk_bytes, chunk_spec)
+                for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch, strict=False)
+            ],
+        )
     chunk_array_merged = [
         _merge_chunk_array(
             chunk_array,
@@ -399,12 +417,20 @@ async def _async_write_fallback(
             else:
                 chunk_array_batch.append(chunk_array)
 
-    chunk_bytes_batch = await pipeline.encode(
-        [
-            (chunk_array, chunk_spec)
-            for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_batch, batch, strict=False)
-        ],
-    )
+    if use_sync:
+        chunk_bytes_batch = cast(FusedCodecPipeline, pipeline).encode_sync(
+            (
+                (chunk_array, chunk_spec)
+                for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_batch, batch, strict=False)
+            ),
+        )
+    else:
+        chunk_bytes_batch = await pipeline.encode(
+            [
+                (chunk_array, chunk_spec)
+                for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_batch, batch, strict=False)
+            ],
+        )
 
     async def _write_key(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
         if chunk_bytes is None:
@@ -999,7 +1025,7 @@ class FusedCodecPipeline(CodecPipeline):
     array_array_codecs: tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
-    _sync_transform: ChunkTransform | None
+    sync_transform: ChunkTransform | None
     batch_size: int
 
     @classmethod
@@ -1015,7 +1041,7 @@ class FusedCodecPipeline(CodecPipeline):
             array_array_codecs=aa,
             array_bytes_codec=ab,
             bytes_bytes_codecs=bb,
-            _sync_transform=None,
+            sync_transform=None,
             batch_size=batch_size,
         )
 
@@ -1033,7 +1059,7 @@ class FusedCodecPipeline(CodecPipeline):
             array_array_codecs=aa,
             array_bytes_codec=ab,
             bytes_bytes_codecs=bb,
-            _sync_transform=sync_transform,
+            sync_transform=sync_transform,
             batch_size=self.batch_size,
         )
 
@@ -1077,7 +1103,7 @@ class FusedCodecPipeline(CodecPipeline):
             array_spec = codec.resolve_metadata(array_spec)
         return byte_length
 
-    # -- async decode/encode (required by ABC) --
+    # -- async decode/encode (required by ABC) and sync versions --
 
     async def decode(
         self,
@@ -1089,27 +1115,61 @@ class FusedCodecPipeline(CodecPipeline):
         # reused one flat `chunk_specs` across every codec stage, which silently
         # corrupted/crashed spec-changing codecs (transpose/cast/scale_offset)
         # on the async fallback path.
-        transform = AsyncChunkTransform(codecs=self.codecs)
+        async_transform = AsyncChunkTransform(codecs=self.codecs)
         out: list[NDBuffer | None] = []
         for chunk_bytes, chunk_spec in chunk_bytes_and_specs:
             if chunk_bytes is None:
                 out.append(None)
             else:
-                out.append(await transform.decode_chunk(chunk_bytes, chunk_spec))
+                out.append(
+                    (await async_transform.decode_chunk(chunk_bytes, chunk_spec))
+                    if self.sync_transform is None
+                    else self.sync_transform.decode_chunk(chunk_bytes, chunk_spec)
+                )
         return out
+
+    def decode_sync(
+        self,
+        chunk_bytes_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
+    ) -> Iterable[NDBuffer | None]:
+        transform = self.sync_transform
+        if transform is None:
+            raise RuntimeError("Do not call this method without a sync transform")
+        pool = _get_pool(_resolve_max_workers())
+        return pool.map(
+            lambda cb, cs: None if cb is None else transform.decode_chunk(cb, cs),
+            chunk_bytes_and_specs,
+        )
 
     async def encode(
         self,
         chunk_arrays_and_specs: Iterable[tuple[NDBuffer | None, ArraySpec]],
     ) -> Iterable[Buffer | None]:
-        transform = AsyncChunkTransform(codecs=self.codecs)
+        async_transform = AsyncChunkTransform(codecs=self.codecs)
         out: list[Buffer | None] = []
         for chunk_array, chunk_spec in chunk_arrays_and_specs:
             if chunk_array is None:
                 out.append(None)
             else:
-                out.append(await transform.encode_chunk(chunk_array, chunk_spec))
+                out.append(
+                    (await async_transform.encode_chunk(chunk_array, chunk_spec))
+                    if self.sync_transform is None
+                    else self.sync_transform.encode_chunk(chunk_array, chunk_spec)
+                )
         return out
+
+    def encode_sync(
+        self,
+        chunk_arrays_and_specs: Iterable[tuple[NDBuffer | None, ArraySpec]],
+    ) -> Iterable[Buffer | None]:
+        transform = self.sync_transform
+        if transform is None:
+            raise RuntimeError("Do not call this method without a sync transform")
+        pool = _get_pool(_resolve_max_workers())
+        return pool.map(
+            lambda cb, cs: None if cb is None else transform.encode_chunk(cb, cs),
+            chunk_arrays_and_specs,
+        )
 
     # -- sync read/write --
 
@@ -1138,8 +1198,8 @@ class FusedCodecPipeline(CodecPipeline):
         the read selection. Otherwise the pipeline fetches the full
         blob and decodes the whole chunk.
         """
-        assert self._sync_transform is not None
-        transform = self._sync_transform
+        assert self.sync_transform is not None
+        transform = self.sync_transform
 
         batch = list(batch_info)
         if not batch:
@@ -1216,8 +1276,8 @@ class FusedCodecPipeline(CodecPipeline):
         the full write cycle — reading existing data, merging, encoding,
         and writing — matching the async `BatchedCodecPipeline` path.
         """
-        assert self._sync_transform is not None
-        transform = self._sync_transform
+        assert self.sync_transform is not None
+        transform = self.sync_transform
 
         batch = list(batch_info)
         if not batch:
@@ -1307,7 +1367,7 @@ class FusedCodecPipeline(CodecPipeline):
 
         first_bg = batch[0][0]
         if (
-            self._sync_transform is not None
+            self.sync_transform is not None
             and isinstance(first_bg, StorePath)
             and isinstance(first_bg.store, SupportsGetSync)
         ):
@@ -1359,7 +1419,7 @@ class FusedCodecPipeline(CodecPipeline):
 
         first_bs = batch[0][0]
         if (
-            self._sync_transform is not None
+            self.sync_transform is not None
             and isinstance(first_bs, StorePath)
             and isinstance(first_bs.store, SupportsSetSync)
         ):
