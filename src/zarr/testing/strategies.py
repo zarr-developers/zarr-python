@@ -591,6 +591,67 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+@st.composite
+def block_indices(
+    draw: st.DrawFn, *, chunk_grid_shape: tuple[int, ...], chunks: tuple[int, ...]
+) -> tuple[tuple[int | slice, ...], tuple[slice, ...]]:
+    """
+    Strategy for block-selection indexers over a *regular* chunk grid.
+
+    Block indexing is basic indexing applied to the block grid (the grid of
+    chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
+    count from ``chunk_grid_shape`` (e.g. ``Array.cdata_shape``), mirroring how
+    ``orthogonal_indices`` reuses ``basic_indices`` per axis. Block indexing only
+    supports integers and step-1 slices whose start references an existing chunk,
+    so strided slices and slices starting at the grid edge are filtered out. The
+    array-space translation assumes a regular (uniform) chunk grid; an over-long
+    stop into a smaller last chunk is left for numpy to clamp when the oracle is
+    applied.
+
+    Returns
+    -------
+    block_indexer
+        A per-axis tuple of ints / step-1 slices addressing whole chunks,
+        suitable for ``Array.blocks`` / ``get_block_selection`` / ``set_block_selection``.
+    array_indexer
+        The equivalent array-space selection (a tuple of slices) for indexing
+        the corresponding numpy array, used as the comparison oracle.
+    """
+
+    def supported(nchunks: int) -> Callable[[tuple[Any, ...]], bool]:
+        # Block indexing only accepts step-1 slices whose start references an
+        # existing chunk (a slice starting at nchunks raises, unlike numpy).
+        def predicate(value: tuple[Any, ...]) -> bool:
+            dim_sel = value[0]
+            if isinstance(dim_sel, slice):
+                if dim_sel.step not in (None, 1):
+                    return False
+                start = dim_sel.start or 0
+                return 0 <= (start + nchunks if start < 0 else start) < nchunks
+            return True
+
+        return predicate
+
+    block_indexer: list[int | slice] = []
+    array_indexer: list[slice] = []
+    for chunk, nchunks in zip(chunks, chunk_grid_shape, strict=True):
+        (dim_sel,) = draw(
+            basic_indices(min_dims=1, shape=(nchunks,), allow_ellipsis=False)
+            # normalize bare ints / slices to a 1-tuple, skip the empty tuple
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)
+            .filter(bool)
+            .filter(supported(nchunks))
+        )
+        block_indexer.append(dim_sel)
+        if isinstance(dim_sel, slice):
+            start, stop, _ = dim_sel.indices(nchunks)
+            array_indexer.append(slice(start * chunk, stop * chunk))
+        else:
+            block = dim_sel % nchunks
+            array_indexer.append(slice(block * chunk, (block + 1) * chunk))
+    return tuple(block_indexer), tuple(array_indexer)
+
+
 def key_ranges(
     keys: SearchStrategy[str] = node_names, max_size: int = sys.maxsize
 ) -> SearchStrategy[list[tuple[str, RangeByteRequest]]]:
