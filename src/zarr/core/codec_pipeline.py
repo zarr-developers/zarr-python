@@ -1215,7 +1215,7 @@ class FusedCodecPipeline(CodecPipeline):
             codec = self.array_bytes_codec
             assert hasattr(codec, "_decode_partial_sync")
 
-            def _read_one_partial(
+            def _read_one(
                 item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
             ) -> GetResult:
                 byte_getter, chunk_spec, chunk_selection, out_selection, _ = item
@@ -1228,26 +1228,22 @@ class FusedCodecPipeline(CodecPipeline):
                 out[out_selection] = decoded
                 return GetResult(status="present")
 
-            if max_workers > 1 and len(batch) > 1:
-                pool = _get_pool(max_workers)
-                return tuple(pool.map(_read_one_partial, batch))
-            return tuple(_read_one_partial(item) for item in batch)
-
-        # Per-chunk fused path: fetch + decode + scatter as one task.
-        def _read_one(
-            item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
-        ) -> GetResult:
-            byte_getter, chunk_spec, chunk_selection, out_selection, _ = item
-            raw = byte_getter.get_sync(prototype=chunk_spec.prototype)
-            if raw is None:
-                out[out_selection] = fill
-                return _missing
-            decoded = transform.decode_chunk(raw, chunk_spec)
-            selected = decoded[chunk_selection]
-            if drop_axes:
-                selected = selected.squeeze(axis=drop_axes)
-            out[out_selection] = selected
-            return GetResult(status="present")
+        else:
+            # Per-chunk fused path: fetch + decode + scatter as one task.
+            def _read_one(
+                item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
+            ) -> GetResult:
+                byte_getter, chunk_spec, chunk_selection, out_selection, _ = item
+                raw = byte_getter.get_sync(prototype=chunk_spec.prototype)
+                if raw is None:
+                    out[out_selection] = fill
+                    return _missing
+                decoded = transform.decode_chunk(raw, chunk_spec)
+                selected = decoded[chunk_selection]
+                if drop_axes:
+                    selected = selected.squeeze(axis=drop_axes)
+                out[out_selection] = selected
+                return GetResult(status="present")
 
         if max_workers > 1 and len(batch) > 1:
             pool = _get_pool(max_workers)
@@ -1291,56 +1287,48 @@ class FusedCodecPipeline(CodecPipeline):
             assert hasattr(codec, "_encode_partial_sync")
             scalar = len(value.shape) == 0
 
-            def _encode_one_partial(
+            def _write_one(
                 item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
             ) -> None:
                 bs, chunk_spec, chunk_selection, out_selection, _is_complete = item
                 chunk_value = value if scalar else value[out_selection]
                 codec._encode_partial_sync(bs, chunk_value, chunk_selection, chunk_spec)
 
-            if max_workers > 1 and len(batch) > 1:
-                pool = _get_pool(max_workers)
-                # consume the iterator to surface exceptions
-                list(pool.map(_encode_one_partial, batch))
-            else:
-                for item in batch:
-                    _encode_one_partial(item)
-            return
+        else:
+            # Per-chunk fused path: get-existing + merge + encode + set/delete as one task.
+            def _write_one(
+                item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
+            ) -> None:
+                bs, chunk_spec, chunk_selection, out_selection, is_complete = item
+                existing_bytes: Buffer | None = None
+                if not is_complete:
+                    existing_bytes = bs.get_sync(prototype=chunk_spec.prototype)
 
-        # Per-chunk fused path: get-existing + merge + encode + set/delete as one task.
-        def _write_one(
-            item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
-        ) -> None:
-            bs, chunk_spec, chunk_selection, out_selection, is_complete = item
-            existing_bytes: Buffer | None = None
-            if not is_complete:
-                existing_bytes = bs.get_sync(prototype=chunk_spec.prototype)
+                existing_chunk_array: NDBuffer | None = None
+                if existing_bytes is not None:
+                    existing_chunk_array = transform.decode_chunk(existing_bytes, chunk_spec)
 
-            existing_chunk_array: NDBuffer | None = None
-            if existing_bytes is not None:
-                existing_chunk_array = transform.decode_chunk(existing_bytes, chunk_spec)
+                chunk_array = _merge_chunk_array(
+                    existing_chunk_array,
+                    value,
+                    out_selection,
+                    chunk_spec,
+                    chunk_selection,
+                    is_complete,
+                    drop_axes,
+                )
 
-            chunk_array = _merge_chunk_array(
-                existing_chunk_array,
-                value,
-                out_selection,
-                chunk_spec,
-                chunk_selection,
-                is_complete,
-                drop_axes,
-            )
+                if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+                    fill_value_or_default(chunk_spec)
+                ):
+                    bs.delete_sync()
+                    return
 
-            if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                fill_value_or_default(chunk_spec)
-            ):
-                bs.delete_sync()
-                return
-
-            encoded = transform.encode_chunk(chunk_array, chunk_spec)
-            if encoded is None:
-                bs.delete_sync()
-            else:
-                bs.set_sync(encoded)
+                encoded = transform.encode_chunk(chunk_array, chunk_spec)
+                if encoded is None:
+                    bs.delete_sync()
+                else:
+                    bs.set_sync(encoded)
 
         if max_workers > 1 and len(batch) > 1:
             pool = _get_pool(max_workers)
