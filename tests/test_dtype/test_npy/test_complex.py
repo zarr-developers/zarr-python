@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.complex import Complex64, Complex128
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.complex64 import Complex64DataTypeName
+    from zarr_metadata.v3.data_type.complex128 import Complex128DataTypeName
 
 
 class _BaseTestFloat(BaseTestZDType):
@@ -27,7 +32,7 @@ class TestComplex64(_BaseTestFloat):
         {"name": ">c8", "object_codec_id": None},
         {"name": "<c8", "object_codec_id": None},
     )
-    valid_json_v3 = ("complex64",)
+    valid_json_v3: ClassVar[tuple[Complex64DataTypeName, ...]] = ("complex64",)
     invalid_json_v2 = (
         "|c8",
         "complex64",
@@ -70,7 +75,7 @@ class TestComplex128(_BaseTestFloat):
         {"name": ">c16", "object_codec_id": None},
         {"name": "<c16", "object_codec_id": None},
     )
-    valid_json_v3 = ("complex128",)
+    valid_json_v3: ClassVar[tuple[Complex128DataTypeName, ...]] = ("complex128",)
     invalid_json_v2 = (
         "|c16",
         "complex128",

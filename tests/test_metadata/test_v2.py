@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Any
 
+    from zarr_metadata import ConsolidatedMetadataV2
+
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
 
@@ -107,7 +109,7 @@ class TestConsolidated:
     async def v2_consolidated_metadata(
         self, memory_store: zarr.storage.MemoryStore
     ) -> zarr.storage.MemoryStore:
-        zmetadata: dict[str, JSON] = {
+        zmetadata: ConsolidatedMetadataV2 = {
             "metadata": {
                 ".zattrs": {
                     "Conventions": "COARDS",
@@ -170,19 +172,19 @@ class TestConsolidated:
         await store.set(".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode()))
         await store.set(
             "air/.zarray",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zarray"]).encode()),  # type: ignore[index, call-overload]
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zarray"]).encode()),
         )
         await store.set(
             "air/.zattrs",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zattrs"]).encode()),  # type: ignore[index, call-overload]
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zattrs"]).encode()),
         )
         await store.set(
             "time/.zarray",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zarray"]).encode()),  # type: ignore[index, call-overload]
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zarray"]).encode()),
         )
         await store.set(
             "time/.zattrs",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zattrs"]).encode()),  # type: ignore[index, call-overload]
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zattrs"]).encode()),
         )
 
         # and a nested group for fun
@@ -195,13 +197,13 @@ class TestConsolidated:
         await store.set(
             "nested/array/.zarray",
             cpu.Buffer.from_bytes(
-                json.dumps(zmetadata["metadata"]["nested/array/.zarray"]).encode()  # type: ignore[index, call-overload]
+                json.dumps(zmetadata["metadata"]["nested/array/.zarray"]).encode()
             ),
         )
         await store.set(
             "nested/array/.zattrs",
             cpu.Buffer.from_bytes(
-                json.dumps(zmetadata["metadata"]["nested/array/.zattrs"]).encode()  # type: ignore[index, call-overload]
+                json.dumps(zmetadata["metadata"]["nested/array/.zattrs"]).encode()
             ),
         )
 

@@ -57,6 +57,14 @@ repos:
         entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
         types: [python]
         files: ^(src|tests)/
+      - id: check-min-deps-floor
+        name: check min_deps zarr-metadata pin matches the project floor
+        language: system
+        entry: python ci/check_min_deps_floor.py
+        # Run whenever pyproject.toml changes; pass_filenames is False because
+        # the script reads the file directly rather than processing argv.
+        pass_filenames: false
+        files: ^pyproject\.toml$
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.25.2
     hooks:

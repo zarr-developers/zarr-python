@@ -34,6 +34,9 @@ from zarr.errors import (
 if TYPE_CHECKING:
     from typing import Any
 
+    from zarr_metadata import GroupMetadataV3
+    from zarr_metadata.v3.codec.bytes import BytesCodecObject
+
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -178,8 +181,13 @@ def test_array_metadata_keys_matches_typeddict() -> None:
 # ---------------------------------------------------------------------------
 
 # Codecs after evolution for single-byte (uint8) and multi-byte (float64) types.
+# The uint8 case omits `configuration`; floor-pinned zarr-metadata 0.1.1
+# marks that field as required, so the annotation is dropped until the
+# relaxed shape ships.
 _UINT8_CODECS = ({"name": "bytes"},)
-_FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
+_FLOAT64_CODECS: tuple[BytesCodecObject, ...] = (
+    {"name": "bytes", "configuration": {"endian": "little"}},
+)
 
 
 @pytest.mark.parametrize(
@@ -449,7 +457,11 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
     ):
         group = consolidate_metadata(store)
 
-    assert group.metadata.to_dict() == {
+    # `consolidated_metadata` is an `ExtensionFieldV3` (extra key allowed
+    # on `GroupMetadataV3` via PEP 728 extra_items=ExtensionFieldV3). mypy
+    # doesn't honor PEP 728 yet and reports `typeddict-unknown-key`; the
+    # annotation is correct, so the error code is ignored at the literal.
+    expected: GroupMetadataV3 = {  # type: ignore[typeddict-unknown-key]
         "zarr_format": 3,
         "node_type": "group",
         "attributes": attributes or {},
@@ -470,3 +482,4 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
             },
         },
     }
+    assert group.metadata.to_dict() == expected
