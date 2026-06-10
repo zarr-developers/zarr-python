@@ -747,30 +747,33 @@ class ShardingCodec(
         else:
             byte_setter.set_sync(blob)
 
-    def _encode_shard_dict_sync(
+    def _build_shard_layout(
         self,
         shard_dict: ShardMapping,
         chunks_per_shard: tuple[int, ...],
-        buffer_prototype: BufferPrototype,
-    ) -> Buffer | None:
-        """Sync version of _encode_shard_dict.
+    ) -> tuple[_ShardIndex, list[Buffer]] | None:
+        """Lay out the present inner chunks of a shard. Pure compute, no IO.
 
-        Pack the encoded inner chunks (in the codec's `subchunk_write_order`)
-        into a contiguous data section, build a shard index that points each
-        present chunk at its offset/length within that section, and concatenate.
+        Packs the encoded inner chunks (in the codec's `subchunk_write_order`)
+        into a contiguous data section and builds a shard index pointing each
+        present chunk at its ABSOLUTE byte offset within the final blob: when
+        the index is stored at the start, offsets are pre-shifted by the index
+        size (known without encoding — the index codecs are fixed-size, which
+        every index read path already relies on), so the index can be encoded
+        exactly once by the caller.
 
-        Returns `None` for an all-empty shard (no chunks present).
+        Returns `(index, data_buffers)`, or `None` for an all-empty shard (no
+        chunks present). Shared by the sync and async `_encode_shard_dict*` so
+        the layout/offset logic cannot drift between them.
         """
         index = _ShardIndex.create_empty(chunks_per_shard)
-        buffers = []
-        template = buffer_prototype.buffer.create_zero_length()
-        chunk_start = 0
+        buffers: list[Buffer] = []
+        chunk_start = (
+            self._shard_index_size(chunks_per_shard)
+            if self.index_location == ShardingCodecIndexLocation.start
+            else 0
+        )
 
-        # First pass: lay out present chunks in the data section, in the
-        # configured subchunk_write_order (matching the async _encode_shard_dict).
-        # Offsets here are relative to the start of the data section, not the
-        # start of the final blob — they get shifted in the index-at-start branch
-        # below to account for the index-bytes prefix.
         for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
             value = shard_dict.get(chunk_coords)
             if value is None or len(value) == 0:
@@ -782,22 +785,48 @@ class ShardingCodec(
 
         if len(buffers) == 0:
             return None
+        return index, buffers
 
-        index_bytes = self._encode_shard_index_sync(index)
+    def _assemble_shard(
+        self, index_bytes: Buffer, buffers: list[Buffer], buffer_prototype: BufferPrototype
+    ) -> Buffer:
+        """Concatenate the encoded index and data buffers into the shard blob.
+
+        The layout from `_build_shard_layout` already assumes the index size, so
+        the encoded index length must match `_shard_index_size` exactly — guard
+        that assumption rather than silently corrupt offsets.
+        """
         if self.index_location == ShardingCodecIndexLocation.start:
-            # When the index is at the start of the blob, the data offsets
-            # we just wrote are off by len(index_bytes). Shift only the
-            # *present* chunks (empty chunks have offset == MAX_UINT_64 as
-            # a sentinel and must not be touched), then re-encode the index
-            # with the corrected offsets.
-            empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
-            index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
-            index_bytes = self._encode_shard_index_sync(index)
             buffers.insert(0, index_bytes)
         else:
             buffers.append(index_bytes)
-
+        template = buffer_prototype.buffer.create_zero_length()
         return template.combine(buffers)
+
+    def _encode_shard_dict_sync(
+        self,
+        shard_dict: ShardMapping,
+        chunks_per_shard: tuple[int, ...],
+        buffer_prototype: BufferPrototype,
+    ) -> Buffer | None:
+        """Sync version of _encode_shard_dict.
+
+        Layout via the shared `_build_shard_layout` (offsets already absolute),
+        then a single index encode and concatenation.
+
+        Returns `None` for an all-empty shard (no chunks present).
+        """
+        layout = self._build_shard_layout(shard_dict, chunks_per_shard)
+        if layout is None:
+            return None
+        index, buffers = layout
+        index_bytes = self._encode_shard_index_sync(index)
+        if len(index_bytes) != self._shard_index_size(chunks_per_shard):
+            raise RuntimeError(
+                "encoded shard index size does not match _shard_index_size; "
+                "variable-size index codecs are not supported"
+            )
+        return self._assemble_shard(index_bytes, buffers, buffer_prototype)
 
     async def _decode_single(
         self,
@@ -1220,40 +1249,20 @@ class ShardingCodec(
         chunks_per_shard: tuple[int, ...],
         buffer_prototype: BufferPrototype,
     ) -> Buffer | None:
-        index = _ShardIndex.create_empty(chunks_per_shard)
-
-        buffers = []
-
-        template = buffer_prototype.buffer.create_zero_length()
-        chunk_start = 0
-        for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
-            value = map.get(chunk_coords)
-            if value is None:
-                continue
-
-            if len(value) == 0:
-                continue
-
-            chunk_length = len(value)
-            buffers.append(value)
-            index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
-            chunk_start += chunk_length
-
-        if len(buffers) == 0:
+        """Layout via the shared `_build_shard_layout` (offsets already
+        absolute), then a single index encode and concatenation. Async twin of
+        `_encode_shard_dict_sync`."""
+        layout = self._build_shard_layout(map, chunks_per_shard)
+        if layout is None:
             return None
-
+        index, buffers = layout
         index_bytes = await self._encode_shard_index(index)
-        if self.index_location == ShardingCodecIndexLocation.start:
-            empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
-            index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
-            index_bytes = await self._encode_shard_index(
-                index
-            )  # encode again with corrected offsets
-            buffers.insert(0, index_bytes)
-        else:
-            buffers.append(index_bytes)
-
-        return template.combine(buffers)
+        if len(index_bytes) != self._shard_index_size(chunks_per_shard):
+            raise RuntimeError(
+                "encoded shard index size does not match _shard_index_size; "
+                "variable-size index codecs are not supported"
+            )
+        return self._assemble_shard(index_bytes, buffers, buffer_prototype)
 
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
