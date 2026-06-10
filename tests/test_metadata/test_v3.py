@@ -282,7 +282,6 @@ def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) 
         ExpectFail(
             input={"data_type": "uint8", "fill_value": {}},
             exception=TypeError,
-            msg=".*",
             id="invalid_fill_value_type",
         ),
     ],
@@ -291,7 +290,7 @@ def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) 
 def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> None:
     """from_dict rejects invalid metadata documents."""
     d = minimal_metadata_dict_v3(**case.input)
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
 
 
@@ -315,7 +314,7 @@ def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> Non
 )
 def test_array_metadata_extra_fields_rejected(case: ExpectFail[dict[str, Any]]) -> None:
     """from_dict rejects extra fields that don't conform to the spec."""
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         ArrayV3Metadata.from_dict(case.input)
 
 
