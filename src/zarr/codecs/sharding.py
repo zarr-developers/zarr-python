@@ -444,9 +444,26 @@ class ShardingCodec(
         coroutine per inner chunk. The bare `codec_pipeline` property returns an
         unevolved pipeline, which a synchronous pipeline can only run through
         its async fallback.
+
+        Memoized per (pipeline class, shard_spec): evolving builds a
+        ChunkTransform, which is wasteful to redo on every shard operation. The
+        pipeline class participates in the key so a `codec_pipeline.path`
+        config change is still honored. A benign construction race between
+        threads is possible (last writer wins) — same as the other caches here.
         """
-        chunk_spec = self._get_chunk_spec(shard_spec)
-        return self.codec_pipeline.evolve_from_array_spec(chunk_spec)
+        cache: dict[tuple[type[CodecPipeline], ArraySpec], CodecPipeline] | None = getattr(
+            self, "_inner_pipeline_cache", None
+        )
+        if cache is None:
+            cache = {}
+            object.__setattr__(self, "_inner_pipeline_cache", cache)
+        key = (get_pipeline_class(), shard_spec)
+        pipeline = cache.get(key)
+        if pipeline is None:
+            chunk_spec = self._get_chunk_spec(shard_spec)
+            pipeline = self.codec_pipeline.evolve_from_array_spec(chunk_spec)
+            cache[key] = pipeline
+        return pipeline
 
     def to_dict(self) -> dict[str, JSON]:
         return {
