@@ -18,7 +18,7 @@ from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import ZarrFormat
+    from zarr.types import ZarrFormat
 
 
 # TODO: work out where this warning is coming from and fix it
