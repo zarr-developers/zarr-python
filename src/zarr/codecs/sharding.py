@@ -635,9 +635,9 @@ class ShardingCodec(
             return out
 
         for chunk_coords, chunk_selection, out_selection, _ in indexer:
-            try:
-                chunk_bytes = shard_dict[chunk_coords]
-            except KeyError:
+            chunk_bytes = shard_dict.get(chunk_coords)
+            if chunk_bytes is None:
+                # missing chunk -> fill (the single missing convention: None)
                 out[out_selection] = shard_spec.fill_value
                 continue
             chunk_array = inner_transform.decode_chunk(chunk_bytes, chunk_spec)
@@ -685,24 +685,19 @@ class ShardingCodec(
             chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
         )
 
+        from zarr.core.codec_pipeline import encode_or_elide_chunk
+
         # Key order here is immaterial; _encode_shard_dict_sync lays the present
         # chunks out in subchunk_write_order.
         shard_builder: dict[tuple[int, ...], Buffer | None] = dict.fromkeys(
             morton_order_iter(chunks_per_shard)
         )
 
-        skip_empty = not shard_spec.config.write_empty_chunks
-        fill_value = shard_spec.fill_value
-        if fill_value is None:
-            fill_value = shard_spec.dtype.default_scalar()
-
         for chunk_coords, _chunk_selection, out_selection, _ in indexer:
-            chunk_array = shard_array[out_selection]
-            if skip_empty and chunk_array.all_equal(fill_value):
-                shard_builder[chunk_coords] = None
-            else:
-                encoded = inner_transform.encode_chunk(chunk_array, chunk_spec)
-                shard_builder[chunk_coords] = encoded
+            # None = chunk normalized to missing (see encode_or_elide_chunk)
+            shard_builder[chunk_coords] = encode_or_elide_chunk(
+                shard_array[out_selection], chunk_spec, inner_transform.encode_chunk
+            )
 
         return self._encode_shard_dict_sync(
             shard_builder,
@@ -745,11 +740,6 @@ class ShardingCodec(
 
         is_complete = self._is_complete_shard_write(indexer, chunks_per_shard)
 
-        skip_empty = not shard_spec.config.write_empty_chunks
-        fill_value = shard_spec.fill_value
-        if fill_value is None:
-            fill_value = shard_spec.dtype.default_scalar()
-
         is_scalar = len(value.shape) == 0
 
         # Load existing inner-chunk bytes into a dict (same structure as
@@ -774,7 +764,10 @@ class ShardingCodec(
             else:
                 shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
 
-        # Merge, encode, and store each affected inner chunk into shard_dict.
+        from zarr.core.codec_pipeline import merge_and_encode_chunk
+
+        # Merge, encode, and store each affected inner chunk into shard_dict via
+        # the canonical merge_and_encode_chunk (None = normalized to missing).
         #
         # Scalar fast path: when the written value is a scalar broadcast, every
         # *complete* inner chunk is byte-for-byte identical — same fill, same
@@ -790,43 +783,33 @@ class ShardingCodec(
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
             if is_scalar and is_complete_chunk:
                 if scalar_complete_result is _sentinel:
-                    chunk_array = chunk_spec.prototype.nd_buffer.create(
-                        shape=self.chunk_shape,
-                        dtype=shard_spec.dtype.to_native_dtype(),
-                        order=shard_spec.order,
-                        fill_value=fill_value,
+                    scalar_complete_result = merge_and_encode_chunk(
+                        None,
+                        value,
+                        chunk_spec=chunk_spec,
+                        chunk_selection=chunk_sel,
+                        out_selection=out_sel,
+                        is_complete=is_complete_chunk,
+                        drop_axes=(),
+                        decode=inner_transform.decode_chunk,
+                        encode=inner_transform.encode_chunk,
                     )
-                    chunk_array[chunk_sel] = value
-                    if skip_empty and chunk_array.all_equal(fill_value):
-                        scalar_complete_result = None
-                    else:
-                        scalar_complete_result = inner_transform.encode_chunk(
-                            chunk_array, chunk_spec
-                        )
                 shard_dict[chunk_coords] = scalar_complete_result  # type: ignore[assignment]
                 continue
 
-            chunk_value = value if is_scalar else value[out_sel]
-
-            if is_complete_chunk and not is_scalar:
-                chunk_array = chunk_value
-            else:
-                existing_raw = shard_dict.get(chunk_coords)
-                if existing_raw is not None:
-                    chunk_array = inner_transform.decode_chunk(existing_raw, chunk_spec).copy()
-                else:
-                    chunk_array = chunk_spec.prototype.nd_buffer.create(
-                        shape=self.chunk_shape,
-                        dtype=shard_spec.dtype.to_native_dtype(),
-                        order=shard_spec.order,
-                        fill_value=fill_value,
-                    )
-                chunk_array[chunk_sel] = chunk_value
-
-            if skip_empty and chunk_array.all_equal(fill_value):
-                shard_dict[chunk_coords] = None
-            else:
-                shard_dict[chunk_coords] = inner_transform.encode_chunk(chunk_array, chunk_spec)
+            # A complete chunk fully overwrites: skip decoding what it replaces.
+            existing_raw = None if is_complete_chunk else shard_dict.get(chunk_coords)
+            shard_dict[chunk_coords] = merge_and_encode_chunk(
+                existing_raw,
+                value,
+                chunk_spec=chunk_spec,
+                chunk_selection=chunk_sel,
+                out_selection=out_sel,
+                is_complete=is_complete_chunk,
+                drop_axes=(),
+                decode=inner_transform.decode_chunk,
+                encode=inner_transform.encode_chunk,
+            )
 
         blob = self._encode_shard_dict_sync(
             shard_dict,

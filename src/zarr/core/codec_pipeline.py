@@ -26,7 +26,7 @@ from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
     from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
@@ -249,13 +249,11 @@ def _merge_chunk_array(
     one was read from the store, or freshly allocated and filled with the
     chunk's fill value — and the relevant slice of `value` is written into it.
     """
-    if (
-        is_complete_chunk
-        and value.shape == chunk_spec.shape
+    if is_complete_chunk and value.shape != ():
+        selected = value[out_selection]
         # Guard that this is not a partial chunk at the end with is_complete_chunk=True
-        and value[out_selection].shape == chunk_spec.shape
-    ):
-        return value
+        if selected.shape == chunk_spec.shape:
+            return selected
     if existing_chunk_array is None:
         chunk_array = chunk_spec.prototype.nd_buffer.create(
             shape=chunk_spec.shape,
@@ -278,6 +276,64 @@ def _merge_chunk_array(
             chunk_value = chunk_value[item]
     chunk_array[chunk_selection] = chunk_value
     return chunk_array
+
+
+def chunk_is_empty(chunk_array: NDBuffer, chunk_spec: ArraySpec) -> bool:
+    """THE empty-chunk normalization rule, in one place.
+
+    With ``write_empty_chunks=False`` (the default), a chunk whose decoded
+    content equals the fill value normalizes to *missing*: it must not be
+    stored, and readers reconstruct it from the fill value. Every write path
+    (fused, async fallback, shard inner chunks) must apply this same rule —
+    scattering inline ``all_equal`` checks is how the rule drifts.
+    """
+    return not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+        fill_value_or_default(chunk_spec)
+    )
+
+
+def encode_or_elide_chunk(
+    chunk_array: NDBuffer,
+    chunk_spec: ArraySpec,
+    encode: Callable[[NDBuffer, ArraySpec], Buffer | None],
+) -> Buffer | None:
+    """Encode a merged chunk, normalizing empties to missing.
+
+    Returns the bytes to store, or ``None`` meaning the chunk must NOT be
+    stored (either it normalized to empty per `chunk_is_empty`, or the codec
+    chain elided it). ``None`` is the single "missing" convention shared by
+    the chunk write paths and the shard dicts.
+    """
+    if chunk_is_empty(chunk_array, chunk_spec):
+        return None
+    return encode(chunk_array, chunk_spec)
+
+
+def merge_and_encode_chunk(
+    existing_bytes: Buffer | None,
+    value: NDBuffer,
+    *,
+    chunk_spec: ArraySpec,
+    chunk_selection: SelectorTuple,
+    out_selection: SelectorTuple,
+    is_complete: bool,
+    drop_axes: tuple[int, ...],
+    decode: Callable[[Buffer, ArraySpec], NDBuffer],
+    encode: Callable[[NDBuffer, ArraySpec], Buffer | None],
+) -> Buffer | None:
+    """The canonical single-chunk write: merge, normalize, encode.
+
+    decode existing (``None`` = chunk currently missing) -> merge ``value`` at
+    ``chunk_selection`` -> normalize empties to missing -> encode. Returns the
+    bytes to store or ``None`` = do not store / delete. This is the one
+    state-transition every per-chunk write path expresses; only the IO around
+    it (where ``existing_bytes`` comes from, where the result goes) differs.
+    """
+    existing_array = decode(existing_bytes, chunk_spec) if existing_bytes is not None else None
+    merged = _merge_chunk_array(
+        existing_array, value, out_selection, chunk_spec, chunk_selection, is_complete, drop_axes
+    )
+    return encode_or_elide_chunk(merged, chunk_spec, encode)
 
 
 async def _async_read_fallback(
@@ -413,9 +469,7 @@ async def _async_write_fallback(
         if chunk_array is None:
             chunk_array_batch.append(None)  # type: ignore[unreachable]
         else:
-            if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                fill_value_or_default(chunk_spec)
-            ):
+            if chunk_is_empty(chunk_array, chunk_spec):
                 chunk_array_batch.append(None)
             else:
                 chunk_array_batch.append(chunk_array)
@@ -1353,27 +1407,17 @@ class FusedCodecPipeline(CodecPipeline):
                 if not is_complete:
                     existing_bytes = bs.get_sync(prototype=chunk_spec.prototype)
 
-                existing_chunk_array: NDBuffer | None = None
-                if existing_bytes is not None:
-                    existing_chunk_array = transform.decode_chunk(existing_bytes, chunk_spec)
-
-                chunk_array = _merge_chunk_array(
-                    existing_chunk_array,
+                encoded = merge_and_encode_chunk(
+                    existing_bytes,
                     value,
-                    out_selection,
-                    chunk_spec,
-                    chunk_selection,
-                    is_complete,
-                    drop_axes,
+                    chunk_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete=is_complete,
+                    drop_axes=drop_axes,
+                    decode=transform.decode_chunk,
+                    encode=transform.encode_chunk,
                 )
-
-                if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                    fill_value_or_default(chunk_spec)
-                ):
-                    bs.delete_sync()
-                    return
-
-                encoded = transform.encode_chunk(chunk_array, chunk_spec)
                 if encoded is None:
                     bs.delete_sync()
                 else:
