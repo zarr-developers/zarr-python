@@ -23,6 +23,7 @@ __all__ = [
     "Store",
     "SupportsDeleteSync",
     "SupportsGetSync",
+    "SupportsSetRange",
     "SupportsSetSync",
     "SupportsSyncStore",
     "set_or_delete",
@@ -785,6 +786,62 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+# Design note: byte-range writes are exposed as an opt-in protocol rather than a
+# method on the `Store` ABC. Only a few stores can do them natively (`LocalStore`,
+# `MemoryStore`); most (cloud, zip, read-only) cannot. A universal `Store.set_range`
+# with a read-modify-write fallback (as in the Rust `zarrs` crate's
+# `WritableStorageTraits::set_partial` + `supports_set_partial`) would let every
+# store participate, but for our motivating use case — writing one subchunk without
+# rewriting the whole shard — that fallback is a footgun: it would silently rewrite
+# an entire (possibly multi-GB) shard, defeating the purpose while appearing to
+# succeed. An opt-in protocol instead keeps the cost model honest (a store either
+# supports cheap ranged writes or doesn't advertise the capability at all) and keeps
+# `set_range` out of the signatures of stores that will never support it.
+#
+# Stores satisfy this protocol *structurally* (by defining the methods), not by
+# nominal inheritance, so a subclass can disclaim it by setting the methods to `None`
+# (see `GpuMemoryStore`). Any read-modify-write fallback strategy belongs in the
+# caller (the sharding codec), which already has to decide between in-place and
+# buffer-and-rewrite — mirroring the zarrs layering (storage writes bytes, codec owns
+# strategy) without making every store carry the method. If broad-backend partial
+# encoding is wanted later, adding a `supports_set_range()` capability flag plus a
+# codec-level fallback is an additive change that does not require retrofitting stores.
+@runtime_checkable
+class SupportsSetRange(Protocol):
+    """Protocol for stores that support writing to a byte range within an existing value.
+
+    Overwrites `len(value)` bytes starting at byte offset `start` within the
+    existing stored value for `key`. The key must already exist and the write
+    must fit within the existing value (i.e., `start + len(value) <= len(existing)`);
+    a write that does not fit raises `ValueError`.
+
+    Concurrency and atomicity
+    -------------------------
+    **It is entirely the caller's responsibility to ensure consistency.** Any
+    coordination needed to keep stored values consistent must be arranged by the
+    caller. In particular:
+
+    - Concurrent `set_range` calls that write to **disjoint** byte ranges of the
+      same key are safe.
+    - Concurrent `set_range` calls that write to **overlapping** ranges of the same
+      key have order-dependent, unspecified results. The caller must serialize them.
+    - A `set_range` racing against a `set` or `delete` on the same key is a race
+      condition, just as concurrent `set` calls are. The caller must serialize these.
+    - Writes are **not** guaranteed to be atomic with respect to a process crash:
+      a crash mid-write may leave the value partially updated. The caller is
+      responsible for any durability or recovery guarantees it requires.
+
+    What an implementation does to honor (or fall short of) this contract — locking,
+    atomic replacement, and so on — is documented on the implementing store, not here.
+    The intended consumer (the sharding codec writing inner chunks of deterministic
+    compressed size) coordinates writes so that they target disjoint ranges.
+    """
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None: ...
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None: ...
 
 
 @runtime_checkable

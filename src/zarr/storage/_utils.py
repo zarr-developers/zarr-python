@@ -160,6 +160,23 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) ->
     return (start, stop)
 
 
+def _check_set_range_bounds(existing_length: int, start: int, value_length: int) -> None:
+    """
+    Validate that a ``set_range`` write fits within an existing value.
+
+    Stores implementing ``SupportsSetRange`` use this so the out-of-bounds case fails
+    the same way everywhere (a clear ``ValueError``) rather than silently extending the
+    value (as a file seek+write would) or raising an opaque numpy shape error.
+    """
+    if start < 0:
+        raise ValueError(f"set_range start must be non-negative, got {start}.")
+    if start + value_length > existing_length:
+        raise ValueError(
+            f"set_range write of {value_length} bytes at offset {start} does not fit "
+            f"within the existing value of length {existing_length}."
+        )
+
+
 def _join_paths(paths: Iterable[str]) -> str:
     """
     Filter out instances of '' and join the remaining strings with '/'.

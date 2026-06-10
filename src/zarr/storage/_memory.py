@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 import weakref
@@ -11,6 +12,7 @@ from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import (
+    _check_set_range_bounds,
     _join_paths,
     _normalize_byte_range_index,
     normalize_path,
@@ -49,6 +51,8 @@ class MemoryStore(Store):
     supports_listing: bool = True
 
     _store_dict: MutableMapping[str, Buffer]
+    _key_locks: dict[str, asyncio.Lock]
+    _key_locks_sync: dict[str, threading.Lock]
 
     def __init__(
         self,
@@ -60,6 +64,8 @@ class MemoryStore(Store):
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
+        self._key_locks = {}
+        self._key_locks_sync = {}
 
     def with_read_only(self, read_only: bool = False) -> MemoryStore:
         # docstring inherited
@@ -193,6 +199,31 @@ class MemoryStore(Store):
             del self._store_dict[key]
         except KeyError:
             logger.debug("Key %s does not exist.", key)
+
+    def _set_range_impl(self, key: str, value: Buffer, start: int) -> None:
+        buf = self._store_dict[key]
+        target = buf.as_numpy_array()
+        _check_set_range_bounds(len(target), start, len(value))
+        if not target.flags.writeable:
+            target = target.copy()
+            self._store_dict[key] = buf.__class__(target)
+        source = value.as_numpy_array()
+        target[start : start + len(source)] = source
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        self._check_writable()
+        await self._ensure_open()
+        lock = self._key_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            self._set_range_impl(key, value, start)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        lock = self._key_locks_sync.setdefault(key, threading.Lock())
+        with lock:
+            self._set_range_impl(key, value, start)
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
@@ -537,6 +568,19 @@ class GpuMemoryStore(MemoryStore):
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
 
+    # ``GpuMemoryStore`` deliberately does not support byte-range writes, so it must
+    # not satisfy ``SupportsSetRange``. The inherited ``MemoryStore`` implementation
+    # mutates a *host* copy of the GPU buffer (via ``as_numpy_array``) and would
+    # silently lose the write, and there is no use case for in-place byte-range writes
+    # into GPU memory (the intended ``set_range`` consumer targets cpu/local storage).
+    # Disclaiming the inherited methods by setting them to ``None`` makes
+    # ``isinstance(gpu_store, SupportsSetRange)`` return ``False`` (``runtime_checkable``
+    # treats a ``None`` attribute as "method absent"). This works because
+    # ``MemoryStore`` satisfies the protocol structurally rather than by nominal
+    # inheritance; mirrors the ``__hash__ = None`` idiom.
+    set_range = None  # type: ignore[assignment]
+    set_range_sync = None  # type: ignore[assignment]
+
 
 # -----------------------------------------------------------------------------
 # ManagedMemoryStore and its registry
@@ -570,6 +614,13 @@ class _ManagedStoreDictRegistry:
         self._registry: weakref.WeakValueDictionary[str, _ManagedStoreDict] = (
             weakref.WeakValueDictionary()
         )
+        # set_range per-key lock dicts, shared by name so every ManagedMemoryStore
+        # bound to the same backing dict serializes set_range against the others (the
+        # registry shares the data, so it must share the locks too). Keyed by name
+        # (_ManagedStoreDict is an unhashable dict subclass) and pruned when the
+        # corresponding dict has been collected.
+        self._key_locks: dict[str, dict[str, asyncio.Lock]] = {}
+        self._key_locks_sync: dict[str, dict[str, threading.Lock]] = {}
         self._counter = 0
         self._lock = threading.Lock()
 
@@ -638,6 +689,24 @@ class _ManagedStoreDictRegistry:
             The store dict if found, None otherwise.
         """
         return self._registry.get(name)
+
+    def get_key_locks(self, name: str) -> tuple[dict[str, asyncio.Lock], dict[str, threading.Lock]]:
+        """
+        Get the shared set_range per-key lock dicts for a store name.
+
+        All ManagedMemoryStore instances resolving to the same name get the same lock
+        dicts, so their set_range calls serialize against each other. Created on first
+        use; stale entries (whose backing dict has been collected) are pruned.
+        """
+        with self._lock:
+            stale = [n for n in self._key_locks if n not in self._registry]
+            for n in stale:
+                del self._key_locks[n]
+                self._key_locks_sync.pop(n, None)
+            return (
+                self._key_locks.setdefault(name, {}),
+                self._key_locks_sync.setdefault(name, {}),
+            )
 
 
 _managed_store_dict_registry = _ManagedStoreDictRegistry()
@@ -709,6 +778,12 @@ class ManagedMemoryStore(MemoryStore):
         # Get or create a managed dict from the registry
         self._store_dict, self._name = _managed_store_dict_registry.get_or_create(name)
         self.path = normalize_path(path)
+        # Share the per-key set_range locks with every other store backed by the same
+        # dict, so concurrent set_range from different handles to the same name actually
+        # serialize.
+        self._key_locks, self._key_locks_sync = _managed_store_dict_registry.get_key_locks(
+            self._name
+        )
 
     def __str__(self) -> str:
         return _join_paths([f"memory://{self._name}", self.path])
@@ -744,6 +819,7 @@ class ManagedMemoryStore(MemoryStore):
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)
+        store._key_locks, store._key_locks_sync = _managed_store_dict_registry.get_key_locks(name)
         return store
 
     def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
@@ -826,6 +902,14 @@ class ManagedMemoryStore(MemoryStore):
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         return await super().set_if_not_exists(_join_paths([self.path, key]), value)
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        return await super().set_range(_join_paths([self.path, key]), value, start)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        return super().set_range_sync(_join_paths([self.path, key]), value, start)
 
     async def delete(self, key: str) -> None:
         # docstring inherited

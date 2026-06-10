@@ -6,6 +6,8 @@ import io
 import os
 import shutil
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Literal, Self
@@ -20,6 +22,7 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
+from zarr.storage._utils import _check_set_range_bounds
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
@@ -58,6 +61,18 @@ else:
         os.unlink(src)
 
 
+_LOCK_POLL_INTERVAL = 0.01  # seconds between lock-file existence checks
+_LOCK_STALE_TIMEOUT = 60.0  # seconds before an abandoned lock file is reclaimed
+
+
+def _is_stale_lock(lock_path: Path) -> bool:
+    """Return True if lock_path either doesn't exist or is older than _LOCK_STALE_TIMEOUT."""
+    try:
+        return time.time() - lock_path.stat().st_mtime > _LOCK_STALE_TIMEOUT
+    except FileNotFoundError:
+        return True
+
+
 @contextlib.contextmanager
 def _atomic_write(
     path: Path,
@@ -75,6 +90,20 @@ def _atomic_write(
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _put_range(path: Path, value: Buffer, start: int) -> None:
+    """Write bytes at a specific offset within an existing file."""
+    view = value.as_buffer_like()
+    with path.open("r+b") as f:
+        # Validate bounds before writing: a bare seek+write would silently extend the
+        # file (zero-filling any gap), but the SupportsSetRange contract requires the
+        # write to fit within the existing value, so we fail consistently with
+        # MemoryStore instead.
+        existing_length = f.seek(0, os.SEEK_END)
+        _check_set_range_bounds(existing_length, start, len(value))
+        f.seek(start)
+        f.write(view)
 
 
 def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
@@ -109,6 +138,8 @@ class LocalStore(Store):
     supports_listing: bool = True
 
     root: Path
+    _key_locks: dict[str, asyncio.Lock]
+    _key_locks_sync: dict[str, threading.Lock]
 
     def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
         super().__init__(read_only=read_only)
@@ -119,6 +150,8 @@ class LocalStore(Store):
                 f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
         self.root = root
+        self._key_locks = {}
+        self._key_locks_sync = {}
 
     def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
@@ -291,6 +324,82 @@ class LocalStore(Store):
             )
         path = self.root / key
         await asyncio.to_thread(_put, path, value, exclusive=exclusive)
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        if not self._is_open:
+            await self._open()
+        self._check_writable()
+        path = self.root / key
+        lock_path = path.with_name(path.name + ".__lock__")
+        in_process_lock = self._key_locks.setdefault(key, asyncio.Lock())
+
+        # Acquire the file lock (steps 1-5 from the concurrency plan).
+        while True:
+            # Step 1: spin-wait until no lock file is present (or it is stale).
+            while await asyncio.to_thread(lock_path.exists):
+                if await asyncio.to_thread(_is_stale_lock, lock_path):
+                    break
+                await asyncio.sleep(_LOCK_POLL_INTERVAL)
+
+            # Steps 2-5: serialise the rename under an in-process lock so that
+            # only one coroutine per process attempts the atomic file move at a time.
+            acquired = False
+            async with in_process_lock:
+                # Step 3: re-check after acquiring the in-process lock.
+                if not await asyncio.to_thread(lock_path.exists):
+                    try:
+                        # Step 4: atomic rename — raises FileExistsError if another
+                        # process grabbed the lock between steps 3 and 4.
+                        await asyncio.to_thread(_safe_move, path, lock_path)
+                        acquired = True
+                    except FileExistsError:
+                        pass
+                # Step 5: in-process lock released on context exit.
+
+            if acquired:
+                break
+
+        # Step 6: perform the partial write on the lock file.
+        try:
+            await asyncio.to_thread(_put_range, lock_path, value, start)
+        finally:
+            # Steps 7-9: re-acquire in-process lock, rename lock file back, release.
+            async with in_process_lock:
+                await asyncio.to_thread(lock_path.replace, path)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        self._ensure_open_sync()
+        self._check_writable()
+        path = self.root / key
+        lock_path = path.with_name(path.name + ".__lock__")
+        in_process_lock = self._key_locks_sync.setdefault(key, threading.Lock())
+
+        # Acquire the file lock (same double-checked pattern as the async path).
+        while True:
+            # Step 1: spin-wait.
+            while lock_path.exists():
+                if _is_stale_lock(lock_path):
+                    break
+                time.sleep(_LOCK_POLL_INTERVAL)
+
+            acquired = False
+            with in_process_lock:
+                if not lock_path.exists():
+                    try:
+                        _safe_move(path, lock_path)
+                        acquired = True
+                    except FileExistsError:
+                        pass
+
+            if acquired:
+                break
+
+        # Partial write, then release.
+        try:
+            _put_range(lock_path, value, start)
+        finally:
+            with in_process_lock:
+                lock_path.replace(path)
 
     async def delete(self, key: str) -> None:
         """

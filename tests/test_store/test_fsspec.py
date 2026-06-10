@@ -305,6 +305,28 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
 
         assert not store._is_open
 
+    async def test_from_url_uses_distinct_filesystem_instances(self) -> None:
+        """Two from_url() calls for the same URL must not share a cached fs.
+
+        Regression: from_url claims ownership and closes the fs on close(); if it used
+        the fsspec instance cache, two stores would share one fs and closing one would
+        tear the shared session out from under the other. skip_instance_cache=True must
+        give each store its own fs.
+        """
+        url = f"s3://{test_bucket_name}/distinct/"
+        opts = {"endpoint_url": endpoint_url, "anon": False}
+        store_a = FsspecStore.from_url(url, storage_options=opts)
+        store_b = FsspecStore.from_url(url, storage_options=opts)
+        assert store_a.fs is not store_b.fs
+        # Closing one leaves the other fully usable.
+        await store_a.set("probe", cpu.Buffer.from_bytes(b"x"))
+        store_a.close()
+        await store_b.set("probe", cpu.Buffer.from_bytes(b"y"))
+        result = await store_b.get("probe", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == b"y"
+        store_b.close()
+
     def test_direct_construction_does_not_own_filesystem(self) -> None:
         """Direct FsspecStore() must not claim ownership — the caller owns the fs."""
         try:

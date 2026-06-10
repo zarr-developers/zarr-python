@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -9,6 +11,7 @@ import numpy.typing as npt
 import pytest
 
 import zarr
+from zarr.abc.store import SupportsSetRange
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
@@ -127,6 +130,131 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         result = store._get_json_sync(key, prototype=buffer_cls)
         assert result == data
 
+    def test_supports_set_range(self, store: MemoryStore) -> None:
+        """MemoryStore should implement SupportsSetRange."""
+        assert isinstance(store, SupportsSetRange)
+
+    @pytest.mark.parametrize(
+        ("start", "patch", "expected"),
+        [
+            (0, b"XX", b"XXAAAAAAAA"),
+            (3, b"XX", b"AAAXXAAAAA"),
+            (8, b"XX", b"AAAAAAAAXX"),
+            (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+            (5, b"B", b"AAAAABAAAA"),
+            (0, b"BCDE", b"BCDEAAAAAA"),
+        ],
+        ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    )
+    async def test_set_range(
+        self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    ) -> None:
+        """set_range should overwrite bytes at the given offset."""
+        await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        result = await store.get("test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == expected
+
+    @pytest.mark.parametrize(
+        ("start", "patch", "expected"),
+        [
+            (0, b"XX", b"XXAAAAAAAA"),
+            (3, b"XX", b"AAAXXAAAAA"),
+            (8, b"XX", b"AAAAAAAAXX"),
+            (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+            (5, b"B", b"AAAAABAAAA"),
+            (0, b"BCDE", b"BCDEAAAAAA"),
+        ],
+        ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    )
+    def test_set_range_sync(
+        self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    ) -> None:
+        """set_range_sync should overwrite bytes at the given offset."""
+        store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        assert result.to_bytes() == expected
+
+    @pytest.mark.parametrize(
+        ("start", "patch"),
+        [(9, b"XX"), (10, b"X"), (0, b"ZZZZZZZZZZZ")],
+        ids=["overhang", "past-end", "too-long"],
+    )
+    async def test_set_range_out_of_bounds(
+        self, store: MemoryStore, start: int, patch: bytes
+    ) -> None:
+        """A write that does not fit within the existing value raises consistently."""
+        store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        with pytest.raises(ValueError, match="does not fit within the existing value"):
+            await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+        assert store._store_dict["test/key"].to_bytes() == b"AAAAAAAAAA"
+
+    async def test_set_range_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range auto-opens a closed store."""
+        assert not store_not_open._is_open
+        await self.set(store_not_open, "test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+        await store_not_open.set_range("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert getattr(store_not_open, "_is_open")  # noqa: B009
+        observed = await self.get(store_not_open, "test/key")
+        assert observed.to_bytes() == b"XXAAAAAAAA"
+
+    def test_set_range_sync_not_open(self, store_not_open: MemoryStore) -> None:
+        """set_range_sync auto-opens a closed store."""
+        assert not store_not_open._is_open
+        store_not_open._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+        store_not_open.set_range_sync("test/key", cpu.Buffer.from_bytes(b"XX"), start=0)
+        assert getattr(store_not_open, "_is_open")  # noqa: B009
+        assert store_not_open._store_dict["test/key"].to_bytes() == b"XXAAAAAAAA"
+
+    async def test_set_range_concurrent(self, store: MemoryStore) -> None:
+        """Concurrent set_range calls to non-overlapping ranges should not corrupt data."""
+        n_writers = 10
+        chunk_size = 10
+        total = n_writers * chunk_size
+        await store.set("test/key", cpu.Buffer.from_bytes(bytes(total)))
+
+        async def write_chunk(i: int) -> None:
+            data = bytes([i] * chunk_size)
+            await store.set_range("test/key", cpu.Buffer.from_bytes(data), start=i * chunk_size)
+
+        await asyncio.gather(*[write_chunk(i) for i in range(n_writers)])
+
+        result = await store.get("test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        expected = bytes([i for i in range(n_writers) for _ in range(chunk_size)])
+        assert result.to_bytes() == expected
+
+    def test_set_range_sync_concurrent(self, store: MemoryStore) -> None:
+        """Concurrent set_range_sync calls to non-overlapping ranges should not corrupt data."""
+        n_writers = 10
+        chunk_size = 10
+        total = n_writers * chunk_size
+        store._store_dict["test/key"] = cpu.Buffer.from_bytes(bytes(total))
+
+        errors: list[Exception] = []
+
+        def write_chunk(i: int) -> None:
+            try:
+                data = bytes([i] * chunk_size)
+                store.set_range_sync("test/key", cpu.Buffer.from_bytes(data), start=i * chunk_size)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_chunk, args=(i,)) for i in range(n_writers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+        assert result is not None
+        expected = bytes([i for i in range(n_writers) for _ in range(chunk_size)])
+        assert result.to_bytes() == expected
+
 
 # TODO: fix this warning
 @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
@@ -181,6 +309,18 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
+
+    def test_set_range_not_supported(self, store: GpuMemoryStore) -> None:
+        """GpuMemoryStore deliberately does not satisfy SupportsSetRange.
+
+        Capability detection via isinstance must report False so a consumer (e.g. the
+        sharding codec) does not select it and crash. The methods are disclaimed
+        (set to None), so isinstance returns False rather than a false positive.
+        """
+        # mypy statically knows GpuMemoryStore cannot satisfy the protocol (the methods
+        # are None), which is exactly what we want — but it then flags this runtime
+        # assertion as unreachable. Keep the runtime check as a regression guard.
+        assert not isinstance(store, SupportsSetRange)  # type: ignore[unreachable]
 
 
 class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
@@ -450,6 +590,42 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
         result2 = await store.get("subdir/key")
         assert result2 is not None
         assert result2.to_bytes() == b"value"
+
+    def test_supports_set_range(self, store: ManagedMemoryStore) -> None:
+        assert isinstance(store, SupportsSetRange)
+
+    async def test_set_range_applies_path_prefix(self) -> None:
+        """set_range must prepend the store's path prefix, matching set/get.
+
+        Regression: an unprefixed inherited set_range would target the wrong key.
+        """
+        store = ManagedMemoryStore(name="set-range-path-test", path="subdir")
+        await store.set("k", self.buffer_cls.from_bytes(b"AAAAAAAAAA"))
+        # set() writes to the prefixed backing key.
+        assert "subdir/k" in store._store_dict
+        await store.set_range("k", self.buffer_cls.from_bytes(b"XX"), start=2)
+        store.set_range_sync("k", self.buffer_cls.from_bytes(b"YY"), start=6)
+        # Both writes landed on the same prefixed value that set/get use.
+        observed = await store.get("k")
+        assert observed is not None
+        assert observed.to_bytes() == b"AAXXAAYYAA"
+        assert store._store_dict["subdir/k"].to_bytes() == b"AAXXAAYYAA"
+
+    def test_set_range_locks_shared_by_name(self) -> None:
+        """Instances sharing a backing dict (same name) share the set_range lock dicts.
+
+        The registry shares the data across same-name handles, so it must share the
+        locks too — otherwise concurrent set_range from two handles would not serialize.
+        """
+        a = ManagedMemoryStore(name="lock-share-test")
+        b = ManagedMemoryStore.from_url("memory://lock-share-test")
+        c = a.with_read_only(not a.read_only)
+        assert a._key_locks is b._key_locks
+        assert a._key_locks_sync is b._key_locks_sync
+        assert a._key_locks is c._key_locks
+        # A differently named store has independent locks.
+        other = ManagedMemoryStore(name="lock-share-test-other")
+        assert other._key_locks is not a._key_locks
 
     async def test_path_list_operations(self) -> None:
         """Test that list operations filter by path prefix."""
