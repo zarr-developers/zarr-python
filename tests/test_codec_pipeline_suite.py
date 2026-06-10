@@ -421,6 +421,42 @@ class CodecPipelineTests:
         with pytest.raises(ChunkNotFoundError):
             arr[:]
 
+    def test_read_missing_chunks_false_sharded_semantics(self, store: Store) -> None:
+        """read_missing_chunks=False is a STORE-KEY-level promise on sharded arrays.
+
+        The config exists to help consumers distinguish a transport error from a
+        truly missing chunk. That distinction applies to store keys: a missing
+        SHARD key raises ChunkNotFoundError. It does not cleanly apply to inner
+        subchunks of a shard that was fetched successfully — there is no
+        transport ambiguity there, the shard index simply records the subchunk
+        as absent — so missing inner subchunks fill with the fill value rather
+        than raising. This pins that asymmetry as intentional.
+        """
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            dtype="float64",
+            chunks=(10,),
+            shards=(50,),
+            compressors=None,
+            fill_value=-1.0,
+            config={"read_missing_chunks": False},
+        )
+        # No shard key exists yet: reading is a missing-store-key error.
+        with pytest.raises(ChunkNotFoundError):
+            arr[:]
+
+        # Write one inner chunk of the first shard. The shard key now exists,
+        # but most inner subchunks are absent from its index.
+        arr[20:30] = np.arange(10, dtype="float64")
+
+        # Reading across written + absent inner subchunks of the EXISTING shard
+        # fills rather than raises.
+        out = np.asarray(arr[15:35])
+        expected = np.full(20, -1.0)
+        expected[5:15] = np.arange(10, dtype="float64")
+        np.testing.assert_array_equal(out, expected)
+
     @pytest.mark.parametrize("subchunk_write_order", ["morton", "lexicographic", "colexicographic"])
     def test_partial_write_after_reopen_is_correct(
         self, store: Store, subchunk_write_order: SubchunkWriteOrder
