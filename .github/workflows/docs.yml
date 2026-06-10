@@ -24,7 +24,10 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       - run: uv sync --group docs
-      - run: uv run mkdocs build
+      # --strict turns warnings into errors, so a docs code block that fails to execute
+      # at build time (e.g. a non-exec python fence disrupting a later exec="true" block)
+      # fails CI instead of merging as a silent warning.
+      - run: uv run mkdocs build --strict
         env:
           DISABLE_MKDOCS_2_WARNING: "true"
           NO_MKDOCS_2_WARNING: "true"
