@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import zarr
-from tests.test_codecs.conftest import Expect, ExpectErr
+from tests.conftest import Expect, ExpectFail
 from zarr.codecs.cast_value import CastValue
 
 try:
@@ -31,7 +31,8 @@ requires_cast_value_rs = pytest.mark.skipif(
     [
         Expect(
             input=CastValue(data_type="uint8"),
-            expected={"name": "cast_value", "configuration": {"data_type": "uint8"}},
+            output={"name": "cast_value", "configuration": {"data_type": "uint8"}},
+            id="minimal",
         ),
         Expect(
             input=CastValue(
@@ -40,7 +41,7 @@ requires_cast_value_rs = pytest.mark.skipif(
                 out_of_range="clamp",
                 scalar_map={"encode": [("NaN", 0)]},
             ),
-            expected={
+            output={
                 "name": "cast_value",
                 "configuration": {
                     "data_type": "uint8",
@@ -49,13 +50,14 @@ requires_cast_value_rs = pytest.mark.skipif(
                     "scalar_map": {"encode": [("NaN", 0)]},
                 },
             },
+            id="full",
         ),
     ],
-    ids=["minimal", "full"],
+    ids=lambda c: c.id,
 )
 def test_to_dict(case: Expect[CastValue, dict[str, Any]]) -> None:
     """to_dict produces the expected JSON structure."""
-    assert case.input.to_dict() == case.expected
+    assert case.input.to_dict() == case.output
 
 
 @pytest.mark.parametrize(
@@ -63,7 +65,8 @@ def test_to_dict(case: Expect[CastValue, dict[str, Any]]) -> None:
     [
         Expect(
             input={"name": "cast_value", "configuration": {"data_type": "float32"}},
-            expected=("float32", "nearest-even", None),
+            output=("float32", "nearest-even", None),
+            id="defaults",
         ),
         Expect(
             input={
@@ -74,15 +77,16 @@ def test_to_dict(case: Expect[CastValue, dict[str, Any]]) -> None:
                     "out_of_range": "clamp",
                 },
             },
-            expected=("int16", "towards-zero", "clamp"),
+            output=("int16", "towards-zero", "clamp"),
+            id="explicit",
         ),
     ],
-    ids=["defaults", "explicit"],
+    ids=lambda c: c.id,
 )
 def test_from_dict(case: Expect[dict[str, Any], tuple[str, str, str | None]]) -> None:
     """from_dict deserializes configuration with correct values and defaults."""
     codec = CastValue.from_dict(case.input)
-    dtype_name, rounding, out_of_range = case.expected
+    dtype_name, rounding, out_of_range = case.output
     assert codec.dtype.to_native_dtype() == np.dtype(dtype_name)
     assert codec.rounding == rounding
     assert codec.out_of_range == out_of_range
@@ -133,22 +137,24 @@ def test_construction_rejects_invalid_target_dtype() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(
+        ExpectFail(
             input={"dtype": "complex128", "target": "float64"},
             msg="only supports integer and floating-point",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="complex-source",
         ),
-        ExpectErr(
+        ExpectFail(
             input={"dtype": "int32", "target": "float64", "out_of_range": "wrap"},
             msg="only valid for integer",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="wrap-float-target",
         ),
     ],
-    ids=["complex-source", "wrap-float-target"],
+    ids=lambda c: c.id,
 )
-def test_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
+def test_validation_rejects_invalid(case: ExpectFail[dict[str, Any]]) -> None:
     """Invalid dtype or out_of_range combinations are rejected at array creation."""
-    with pytest.raises(case.exception_cls, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),
@@ -216,14 +222,14 @@ def test_zero_itemsize_raises() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input=("float64", "float32"), expected=np.arange(50, dtype="float64")),
-        Expect(input=("float32", "float64"), expected=np.arange(50, dtype="float32")),
-        Expect(input=("int32", "int64"), expected=np.arange(50, dtype="int32")),
-        Expect(input=("int64", "int16"), expected=np.arange(50, dtype="int64")),
-        Expect(input=("float64", "int32"), expected=np.arange(50, dtype="float64")),
-        Expect(input=("int32", "float64"), expected=np.arange(50, dtype="int32")),
+        Expect(input=("float64", "float32"), output=np.arange(50, dtype="float64"), id="f64→f32"),
+        Expect(input=("float32", "float64"), output=np.arange(50, dtype="float32"), id="f32→f64"),
+        Expect(input=("int32", "int64"), output=np.arange(50, dtype="int32"), id="i32→i64"),
+        Expect(input=("int64", "int16"), output=np.arange(50, dtype="int64"), id="i64→i16"),
+        Expect(input=("float64", "int32"), output=np.arange(50, dtype="float64"), id="f64→i32"),
+        Expect(input=("int32", "float64"), output=np.arange(50, dtype="int32"), id="i32→f64"),
     ],
-    ids=["f64→f32", "f32→f64", "i32→i64", "i64→i16", "f64→i32", "i32→f64"],
+    ids=lambda c: c.id,
 )
 def test_encode_decode_roundtrip(
     case: Expect[tuple[str, str], np.ndarray[Any, np.dtype[Any]]],
@@ -241,8 +247,8 @@ def test_encode_decode_roundtrip(
         compressors=None,
         fill_value=0,
     )
-    arr[:] = case.expected
-    np.testing.assert_array_equal(arr[:], case.expected)
+    arr[:] = case.output
+    np.testing.assert_array_equal(arr[:], case.output)
 
 
 @requires_cast_value_rs
@@ -251,10 +257,11 @@ def test_encode_decode_roundtrip(
     [
         Expect(
             input=np.array([1.7, -1.7, 2.5, -2.5], dtype="float64"),
-            expected=np.array([1, -1, 2, -2], dtype="float64"),
+            output=np.array([1, -1, 2, -2], dtype="float64"),
+            id="towards-zero",
         ),
     ],
-    ids=["towards-zero"],
+    ids=lambda c: c.id,
 )
 def test_float_to_int_rounding(
     case: Expect[np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]]],
@@ -272,7 +279,7 @@ def test_float_to_int_rounding(
         fill_value=0,
     )
     arr[:] = case.input
-    np.testing.assert_array_equal(arr[:], case.expected)
+    np.testing.assert_array_equal(arr[:], case.output)
 
 
 @requires_cast_value_rs
@@ -281,10 +288,11 @@ def test_float_to_int_rounding(
     [
         Expect(
             input=np.array([0, 200, -200], dtype="int32"),
-            expected=np.array([0, 127, -128], dtype="int32"),
+            output=np.array([0, 127, -128], dtype="int32"),
+            id="int32→int8",
         ),
     ],
-    ids=["int32→int8"],
+    ids=lambda c: c.id,
 )
 def test_out_of_range_clamp(
     case: Expect[np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]]],
@@ -302,7 +310,7 @@ def test_out_of_range_clamp(
         fill_value=0,
     )
     arr[:] = case.input
-    np.testing.assert_array_equal(arr[:], case.expected)
+    np.testing.assert_array_equal(arr[:], case.output)
 
 
 def test_compute_encoded_size() -> None:
@@ -355,55 +363,54 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(
+        ExpectFail(
             input={
                 "dtype": "int32",
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 0)]},
             },
             msg="not representable in dtype int32",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="nan-key-for-int-source",
         ),
-        ExpectErr(
+        ExpectFail(
             input={
                 "dtype": "int32",
                 "target": "float64",
                 "scalar_map": {"decode": [(0, "NaN")]},
             },
             msg="not representable in dtype int32",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="nan-value-for-int-decode-target",
         ),
-        ExpectErr(
+        ExpectFail(
             input={
                 "dtype": "float64",
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 999)]},
             },
             msg="not representable in dtype int8",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="encode-value-out-of-range",
         ),
-        ExpectErr(
+        ExpectFail(
             input={
                 "dtype": "float64",
                 "target": "int8",
                 "scalar_map": {"encode": [("NaN", 1.5)]},
             },
             msg="not representable in dtype int8",
-            exception_cls=ValueError,
+            exception=ValueError,
+            id="encode-value-not-integer",
         ),
     ],
-    ids=[
-        "nan-key-for-int-source",
-        "nan-value-for-int-decode-target",
-        "encode-value-out-of-range",
-        "encode-value-not-integer",
-    ],
+    ids=lambda c: c.id,
 )
-def test_scalar_map_validation_rejects_invalid(case: ExpectErr[dict[str, Any]]) -> None:
+def test_scalar_map_validation_rejects_invalid(case: ExpectFail[dict[str, Any]]) -> None:
     """Invalid scalar_map entries are rejected at array creation."""
     import zarr
 
-    with pytest.raises(case.exception_cls, match=case.msg):
+    with case.raises():
         zarr.create_array(
             store={},
             shape=(10,),
@@ -450,20 +457,23 @@ def test_combined_with_scale_offset() -> None:
     [
         Expect(
             input={"encode": [("NaN", 0)]},
-            expected={"encode": {"NaN": 0}},
+            output={"encode": {"NaN": 0}},
+            id="encode-only",
         ),
         Expect(
             input={"encode": [("NaN", 0)], "decode": [(0, "NaN")]},
-            expected={"encode": {"NaN": 0}, "decode": {0: "NaN"}},
+            output={"encode": {"NaN": 0}, "decode": {0: "NaN"}},
+            id="both-directions",
         ),
         Expect(
             input={"encode": {"NaN": 0}},
-            expected={"encode": {"NaN": 0}},
+            output={"encode": {"NaN": 0}},
+            id="already-normalized",
         ),
     ],
-    ids=["encode-only", "both-directions", "already-normalized"],
+    ids=lambda c: c.id,
 )
 def test_parse_scalar_map(case: Expect[Any, Any]) -> None:
     from zarr.codecs.cast_value import parse_scalar_map
 
-    assert parse_scalar_map(case.input) == case.expected
+    assert parse_scalar_map(case.input) == case.output

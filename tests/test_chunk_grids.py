@@ -1,10 +1,9 @@
-import re
 from typing import Any
 
 import numpy as np
 import pytest
 
-from tests.test_codecs.conftest import Expect, ExpectErr
+from tests.conftest import Expect, ExpectFail
 from zarr.core.chunk_grids import (
     ChunkLayout,
     _guess_regular_chunks,
@@ -131,81 +130,104 @@ def test_chunk_layout_nested() -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(input=(0, 100), msg="Chunk size must be positive", exception_cls=ValueError),
-        ExpectErr(input=(-2, 100), msg="Chunk size must be positive", exception_cls=ValueError),
-        ExpectErr(input=([], 100), msg="must not be empty", exception_cls=ValueError),
-        ExpectErr(input=([10, -1, 10], 100), msg="must be positive", exception_cls=ValueError),
-        ExpectErr(input=([10, 0, 10], 20), msg="must be positive", exception_cls=ValueError),
-        ExpectErr(input=([10, 20], 100), msg="do not sum to span", exception_cls=ValueError),
+        ExpectFail(
+            input=(0, 100),
+            exception=ValueError,
+            id="zero-uniform",
+            msg="Chunk size must be positive",
+        ),
+        ExpectFail(
+            input=(-2, 100),
+            exception=ValueError,
+            id="negative-uniform",
+            msg="Chunk size must be positive",
+        ),
+        ExpectFail(input=([], 100), exception=ValueError, id="empty-list", msg="must not be empty"),
+        ExpectFail(
+            input=([10, -1, 10], 100),
+            exception=ValueError,
+            id="negative-element",
+            msg="must be positive",
+        ),
+        ExpectFail(
+            input=([10, 0, 10], 20), exception=ValueError, id="zero-element", msg="must be positive"
+        ),
+        ExpectFail(
+            input=([10, 20], 100), exception=ValueError, id="wrong-sum", msg="do not sum to span"
+        ),
         # Nested/RLE form for a single dim is rejected with offending indices.
-        ExpectErr(
+        ExpectFail(
             input=([[3, 3], 1], 7),
+            exception=TypeError,
+            id="rle-single-dim",
             msg="non-integer element(s) ([3, 3],) at indices (0,)",
-            exception_cls=TypeError,
+            escape=True,
         ),
         # Multiple non-int elements: all offending indices reported.
-        ExpectErr(
+        ExpectFail(
             input=([1, [2, 2], 1, [3]], 9),
+            exception=TypeError,
+            id="multiple-non-ints",
             msg="non-integer element(s) ([2, 2], [3]) at indices (1, 3)",
-            exception_cls=TypeError,
+            escape=True,
         ),
         # Strings are non-integers and should be reported the same way.
-        ExpectErr(
+        ExpectFail(
             input=([2, "3", 5], 10),
+            exception=TypeError,
+            id="string-element",
             msg="non-integer element(s) ('3',) at indices (1,)",
-            exception_cls=TypeError,
+            escape=True,
         ),
     ],
-    ids=[
-        "zero-uniform",
-        "negative-uniform",
-        "empty-list",
-        "negative-element",
-        "zero-element",
-        "wrong-sum",
-        "rle-single-dim",
-        "multiple-non-ints",
-        "string-element",
-    ],
+    ids=lambda c: c.id,
 )
-def test_normalize_chunks_1d_errors(case: ExpectErr[tuple[Any, int]]) -> None:
+def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
     """Invalid 1D chunk specifications are rejected with informative error messages."""
     chunks, span = case.input
-    with pytest.raises(case.exception_cls, match=re.escape(case.msg)):
+    with case.raises():
         normalize_chunks_1d(chunks, span=span)
 
 
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectErr(
+        ExpectFail(
             input=(None, (100,)),
+            exception=ValueError,
+            id="none",
             msg="None is not a valid chunk input",
-            exception_cls=ValueError,
         ),
         # `True` is rejected explicitly because bool is a subclass of int — without
         # this guard, `chunks=True` would silently produce size-1 chunks.
-        ExpectErr(
+        ExpectFail(
             input=(True, (100,)),
+            exception=ValueError,
+            id="true",
             msg="True is not a valid chunk input",
-            exception_cls=ValueError,
         ),
-        ExpectErr(input=("foo", (100,)), msg="dimensions", exception_cls=ValueError),
-        ExpectErr(input=((100, 10), (100,)), msg="dimensions", exception_cls=ValueError),
-        ExpectErr(input=((10,), (100, 100)), msg="dimensions", exception_cls=ValueError),
+        ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        ExpectFail(
+            input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
+        ),
+        ExpectFail(
+            input=((10,), (100, 100)), exception=ValueError, id="too-few-dims", msg="dimensions"
+        ),
         # End-to-end: per-dim RLE surfaces through normalize_chunks_nd.
-        ExpectErr(
+        ExpectFail(
             input=([[6, 4], [[3, 3], 1]], (10, 10)),
+            exception=TypeError,
+            id="rle-inner-dim",
             msg="non-integer element(s) ([3, 3],) at indices (0,)",
-            exception_cls=TypeError,
+            escape=True,
         ),
     ],
-    ids=["none", "true", "string", "too-many-dims", "too-few-dims", "rle-inner-dim"],
+    ids=lambda c: c.id,
 )
-def test_normalize_chunks_nd_errors(case: ExpectErr[tuple[Any, tuple[int, ...]]]) -> None:
+def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]]) -> None:
     """Invalid N-D chunk specifications are rejected with informative error messages."""
     chunks, shape = case.input
-    with pytest.raises(case.exception_cls, match=re.escape(case.msg)):
+    with case.raises():
         normalize_chunks_nd(chunks, shape)
 
 
@@ -213,13 +235,13 @@ def test_normalize_chunks_nd_errors(case: ExpectErr[tuple[Any, tuple[int, ...]]]
     "case",
     [
         # uniform-chunks branch: one int → broadcast across span via np.full.
-        Expect(input=(1000, 100_000), expected=[1000] * 100),
+        Expect(input=(1000, 100_000), output=[1000] * 100, id="uniform"),
         # explicit-per-chunk branch.
-        Expect(input=([10, 20, 30, 40], 100), expected=[10, 20, 30, 40]),
+        Expect(input=([10, 20, 30, 40], 100), output=[10, 20, 30, 40], id="explicit-list"),
         # -1 sentinel branch: one chunk covering the full span.
-        Expect(input=(-1, 100), expected=[100]),
+        Expect(input=(-1, 100), output=[100], id="full-span-sentinel"),
     ],
-    ids=["uniform", "explicit-list", "full-span-sentinel"],
+    ids=lambda c: c.id,
 )
 def test_normalize_chunks_1d_returns_int64_array(
     case: Expect[tuple[Any, int], list[int]],
@@ -230,4 +252,4 @@ def test_normalize_chunks_1d_returns_int64_array(
     assert isinstance(result, np.ndarray)
     assert result.dtype == np.int64
     assert result.ndim == 1
-    assert result.tolist() == case.expected
+    assert result.tolist() == case.output
