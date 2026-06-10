@@ -524,6 +524,9 @@ class ShardingCodec(
         For a partial read where the caller only needs a slice of the shard,
         use `_decode_partial_sync` instead — it fetches only the byte
         ranges that overlap the selection.
+
+        This method does not parallelize decompression, but should.
+        See TODO: make issue for handling subchunk parallelism
         """
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -583,6 +586,9 @@ class ShardingCodec(
         Returns `None` if every inner chunk was elided (an all-empty shard) —
         callers treat that as "delete the shard key".
 
+        This method does not parallelize compression, but should.
+        See TODO: make issue for handling subchunk parallelism
+
         For a partial write that only touches some inner chunks, use
         `_encode_partial_sync` instead.
         """
@@ -635,6 +641,9 @@ class ShardingCodec(
         shard array) and the selection within the shard, matching the
         calling convention of the async partial-encode path used by
         `BatchedCodecPipeline`.
+
+        This method does not parallelize compression, but should.
+        See TODO: make issue for handling subchunk parallelism
 
         Loads the existing shard, merges the written region into the affected
         inner chunks, and rewrites the whole shard.
@@ -1066,6 +1075,9 @@ class ShardingCodec(
         Reads only the inner-chunk byte ranges that overlap `selection`
         (plus the shard index) and decodes them through the inner codec
         chain.  The store must support `get_sync` with byte ranges.
+
+        This method does not parallelize decompression, but should.
+        See TODO: make issue for handling subchunk parallelism
 
         Two sub-paths:
         - If `selection` covers the entire shard, just fetch the whole
