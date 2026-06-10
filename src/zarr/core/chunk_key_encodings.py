@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast
 
 if TYPE_CHECKING:
     from typing import NotRequired, Self
@@ -42,7 +42,7 @@ class ChunkKeyEncoding(ABC, Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, config_parsed = parse_named_configuration(data, require_configuration=False)
-        return cls(**config_parsed if config_parsed else {})
+        return cls(**config_parsed or {})
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": super().to_dict()}
@@ -62,7 +62,7 @@ class ChunkKeyEncoding(ABC, Metadata):
         """
 
 
-ChunkKeyEncodingLike: TypeAlias = (
+type ChunkKeyEncodingLike = (
     dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding | NamedConfig[str, Any]
 )
 

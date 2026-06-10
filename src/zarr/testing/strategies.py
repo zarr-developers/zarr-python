@@ -13,16 +13,18 @@ from hypothesis.strategies import SearchStrategy
 import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
-from zarr.core.array import Array
-from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
+from zarr.codecs.zstd import ZstdCodec
+from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import JSON, ZarrFormat
+from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
-from zarr.storage._common import _dereference_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _join_paths, normalize_path
 from zarr.types import AnyArray
 
 TrueOrFalse = Literal[True, False]
@@ -128,6 +130,9 @@ def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | 
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
 
 
+subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(SUBCHUNK_WRITE_ORDER)
+
+
 @st.composite
 def array_metadata(
     draw: st.DrawFn,
@@ -140,11 +145,11 @@ def array_metadata(
     # separator = draw(st.sampled_from(['/', '\\']))
     shape = draw(array_shapes())
     ndim = len(shape)
-    chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
     np_dtype = draw(dtypes())
     dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:
+        chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim, min_side=1))
         return ArrayV2Metadata(
             shape=shape,
             chunks=chunk_shape,
@@ -157,10 +162,11 @@ def array_metadata(
             compressor=None,
         )
     else:
+        chunk_grid = draw(chunk_grids(shape=shape))
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=chunk_grid,
             fill_value=fill_value,
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
@@ -194,11 +200,17 @@ def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
     # We want this strategy to shrink towards arrays with smaller number of chunks
     # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
     numchunks = draw(
-        st.tuples(*[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in shape])
+        st.tuples(
+            *[
+                st.integers(min_value=0 if size == 0 else 1, max_value=max(size, 1))
+                for size in shape
+            ]
+        )
     )
     # 2. and now generate the chunks tuple
+    # Chunk sizes must be >= 1 per spec; for zero-extent dimensions use 1.
     chunks = tuple(
-        size // nchunks if nchunks > 0 else 0
+        max(1, size // nchunks) if nchunks > 0 else 1
         for size, nchunks in zip(shape, numchunks, strict=True)
     )
 
@@ -228,7 +240,7 @@ def np_array_and_chunks(
     draw: st.DrawFn,
     *,
     arrays: st.SearchStrategy[npt.NDArray[Any]] = numpy_arrays(),  # noqa: B008
-) -> tuple[np.ndarray, tuple[int, ...]]:  # type: ignore[type-arg]
+) -> tuple[np.ndarray[Any, Any], tuple[int, ...]]:
     """A hypothesis strategy to generate small sized random arrays.
 
     Returns: a tuple of the array and a suitable random chunking for it.
@@ -249,6 +261,8 @@ def arrays(
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
+    subchunk_write_orders: SearchStrategy[SubchunkWriteOrder] = subchunk_write_orders,
+    open_mode: AccessModeLiteral = "w",
 ) -> AnyArray:
     store = draw(stores, label="store")
     path = draw(paths, label="array parent")
@@ -258,35 +272,69 @@ def arrays(
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
-    chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     dim_names: None | list[str | None] = None
-    if zarr_format == 3 and all(c > 0 for c in chunk_shape):
-        shard_shape = draw(
-            st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
-            label="shard shape",
-        )
-        dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
-    else:
-        shard_shape = None
+    serializer: SerializerLike = "auto"
+    compressors_unsearched: CompressorsLike = "auto"
+
+    # For v3 arrays, optionally use RectilinearChunkGridMetadata
+    chunk_grid_meta: RegularChunkGridMetadata | RectilinearChunkGridMetadata | None = None
+
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     # compressor = draw(compressors)
 
     expected_attrs = {} if attributes is None else attributes
 
-    array_path = _dereference_path(path, name)
-    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
+    array_path = _join_paths([path, name])
+    root = zarr.open_group(store, mode=open_mode, zarr_format=zarr_format)
 
+    # Convert chunk grid metadata to a form create_array accepts:
+    # - RegularChunkGridMetadata -> flat tuple of ints
+    # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
+    # - v2 -> flat tuple of ints
+    chunks_param: tuple[int, ...] | list[list[int]]
+    shard_shape = None
+    dim_names = None
+    if zarr_format == 3:
+        chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
+        dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
+        if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
+            chunks_param = [
+                list(dim) if isinstance(dim, tuple) else [dim]
+                for dim in chunk_grid_meta.chunk_shapes
+            ]
+        elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
+            chunks_param = chunk_grid_meta.chunk_shape
+        else:
+            chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
+
+            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+                shard_shape = draw(
+                    st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
+                    label="shard shape",
+                )
+                if shard_shape is not None:
+                    subchunk_write_order = draw(subchunk_write_orders)
+                    serializer = ShardingCodec(
+                        subchunk_write_order=subchunk_write_order,
+                        codecs=[BytesCodec(), ZstdCodec()],
+                        index_codecs=[BytesCodec(), Crc32cCodec()],
+                        chunk_shape=chunks_param,
+                    )
+                    compressors_unsearched = None
+    else:
+        chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     a = root.create_array(
         array_path,
         shape=nparray.shape,
-        chunks=chunk_shape,
+        chunks=chunks_param,
         shards=shard_shape,
         dtype=nparray.dtype,
         attributes=attributes,
-        # compressor=compressor,  # FIXME
+        compressors=compressors_unsearched,  # FIXME
         fill_value=fill_value,
         dimension_names=dim_names,
+        serializer=serializer,
     )
 
     assert isinstance(a, Array)
@@ -294,11 +342,22 @@ def arrays(
         assert a.fill_value is not None
     assert a.name is not None
     assert a.path == normalize_path(array_path)
-    assert a.name == "/" + a.path
+    assert a.name == f"/{a.path}"
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
-    assert chunk_shape == a.chunks
-    assert shard_shape == a.shards
+
+    # Verify chunks — for rectilinear grids, .chunks raises
+    if zarr_format == 3:
+        assert shard_shape == a.shards
+        if isinstance(a.metadata.chunk_grid, RegularChunkGridMetadata):
+            assert a.metadata.chunk_grid.chunk_shape == (
+                a.shards if shard_shape is not None else a.chunks
+            )
+            assert shard_shape == a.shards
+        else:
+            assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
+            assert shard_shape is None
+
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 
@@ -322,6 +381,122 @@ def simple_arrays(
             compressors=st.sampled_from([None, "default"]),
         )
     )
+
+
+@st.composite
+def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
+    """Generate valid rectilinear chunk shapes for a given array shape.
+
+    Uses two modes per dimension:
+    - "expanded": random divider points create arbitrary chunk sizes
+    - "rle": uniform chunks with optional remainder, optionally shuffled
+
+    Keeps max chunks per dimension <= 20 to avoid performance issues
+    in property tests. With higher dimensions, the total chunk count
+    grows multiplicatively.
+    """
+    chunk_shapes: list[list[int]] = []
+    for size in shape:
+        assert size > 0
+        if size > 1:
+            mode = draw(st.sampled_from(["expanded", "rle"]))
+            if mode == "expanded":
+                event("rectilinear expanded")
+                max_chunks = min(size - 1, 20)
+                nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
+                dividers = sorted(
+                    draw(
+                        st.lists(
+                            st.integers(min_value=1, max_value=size - 1),
+                            min_size=nchunks - 1,
+                            max_size=nchunks - 1,
+                            unique=True,
+                        )
+                    )
+                )
+                chunk_shapes.append(
+                    [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
+                )
+            else:
+                # RLE mode: uniform chunks with optional remainder
+                max_chunk_size = min(size, 20)
+                chunk_size = draw(st.integers(min_value=1, max_value=max_chunk_size))
+                n_full = size // chunk_size
+                remainder = size % chunk_size
+                chunks_list = [chunk_size] * n_full
+                if remainder > 0:
+                    chunks_list.append(remainder)
+                # Optionally shuffle to create non-contiguous duplicate patterns
+                if draw(st.booleans()):
+                    event("rectilinear rle shuffled")
+                    chunks_list = draw(st.permutations(chunks_list))
+                else:
+                    event("rectilinear rle")
+                chunk_shapes.append(list(chunks_list))
+        else:
+            chunk_shapes.append([1])
+    return chunk_shapes
+
+
+@st.composite
+def chunk_grids(
+    draw: st.DrawFn, *, shape: tuple[int, ...]
+) -> RegularChunkGridMetadata | RectilinearChunkGridMetadata:
+    """Generate either a RegularChunkGridMetadata or RectilinearChunkGridMetadata.
+
+    This strategy depends on the global state of the config having rectilinear chunk grids enabled or not.
+    This means that it may be a possible source of a hypothesis FlakyStrategy error due dependence
+    on global state. However, in practice this seems unlikely to happen.
+
+    This allows property tests to exercise both chunk grid types.
+    """
+    # RectilinearChunkGridMetadata doesn't support zero-sized dimensions,
+    # so use RegularChunkGridMetadata if any dimension is 0
+    if any(s == 0 for s in shape):
+        event("using RegularChunkGridMetadata (zero-sized dimensions)")
+        return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
+
+    if zarr.config.get("array.rectilinear_chunks") and draw(st.booleans()):
+        chunks = draw(rectilinear_chunks(shape=shape))
+        event("using RectilinearChunkGridMetadata")
+        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(dim) for dim in chunks))
+    else:
+        event("using RegularChunkGridMetadata")
+        return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
+
+
+# Rectilinear arrays need min_side >= 1 so every dimension has at least one element
+_rectilinear_shapes = npst.array_shapes(max_dims=3, min_side=1, max_side=20)
+
+
+@st.composite
+def rectilinear_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = _rectilinear_shapes,
+) -> Any:
+    """Generate a zarr v3 array with rectilinear (variable) chunk grid."""
+    shape = draw(shapes)
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
+
+    np_dtype = draw(dtypes())
+    nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=np_dtype))
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(np_dtype)]))
+    dim_names = draw(dimension_names(ndim=len(shape)))
+
+    store = MemoryStore()
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        a = zarr.create_array(
+            store=store,
+            shape=shape,
+            chunks=chunk_shapes,
+            dtype=np_dtype,
+            fill_value=fill_value,
+            dimension_names=dim_names,
+        )
+        a[:] = nparray
+
+    return a
 
 
 def is_negative_slice(idx: Any) -> bool:
@@ -417,6 +592,67 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+@st.composite
+def block_indices(
+    draw: st.DrawFn, *, chunk_grid_shape: tuple[int, ...], chunks: tuple[int, ...]
+) -> tuple[tuple[int | slice, ...], tuple[slice, ...]]:
+    """
+    Strategy for block-selection indexers over a *regular* chunk grid.
+
+    Block indexing is basic indexing applied to the block grid (the grid of
+    chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
+    count from ``chunk_grid_shape`` (e.g. ``Array.cdata_shape``), mirroring how
+    ``orthogonal_indices`` reuses ``basic_indices`` per axis. Block indexing only
+    supports integers and step-1 slices whose start references an existing chunk,
+    so strided slices and slices starting at the grid edge are filtered out. The
+    array-space translation assumes a regular (uniform) chunk grid; an over-long
+    stop into a smaller last chunk is left for numpy to clamp when the oracle is
+    applied.
+
+    Returns
+    -------
+    block_indexer
+        A per-axis tuple of ints / step-1 slices addressing whole chunks,
+        suitable for ``Array.blocks`` / ``get_block_selection`` / ``set_block_selection``.
+    array_indexer
+        The equivalent array-space selection (a tuple of slices) for indexing
+        the corresponding numpy array, used as the comparison oracle.
+    """
+
+    def supported(nchunks: int) -> Callable[[tuple[Any, ...]], bool]:
+        # Block indexing only accepts step-1 slices whose start references an
+        # existing chunk (a slice starting at nchunks raises, unlike numpy).
+        def predicate(value: tuple[Any, ...]) -> bool:
+            dim_sel = value[0]
+            if isinstance(dim_sel, slice):
+                if dim_sel.step not in (None, 1):
+                    return False
+                start = dim_sel.start or 0
+                return 0 <= (start + nchunks if start < 0 else start) < nchunks
+            return True
+
+        return predicate
+
+    block_indexer: list[int | slice] = []
+    array_indexer: list[slice] = []
+    for chunk, nchunks in zip(chunks, chunk_grid_shape, strict=True):
+        (dim_sel,) = draw(
+            basic_indices(min_dims=1, shape=(nchunks,), allow_ellipsis=False)
+            # normalize bare ints / slices to a 1-tuple, skip the empty tuple
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)
+            .filter(bool)
+            .filter(supported(nchunks))
+        )
+        block_indexer.append(dim_sel)
+        if isinstance(dim_sel, slice):
+            start, stop, _ = dim_sel.indices(nchunks)
+            array_indexer.append(slice(start * chunk, stop * chunk))
+        else:
+            block = dim_sel % nchunks
+            array_indexer.append(slice(block * chunk, (block + 1) * chunk))
+    return tuple(block_indexer), tuple(array_indexer)
+
+
 def key_ranges(
     keys: SearchStrategy[str] = node_names, max_size: int = sys.maxsize
 ) -> SearchStrategy[list[tuple[str, RangeByteRequest]]]:
@@ -438,6 +674,51 @@ def key_ranges(
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)
+
+
+@st.composite
+def complex_rectilinear_arrays(
+    draw: st.DrawFn,
+    *,
+    stores: st.SearchStrategy[StoreLike] = stores,
+    paths: st.SearchStrategy[str] = paths(),  # noqa: B008
+    array_names: st.SearchStrategy = array_names,
+    attrs: st.SearchStrategy = attrs,
+) -> tuple[npt.NDArray[Any], AnyArray]:
+    """Generate a rectilinear array with many small chunks.
+
+    The shape is derived from the chunk edges (5-10 chunks per dim,
+    sizes 1-5), exercising higher chunk counts than ``rectilinear_arrays``.
+    """
+    ndim = draw(st.integers(min_value=1, max_value=3))
+    nchunks = draw(st.integers(min_value=5, max_value=10))
+    dim_chunks = st.lists(st.integers(min_value=1, max_value=5), min_size=nchunks, max_size=nchunks)
+    chunk_shapes = draw(st.lists(dim_chunks, min_size=ndim, max_size=ndim))
+
+    shape = tuple(sum(dim) for dim in chunk_shapes)
+    nparray = draw(numpy_arrays(shapes=st.just(shape)))
+    dim_names = draw(dimension_names(ndim=ndim))
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+    attributes = draw(attrs)
+
+    store = draw(stores, label="store")
+    path = draw(paths, label="array parent")
+    name = draw(array_names, label="array name")
+    array_path = _join_paths([path, name])
+
+    root = zarr.open_group(store, mode="w", zarr_format=3)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        a = root.create_array(
+            array_path,
+            shape=shape,
+            chunks=chunk_shapes,
+            dtype=nparray.dtype,
+            fill_value=fill_value,
+            dimension_names=dim_names,
+            attributes=attributes,
+        )
+    a[:] = nparray
+    return nparray, a
 
 
 @st.composite

@@ -2,7 +2,119 @@
 
 <!-- towncrier release notes start -->
 
-# zarr 3.1.5 (2025-11-21)
+## 3.2.1 (2026-05-05)
+
+### Bugfixes
+
+- Fixed a `CastValue` validation bug where the "can we use an out-of-range mode" check
+  inspected the source dtype instead of the target dtype. This meant arrays with a
+  float source dtype and an integer target dtype incorrectly raised a `ValueError`
+  when configured with a `wrap` out-of-range mode. ([#3938](https://github.com/zarr-developers/zarr-python/issues/3938))
+- Fixed a bug where the codec pipeline evolved each codec against the original
+  array spec instead of the spec produced by upstream array-to-array codecs. This
+  caused failures whenever an upstream codec changed the dtype between codec
+  boundaries — e.g. arrays using `CastValue` to convert a single-byte source dtype
+  (`int8`) to a multi-byte target dtype (`int16`) raised a `ValueError` from
+  `BytesCodec` about a missing `endian` configuration. ([#3941](https://github.com/zarr-developers/zarr-python/issues/3941))
+- Fixed breakage in existing fsspec-dependent workflows caused by associating the "memory" URL scheme with
+instances of `ManagedMemoryStore` instead of fsspec's memory-backed store. After this change, store URLs with a "memory" scheme are handled differently when `fsspec` is installed:
+with `fsspec`, a `FsspecStore` backed by a `MemoryFileSystem` is used. Without `fsspec`,
+a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr-python/issues/3944))
+
+## 3.2.0 (2026-04-30)
+
+### Features
+
+- Adds a new in-memory storage backend called `ManagedMemoryStore`. Instances of `ManagedMemoryStore`
+  function similarly to `MemoryStore`, but instances of `ManagedMemoryStore` can be constructed from
+  a URL like `memory://store`. ([#3679](https://github.com/zarr-developers/zarr-python/issues/3679))
+- Added `array.read_missing_chunks` configuration option. When set to `False`, reading missing chunks raises a `ChunkNotFoundError` instead of filling them with the array's fill value. ([#3748](https://github.com/zarr-developers/zarr-python/issues/3748))
+- Added `Struct` class (subclass of `Structured`) implementing the zarr-extensions `struct` dtype spec. Uses object-style field format and dict fill values. Legacy `Structured` remains available for backward compatibility. ([#3781](https://github.com/zarr-developers/zarr-python/issues/3781))
+- Add support for rectilinear (variable-sized) chunk grids. This feature is experimental and
+  must be explicitly enabled via `zarr.config.set({'array.rectilinear_chunks': True})`.
+
+  Rectilinear chunks can be used through:
+
+  - **Creating arrays**: Pass nested sequences (e.g., `[[10, 20, 30], [50, 50]]`) to `chunks`
+    in `zarr.create_array`, `zarr.from_array`, `zarr.zeros`, `zarr.ones`, `zarr.full`,
+    `zarr.open`, and related functions, or to `chunk_shape` in `zarr.create`.
+  - **Opening existing arrays**: Arrays stored with the `rectilinear` chunk grid are read
+    transparently via `zarr.open` and `zarr.open_array`.
+  - **Rectilinear sharding**: Shard boundaries can be rectilinear while inner chunks remain regular.
+
+  **Breaking change**: The `validate` method on `BaseCodec` and `CodecPipeline` now receives
+  a `ChunkGridMetadata` instance instead of a `ChunkGrid` instance for the `chunk_grid`
+  parameter. Third-party codecs that override `validate` and inspect the chunk grid will need to
+  update their type annotations. No known downstream packages were using this parameter. ([#3802](https://github.com/zarr-developers/zarr-python/issues/3802))
+
+- Add `cast_value` and `scale_offset` codecs. ([#3874](https://github.com/zarr-developers/zarr-python/issues/3874))
+
+### Bugfixes
+
+- Fix `SyncError` raised when assigning a `zarr.Array` as the value in a `__setitem__` call (e.g. `dst[:] = src` where `src` is a zarr array). The source array is now converted to a NumPy array before entering the async codec pipeline. ([#3611](https://github.com/zarr-developers/zarr-python/issues/3611))
+- Fix an issue that prevents the correct parsing of special NumPy `uint32` dtypes resulting e.g.
+  from bit wise operations on `uint32` arrays on Windows. ([#3797](https://github.com/zarr-developers/zarr-python/issues/3797))
+- Fix `ZipStore.list()`, `list_dir()`, and `exists()` to auto-open the zip file when called before `open()`, consistent with the existing behavior of `get()` and `set()`. ([#3846](https://github.com/zarr-developers/zarr-python/issues/3846))
+- Fix handling of `NaT` default fill values for `datetime64` and `timedelta64` data types. Equality checks now use `numpy.isnat` so that the default fill value compares correctly against `NaT`. ([#3863](https://github.com/zarr-developers/zarr-python/issues/3863))
+- Use the unit associated with the `Datetime64` data type when creating the default `Nat` scalar value. ([#3920](https://github.com/zarr-developers/zarr-python/issues/3920))
+
+### Improved Documentation
+
+- Document removal of `zarr.storage.init_group` in v3 migration guide, with replacement using `zarr.open_group`/`zarr.create_group`. ([#2720](https://github.com/zarr-developers/zarr-python/issues/2720))
+- Document the `threading.max_workers` configuration option in the performance guide. ([#3492](https://github.com/zarr-developers/zarr-python/issues/3492))
+- Corrects the type annotation reported for the `batch_info` parameter in the `CodecPipeline.write`
+  method docstring. ([#3836](https://github.com/zarr-developers/zarr-python/issues/3836))
+- Remove result="ansi" from code blocks in the user guide that were causing empty output cells in the rendered documentation. ([#3845](https://github.com/zarr-developers/zarr-python/issues/3845))
+
+### Deprecations and Removals
+
+- Remove deprecated `zarr.convenience` and `zarr.creation` modules. ([#3900](https://github.com/zarr-developers/zarr-python/issues/3900))
+- Remove the deprecated `zarr_version` parameter from several functions and methods. That parameter is replaced with `zarr_format`. ([#3901](https://github.com/zarr-developers/zarr-python/issues/3901))
+- Remove deprecated `Group` methods `array`, `require_dataset`, and `create_dataset`. ([#3902](https://github.com/zarr-developers/zarr-python/issues/3902))
+- Remove deprecated `AsyncArray.create` and `Array.create` methods. ([#3903](https://github.com/zarr-developers/zarr-python/issues/3903))
+
+### Misc
+
+- [#3546](https://github.com/zarr-developers/zarr-python/issues/3546), [#3793](https://github.com/zarr-developers/zarr-python/issues/3793), [#3800](https://github.com/zarr-developers/zarr-python/issues/3800), [#3828](https://github.com/zarr-developers/zarr-python/issues/3828), [#3830](https://github.com/zarr-developers/zarr-python/issues/3830), [#3833](https://github.com/zarr-developers/zarr-python/issues/3833), [#3837](https://github.com/zarr-developers/zarr-python/issues/3837), [#3897](https://github.com/zarr-developers/zarr-python/issues/3897)
+
+
+## 3.1.6 (2026-03-19)
+
+### Features
+
+- Exposes the array runtime configuration as an attribute called `config` on the `Array` and
+  `AsyncArray` classes. The previous `AsyncArray._config` attribute is now a deprecated alias for `AsyncArray.config`. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
+- Adds a method for creating a new `Array` / `AsyncArray` instance with a new runtime configuration, and fixes inaccurate documentation about the `write_empty_chunks` configuration parameter. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
+- Adds synchronous methods to stores that do not benefit from an async event loop. The shape of these methods is defined by protocol classes to support structural subtyping. ([#3725](https://github.com/zarr-developers/zarr-python/pull/3725))
+- Fix near-miss penalty in `_morton_order` with hybrid ceiling+argsort strategy. ([#3718](https://github.com/zarr-developers/zarr-python/pull/3718))
+
+### Bugfixes
+
+- Correct the target bytes number for auto-chunking when auto-sharding. ([#3603](https://github.com/zarr-developers/zarr-python/issues/3603))
+- Fixed a bug in the sharding codec that prevented nested shard reads in certain cases. ([#3655](https://github.com/zarr-developers/zarr-python/issues/3655))
+- Fix obstore `_transform_list_dir` implementation to correctly relativize paths (removing `lstrip` usage). ([#3657](https://github.com/zarr-developers/zarr-python/issues/3657))
+- Raise error when trying to encode `numpy.dtypes.StringDType` with `na_object` set. ([#3695](https://github.com/zarr-developers/zarr-python/issues/3695))
+- `CacheStore`, `LoggingStore` and `LatencyStore` now support with_read_only. ([#3700](https://github.com/zarr-developers/zarr-python/issues/3700))
+- Skip chunk coordinate enumeration in resize when the array is only growing, avoiding unbounded memory usage for large arrays. ([#3702](https://github.com/zarr-developers/zarr-python/issues/3702))
+- Fix a performance bug in morton curve generation. ([#3705](https://github.com/zarr-developers/zarr-python/issues/3705))
+- Add a dedicated in-memory cache for byte-range requests to the experimental `CacheStore`. ([#3710](https://github.com/zarr-developers/zarr-python/issues/3710))
+- `BaseFloat._check_scalar` rejects invalid string values. ([#3586](https://github.com/zarr-developers/zarr-python/issues/3586))
+- Apply drop_axes squeeze in partial decode path for sharding. ([#3763](https://github.com/zarr-developers/zarr-python/issues/3763))
+- Set `copy=False` in reshape operation. ([#3649](https://github.com/zarr-developers/zarr-python/issues/3649))
+- Validate that dask-style chunks have regular shapes. ([#3779](https://github.com/zarr-developers/zarr-python/issues/3779))
+
+### Improved Documentation
+
+- Add documentation example for creating uncompressed arrays in the Compression section of the user guide. ([#3464](https://github.com/zarr-developers/zarr-python/issues/3464))
+- Add AI-assisted code policy to the contributing guide. ([#3769](https://github.com/zarr-developers/zarr-python/issues/3769))
+- Added a glossary. ([#3767](https://github.com/zarr-developers/zarr-python/issues/3767))
+
+### Misc
+
+- [#3562](https://github.com/zarr-developers/zarr-python/issues/3562), [#3605](https://github.com/zarr-developers/zarr-python/issues/3605), [#3619](https://github.com/zarr-developers/zarr-python/issues/3619), [#3623](https://github.com/zarr-developers/zarr-python/issues/3623), [#3636](https://github.com/zarr-developers/zarr-python/issues/3636), [#3648](https://github.com/zarr-developers/zarr-python/issues/3648), [#3656](https://github.com/zarr-developers/zarr-python/issues/3656), [#3658](https://github.com/zarr-developers/zarr-python/issues/3658), [#3673](https://github.com/zarr-developers/zarr-python/issues/3673), [#3704](https://github.com/zarr-developers/zarr-python/issues/3704), [#3706](https://github.com/zarr-developers/zarr-python/issues/3706), [#3708](https://github.com/zarr-developers/zarr-python/issues/3708), [#3712](https://github.com/zarr-developers/zarr-python/issues/3712), [#3713](https://github.com/zarr-developers/zarr-python/issues/3713), [#3717](https://github.com/zarr-developers/zarr-python/issues/3717), [#3721](https://github.com/zarr-developers/zarr-python/issues/3721), [#3728](https://github.com/zarr-developers/zarr-python/issues/3728), [#3778](https://github.com/zarr-developers/zarr-python/issues/3778)
+
+
+## zarr 3.1.5 (2025-11-21)
 
 ## Bugfixes
 
@@ -425,7 +537,7 @@
 - Test that a `ValueError` is raised for invalid byte range syntax in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Separate instantiating and opening a store in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Add a test for using Stores as a context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
-- Implemented `LogingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+- Implemented `LoggingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - `LoggingStore` is now a generic class. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Change StoreTest's `test_store_repr`, `test_store_supports_writes`,
   `test_store_supports_partial_writes`, and `test_store_supports_listing`

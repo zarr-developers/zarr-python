@@ -1,0 +1,8 @@
+{
+  "zarr_format": 3,
+  "node_type": "group",
+  "attributes": {
+    "label": "root",
+    "spatial_units": ["meter", "meter"]
+  }
+}

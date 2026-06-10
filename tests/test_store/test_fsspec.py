@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -10,12 +9,14 @@ import pytest
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from tests.conftest import MOTO_ENDPOINT_URL
 from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
+from zarr.storage._common import make_store
 from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
 
@@ -35,47 +36,51 @@ pytestmark = [
     pytest.mark.filterwarnings(
         re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
     ),
-    # TODO: fix these warnings
+    # FsspecStore.from_url() and from_mapper() now close the aiohttp session on store.close().
+    # This filter covers stores that are GC'd without an explicit close() call, and any
+    # residual sessions from aiobotocore's ClientCreatorContext (a separate upstream issue).
     pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
     pytest.mark.filterwarnings(
         "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+    ),
+    # s3fs finalizers can fail when sessions are garbage collected without being entered
+    pytest.mark.filterwarnings(
+        "ignore:Exception ignored in.*finalize object.*:pytest.PytestUnraisableExceptionWarning"
     ),
 ]
 
 fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
-moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
-moto = pytest.importorskip("moto")
+# Skip this module entirely when moto is absent; the server itself comes from the shared
+# `moto_server` fixture in tests/conftest.py.
+pytest.importorskip("moto")
 botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
-port = 5555
-endpoint_url = f"http://127.0.0.1:{port}/"
+# The moto server itself is the session-scoped `moto_server` fixture in tests/conftest.py;
+# this module reuses its endpoint rather than standing up its own server.
+endpoint_url = MOTO_ENDPOINT_URL
 
 
-@pytest.fixture(scope="module")
-def s3_base() -> Generator[None, None, None]:
-    # writable local S3 system
-
-    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
-    server.start()
-    if "AWS_SECRET_ACCESS_KEY" not in os.environ:
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
-    if "AWS_ACCESS_KEY_ID" not in os.environ:
-        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
-
-    yield
-    server.stop()
+@pytest.fixture
+def s3_base(moto_server: str) -> str:
+    """Reuse the shared session-scoped moto server (see tests/conftest.py)."""
+    return moto_server
 
 
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = botocore.session.Session()
-    return session.create_client("s3", endpoint_url=endpoint_url)
+
+    # Prevent IllegalLocationConstraintException by explicitly setting region to
+    # "us-east-1", which does not require configuring LocationConstraint during
+    # bucket creation. (It is, in fact, forbidden for that region.)  Necessary
+    # in the face of "ambient" AWS configuration in a development environment
+    # where the default region might be configured differently.
+    return session.create_client("s3", endpoint_url=endpoint_url, region_name="us-east-1")
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +100,14 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    s3 = s3fs.S3FileSystem(
+        anon=False,
+        client_kwargs={"endpoint_url": endpoint_url},
+        # Prevent "AssertionError: Session was never entered" from aiobotocore
+        # at end of test execution.  Using clear_instance_cache is insufficient,
+        # although still necessary.
+        skip_instance_cache=True,
+    )
     session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
@@ -265,6 +277,75 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         ):
             await store.delete_dir("test_prefix")
 
+    # ── Filesystem lifecycle (ownership) ──────────────────────────────────────
+
+    def test_from_url_owns_filesystem(self) -> None:
+        """FsspecStore.from_url() creates the async fs; it must own it."""
+        store = FsspecStore.from_url(
+            f"s3://{test_bucket_name}/lifecycle/",
+            storage_options={"endpoint_url": endpoint_url, "anon": False},
+        )
+        assert store._owns_fs
+        store.close()
+
+    async def test_from_url_close_releases_store(self) -> None:
+        """
+        close() on a from_url() store must succeed without error and mark the
+        store as closed.  For the owned filesystem, _close_fs() is invoked to
+        release the underlying S3 client / aiohttp connection pool.
+        """
+        store = FsspecStore.from_url(
+            f"s3://{test_bucket_name}/lifecycle/",
+            storage_options={"endpoint_url": endpoint_url, "anon": False},
+        )
+        # Materialise the S3 client and connection pool.
+        await store.set("probe", cpu.Buffer.from_bytes(b"x"))
+
+        store.close()
+
+        assert not store._is_open
+
+    def test_direct_construction_does_not_own_filesystem(self) -> None:
+        """Direct FsspecStore() must not claim ownership — the caller owns the fs."""
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
+            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
+        )
+        store = FsspecStore(fs=fs, path=path)
+        assert not store._owns_fs
+
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
+    def test_from_upath_does_not_own_filesystem(self) -> None:
+        """from_upath() uses the UPath's existing fs; the store must not own it."""
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/foo/bar/",
+            endpoint_url=endpoint_url,
+            anon=False,
+            asynchronous=True,
+        )
+        store = FsspecStore.from_upath(path)
+        assert not store._owns_fs
+
+    def test_from_mapper_does_not_own_already_async_filesystem(self) -> None:
+        """from_mapper() with an already-async fs must not claim ownership."""
+        s3_filesystem = s3fs.S3FileSystem(
+            asynchronous=True,
+            endpoint_url=endpoint_url,
+            anon=False,
+            skip_instance_cache=True,
+        )
+        mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/")
+        store = FsspecStore.from_mapper(mapper)
+        # _make_async returns the same instance for an already-async fs.
+        assert not store._owns_fs
+
 
 def array_roundtrip(store: FsspecStore) -> None:
     """
@@ -280,6 +361,116 @@ def array_roundtrip(store: FsspecStore) -> None:
     arr2 = zarr.open_array(store=store)
     assert isinstance(arr2, Array)
     np.testing.assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize(
+    ("root", "key", "expected"),
+    [
+        # `"/"` as root collapses so that bare-key backends (notably
+        # ReferenceFileSystem) get the right key. Regression test for
+        # https://github.com/zarr-developers/zarr-python/issues/3922 .
+        ("/", "zarr.json", "zarr.json"),
+        ("", "zarr.json", "zarr.json"),
+        # Trailing slashes on the root are stripped before joining.
+        ("foo/", "zarr.json", "foo/zarr.json"),
+        ("foo", "zarr.json", "foo/zarr.json"),
+        # Leading slashes on the root are preserved -- absolute filesystem
+        # paths must stay absolute. Regression test for the titiler-xarray
+        # breakage that #3924 introduced when `normalize_path` was applied to
+        # `FsspecStore.path`.
+        ("/home/runner/data.zarr", "zarr.json", "/home/runner/data.zarr/zarr.json"),
+        ("/home/runner/data.zarr/", "zarr.json", "/home/runner/data.zarr/zarr.json"),
+        # Multi-segment keys.
+        ("/home/foo", "a/b/zarr.json", "/home/foo/a/b/zarr.json"),
+        ("", "a/b/zarr.json", "a/b/zarr.json"),
+        # Trailing slash on the result is stripped (relevant when key is "").
+        ("/home/foo", "", "/home/foo"),
+    ],
+)
+def test_dereference_path(root: str, key: str, expected: str) -> None:
+    """Verify the contract `_dereference_path` provides for `FsspecStore`.
+
+    `FsspecStore.path` is stored verbatim; the join with a key must collapse a
+    sentinel `"/"` root, strip trailing slashes, and preserve leading
+    slashes on absolute paths.
+    """
+    from zarr.storage._utils import _dereference_path
+
+    assert _dereference_path(root, key) == expected
+
+
+async def test_fsspec_store_open_group_via_reference_filesystem() -> None:
+    """End-to-end regression test for
+    https://github.com/zarr-developers/zarr-python/issues/3922 .
+
+    ``ReferenceFileSystem`` keys its refs by bare strings like ``"zarr.json"``.
+    The bug was that ``FsspecStore(fs=ref_fs, path="/")`` produced
+    ``"//zarr.json"`` at the join site and failed to find the entry, raising
+    ``GroupNotFoundError``. This test pins ``path="/"`` explicitly to keep
+    coverage even if the default value changes later.
+    """
+    import json
+
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    group_json = json.dumps({"zarr_format": 3, "node_type": "group", "attributes": {}})
+    fs = ReferenceFileSystem(
+        fo={"version": 1, "refs": {"zarr.json": group_json}},
+        asynchronous=True,
+    )
+    store = FsspecStore(fs=fs, path="/", read_only=True)
+    group = await zarr.api.asynchronous.open_group(store, mode="r")
+    assert group.metadata.zarr_format == 3
+
+
+async def test_fsspec_store_read_array_chunk_via_reference_filesystem() -> None:
+    """End-to-end regression test that exercises the byte-range read path
+    against ``ReferenceFileSystem``.
+
+    Beyond opening a group (covered by
+    ``test_fsspec_store_open_group_via_reference_filesystem``), this test
+    constructs a small zarr v3 array whose chunk lives in the refs dict and
+    reads it through the store. Path-handling bugs on the byte-range
+    fetch path (used by kerchunk-style virtualization) would surface here
+    rather than at metadata-open time.
+    """
+    import json
+
+    import numpy as np
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    # Construct a minimal v3 zarr: a single 1-D uint8 array of length 4 with
+    # one chunk of size 4. The chunk bytes are little-endian uint8s 1..4.
+    array_meta = json.dumps(
+        {
+            "zarr_format": 3,
+            "node_type": "array",
+            "shape": [4],
+            "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+            "data_type": "uint8",
+            "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+            "fill_value": 0,
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "attributes": {},
+        }
+    )
+    chunk_bytes = bytes([1, 2, 3, 4])
+
+    refs: dict[str, str] = {
+        "zarr.json": array_meta,
+        # ReferenceFileSystem accepts raw bytes via base64 encoding or
+        # latin-1-decoded strings; latin-1 round-trips bytes 1:1.
+        "c/0": chunk_bytes.decode("latin-1"),
+    }
+
+    fs = ReferenceFileSystem(
+        fo={"version": 1, "refs": refs},
+        asynchronous=True,
+    )
+    store = FsspecStore(fs=fs, path="/", read_only=True)
+    array = await zarr.api.asynchronous.open_array(store=store, mode="r")
+    data = await array.getitem(slice(None))
+    np.testing.assert_array_equal(data, np.array([1, 2, 3, 4], dtype="uint8"))
 
 
 @pytest.mark.skipif(
@@ -384,6 +575,82 @@ def test_open_s3map_raises() -> None:
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
 
 
+async def test_close_fs_closes_s3_client() -> None:
+    """
+    _close_fs() must call set_session() and then close() on the returned
+    S3 client.  This is verified with mocks to avoid a real S3 connection.
+    """
+    from unittest.mock import AsyncMock
+
+    from zarr.storage._fsspec import _close_fs
+
+    mock_client = AsyncMock()
+    mock_fs = AsyncMock()
+    mock_fs.set_session = AsyncMock(return_value=mock_client)
+
+    await _close_fs(mock_fs)
+
+    mock_fs.set_session.assert_called_once()
+    mock_client.close.assert_called_once()
+
+
+async def test_close_fs_no_op_for_fs_without_set_session() -> None:
+    """_close_fs() must be a no-op for filesystems that don't expose set_session()."""
+    from unittest.mock import AsyncMock
+
+    from zarr.storage._fsspec import _close_fs
+
+    mock_fs = AsyncMock(spec=[])  # empty spec — no set_session attribute
+    await _close_fs(mock_fs)  # must not raise
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_from_mapper_owns_wrapped_sync_filesystem(tmp_path: pathlib.Path) -> None:
+    """
+    from_mapper() with a sync fs must wrap it in AsyncFileSystemWrapper and
+    claim ownership so that close() cleans it up.
+
+    The local filesystem is synchronous; _make_async() produces a new
+    AsyncFileSystemWrapper instance — a different object from the original fs.
+    """
+    import fsspec as _fsspec
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    fs = _fsspec.filesystem("file", auto_mkdir=True)
+    mapper = fs.get_mapper(str(tmp_path))
+    store = FsspecStore.from_mapper(mapper)
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store._owns_fs
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_with_read_only_transfers_filesystem_ownership(tmp_path: pathlib.Path) -> None:
+    """
+    with_read_only() must transfer fs ownership to the derived store and clear
+    it on the source, so the surviving store closes the shared fs exactly once.
+
+    In the common ``from_url(...).with_read_only()`` chain the source store is
+    immediately unreferenced; if ownership were not transferred, the only owner
+    would be garbage-collected without close() and the session would leak.
+    """
+    source = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    assert source._owns_fs
+
+    derived = source.with_read_only(read_only=True)
+
+    # Ownership moved to the survivor; the source no longer owns it (no double-close).
+    assert derived._owns_fs
+    assert not source._owns_fs
+    # The derived store shares the same underlying fs.
+    assert derived.fs is source.fs
+
+
 @pytest.mark.parametrize("asynchronous", [True, False])
 def test_make_async(asynchronous: bool) -> None:
     s3_filesystem = s3fs.S3FileSystem(
@@ -430,3 +697,14 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
 
     store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
     _ = store_w.with_read_only()
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_memory_scheme() -> None:
+    """Test that the "memory" scheme creates a `MemoryFileSystem`-backed store"""
+    store = await make_store("memory://test")
+    assert isinstance(store, FsspecStore)
+    assert store.fs.protocol == "memory"

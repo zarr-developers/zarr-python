@@ -187,6 +187,56 @@ class LocalStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods
+    # -------------------------------------------------------------------
+
+    def _ensure_open_sync(self) -> None:
+        if not self._is_open:
+            if not self.read_only:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.exists():
+                raise FileNotFoundError(f"{self.root} does not exist")
+            self._is_open = True
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        self._ensure_open_sync()
+        assert isinstance(key, str)
+        path = self.root / key
+        try:
+            return _get(path, prototype, byte_range)
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        self._ensure_open_sync()
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"LocalStore.set(): `value` must be a Buffer instance. "
+                f"Got an instance of {type(value)} instead."
+            )
+        path = self.root / key
+        _put(path, value)
+
+    def delete_sync(self, key: str) -> None:
+        self._ensure_open_sync()
+        self._check_writable()
+        path = self.root / key
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
     async def get(
         self,
         key: str,
@@ -347,13 +397,20 @@ class LocalStore(Store):
 
         Examples
         --------
-        >>> store = await LocalStore.open("data")
-        >>> await store.set("data", Buffer.from_bytes(b"hello"))
-        >>> # No need to specify prototype for LocalStore
-        >>> data = await store.get_bytes("data")
-        >>> print(data)
+        >>> async def example():
+        ...     import json
+        ...     from zarr.core.buffer.cpu import Buffer
+        ...
+        ...     store = await LocalStore.open("data")
+        ...     await store.set("data", Buffer.from_bytes(b"hello"))
+        ...     # No need to specify prototype for LocalStore
+        ...     return await store._get_bytes("data")
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         b'hello'
         """
+
         if prototype is None:
             prototype = default_buffer_prototype()
         return await super()._get_bytes(key, prototype=prototype, byte_range=byte_range)
@@ -403,13 +460,14 @@ class LocalStore(Store):
 
         Examples
         --------
+        >>> from zarr.core.buffer.cpu import Buffer
         >>> store = LocalStore("data")
-        >>> store.set("data", Buffer.from_bytes(b"hello"))
+        >>> store.set_sync("data", Buffer.from_bytes(b"hello"))
         >>> # No need to specify prototype for LocalStore
-        >>> data = store.get_bytes("data")
-        >>> print(data)
+        >>> store._get_bytes_sync("data")
         b'hello'
         """
+
         if prototype is None:
             prototype = default_buffer_prototype()
         return super()._get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
@@ -460,15 +518,21 @@ class LocalStore(Store):
 
         Examples
         --------
-        >>> store = await LocalStore.open("data")
-        >>> import json
-        >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> # No need to specify prototype for LocalStore
-        >>> data = await store.get_json("zarr.json")
-        >>> print(data)
+        >>> async def example():
+        ...     import json
+        ...     from zarr.core.buffer.cpu import Buffer
+        ...
+        ...     store = await LocalStore.open("data")
+        ...     metadata = {"zarr_format": 3, "node_type": "array"}
+        ...     await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        ...     # No need to specify prototype for LocalStore
+        ...     return await store._get_json("zarr.json")
+
+        >>> import asyncio
+        >>> asyncio.run(example())
         {'zarr_format': 3, 'node_type': 'array'}
         """
+
         if prototype is None:
             prototype = default_buffer_prototype()
         return await super()._get_json(key, prototype=prototype, byte_range=byte_range)
@@ -523,15 +587,15 @@ class LocalStore(Store):
 
         Examples
         --------
-        >>> store = LocalStore("data")
         >>> import json
+        >>> from zarr.core.buffer.cpu import Buffer
+        >>> store = LocalStore("data")
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> # No need to specify prototype for LocalStore
-        >>> data = store.get_json("zarr.json")
-        >>> print(data)
+        >>> store.set_sync("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> store._get_json_sync("zarr.json")  # No need to specify prototype for LocalStore
         {'zarr_format': 3, 'node_type': 'array'}
         """
+
         if prototype is None:
             prototype = default_buffer_prototype()
         return super()._get_json_sync(key, prototype=prototype, byte_range=byte_range)
