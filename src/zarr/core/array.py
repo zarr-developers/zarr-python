@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
@@ -28,6 +27,7 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
+from zarr.core._json import buffer_to_json_object
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
@@ -285,13 +285,13 @@ async def get_array_metadata(
     if zarr_format == 2:
         # V2 arrays are comprised of a .zarray and .zattrs objects
         assert zarray_bytes is not None
-        metadata_dict = json.loads(zarray_bytes.to_bytes())
-        zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+        metadata_dict = buffer_to_json_object(zarray_bytes)
+        zattrs_dict = buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
         metadata_dict["attributes"] = zattrs_dict
     else:
         # V3 arrays are comprised of a zarr.json object
         assert zarr_json_bytes is not None
-        metadata_dict = json.loads(zarr_json_bytes.to_bytes())
+        metadata_dict = buffer_to_json_object(zarr_json_bytes)
 
         parse_node_type_array(metadata_dict.get("node_type"))
 
