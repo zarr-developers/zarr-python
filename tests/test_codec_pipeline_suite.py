@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import numcodecs
 import numpy as np
 import pytest
 
@@ -165,6 +166,34 @@ SCENARIOS: tuple[Scenario, ...] = (
             "fill_value": 0.0,
         },
         writes=((slice(None), _val(50, "float32")),),
+    ),
+    # zarr v2 goes through the V2Codec wrapper (filters + compressor), a
+    # different codec path than the v3 AA/AB/BB chain — and a different sync
+    # implementation under FusedCodecPipeline. Without these scenarios, v2 was
+    # only exercised implicitly via whichever pipeline is the global default.
+    Scenario(
+        "v2-roundtrip",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": None,
+            "zarr_format": 2,
+            **_F64,
+        },
+        writes=((slice(None), _val(100, "float64")),),
+    ),
+    Scenario(
+        "v2-gzip-roundtrip",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": None,
+            "compressors": numcodecs.GZip(level=1),
+            "zarr_format": 2,
+            **_F64,
+        },
+        writes=((slice(None), _val(100, "float64")),),
     ),
     # --- read unwritten chunks -> fill value --------------------------------
     Scenario(
