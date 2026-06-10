@@ -18,7 +18,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from typing_extensions import deprecated
+from typing_extensions import Sentinel, deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -162,7 +162,6 @@ if TYPE_CHECKING:
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = [
     "DEFAULT_FILL_VALUE",
-    "DefaultFillValue",
     "create_codec_pipeline",
     "parse_array_metadata",
 ]
@@ -170,22 +169,19 @@ __all__ = [
 logger = getLogger(__name__)
 
 
-class DefaultFillValue:
-    """
-    Sentinel class to indicate that the default fill value should be used.
+DEFAULT_FILL_VALUE = Sentinel("DEFAULT_FILL_VALUE")
+"""
+Sentinel indicating that the default fill value should be used.
 
-    This class exists because conventional values used to convey "defaultness" like ``None`` or
-    ``"auto"` are ambiguous when specifying the fill value parameter of a Zarr array.
-    The value ``None`` is ambiguous because it is a valid fill value for Zarr V2
-    (resulting in ``"fill_value": null`` in array metadata).
-    A string like ``"auto"`` is ambiguous because such a string is a valid fill value for an array
-    with a string data type.
-    An instance of this class lies outside the space of valid fill values, which means it can
-    unambiguously express that the default fill value should be used.
-    """
-
-
-DEFAULT_FILL_VALUE = DefaultFillValue()
+This sentinel exists because conventional values used to convey "defaultness" like `None` or
+`"auto"` are ambiguous when specifying the fill value parameter of a Zarr array.
+The value `None` is ambiguous because it is a valid fill value for Zarr V2
+(resulting in `"fill_value": null` in array metadata).
+A string like `"auto"` is ambiguous because such a string is a valid fill value for an array
+with a string data type.
+This sentinel lies outside the space of valid fill values, which means it can
+unambiguously express that the default fill value should be used.
+"""
 
 
 def _chunk_sizes_from_shape(
@@ -566,9 +562,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if isinstance(fill_value, DefaultFillValue) or fill_value is None:
-            # Use dtype's default scalar for DefaultFillValue sentinel
-            # For v3, None is converted to DefaultFillValue behavior
+        if fill_value is DEFAULT_FILL_VALUE or fill_value is None:
+            # Use dtype's default scalar for the DEFAULT_FILL_VALUE sentinel
+            # For v3, None is converted to DEFAULT_FILL_VALUE behavior
             fill_value_parsed = dtype.default_scalar()
         else:
             fill_value_parsed = fill_value
@@ -650,8 +646,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if dimension_separator is None:
             dimension_separator = "."
 
-        # Handle DefaultFillValue sentinel
-        if isinstance(fill_value, DefaultFillValue):
+        # Handle the DEFAULT_FILL_VALUE sentinel
+        if fill_value is DEFAULT_FILL_VALUE:
             fill_value_parsed: Any = dtype.default_scalar()
         else:
             # For v2, preserve None as-is (backward compatibility)
