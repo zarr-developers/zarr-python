@@ -634,14 +634,21 @@ class ShardingCodec(
             out.fill(shard_spec.fill_value)
             return out
 
+        from zarr.core.codec_pipeline import decode_and_scatter_chunk
+
         for chunk_coords, chunk_selection, out_selection, _ in indexer:
-            chunk_bytes = shard_dict.get(chunk_coords)
-            if chunk_bytes is None:
-                # missing chunk -> fill (the single missing convention: None)
-                out[out_selection] = shard_spec.fill_value
-                continue
-            chunk_array = inner_transform.decode_chunk(chunk_bytes, chunk_spec)
-            out[out_selection] = chunk_array[chunk_selection]
+            # the GetResult status is discarded: missing INNER chunks of a
+            # present shard always fill (read_missing_chunks is a store-key
+            # level promise, applied to top-level statuses at the array layer)
+            decode_and_scatter_chunk(
+                shard_dict.get(chunk_coords),
+                out,
+                chunk_spec=chunk_spec,
+                chunk_selection=chunk_selection,
+                out_selection=out_selection,
+                drop_axes=(),
+                decode=inner_transform.decode_chunk,
+            )
 
         return out
 
@@ -1201,20 +1208,20 @@ class ShardingCodec(
                 return None
             shard_dict = partial
 
-        # Decode each needed inner chunk and scatter into out.
-        fill_value = shard_spec.fill_value
-        if fill_value is None:
-            fill_value = shard_spec.dtype.default_scalar()
+        from zarr.core.codec_pipeline import decode_and_scatter_chunk
+
+        # Decode each needed inner chunk and scatter into out (statuses
+        # discarded: missing inner chunks fill, see _decode_sync).
         for chunk_coords, chunk_selection, out_selection, _ in indexed_chunks:
-            try:
-                chunk_bytes = shard_dict[chunk_coords]
-            except KeyError:
-                chunk_bytes = None
-            if chunk_bytes is None:
-                out[out_selection] = fill_value
-                continue
-            chunk_array = inner_transform.decode_chunk(chunk_bytes, chunk_spec)
-            out[out_selection] = chunk_array[chunk_selection]
+            decode_and_scatter_chunk(
+                shard_dict.get(chunk_coords),
+                out,
+                chunk_spec=chunk_spec,
+                chunk_selection=chunk_selection,
+                out_selection=out_selection,
+                drop_axes=(),
+                decode=inner_transform.decode_chunk,
+            )
 
         if hasattr(indexer, "sel_shape"):
             return out.reshape(indexer.sel_shape)

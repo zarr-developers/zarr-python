@@ -336,6 +336,57 @@ def merge_and_encode_chunk(
     return encode_or_elide_chunk(merged, chunk_spec, encode)
 
 
+def scatter_chunk(
+    selected: NDBuffer | None,
+    out: NDBuffer,
+    *,
+    chunk_spec: ArraySpec,
+    out_selection: SelectorTuple,
+    drop_axes: tuple[int, ...],
+) -> GetResult:
+    """Scatter one chunk's (already-selected) decoded region into ``out``.
+
+    ``None`` = the chunk is missing: the fill value is scattered instead and a
+    ``missing`` status is returned. POLICY-FREE by design: whether a missing
+    chunk is an error (``read_missing_chunks=False``) is decided by the array
+    layer from the returned statuses — which is also what makes missing INNER
+    chunks of a present shard fill rather than raise (the sharding codec
+    discards the nested read's statuses; only top-level statuses reach the
+    array layer).
+    """
+    if selected is None:
+        out[out_selection] = fill_value_or_default(chunk_spec)
+        return GetResult(status="missing")
+    if drop_axes:
+        selected = selected.squeeze(axis=drop_axes)
+    out[out_selection] = selected
+    return GetResult(status="present")
+
+
+def decode_and_scatter_chunk(
+    chunk_bytes: Buffer | None,
+    out: NDBuffer,
+    *,
+    chunk_spec: ArraySpec,
+    chunk_selection: SelectorTuple,
+    out_selection: SelectorTuple,
+    drop_axes: tuple[int, ...],
+    decode: Callable[[Buffer, ArraySpec], NDBuffer],
+) -> GetResult:
+    """The canonical single-chunk read: decode stored bytes (``None`` =
+    missing), select, and scatter into ``out`` via `scatter_chunk`. The read
+    twin of `merge_and_encode_chunk`.
+    """
+    if chunk_bytes is None:
+        return scatter_chunk(
+            None, out, chunk_spec=chunk_spec, out_selection=out_selection, drop_axes=drop_axes
+        )
+    selected = decode(chunk_bytes, chunk_spec)[chunk_selection]
+    return scatter_chunk(
+        selected, out, chunk_spec=chunk_spec, out_selection=out_selection, drop_axes=drop_axes
+    )
+
+
 async def _async_read_fallback(
     pipeline: CodecPipeline,
     batch: list[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
@@ -376,15 +427,16 @@ async def _async_read_fallback(
     for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
         chunk_array_batch, batch, strict=False
     ):
-        if chunk_array is not None:
-            tmp = chunk_array[chunk_selection]
-            if drop_axes:
-                tmp = tmp.squeeze(axis=drop_axes)
-            out[out_selection] = tmp
-            results.append(GetResult(status="present"))
-        else:
-            out[out_selection] = fill_value_or_default(chunk_spec)
-            results.append(GetResult(status="missing"))
+        selected = None if chunk_array is None else chunk_array[chunk_selection]
+        results.append(
+            scatter_chunk(
+                selected,
+                out,
+                chunk_spec=chunk_spec,
+                out_selection=out_selection,
+                drop_axes=drop_axes,
+            )
+        )
     return tuple(results)
 
 
@@ -1308,9 +1360,6 @@ class FusedCodecPipeline(CodecPipeline):
         if not batch:
             return ()
 
-        fill = fill_value_or_default(batch[0][1])
-        _missing = GetResult(status="missing")
-
         # Partial-decode fast path: the AB codec owns IO (read only the
         # byte ranges needed for the requested selection). Same condition
         # and dispatch as BatchedCodecPipeline.read_batch.
@@ -1322,14 +1371,15 @@ class FusedCodecPipeline(CodecPipeline):
                 item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
             ) -> GetResult:
                 byte_getter, chunk_spec, chunk_selection, out_selection, _ = item
+                # the partial decode returns the already-selected region
                 decoded = codec._decode_partial_sync(byte_getter, chunk_selection, chunk_spec)
-                if decoded is None:
-                    out[out_selection] = fill
-                    return _missing
-                if drop_axes:
-                    decoded = decoded.squeeze(axis=drop_axes)
-                out[out_selection] = decoded
-                return GetResult(status="present")
+                return scatter_chunk(
+                    decoded,
+                    out,
+                    chunk_spec=chunk_spec,
+                    out_selection=out_selection,
+                    drop_axes=drop_axes,
+                )
 
         else:
             # Per-chunk fused path: fetch + decode + scatter as one task.
@@ -1338,15 +1388,15 @@ class FusedCodecPipeline(CodecPipeline):
             ) -> GetResult:
                 byte_getter, chunk_spec, chunk_selection, out_selection, _ = item
                 raw = byte_getter.get_sync(prototype=chunk_spec.prototype)
-                if raw is None:
-                    out[out_selection] = fill
-                    return _missing
-                decoded = transform.decode_chunk(raw, chunk_spec)
-                selected = decoded[chunk_selection]
-                if drop_axes:
-                    selected = selected.squeeze(axis=drop_axes)
-                out[out_selection] = selected
-                return GetResult(status="present")
+                return decode_and_scatter_chunk(
+                    raw,
+                    out,
+                    chunk_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    drop_axes=drop_axes,
+                    decode=transform.decode_chunk,
+                )
 
         if max_workers > 1 and len(batch) > 1:
             pool = _get_pool(max_workers)
