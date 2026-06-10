@@ -7,11 +7,13 @@ from typing import Any
 import numpy as np
 import pytest
 
+import zarr
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
+from zarr.core.config import config as zarr_config
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -410,3 +412,123 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
     assert recording.seen_prototypes[1] is proto_other, (
         "ChunkTransform did not pass the runtime prototype to the codec"
     )
+
+
+# ---------------------------------------------------------------------------
+# Thread-pool (max_workers > 1) tests
+#
+# The pool dispatch in read_sync/write_sync is Fused-only and off by default
+# (codec_pipeline.max_workers defaults to 1 == sequential). These tests opt in
+# and exercise the pool path end-to-end, exception propagation from workers,
+# and concurrent decode through the shared ChunkTransform.
+# ---------------------------------------------------------------------------
+
+_FUSED_POOL_CONFIG = {
+    "codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline",
+    "codec_pipeline.max_workers": 4,
+}
+
+
+def test_read_write_with_thread_pool() -> None:
+    """With max_workers > 1, multi-chunk reads and writes dispatch through the
+    thread pool (pool.map in read_sync/write_sync) and produce the same results
+    as sequential execution."""
+    with zarr_config.set(_FUSED_POOL_CONFIG):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            dtype="float64",
+            compressors=None,
+            fill_value=0.0,
+        )
+        assert isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline)
+        data = np.arange(100, dtype="float64")
+        arr[:] = data  # 10 chunks -> pool dispatch in write_sync
+        np.testing.assert_array_equal(arr[:], data)  # pool dispatch in read_sync
+        arr[5:25] = 7.0  # partial write: merge path through the pool
+        data[5:25] = 7.0
+        np.testing.assert_array_equal(arr[:], data)
+
+
+def test_thread_pool_write_worker_exception_propagates() -> None:
+    """A store error raised inside a pool worker during write_sync surfaces to
+    the caller (write_sync consumes pool.map, so worker exceptions re-raise)."""
+    from unittest.mock import patch
+
+    with zarr_config.set(_FUSED_POOL_CONFIG):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            dtype="float64",
+            compressors=None,
+            fill_value=0.0,
+        )
+        with (
+            patch.object(store, "set_sync", side_effect=RuntimeError("simulated store error")),
+            pytest.raises(RuntimeError, match="simulated store error"),
+        ):
+            arr[:] = np.arange(100, dtype="float64")
+
+
+def test_thread_pool_read_worker_exception_propagates() -> None:
+    """A store error raised inside a pool worker during read_sync surfaces to
+    the caller (read_sync consumes pool.map into a tuple)."""
+    from unittest.mock import patch
+
+    with zarr_config.set(_FUSED_POOL_CONFIG):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            dtype="float64",
+            compressors=None,
+            fill_value=0.0,
+        )
+        arr[:] = np.arange(100, dtype="float64")
+        with (
+            patch.object(store, "get_sync", side_effect=RuntimeError("simulated store error")),
+            pytest.raises(RuntimeError, match="simulated store error"),
+        ):
+            arr[:]
+
+
+def test_concurrent_reads_shared_transform_with_pool() -> None:
+    """Concurrent decode through the shared ChunkTransform produces correct data.
+
+    The transform's `_resolve_specs` cache is shared mutable state. With no
+    array->array codecs the cache is bypassed entirely, so this uses a transpose
+    filter to force cache traffic, max_workers=4 so pool workers decode chunks
+    concurrently, and an outer thread pool so multiple reads are in flight at
+    once. This pins correctness under concurrency (it cannot prove the absence
+    of a race, but a torn cache would corrupt results here).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    with zarr_config.set(_FUSED_POOL_CONFIG):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(40, 40),
+            chunks=(5, 5),
+            dtype="int32",
+            filters=[TransposeCodec(order=(1, 0))],
+            serializer=BytesCodec(),
+            compressors=None,
+            fill_value=-1,
+        )
+        data = np.arange(1600, dtype="int32").reshape(40, 40)
+        arr[:] = data
+
+        def read_row_block(i: int) -> np.ndarray:
+            return np.asarray(arr[i * 4 : (i + 1) * 4, :])
+
+        for _ in range(5):  # several rounds to increase interleaving
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                futures = {ex.submit(read_row_block, i): i for i in range(10)}
+                for fut, i in futures.items():
+                    np.testing.assert_array_equal(fut.result(), data[i * 4 : (i + 1) * 4, :])
