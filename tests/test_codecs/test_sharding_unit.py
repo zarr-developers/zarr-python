@@ -505,3 +505,75 @@ def test_inner_codecs_fixed_size_with_compression() -> None:
     """Inner codecs with compression should NOT be fixed-size."""
     codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
     assert codec._inner_codecs_fixed_size is False
+
+
+# ============================================================================
+# inner-chain spec threading
+# ============================================================================
+
+
+def test_inner_chunk_transform_threads_spec() -> None:
+    """The inner codec chain must be evolved with the spec threaded forward.
+
+    A dtype-widening inner array->array codec means the BytesCodec serializer
+    is evolved against the WIDENED dtype, not the single-byte source —
+    otherwise it strips its `endian` to None and fails to decode multi-byte
+    inner chunks. Same contract as the pipeline-level `evolve_codecs`
+    regression test, applied to `_get_inner_chunk_transform`.
+    """
+    from dataclasses import dataclass, replace
+    from typing import Any
+
+    from zarr.abc.codec import ArrayArrayCodec
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    @dataclass(frozen=True)
+    class _WidenToInt16(ArrayArrayCodec):
+        """Test-only sync-capable AA codec that reports its output dtype as int16."""
+
+        is_fixed_size = True
+
+        def to_dict(self) -> dict[str, Any]:
+            return {"name": "_widen_to_int16"}
+
+        @classmethod
+        def from_dict(cls, data: dict[str, Any]) -> "_WidenToInt16":
+            return cls()
+
+        def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+            return replace(chunk_spec, dtype=get_data_type_from_native_dtype(np.dtype("int16")))
+
+        def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+            return input_byte_length
+
+        def _encode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+            return chunk_array  # pragma: no cover
+
+        def _decode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+            return chunk_array  # pragma: no cover
+
+        async def _encode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+            return chunk_array  # pragma: no cover
+
+        async def _decode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+            return chunk_array  # pragma: no cover
+
+    codec = ShardingCodec(chunk_shape=(4,), codecs=[_WidenToInt16(), BytesCodec(endian="little")])
+    zdtype = get_data_type_from_native_dtype(np.dtype("int8"))  # single-byte source
+    shard_spec = ArraySpec(
+        shape=(8,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+
+    transform = codec._get_inner_chunk_transform(shard_spec)
+    serializer = transform._ab_codec
+    assert isinstance(serializer, BytesCodec)
+    assert serializer.endian is not None, (
+        "inner BytesCodec lost its `endian` — _get_inner_chunk_transform did not "
+        "thread the dtype-widening codec's spec into the serializer"
+    )

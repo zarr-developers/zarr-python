@@ -514,24 +514,49 @@ class ShardingCodec(
                     )
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
-        """Build a ChunkTransform for the inner codec chain.
+        """The synchronous transform for the inner codec chain, memoized per shard_spec.
 
-        The cache key is the shard_spec because evolved codecs may
-        depend on it. The runtime chunk_spec is supplied per call.
+        Codecs are evolved with the spec THREADED forward (`evolve_codecs`):
+        each inner codec is evolved against the spec produced by the previous
+        one, not the original chunk spec. Evolving every codec against the same
+        unthreaded spec is the bug shape that stripped `BytesCodec.endian` at
+        the pipeline level (see `evolve_codecs`) — the inner chain must use the
+        same single source of truth.
         """
-        from zarr.core.codec_pipeline import ChunkTransform
+        from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
 
-        chunk_spec = self._get_chunk_spec(shard_spec)
-        evolved = tuple(c.evolve_from_array_spec(array_spec=chunk_spec) for c in self.codecs)
-        return ChunkTransform(codecs=evolved)
+        cache: dict[ArraySpec, ChunkTransform] | None = getattr(
+            self, "_inner_transform_cache", None
+        )
+        if cache is None:
+            cache = {}
+            object.__setattr__(self, "_inner_transform_cache", cache)
+        transform: ChunkTransform | None = cache.get(shard_spec)
+        if transform is None:
+            chunk_spec = self._get_chunk_spec(shard_spec)
+            transform = ChunkTransform(codecs=evolve_codecs(self.codecs, chunk_spec))
+            cache[shard_spec] = transform
+        return transform
 
     def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> Any:
-        """Build a ChunkTransform for the index codec chain."""
-        from zarr.core.codec_pipeline import ChunkTransform
+        """The synchronous transform for the index codec chain, memoized per grid.
 
-        index_spec = self._get_index_chunk_spec(chunks_per_shard)
-        evolved = tuple(c.evolve_from_array_spec(array_spec=index_spec) for c in self.index_codecs)
-        return ChunkTransform(codecs=evolved)
+        Spec-threaded evolve for the same reason as `_get_inner_chunk_transform`.
+        """
+        from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
+
+        cache: dict[tuple[int, ...], ChunkTransform] | None = getattr(
+            self, "_index_transform_cache", None
+        )
+        if cache is None:
+            cache = {}
+            object.__setattr__(self, "_index_transform_cache", cache)
+        transform: ChunkTransform | None = cache.get(chunks_per_shard)
+        if transform is None:
+            index_spec = self._get_index_chunk_spec(chunks_per_shard)
+            transform = ChunkTransform(codecs=evolve_codecs(self.index_codecs, index_spec))
+            cache[chunks_per_shard] = transform
+        return transform
 
     def _decode_shard_index_sync(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
@@ -1404,19 +1429,44 @@ class ShardingCodec(
             )
         )
 
+    def _shard_index_byte_range(
+        self, chunks_per_shard: tuple[int, ...]
+    ) -> RangeByteRequest | SuffixByteRequest:
+        """Byte range of the shard index within the shard blob.
+
+        Single source of truth for the index-location arithmetic, shared by the
+        sync and async index loaders so they cannot drift.
+        """
+        shard_index_size = self._shard_index_size(chunks_per_shard)
+        if self.index_location == ShardingCodecIndexLocation.start:
+            return RangeByteRequest(0, shard_index_size)
+        return SuffixByteRequest(shard_index_size)
+
+    @staticmethod
+    def _pair_chunks_with_byte_ranges(
+        shard_index: _ShardIndex, all_chunk_coords: set[tuple[int, ...]]
+    ) -> list[tuple[tuple[int, ...], RangeByteRequest]]:
+        """Pair each requested chunk coord with its byte range in the shard.
+
+        Coords whose chunk is absent from the index are omitted. Shared by the
+        sync and async partial-shard loaders.
+        """
+        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
+        for chunk_coord in all_chunk_coords:
+            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
+            if chunk_byte_slice is not None:
+                chunk_coord_byte_ranges.append(
+                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
+                )
+        return chunk_coord_byte_ranges
+
     async def _load_shard_index_maybe(
         self, byte_getter: ByteGetter, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex | None:
-        shard_index_size = self._shard_index_size(chunks_per_shard)
-        if self.index_location == ShardingCodecIndexLocation.start:
-            index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(),
-                byte_range=RangeByteRequest(0, shard_index_size),
-            )
-        else:
-            index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=SuffixByteRequest(shard_index_size)
-            )
+        index_bytes = await byte_getter.get(
+            prototype=numpy_buffer_prototype(),
+            byte_range=self._shard_index_byte_range(chunks_per_shard),
+        )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
         return None
@@ -1460,14 +1510,7 @@ class ShardingCodec(
         if shard_index is None:
             return None
 
-        # Pair up chunks and their byte ranges as list[tuple[chunk_coord, byte_range]]
-        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
-        for chunk_coord in all_chunk_coords:
-            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
-            if chunk_byte_slice is not None:
-                chunk_coord_byte_ranges.append(
-                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
-                )
+        chunk_coord_byte_ranges = self._pair_chunks_with_byte_ranges(shard_index, all_chunk_coords)
 
         if not chunk_coord_byte_ranges:
             return {}
@@ -1509,17 +1552,10 @@ class ShardingCodec(
         self, byte_getter: Any, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex | None:
         """Sync counterpart of `_load_shard_index_maybe`."""
-        shard_index_size = self._shard_index_size(chunks_per_shard)
-        if self.index_location == ShardingCodecIndexLocation.start:
-            index_bytes = byte_getter.get_sync(
-                prototype=numpy_buffer_prototype(),
-                byte_range=RangeByteRequest(0, shard_index_size),
-            )
-        else:
-            index_bytes = byte_getter.get_sync(
-                prototype=numpy_buffer_prototype(),
-                byte_range=SuffixByteRequest(shard_index_size),
-            )
+        index_bytes = byte_getter.get_sync(
+            prototype=numpy_buffer_prototype(),
+            byte_range=self._shard_index_byte_range(chunks_per_shard),
+        )
         if index_bytes is not None:
             return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
         return None
@@ -1541,13 +1577,7 @@ class ShardingCodec(
         if shard_index is None:
             return None
 
-        chunk_coord_byte_ranges: list[tuple[tuple[int, ...], RangeByteRequest]] = []
-        for chunk_coord in all_chunk_coords:
-            chunk_byte_slice = shard_index.get_chunk_slice(chunk_coord)
-            if chunk_byte_slice is not None:
-                chunk_coord_byte_ranges.append(
-                    (chunk_coord, RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]))
-                )
+        chunk_coord_byte_ranges = self._pair_chunks_with_byte_ranges(shard_index, all_chunk_coords)
 
         if not chunk_coord_byte_ranges:
             return {}
