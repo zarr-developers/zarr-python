@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -99,13 +99,21 @@ def parse_index_location(data: object) -> ShardingCodecIndexLocation:
 
 @dataclass(frozen=True)
 class _ShardingByteGetter(ByteGetter):
+    """In-memory byte getter for one inner chunk of a shard.
+
+    Implements `SyncByteGetter` (dict access needs no event loop), so the
+    synchronous codec pipeline takes its sync fast path on inner chunks
+    instead of scheduling one coroutine per chunk; the async `get` simply
+    delegates to `get_sync`.
+    """
+
     shard_dict: ShardMapping
     chunk_coords: tuple[int, ...]
 
-    async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    def get_sync(
+        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
-        assert prototype == default_buffer_prototype(), (
+        assert prototype is None or prototype == default_buffer_prototype(), (
             f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
         )
         value = self.shard_dict.get(self.chunk_coords)
@@ -116,17 +124,33 @@ class _ShardingByteGetter(ByteGetter):
         start, stop = _normalize_byte_range_index(value, byte_range)
         return value[start:stop]
 
+    async def get(
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    ) -> Buffer | None:
+        return self.get_sync(prototype, byte_range)
+
 
 @dataclass(frozen=True)
 class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
+    """In-memory byte setter for one inner chunk of a shard.
+
+    Implements `SyncByteSetter`; the async methods delegate to the sync ones.
+    """
+
     shard_dict: ShardMutableMapping
+
+    def set_sync(self, value: Buffer) -> None:
+        self.shard_dict[self.chunk_coords] = value
+
+    def delete_sync(self) -> None:
+        del self.shard_dict[self.chunk_coords]
 
     async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         assert byte_range is None, "byte_range is not supported within shards"
-        self.shard_dict[self.chunk_coords] = value
+        self.set_sync(value)
 
     async def delete(self) -> None:
-        del self.shard_dict[self.chunk_coords]
+        self.delete_sync()
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         self.shard_dict.setdefault(self.chunk_coords, default)
@@ -407,6 +431,22 @@ class ShardingCodec(
         # branch had reverted: the inner sub-chunk pipeline follows the same
         # codec_pipeline.path config as the outer array.
         return get_pipeline_class().from_codecs(self.codecs)
+
+    def _get_inner_pipeline(self, shard_spec: ArraySpec) -> CodecPipeline:
+        """The nested pipeline for inner-chunk IO, evolved against the inner
+        chunk spec.
+
+        Evolving matters for two reasons: it threads the spec through the inner
+        codec chain (spec-changing codecs see the spec they will actually
+        operate on), and — for a synchronous pipeline — it builds the sync
+        transform, so inner-chunk IO over the (sync-capable) sharding byte
+        getters takes the pipeline's sync fast path instead of scheduling one
+        coroutine per inner chunk. The bare `codec_pipeline` property returns an
+        unevolved pipeline, which a synchronous pipeline can only run through
+        its async fallback.
+        """
+        chunk_spec = self._get_chunk_spec(shard_spec)
+        return self.codec_pipeline.evolve_from_array_spec(chunk_spec)
 
     def to_dict(self) -> dict[str, JSON]:
         return {
@@ -866,7 +906,7 @@ class ShardingCodec(
             return out
 
         # decoding chunks and writing them into the output buffer
-        await self.codec_pipeline.read(
+        await self._get_inner_pipeline(shard_spec).read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -932,7 +972,7 @@ class ShardingCodec(
         shard_dict = shard_dict_maybe
 
         # decoding chunks and writing them into the output buffer
-        await self.codec_pipeline.read(
+        await self._get_inner_pipeline(shard_spec).read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -1176,7 +1216,7 @@ class ShardingCodec(
         # decided later by the `subchunk_write_order` loop in `_encode_shard_dict`.
         shard_builder = dict.fromkeys(np.ndindex(chunks_per_shard))
 
-        await self.codec_pipeline.write(
+        await self._get_inner_pipeline(shard_spec).write(
             [
                 (
                     _ShardingByteSetter(shard_builder, chunk_coords),
@@ -1231,7 +1271,7 @@ class ShardingCodec(
                 np.array(list(np.ndindex(chunks_per_shard)))
             )
 
-        await self.codec_pipeline.write(
+        await self._get_inner_pipeline(shard_spec).write(
             [
                 (
                     _ShardingByteSetter(shard_dict, chunk_coords),
@@ -1296,37 +1336,17 @@ class ShardingCodec(
     async def _decode_shard_index(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex:
-        index_array = next(
-            iter(
-                await get_pipeline_class()
-                .from_codecs(self.index_codecs)
-                .decode(
-                    [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
-                )
-            )
-        )
-        # This cannot be None because we have the bytes already
-        index_array = cast(NDBuffer, index_array)
-        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
+        # Pure compute (the bytes are already in hand): delegate to the sync
+        # implementation instead of spinning up a pipeline + per-call
+        # AsyncChunkTransform for a tiny fixed-size decode. The index codecs
+        # must be sync-capable -- the synchronous read paths already require
+        # this for the default (bytes + crc32c) index chain.
+        return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
-        index_bytes = next(
-            iter(
-                await get_pipeline_class()
-                .from_codecs(self.index_codecs)
-                .encode(
-                    [
-                        (
-                            get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths),
-                            self._get_index_chunk_spec(index.chunks_per_shard),
-                        )
-                    ],
-                )
-            )
-        )
-        assert index_bytes is not None
-        assert isinstance(index_bytes, Buffer)
-        return index_bytes
+        # Pure compute: delegate to the sync implementation (see
+        # _decode_shard_index).
+        return self._encode_shard_index_sync(index)
 
     def _shard_index_size(self, chunks_per_shard: tuple[int, ...]) -> int:
         return (

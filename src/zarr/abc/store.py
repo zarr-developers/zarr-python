@@ -25,6 +25,8 @@ __all__ = [
     "SupportsGetSync",
     "SupportsSetSync",
     "SupportsSyncStore",
+    "SyncByteGetter",
+    "SyncByteSetter",
     "set_or_delete",
 ]
 
@@ -852,6 +854,33 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SyncByteGetter(Protocol):
+    """A `ByteGetter` that can also fetch synchronously, without an event loop.
+
+    Non-StorePath byte getters (e.g. the sharding codec's in-memory
+    `_ShardingByteGetter`) implement this so a synchronous codec pipeline can
+    take its sync fast path on them instead of scheduling one coroutine per
+    chunk. Note that `StorePath` also *has* a `get_sync` method (so it matches
+    this protocol structurally) but it only works when its store supports
+    synchronous IO — callers gate `StorePath` on the store's `SupportsGetSync`
+    instead of on this protocol.
+    """
+
+    def get_sync(
+        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SyncByteSetter(SyncByteGetter, Protocol):
+    """A `ByteSetter` that can also write synchronously. See `SyncByteGetter`."""
+
+    def set_sync(self, value: Buffer) -> None: ...
+
+    def delete_sync(self) -> None: ...
 
 
 @runtime_checkable

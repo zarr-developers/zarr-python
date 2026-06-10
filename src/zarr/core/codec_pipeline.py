@@ -1398,15 +1398,18 @@ class FusedCodecPipeline(CodecPipeline):
         if not batch:
             return ()
 
-        # Fast path: sync store with sync transform
-        from zarr.abc.store import SupportsGetSync
+        # Fast path: sync transform plus synchronous IO. For StorePath the gate
+        # is on the STORE's sync support (StorePath always has a get_sync
+        # method, but it only works when its store does); for other byte
+        # getters (e.g. the sharding codec's in-memory _ShardingByteGetter) the
+        # SyncByteGetter protocol is the gate.
+        from zarr.abc.store import SupportsGetSync, SyncByteGetter
         from zarr.storage._common import StorePath
 
         first_bg = batch[0][0]
-        if (
-            self.sync_transform is not None
-            and isinstance(first_bg, StorePath)
-            and isinstance(first_bg.store, SupportsGetSync)
+        if self.sync_transform is not None and (
+            (isinstance(first_bg, StorePath) and isinstance(first_bg.store, SupportsGetSync))
+            or (not isinstance(first_bg, StorePath) and isinstance(first_bg, SyncByteGetter))
         ):
             return self.read_sync(batch, out, drop_axes, max_workers=_resolve_max_workers())
 
@@ -1450,15 +1453,16 @@ class FusedCodecPipeline(CodecPipeline):
         if not batch:
             return
 
-        # Fast path: sync store with sync transform
-        from zarr.abc.store import SupportsSetSync
+        # Fast path: sync transform plus synchronous IO. Mirrors `read`: gate
+        # StorePath on the store's sync support, other byte setters (e.g. the
+        # sharding codec's in-memory _ShardingByteSetter) on SyncByteSetter.
+        from zarr.abc.store import SupportsSetSync, SyncByteSetter
         from zarr.storage._common import StorePath
 
         first_bs = batch[0][0]
-        if (
-            self.sync_transform is not None
-            and isinstance(first_bs, StorePath)
-            and isinstance(first_bs.store, SupportsSetSync)
+        if self.sync_transform is not None and (
+            (isinstance(first_bs, StorePath) and isinstance(first_bs.store, SupportsSetSync))
+            or (not isinstance(first_bs, StorePath) and isinstance(first_bs, SyncByteSetter))
         ):
             self.write_sync(batch, value, drop_axes, max_workers=_resolve_max_workers())
             return

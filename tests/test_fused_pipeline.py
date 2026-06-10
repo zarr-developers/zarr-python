@@ -532,3 +532,75 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
                 futures = {ex.submit(read_row_block, i): i for i in range(10)}
                 for fut, i in futures.items():
                     np.testing.assert_array_equal(fut.result(), data[i * 4 : (i + 1) * 4, :])
+
+
+def test_sharded_fallback_inner_chunks_avoid_async_transform() -> None:
+    """Inner chunks of a shard on a NON-sync store decode through the sync
+    ChunkTransform, not per-chunk AsyncChunkTransform coroutines.
+
+    The sharding byte getters are in-memory dict wrappers; they implement
+    SyncByteGetter/SyncByteSetter, and the nested inner pipeline is evolved
+    (so its sync transform exists), letting the nested read/write take the
+    sync fast path. Without this, every inner chunk pays a coroutine for a
+    dict lookup plus an async per-chunk transform — measured at 1.5x (raw) to
+    3.6x (gzip) of sharded fallback read time.
+    """
+    from unittest.mock import patch
+
+    from zarr.core.codec_pipeline import AsyncChunkTransform
+    from zarr.testing.store import LatencyStore
+
+    calls = {"decode": 0, "encode": 0}
+    orig_decode = AsyncChunkTransform.decode_chunk
+    orig_encode = AsyncChunkTransform.encode_chunk
+
+    async def spy_decode(self: Any, *args: Any, **kwargs: Any) -> Any:
+        calls["decode"] += 1
+        return await orig_decode(self, *args, **kwargs)
+
+    async def spy_encode(self: Any, *args: Any, **kwargs: Any) -> Any:
+        calls["encode"] += 1
+        return await orig_encode(self, *args, **kwargs)
+
+    # LatencyStore is not sync-capable -> the OUTER pipeline takes the async
+    # fallback; the INNER chunks go over the sharding byte getters.
+    store = LatencyStore(MemoryStore(), get_latency=0.0, set_latency=0.0)
+    arr = zarr.create_array(
+        store=store,
+        shape=(100,),
+        chunks=(10,),
+        shards=(50,),
+        dtype="uint8",
+        compressors=None,
+        fill_value=0,
+    )
+    if not isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline):
+        pytest.skip("sync fast path for inner chunks is specific to FusedCodecPipeline")
+
+    data = np.arange(100, dtype="uint8")
+    sync_calls = {"read_sync": 0}
+    orig_read_sync = FusedCodecPipeline.read_sync
+
+    def spy_read_sync(self: Any, *args: Any, **kwargs: Any) -> Any:
+        sync_calls["read_sync"] += 1
+        return orig_read_sync(self, *args, **kwargs)
+
+    with (
+        patch.object(AsyncChunkTransform, "decode_chunk", spy_decode),
+        patch.object(AsyncChunkTransform, "encode_chunk", spy_encode),
+        patch.object(FusedCodecPipeline, "read_sync", spy_read_sync),
+    ):
+        arr[:] = data
+        out = np.asarray(arr[:])
+
+    np.testing.assert_array_equal(out, data)
+    assert calls == {"decode": 0, "encode": 0}, (
+        f"inner chunks went through per-chunk AsyncChunkTransform coroutines: {calls}"
+    )
+    # The outer store is not sync-capable, so any read_sync calls are the
+    # NESTED pipeline taking the sync fast path over the sharding byte getters
+    # (the SyncByteGetter gate). Without the gate, inner chunks go through
+    # concurrent_map with one coroutine per chunk. (Writes don't appear here:
+    # the fallback write encodes whole shards through the outer sync transform
+    # -> ShardingCodec._encode_sync, never touching the nested byte setters.)
+    assert sync_calls["read_sync"] >= 1, "nested read did not take the sync fast path"
