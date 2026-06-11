@@ -669,8 +669,16 @@ async def test_delete_empty_shards(store: Store) -> None:
 
 
 def test_pickle() -> None:
+    """ShardingCodec round-trips through pickle, including the non-serialized
+    ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
+    revert to the ``morton`` default)."""
     codec = ShardingCodec(chunk_shape=(8, 8))
     assert pickle.loads(pickle.dumps(codec)) == codec
+
+    ordered = ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic")
+    restored = pickle.loads(pickle.dumps(ordered))
+    assert restored == ordered
+    assert restored.subchunk_write_order == "lexicographic"
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -867,54 +875,22 @@ async def stored_data_and_get_order(
 async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
     """Subchunks must be physically laid out in the shard in the order specified by
     ``subchunk_write_order``.  We verify this by decoding the shard index and sorting
-    the chunk coordinates by their byte offset."""
-    # Use a non-square chunks_per_shard so all three orderings are distinguishable.
+    the chunk coordinates by their byte offset.  ``unordered`` makes no stable-order
+    promise, but is deterministic in this implementation, so it is checked the same way."""
+    # Use a non-square chunks_per_shard so all orderings are distinguishable.
     chunks_per_shard = (3, 2)
     chunk_shape = (4, 4)
-    seed = 0
     codec = ShardingCodec(
         chunk_shape=chunk_shape,
         codecs=[BytesCodec()],
         index_codecs=[BytesCodec(), Crc32cCodec()],
         index_location=ShardingCodecIndexLocation.end,
         subchunk_write_order=subchunk_write_order,
-        rng=np.random.default_rng(seed=seed),
     )
 
     actual_order = await stored_data_and_get_order(codec, chunks_per_shard)
-    if subchunk_write_order != "unordered":
-        expected_order = list(codec._subchunk_order_iter(chunks_per_shard, subchunk_write_order))
-        assert actual_order == expected_order
-    else:
-        same_order_same_seed = list(
-            ShardingCodec(
-                chunk_shape=chunk_shape,
-                codecs=[BytesCodec()],
-                index_codecs=[BytesCodec(), Crc32cCodec()],
-                index_location=ShardingCodecIndexLocation.end,
-                subchunk_write_order=subchunk_write_order,
-                rng=np.random.default_rng(seed=seed),
-            )._subchunk_order_iter(chunks_per_shard, subchunk_write_order)
-        )
-        assert actual_order == same_order_same_seed
-
-
-async def test_unordered_can_be_seeded() -> None:
-    orders = []
-    chunks_per_shard = (3, 2)
-    chunk_shape = (4, 4)
-    seed = 0
-    for _ in range(4):
-        codec = ShardingCodec(
-            chunk_shape=chunk_shape,
-            codecs=[BytesCodec()],
-            index_codecs=[BytesCodec(), Crc32cCodec()],
-            index_location=ShardingCodecIndexLocation.end,
-            subchunk_write_order="unordered",
-            rng=np.random.default_rng(seed=seed),
-        )
-        orders.append(await stored_data_and_get_order(codec, chunks_per_shard))
-    assert all(orders[0] == o for o in orders)
+    expected_order = list(codec._subchunk_order_iter(chunks_per_shard, subchunk_write_order))
+    assert actual_order == expected_order
 
 
 @pytest.mark.parametrize(
