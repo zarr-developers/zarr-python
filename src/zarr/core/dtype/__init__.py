@@ -3,10 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final
 
-from zarr.core.dtype.common import (
-    DataTypeValidationError,
-    DTypeJSON,
-)
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import (
     NullTerminatedBytes,
@@ -39,6 +35,7 @@ from zarr.core.dtype.npy.time import (
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON
 
 from collections.abc import Mapping
 
@@ -61,7 +58,6 @@ __all__ = [
     "Complex64",
     "Complex128",
     "DataTypeRegistry",
-    "DataTypeValidationError",
     "DateTime64",
     "DateTime64JSON_V2",
     "DateTime64JSON_V3",
@@ -287,3 +283,19 @@ def parse_dtype(
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a native dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
+
+
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.core.dtype is deprecated. "
+            "Use zarr.errors.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
