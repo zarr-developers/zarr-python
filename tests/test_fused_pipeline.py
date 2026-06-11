@@ -681,3 +681,104 @@ def test_write_over_sync_byte_setter_takes_sync_path() -> None:
     np.testing.assert_array_equal(
         np.frombuffer(written.to_bytes(), dtype="uint8"), np.arange(10, dtype="uint8")
     )
+
+
+# ---------------------------------------------------------------------------
+# AsyncChunkTransform: the async per-chunk codec chain used on the async
+# fallback path. It is the async mirror of ChunkTransform, so it must produce
+# identical bytes/arrays. The default (Fused, sync-store) path never uses it;
+# these tests drive it directly over multi-codec chains so the aa/bb loops and
+# the all-fill drop branch are exercised.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "codecs",
+    [
+        (BytesCodec(),),
+        (BytesCodec(), GzipCodec(level=1)),
+        (TransposeCodec(order=(1, 0)), BytesCodec()),
+        (TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
+    ],
+    ids=["bytes-only", "bb", "aa", "aa+ab+bb"],
+)
+def test_async_chunk_transform_matches_sync(codecs: tuple[Any, ...]) -> None:
+    """`AsyncChunkTransform.decode_chunk`/`encode_chunk` must round-trip and
+    produce exactly what the synchronous `ChunkTransform` produces, across
+    array->array, array->bytes, and bytes->bytes codec combinations.
+
+    This is the async mirror of the codecs the default pipeline runs
+    synchronously; a divergence here corrupts data only on the async fallback
+    path (remote stores), which no end-to-end test of the default pipeline
+    touches.
+    """
+    import asyncio
+
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+    from zarr.core.codec_pipeline import AsyncChunkTransform, ChunkTransform, evolve_codecs
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    shape = (4, 4)
+    zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
+    spec = ArraySpec(
+        shape=shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    evolved = evolve_codecs(codecs, spec)
+    sync_t = ChunkTransform(codecs=evolved)
+    async_t = AsyncChunkTransform(codecs=evolved)
+
+    data = np.arange(16, dtype="int32").reshape(shape)
+    value = CPUNDBuffer.from_numpy_array(data)
+
+    sync_bytes = sync_t.encode_chunk(value, spec)
+    async_bytes = asyncio.run(async_t.encode_chunk(value, spec))
+    assert sync_bytes is not None
+    assert async_bytes is not None
+    np.testing.assert_array_equal(async_bytes.to_bytes(), sync_bytes.to_bytes())
+
+    sync_arr = sync_t.decode_chunk(async_bytes, spec)
+    async_arr = asyncio.run(async_t.decode_chunk(async_bytes, spec))
+    np.testing.assert_array_equal(async_arr.as_numpy_array(), sync_arr.as_numpy_array())
+    np.testing.assert_array_equal(async_arr.as_numpy_array(), data)
+
+
+def test_async_decode_encode_passes_through_none_chunks() -> None:
+    """`FusedCodecPipeline.decode`/`encode` (the async batch entry points used
+    on the fallback path) map a None chunk to None and leave real chunks
+    untouched — pins the None-passthrough branch the default sync path skips."""
+    import asyncio
+
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
+    spec = ArraySpec(
+        shape=(4,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
+
+    data = np.arange(4, dtype="int32")
+    value = CPUNDBuffer.from_numpy_array(data)
+
+    # encode a real chunk and a None chunk together
+    encoded = list(asyncio.run(pipeline.encode([(value, spec), (None, spec)])))
+    assert encoded[1] is None
+    assert encoded[0] is not None
+
+    # decode the real chunk and a None chunk together
+    decoded = list(asyncio.run(pipeline.decode([(encoded[0], spec), (None, spec)])))
+    assert decoded[1] is None
+    assert decoded[0] is not None
+    np.testing.assert_array_equal(decoded[0].as_numpy_array(), data)
