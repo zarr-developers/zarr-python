@@ -195,6 +195,22 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         writes=((slice(None), _val(100, "float64")),),
     ),
+    # v2 filters are the other half of the V2Codec wrapper (numcodecs
+    # array->array filters, a distinct branch from the compressor in
+    # _encode_sync/_decode_sync).
+    Scenario(
+        "v2-filter-gzip-roundtrip",
+        {
+            "shape": (100,),
+            "chunks": (10,),
+            "shards": None,
+            "filters": numcodecs.Delta(dtype="float64"),
+            "compressors": numcodecs.GZip(level=1),
+            "zarr_format": 2,
+            **_F64,
+        },
+        writes=((slice(None), _val(100, "float64")),),
+    ),
     # --- read unwritten chunks -> fill value --------------------------------
     Scenario(
         "missing-chunks-fill",
@@ -370,11 +386,15 @@ class CodecPipelineTests:
 
     @staticmethod
     def _chunk_keys(store: Store) -> set[str]:
-        """All non-metadata keys currently in the store."""
+        """All non-metadata keys currently in the store (v3 and v2 metadata)."""
         import asyncio
 
+        def _is_metadata(key: str) -> bool:
+            tail = key.rsplit("/", 1)[-1]
+            return tail in ("zarr.json", ".zarray", ".zattrs", ".zgroup", ".zmetadata")
+
         async def _list() -> set[str]:
-            return {k async for k in store.list() if "zarr.json" not in k}
+            return {k async for k in store.list() if not _is_metadata(k)}
 
         return asyncio.run(_list())
 
@@ -452,10 +472,19 @@ class CodecPipelineTests:
 
         # Reading across written + absent inner subchunks of the EXISTING shard
         # fills rather than raises.
-        out = np.asarray(arr[15:35])
+        out = arr[15:35]
         expected = np.full(20, -1.0)
         expected[5:15] = np.arange(10, dtype="float64")
         np.testing.assert_array_equal(out, expected)
+
+        # Both halves of the asymmetry in ONE read against the SAME partially
+        # written array: shard 0 exists (absent subchunks fill), shard 1 has no
+        # store key (raises) — pins that the raise still fires once some shard
+        # exists, and not only on a fully-empty array.
+        with pytest.raises(ChunkNotFoundError):
+            arr[:]
+        with pytest.raises(ChunkNotFoundError):
+            arr[45:55]  # spans the existing and the missing shard
 
     @pytest.mark.parametrize("subchunk_write_order", ["morton", "lexicographic", "colexicographic"])
     def test_partial_write_after_reopen_is_correct(

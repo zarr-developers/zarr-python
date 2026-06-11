@@ -154,6 +154,46 @@ def test_bulk_shard_decode_equals_general_decode(case: dict[str, Any]) -> None:
     np.testing.assert_array_equal(general.as_numpy_array(), case["data"])
 
 
+def test_merge_complete_chunk_returns_view_and_write_does_not_mutate_source() -> None:
+    """The complete-chunk merge fast path returns a VIEW of the caller's value
+    (no copy — that is the perf win), and a multi-chunk write through either
+    pipeline leaves the user's source array untouched.
+
+    Pins both halves of the aliasing contract: a future "defensive copy"
+    refactor that silently reintroduces the per-chunk create/fill/copy breaks
+    the first assertion, and an in-place-mutating codec that corrupts the
+    user's array through the shared view breaks the second.
+    """
+    # the fast path must return a view aliasing `value`, not a copy
+    value_np = np.arange(30, dtype="uint16")
+    spec = _spec((10,), "uint16")
+    value = CPUNDBuffer.from_numpy_array(value_np)
+    merged = _merge_chunk_array(None, value, (slice(10, 20),), spec, (slice(0, 10),), True, ())
+    assert np.shares_memory(merged.as_numpy_array(), value_np), (
+        "complete-chunk merge no longer returns a view of the caller's value"
+    )
+
+    # end-to-end: the source array is byte-identical after a multi-chunk write
+    for pipeline_path in (
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ):
+        with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+            arr = zarr.create_array(
+                store=MemoryStore(),
+                shape=(30,),
+                chunks=(10,),
+                dtype="uint16",
+                compressors=None,
+                fill_value=0,
+            )
+            source = np.arange(30, dtype="uint16")
+            snapshot = source.copy()
+            arr[:] = source
+            np.testing.assert_array_equal(source, snapshot, err_msg=pipeline_path)
+            np.testing.assert_array_equal(arr[:], snapshot, err_msg=pipeline_path)
+
+
 # ---------------------------------------------------------------------------
 # Scalar-broadcast write memoization: writing a scalar must produce the same
 # STORED BYTES as writing the equivalent broadcast array.

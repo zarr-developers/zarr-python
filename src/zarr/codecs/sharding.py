@@ -15,6 +15,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
     CodecPipeline,
+    SupportsSyncCodec,
 )
 from zarr.abc.store import (
     ByteGetter,
@@ -43,6 +44,7 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
+from zarr.core.config import config as zarr_config
 from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
@@ -386,6 +388,7 @@ class ShardingCodec(
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+        object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
         object.__setattr__(
             self, "_get_inner_chunk_transform", lru_cache()(self._get_inner_chunk_transform)
         )
@@ -411,6 +414,7 @@ class ShardingCodec(
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+        object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
         object.__setattr__(
             self, "_get_inner_chunk_transform", lru_cache()(self._get_inner_chunk_transform)
         )
@@ -445,19 +449,21 @@ class ShardingCodec(
         unevolved pipeline, which a synchronous pipeline can only run through
         its async fallback.
 
-        Memoized per (pipeline class, shard_spec): evolving builds a
-        ChunkTransform, which is wasteful to redo on every shard operation. The
-        pipeline class participates in the key so a `codec_pipeline.path`
-        config change is still honored. A benign construction race between
-        threads is possible (last writer wins) — same as the other caches here.
+        Memoized per (pipeline class, batch size, shard_spec): evolving builds
+        a ChunkTransform, which is wasteful to redo on every shard operation.
+        The pipeline class and batch size participate in the key so the
+        `codec_pipeline.path` and `codec_pipeline.batch_size` configs are still
+        honored after the first use (`from_codecs` captures batch_size at
+        construction). A benign construction race between threads is possible
+        (last writer wins) — same as the other caches here.
         """
-        cache: dict[tuple[type[CodecPipeline], ArraySpec], CodecPipeline] | None = getattr(
+        cache: dict[tuple[type[CodecPipeline], int, ArraySpec], CodecPipeline] | None = getattr(
             self, "_inner_pipeline_cache", None
         )
         if cache is None:
             cache = {}
             object.__setattr__(self, "_inner_pipeline_cache", cache)
-        key = (get_pipeline_class(), shard_spec)
+        key = (get_pipeline_class(), zarr_config.get("codec_pipeline.batch_size"), shard_spec)
         pipeline = cache.get(key)
         if pipeline is None:
             chunk_spec = self._get_chunk_spec(shard_spec)
@@ -477,8 +483,16 @@ class ShardingCodec(
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        # Thread the spec through the inner chain (`evolve_codecs`): each codec
+        # is evolved against the spec produced by the previous one. Evolving
+        # every codec against the same unthreaded spec is the bug shape that
+        # strips `BytesCodec.endian` behind a dtype-changing codec — and this
+        # method runs on the real array-creation path, baking the damaged chain
+        # into the evolved instance before the transform builders ever run.
+        from zarr.core.codec_pipeline import evolve_codecs
+
         shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = tuple(c.evolve_from_array_spec(array_spec=shard_spec) for c in self.codecs)
+        evolved_codecs = evolve_codecs(self.codecs, shard_spec)
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
@@ -514,7 +528,11 @@ class ShardingCodec(
                     )
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
-        """The synchronous transform for the inner codec chain, memoized per shard_spec.
+        """The synchronous transform for the inner codec chain.
+
+        Memoized by the instance-local `lru_cache` wrapping installed in
+        `__init__`/`__setstate__` (the single cache mechanism for these
+        builders — do not add another layer inside the body).
 
         Codecs are evolved with the spec THREADED forward (`evolve_codecs`):
         each inner codec is evolved against the spec produced by the previous
@@ -525,38 +543,19 @@ class ShardingCodec(
         """
         from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
 
-        cache: dict[ArraySpec, ChunkTransform] | None = getattr(
-            self, "_inner_transform_cache", None
-        )
-        if cache is None:
-            cache = {}
-            object.__setattr__(self, "_inner_transform_cache", cache)
-        transform: ChunkTransform | None = cache.get(shard_spec)
-        if transform is None:
-            chunk_spec = self._get_chunk_spec(shard_spec)
-            transform = ChunkTransform(codecs=evolve_codecs(self.codecs, chunk_spec))
-            cache[shard_spec] = transform
-        return transform
+        chunk_spec = self._get_chunk_spec(shard_spec)
+        return ChunkTransform(codecs=evolve_codecs(self.codecs, chunk_spec))
 
     def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> Any:
-        """The synchronous transform for the index codec chain, memoized per grid.
+        """The synchronous transform for the index codec chain.
 
-        Spec-threaded evolve for the same reason as `_get_inner_chunk_transform`.
+        Memoized via instance-local `lru_cache` and spec-threaded for the same
+        reasons as `_get_inner_chunk_transform`.
         """
         from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
 
-        cache: dict[tuple[int, ...], ChunkTransform] | None = getattr(
-            self, "_index_transform_cache", None
-        )
-        if cache is None:
-            cache = {}
-            object.__setattr__(self, "_index_transform_cache", cache)
-        transform: ChunkTransform | None = cache.get(chunks_per_shard)
-        if transform is None:
-            index_spec = self._get_index_chunk_spec(chunks_per_shard)
-            transform = ChunkTransform(codecs=evolve_codecs(self.index_codecs, index_spec))
-            cache[chunks_per_shard] = transform
-        return transform
+        index_spec = self._get_index_chunk_spec(chunks_per_shard)
+        return ChunkTransform(codecs=evolve_codecs(self.index_codecs, index_spec))
 
     def _decode_shard_index_sync(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
@@ -766,7 +765,7 @@ class ShardingCodec(
                 # __getitem__ loop here is O(n_chunks) Python overhead that dominates
                 # partial writes into shards with many inner chunks.
                 shard_dict = shard_reader_fb.to_dict_vectorized(
-                    np.array(list(np.ndindex(chunks_per_shard)))
+                    np.indices(chunks_per_shard).reshape(len(chunks_per_shard), -1).T
                 )
             else:
                 shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
@@ -869,14 +868,25 @@ class ShardingCodec(
         return index, buffers
 
     def _assemble_shard(
-        self, index_bytes: Buffer, buffers: list[Buffer], buffer_prototype: BufferPrototype
+        self,
+        index_bytes: Buffer,
+        buffers: list[Buffer],
+        buffer_prototype: BufferPrototype,
+        *,
+        chunks_per_shard: tuple[int, ...],
     ) -> Buffer:
         """Concatenate the encoded index and data buffers into the shard blob.
 
         The layout from `_build_shard_layout` already assumes the index size, so
         the encoded index length must match `_shard_index_size` exactly — guard
-        that assumption rather than silently corrupt offsets.
+        that assumption rather than silently corrupt offsets. The guard lives
+        here, once, for both the sync and async encode paths.
         """
+        if len(index_bytes) != self._shard_index_size(chunks_per_shard):
+            raise RuntimeError(
+                "encoded shard index size does not match _shard_index_size; "
+                "variable-size index codecs are not supported"
+            )
         if self.index_location == ShardingCodecIndexLocation.start:
             buffers.insert(0, index_bytes)
         else:
@@ -902,12 +912,9 @@ class ShardingCodec(
             return None
         index, buffers = layout
         index_bytes = self._encode_shard_index_sync(index)
-        if len(index_bytes) != self._shard_index_size(chunks_per_shard):
-            raise RuntimeError(
-                "encoded shard index size does not match _shard_index_size; "
-                "variable-size index codecs are not supported"
-            )
-        return self._assemble_shard(index_bytes, buffers, buffer_prototype)
+        return self._assemble_shard(
+            index_bytes, buffers, buffer_prototype, chunks_per_shard=chunks_per_shard
+        )
 
     async def _decode_single(
         self,
@@ -1300,7 +1307,7 @@ class ShardingCodec(
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance
             shard_dict = shard_reader.to_dict_vectorized(
-                np.array(list(np.ndindex(chunks_per_shard)))
+                np.indices(chunks_per_shard).reshape(len(chunks_per_shard), -1).T
             )
 
         await self._get_inner_pipeline(shard_spec).write(
@@ -1341,12 +1348,9 @@ class ShardingCodec(
             return None
         index, buffers = layout
         index_bytes = await self._encode_shard_index(index)
-        if len(index_bytes) != self._shard_index_size(chunks_per_shard):
-            raise RuntimeError(
-                "encoded shard index size does not match _shard_index_size; "
-                "variable-size index codecs are not supported"
-            )
-        return self._assemble_shard(index_bytes, buffers, buffer_prototype)
+        return self._assemble_shard(
+            index_bytes, buffers, buffer_prototype, chunks_per_shard=chunks_per_shard
+        )
 
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
@@ -1365,20 +1369,51 @@ class ShardingCodec(
             is_complete_chunk for *_, is_complete_chunk in indexed_chunks
         )
 
+    def _index_codecs_sync_capable(self) -> bool:
+        return all(isinstance(c, SupportsSyncCodec) for c in self.index_codecs)
+
     async def _decode_shard_index(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex:
         # Pure compute (the bytes are already in hand): delegate to the sync
         # implementation instead of spinning up a pipeline + per-call
-        # AsyncChunkTransform for a tiny fixed-size decode. The index codecs
-        # must be sync-capable -- the synchronous read paths already require
-        # this for the default (bytes + crc32c) index chain.
-        return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        # AsyncChunkTransform for a tiny fixed-size decode. The default
+        # (bytes + crc32c) index chain is sync-capable; an async-only
+        # third-party index codec falls back to the full async pipeline, which
+        # the synchronous read paths cannot use but this async path still can.
+        if self._index_codecs_sync_capable():
+            return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        index_array = next(
+            iter(
+                await get_pipeline_class()
+                .from_codecs(self.index_codecs)
+                .decode([(index_bytes, self._get_index_chunk_spec(chunks_per_shard))])
+            )
+        )
+        assert index_array is not None  # the bytes are already in hand
+        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
-        # Pure compute: delegate to the sync implementation (see
-        # _decode_shard_index).
-        return self._encode_shard_index_sync(index)
+        # Pure compute: delegate to the sync implementation, with the same
+        # async-pipeline fallback as _decode_shard_index.
+        if self._index_codecs_sync_capable():
+            return self._encode_shard_index_sync(index)
+        index_bytes = next(
+            iter(
+                await get_pipeline_class()
+                .from_codecs(self.index_codecs)
+                .encode(
+                    [
+                        (
+                            get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths),
+                            self._get_index_chunk_spec(index.chunks_per_shard),
+                        )
+                    ]
+                )
+            )
+        )
+        assert index_bytes is not None
+        return index_bytes
 
     def _shard_index_size(self, chunks_per_shard: tuple[int, ...]) -> int:
         return (

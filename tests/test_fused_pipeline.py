@@ -432,8 +432,21 @@ _FUSED_POOL_CONFIG = {
 def test_read_write_with_thread_pool() -> None:
     """With max_workers > 1, multi-chunk reads and writes dispatch through the
     thread pool (pool.map in read_sync/write_sync) and produce the same results
-    as sequential execution."""
+    as sequential execution.
+
+    The `_get_pool` spy pins that the pool branch actually fires: without it,
+    a config-resolution regression (renamed key, `_resolve_max_workers`
+    returning 1) would silently degrade all the pool tests into re-testing the
+    sequential branch while staying green.
+    """
+    from unittest.mock import patch
+
+    import zarr.core.codec_pipeline as cp_mod
+
     with zarr_config.set(_FUSED_POOL_CONFIG):
+        assert cp_mod._resolve_max_workers() == 4, (
+            "codec_pipeline.max_workers config did not reach _resolve_max_workers"
+        )
         store = MemoryStore()
         arr = zarr.create_array(
             store=store,
@@ -445,8 +458,12 @@ def test_read_write_with_thread_pool() -> None:
         )
         assert isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline)
         data = np.arange(100, dtype="float64")
-        arr[:] = data  # 10 chunks -> pool dispatch in write_sync
-        np.testing.assert_array_equal(arr[:], data)  # pool dispatch in read_sync
+        with patch.object(cp_mod, "_get_pool", wraps=cp_mod._get_pool) as pool_spy:
+            arr[:] = data  # 10 chunks -> pool dispatch in write_sync
+            assert pool_spy.call_count >= 1, "multi-chunk write did not take the pool branch"
+            writes = pool_spy.call_count
+            np.testing.assert_array_equal(arr[:], data)  # pool dispatch in read_sync
+            assert pool_spy.call_count > writes, "multi-chunk read did not take the pool branch"
         arr[5:25] = 7.0  # partial write: merge path through the pool
         data[5:25] = 7.0
         np.testing.assert_array_equal(arr[:], data)
@@ -504,7 +521,10 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
     array->array codecs the cache is bypassed entirely, so this uses a transpose
     filter to force cache traffic, max_workers=4 so pool workers decode chunks
     concurrently, and an outer thread pool so multiple reads are in flight at
-    once. This pins correctness under concurrency (it cannot prove the absence
+    once. Each round RE-OPENS the array so the shared transform starts with a
+    cold spec cache and the concurrent readers race the non-atomic first fill —
+    reading through a single pre-warmed handle would only ever exercise cache
+    hits. This pins correctness under concurrency (it cannot prove the absence
     of a race, but a torn cache would corrupt results here).
     """
     from concurrent.futures import ThreadPoolExecutor
@@ -524,10 +544,12 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
         data = np.arange(1600, dtype="int32").reshape(40, 40)
         arr[:] = data
 
-        def read_row_block(i: int) -> np.ndarray:
-            return np.asarray(arr[i * 4 : (i + 1) * 4, :])
+        for _ in range(5):  # several rounds, each racing a cold cache
+            fresh = zarr.open_array(store=store, mode="r")
 
-        for _ in range(5):  # several rounds to increase interleaving
+            def read_row_block(i: int, handle: zarr.Array[Any] = fresh) -> np.ndarray:
+                return np.asarray(handle[i * 4 : (i + 1) * 4, :])
+
             with ThreadPoolExecutor(max_workers=8) as ex:
                 futures = {ex.submit(read_row_block, i): i for i in range(10)}
                 for fut, i in futures.items():
@@ -604,3 +626,58 @@ def test_sharded_fallback_inner_chunks_avoid_async_transform() -> None:
     # the fallback write encodes whole shards through the outer sync transform
     # -> ShardingCodec._encode_sync, never touching the nested byte setters.)
     assert sync_calls["read_sync"] >= 1, "nested read did not take the sync fast path"
+
+
+def test_write_over_sync_byte_setter_takes_sync_path() -> None:
+    """`FusedCodecPipeline.write` routes a non-StorePath `SyncByteSetter` (the
+    sharding codec's `_ShardingByteSetter`) through `write_sync`.
+
+    This is the write-side twin of the SyncByteGetter gate: the read test
+    above cannot guard it because fallback whole-array writes encode shards
+    via `_encode_sync` and never touch the nested byte setters. The nested
+    `write` over `_ShardingByteSetter` is reached from the async shard encode
+    paths (`_encode_single`/`_encode_partial_single`), so pin the gate
+    directly: without it, this write degrades to the async fallback (one
+    coroutine per inner chunk for an in-memory dict store).
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from zarr.codecs.sharding import _ShardingByteSetter
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("uint8"))
+    spec = ArraySpec(
+        shape=(10,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
+    assert pipeline.sync_transform is not None
+
+    shard_dict: dict[tuple[int, ...], Any] = {}
+    setter = _ShardingByteSetter(shard_dict, (0,))
+    value = default_buffer_prototype().nd_buffer.from_numpy_array(np.arange(10, dtype="uint8"))
+
+    sync_calls = {"write_sync": 0}
+    orig_write_sync = FusedCodecPipeline.write_sync
+
+    def spy_write_sync(self: Any, *args: Any, **kwargs: Any) -> Any:
+        sync_calls["write_sync"] += 1
+        return orig_write_sync(self, *args, **kwargs)
+
+    sel = (slice(0, 10),)
+    with patch.object(FusedCodecPipeline, "write_sync", spy_write_sync):
+        asyncio.run(pipeline.write([(setter, spec, sel, sel, True)], value))
+
+    assert sync_calls["write_sync"] >= 1, (
+        "write over a SyncByteSetter did not take the sync fast path"
+    )
+    written = shard_dict[(0,)]
+    np.testing.assert_array_equal(
+        np.frombuffer(written.to_bytes(), dtype="uint8"), np.arange(10, dtype="uint8")
+    )

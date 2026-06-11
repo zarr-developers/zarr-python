@@ -243,15 +243,19 @@ def _merge_chunk_array(
 ) -> NDBuffer:
     """Merge `value` into a full-chunk-shaped NDBuffer at `chunk_selection`.
 
-    If `is_complete_chunk` and `value` already covers the full chunk
-    shape, `value` is returned directly (no copy). Otherwise, a writable
+    If `is_complete_chunk` and `value[out_selection]` is exactly chunk-shaped,
+    that VIEW of the caller's `value` is returned without copying — callers
+    (and the codecs they pass it to) must treat it as read-only, since
+    mutating it would corrupt the user's source array. Otherwise, a writable
     buffer is materialized — either from `existing_chunk_array.copy()` if
     one was read from the store, or freshly allocated and filled with the
     chunk's fill value — and the relevant slice of `value` is written into it.
     """
     if is_complete_chunk and value.shape != ():
         selected = value[out_selection]
-        # Guard that this is not a partial chunk at the end with is_complete_chunk=True
+        # The shape check guards against a partial edge chunk arriving with
+        # is_complete_chunk=True, and against dropped axes (size-1 integer
+        # dims), where the selection is not exactly chunk-shaped.
         if selected.shape == chunk_spec.shape:
             return selected
     if existing_chunk_array is None:
