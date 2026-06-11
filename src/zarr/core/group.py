@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-import json
 import logging
 import unicodedata
 import warnings
@@ -18,6 +17,7 @@ import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
+from zarr.core._json import buffer_to_json_object, json_to_buffer
 from zarr.core.array import (
     DEFAULT_FILL_VALUE,
     Array,
@@ -356,21 +356,15 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        json_indent = config.get("json_indent")
+        indent = config.get("json_indent")
         if self.zarr_format == 3:
-            return {
-                ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=True).encode()
-                )
-            }
+            return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
         else:
             items = {
-                ZGROUP_JSON: prototype.buffer.from_bytes(
-                    json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
+                ZGROUP_JSON: json_to_buffer(
+                    {"zarr_format": self.zarr_format}, prototype=prototype, indent=indent
                 ),
-                ZATTRS_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.attributes, indent=json_indent, allow_nan=True).encode()
-                ),
+                ZATTRS_JSON: json_to_buffer(self.attributes, prototype=prototype, indent=indent),
             }
             if self.consolidated_metadata:
                 d = {
@@ -395,10 +389,9 @@ class GroupMetadata(Metadata):
                             },
                         }
 
-                items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
-                    json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=True
-                    ).encode()
+                # The consolidated metadata blob is written compactly (no indent).
+                items[ZMETADATA_V2_JSON] = json_to_buffer(
+                    {"metadata": d, "zarr_consolidated_format": 1}, prototype=prototype
                 )
 
             return items
@@ -626,13 +619,13 @@ class AsyncGroup:
         consolidated_metadata_bytes: Buffer | None,
     ) -> AsyncGroup:
         # V2 groups are comprised of a .zgroup and .zattrs objects
-        zgroup = json.loads(zgroup_bytes.to_bytes())
-        zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
-        group_metadata = {**zgroup, "attributes": zattrs}
+        zgroup = buffer_to_json_object(zgroup_bytes)
+        zattrs = buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
+        group_metadata: dict[str, Any] = {**zgroup, "attributes": zattrs}
 
         if consolidated_metadata_bytes is not None:
-            v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
-            v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
+            v2_consolidated_doc = buffer_to_json_object(consolidated_metadata_bytes)
+            v2_consolidated_metadata = cast("dict[str, Any]", v2_consolidated_doc["metadata"])
             # We already read zattrs and zgroup. Should we ignore these?
             v2_consolidated_metadata.pop(".zattrs", None)
             v2_consolidated_metadata.pop(".zgroup", None)
@@ -667,7 +660,7 @@ class AsyncGroup:
         zarr_json_bytes: Buffer,
         use_consolidated: bool | None,
     ) -> AsyncGroup:
-        group_metadata = json.loads(zarr_json_bytes.to_bytes())
+        group_metadata = buffer_to_json_object(zarr_json_bytes)
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
             msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path}'."
             raise ValueError(msg)
@@ -3368,9 +3361,7 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    else:
-        zarr_json = json.loads(zarr_json_bytes.to_bytes())
-        return _build_metadata_v3(zarr_json)
+    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
@@ -3387,22 +3378,23 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
     )
 
+    zattrs: dict[str, JSON]
     if zattrs_bytes is None:
         zattrs = {}
     else:
-        zattrs = json.loads(zattrs_bytes.to_bytes())
+        zattrs = buffer_to_json_object(zattrs_bytes)
 
     # TODO: decide how to handle finding both array and group metadata. The spec does not seem to
     # consider this situation. A practical approach would be to ignore that combination, and only
     # return the array metadata.
     if zarray_bytes is not None:
-        zmeta = json.loads(zarray_bytes.to_bytes())
+        zmeta = buffer_to_json_object(zarray_bytes)
     else:
         if zgroup_bytes is None:
             # neither .zarray or .zgroup were found results in KeyError
             raise FileNotFoundError(path)
         else:
-            zmeta = json.loads(zgroup_bytes.to_bytes())
+            zmeta = buffer_to_json_object(zgroup_bytes)
 
     return _build_metadata_v2(zmeta, zattrs)
 
