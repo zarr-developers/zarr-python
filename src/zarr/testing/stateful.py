@@ -306,7 +306,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
         matches = set()
         for node in self.all_groups | self.all_arrays:
-            if node.startswith(path):
+            if node == path or node.startswith(path + "/"):
                 matches.add(node)
         self.all_groups = self.all_groups - matches
         self.all_arrays = self.all_arrays - matches
