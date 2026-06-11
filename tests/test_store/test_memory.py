@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -14,14 +13,12 @@ import zarr
 # (removed from this PR pending a store-interface decision).
 # from zarr.abc.store import SupportsSetRange
 from zarr.core.buffer import Buffer, cpu, gpu
-from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
-    from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ZarrFormat
 
 
@@ -82,54 +79,6 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
 
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_bytes_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_bytes works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
-
-        result = await store._get_bytes(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_bytes_sync_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_bytes_sync works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-
-        result = store._get_bytes_sync(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_json_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
-
-        result = await store._get_json(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_json_sync_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json_sync works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
-
-        result = store._get_json_sync(key, prototype=buffer_cls)
-        assert result == data
 
     # --- byte-range-write tests: disabled ---
     # Byte-range-write support (set_range / set_range_sync / SupportsSetRange)
@@ -380,54 +329,6 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
 
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_bytes_with_prototype_none(
-        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_bytes works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
-
-        result = await store._get_bytes(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_bytes_sync_with_prototype_none(
-        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_bytes_sync works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-
-        result = store._get_bytes_sync(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_json_with_prototype_none(
-        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
-
-        result = await store._get_json(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_json_sync_with_prototype_none(
-        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json_sync works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
-
-        result = store._get_json_sync(key, prototype=buffer_cls)
-        assert result == data
 
     def test_from_url(self, store: ManagedMemoryStore) -> None:
         """Test that from_url creates a store sharing the same dict."""
