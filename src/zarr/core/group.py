@@ -105,7 +105,7 @@ def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
     elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
-        return data
+        return dict(data)
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
 
