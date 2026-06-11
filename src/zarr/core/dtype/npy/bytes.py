@@ -9,7 +9,6 @@ import numpy as np
 
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
@@ -20,6 +19,7 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 BytesLike = np.bytes_ | str | bytes | int
 
