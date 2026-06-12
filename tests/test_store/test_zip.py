@@ -177,3 +177,17 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    def test_close_without_open_does_not_raise(self, tmp_path: Path) -> None:
+        """Regression: ZipStore.close() must not raise AttributeError when the store
+        was never opened (i.e., _sync_open was never called and _lock does not exist)."""
+        store = ZipStore(tmp_path / "never_opened.zip", mode="w")
+        assert not store._is_open
+        # Should complete without raising AttributeError.
+        store.close()
+
+    def test_context_manager_without_io_does_not_raise(self, tmp_path: Path) -> None:
+        """Regression: using ZipStore as a context manager without doing any I/O
+        must not raise AttributeError on __exit__ (which calls close())."""
+        with ZipStore(tmp_path / "ctx_manager.zip", mode="w"):
+            pass  # no I/O; store is never explicitly opened

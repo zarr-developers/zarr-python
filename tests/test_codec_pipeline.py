@@ -4,9 +4,10 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.codecs import BytesCodec, CastValue
+from zarr.codecs import BytesCodec, CastValue, GzipCodec, TransposeCodec
 from zarr.core.array import _get_chunk_spec
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.codec_pipeline import codecs_from_list
 from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore
 
@@ -120,3 +121,17 @@ def test_codec_pipeline_threads_dtype_through_evolve(source_dtype: str, target_d
     )
     arr[:] = np.asarray([0, 1, 2, 3], dtype=source_dtype)
     np.testing.assert_array_equal(arr[:], np.asarray([0, 1, 2, 3], dtype=source_dtype))
+
+
+def test_codecs_from_list_bytes_bytes_after_array_array_raises() -> None:
+    """Regression: placing a BytesBytesCodec immediately after an ArrayArrayCodec
+    (with no ArrayBytesCodec in between) must raise TypeError. Previously the error
+    message was assigned to ``msg`` but never raised, so the function silently
+    continued and later raised the unrelated ValueError "Required ArrayBytesCodec
+    was not found." instead of the descriptive TypeError."""
+    aa_codec = TransposeCodec(order=(0, 1))
+    bb_codec = GzipCodec()
+
+    # [ArrayArrayCodec, BytesBytesCodec] — no ArrayBytesCodec between them.
+    with pytest.raises(TypeError, match="Invalid codec order"):
+        codecs_from_list([aa_codec, bb_codec])
