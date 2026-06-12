@@ -46,9 +46,11 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
-    c_order_iter,
+    _lexicographic_order,
+    colexicographic_order_coords,
     get_indexer,
-    morton_order_iter,
+    lexicographic_order_coords,
+    morton_order_coords,
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
@@ -261,31 +263,42 @@ class _ShardReader(ShardMapping):
         return int(self.index.offsets_and_lengths.size / 2)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return c_order_iter(self.index.chunks_per_shard)
+        return iter(lexicographic_order_coords(self.index.chunks_per_shard))
 
-    def to_dict_vectorized(
-        self,
-        chunk_coords_array: npt.NDArray[np.integer[Any]],
-    ) -> dict[tuple[int, ...], Buffer | None]:
+    def to_dict_vectorized(self) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
 
-        Parameters
-        ----------
-        chunk_coords_array : ndarray of shape (n_chunks, n_dims)
-            Array of chunk coordinates for vectorized index lookup.
+        The full per-shard chunk coordinate grid (both the array used for the
+        vectorized index lookup and the plain tuples used as dict keys) is
+        cached on `chunks_per_shard`, so neither is rebuilt on every call. For a
+        shard with tens of thousands of chunks this avoids reconstructing that
+        many tuples on every partial write.
 
         Returns
         -------
         dict mapping chunk coordinate tuples to Buffer or None
         """
+        chunks_per_shard = self.index.chunks_per_shard
+        # The same chunk-grid coordinates are needed in two forms, and neither can
+        # stand in for the other:
+        #   - `chunk_coords_array`: an (n_chunks, n_dims) numpy array, fed to the
+        #     vectorized index lookup, which does modulo + advanced indexing on it.
+        #     A list of tuples can't be used for that without first being arrayified.
+        #   - `chunk_coords_keys`: the same coordinates as hashable Python tuples,
+        #     used as the result dict's keys. numpy array rows are unhashable
+        #     (mutable), so they can't key a dict.
+        # Both are cached per shape (see indexing.py), so neither is rebuilt here;
+        # row i of the array and key i refer to the same chunk.
+        chunk_coords_array = _lexicographic_order(chunks_per_shard)
+        chunk_coords_keys = lexicographic_order_coords(chunks_per_shard)
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_array):
+        for i, coords in enumerate(chunk_coords_keys):
             if valid[i]:
-                result[tuple(coords.ravel())] = self.buf[int(starts[i]) : int(ends[i])]
+                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
             else:
-                result[tuple(coords.ravel())] = None
+                result[coords] = None
 
         return result
 
@@ -533,13 +546,14 @@ class ShardingCodec(
     def _subchunk_order_iter(
         self, chunks_per_shard: tuple[int, ...], subchunk_write_order: SubchunkWriteOrder
     ) -> Iterable[tuple[int, ...]]:
+        subchunk_iter: Iterable[tuple[int, ...]]
         match subchunk_write_order:
             case "morton":
-                subchunk_iter = morton_order_iter(chunks_per_shard)
+                subchunk_iter = morton_order_coords(chunks_per_shard)
             case "lexicographic":
-                subchunk_iter = np.ndindex(chunks_per_shard)
+                subchunk_iter = lexicographic_order_coords(chunks_per_shard)
             case "colexicographic":
-                subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
+                subchunk_iter = colexicographic_order_coords(chunks_per_shard)
             case "unordered":
                 # "unordered" promises no particular layout; today it happens to be
                 # lexicographic, but callers must not rely on that.
@@ -565,9 +579,7 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-        # The key order of this intermediate dict is immaterial; the physical layout is
-        # decided later by the `subchunk_write_order` loop in `_encode_shard_dict`.
-        shard_builder = dict.fromkeys(np.ndindex(chunks_per_shard))
+        shard_builder = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
 
         await self.codec_pipeline.write(
             [
@@ -610,8 +622,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            # Intermediate key order is immaterial (see `_encode_single`).
-            shard_dict = dict.fromkeys(np.ndindex(chunks_per_shard))
+            shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -619,10 +630,10 @@ class ShardingCodec(
                 chunks_per_shard=chunks_per_shard,
             )
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
-            # Use vectorized lookup for better performance
-            shard_dict = shard_reader.to_dict_vectorized(
-                np.array(list(np.ndindex(chunks_per_shard)))
-            )
+            # Use vectorized lookup for better performance. The lexicographic
+            # coordinate array and keys are cached, so neither is rebuilt on
+            # every write.
+            shard_dict = shard_reader.to_dict_vectorized()
 
         await self.codec_pipeline.write(
             [
@@ -692,9 +703,13 @@ class ShardingCodec(
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
-        return len(all_chunk_coords) == product(chunks_per_shard) and all(
-            chunk_coords in all_chunk_coords for chunk_coords in c_order_iter(chunks_per_shard)
-        )
+        # `all_chunk_coords` comes from an indexer over this shard's chunk grid, so
+        # it is always a subset of that grid (`validate` requires the shard shape to
+        # be divisible by the inner chunk shape, so the indexer cannot produce an
+        # out-of-grid coordinate). A subset whose size equals the grid's is the
+        # whole grid, so the count check alone proves totality — no need to build
+        # and membership-test the full coordinate set on this hot path.
+        return len(all_chunk_coords) == product(chunks_per_shard)
 
     def _is_complete_shard_write(
         self,

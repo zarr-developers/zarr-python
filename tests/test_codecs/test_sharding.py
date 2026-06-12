@@ -21,7 +21,7 @@ from zarr.codecs import (
 )
 from zarr.codecs.sharding import MAX_UINT_64, SubchunkWriteOrder, _ShardIndex, _ShardReader
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.core.indexing import c_order_iter
+from zarr.core.indexing import lexicographic_order_coords
 from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -954,7 +954,7 @@ def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ..
     """get_chunk_slices_vectorized works uniformly across chunk grid ranks, including 0-D."""
     index = _ShardIndex.create_empty(chunks_per_shard)
     # Write the first chunk; leave the rest (if any) empty.
-    all_coords = list(c_order_iter(chunks_per_shard))
+    all_coords = list(lexicographic_order_coords(chunks_per_shard))
     index.set_chunk_slice(all_coords[0], slice(10, 14))
 
     coords_array = np.array(all_coords, dtype=np.uint64).reshape(
@@ -968,3 +968,39 @@ def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ..
     assert starts[0] == 10
     assert ends[0] == 14
     np.testing.assert_array_equal(starts[~expected_valid], MAX_UINT_64)
+
+
+@pytest.mark.parametrize("chunks_per_shard", [(), (3,), (2, 3)])
+def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> None:
+    """to_dict_vectorized derives its own coords and maps present chunks to buffers, empty to None.
+
+    The reader is given the full per-shard chunk grid implicitly (it reads
+    ``chunks_per_shard`` off its own index), so the result must contain every
+    lexicographic coordinate as a key, with the stored bytes for present chunks
+    and ``None`` for empty ones.
+    """
+    all_coords = list(lexicographic_order_coords(chunks_per_shard))
+    # Lay two chunks back-to-back in the buffer; leave the rest (if any) empty.
+    payload = b"abcdXY"
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice(all_coords[0], slice(0, 4))
+    present = {all_coords[0]: payload[0:4]}
+    if len(all_coords) > 1:
+        index.set_chunk_slice(all_coords[1], slice(4, 6))
+        present[all_coords[1]] = payload[4:6]
+
+    reader = _ShardReader()
+    reader.index = index
+    reader.buf = default_buffer_prototype().buffer.from_bytes(payload)
+
+    result = reader.to_dict_vectorized()
+
+    # Every lexicographic coordinate is present as a key, in order.
+    assert list(result.keys()) == all_coords
+    for coords in all_coords:
+        buf = result[coords]
+        if coords in present:
+            assert buf is not None
+            assert buf.to_bytes() == present[coords]
+        else:
+            assert buf is None
