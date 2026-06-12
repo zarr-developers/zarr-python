@@ -108,6 +108,19 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
+def _warn_unimplemented_kwargs(kwargs: dict[str, Any]) -> None:
+    """
+    Emit a "not yet implemented" warning for each provided keyword argument that is not None.
+
+    ``kwargs`` maps a keyword argument name to its supplied value. The ``stacklevel`` is chosen
+    so the warning points at the caller of the public API function (the same location as an
+    inline ``warnings.warn(..., stacklevel=2)`` would).
+    """
+    for name, value in kwargs.items():
+        if value is not None:
+            warnings.warn(f"{name} is not yet implemented", ZarrRuntimeWarning, stacklevel=3)
+
+
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
@@ -813,14 +826,14 @@ async def open_group(
         The new group.
     """
 
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
+    _warn_unimplemented_kwargs(
+        {
+            "cache_attrs": cache_attrs,
+            "synchronizer": synchronizer,
+            "meta_array": meta_array,
+            "chunk_store": chunk_store,
+        }
+    )
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
@@ -1010,20 +1023,17 @@ async def create(
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if cache_metadata is not None:
-        warnings.warn("cache_metadata is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if object_codec is not None:
-        warnings.warn("object_codec is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if read_only is not None:
-        warnings.warn("read_only is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
+    _warn_unimplemented_kwargs(
+        {
+            "synchronizer": synchronizer,
+            "chunk_store": chunk_store,
+            "cache_metadata": cache_metadata,
+            "cache_attrs": cache_attrs,
+            "object_codec": object_codec,
+            "read_only": read_only,
+            "meta_array": meta_array,
+        }
+    )
 
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
