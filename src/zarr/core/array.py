@@ -2181,7 +2181,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         When sharding is used, this counts inner chunks (not shards) per dimension.
         """
-        return self.async_array._chunk_grid_shape
+        return self._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
