@@ -30,18 +30,42 @@ if TYPE_CHECKING:
 def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
     if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
-    with path.open("rb") as f:
-        size = f.seek(0, io.SEEK_END)
-        if isinstance(byte_range, RangeByteRequest):
-            f.seek(byte_range.start)
-            return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
-        elif isinstance(byte_range, OffsetByteRequest):
-            f.seek(byte_range.offset)
-        elif isinstance(byte_range, SuffixByteRequest):
-            f.seek(max(0, size - byte_range.suffix))
-        else:
-            raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-        return prototype.buffer.from_bytes(f.read())
+
+    if hasattr(os, "pread"):
+        # Use pread on systems that support it (Unix-like)
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            if isinstance(byte_range, RangeByteRequest):
+                length = byte_range.end - byte_range.start
+                data = os.pread(fd, length, byte_range.start)
+            elif isinstance(byte_range, OffsetByteRequest):
+                file_size = os.fstat(fd).st_size
+                length = max(0, file_size - byte_range.offset)
+                data = os.pread(fd, length, byte_range.offset)
+            elif isinstance(byte_range, SuffixByteRequest):
+                file_size = os.fstat(fd).st_size
+                offset = max(0, file_size - byte_range.suffix)
+                length = file_size - offset
+                data = os.pread(fd, length, offset)
+            else:
+                raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+            return prototype.buffer.from_bytes(data)
+        finally:
+            os.close(fd)
+    else:
+        # Fallback to seek/read for systems without pread (e.g., Windows)
+        with path.open("rb") as f:
+            if isinstance(byte_range, RangeByteRequest):
+                f.seek(byte_range.start)
+                return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+            elif isinstance(byte_range, OffsetByteRequest):
+                f.seek(byte_range.offset)
+            elif isinstance(byte_range, SuffixByteRequest):
+                size = f.seek(0, io.SEEK_END)
+                f.seek(max(0, size - byte_range.suffix))
+            else:
+                raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+            return prototype.buffer.from_bytes(f.read())
 
 
 if sys.platform == "win32":
