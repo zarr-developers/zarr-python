@@ -267,7 +267,14 @@ async def _transform_list_dir(
     for path in chain(
         list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
     ):
-        yield _relativize_path(path=path, prefix=prefix)
+        # Skip entries that exactly match the prefix or are the prefix with a trailing slash.
+        # These represent the prefix itself rather than children.
+        if path == prefix or path == f"{prefix}/":
+            continue
+        relative = _relativize_path(path=path, prefix=prefix)
+        if relative == "":
+            continue
+        yield relative
 
 
 class _BoundedRequest(TypedDict):

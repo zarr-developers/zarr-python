@@ -96,6 +96,16 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         total_size = await store.getsize_prefix("c")
         assert total_size == len(buf) * 2
 
+    async def test_list_dir_prefix_object(self, store: ObjectStore[LocalStore]) -> None:
+        """list_dir should not raise ValueError when an object keyed like the prefix exists."""
+        buf = cpu.Buffer.from_bytes(b"\x00")
+        # Create an object whose key is exactly the prefix with a trailing slash.
+        await self.set(store, "g/", buf)
+        # list_dir("g") should not raise even though "g/" looks like the prefix itself.
+        result = [k async for k in store.list_dir("g")]
+        # The entry should not appear as an empty string or raise.
+        assert result == []
+
 
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy() -> None:
