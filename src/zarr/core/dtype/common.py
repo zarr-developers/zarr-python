@@ -146,7 +146,20 @@ def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
     return data
 
 
-class DataTypeValidationError(ValueError): ...
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.core.dtype.common is deprecated. "
+            "Use zarr.errors.DataTypeValidationError or zarr.dtype.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class ScalarTypeValidationError(ValueError): ...
