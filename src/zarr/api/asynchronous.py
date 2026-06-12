@@ -147,6 +147,7 @@ class _LikeArgs(TypedDict):
     filters: NotRequired[tuple[Numcodec, ...] | None]
     compressor: NotRequired[CompressorLikev2]
     codecs: NotRequired[tuple[Codec, ...]]
+    fill_value: NotRequired[Any]
 
 
 def _like_args(a: ArrayLike) -> _LikeArgs:
@@ -164,6 +165,7 @@ def _like_args(a: ArrayLike) -> _LikeArgs:
         new["dtype"] = a.dtype
 
     if isinstance(a, AsyncArray | Array):
+        new["fill_value"] = a.metadata.fill_value
         if isinstance(a.metadata, ArrayV2Metadata):
             new["order"] = a.order
             new["compressor"] = a.metadata.compressor
@@ -1121,8 +1123,6 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     and these are not guaranteed to be stable from one access to the next.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1165,8 +1165,6 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
         The new array.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1204,7 +1202,10 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_args = _like_args(a)
+    # `ones` supplies its own fill_value, so drop any inherited from `a`.
+    like_args.pop("fill_value", None)
+    like_kwargs = like_args | kwargs
     return await ones(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1280,8 +1281,6 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The opened array.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1319,5 +1318,8 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_args = _like_args(a)
+    # `zeros` supplies its own fill_value, so drop any inherited from `a`.
+    like_args.pop("fill_value", None)
+    like_kwargs = like_args | kwargs
     return await zeros(**like_kwargs)  # type: ignore[arg-type]
