@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import itertools
+import math
 import numbers
-import operator
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from functools import lru_cache, reduce
+from functools import lru_cache
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
@@ -1187,7 +1187,7 @@ class CoordinateIndexer(Indexer):
             cdata_shape = (1,)
         else:
             cdata_shape = tuple(g.nchunks for g in dim_grids)
-        nchunks = reduce(operator.mul, cdata_shape, 1)
+        nchunks = math.prod(cdata_shape)
 
         # some initial normalization
         selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
