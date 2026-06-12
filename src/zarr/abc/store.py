@@ -22,6 +22,8 @@ __all__ = [
     "SupportsGetSync",
     "SupportsSetSync",
     "SupportsSyncStore",
+    "SyncByteGetter",
+    "SyncByteSetter",
     "set_or_delete",
 ]
 
@@ -469,6 +471,73 @@ class Store(ABC):
         ):
             yield group
 
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        """Synchronous, coalescing counterpart of `get_ranges`.
+
+        Plans merged fetches with the same `coalesce_ranges` policy as the async
+        path, then issues one synchronous `get_sync` per merged group (or per
+        uncoalescable request) and slices results back into per-input buffers.
+        Used by the sync codec pipeline's partial-shard reads so they get the
+        same byte-range coalescing as the async path, without an event loop.
+
+        Returns a list of `(input_index, Buffer | None)`. Raises
+        `BaseExceptionGroup` containing a `FileNotFoundError` if the key is
+        absent (matching `get_ranges`), so callers can handle a deleted shard
+        uniformly across the sync and async paths.
+
+        Requires the store to implement `get_sync` (`SupportsGetSync`).
+        """
+        from zarr.core._coalesce import coalesce_ranges
+
+        if not isinstance(self, SupportsGetSync):
+            raise TypeError(f"{type(self).__name__} does not support synchronous reads")
+
+        groups, uncoalescable = coalesce_ranges(
+            byte_ranges, max_gap_bytes=max_gap_bytes, max_coalesced_bytes=max_coalesced_bytes
+        )
+        results: list[tuple[int, Buffer | None]] = []
+        errors: list[BaseException] = []
+
+        def _get(req: ByteRequest | None) -> Buffer | None:
+            return self.get_sync(key, prototype=prototype, byte_range=req)
+
+        for idx, req in uncoalescable:
+            buf = _get(req)
+            if buf is None:
+                errors.append(FileNotFoundError(key))
+            else:
+                results.append((idx, buf))
+
+        for members in groups:
+            if len(members) == 1:
+                solo_idx, solo_req = members[0]
+                buf = _get(solo_req)
+                if buf is None:
+                    errors.append(FileNotFoundError(key))
+                else:
+                    results.append((solo_idx, buf))
+                continue
+            start = members[0][1].start
+            end = max(r.end for _, r in members)
+            big = _get(RangeByteRequest(start, end))
+            if big is None:
+                errors.append(FileNotFoundError(key))
+                continue
+            for member_idx, r in members:
+                results.append((member_idx, big[r.start - start : r.end - start]))
+
+        if errors:
+            raise BaseExceptionGroup("chunk read failed", errors)
+        return results
+
     async def getsize(self, key: str) -> int:
         """
         Return the size, in bytes, of a value in a Store.
@@ -560,6 +629,33 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SyncByteGetter(Protocol):
+    """A `ByteGetter` that can also fetch synchronously, without an event loop.
+
+    Non-StorePath byte getters (e.g. the sharding codec's in-memory
+    `_ShardingByteGetter`) implement this so a synchronous codec pipeline can
+    take its sync fast path on them instead of scheduling one coroutine per
+    chunk. Note that `StorePath` also *has* a `get_sync` method (so it matches
+    this protocol structurally) but it only works when its store supports
+    synchronous IO — callers gate `StorePath` on the store's `SupportsGetSync`
+    instead of on this protocol.
+    """
+
+    def get_sync(
+        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SyncByteSetter(SyncByteGetter, Protocol):
+    """A `ByteSetter` that can also write synchronously. See `SyncByteGetter`."""
+
+    def set_sync(self, value: Buffer) -> None: ...
+
+    def delete_sync(self) -> None: ...
 
 
 @runtime_checkable

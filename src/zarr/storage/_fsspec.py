@@ -42,13 +42,13 @@ async def _close_fs(fs: AsyncFileSystem) -> None:
     """
     Best-effort async close of an fsspec async filesystem owned by FsspecStore.
 
-    For filesystems that expose ``set_session()`` (e.g. s3fs) the underlying
-    aiohttp ``ClientSession`` is closed explicitly, which prevents
-    "Unclosed client session" ``ResourceWarning``s from aiohttp.  For all
+    For filesystems that expose `set_session()` (e.g. s3fs) the underlying
+    aiohttp `ClientSession` is closed explicitly, which prevents
+    "Unclosed client session" `ResourceWarning`s from aiohttp.  For all
     other filesystem types the call is a no-op (not every implementation
     manages an HTTP session directly).
 
-    Note that ``set_session()`` lazily creates a session if none exists yet, so
+    Note that `set_session()` lazily creates a session if none exists yet, so
     closing a store that never performed any I/O may instantiate a session
     purely to close it.  This is accepted best-effort behavior; fsspec does not
     expose a stable, cross-implementation way to test for an existing session.
@@ -286,7 +286,7 @@ class FsspecStore(Store):
         )
         # The derived store shares the same fs. Transfer ownership so the
         # surviving store closes it, and clear ours to avoid a double-close.
-        # Otherwise the common ``from_url(...).with_read_only()`` chain would
+        # Otherwise the common `from_url(...).with_read_only()` chain would
         # drop the only owner (the unreferenced source) and leak the session.
         new_store._owns_fs = self._owns_fs
         self._owns_fs = False
