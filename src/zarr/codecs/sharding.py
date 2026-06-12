@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
-from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -23,6 +22,7 @@ from zarr.abc.store import (
     RangeByteRequest,
     SuffixByteRequest,
 )
+from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -36,7 +36,6 @@ from zarr.core.buffer import (
 from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import (
     ShapeLike,
-    parse_enum,
     parse_named_configuration,
     parse_shapelike,
     product,
@@ -62,7 +61,7 @@ from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Final, Self
+    from typing import Self
 
     from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -72,13 +71,19 @@ ShardMapping = Mapping[tuple[int, ...], Buffer | None]
 ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer | None]
 
 
-class ShardingCodecIndexLocation(Enum):
+IndexLocation = Literal["start", "end"]
+"""Position of the shard index within the encoded shard."""
+
+INDEX_LOCATION: Final = ("start", "end")
+
+
+class ShardingCodecIndexLocation(metaclass=_DeprecatedStrEnumMeta):
     """
-    Enum for index location used by the sharding codec.
+    Deprecated. Pass a literal string (`"start"` or `"end"`) directly to
+    `ShardingCodec` instead.
     """
 
-    start = "start"
-    end = "end"
+    _members: ClassVar[dict[str, str]] = {"start": "start", "end": "end"}
 
 
 SubchunkWriteOrder = Literal["morton", "unordered", "lexicographic", "colexicographic"]
@@ -90,8 +95,10 @@ SUBCHUNK_WRITE_ORDER: Final[tuple[str, str, str, str]] = (
 )
 
 
-def parse_index_location(data: object) -> ShardingCodecIndexLocation:
-    return parse_enum(data, ShardingCodecIndexLocation)
+def _parse_index_location(data: object) -> IndexLocation:
+    if isinstance(data, str) and data in INDEX_LOCATION:
+        return data  # type: ignore[return-value]
+    raise ValueError(f"index_location must be one of {list(INDEX_LOCATION)!r}. Got {data!r}.")
 
 
 @dataclass(frozen=True)
@@ -231,7 +238,7 @@ class _ShardReader(ShardMapping):
         shard_index_size = codec._shard_index_size(chunks_per_shard)
         obj = cls()
         obj.buf = buf
-        if codec.index_location == ShardingCodecIndexLocation.start:
+        if codec.index_location == "start":
             shard_index_bytes = obj.buf[:shard_index_size]
         else:
             shard_index_bytes = obj.buf[-shard_index_size:]
@@ -304,7 +311,7 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
-    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
+    index_location: IndexLocation = "end"
     subchunk_write_order: SubchunkWriteOrder = "morton"
 
     def __init__(
@@ -313,13 +320,16 @@ class ShardingCodec(
         chunk_shape: ShapeLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
-        index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
-        index_location_parsed = parse_index_location(index_location)
+        index_location_coerced = _coerce_enum_input(
+            index_location, "index_location", "ShardingCodec"
+        )
+        index_location_parsed = _parse_index_location(index_location_coerced)
         if subchunk_write_order not in SUBCHUNK_WRITE_ORDER:
             raise ValueError(
                 f"Unrecognized subchunk write order: {subchunk_write_order}. Only {SUBCHUNK_WRITE_ORDER} are allowed."
@@ -351,7 +361,7 @@ class ShardingCodec(
         object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
-        object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+        object.__setattr__(self, "index_location", _parse_index_location(config["index_location"]))
         object.__setattr__(self, "subchunk_write_order", state["subchunk_write_order"])
 
         # Use instance-local lru_cache to avoid memory leaks
@@ -375,7 +385,7 @@ class ShardingCodec(
                 "chunk_shape": self.chunk_shape,
                 "codecs": tuple(s.to_dict() for s in self.codecs),
                 "index_codecs": tuple(s.to_dict() for s in self.index_codecs),
-                "index_location": self.index_location.value,
+                "index_location": self.index_location,
             },
         }
 
@@ -677,7 +687,7 @@ class ShardingCodec(
             return None
 
         index_bytes = await self._encode_shard_index(index)
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
             index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = await self._encode_shard_index(
@@ -784,7 +794,7 @@ class ShardingCodec(
         self, byte_getter: ByteGetter, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex | None:
         shard_index_size = self._shard_index_size(chunks_per_shard)
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             index_bytes = await byte_getter.get(
                 prototype=numpy_buffer_prototype(),
                 byte_range=RangeByteRequest(0, shard_index_size),
