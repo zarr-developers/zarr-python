@@ -130,3 +130,40 @@ async def read_metadata(
     with _translate_errors():
         raw = await asyncio.to_thread(_zb.read_metadata, resolve_store(store), _node_path(path))
     return cast("dict[str, JSON]", json.loads(raw))
+
+
+async def delete_node(
+    store: Store,
+    path: str,
+    *,
+    options: ZarrsOptions | None = None,
+) -> None:
+    """Delete the node at `path`, including all keys and child nodes under it.
+
+    Raises `zarr.errors.NodeNotFoundError` if no node exists there. Deleting
+    the root node (`path=""`) clears the entire store.
+    """
+    with _translate_errors():
+        await asyncio.to_thread(_zb.delete_node, resolve_store(store), _node_path(path))
+
+
+async def list_children(
+    store: Store,
+    path: str,
+    *,
+    options: ZarrsOptions | None = None,
+) -> list[tuple[str, dict[str, JSON]]]:
+    """List the direct children of the group at `path` as
+    `(path, metadata_document)` pairs. Paths are store-relative (no leading
+    `/`).
+
+    Raises `zarr.errors.NodeNotFoundError` if no group exists at `path`.
+    """
+    with _translate_errors():
+        raw: list[tuple[str, str]] = await asyncio.to_thread(
+            _zb.list_children, resolve_store(store), _node_path(path)
+        )
+    return [
+        (child_path.lstrip("/"), cast("dict[str, JSON]", json.loads(doc)))
+        for child_path, doc in raw
+    ]

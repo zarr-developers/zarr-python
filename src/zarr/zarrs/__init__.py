@@ -27,6 +27,8 @@ from zarr.zarrs._api import (
     create_new_group,
     create_overwrite_array,
     create_overwrite_group,
+    delete_node,
+    list_children,
     read_metadata,
 )
 
@@ -38,5 +40,7 @@ __all__ = [
     "create_new_group",
     "create_overwrite_array",
     "create_overwrite_group",
+    "delete_node",
+    "list_children",
     "read_metadata",
 ]

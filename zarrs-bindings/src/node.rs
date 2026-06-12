@@ -83,3 +83,40 @@ pub(crate) fn read_metadata(
         serde_json::to_string(node.metadata()).map_err(runtime_err)
     })
 }
+
+#[pyfunction]
+pub(crate) fn delete_node(py: Python<'_>, store: &Bound<'_, PyAny>, path: String) -> PyResult<()> {
+    let storage = resolve_store(store)?;
+    py.detach(move || {
+        let node_path = parse_node_path(&path)?;
+        if !node_exists(&storage, &node_path).map_err(runtime_err)? {
+            return Err(NodeNotFoundError::new_err(format!(
+                "no node found at path {}",
+                node_path.as_str()
+            )));
+        }
+        let prefix: StorePrefix = (&node_path).try_into().map_err(value_err)?;
+        storage.erase_prefix(&prefix).map_err(runtime_err)
+    })
+}
+
+#[pyfunction]
+pub(crate) fn list_children(
+    py: Python<'_>,
+    store: &Bound<'_, PyAny>,
+    path: String,
+) -> PyResult<Vec<(String, String)>> {
+    let storage = resolve_store(store)?;
+    py.detach(move || {
+        let group =
+            Group::open(storage, &path).map_err(|e| NodeNotFoundError::new_err(e.to_string()))?;
+        let children = group.children(false).map_err(runtime_err)?;
+        children
+            .into_iter()
+            .map(|node| {
+                let metadata = serde_json::to_string(node.metadata()).map_err(runtime_err)?;
+                Ok((node.path().as_str().to_string(), metadata))
+            })
+            .collect()
+    })
+}

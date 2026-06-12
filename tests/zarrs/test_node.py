@@ -16,6 +16,8 @@ from zarr.zarrs import (
     create_new_group,
     create_overwrite_array,
     create_overwrite_group,
+    delete_node,
+    list_children,
     read_metadata,
 )
 
@@ -105,3 +107,32 @@ async def test_read_metadata_zarr_python_group(store: Store) -> None:
 async def test_read_metadata_missing(store: Store) -> None:
     with pytest.raises(NodeNotFoundError):
         await read_metadata(store, "nope")
+
+
+async def test_delete_node(store: Store) -> None:
+    arr = zarr.create_array(store=store, name="doomed", shape=(4,), chunks=(2,), dtype="uint8")
+    arr[:] = 1
+    await delete_node(store, "doomed")
+    assert not await store.exists("doomed/zarr.json")
+    assert not await store.exists("doomed/c/0")
+
+
+async def test_delete_node_missing(store: Store) -> None:
+    with pytest.raises(NodeNotFoundError):
+        await delete_node(store, "nope")
+
+
+async def test_list_children(store: Store) -> None:
+    root = zarr.create_group(store=store)
+    root.create_group("sub_group", attributes={"kind": "group"})
+    root.create_array("sub_array", shape=(4,), chunks=(2,), dtype="uint8")
+    children = await list_children(store, "")
+    by_path = dict(children)
+    assert set(by_path) == {"sub_group", "sub_array"}
+    assert by_path["sub_group"]["node_type"] == "group"
+    assert by_path["sub_array"]["node_type"] == "array"
+
+
+async def test_list_children_missing(store: Store) -> None:
+    with pytest.raises(NodeNotFoundError):
+        await list_children(store, "nope")

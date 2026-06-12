@@ -37,6 +37,8 @@ fn _zarrs_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(node::create_array, m)?)?;
     m.add_function(wrap_pyfunction!(node::create_group, m)?)?;
+    m.add_function(wrap_pyfunction!(node::delete_node, m)?)?;
+    m.add_function(wrap_pyfunction!(node::list_children, m)?)?;
     m.add_function(wrap_pyfunction!(node::read_metadata, m)?)?;
     Ok(())
 }
