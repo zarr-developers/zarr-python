@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
@@ -28,6 +28,34 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+
+def _is_default_packed(dtype: np.dtype[np.void]) -> bool:
+    """
+    Check whether a structured numpy dtype uses the default contiguous (packed) field layout.
+
+    The Zarr structured/struct metadata only records ``(name, dtype)`` pairs and reconstructs the
+    native dtype by packing the fields contiguously (see ``Structured.to_native_dtype``). A dtype
+    created with ``align=True``, or with explicit field offsets / extra padding, therefore cannot be
+    represented faithfully: its field offsets and itemsize would silently change on round-trip,
+    corrupting stored bytes. This function returns ``False`` for any such dtype.
+
+    The check is recursive so that padding within a nested field dtype is detected even when the
+    outer dtype is itself packed.
+    """
+    names = dtype.names
+    if names is None:  # pragma: no cover - only called on structured dtypes
+        return True
+    repacked_fields: list[tuple[str, np.dtype[Any]]] = []
+    for name in names:
+        field_dtype = dtype.fields[name][0]  # type: ignore[index]
+        if field_dtype.names is not None and not _is_default_packed(field_dtype):
+            return False
+        repacked_fields.append((name, field_dtype))
+    repacked = np.dtype(repacked_fields)
+    if repacked.itemsize != dtype.itemsize:
+        return False
+    return all(dtype.fields[n][1] == repacked.fields[n][1] for n in names)  # type: ignore[index]
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -185,6 +213,21 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
         if cls._check_native_dtype(dtype):
+            if not _is_default_packed(dtype):
+                # NOTE: this is a ValueError rather than a DataTypeValidationError on purpose.
+                # The data type registry suppresses DataTypeValidationError (treating it as
+                # "this dtype does not match"), but a non-packed layout *does* match this dtype
+                # class -- it simply cannot be represented faithfully -- so we must raise an
+                # error the registry propagates to the caller.
+                raise ValueError(
+                    f"Cannot serialize the structured data type {dtype}. It uses a non-default "
+                    "field layout (e.g. it was created with align=True, or has explicit field "
+                    "offsets or padding), which the Zarr structured data type metadata cannot "
+                    "represent: only the field names and dtypes are stored, and the fields are "
+                    "always packed contiguously on read. Serializing this dtype would silently "
+                    "change its field offsets and itemsize, corrupting stored data. Use a packed "
+                    "structured dtype (without align=True or explicit offsets) instead."
+                )
             # fields of a structured numpy dtype are either 2-tuples or 3-tuples. we only
             # care about the first element in either case.
             for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]

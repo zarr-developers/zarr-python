@@ -14,6 +14,7 @@ from zarr.core.dtype import (
     Struct,
     Structured,
     UInt8,
+    get_data_type_from_json,
 )
 
 
@@ -260,3 +261,91 @@ def test_struct_from_native_dtype() -> None:
     struct = Struct.from_native_dtype(dtype)
     assert struct.fields[0][0] == "field1"
     assert struct.fields[1][0] == "field2"
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        # one level of nesting
+        np.dtype([("a", "<i4"), ("nested", [("x", "<f4"), ("y", "<f8")])]),
+        # two levels of nesting
+        np.dtype(
+            [
+                ("a", "<i4"),
+                ("lvl1", [("b", "<i2"), ("lvl2", [("x", "<f4"), ("y", "<f8")])]),
+            ]
+        ),
+    ],
+)
+def test_nested_structured_v2_round_trip(dtype: np.dtype[np.void]) -> None:
+    """
+    Regression test for nested structured dtypes failing the Zarr V2 JSON round-trip.
+
+    ``Struct.to_json(zarr_format=2)`` emits a nested field as ``[name, [[sub, dt], ...]]``, and
+    ``get_data_type_from_json`` must be able to read that form back. Previously the inner type
+    guard recursed as a single ``[name, dtype]`` pair and rejected the list-of-fields form,
+    so Zarr wrote V2 metadata it could not read back.
+    """
+    zdtype = Struct.from_native_dtype(dtype)
+    json_v2 = zdtype.to_json(zarr_format=2)
+    recovered = get_data_type_from_json(json_v2, zarr_format=2)
+    assert recovered == zdtype
+    assert recovered.to_native_dtype() == dtype
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+def test_nested_structured_v2_array_round_trip() -> None:
+    """End-to-end test: write and read a Zarr V2 array with a nested structured dtype."""
+    import zarr
+
+    dtype = np.dtype([("a", "<i4"), ("nested", [("x", "<f4"), ("y", "<f8")])])
+    store = zarr.storage.MemoryStore()
+    arr = zarr.create_array(store, shape=(3,), chunks=(2,), dtype=dtype, zarr_format=2)
+    data = np.zeros((3,), dtype=dtype)
+    data["a"] = [1, 2, 3]
+    data["nested"]["x"] = [1.5, 2.5, 3.5]
+    data["nested"]["y"] = [10.0, 20.0, 30.0]
+    arr[:] = data
+
+    reopened = zarr.open_array(store, zarr_format=2)
+    out = np.asarray(reopened[:])
+    assert out.dtype == dtype
+    assert np.array_equal(out, data)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        # top-level padding from align=True
+        np.dtype([("a", "i1"), ("b", "i8")], align=True),
+        # outer layout is packed, but a nested field dtype carries padding
+        np.dtype([("a", "i8"), ("nested", np.dtype([("x", "i1"), ("y", "i8")], align=True))]),
+    ],
+)
+def test_padded_structured_dtype_raises(dtype: np.dtype[np.void]) -> None:
+    """
+    Regression test: structured dtypes with non-default (padded / aligned) field layouts must
+    fail loudly rather than silently dropping the padding.
+
+    The Zarr structured metadata records only ``(name, dtype)`` pairs and re-packs fields
+    contiguously on read, so an aligned dtype would round-trip to a smaller itemsize, silently
+    corrupting stored chunk bytes. ``from_native_dtype`` detects this and raises instead.
+    """
+    with pytest.raises(ValueError, match="non-default field layout"):
+        Struct.from_native_dtype(dtype)
+
+
+def test_packed_structured_dtype_round_trips() -> None:
+    """
+    A packed (default-layout) structured dtype, including nested ones, must continue to round-trip
+    unchanged. This guards the loud-failure path for aligned dtypes against false positives, and
+    ensures existing data written with packed layouts keeps working.
+    """
+    for dtype in (
+        np.dtype([("a", "i1"), ("b", "i8")]),
+        np.dtype([("a", "<i4"), ("nested", [("x", "<f4"), ("y", "<f8")])]),
+    ):
+        recovered = Struct.from_native_dtype(dtype).to_native_dtype()
+        assert recovered == dtype
+        assert recovered.itemsize == dtype.itemsize
