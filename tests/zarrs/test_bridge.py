@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
+pytest.importorskip(
+    "_zarrs_bindings", reason="zarrs-bindings is not installed", exc_type=ImportError
+)
+
 from zarr.storage import LocalStore, MemoryStore
 from zarr.zarrs._bridge import StoreShim, resolve_store
 

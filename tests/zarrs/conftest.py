@@ -4,10 +4,6 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-pytest.importorskip(
-    "_zarrs_bindings", reason="zarrs-bindings is not installed", exc_type=ImportError
-)
-
 import zarr
 from zarr.storage import LocalStore, MemoryStore
 

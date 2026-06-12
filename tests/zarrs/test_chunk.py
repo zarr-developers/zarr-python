@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
+pytest.importorskip(
+    "_zarrs_bindings", reason="zarrs-bindings is not installed", exc_type=ImportError
+)
+
 import zarr
 from tests.zarrs.conftest import array_metadata
 from zarr.codecs import BloscCodec, GzipCodec, ZstdCodec
