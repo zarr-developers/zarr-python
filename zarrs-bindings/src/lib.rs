@@ -1,6 +1,9 @@
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
+mod node;
+mod store;
+
 pyo3::create_exception!(
     _zarrs_bindings,
     NodeExistsError,
@@ -14,12 +17,10 @@ pyo3::create_exception!(
     "No node was found at the given path."
 );
 
-#[allow(dead_code)]
 pub(crate) fn runtime_err(err: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
 
-#[allow(dead_code)]
 pub(crate) fn value_err(err: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
@@ -34,5 +35,6 @@ fn _zarrs_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("NodeExistsError", m.py().get_type::<NodeExistsError>())?;
     m.add("NodeNotFoundError", m.py().get_type::<NodeNotFoundError>())?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
+    m.add_function(wrap_pyfunction!(node::create_group, m)?)?;
     Ok(())
 }

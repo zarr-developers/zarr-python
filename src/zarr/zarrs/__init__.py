@@ -20,4 +20,17 @@ except ImportError as e:
 
 __version__: str = _zarrs_bindings.version()
 
-__all__ = ["__version__"]
+from zarr.zarrs._api import (
+    NodeExistsError,
+    ZarrsOptions,
+    create_new_group,
+    create_overwrite_group,
+)
+
+__all__ = [
+    "NodeExistsError",
+    "ZarrsOptions",
+    "__version__",
+    "create_new_group",
+    "create_overwrite_group",
+]
