@@ -250,7 +250,7 @@ def test_empty(
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
 def test_no_full_with_zeros(
     dtype: type[np.number[np.typing.NBitBase] | float],
-    fill_value: None | float,
+    fill_value: Literal[None, 0, 1],
 ) -> None:
     """Ensure that fill value of 0 (or None with a numeric dtype) does not trigger np.full, and instead triggers np.zeros"""
     # full never called with fill 0
