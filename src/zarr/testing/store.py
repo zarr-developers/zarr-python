@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Self
@@ -449,8 +448,8 @@ class StoreTests[S: Store, B: Buffer]:
         prefix = "foo"
         data = self.buffer_cls.from_bytes(b"")
         store_dict = {
-            prefix + "/zarr.json": data,
-            **{prefix + f"/c/{idx}": data for idx in range(10)},
+            f"{prefix}/zarr.json": data,
+            **{f"{prefix}/c/{idx}": data for idx in range(10)},
         }
         await store._set_many(store_dict.items())
         expected_sorted = sorted(store_dict.keys())
@@ -536,10 +535,10 @@ class StoreTests[S: Store, B: Buffer]:
             await store._set_many(store_dict.items())
 
             keys_observed = await _collect_aiterator(store.list_dir(root))
-            keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            keys_expected = {k.removeprefix(f"{root}/").split("/")[0] for k in store_dict}
             assert sorted(keys_observed) == sorted(keys_expected)
 
-            keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
+            keys_observed = await _collect_aiterator(store.list_dir(f"{root}/"))
             assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_set_if_not_exists(self, store: S) -> None:
@@ -557,46 +556,6 @@ class StoreTests[S: Store, B: Buffer]:
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
-
-    async def test_get_bytes(self, store: S) -> None:
-        """
-        Test that the get_bytes method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
-        with pytest.raises(FileNotFoundError):
-            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
-
-    def test_get_bytes_sync(self, store: S) -> None:
-        """
-        Test that the get_bytes_sync method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
-
-    async def test_get_json(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
-
-    def test_get_json_sync(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
 
     # -------------------------------------------------------------------
     # Synchronous store methods (SupportsSyncStore protocol)

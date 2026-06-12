@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 __all__ = [
     "ArrayArrayCodec",
@@ -145,7 +145,7 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
@@ -156,8 +156,8 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
             The array shape
         dtype : np.dtype[Any]
             The array data type
-        chunk_grid : ChunkGrid
-            The array chunk grid
+        chunk_grid : ChunkGridMetadata
+            The array chunk grid metadata
         """
 
     async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
@@ -360,7 +360,7 @@ class CodecPipeline:
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
@@ -371,8 +371,8 @@ class CodecPipeline:
             The array shape
         dtype : np.dtype[Any]
             The array data type
-        chunk_grid : ChunkGrid
-            The array chunk grid
+        chunk_grid : ChunkGridMetadata
+            The array chunk grid metadata
         """
         ...
 

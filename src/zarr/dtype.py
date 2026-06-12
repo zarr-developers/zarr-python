@@ -2,7 +2,6 @@ from zarr.core.dtype import (
     Bool,
     Complex64,
     Complex128,
-    DataTypeValidationError,
     DateTime64,
     DateTime64JSON_V2,
     DateTime64JSON_V3,
@@ -22,6 +21,8 @@ from zarr.core.dtype import (
     RawBytes,
     RawBytesJSON_V2,
     RawBytesJSON_V3,
+    Struct,
+    StructJSON_V3,
     Structured,
     StructuredJSON_V2,
     StructuredJSON_V3,
@@ -43,12 +44,13 @@ from zarr.core.dtype import (
     parse_data_type,  # noqa: F401
     parse_dtype,
 )
+from zarr.core.dtype.common import DTypeSpec_V2, check_dtype_spec_v2
 
 __all__ = [
     "Bool",
     "Complex64",
     "Complex128",
-    "DataTypeValidationError",
+    "DTypeSpec_V2",
     "DateTime64",
     "DateTime64JSON_V2",
     "DateTime64JSON_V3",
@@ -68,6 +70,8 @@ __all__ = [
     "RawBytes",
     "RawBytesJSON_V2",
     "RawBytesJSON_V3",
+    "Struct",
+    "StructJSON_V3",
     "Structured",
     "StructuredJSON_V2",
     "StructuredJSON_V3",
@@ -83,6 +87,23 @@ __all__ = [
     "VariableLengthUTF8",
     "VariableLengthUTF8JSON_V2",
     "ZDType",
+    "check_dtype_spec_v2",
     "data_type_registry",
     "parse_dtype",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.dtype is deprecated. "
+            "Use zarr.errors.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

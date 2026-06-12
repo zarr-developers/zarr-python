@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
+        ChunksLike,
         DimensionNamesLike,
         MemoryOrder,
         ShapeLike,
@@ -139,7 +140,6 @@ def load(
     store: StoreLike,
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
-    zarr_version: ZarrFormat | None = None,
 ) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
@@ -168,16 +168,13 @@ def load(
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
     """
-    return sync(
-        async_api.load(store=store, zarr_version=zarr_version, zarr_format=zarr_format, path=path)
-    )
+    return sync(async_api.load(store=store, zarr_format=zarr_format, path=path))
 
 
 def open(
     store: StoreLike | None = None,
     *,
     mode: AccessModeLiteral | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -205,8 +202,8 @@ def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to [`zarr.creation.open_array`][] or
-        [`open_group`][zarr.api.asynchronous.open_group].
+        Additional parameters are passed through to `zarr.open_array` or
+        `zarr.open_group`.
 
     Returns
     -------
@@ -217,7 +214,6 @@ def open(
         async_api.open(
             store=store,
             mode=mode,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -242,7 +238,6 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 def save(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
@@ -264,18 +259,13 @@ def save(
     **kwargs
         NumPy arrays with data to save.
     """
-    return sync(
-        async_api.save(
-            store, *args, zarr_version=zarr_version, zarr_format=zarr_format, path=path, **kwargs
-        )
-    )
+    return sync(async_api.save(store, *args, zarr_format=zarr_format, path=path, **kwargs))
 
 
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
     *,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -308,7 +298,6 @@ def save_array(
         async_api.save_array(
             store=store,
             arr=arr,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -320,7 +309,6 @@ def save_array(
 def save_group(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -353,7 +341,6 @@ def save_group(
         async_api.save_group(
             store,
             *args,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -415,7 +402,6 @@ def group(
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any | None = None,  # not used
     path: str | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
@@ -465,7 +451,6 @@ def group(
                 cache_attrs=cache_attrs,
                 synchronizer=synchronizer,
                 path=path,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -484,7 +469,6 @@ def open_group(
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used in async api
     storage_options: dict[str, Any] | None = None,  # not used in async api
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
@@ -555,7 +539,6 @@ def open_group(
                 path=path,
                 chunk_store=chunk_store,
                 storage_options=storage_options,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -636,7 +619,6 @@ def create(
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
     write_empty_chunks: bool | None = None,  # TODO: default has changed
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
@@ -705,9 +687,9 @@ def create(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -799,7 +781,6 @@ def create(
                 object_codec=object_codec,
                 dimension_separator=dimension_separator,
                 write_empty_chunks=write_empty_chunks,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -822,7 +803,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -858,9 +839,13 @@ def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Literal["auto"], default="auto"
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
         If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+        A nested list of per-dimension edge sizes creates a rectilinear grid.
+        Rectilinear chunk grids are experimental and must be explicitly enabled
+        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        feature is stabilizing.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
@@ -873,9 +858,9 @@ def create_array(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        The default value of ``"auto"`` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
@@ -888,7 +873,7 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
         in [`zarr.config`][zarr.config].
@@ -908,7 +893,7 @@ def create_array(
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -993,7 +978,7 @@ def from_array(
     data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
+    chunks: ChunksLike | Literal["auto", "keep"] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -1025,13 +1010,17 @@ def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : tuple[int, ...] or "auto" or "keep", optional
+    chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-        - tuple[int, ...]: A tuple of integers representing the chunk shape.
+        - "keep": Retain the chunk grid of the data array if it is a zarr Array.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
+        - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
+          Rectilinear chunk grids are experimental and must be explicitly enabled
+          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : tuple[int, ...], optional
@@ -1053,7 +1042,7 @@ def from_array(
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-        the order if your filters is consistent with the behavior of each filter.
+        order of your filters is consistent with the behavior of each filter.
 
         The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
         If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
@@ -1070,7 +1059,7 @@ def from_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
@@ -1098,7 +1087,7 @@ def from_array(
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
     order : {"C", "F"}, optional
-        The memory of the array (default is "C").
+        The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
@@ -1137,63 +1126,45 @@ def from_array(
     --------
     Create an array from an existing Array:
 
-    ```python
-    import zarr
-    store = zarr.storage.MemoryStore()
-    store2 = zarr.storage.LocalStore('example_from_array.zarr')
-    arr = zarr.create_array(
-        store=store,
-        shape=(100,100),
-        chunks=(10,10),
-        dtype='int32',
-        fill_value=0)
-    arr2 = zarr.from_array(store2, data=arr, overwrite=True)
-    # <Array file://example_from_array.zarr shape=(100, 100) dtype=int32>
-    ```
+    >>> import asyncio
+    >>> import zarr
+    >>> store = zarr.storage.LocalStore("example_from_array.zarr")
+    >>> arr = zarr.create_array(
+    ...     store={},
+    ...     shape=(100,100),
+    ...     chunks=(10,10),
+    ...     dtype="int32",
+    ...     fill_value=0
+    ... )
+    >>> arr2 = zarr.from_array(store, data=arr, overwrite=True)
+    >>> arr2
+    <Array file://example_from_array.zarr shape=(100, 100) dtype=int32>
+    >>> asyncio.run(store.clear())  # Remove files generated by test
 
     Create an array from an existing NumPy array:
 
-    ```python
-    import zarr
-    import numpy as np
-    arr3 = zarr.from_array(
-            zarr.storage.MemoryStore(),
-        data=np.arange(10000, dtype='i4').reshape(100, 100),
-    )
-    # <Array memory://... shape=(100, 100) dtype=int32>
-    ```
+    >>> import numpy as np
+    >>> zarr.from_array({}, data=np.arange(10000, dtype="i4").reshape(100, 100))
+    <Array memory://... shape=(100, 100) dtype=int32>
 
     Create an array from any array-like object:
 
-    ```python
-    import zarr
-    arr4 = zarr.from_array(
-        zarr.storage.MemoryStore(),
-        data=[[1, 2], [3, 4]],
-    )
-    # <Array memory://... shape=(2, 2) dtype=int64>
-    arr4[...]
-    # array([[1, 2],[3, 4]])
-    ```
+    >>> arr3 = zarr.from_array({}, data=[[1, 2], [3, 4]])
+    >>> arr3
+    <Array memory://... shape=(2, 2) dtype=int64>
+    >>> arr3[...]
+    array([[1, 2], [3, 4]])
 
     Create an array from an existing Array without copying the data:
 
-    ```python
-    import zarr
-    arr4 = zarr.from_array(
-        zarr.storage.MemoryStore(),
-        data=[[1, 2], [3, 4]],
-    )
-    arr5 = zarr.from_array(
-        zarr.storage.MemoryStore(),
-        data=arr4,
-        write_data=False,
-    )
-    # <Array memory://... shape=(2, 2) dtype=int64>
-    arr5[...]
-    # array([[0, 0],[0, 0]])
-    ```
+    >>> arr4 = zarr.from_array({}, data=[[1, 2], [3, 4]])
+    >>> arr5 = zarr.from_array({}, data=arr4, write_data=False)
+    >>> arr5
+    <Array memory://... shape=(2, 2) dtype=int64>
+    >>> arr5[...]
+    array([[0, 0], [0, 0]])
     """
+
     return Array(
         sync(
             zarr.core.array.from_array(
@@ -1356,7 +1327,6 @@ def ones_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
 def open_array(
     store: StoreLike | None = None,
     *,
-    zarr_version: ZarrFormat | None = None,
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
@@ -1370,8 +1340,6 @@ def open_array(
         StoreLike object to open. See the
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
-    zarr_version : {2, 3, None}, optional
-        The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str, optional
@@ -1392,7 +1360,6 @@ def open_array(
         sync(
             async_api.open_array(
                 store=store,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,

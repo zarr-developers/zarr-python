@@ -18,7 +18,7 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import BasicSelection, decode_morton, morton_order_iter
+from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
@@ -173,8 +173,8 @@ def test_open(store: Store) -> None:
 
 def test_morton_exact_order() -> None:
     """Test exact morton ordering for power-of-2 shapes."""
-    assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
-    assert list(morton_order_iter((2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
+    assert list(morton_order_coords((2, 2, 2))) == [
         (0, 0, 0),
         (1, 0, 0),
         (0, 1, 0),
@@ -184,7 +184,7 @@ def test_morton_exact_order() -> None:
         (0, 1, 1),
         (1, 1, 1),
     ]
-    assert list(morton_order_iter((2, 2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2, 2, 2))) == [
         (0, 0, 0, 0),
         (1, 0, 0, 0),
         (0, 1, 0, 0),
@@ -219,15 +219,16 @@ def test_morton_exact_order() -> None:
         (1, 1),
         (5, 1, 3),
         (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
 def test_morton_is_permutation(shape: tuple[int, ...]) -> None:
-    """Test that morton_order_iter produces every valid coordinate exactly once."""
+    """Test that morton_order_coords produces every valid coordinate exactly once."""
     import itertools
 
     from zarr.core.common import product
 
-    order = list(morton_order_iter(shape))
+    order = list(morton_order_coords(shape))
     expected_len = product(shape)
     # completeness: every valid coordinate is present
     assert len(order) == expected_len
@@ -256,7 +257,7 @@ def test_morton_ordering(shape: tuple[int, ...]) -> None:
     so the ordering should be exactly decode_morton(0), decode_morton(1), ...
     """
 
-    order = list(morton_order_iter(shape))
+    order = list(morton_order_coords(shape))
     for i, coord in enumerate(order):
         assert coord == decode_morton(i, shape)
 

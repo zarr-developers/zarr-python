@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
-#   "ml_dtypes==0.5.1",
+#   "ml_dtypes==0.5.4",
 #   "pytest==8.4.1"
 # ]
 # ///
@@ -22,14 +22,9 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype import ZDType, data_type_registry
-from zarr.core.dtype.common import (
-    DataTypeValidationError,
-    DTypeConfig_V2,
-    DTypeJSON,
-    check_dtype_spec_v2,
-)
+from zarr.dtype import ZDType, check_dtype_spec_v2, data_type_registry
+from zarr.errors import DataTypeValidationError
+from zarr.types import JSON, DTypeConfig_V2, DTypeJSON, ZarrFormat
 
 # This is the int2 array data type
 int2_dtype_cls = type(np.dtype("int2"))
@@ -120,7 +115,7 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal["int2"], None]: ...
 
     @overload
@@ -145,7 +140,7 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
         """
         if zarr_format == 2:
             return {"name": "int2", "object_codec_id": None}
-        elif zarr_format == 3:
+        if zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -191,9 +186,11 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
         """
         # We could add a type check here, but we don't need to for this example
         val: int = int(data)  # type: ignore[call-overload]
-        if val not in (-2, -1, 0, 1):
-            raise ValueError("Invalid value. Expected -2, -1, 0, or 1.")
-        return val
+
+        if val in {-2, -1, 0, 1}:
+            return val
+
+        raise ValueError("Invalid value. Expected -2, -1, 0, or 1.")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> ml_dtypes.int2:
         """
@@ -220,7 +217,11 @@ data_type_registry.register(Int2._zarr_v3_name, Int2)
 def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     # create array and write values
     z_w = zarr.create_array(
-        store=tmp_path, shape=(4,), dtype="int2", zarr_format=zarr_format, compressors=None
+        store=tmp_path,
+        shape=(4,),
+        dtype="int2",
+        zarr_format=zarr_format,
+        compressors=None,
     )
     z_w[:] = [-1, -2, 0, 1]
 
@@ -230,10 +231,7 @@ def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     print(z_r.info_complete())
 
     # look at the array metadata
-    if zarr_format == 2:
-        meta_file = tmp_path / ".zarray"
-    else:
-        meta_file = tmp_path / "zarr.json"
+    meta_file = tmp_path / (".zarray" if zarr_format == 2 else "zarr.json")
     print(json.dumps(json.loads(meta_file.read_text()), indent=2))
 
 
@@ -242,4 +240,16 @@ if __name__ == "__main__":
     # Without the dummy configuration file, at test time pytest will attempt to use the
     # configuration file in the project root, which will error because Zarr is using some
     # plugins that are not installed in this example.
-    sys.exit(pytest.main(["-s", __file__, f"-c {__file__}"]))
+    sys.exit(
+        pytest.main(
+            [
+                "-s",
+                __file__,
+                f"-c {__file__}",
+                # Suppress: "PytestAssertRewriteWarning: Module already imported so
+                # cannot be rewritten; zarr"
+                "-W",
+                "ignore::pytest.PytestAssertRewriteWarning",
+            ]
+        )
+    )

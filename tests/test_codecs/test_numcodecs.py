@@ -85,7 +85,7 @@ ALL_CODECS = tuple(
 
 @pytest.mark.parametrize("codec_cls", ALL_CODECS)
 def test_get_codec_class(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
-    assert get_codec_class(codec_cls.codec_name) == codec_cls  # type: ignore[comparison-overlap]
+    assert get_codec_class(codec_cls.codec_name) == codec_cls  # type: ignore[comparison-overlap,misc]
 
 
 @pytest.mark.parametrize("codec_class", ALL_CODECS)
@@ -240,7 +240,7 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
     try:
         codec_class()._codec  # noqa: B018
     except UnknownCodecError as e:  # pragma: no cover
-        pytest.skip(f"{codec_class.codec_name} is not available in numcodecs: {e}")
+        pytest.skip(f"{codec_class.codec_name} is not available in numcodecs: {e}")  # type: ignore[misc]
 
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
@@ -265,11 +265,11 @@ def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCo
         codec_class()._codec  # noqa: B018
     except ValueError as e:  # pragma: no cover
         if "codec not available" in str(e):
-            pytest.xfail(f"{codec_class.codec_name} is not available: {e}")
+            pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
         else:
             raise
     except ImportError as e:  # pragma: no cover
-        pytest.xfail(f"{codec_class.codec_name} is not available: {e}")
+        pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
 
     data = np.arange(0, 256, dtype="float32").reshape((16, 16))
 
@@ -347,7 +347,7 @@ def test_codecs_pickleable(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
     try:
         codec = codec_cls()
     except UnknownCodecError as e:  # pragma: no cover
-        pytest.skip(f"{codec_cls.codec_name} is not available in numcodecs: {e}")
+        pytest.skip(f"{codec_cls.codec_name} is not available in numcodecs: {e}")  # type: ignore[misc]
 
     expected = codec
 

@@ -1,12 +1,14 @@
 import itertools
 import json
 import numbers
+from collections.abc import Generator
 from typing import Any
 
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+import zarr
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")
@@ -23,12 +25,23 @@ from zarr.testing.strategies import (
     array_metadata,
     arrays,
     basic_indices,
+    block_indices,
+    complex_rectilinear_arrays,
+    np_array_and_chunks,
     numpy_arrays,
     orthogonal_indices,
+    rectilinear_arrays,
     simple_arrays,
     stores,
     zarr_formats,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_rectilinear_chunks() -> Generator[None, None, None]:
+    """Enable rectilinear chunks for all property tests since strategies may generate them."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        yield
 
 
 def deep_equal(a: Any, b: Any) -> bool:
@@ -111,7 +124,7 @@ def test_array_creates_implicit_groups(array):
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(simple_arrays())
+    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
 
@@ -134,11 +147,26 @@ async def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @pytest.mark.asyncio
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
+    nparray, zarray = data.draw(complex_rectilinear_arrays())
+    indexer = data.draw(basic_indices(shape=nparray.shape))
+    assert_array_equal(nparray[indexer], zarray[indexer])
+
+
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
 
@@ -170,7 +198,12 @@ async def test_oindex(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     indexer = data.draw(
         npst.integer_array_indices(
@@ -197,6 +230,65 @@ async def test_vindex(data: st.DataObject) -> None:
     # assert_array_equal(nparray, zarray[:])
 
     # note: async vindex setitem not yet implemented
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_mask_indexing(data: st.DataObject) -> None:
+    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
+    nparray = zarray[:]
+    mask = data.draw(npst.arrays(dtype=np.bool_, shape=st.just(nparray.shape)))
+
+    expected = nparray[mask]
+
+    # sync get, via both the dedicated method and the vindex interface
+    assert_array_equal(expected, zarray.get_mask_selection(mask))
+    assert_array_equal(expected, zarray.vindex[mask])
+
+    # sync set, via both interfaces
+    assume(zarray.shards is None)  # GH2834
+    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
+    nparray[mask] = new_data
+    zarray.set_mask_selection(mask, new_data)
+    assert_array_equal(nparray, zarray[:])
+
+    zarray.vindex[mask] = new_data
+    assert_array_equal(nparray, zarray[:])
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_block_indexing(data: st.DataObject) -> None:
+    # Block indexing addresses whole chunks on a regular grid; the array-space
+    # oracle in block_indices() assumes regular, unsharded chunks, so build the
+    # array directly from a regular chunking rather than drawing one that might
+    # be rectilinear or sharded.
+    nparray, chunks = data.draw(
+        np_array_and_chunks(arrays=numpy_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    )
+    store = data.draw(stores)
+    zarray = zarr.create_array(store=store, shape=nparray.shape, chunks=chunks, dtype=nparray.dtype)
+    zarray[...] = nparray
+
+    block_indexer, array_indexer = data.draw(
+        block_indices(chunk_grid_shape=zarray.cdata_shape, chunks=chunks)
+    )
+    expected = nparray[array_indexer]
+
+    # sync get, via both the .blocks interface and the dedicated method
+    assert_array_equal(expected, zarray.blocks[block_indexer])
+    assert_array_equal(expected, zarray.get_block_selection(block_indexer))
+
+    # sync set, via both interfaces
+    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
+    nparray[array_indexer] = new_data
+    zarray.blocks[block_indexer] = new_data
+    assert_array_equal(nparray, zarray[:])
+
+    zarray.set_block_selection(block_indexer, new_data)
+    assert_array_equal(nparray, zarray[:])
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
