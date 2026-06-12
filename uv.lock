@@ -4057,6 +4057,21 @@ test = [
     { name = "tomlkit" },
     { name = "uv" },
 ]
+zarrs = [
+    { name = "coverage" },
+    { name = "hypothesis" },
+    { name = "numpydoc" },
+    { name = "pytest" },
+    { name = "pytest-accept" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "tomlkit" },
+    { name = "uv" },
+    { name = "zarrs-bindings" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -4162,3 +4177,23 @@ test = [
     { name = "tomlkit" },
     { name = "uv" },
 ]
+zarrs = [
+    { name = "coverage", specifier = ">=7.10" },
+    { name = "hypothesis" },
+    { name = "numpydoc" },
+    { name = "pytest" },
+    { name = "pytest-accept" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "tomlkit" },
+    { name = "uv" },
+    { name = "zarrs-bindings", directory = "zarrs-bindings" },
+]
+
+[[package]]
+name = "zarrs-bindings"
+version = "0.1.0"
+source = { directory = "zarrs-bindings" }

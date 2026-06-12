@@ -7,6 +7,7 @@ exclude = [
   "/.github",
   "/bench",
   "/docs",
+  "/zarrs-bindings",
 ]
 
 [project]
@@ -133,6 +134,10 @@ dev = [
     {include-group = "docs"},
     "universal-pathlib",
     "mypy",
+]
+zarrs = [
+    {include-group = "test"},
+    "zarrs-bindings",
 ]
 
 [tool.coverage.report]
@@ -491,3 +496,6 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
+
+[tool.uv.sources]
+zarrs-bindings = { path = "zarrs-bindings" }

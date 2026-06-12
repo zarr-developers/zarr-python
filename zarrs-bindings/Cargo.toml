@@ -1,0 +1,18 @@
+[package]
+name = "zarrs-bindings"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+publish = false
+
+[lib]
+name = "_zarrs_bindings"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["abi3-py312"] }
+serde_json = "1"
+zarrs = "0.23"
+
+[profile.release]
+lto = "thin"

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "zarrs-bindings"
+version = "0.1.0"
+description = "PyO3 bindings to the zarrs Rust crate, consumed by zarr.zarrs"
+requires-python = ">=3.12"
+license = "MIT"
+
+[tool.maturin]
+module-name = "_zarrs_bindings"
+strip = true
