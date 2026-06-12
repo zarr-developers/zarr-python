@@ -504,6 +504,8 @@ class ShardingCodec(
                 chunk_spec.prototype,
                 chunks_per_shard,
                 all_chunk_coords,
+                max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
+                max_coalesced_bytes=shard_spec.config.sharding_coalesce_max_bytes,
             )
 
         if shard_dict_maybe is None:
@@ -821,10 +823,16 @@ class ShardingCodec(
         prototype: BufferPrototype,
         chunks_per_shard: tuple[int, ...],
         all_chunk_coords: set[tuple[int, ...]],
+        max_gap_bytes: int,
+        max_coalesced_bytes: int,
     ) -> ShardMapping | None:
         """
         Read chunks from `byte_getter` for the case where the read is less than a full shard.
         Returns a mapping of chunk coordinates to bytes or None.
+
+        `max_gap_bytes` and `max_coalesced_bytes` are forwarded to
+        `Store.get_ranges` to control byte-range coalescing across the requested
+        chunks.
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
@@ -848,7 +856,11 @@ class ShardingCodec(
             byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
             try:
                 async for group in byte_getter.store.get_ranges(
-                    byte_getter.path, byte_ranges, prototype=prototype
+                    byte_getter.path,
+                    byte_ranges,
+                    prototype=prototype,
+                    max_gap_bytes=max_gap_bytes,
+                    max_coalesced_bytes=max_coalesced_bytes,
                 ):
                     for idx, buf in group:
                         if buf is not None:
