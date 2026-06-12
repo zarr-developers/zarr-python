@@ -1802,6 +1802,42 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     _async_array: AsyncArray[T_ArrayMetadata]
 
+    def __init__(
+        self,
+        metadata: AsyncArray[T_ArrayMetadata] | ArrayMetadata | ArrayMetadataDict,
+        store_path: StorePath | None = None,
+        config: ArrayConfigLike | None = None,
+    ) -> None:
+        """Construct an ``Array``.
+
+        An ``Array`` is a synchronous handle that wraps a single
+        :class:`AsyncArray`. It can be constructed two ways:
+
+        - the user-friendly form, ``Array(metadata, store_path, config=...)``,
+          which builds the underlying ``AsyncArray`` internally; and
+        - the low-level form, ``Array(async_array)``, which wraps an existing
+          ``AsyncArray`` directly.
+
+        The friendly constructor only requires the ``Array`` to *accept*
+        metadata/store_path/config -- not for it to stop holding an
+        ``AsyncArray``. The two-class split (and the public ``AsyncArray``) is
+        preserved.
+        """
+        if isinstance(metadata, AsyncArray):
+            if store_path is not None or config is not None:
+                raise TypeError(
+                    "When constructing an Array from an AsyncArray, store_path and "
+                    "config must not also be provided."
+                )
+            async_array: AsyncArray[T_ArrayMetadata] = metadata
+        else:
+            if store_path is None:
+                raise TypeError("store_path is required when constructing an Array from metadata.")
+            async_array = cast(
+                "AsyncArray[T_ArrayMetadata]", AsyncArray(metadata, store_path, config)
+            )
+        self._async_array = async_array
+
     @property
     def async_array(self) -> AsyncArray[T_ArrayMetadata]:
         """An asynchronous version of the current array.  Useful for batching requests.
@@ -2267,7 +2303,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.nchunks_initialized
         6
         """
-        return sync(self.async_array.nchunks_initialized())
+        return sync(self.nchunks_initialized_async())
 
     @property
     def _nshards_initialized(self) -> int:
@@ -2299,7 +2335,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         size : int
         """
-        return sync(self.async_array.nbytes_stored())
+        return sync(self.nbytes_stored_async())
 
     def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2824,15 +2860,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         """
 
-        if prototype is None:
-            prototype = default_buffer_prototype()
         return sync(
-            self.async_array._get_selection(
-                BasicIndexer(selection, self.shape, self._chunk_grid),
-                out=out,
-                fields=fields,
-                prototype=prototype,
-            )
+            self.get_basic_selection_async(selection, out=out, prototype=prototype, fields=fields)
         )
 
     def set_basic_selection(
@@ -2933,10 +2962,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.set_basic_selection_async(selection, value, fields=fields, prototype=prototype))
 
     def get_orthogonal_selection(
         self,
@@ -3061,12 +3087,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+            self.get_orthogonal_selection_async(
+                selection, out=out, fields=fields, prototype=prototype
             )
         )
 
@@ -3179,11 +3202,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
         [__setitem__][zarr.Array.__setitem__]
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            self.set_orthogonal_selection_async(
+                selection, value, fields=fields, prototype=prototype
+            )
         )
 
     def get_mask_selection(
@@ -3267,13 +3289,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
         """
 
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
         return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+            self.get_mask_selection_async(mask, out=out, fields=fields, prototype=prototype)
         )
 
     def set_mask_selection(
@@ -3356,10 +3373,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.set_mask_selection_async(mask, value, fields=fields, prototype=prototype))
 
     def get_coordinate_selection(
         self,
@@ -3444,19 +3458,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-        out_array = sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+        return sync(
+            self.get_coordinate_selection_async(
+                selection, out=out, fields=fields, prototype=prototype
             )
         )
-
-        if hasattr(out_array, "shape"):
-            # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
-        return out_array
 
     def set_coordinate_selection(
         self,
@@ -3535,32 +3541,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-
-        # handle value - need ndarray-like flatten value
-        if not is_scalar(value, self.dtype):
-            try:
-                from numcodecs.compat import ensure_ndarray_like
-
-                value = ensure_ndarray_like(value)  # TODO replace with agnostic
-            except TypeError:
-                # Handle types like `list` or `tuple`
-                value = np.array(value)  # TODO replace with agnostic
-        if hasattr(value, "shape") and len(value.shape) > 1:
-            value = np.array(value).reshape(-1)
-
-        if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
-        ):
-            raise ValueError(
-                f"Attempting to set a selection of {indexer.sel_shape[0]} "
-                f"elements with an array of {value.shape[0]} elements."
+        sync(
+            self.set_coordinate_selection_async(
+                selection, value, fields=fields, prototype=prototype
             )
-
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        )
 
     def get_block_selection(
         self,
@@ -3657,13 +3642,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
         [__setitem__][zarr.Array.__setitem__]
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+            self.get_block_selection_async(selection, out=out, fields=fields, prototype=prototype)
         )
 
     def set_block_selection(
@@ -3757,10 +3737,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [__setitem__][zarr.Array.__setitem__]
 
         """
-        if prototype is None:
-            prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.set_block_selection_async(selection, value, fields=fields, prototype=prototype))
 
     @property
     def vindex(self) -> VIndex:
@@ -3788,7 +3765,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         examples."""
         return BlockIndex(self)
 
-    def resize(self, new_shape: ShapeLike) -> None:
+    def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
         dimensions. This is an in-place operation that modifies the array.
@@ -3797,6 +3774,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ----------
         new_shape : tuple
             New shape of the array.
+        delete_outside_chunks : bool, optional
+            If True (default), chunks that fall entirely outside the new array
+            shape are deleted from the underlying store. If False, those chunks
+            are left in place.
 
         Notes
         -----
@@ -3824,7 +3805,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         #>(50, 50)
         ```
         """
-        sync(self.async_array.resize(new_shape))
+        sync(self.resize_async(new_shape, delete_outside_chunks=delete_outside_chunks))
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
@@ -3860,7 +3841,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self.async_array.append(data, axis=axis))
+        return sync(self.append_async(data, axis=axis))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -3887,8 +3868,254 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        new_array = sync(self.async_array.update_attributes(new_attributes))
+        return sync(self.update_attributes_async(new_attributes))
+
+    # ------------------------------------------------------------------
+    # Asynchronous API.
+    #
+    # These ``async`` twins are the public, awaitable counterparts of the
+    # synchronous methods above. Each delegates to the wrapped ``AsyncArray``
+    # (or to its shared ``_get_selection`` / ``_set_selection`` coroutines).
+    #
+    # Note what is NOT needed here, compared with folding ``AsyncArray`` away:
+    # no ``Runner`` protocol (``Array`` still reaches its coroutines through the
+    # single ``AsyncArray`` it holds) and no ``_AsyncArrayView`` / ``_rebind_state``
+    # shared-state machinery (there is one stateful object, so nothing can
+    # desync). The residual marshaling (building the indexer) is trivial and
+    # could be deduplicated by having the sync methods wrap these twins via
+    # ``sync(...)``; see #4034's module-level helpers for the same idea.
+    # ------------------------------------------------------------------
+
+    async def getitem_async(
+        self,
+        selection: BasicSelection,
+        *,
+        out: NDBuffer | None = None,
+        prototype: BufferPrototype | None = None,
+        fields: Fields | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous, basic-indexing variant of [`__getitem__`][zarr.Array.__getitem__].
+
+        Mirrors the full ``get_basic_selection`` parameter surface (``out``,
+        ``prototype``, ``fields``) so migrating sync -> async loses no capability.
+        """
+        return await self.get_basic_selection_async(
+            selection, out=out, prototype=prototype, fields=fields
+        )
+
+    async def setitem_async(
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous, basic-indexing variant of [`__setitem__`][zarr.Array.__setitem__]."""
+        await self.set_basic_selection_async(selection, value, fields=fields, prototype=prototype)
+
+    async def get_basic_selection_async(
+        self,
+        selection: BasicSelection = Ellipsis,
+        *,
+        out: NDBuffer | None = None,
+        prototype: BufferPrototype | None = None,
+        fields: Fields | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous variant of [`get_basic_selection`][zarr.Array.get_basic_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await self.async_array._get_selection(
+            BasicIndexer(selection, self.shape, self._chunk_grid),
+            out=out,
+            fields=fields,
+            prototype=prototype,
+        )
+
+    async def set_basic_selection_async(
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous variant of [`set_basic_selection`][zarr.Array.set_basic_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
+        await self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_orthogonal_selection_async(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous variant of [`get_orthogonal_selection`][zarr.Array.get_orthogonal_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        return await self.async_array._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_orthogonal_selection_async(
+        self,
+        selection: OrthogonalSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous variant of [`set_orthogonal_selection`][zarr.Array.set_orthogonal_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        await self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_mask_selection_async(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous variant of [`get_mask_selection`][zarr.Array.get_mask_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        return await self.async_array._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_mask_selection_async(
+        self,
+        mask: MaskSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous variant of [`set_mask_selection`][zarr.Array.set_mask_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        await self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_coordinate_selection_async(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous variant of [`get_coordinate_selection`][zarr.Array.get_coordinate_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        out_array = await self.async_array._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
+        return out_array
+
+    async def set_coordinate_selection_async(
+        self,
+        selection: CoordinateSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous variant of [`set_coordinate_selection`][zarr.Array.set_coordinate_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+
+        # handle value - need ndarray-like flatten value
+        if not is_scalar(value, self.dtype):
+            try:
+                from numcodecs.compat import ensure_ndarray_like
+
+                value = ensure_ndarray_like(value)  # TODO replace with agnostic
+            except TypeError:
+                # Handle types like `list` or `tuple`
+                value = np.array(value)  # TODO replace with agnostic
+        if hasattr(value, "shape") and len(value.shape) > 1:
+            value = np.array(value).reshape(-1)
+
+        if not is_scalar(value, self.dtype) and (
+            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+        ):
+            raise ValueError(
+                f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                f"elements with an array of {value.shape[0]} elements."
+            )
+
+        await self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def get_block_selection_async(
+        self,
+        selection: BasicSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        """Asynchronous variant of [`get_block_selection`][zarr.Array.get_block_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        return await self.async_array._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def set_block_selection_async(
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> None:
+        """Asynchronous variant of [`set_block_selection`][zarr.Array.set_block_selection]."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        await self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+
+    async def resize_async(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
+        """Asynchronous variant of [`resize`][zarr.Array.resize]."""
+        await self.async_array.resize(new_shape, delete_outside_chunks=delete_outside_chunks)
+
+    async def append_async(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
+        """Asynchronous variant of [`append`][zarr.Array.append]."""
+        return await self.async_array.append(data, axis=axis)
+
+    async def update_attributes_async(self, new_attributes: dict[str, JSON]) -> Self:
+        """Asynchronous variant of [`update_attributes`][zarr.Array.update_attributes]."""
+        new_array = await self.async_array.update_attributes(new_attributes)
         return type(self)(new_array)
+
+    async def nchunks_initialized_async(self) -> int:
+        """Asynchronous variant of [`nchunks_initialized`][zarr.Array.nchunks_initialized]."""
+        return await self.async_array.nchunks_initialized()
+
+    async def nbytes_stored_async(self) -> int:
+        """Asynchronous variant of [`nbytes_stored`][zarr.Array.nbytes_stored]."""
+        return await self.async_array.nbytes_stored()
+
+    async def info_complete_async(self) -> Any:
+        """Asynchronous variant of [`info_complete`][zarr.Array.info_complete]."""
+        return await self.async_array.info_complete()
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -3945,7 +4172,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
-        return sync(self.async_array.info_complete())
+        return sync(self.info_complete_async())
 
 
 async def _shards_initialized(
