@@ -19,6 +19,8 @@ def test_shim_get_set_delete() -> None:
     assert shim.get_suffix("a/b", 2) == b"yz"
     assert shim.getsize("a/b") == 3
     assert shim.getsize("missing") is None
+    assert shim.get_range("missing", 0, 1) is None
+    assert shim.get_suffix("missing", 1) is None
     shim.delete("a/b")
     assert shim.get("a/b") is None
 

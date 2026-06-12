@@ -12,14 +12,14 @@ import zarr
 from zarr.storage import LocalStore, MemoryStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncIterator
     from pathlib import Path
 
     from zarr.abc.store import Store
 
 
 @pytest.fixture(params=["memory", "local"])
-async def store(request: pytest.FixtureRequest, tmp_path: Path) -> AsyncGenerator[Store, None]:
+async def store(request: pytest.FixtureRequest, tmp_path: Path) -> AsyncIterator[Store]:
     """A writable store: MemoryStore exercises the generic Python-callback bridge,
     LocalStore exercises the native zarrs filesystem store."""
     s: Store

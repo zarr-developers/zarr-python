@@ -80,6 +80,11 @@ class StoreShim:
         children = sorted(sync(_collect_aiterator(self._store.list_dir(stripped))))
         keys: _list[str] = []
         prefixes: _list[str] = []
+        # A child is classified as a key iff it exists as one. Zarr hierarchies
+        # never store a bare key alongside same-named subkeys (e.g. "a" and
+        # "a/b"), so a name is never both a key and a prefix.
+        # TODO: replace the per-child exists() round-trip with a single listing
+        # pass when this becomes a bottleneck (remote stores).
         for child in children:
             full = f"{stripped}/{child}" if stripped else child
             if sync(self._store.exists(full)):
