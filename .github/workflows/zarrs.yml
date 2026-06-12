@@ -26,6 +26,8 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: '3.12'
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: Run zarrs bindings tests
         # the ubuntu runner image ships a Rust toolchain; the maturin build
         # backend is fetched by uv on demand

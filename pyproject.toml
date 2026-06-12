@@ -441,6 +441,7 @@ addopts = [
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
+    "--ignore=src/zarr/zarrs",
 ]
 filterwarnings = [
     "error",
