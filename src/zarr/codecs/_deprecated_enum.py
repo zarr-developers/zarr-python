@@ -37,6 +37,16 @@ def _coerce_enum_input(value: object, param_name: str, codec_name: str) -> objec
     naming `codec_name` and return `value.value`. Otherwise return `value`
     unchanged. The third argument lets the warning text name the actual
     codec (e.g. `BloscCodec`, `BytesCodec`, `ShardingCodec`).
+
+    Note that zarr's own legacy classes (e.g. `ShardingCodecIndexLocation`)
+    never reach the `Enum` branch here: they no longer inherit from `Enum`,
+    and member access on them already returns a plain string (with its own
+    warning) via `_DeprecatedStrEnumMeta`. This branch exists for enum
+    instances defined *outside* zarr — in particular `str`-mixin enums that
+    downstream code defined to mirror zarr's old enums, which the old
+    `parse_enum`-based codepath accepted because they are `str` instances.
+    Coercing them to `value.value` keeps the stored attribute a plain string
+    and gives those callers a migration warning.
     """
     if isinstance(value, Enum):
         warnings.warn(
