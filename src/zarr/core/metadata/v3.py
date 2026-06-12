@@ -9,6 +9,7 @@ from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
+from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import is_regular_nd
@@ -289,8 +290,6 @@ class RectilinearChunkGridMetadata(Metadata):
     chunk_shapes: tuple[int | tuple[int, ...], ...]
 
     def __post_init__(self) -> None:
-        from zarr.core.config import config
-
         if not config.get("array.rectilinear_chunks"):
             raise ValueError(
                 "Rectilinear chunk grids are experimental and disabled by default. "
@@ -606,13 +605,8 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        json_indent = config.get("json_indent")
-        d = self.to_dict()
-        return {
-            ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=True, indent=json_indent).encode()
-            )
-        }
+        indent = config.get("json_indent")
+        return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
