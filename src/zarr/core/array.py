@@ -539,7 +539,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         shape = parse_shapelike(shape)
         if codecs is None:
-            filters = default_filters_v3(dtype)
+            # no data types have default filters
+            filters = ()
             serializer = default_serializer_v3(dtype)
             compressors = default_compressors_v3(dtype)
 
@@ -4846,15 +4847,6 @@ def _parse_chunk_key_encoding(
     return result
 
 
-def default_filters_v3(dtype: ZDType[Any, Any]) -> tuple[ArrayArrayCodec, ...]:
-    """
-    Given a data type, return the default filters for that data type.
-
-    This is an empty tuple. No data types have default filters.
-    """
-    return ()
-
-
 def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ...]:
     """
     Given a data type, return the default compressors for that data type.
@@ -5007,7 +4999,8 @@ def _parse_chunk_encoding_v3(
     if filters is None:
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
-        out_array_array = default_filters_v3(dtype)
+        # no data types have default filters
+        out_array_array = ()
     else:
         maybe_array_array: Iterable[Codec | dict[str, JSON]]
         if isinstance(filters, dict | Codec):
