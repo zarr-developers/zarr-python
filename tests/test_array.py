@@ -368,11 +368,12 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -> None:
+def test_nchunks(test_cls: type[Array[Any]] | type[AsyncArray[Any]], nchunks: int) -> None:
     """
-    Test that nchunks returns the number of chunks defined for the array.
+    Test that nchunks returns the number of chunks defined for the array, on both
+    the sync Array and the AsyncArray.
     """
     store = MemoryStore()
     shape = 100
@@ -381,7 +382,7 @@ def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -
     if test_cls == Array:
         observed = arr.nchunks
     else:
-        observed = arr.async_array.nchunks
+        observed = AsyncArray(arr.metadata, arr.store_path, arr.config).nchunks
     assert observed == expected
 
 
@@ -415,8 +416,8 @@ async def test_nchunks_initialized(
             observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr.async_array._nshards_initialized()
-            assert observed == await arr.async_array.nchunks_initialized() // chunks_per_shard
+            observed = await arr._nshards_initialized_async()
+            assert observed == await arr.nchunks_initialized_async() // chunks_per_shard
         assert observed == expected
 
     # delete chunks
@@ -426,8 +427,8 @@ async def test_nchunks_initialized(
             observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr.async_array._nshards_initialized()
-            assert observed == await arr.async_array.nchunks_initialized() // chunks_per_shard
+            observed = await arr._nshards_initialized_async()
+            assert observed == await arr.nchunks_initialized_async() // chunks_per_shard
         expected = arr._nshards - idx - 1
         assert observed == expected
 
@@ -453,7 +454,7 @@ async def test_chunks_initialized(
     )
     for keys, region in zip(chunks_accumulated, arr._iter_shard_regions(), strict=False):
         arr[region] = 1
-        observed = sorted(await _shards_initialized(arr.async_array))
+        observed = sorted(await _shards_initialized(arr))
         expected = sorted(keys)
         assert observed == expected
 
@@ -505,7 +506,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -523,7 +524,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -549,7 +550,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.async_array._zdtype,
+            _data_type=arr._zdtype,
             _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
@@ -961,7 +962,7 @@ def test_write_empty_chunks_behavior(
         config={"write_empty_chunks": write_empty_chunks},
     )
 
-    assert arr.async_array.config.write_empty_chunks == write_empty_chunks
+    assert arr.config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
@@ -1032,7 +1033,7 @@ async def test_nbytes(
     store = MemoryStore()
     arr = zarr.create_array(store=store, shape=shape, dtype=dtype, fill_value=0)
     if array_type == "async":
-        assert arr.async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+        assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
     else:
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
 
@@ -2081,7 +2082,7 @@ def test_chunk_grid_shape(
     shard_grid_shape = tuple(starmap(ceildiv, zip(array_shape, _shard_shape, strict=True)))
     assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
-    assert arr.async_array.cdata_shape == chunk_grid_shape
+    assert arr.cdata_shape == chunk_grid_shape
     assert arr._shard_grid_shape == shard_grid_shape
     assert arr._nshards == np.prod(shard_grid_shape)
 
@@ -2112,7 +2113,7 @@ def test_iter_chunk_coords(
     observed = tuple(_iter_chunk_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_coords())
-    assert observed == tuple(arr.async_array._iter_chunk_coords())
+    assert observed == tuple(arr._iter_chunk_coords())
 
 
 @pytest.mark.parametrize(
@@ -2145,7 +2146,7 @@ def test_iter_shard_coords(
     observed = tuple(_iter_shard_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_coords())
-    assert observed == tuple(arr.async_array._iter_shard_coords())
+    assert observed == tuple(arr._iter_shard_coords())
 
 
 @pytest.mark.parametrize(
@@ -2180,7 +2181,7 @@ def test_iter_shard_keys(
     observed = tuple(_iter_shard_keys(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_keys())
-    assert observed == tuple(arr.async_array._iter_shard_keys())
+    assert observed == tuple(arr._iter_shard_keys())
 
 
 @pytest.mark.parametrize(
@@ -2216,7 +2217,7 @@ def test_iter_shard_regions(
     observed = tuple(_iter_shard_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_regions())
-    assert observed == tuple(arr.async_array._iter_shard_regions())
+    assert observed == tuple(arr._iter_shard_regions())
 
 
 @pytest.mark.parametrize(
@@ -2245,7 +2246,7 @@ def test_iter_chunk_regions(
     observed = tuple(_iter_chunk_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_regions())
-    assert observed == tuple(arr.async_array._iter_chunk_regions())
+    assert observed == tuple(arr._iter_chunk_regions())
 
 
 @pytest.mark.parametrize("num_shards", [1, 3])
@@ -2308,7 +2309,9 @@ def test_with_config(config: ArrayConfigParams) -> None:
     source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
     source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
 
-    new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
+    with pytest.warns(DeprecationWarning, match="async_array is deprecated"):
+        async_array = source_array.async_array
+    new_async_array_config_dict = async_array.with_config(config).config.to_dict()
     new_array_config_dict = source_array.with_config(config).config.to_dict()
 
     for key in source_config:
@@ -2374,3 +2377,141 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+def test_read_chunk_sizes_sharded() -> None:
+    """For a sharded array, read_chunk_sizes reports the inner-chunk sizes and
+    cdata_shape / _chunk_grid_shape count inner chunks across the whole array.
+
+    This exercises the sharding branch of read_chunk_sizes and _chunk_grid_shape.
+    """
+    shape = (30, 20)
+    shard_shape = (10, 20)
+    chunk_shape = (5, 4)
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        dtype="i1",
+    )
+
+    # Inner-chunk sizes, clipped to the array extent (no boundary remainder here).
+    expected_read = (
+        (5, 5, 5, 5, 5, 5),
+        (4, 4, 4, 4, 4),
+    )
+    assert arr.read_chunk_sizes == expected_read
+
+    # write_chunk_sizes reports the shard (outer) chunk sizes.
+    assert arr.write_chunk_sizes == ((10, 10, 10), (20,))
+
+    # cdata_shape / _chunk_grid_shape count inner chunks across the whole array.
+    expected_grid = tuple(starmap(ceildiv, zip(shape, chunk_shape, strict=True)))
+    assert arr._chunk_grid_shape == expected_grid
+    assert arr.cdata_shape == expected_grid
+
+    # The AsyncArray shares the same helpers, so the sharded paths agree.
+    aa = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert aa.read_chunk_sizes == expected_read
+    assert aa.cdata_shape == expected_grid
+
+    # Unsharded AsyncArray exercises the non-sharding fallback of the same helpers.
+    unsharded = zarr.create_array(store=MemoryStore(), shape=(30, 20), chunks=(5, 4), dtype="i1")
+    aa_unsharded = AsyncArray(unsharded.metadata, unsharded.store_path, unsharded.config)
+    assert aa_unsharded.read_chunk_sizes == unsharded.read_chunk_sizes
+    assert aa_unsharded.cdata_shape == unsharded.cdata_shape
+
+
+# Scalar/derived properties reimplemented byte-for-byte on both Array and
+# AsyncArray. Because the two implementations are independent, they can drift
+# silently; this list pins them to agree by value across the format/sharding
+# matrix below. (compressor is excluded: it is deprecated and raises on v3.)
+_SHARED_ARRAY_PROPERTIES = [
+    "_chunk_grid_shape",
+    "_nshards",
+    "_shard_grid_shape",
+    "_zdtype",
+    "basename",
+    "cdata_shape",
+    "chunks",
+    "compressors",
+    "dtype",
+    "filters",
+    "name",
+    "nbytes",
+    "nchunks",
+    "ndim",
+    "order",
+    "path",
+    "read_chunk_sizes",
+    "read_only",
+    "serializer",
+    "shape",
+    "shards",
+    "size",
+    "store",
+    "write_chunk_sizes",
+]
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "sharded"),
+    [(2, False), (3, False), (3, True)],  # v2 has no sharding
+)
+@pytest.mark.parametrize("prop", _SHARED_ARRAY_PROPERTIES)
+def test_sync_async_property_parity(prop: str, zarr_format: ZarrFormat, sharded: bool) -> None:
+    """Array.<prop> and AsyncArray.<prop> must return equal values.
+
+    Guards against the duplicated property bodies on the two classes drifting:
+    a fix applied to one but not the other would make this fail.
+    """
+    kwargs: dict[str, Any] = {
+        "store": MemoryStore(),
+        "shape": (8, 8),
+        "dtype": "i4",
+        "zarr_format": zarr_format,
+    }
+    if sharded:
+        kwargs.update(chunks=(2, 2), shards=(4, 4))
+    else:
+        kwargs.update(chunks=(4, 4))
+    arr = zarr.create_array(**kwargs)
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert getattr(arr, prop) == getattr(async_arr, prop)
+
+
+def test_sync_async_property_parity_non_default_order() -> None:
+    """Array.order and AsyncArray.order agree for a non-default (v3, "F") order.
+
+    The matrix parity test above builds both objects with the default config, so
+    `order` (which reads `self.config.order` on v3) is compared against an
+    identical config and could not catch drift on a non-default order. This pins
+    that branch with an explicitly non-default value.
+    """
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(8, 8),
+        chunks=(4, 4),
+        dtype="i4",
+        zarr_format=3,
+        config={"order": "F"},
+    )
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert arr.order == "F"  # the value is genuinely non-default
+    assert arr.order == async_arr.order
+
+
+def test_sync_async_property_parity_read_only() -> None:
+    """Array.read_only and AsyncArray.read_only agree for a read-only store.
+
+    `read_only` reads `self.store_path.read_only`; the matrix parity test only
+    uses writable stores, so it always compares False == False. This exercises
+    the read-only branch divergently.
+    """
+    store = MemoryStore()
+    zarr.create_array(store=store, shape=(8, 8), chunks=(4, 4), dtype="i4")
+    arr = zarr.open_array(store=store, mode="r")
+    async_arr = AsyncArray(arr.metadata, arr.store_path, arr.config)
+    assert arr.read_only is True  # the value is genuinely non-default
+    assert arr.read_only == async_arr.read_only

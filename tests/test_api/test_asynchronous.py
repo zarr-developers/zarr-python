@@ -9,6 +9,7 @@ import pytest
 
 from zarr import create_array
 from zarr.api.asynchronous import _get_shape_chunks, _like_args, group, open
+from zarr.core.array import AsyncArray
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import AsyncGroup
 
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from zarr.core.array import AsyncArray
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
     from zarr.types import AnyArray
 
@@ -36,6 +36,11 @@ class WithChunks(WithShape):
 @dataclass
 class WithChunkLen(WithShape):
     chunklen: int
+
+
+def _as_async_array(arr: Any) -> AsyncArray[Any]:
+    """Build an `AsyncArray` mirroring the state of a sync `Array`."""
+    return AsyncArray(arr.metadata, arr.store_path, arr.config)
 
 
 @pytest.mark.parametrize(
@@ -70,7 +75,28 @@ def test_get_shape_chunks(
                 compressors=None,
                 filters=None,
                 zarr_format=2,
-            )._async_array,
+            ),
+            {
+                "chunks": (10,),
+                "shape": (100,),
+                "dtype": np.dtype("f8"),
+                "compressor": None,
+                "filters": None,
+                "order": "C",
+            },
+        ),
+        (
+            _as_async_array(
+                create_array(
+                    {},
+                    chunks=(10,),
+                    shape=(100,),
+                    dtype="f8",
+                    compressors=None,
+                    filters=None,
+                    zarr_format=2,
+                )
+            ),
             {
                 "chunks": (10,),
                 "shape": (100,),

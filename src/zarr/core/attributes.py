@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from zarr.core.common import JSON
 
@@ -18,7 +18,7 @@ class Attributes(MutableMapping[str, JSON]):
         self._obj = obj
 
     def __getitem__(self, key: str) -> JSON:
-        return self._obj.metadata.attributes[key]
+        return cast("JSON", self._obj.metadata.attributes[key])
 
     def __setitem__(self, key: str, value: JSON) -> None:
         new_attrs = dict(self._obj.metadata.attributes)

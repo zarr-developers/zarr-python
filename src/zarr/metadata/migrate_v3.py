@@ -88,7 +88,7 @@ def migrate_to_v3(zarr_v2: AnyArray | Group, output_path: StorePath, dry_run: bo
     if not zarr_v2.metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
-    if isinstance(zarr_v2.metadata, GroupMetadata):
+    if isinstance(zarr_v2, Group):
         _convert_group(zarr_v2, output_path, dry_run)
     else:
         _convert_array(zarr_v2, output_path, dry_run)
