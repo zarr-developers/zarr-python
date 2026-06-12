@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 publish = false
+license = "MIT"
+description = "PyO3 bindings to the zarrs Rust crate, consumed by zarr.zarrs"
 
 [lib]
 name = "_zarrs_bindings"

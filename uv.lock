@@ -4195,5 +4195,4 @@ zarrs = [
 
 [[package]]
 name = "zarrs-bindings"
-version = "0.1.0"
 source = { directory = "zarrs-bindings" }
