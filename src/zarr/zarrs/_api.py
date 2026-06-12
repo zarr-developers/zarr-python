@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import operator
+import types
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -31,6 +34,10 @@ class ZarrsOptions:
     Currently empty: fields (concurrency limits, checksum validation) arrive in
     a later phase. Accepting it now keeps signatures stable.
     """
+
+
+BasicIndex = int | slice | types.EllipsisType
+BasicSelection = BasicIndex | tuple[BasicIndex, ...]
 
 
 def _node_path(path: str) -> str:
@@ -173,6 +180,93 @@ async def list_children(
     ]
 
 
+def _array_shape(metadata: Mapping[str, JSON]) -> tuple[int, ...]:
+    """Resolve the array shape from a metadata document."""
+    shape = metadata.get("shape")
+    if not isinstance(shape, Sequence) or isinstance(shape, str):
+        raise TypeError("metadata document has no valid 'shape'")
+    result: list[int] = []
+    for s in shape:
+        if not isinstance(s, (int, float)):
+            raise TypeError(f"shape element {s!r} is not a number")
+        result.append(int(s))
+    return tuple(result)
+
+
+def _normalize_selection(
+    selection: BasicSelection, shape: tuple[int, ...]
+) -> tuple[list[int], list[int], tuple[slice | int, ...]]:
+    """Normalize a numpy-style basic-indexing selection against `shape`.
+
+    Returns `(start, bounding_shape, post_index)`: the step-1 bounding box to
+    fetch (per-dimension start and length), and the numpy index to apply to
+    the fetched block to produce the final result (strides, reversals, and
+    integer-axis removal). Only integers, slices, and `Ellipsis` are
+    supported; fancy indexing raises `TypeError`.
+    """
+    sel_tuple = selection if isinstance(selection, tuple) else (selection,)
+
+    n_ellipsis = sum(1 for s in sel_tuple if s is Ellipsis)
+    if n_ellipsis > 1:
+        raise IndexError("an index can only have a single ellipsis ('...')")
+    if n_ellipsis == 1:
+        i = sel_tuple.index(Ellipsis)
+        n_fill = len(shape) - (len(sel_tuple) - 1)
+        if n_fill < 0:
+            raise IndexError(f"too many indices for array: array is {len(shape)}-dimensional")
+        sel_tuple = sel_tuple[:i] + (slice(None),) * n_fill + sel_tuple[i + 1 :]
+    if len(sel_tuple) > len(shape):
+        raise IndexError(f"too many indices for array: array is {len(shape)}-dimensional")
+    sel_tuple = sel_tuple + (slice(None),) * (len(shape) - len(sel_tuple))
+
+    starts: list[int] = []
+    lengths: list[int] = []
+    post: list[slice | int] = []
+    for dim, (sel, size) in enumerate(zip(sel_tuple, shape, strict=True)):
+        if isinstance(sel, slice):
+            start, stop, step = sel.indices(size)
+            n = len(range(start, stop, step))
+            if n == 0:
+                starts.append(0)
+                lengths.append(0)
+                post.append(slice(None))
+            elif step > 0:
+                last = start + (n - 1) * step
+                starts.append(start)
+                lengths.append(last - start + 1)
+                post.append(slice(None, None, step))
+            else:
+                # descending: bounding box is [last, start], ascending in store
+                # order; slice(None, None, step) over the block starts at its
+                # final element (global `start`) and lands exactly on index 0
+                # (global `last`) because the block length is (n-1)*|step| + 1.
+                last = start + (n - 1) * step
+                starts.append(last)
+                lengths.append(start - last + 1)
+                post.append(slice(None, None, step))
+        else:
+            if isinstance(sel, types.EllipsisType):
+                raise TypeError(
+                    "unsupported selection element "
+                    f"{sel!r}: only integers, slices, and Ellipsis are supported"
+                )
+            try:
+                idx = operator.index(sel)
+            except TypeError:
+                raise TypeError(
+                    "unsupported selection element "
+                    f"{sel!r}: only integers, slices, and Ellipsis are supported"
+                ) from None
+            if idx < 0:
+                idx += size
+            if not 0 <= idx < size:
+                raise IndexError(f"index {sel} is out of bounds for axis {dim} with size {size}")
+            starts.append(idx)
+            lengths.append(1)
+            post.append(0)
+    return starts, lengths, tuple(post)
+
+
 def _chunk_dtype_and_shape(
     metadata: Mapping[str, JSON],
 ) -> tuple[np.dtype[Any], tuple[int, ...]]:
@@ -289,3 +383,42 @@ async def erase_chunk(
         json.dumps(metadata),
         list(chunk_coords),
     )
+
+
+async def decode_region(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    selection: BasicSelection,
+    *,
+    options: ZarrsOptions | None = None,
+) -> np.ndarray[Any, np.dtype[Any]]:
+    """Read and decode the region of the array described by `metadata` given
+    by a numpy-style basic-indexing `selection` (integers, slices including
+    steps, `Ellipsis`).
+
+    The metadata document is authoritative: it is not read from the store.
+    One zarrs call fetches the step-1 bounding box of the selection (decoding
+    all overlapping chunks, in parallel for multi-chunk regions); strides,
+    reversals, and integer-axis removal are applied as numpy views on the
+    result. Missing chunks decode to the fill value. Fancy indexing (integer
+    or boolean arrays) is not supported and raises `TypeError`. The returned
+    array is a read-only view; call `.copy()` if you need a writable array.
+    """
+    dtype, _ = _chunk_dtype_and_shape(metadata)
+    shape = _array_shape(metadata)
+    starts, lengths, post_index = _normalize_selection(selection, shape)
+    if 0 in lengths:
+        block = np.empty(lengths, dtype=dtype)
+    else:
+        raw = await asyncio.to_thread(
+            _zb.retrieve_array_subset,
+            resolve_store(store),
+            _node_path(path),
+            json.dumps(metadata),
+            starts,
+            lengths,
+        )
+        block = np.frombuffer(raw, dtype=dtype).reshape(lengths)
+    result: np.ndarray[Any, np.dtype[Any]] = block[post_index]
+    return result

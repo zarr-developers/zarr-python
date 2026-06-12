@@ -1,7 +1,7 @@
 use pyo3::exceptions::PyNotImplementedError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use zarrs::array::{Array, ArrayBytes};
+use zarrs::array::{Array, ArrayBytes, ArraySubset};
 use zarrs::metadata::ArrayMetadata;
 use zarrs::storage::ReadableWritableListableStorage;
 
@@ -91,4 +91,27 @@ pub(crate) fn erase_chunk(
         let array = array_view(storage, &path, &metadata_json)?;
         array.erase_chunk(&chunk_coords).map_err(runtime_err)
     })
+}
+
+#[pyfunction]
+pub(crate) fn retrieve_array_subset(
+    py: Python<'_>,
+    store: &Bound<'_, PyAny>,
+    path: String,
+    metadata_json: String,
+    start: Vec<u64>,
+    shape: Vec<u64>,
+) -> PyResult<Py<PyBytes>> {
+    let storage = resolve_store(store)?;
+    let data = py.detach(move || -> PyResult<Vec<u8>> {
+        let array = array_view(storage, &path, &metadata_json)?;
+        let subset = ArraySubset::new_with_start_shape(start, shape).map_err(value_err)?;
+        let bytes: ArrayBytes<'static> =
+            array.retrieve_array_subset(&subset).map_err(runtime_err)?;
+        let fixed = bytes.into_fixed().map_err(|_| {
+            PyNotImplementedError::new_err("variable-length data types are not supported")
+        })?;
+        Ok(fixed.into_owned())
+    })?;
+    Ok(PyBytes::new(py, &data).unbind())
 }

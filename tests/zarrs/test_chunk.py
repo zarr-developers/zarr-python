@@ -17,6 +17,7 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.zarrs import (
     create_new_array,
     decode_chunk,
+    decode_region,
     encode_chunk,
     erase_chunk,
     read_encoded_chunk,
@@ -153,3 +154,71 @@ async def test_erase_chunk(store: Store) -> None:
     assert not await store.exists("a/c/0/0")
     arr = zarr.open_array(store=store, path="a", mode="r")
     np.testing.assert_array_equal(arr[0:4, 0:4], np.zeros((4, 4), dtype="uint16"))
+
+
+SELECTIONS: list[Any] = [
+    (slice(None), slice(None)),
+    (slice(2, 7), slice(1, 5)),  # crosses chunk boundaries
+    (slice(None), 3),
+    (5, slice(None)),
+    (3, 4),  # fully scalar -> 0-d result
+    (slice(1, 8, 2), slice(None)),
+    (slice(None), slice(6, 1, -2)),  # negative step
+    (slice(-3, None), slice(None, -1)),  # negative bounds
+    ...,  # Ellipsis alone
+    (..., slice(2, 4)),
+    (slice(0, 0), slice(None)),  # empty
+    (slice(2, 6),),  # partial selection, missing trailing dims
+]
+
+
+@pytest.mark.parametrize("sel", SELECTIONS)
+async def test_decode_region_differential(store: Store, sel: Any) -> None:
+    data, meta = _filled(store)
+    observed = await decode_region(meta, store, "a", sel)
+    np.testing.assert_array_equal(observed, data[sel])
+
+
+async def test_decode_region_sharding(store: Store) -> None:
+    data, meta = _filled(store, chunks=(2, 2), shards=(4, 4))
+    observed = await decode_region(meta, store, "a", (slice(1, 7), slice(3, 8)))
+    np.testing.assert_array_equal(observed, data[1:7, 3:8])
+
+
+async def test_decode_region_v2(store: Store) -> None:
+    data, meta = _filled(store, zarr_format=2)
+    observed = await decode_region(meta, store, "a", (slice(2, 7), slice(None, None, 3)))
+    np.testing.assert_array_equal(observed, data[2:7, ::3])
+
+
+async def test_decode_region_missing_chunks_fill_value(store: Store) -> None:
+    arr = zarr.create_array(
+        store=store, name="a", shape=(8, 8), chunks=(4, 4), dtype="uint16", fill_value=7
+    )
+    meta = dict(arr.metadata.to_dict())
+    observed = await decode_region(meta, store, "a", (slice(2, 6), slice(2, 6)))
+    np.testing.assert_array_equal(observed, np.full((4, 4), 7, dtype="uint16"))
+
+
+async def test_decode_region_out_of_bounds(store: Store) -> None:
+    _, meta = _filled(store)
+    with pytest.raises(IndexError, match="out of bounds"):
+        await decode_region(meta, store, "a", (8, slice(None)))
+
+
+async def test_decode_region_too_many_indices(store: Store) -> None:
+    _, meta = _filled(store)
+    with pytest.raises(IndexError, match="too many indices"):
+        await decode_region(meta, store, "a", (0, 0, 0))
+
+
+async def test_decode_region_fancy_indexing_rejected(store: Store) -> None:
+    _, meta = _filled(store)
+    with pytest.raises(TypeError, match="only integers, slices"):
+        await decode_region(meta, store, "a", ([0, 1], slice(None)))  # type: ignore[arg-type]
+
+
+async def test_decode_region_readonly(store: Store) -> None:
+    _, meta = _filled(store)
+    observed = await decode_region(meta, store, "a", (slice(0, 4), slice(0, 4)))
+    assert not observed.flags.writeable

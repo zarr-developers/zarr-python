@@ -65,7 +65,7 @@ All functions are `async def`. Parameters:
 - `store`: `zarr.abc.store.Store`.
 - `path`: node path within the store (str, `""` = root).
 - `chunk_coords`: `tuple[int, ...]` grid coordinates.
-- `selection`: tuple of `slice`/`int` only (v1 restriction).
+- `selection`: numpy-style basic indexing — integers, slices (including steps; strided/reversed selections fetch the step-1 bounding box in one call and apply numpy views), and `Ellipsis`. Fancy indexing (integer/boolean arrays) and `np.newaxis` are not supported.
 - `options`: every function also accepts keyword-only
   `options: ZarrsOptions | None = None` (omitted from the signatures below for
   brevity) — a dataclass holding concurrency limits and checksum validation
@@ -170,8 +170,9 @@ propagation of store-callback exceptions (and richer mapping onto
 1. **Phase 1**: crate scaffolding (maturin, CI build), store bridge (native
    LocalStore + generic PyStore), node lifecycle functions, whole-chunk
    `decode_chunk` / `read_encoded_chunk` / `encode_chunk` / `erase_chunk`.
-2. **Phase 2**: `decode_region` / `encode_region`, chunk-subset `selection`
-   via partial decoders.
+2. **Phase 2**: `decode_region` (read side of region I/O) is implemented on
+   this branch. `encode_region` and chunk-subset `selection` for `decode_chunk`
+   via partial decoders remain Phase 2.
 3. **Phase 3**: `ZarrsOptions` surface (concurrency, checksum validation,
    direct IO), obstore native path, benchmarks vs. the pure-Python pipeline.
 
