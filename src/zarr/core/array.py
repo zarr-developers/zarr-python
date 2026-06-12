@@ -1493,13 +1493,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_orthogonal_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
+        return await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            selection,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1513,13 +1516,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_mask_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
+        return await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            mask,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1533,17 +1539,24 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_coordinate_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
+        out_array = await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            selection,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
         )
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
+        return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
@@ -5522,182 +5535,6 @@ async def _getitem(
     return await _get_selection(
         store_path, metadata, codec_pipeline, config, chunk_grid, indexer, prototype=prototype
     )
-
-
-async def _get_orthogonal_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: OrthogonalSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get an orthogonal selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : OrthogonalSelection
-        The orthogonal selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = OrthogonalIndexer(selection, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_mask_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    mask: MaskSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a mask selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    mask : MaskSelection
-        The boolean mask specifying the selection.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = MaskIndexer(mask, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_coordinate_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: CoordinateSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a coordinate selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : CoordinateSelection
-        The coordinate selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = CoordinateIndexer(selection, metadata.shape, chunk_grid)
-    out_array = await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-    if hasattr(out_array, "shape"):
-        # restore shape
-        out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
-    return out_array
 
 
 async def _set_selection(
