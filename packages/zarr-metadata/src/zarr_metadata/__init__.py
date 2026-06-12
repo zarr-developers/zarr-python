@@ -1,6 +1,6 @@
 from importlib.metadata import version
 
-from zarr_metadata._common import NamedConfig
+from zarr_metadata._common import JSONValue, NamedConfig
 from zarr_metadata.v2.array import (
     ArrayDimensionSeparatorV2,
     ArrayMetadataV2,
@@ -37,6 +37,7 @@ __all__ = [
     "GroupMetadataV2Partial",
     "GroupMetadataV3",
     "GroupMetadataV3Partial",
+    "JSONValue",
     "MetadataFieldV3",
     "NamedConfig",
     "ZArrayMetadata",
