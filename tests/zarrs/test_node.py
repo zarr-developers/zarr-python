@@ -80,6 +80,13 @@ async def test_create_overwrite_array(store: Store) -> None:
     assert arr.shape == (8, 8)
 
 
+async def test_create_new_array_v2(store: Store) -> None:
+    await create_new_array(array_metadata(zarr_format=2), store, "arr")
+    arr = zarr.open_array(store=store, path="arr", mode="r")
+    assert arr.metadata.zarr_format == 2
+    assert arr.shape == (8, 8)
+
+
 async def test_read_metadata_matches_stored_document(store: Store) -> None:
     await create_new_array(array_metadata(), store, "arr")
     observed = await read_metadata(store, "arr")

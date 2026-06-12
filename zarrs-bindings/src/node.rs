@@ -8,6 +8,8 @@ use zarrs::storage::{ReadableWritableListableStorage, StorePrefix};
 use crate::store::resolve_store;
 use crate::{NodeExistsError, NodeNotFoundError, runtime_err, value_err};
 
+/// `path` arguments throughout this module are zarrs node paths, e.g. "/" or
+/// "/foo/bar" (already normalized by the Python layer's `_node_path`).
 pub(crate) fn parse_node_path(path: &str) -> PyResult<NodePath> {
     NodePath::new(path).map_err(value_err)
 }

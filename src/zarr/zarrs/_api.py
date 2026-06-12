@@ -4,7 +4,7 @@ import asyncio
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import _zarrs_bindings as _zb
 
@@ -129,5 +129,4 @@ async def read_metadata(
     """
     with _translate_errors():
         raw = await asyncio.to_thread(_zb.read_metadata, resolve_store(store), _node_path(path))
-    result: dict[str, JSON] = json.loads(raw)
-    return result
+    return cast("dict[str, JSON]", json.loads(raw))
