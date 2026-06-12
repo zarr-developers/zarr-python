@@ -177,7 +177,12 @@ def _chunk_dtype_and_shape(
     metadata: Mapping[str, JSON],
 ) -> tuple[np.dtype[Any], tuple[int, ...]]:
     """Resolve the numpy dtype and chunk shape from a metadata document, using
-    zarr-python's own metadata parsing."""
+    zarr-python's own metadata parsing.
+
+    The dtype is coerced to native byte order: zarrs always decodes to (and
+    encodes from) the native in-memory representation, applying any byte-order
+    codec itself.
+    """
     from zarr.core.metadata.v2 import ArrayV2Metadata
     from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 
@@ -186,9 +191,9 @@ def _chunk_dtype_and_shape(
         grid = meta3.chunk_grid
         if not isinstance(grid, RegularChunkGridMetadata):
             raise NotImplementedError("only regular chunk grids are supported")
-        return meta3.data_type.to_native_dtype(), grid.chunk_shape
+        return meta3.data_type.to_native_dtype().newbyteorder("="), grid.chunk_shape
     meta2 = ArrayV2Metadata.from_dict(dict(metadata))
-    return meta2.dtype.to_native_dtype(), meta2.chunks
+    return meta2.dtype.to_native_dtype().newbyteorder("="), meta2.chunks
 
 
 async def decode_chunk(
@@ -206,6 +211,9 @@ async def decode_chunk(
     The metadata document is authoritative: it is not read from the store.
     Missing chunks decode to the fill value. `selection` (a chunk-relative
     subset) is not implemented yet.
+
+    The returned array is a read-only, zero-copy view over the decoded bytes;
+    call `.copy()` if you need a writable array.
     """
     if selection is not None:
         raise NotImplementedError("chunk subset selection is not implemented yet")

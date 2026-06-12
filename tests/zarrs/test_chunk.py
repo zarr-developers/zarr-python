@@ -58,6 +58,27 @@ async def test_decode_chunk_v2(store: Store) -> None:
     np.testing.assert_array_equal(observed, data[4:8, 4:8])
 
 
+async def test_decode_chunk_v2_big_endian(store: Store) -> None:
+    data, meta = _filled(store, dtype=">u2", zarr_format=2)
+    observed = await decode_chunk(meta, store, "a", (1, 1))
+    np.testing.assert_array_equal(observed, data[4:8, 4:8])
+
+
+async def test_encode_chunk_v2_big_endian(store: Store) -> None:
+    meta = array_metadata(dtype=">u2", zarr_format=2)
+    await create_new_array(meta, store, "a")
+    value = np.arange(16, dtype="uint16").reshape(4, 4)
+    await encode_chunk(meta, store, "a", (0, 1), value)
+    arr = zarr.open_array(store=store, path="a", mode="r")
+    np.testing.assert_array_equal(arr[0:4, 4:8], value)
+
+
+async def test_decode_chunk_readonly(store: Store) -> None:
+    _, meta = _filled(store)
+    observed = await decode_chunk(meta, store, "a", (0, 0))
+    assert not observed.flags.writeable
+
+
 async def test_decode_chunk_sharding(store: Store) -> None:
     # with sharding, the metadata chunk grid is the shard grid
     data, meta = _filled(store, chunks=(2, 2), shards=(4, 4))
