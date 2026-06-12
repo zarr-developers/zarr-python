@@ -176,9 +176,12 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
+        # Mirror CPU semantics: zero-fill when fill_value is None (cp.zeros is
+        # faster than cp.full and matches numpy's behaviour for the common case).
+        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
+            return cls(cp.zeros(shape=tuple(shape), dtype=dtype, order=order))
         ret = cls(cp.empty(shape=tuple(shape), dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
+        ret.fill(fill_value)
         return ret
 
     @classmethod

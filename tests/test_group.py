@@ -770,6 +770,10 @@ def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
 async def test_group_update_attributes_async(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group.update_attributes_async`
+
+    update_attributes_async must *merge* new attributes with existing ones,
+    matching the semantics of the synchronous update_attributes path.
+    Regression test for B12.
     """
     attrs = {"foo": 100}
     group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs)
@@ -780,7 +784,9 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
             new_group = await group.update_attributes_async(new_attrs)
     else:
         new_group = await group.update_attributes_async(new_attrs)
-    assert new_group.attrs == new_attrs
+    # Both the original and the new key must be present (merge, not overwrite).
+    expected_attrs = {**attrs, **new_attrs}
+    assert new_group.attrs == expected_attrs
 
 
 @pytest.mark.parametrize("name", ["a", "/a"])
@@ -2378,3 +2384,83 @@ def test_open_array_as_group():
     z = zarr.create_array(shape=(40, 50), chunks=(10, 10), dtype="f8", store={})
     with pytest.raises(ContainsArrayError):
         zarr.open_group(z.store)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for B11-B15 (bugs identified in 2026-06)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata")
+async def test_iter_members_deep_use_consolidated_flag_propagates(
+    store: Store, zarr_format: ZarrFormat
+) -> None:
+    """B11 — _iter_members_deep must pass use_consolidated_for_children on recursion.
+
+    Build root/a/b/c, consolidate at a/b so that a/b carries stale
+    consolidated metadata, then iterate root with
+    use_consolidated_for_children=False and assert that the grandchild
+    group (a/b) has consolidated_metadata=None during iteration — meaning
+    the fresh-read path was taken rather than the cached one.
+    """
+    root = zarr.group(store=store, zarr_format=zarr_format)
+    a = root.create_group("a")
+    ab = a.create_group("b")
+    ab.create_group("c")
+
+    # Consolidate so that a/b.metadata.consolidated_metadata is populated.
+    if isinstance(store, ZipStore):
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+    else:
+        zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+
+    root = zarr.open_consolidated(store=store, zarr_format=zarr_format)
+
+    # Collect members yielded by the deep iterator without using consolidated
+    # metadata for children.
+    members: dict[str, Group | Array] = dict(
+        root.members(max_depth=None, use_consolidated_for_children=False)
+    )
+
+    # The "a/b" entry must have been stripped of its consolidated_metadata.
+    ab_node = members.get("a/b")
+    assert ab_node is not None
+    assert isinstance(ab_node, Group)
+    assert ab_node.metadata.consolidated_metadata is None, (
+        "consolidated_metadata must be cleared when use_consolidated_for_children=False "
+        "propagates to recursive calls (B11)"
+    )
+
+
+async def test_update_attributes_async_merges(store: Store, zarr_format: ZarrFormat) -> None:
+    """B12 — Group.update_attributes_async must merge, not overwrite.
+
+    Both the synchronous update_attributes and the async variant must
+    preserve keys that are not in the new_attributes dict.
+    """
+    initial_attrs: dict[str, Any] = {"existing_key": 42}
+    grp = zarr.group(store=store, zarr_format=zarr_format, attributes=initial_attrs)
+
+    # Synchronous path already merged; verify for completeness.
+    if isinstance(store, ZipStore):
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            grp_after_sync = grp.update_attributes({"sync_key": 1})
+    else:
+        grp_after_sync = grp.update_attributes({"sync_key": 1})
+    assert grp_after_sync.attrs["existing_key"] == 42
+    assert grp_after_sync.attrs["sync_key"] == 1
+
+    # Async path — this was the buggy path (B12).
+    if isinstance(store, ZipStore):
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            grp_after_async = await grp_after_sync.update_attributes_async({"async_key": 2})
+    else:
+        grp_after_async = await grp_after_sync.update_attributes_async({"async_key": 2})
+    assert grp_after_async.attrs["existing_key"] == 42, (
+        "existing_key must survive update_attributes_async (B12)"
+    )
+    assert grp_after_async.attrs["sync_key"] == 1, (
+        "sync_key must survive update_attributes_async (B12)"
+    )
+    assert grp_after_async.attrs["async_key"] == 2

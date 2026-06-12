@@ -148,6 +148,7 @@ def sync[T](
 
     finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
     if len(unfinished) > 0:
+        future.cancel()
         raise TimeoutError(f"Coroutine {coro} failed to finish within {timeout} s")
     assert len(finished) == 1
     return_result = next(iter(finished)).result()
