@@ -973,10 +973,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         The zarr-specific representation of the array data type
         """
-        if self.metadata.zarr_format == 2:
-            return self.metadata.dtype
-        else:
-            return self.metadata.data_type
+        # `dtype` returns the zarr dtype object for both v2 and v3 metadata
+        # (on v3 it is an alias for `data_type`).
+        return self.metadata.dtype
 
     @property
     def dtype(self) -> TBaseDType:
@@ -5403,11 +5402,8 @@ async def _get_selection(
     NDArrayLikeOrScalar
         The selected data.
     """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
+    # `dtype` returns the zarr dtype object for both v2 and v3 metadata.
+    zdtype = metadata.dtype
     dtype = zdtype.to_native_dtype()
 
     # Determine memory order
@@ -5573,11 +5569,8 @@ async def _set_selection(
     fields : Fields | None, optional
         Fields to select from structured arrays.
     """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
+    # `dtype` returns the zarr dtype object for both v2 and v3 metadata.
+    zdtype = metadata.dtype
     dtype = zdtype.to_native_dtype()
 
     # check fields are sensible
