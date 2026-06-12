@@ -23,14 +23,20 @@ __version__: str = _zarrs_bindings.version()
 from zarr.zarrs._api import (
     NodeExistsError,
     ZarrsOptions,
+    create_new_array,
     create_new_group,
+    create_overwrite_array,
     create_overwrite_group,
+    read_metadata,
 )
 
 __all__ = [
     "NodeExistsError",
     "ZarrsOptions",
     "__version__",
+    "create_new_array",
     "create_new_group",
+    "create_overwrite_array",
     "create_overwrite_group",
+    "read_metadata",
 ]

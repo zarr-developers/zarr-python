@@ -79,3 +79,55 @@ async def create_overwrite_group(
         await asyncio.to_thread(
             _zb.create_group, resolve_store(store), _node_path(path), json.dumps(metadata), True
         )
+
+
+async def create_new_array(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    *,
+    options: ZarrsOptions | None = None,
+) -> None:
+    """Create an array at `path` from a v2 or v3 array metadata document.
+
+    Raises `NodeExistsError` if any node already exists at `path`. Creation is
+    not atomic with respect to concurrent writers: a concurrent creation at the
+    same path can race the existence check.
+    """
+    with _translate_errors():
+        await asyncio.to_thread(
+            _zb.create_array, resolve_store(store), _node_path(path), json.dumps(metadata), False
+        )
+
+
+async def create_overwrite_array(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    *,
+    options: ZarrsOptions | None = None,
+) -> None:
+    """Create an array at `path`, deleting any existing node (and its children)
+    first. The delete-then-create sequence is not atomic with respect to
+    concurrent writers.
+    """
+    with _translate_errors():
+        await asyncio.to_thread(
+            _zb.create_array, resolve_store(store), _node_path(path), json.dumps(metadata), True
+        )
+
+
+async def read_metadata(
+    store: Store,
+    path: str,
+    *,
+    options: ZarrsOptions | None = None,
+) -> dict[str, JSON]:
+    """Read the metadata document of the array or group at `path`.
+
+    Raises `zarr.errors.NodeNotFoundError` if no node exists there.
+    """
+    with _translate_errors():
+        raw = await asyncio.to_thread(_zb.read_metadata, resolve_store(store), _node_path(path))
+    result: dict[str, JSON] = json.loads(raw)
+    return result

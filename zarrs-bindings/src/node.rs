@@ -1,11 +1,12 @@
 use pyo3::prelude::*;
+use zarrs::array::Array;
 use zarrs::group::Group;
-use zarrs::metadata::GroupMetadata;
-use zarrs::node::{NodePath, node_exists};
+use zarrs::metadata::{ArrayMetadata, GroupMetadata};
+use zarrs::node::{Node, NodePath, node_exists};
 use zarrs::storage::{ReadableWritableListableStorage, StorePrefix};
 
 use crate::store::resolve_store;
-use crate::{NodeExistsError, runtime_err, value_err};
+use crate::{NodeExistsError, NodeNotFoundError, runtime_err, value_err};
 
 pub(crate) fn parse_node_path(path: &str) -> PyResult<NodePath> {
     NodePath::new(path).map_err(value_err)
@@ -46,5 +47,37 @@ pub(crate) fn create_group(
         prepare_target(&storage, &node_path, overwrite)?;
         let group = Group::new_with_metadata(storage, &path, metadata).map_err(value_err)?;
         group.store_metadata().map_err(runtime_err)
+    })
+}
+
+#[pyfunction]
+pub(crate) fn create_array(
+    py: Python<'_>,
+    store: &Bound<'_, PyAny>,
+    path: String,
+    metadata_json: String,
+    overwrite: bool,
+) -> PyResult<()> {
+    let storage = resolve_store(store)?;
+    let metadata = ArrayMetadata::try_from(metadata_json.as_str()).map_err(value_err)?;
+    py.detach(move || {
+        let node_path = parse_node_path(&path)?;
+        prepare_target(&storage, &node_path, overwrite)?;
+        let array = Array::new_with_metadata(storage, &path, metadata).map_err(value_err)?;
+        array.store_metadata().map_err(runtime_err)
+    })
+}
+
+#[pyfunction]
+pub(crate) fn read_metadata(
+    py: Python<'_>,
+    store: &Bound<'_, PyAny>,
+    path: String,
+) -> PyResult<String> {
+    let storage = resolve_store(store)?;
+    py.detach(move || {
+        let node =
+            Node::open(&storage, &path).map_err(|e| NodeNotFoundError::new_err(e.to_string()))?;
+        serde_json::to_string(node.metadata()).map_err(runtime_err)
     })
 }

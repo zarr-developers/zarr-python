@@ -35,6 +35,8 @@ fn _zarrs_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("NodeExistsError", m.py().get_type::<NodeExistsError>())?;
     m.add("NodeNotFoundError", m.py().get_type::<NodeNotFoundError>())?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
+    m.add_function(wrap_pyfunction!(node::create_array, m)?)?;
     m.add_function(wrap_pyfunction!(node::create_group, m)?)?;
+    m.add_function(wrap_pyfunction!(node::read_metadata, m)?)?;
     Ok(())
 }
