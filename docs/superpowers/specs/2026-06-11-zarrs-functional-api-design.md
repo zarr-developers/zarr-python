@@ -140,10 +140,14 @@ side releases the GIL during I/O and compute (reacquiring it only inside
 
 The binding layer raises a small set of typed exceptions defined in one place:
 `NodeExistsError`, `NodeNotFoundError`, and `ValueError` subclasses for
-metadata-parse and decode failures. `zarr.zarrs` translates to zarr-python
-native exception types where an obvious equivalent exists (e.g.
-`zarr.errors.ContainsArrayError`). Store-callback exceptions from Python
-propagate through Rust unchanged.
+metadata-parse failures. In Phase 1 the translation surface is deliberately
+small: `zarr.zarrs` re-raises the bindings' `NodeNotFoundError` as
+`zarr.errors.NodeNotFoundError`; `NodeExistsError` is exposed as
+`zarr.zarrs.NodeExistsError`. Exceptions raised by Python store callbacks are
+flattened to a `RuntimeError` carrying the original message — the original
+exception type and traceback are lost crossing the Rust boundary. Faithful
+propagation of store-callback exceptions (and richer mapping onto
+`zarr.errors` types) is deferred to a later phase.
 
 ## Testing
 

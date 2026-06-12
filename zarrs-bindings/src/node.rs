@@ -1,11 +1,11 @@
 use pyo3::prelude::*;
 use zarrs::group::Group;
 use zarrs::metadata::GroupMetadata;
-use zarrs::node::{node_exists, NodePath};
+use zarrs::node::{NodePath, node_exists};
 use zarrs::storage::{ReadableWritableListableStorage, StorePrefix};
 
 use crate::store::resolve_store;
-use crate::{runtime_err, value_err, NodeExistsError};
+use crate::{NodeExistsError, runtime_err, value_err};
 
 pub(crate) fn parse_node_path(path: &str) -> PyResult<NodePath> {
     NodePath::new(path).map_err(value_err)

@@ -54,6 +54,8 @@ async def create_new_group(
     """Create a group at `path` from a group metadata document.
 
     Raises `NodeExistsError` if any node already exists at `path`.
+    Creation is not atomic with respect to concurrent writers: a concurrent
+    creation at the same path can race the existence check.
     """
     with _translate_errors():
         await asyncio.to_thread(
@@ -68,7 +70,11 @@ async def create_overwrite_group(
     *,
     options: ZarrsOptions | None = None,
 ) -> None:
-    """Create a group at `path`, deleting any existing node (and its children) first."""
+    """Create a group at `path`, deleting any existing node (and its children) first.
+
+    Creation is not atomic with respect to concurrent writers: a concurrent
+    creation at the same path can race the existence check.
+    """
     with _translate_errors():
         await asyncio.to_thread(
             _zb.create_group, resolve_store(store), _node_path(path), json.dumps(metadata), True
