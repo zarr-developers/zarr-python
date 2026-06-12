@@ -1,6 +1,7 @@
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
+mod chunk;
 mod node;
 mod store;
 
@@ -40,5 +41,9 @@ fn _zarrs_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(node::delete_node, m)?)?;
     m.add_function(wrap_pyfunction!(node::list_children, m)?)?;
     m.add_function(wrap_pyfunction!(node::read_metadata, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::retrieve_chunk, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::retrieve_encoded_chunk, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::store_chunk, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::erase_chunk, m)?)?;
     Ok(())
 }

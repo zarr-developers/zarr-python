@@ -4,15 +4,18 @@ import asyncio
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import _zarrs_bindings as _zb
+import numpy as np
 
 from zarr.errors import NodeNotFoundError
 from zarr.zarrs._bridge import resolve_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+
+    import numpy.typing as npt
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON
@@ -157,7 +160,8 @@ async def list_children(
     `(path, metadata_document)` pairs. Paths are store-relative (no leading
     `/`).
 
-    Raises `zarr.errors.NodeNotFoundError` if no group exists at `path`.
+    Raises `zarr.errors.NodeNotFoundError` if no *group* exists at `path` --
+    including when `path` holds an array.
     """
     with _translate_errors():
         raw: list[tuple[str, str]] = await asyncio.to_thread(
@@ -167,3 +171,113 @@ async def list_children(
         (child_path.lstrip("/"), cast("dict[str, JSON]", json.loads(doc)))
         for child_path, doc in raw
     ]
+
+
+def _chunk_dtype_and_shape(
+    metadata: Mapping[str, JSON],
+) -> tuple[np.dtype[Any], tuple[int, ...]]:
+    """Resolve the numpy dtype and chunk shape from a metadata document, using
+    zarr-python's own metadata parsing."""
+    from zarr.core.metadata.v2 import ArrayV2Metadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
+
+    if metadata.get("zarr_format") == 3:
+        meta3 = ArrayV3Metadata.from_dict(dict(metadata))
+        grid = meta3.chunk_grid
+        if not isinstance(grid, RegularChunkGridMetadata):
+            raise NotImplementedError("only regular chunk grids are supported")
+        return meta3.data_type.to_native_dtype(), grid.chunk_shape
+    meta2 = ArrayV2Metadata.from_dict(dict(metadata))
+    return meta2.dtype.to_native_dtype(), meta2.chunks
+
+
+async def decode_chunk(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    chunk_coords: tuple[int, ...],
+    *,
+    selection: tuple[slice | int, ...] | None = None,
+    options: ZarrsOptions | None = None,
+) -> np.ndarray[Any, np.dtype[Any]]:
+    """Read and decode the chunk at `chunk_coords` of the array described by
+    `metadata`, located at `path` in `store`.
+
+    The metadata document is authoritative: it is not read from the store.
+    Missing chunks decode to the fill value. `selection` (a chunk-relative
+    subset) is not implemented yet.
+    """
+    if selection is not None:
+        raise NotImplementedError("chunk subset selection is not implemented yet")
+    raw = await asyncio.to_thread(
+        _zb.retrieve_chunk,
+        resolve_store(store),
+        _node_path(path),
+        json.dumps(metadata),
+        list(chunk_coords),
+    )
+    dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
+    return np.frombuffer(raw, dtype=dtype).reshape(chunk_shape)
+
+
+async def read_encoded_chunk(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    chunk_coords: tuple[int, ...],
+    *,
+    options: ZarrsOptions | None = None,
+) -> bytes | None:
+    """Read the raw, still-encoded bytes of the chunk at `chunk_coords`, or
+    `None` if the chunk does not exist. No codecs are applied."""
+    result: bytes | None = await asyncio.to_thread(
+        _zb.retrieve_encoded_chunk,
+        resolve_store(store),
+        _node_path(path),
+        json.dumps(metadata),
+        list(chunk_coords),
+    )
+    return result
+
+
+async def encode_chunk(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    chunk_coords: tuple[int, ...],
+    value: npt.ArrayLike,
+    *,
+    options: ZarrsOptions | None = None,
+) -> None:
+    """Encode `value` with the codecs in `metadata` and store it as the chunk
+    at `chunk_coords`. `value` must match the chunk shape exactly."""
+    dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
+    arr = np.ascontiguousarray(np.asarray(value, dtype=dtype))
+    if arr.shape != chunk_shape:
+        raise ValueError(f"value shape {arr.shape} does not match chunk shape {chunk_shape}")
+    await asyncio.to_thread(
+        _zb.store_chunk,
+        resolve_store(store),
+        _node_path(path),
+        json.dumps(metadata),
+        list(chunk_coords),
+        arr.tobytes(),
+    )
+
+
+async def erase_chunk(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    chunk_coords: tuple[int, ...],
+    *,
+    options: ZarrsOptions | None = None,
+) -> None:
+    """Delete the chunk at `chunk_coords`. Deleting a missing chunk is a no-op."""
+    await asyncio.to_thread(
+        _zb.erase_chunk,
+        resolve_store(store),
+        _node_path(path),
+        json.dumps(metadata),
+        list(chunk_coords),
+    )

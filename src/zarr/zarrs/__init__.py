@@ -27,8 +27,12 @@ from zarr.zarrs._api import (
     create_new_group,
     create_overwrite_array,
     create_overwrite_group,
+    decode_chunk,
     delete_node,
+    encode_chunk,
+    erase_chunk,
     list_children,
+    read_encoded_chunk,
     read_metadata,
 )
 
@@ -40,7 +44,11 @@ __all__ = [
     "create_new_group",
     "create_overwrite_array",
     "create_overwrite_group",
+    "decode_chunk",
     "delete_node",
+    "encode_chunk",
+    "erase_chunk",
     "list_children",
+    "read_encoded_chunk",
     "read_metadata",
 ]

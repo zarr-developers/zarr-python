@@ -129,6 +129,7 @@ async def test_list_children(store: Store) -> None:
     children = await list_children(store, "")
     by_path = dict(children)
     assert set(by_path) == {"sub_group", "sub_array"}
+    assert not any(p.startswith("/") for p in by_path)
     assert by_path["sub_group"]["node_type"] == "group"
     assert by_path["sub_array"]["node_type"] == "array"
 
