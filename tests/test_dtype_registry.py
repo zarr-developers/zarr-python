@@ -18,6 +18,7 @@ from zarr.core.dtype.common import unpack_dtype_json
 from zarr.dtype import (  # type: ignore[attr-defined]
     Bool,
     FixedLengthUTF32,
+    VariableLengthUTF8,
     ZDType,
     data_type_registry,
     parse_data_type,
@@ -73,6 +74,15 @@ class TestRegistry:
         """
         data_type_registry_fixture.register(wrapper_cls._zarr_v3_name, wrapper_cls)
         assert isinstance(data_type_registry_fixture.match_dtype(np.dtype(dtype_str)), wrapper_cls)
+
+    @staticmethod
+    def test_match_dtype_string_na_object_error(
+        data_type_registry_fixture: DataTypeRegistry,
+    ) -> None:
+        data_type_registry_fixture.register(VariableLengthUTF8._zarr_v3_name, VariableLengthUTF8)  # type: ignore[arg-type]
+        dtype: np.dtype[Any] = np.dtypes.StringDType(na_object=None)
+        with pytest.raises(ValueError, match=r"Zarr data type resolution from StringDType.*failed"):
+            data_type_registry_fixture.match_dtype(dtype)
 
     @staticmethod
     def test_unregistered_dtype(data_type_registry_fixture: DataTypeRegistry) -> None:

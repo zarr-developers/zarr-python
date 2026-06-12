@@ -6,11 +6,9 @@ from dataclasses import dataclass
 from typing import (
     ClassVar,
     Final,
-    Generic,
     Literal,
     TypedDict,
     TypeGuard,
-    TypeVar,
 )
 
 from typing_extensions import ReadOnly
@@ -53,13 +51,10 @@ StructuredName_V2 = Sequence["str | StructuredName_V2"]
 # This models the type of the name a dtype might have in zarr v2 array metadata
 DTypeName_V2 = StructuredName_V2 | str
 
-TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
-TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
 
-
-class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
-    name: ReadOnly[TDTypeNameV2_co]
-    object_codec_id: ReadOnly[TObjectCodecID_co]
+class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: None | str](TypedDict):
+    name: ReadOnly[TDTypeNameV2]
+    object_codec_id: ReadOnly[TObjectCodecID]
 
 
 DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
@@ -98,7 +93,7 @@ def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[Structur
 
 def check_dtype_name_v2(data: object) -> TypeGuard[DTypeName_V2]:
     """
-    Type guard for narrowing the type of a python object to an valid zarr v2 dtype name.
+    Type guard for narrowing the type of a python object to a valid zarr v2 dtype name.
     """
     if isinstance(data, str):
         return True
@@ -151,7 +146,20 @@ def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
     return data
 
 
-class DataTypeValidationError(ValueError): ...
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.core.dtype.common is deprecated. "
+            "Use zarr.errors.DataTypeValidationError or zarr.dtype.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class ScalarTypeValidationError(ValueError): ...

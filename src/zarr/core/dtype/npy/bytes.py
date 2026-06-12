@@ -9,7 +9,6 @@ import numpy as np
 
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
@@ -20,6 +19,7 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 BytesLike = np.bytes_ | str | bytes | int
 
@@ -899,7 +899,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         """
-        Read a JSON-serializable value as a np.void.
+        Read a JSON-serializable value as an np.void.
 
         Parameters
         ----------
@@ -1046,7 +1046,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             True if the input is a valid representation of this class in Zarr V3, False otherwise.
         """
 
-        return data == cls._zarr_v3_name
+        return data in (cls._zarr_v3_name, "bytes")
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self
 
@@ -13,10 +13,8 @@ if TYPE_CHECKING:
 
 from zarr.abc.store import Store
 
-T_Store = TypeVar("T_Store", bound=Store)
 
-
-class WrapperStore(Store, Generic[T_Store]):
+class WrapperStore[T_Store: Store](Store):
     """
     Store that wraps an existing Store.
 
@@ -31,14 +29,23 @@ class WrapperStore(Store, Generic[T_Store]):
     def __init__(self, store: T_Store) -> None:
         self._store = store
 
+    def _with_store(self, store: T_Store) -> Self:
+        """
+        Constructs a new instance of the wrapper store with the same details but a new store.
+        """
+        return type(self)(store=store)
+
     @classmethod
     async def open(cls: type[Self], store_cls: type[T_Store], *args: Any, **kwargs: Any) -> Self:
         store = store_cls(*args, **kwargs)
         await store._open()
         return cls(store=store)
 
+    def with_read_only(self, read_only: bool = False) -> Self:
+        return self._with_store(cast(T_Store, self._store.with_read_only(read_only)))
+
     def __enter__(self) -> Self:
-        return type(self)(self._store.__enter__())
+        return self._with_store(self._store.__enter__())
 
     def __exit__(
         self,
@@ -76,7 +83,7 @@ class WrapperStore(Store, Generic[T_Store]):
         return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
+        return type(self) is type(value) and self._store.__eq__(value._store)
 
     def __str__(self) -> str:
         return f"wrapping-{self._store}"
@@ -95,6 +102,32 @@ class WrapperStore(Store, Generic[T_Store]):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         return await self._store.get_partial_values(prototype, key_ranges)
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Forward `get_ranges` to the wrapped store.
+
+        Default values for the coalescing kwargs are not declared here; the
+        wrapped store decides them. `None` means "don't override the wrapped
+        store's default".
+        """
+        kwargs: dict[str, int] = {}
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
+        async for group in self._store.get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
+            yield group
 
     async def exists(self, key: str) -> bool:
         return await self._store.exists(key)

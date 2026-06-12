@@ -81,6 +81,8 @@ z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000,
 print(z6.info)
 ```
 
+`shards` can be `"auto"` as well, in which case the `array.target_shard_size_bytes` setting can be used to control the size of shards (i.e., the size of the chunks cumulatively and uncompressed within the shard will be as close to, without being bigger than, `array.target_shard_size_bytes`); otherwise, a default is used.
+
 ### Chunk memory layout
 
 The order of bytes **within each chunk** of an array can be changed via the
@@ -111,6 +113,13 @@ bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
 
+### Subchunk memory layout
+
+The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec`. That parameter is a string which must be one of `["morton", "unordered", "lexicographic", "colexicographic"]`.
+
+By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality. [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired, and `colexicographic` is its reverse. `unordered` makes no guarantee about the order in which subchunks are laid out within a shard.
+
+
 ### Empty chunks
 
 It is possible to configure how Zarr handles the storage of chunks that are "empty"
@@ -123,7 +132,14 @@ This optimization prevents storing redundant objects and can speed up reads, but
 added computation during array writes, since the contents of
 each chunk must be compared to the fill value, and these advantages are contingent on the content of the array.
 If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above.
-In this case, creating an array with `write_empty_chunks=True` (the default) will instruct Zarr to write every chunk without checking for emptiness.
+In this case, creating an array with `write_empty_chunks=True` will instruct Zarr to write every chunk without checking for emptiness.
+
+The default value of `write_empty_chunks` is `False`:
+
+```python exec="true" session="performance" source="above" result="ansi"
+arr = zarr.create_array(store={}, shape=(1,), dtype='uint8')
+assert arr.config.write_empty_chunks == False
+```
 
 The following example illustrates the effect of the `write_empty_chunks` flag on
 the time required to write an array with different values.:
@@ -175,7 +191,111 @@ Coming soon.
 
 ## Parallel computing and synchronization
 
-Coming soon.
+Zarr is designed to support parallel computing and enables concurrent reads and writes to arrays.
+This section covers how to optimize Zarr's concurrency settings for different parallel computing
+scenarios.
+
+### Concurrent I/O operations
+
+Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
+The level of concurrency is controlled by the `async.concurrency` configuration setting, which
+determines the maximum number of concurrent I/O operations.
+
+The default value is 10, which is a conservative value. You may get improved performance by tuning
+the concurrency limit. You can adjust this value based on your specific needs:
+
+```python exec="true" session="perf-concurrency"
+import zarr
+
+# Set concurrency for the current session
+zarr.config.set({'async.concurrency': 128})
+
+# Or use environment variable
+# export ZARR_ASYNC_CONCURRENCY=128
+```
+
+Higher concurrency values can improve throughput when:
+- Working with remote storage (e.g., S3, GCS) where network latency is high
+- Reading/writing many small chunks in parallel
+- The storage backend can handle many concurrent requests
+
+Lower concurrency values may be beneficial when:
+- Working with local storage with limited I/O bandwidth
+- Memory is constrained (each concurrent operation requires buffer space)
+- Using Zarr within a parallel computing framework (see below)
+
+### Thread pool size (`threading.max_workers`)
+
+When synchronous Zarr code calls async operations internally, Zarr uses a
+`ThreadPoolExecutor` to run those coroutines. The `threading.max_workers`
+configuration option controls the maximum number of worker threads in that pool.
+By default it is `None`, which lets Python choose the pool size (typically
+`min(32, os.cpu_count() + 4)`).
+
+You can set it explicitly when you want more predictable resource usage:
+
+```python exec="true" session="perf-workers"
+import zarr
+
+zarr.config.set({'threading.max_workers': 8})
+```
+
+Reducing this value can help avoid overloading the event loop when Zarr is used
+inside a parallel computing framework such as Dask that already manages its own
+thread pool (see the Dask section below). Increasing it may improve throughput
+in CPU-bound workloads where many synchronous-to-async dispatches happen
+concurrently.
+
+### Using Zarr with Dask
+
+[Dask](https://www.dask.org/) is a popular parallel computing library that works well with Zarr for processing large arrays. When using Zarr with Dask, it's important to consider the interaction between Dask's thread pool and Zarr's concurrency settings.
+
+**Important**: When using many Dask threads, you may need to reduce both Zarr's `async.concurrency` and `threading.max_workers` settings to avoid creating too many concurrent operations. The total number of concurrent I/O operations can be roughly estimated as:
+
+```
+total_concurrency ≈ dask_threads × zarr_async_concurrency
+```
+
+For example, if you're running Dask with 10 threads and Zarr's default concurrency of 64, you could potentially have up to 640 concurrent operations, which may overwhelm your storage system or cause memory issues.
+
+**Recommendation**: When using Dask with many threads, configure Zarr's concurrency settings:
+
+```python exec="false" reason="requires dask, which is not in the docs test environment"
+import zarr
+import dask.array as da
+
+# If using Dask with many threads (e.g., 8-16), reduce Zarr's concurrency settings
+zarr.config.set({
+    'async.concurrency': 4,      # Limit concurrent async operations
+    'threading.max_workers': 4,  # Limit Zarr's internal thread pool
+})
+
+# Open Zarr array
+z = zarr.open_array('data/large_array.zarr', mode='r')
+
+# Create Dask array from Zarr array
+arr = da.from_array(z, chunks=z.chunks)
+
+# Process with Dask
+result = arr.mean(axis=0).compute()
+```
+
+**Configuration guidelines for Dask workloads**:
+
+- `async.concurrency`: Controls the maximum number of concurrent async I/O operations. Start with a lower value (e.g., 4-8) when using many Dask threads.
+- `threading.max_workers`: Controls Zarr's internal thread pool size for blocking operations (defaults to CPU count). Reduce this to avoid thread contention with Dask's scheduler.
+
+You may need to experiment with different values to find the optimal balance for your workload. Monitor your system's resource usage and adjust these settings based on whether your storage system or CPU is the bottleneck.
+
+### Thread safety and process safety
+
+Zarr arrays are designed to be thread-safe for concurrent reads and writes from multiple threads within the same process. However, proper synchronization is required when writing to overlapping regions from multiple threads.
+
+For multi-process parallelism, Zarr provides safe concurrent writes as long as:
+- Different processes write to different chunks
+- The storage backend supports atomic writes (most do)
+
+When writing to the same chunks from multiple processes, you should use external synchronization mechanisms or ensure that writes are coordinated to avoid race conditions.
 
 ## Pickle support
 
@@ -183,12 +303,12 @@ Zarr arrays and groups can be pickled, as long as the underlying store object ca
 pickled. With the exception of the `zarr.storage.MemoryStore`, any of the
 storage classes provided in the `zarr.storage` module can be pickled.
 
-If an array or group is backed by a persistent store such as the a `zarr.storage.LocalStore`,
+If an array or group is backed by a persistent store such as a `zarr.storage.LocalStore`,
 `zarr.storage.ZipStore` or `zarr.storage.FsspecStore` then the store data
 **are not** pickled. The only thing that is pickled is the necessary parameters to allow the store
 to re-open any underlying files or databases upon being unpickled.
 
-E.g., pickle/unpickle an local store array:
+E.g., pickle/unpickle a local store array:
 
 ```python exec="true" session="performance" source="above" result="ansi"
 import pickle

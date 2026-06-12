@@ -29,7 +29,7 @@ of the array data. Examples include compression codecs, such as
 
 Custom codecs for Zarr are implemented by subclassing the relevant base class, see
 [`zarr.abc.codec.ArrayArrayCodec`][], [`zarr.abc.codec.ArrayBytesCodec`][] and
-[`zarr.abc.codec.BytesBytesCodec`][]. Most custom codecs should implemented the
+[`zarr.abc.codec.BytesBytesCodec`][]. Most custom codecs should implement the
 `_encode_single` and `_decode_single` methods. These methods operate on single chunks
 of the array data. Alternatively, custom codecs can implement the `encode` and `decode`
 methods, which operate on batches of chunks, in case the codec is intended to implement
@@ -78,11 +78,11 @@ Coming soon.
 
 ## Custom array buffers
 
-Zarr-python provides control over where and how arrays stored in memory through
+Zarr-python provides control over where and how arrays are stored in memory through
 [`zarr.abc.buffer.Buffer`][]. Currently both CPU (the default) and GPU implementations are
 provided (see [Using GPUs with Zarr](gpu.md) for more information). You can implement your own buffer
 classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototype`][].
 
 ## Other extensions
 
-In the future, Zarr will support writing custom custom data types and chunk grids.
+In the future, Zarr will support writing custom data types and chunk grids.

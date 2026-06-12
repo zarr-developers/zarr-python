@@ -1,22 +1,32 @@
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
-from asyncio import gather
 from dataclasses import dataclass
+from functools import partial
 from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
-    from typing import Any, Self, TypeAlias
+    from typing import Any, Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = [
+    "ByteGetter",
+    "ByteSetter",
+    "Store",
+    "SupportsDeleteSync",
+    "SupportsGetSync",
+    "SupportsSetSync",
+    "SupportsSyncStore",
+    "set_or_delete",
+]
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class RangeByteRequest:
     """Request a specific byte range"""
 
@@ -26,7 +36,7 @@ class RangeByteRequest:
     """The end of the byte range request (exclusive)."""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class OffsetByteRequest:
     """Request all bytes starting from a given byte offset"""
 
@@ -34,7 +44,7 @@ class OffsetByteRequest:
     """The byte offset for the offset range request."""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class SuffixByteRequest:
     """Request up to the last `n` bytes"""
 
@@ -42,7 +52,7 @@ class SuffixByteRequest:
     """The number of bytes from the suffix to request."""
 
 
-ByteRequest: TypeAlias = RangeByteRequest | OffsetByteRequest | SuffixByteRequest
+type ByteRequest = RangeByteRequest | OffsetByteRequest | SuffixByteRequest
 
 
 class Store(ABC):
@@ -278,7 +288,7 @@ class Store(ABC):
         """
         Insert multiple (key, value) pairs into storage.
         """
-        await gather(*starmap(self.set, values))
+        await asyncio.gather(*starmap(self.set, values))
 
     @property
     def supports_consolidated_metadata(self) -> bool:
@@ -399,6 +409,66 @@ class Store(ABC):
         for req in requests:
             yield (req[0], await self.get(*req))
 
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int = 10,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Read many byte ranges from `key`.
+
+        Yields one batch per underlying I/O operation, each a sequence of
+        `(input_index, Buffer | None)` tuples. Batches across yields arrive in
+        completion order, not input order. The default implementation built
+        into `Store` runs the coalescer over `self.get`, so subclasses get a
+        working implementation for free; stores that have a more efficient
+        backend (e.g. ranged HTTP, S3 byte-range fetches) should override.
+
+        Parameters
+        ----------
+        key
+            Storage key to read from.
+        byte_ranges
+            Input ranges. `None` means "the whole value".
+        prototype
+            Buffer prototype, forwarded to `self.get`.
+        max_concurrency
+            Maximum number of merged fetches in flight at once.
+        max_gap_bytes
+            Two `RangeByteRequest`s separated by at most this many bytes may
+            be merged into one fetch.
+        max_coalesced_bytes
+            Upper bound on the size of a single merged fetch.
+
+        Raises
+        ------
+        BaseExceptionGroup
+            Failures from underlying fetches are reported as a
+            `BaseExceptionGroup` (PEP 654) and should be handled with
+            `except*`. Inner exceptions include `FileNotFoundError` if any
+            fetch returns `None` (i.e. `key` is absent), and any exception
+            raised by `self.get` for the corresponding range. Pending
+            fetches are cancelled as soon as one task fails, so the group
+            typically contains a single non-`CancelledError` exception even
+            under high concurrency.
+        """
+        # Local import: zarr.core._coalesce imports symbols from this module.
+        from zarr.core._coalesce import coalesced_get
+
+        fetch = partial(self.get, key, prototype)
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
+            yield group
+
     async def getsize(self, key: str) -> int:
         """
         Return the size, in bytes, of a value in a Store.
@@ -490,6 +560,31 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SupportsGetSync(Protocol):
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SupportsSetSync(Protocol):
+    def set_sync(self, key: str, value: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SupportsDeleteSync(Protocol):
+    def delete_sync(self, key: str) -> None: ...
+
+
+@runtime_checkable
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

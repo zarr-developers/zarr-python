@@ -1,0 +1,6 @@
+{
+  "reversed_3d": {
+    "name": "transpose",
+    "configuration": {"order": [2, 1, 0]}
+  }
+}

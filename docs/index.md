@@ -21,7 +21,7 @@ Zarr-Python is a Python library for reading and writing Zarr groups and arrays. 
 
 ## Installation
 
-Zarr requires Python 3.11 or higher. You can install it via `pip`:
+Zarr requires Python 3.12 or higher. You can install it via `pip`:
 
 ```bash
 pip install zarr
@@ -52,7 +52,7 @@ conda install --channel conda-forge zarr
     A detailed guide for how to use Zarr-Python.
 
 
--   [:material-api:{ .lg .middle } __API Reference__](api/open.md)
+-   [:material-api:{ .lg .middle } __API Reference__](api/zarr/open.md)
 
     ---
 

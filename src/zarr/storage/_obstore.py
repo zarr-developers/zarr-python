@@ -4,7 +4,9 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
+from itertools import chain
+from operator import itemgetter
+from typing import TYPE_CHECKING, Self, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -15,6 +17,7 @@ from zarr.abc.store import (
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
+from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
@@ -34,10 +37,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
-
-
-class ObjectStore(Store, Generic[T_Store]):
+class ObjectStore[T_Store: "_UpstreamObjectStore"](Store):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -263,10 +263,11 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
-    objects = [obj["path"].removeprefix(prefix).lstrip("/") for obj in list_result["objects"]]
-    for item in prefixes + objects:
-        yield item
+    prefix = prefix.rstrip("/")
+    for path in chain(
+        list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
+    ):
+        yield _relativize_path(path=path, prefix=prefix)
 
 
 class _BoundedRequest(TypedDict):

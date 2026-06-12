@@ -35,7 +35,11 @@ Take your skills to the next level:
 - **[Extending](extending.md)** - Extend functionality with custom code
 - **[Consolidated Metadata](consolidated_metadata.md)** - Advanced metadata management
 
+## Reference
+
+- **[Glossary](glossary.md)** - Definitions of key terms (chunks, shards, codecs, etc.)
+
 ## Need Help?
 
-- Browse the [API Reference](../api/index.md) for detailed function documentation
+- Browse the [API Reference](../api/zarr/index.md) for detailed function documentation
 - Report issues on [GitHub](https://github.com/zarr-developers/zarr-python/issues?q=sort%3Aupdated-desc+is%3Aissue+is%3Aopen)

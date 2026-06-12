@@ -1,18 +1,27 @@
 ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
-  autofix_commit_msg: "style: pre-commit fixes"
   autofix_prs: false
+  # mypy runs as a `language: system` hook via `uv run mypy`, which needs `uv`
+  # and the repo checkout to resolve the dev environment from `uv.lock` —
+  # unavailable on pre-commit.ci's runners. It is covered instead by the Lint
+  # GitHub Actions workflow and by local prek runs.
+  skip: [mypy]
+
 default_stages: [pre-commit, pre-push]
+
+default_language_version:
+  python: python3.12
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.1
+    rev: v0.15.15
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
       - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         args: ["-L", "fo,ihs,kake,te", "-S", "fixture"]
@@ -22,38 +31,36 @@ repos:
       - id: check-yaml
         exclude: mkdocs.yml
       - id: trailing-whitespace
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2
+  - repo: local
     hooks:
       - id: mypy
-        files: src|tests
-        additional_dependencies:
-          # Package dependencies
-          - packaging
-          - donfig
-          - numcodecs
-          - google-crc32c>=1.5
-          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
-          - typing_extensions
-          - universal-pathlib
-          - obstore>=0.5.1
-          # Tests
-          - pytest
-          - hypothesis
-          - s3fs
+        name: mypy
+        language: system
+        entry: uv run --frozen mypy
+        pass_filenames: false
+        always_run: true
+        types_or: [python, pyi]
   - repo: https://github.com/scientific-python/cookie
-    rev: 2025.05.02
+    rev: 2026.04.04
     hooks:
       - id: sp-repo-review
-  - repo: https://github.com/pre-commit/pygrep-hooks
+  - repo: https://github.com/numpy/numpydoc
     rev: v1.10.0
     hooks:
-      - id: rst-directive-colons
-      - id: rst-inline-touching-normal
-  - repo: https://github.com/numpy/numpydoc
-    rev: v1.9.0
-    hooks:
       - id: numpydoc-validation
+  - repo: local
+    hooks:
+      - id: ban-lstrip-rstrip
+        name: ban lstrip/rstrip
+        language: pygrep
+        # Matches .lstrip() or .rstrip() where the string argument is 2+ characters.
+        entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
+        types: [python]
+        files: ^(src|tests)/
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.25.2
+    hooks:
+      - id: zizmor
   - repo: https://github.com/twisted/towncrier
     rev: 25.8.0
     hooks:

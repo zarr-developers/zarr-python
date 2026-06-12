@@ -8,14 +8,16 @@ import numpy as np
 import zarr
 import zarr.codecs.numcodecs as numcodecs
 
+store = zarr.storage.MemoryStore()
 array = zarr.create_array(
-  store="data_numcodecs.zarr",
-  shape=(1024, 1024),
-  chunks=(64, 64),
-  dtype="uint32",
-  filters=[numcodecs.Delta(dtype="uint32")],
-  compressors=[numcodecs.BZ2(level=5)],
-  overwrite=True)
+    store=store,
+    shape=(1024, 1024),
+    chunks=(64, 64),
+    dtype="uint32",
+    filters=[numcodecs.Delta(dtype="uint32")],
+    compressors=[numcodecs.BZ2(level=5)],
+    overwrite=True
+)
 array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
 ```
 
@@ -32,7 +34,6 @@ import math
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
-from warnings import warn
 
 import numpy as np
 
@@ -41,7 +42,6 @@ from zarr.abc.metadata import Metadata
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration, product
 from zarr.dtype import UInt8, ZDType, parse_dtype
-from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
@@ -102,12 +102,6 @@ class _NumcodecsCodec(Metadata):
             )  # pragma: no cover
 
         object.__setattr__(self, "codec_config", codec_config)
-        warn(
-            "Numcodecs codecs are not in the Zarr version 3 specification and "
-            "may not be supported by other zarr implementations.",
-            category=ZarrUserWarning,
-            stacklevel=2,
-        )
 
     @cached_property
     def _codec(self) -> Numcodec:

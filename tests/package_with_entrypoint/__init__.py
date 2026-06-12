@@ -9,8 +9,8 @@ import zarr.core.buffer
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.dtype.common import DataTypeValidationError, DTypeJSON, DTypeSpec_V2
 from zarr.core.dtype.npy.bool import Bool
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2
 
 
 class TestEntrypointCodec(ArrayBytesCodec):
@@ -84,7 +85,7 @@ class TestDataType(Bool):
     _zarr_v3_name: ClassVar[Literal["test"]] = "test"  # type: ignore[assignment]
 
     @classmethod
-    def from_json(cls, data: DTypeJSON, *, zarr_format: Literal[2, 3]) -> Self:
+    def from_json(cls, data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2 and data == {"name": cls._zarr_v3_name, "object_codec_id": None}:
             return cls()
         if zarr_format == 3 and data == cls._zarr_v3_name:

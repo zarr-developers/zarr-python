@@ -1,0 +1,35 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Check docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - run: uv sync --group docs
+      # --strict turns warnings into errors, so a docs code block that fails to execute
+      # at build time (e.g. a non-exec python fence disrupting a later exec="true" block)
+      # fails CI instead of merging as a silent warning.
+      - run: uv run mkdocs build --strict
+        env:
+          DISABLE_MKDOCS_2_WARNING: "true"
+          NO_MKDOCS_2_WARNING: "true"
+      - run: uv run python ci/check_unlinked_types.py
+        continue-on-error: true

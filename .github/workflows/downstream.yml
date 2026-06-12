@@ -1,0 +1,129 @@
+name: Downstream
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, opened, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xarray:
+    name: Xarray zarr backend tests
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-downstream')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out zarr-python
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out xarray
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: pydata/xarray
+          path: xarray
+          persist-credentials: false
+
+      # We install xarray with plain pip/uv rather than pixi. pixi solves
+      # xarray's entire manifest (it has no committed lockfile), which drags in
+      # the `mypy-upstream` environment; that environment sources numcodecs from
+      # git and fails to build under newer pixi with
+      # `meson-python: error: Unknown option "pixi-conda-environment"`, breaking
+      # the job before any test runs. Tests that need a backend we don't install
+      # are skipped via xarray's `requires_*` markers, not failed.
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install xarray and test dependencies
+        working-directory: xarray
+        run: |
+          uv venv
+          # xarray's pytest tooling lives in the PEP 735 `dev` dependency group;
+          # the zarr-relevant backends come from the `io` and `parallel` extras.
+          uv pip install --group dev ".[io,parallel,accel]"
+
+      - name: Override zarr-python with branch version
+        working-directory: xarray
+        run: uv pip install --no-deps ..
+
+      - name: Show versions
+        working-directory: xarray
+        run: |
+          uv run python -c "
+          import zarr; print(f'zarr {zarr.__version__}')
+          import xarray; print(f'xarray {xarray.__version__}')
+          "
+
+      - name: Run xarray zarr backend tests
+        working-directory: xarray
+        run: |
+          uv run python -m pytest --no-header -q \
+            xarray/tests/test_backends.py \
+            xarray/tests/test_backends_api.py \
+            xarray/tests/test_backends_datatree.py
+
+  numcodecs:
+    name: numcodecs zarr3 codec tests
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-downstream')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out zarr-python
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out numcodecs
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: zarr-developers/numcodecs
+          fetch-depth: 0
+          path: numcodecs
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install numcodecs with test-zarr-main group
+        working-directory: numcodecs
+        run: |
+          uv venv
+          uv pip install --group dev
+          uv sync --group dev --group test-zarr-main
+          uv pip install --no-build-isolation -e .
+
+      - name: Override zarr-python with branch version
+        working-directory: numcodecs
+        run: uv pip install --no-deps ..
+
+      - name: Show versions
+        working-directory: numcodecs
+        run: |
+          uv run python -c "
+          import zarr; print(f'zarr {zarr.__version__}')
+          import numcodecs; print(f'numcodecs {numcodecs.__version__}')
+          "
+
+      - name: Run numcodecs zarr3 tests
+        working-directory: numcodecs
+        run: uv run python -m pytest -x --no-header -q tests/test_zarr3.py

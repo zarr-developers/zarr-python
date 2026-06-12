@@ -1,5 +1,0 @@
----
-title: codecs
----
-
-::: zarr.codecs

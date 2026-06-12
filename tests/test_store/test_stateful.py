@@ -1,9 +1,12 @@
 # Stateful tests for arbitrary Zarr stores.
+from collections.abc import Generator
+
 import pytest
 from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
+import zarr
 from zarr.abc.store import Store
 from zarr.storage import LocalStore, ZipStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
@@ -13,6 +16,13 @@ pytestmark = [
     # TODO: work out where this warning is coming from and fix
     pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _enable_rectilinear_chunks() -> Generator[None, None, None]:
+    """Enable rectilinear chunks since strategies may generate them."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        yield
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")

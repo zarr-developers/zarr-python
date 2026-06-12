@@ -10,17 +10,8 @@ updates:
       actions:
         patterns:
           - "*"
-
-  # Updates for support/v2 branch
-  - package-ecosystem: "pip"
-    directory: "/"
-    target-branch: "support/v2"
-    schedule:
-      interval: "weekly"
-    groups:
-      requirements:
-        patterns:
-          - "*"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "support/v2"
@@ -30,3 +21,5 @@ updates:
       actions:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
