@@ -11,7 +11,7 @@ from operator import getitem
 
 import pytest
 
-from zarr import create_array
+from zarr import create_array, initialized_regions, read_regions
 
 indexers = (
     (0,) * 3,
@@ -277,3 +277,48 @@ def test_sharded_morton_write_single_chunk(
         data[indexer] = write_data
 
     benchmark(write_with_cache_clear)
+
+
+# Sparse-read benchmark: most chunks empty (resolve to the fill value).
+sparse_shards = (
+    None,
+    (64,),
+)
+
+
+@pytest.mark.parametrize("store", ["memory", "memory_get_latency"], indirect=["store"])
+@pytest.mark.parametrize("shards", sparse_shards, ids=str)
+@pytest.mark.parametrize("reader", ["full", "read_regions"], ids=str)
+def test_sparse_read(
+    store: Store,
+    shards: tuple[int, ...] | None,
+    reader: str,
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark reading a sparse array (most chunks empty) two ways.
+
+    ``full`` is the stock ``arr[:]`` read, which issues a store request for every chunk
+    including the empty ones; ``read_regions`` discovers the populated regions and reads
+    only those. The gap is largest on ``memory_get_latency``, where each skipped
+    empty-chunk request avoids a round-trip.
+    """
+    n_chunks = 256
+    chunk = 16
+    data = create_array(
+        store=store,
+        shape=(n_chunks * chunk,),
+        dtype="uint8",
+        chunks=(chunk,),
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+    # populate ~3% of chunks, spread across the array
+    for ci in range(0, n_chunks, 32):
+        data[ci * chunk : ci * chunk + chunk] = 1
+
+    if reader == "full":
+        benchmark(getitem, data, slice(None))
+    else:
+        benchmark(lambda: read_regions(data, initialized_regions(data)))

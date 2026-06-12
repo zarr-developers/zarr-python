@@ -39,6 +39,7 @@ nav:
       - api/zarr/dtype.md
       - api/zarr/load.md
       - api/zarr/open.md
+      - api/zarr/read.md
       - api/zarr/save.md
       - api/zarr/codecs.md
       - api/zarr/codecs/numcodecs.md
