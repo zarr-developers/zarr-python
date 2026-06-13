@@ -51,7 +51,6 @@ jobs:
           hatch env create pyodide
           hatch env run -e pyodide list-env
 
-        # TODO: Update to a stable Pyodide version when we release it
       - name: Install Pyodide xbuildenv
         run: hatch env run -e pyodide setup-xbuildenv
 

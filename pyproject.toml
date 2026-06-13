@@ -296,8 +296,7 @@ python = "3.14"
 extra-dependencies = ["pyodide-build"]
 
 [tool.hatch.envs.pyodide.scripts]
-# TODO: Update to a stable Pyodide version when we release it
-setup-xbuildenv = "pyodide xbuildenv install 314.0.0a2"
+setup-xbuildenv = "pyodide xbuildenv install 314.0.0"
 run = [
     "pyodide venv .venv-pyodide --clear",
     ".venv-pyodide/bin/pip install dist/*.whl",
