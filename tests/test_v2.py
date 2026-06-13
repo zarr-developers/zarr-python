@@ -225,9 +225,18 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
         assert (sub_arr).flags.c_contiguous
 
 
-def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
+def test_storage_module_is_picklable() -> None:
+    import pickle
+
+    # regression test for gh-4029
+    assert pickle.dumps(zarr.storage)
+
+
+def test_default_compressor_no_longer_warns() -> None:
+    # VerboseModule removed in gh-4029 to make zarr.storage picklable
+    with pytest.warns() as record:
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
+    assert not any("default_compressor is deprecated" in str(w.message) for w in record)
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
