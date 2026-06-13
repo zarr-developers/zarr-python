@@ -6,10 +6,12 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING
+from textwrap import dedent
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import ParamSpec
 
+from zarr._constants import IS_WASM
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -128,6 +130,40 @@ def sync[T](
     """
     Make loop run coroutine until it returns. Runs in other thread
     """
+    # WASM environments (like Pyodide) cannot start new threads, so we need to handle
+    # coroutines differently. We integrate with the existing Pyodide WebLoop which
+    # schedules tasks on the browser's event loop using setTimeout():
+    # https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+    # https://pyodide.org/en/stable/usage/api/python-api/webloop.html
+    if IS_WASM:  # pragma: no cover
+        # This code path is covered in the Pyodide/WASM CI job.
+        current_loop = asyncio.get_running_loop()
+        result = current_loop.run_until_complete(coro)
+        # Check if run_until_complete actually executed the coroutine or just returned a task
+        # In browsers without JSPI, run_until_complete is a no-op that will return the task/future.
+        if isinstance(result, (asyncio.Task, asyncio.Future)):
+            raise RuntimeError(
+                dedent("""
+                Cannot use synchronous Zarr API in browser-based environments without JSPI.
+                Zarr requires JavaScript Promise Integration (JSPI) to block for asynchronous
+                operations, which is not supported or enabled in your current environment.
+
+                The available solutions are to either use Zarr's async API instead via
+                `zarr.api.asynchronous`, or run your application in a JSPI-enabled environment.
+
+                For detailed requirements and environment setup instructions, please see:
+                - The [Pyodide JSPI Blog Post](https://blog.pyodide.org/posts/jspi/)
+                - The [Pyodide 0.28 Release Notes](https://blog.pyodide.org/posts/0.28-release/)
+
+                Note: If you are using Node.js v20 to v24, you must pass the `--experimental-wasm-jspi`
+                flag (JSPI is unflagged and enabled by default starting in Node.js v25 and later).
+            """)
+            )
+        return result
+
+    # This code path is the original thread-based implementation
+    # for non-WASM environments; it creates a dedicated I/O thread
+    # with its own event loop.
     if loop is None:
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
@@ -165,6 +201,13 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
+    if IS_WASM:  # pragma: no cover
+        # This case is covered in the Pyodide/WASM CI job.
+        raise RuntimeError(
+            "Thread-based event loop not available in WASM environment. "
+            "Use zarr.api.asynchronous or ensure sync() handles WASM case."
+        )
+
     if loop[0] is None:
         with _get_lock():
             # repeat the check just in case the loop got filled between the

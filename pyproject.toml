@@ -86,17 +86,19 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 [dependency-groups]
 test = [
     "coverage>=7.10",
-    "pytest",
+    # pytest 9.1.0 regressed indirect-parametrize overrides of fixtures with `params=`,
+    # see https://github.com/pytest-dev/pytest/issues/14591
+    "pytest<9.1",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
     "numpydoc",
     "hypothesis",
-    "pytest-xdist",
+    "pytest-xdist; sys_platform != 'emscripten'",
     "pytest-benchmark",
     "pytest-codspeed",
     "tomlkit",
-    "uv",
+    "uv; sys_platform != 'emscripten'",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -288,6 +290,21 @@ extra-dependencies = [
 
 [tool.hatch.envs.doctest.scripts]
 test = "pytest tests/test_docs.py -v"
+list-env = "pip list"
+
+[tool.hatch.envs.pyodide]
+description = "Test environment for Pyodide/WebAssembly (Emscripten)"
+python = "3.14"
+extra-dependencies = ["pyodide-build"]
+
+[tool.hatch.envs.pyodide.scripts]
+setup-xbuildenv = "pyodide xbuildenv install 314.0.0"
+run = [
+    "pyodide venv .venv-pyodide --clear",
+    ".venv-pyodide/bin/pip install dist/*.whl",
+    ".venv-pyodide/bin/pip install --group test",
+    ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks {args:tests}",
+]
 list-env = "pip list"
 
 [tool.ruff]
