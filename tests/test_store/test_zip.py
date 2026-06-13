@@ -177,3 +177,21 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    async def test_fresh_zip_store_read_mode(self, tmp_path: Path) -> None:
+        # See: https://github.com/zarr-developers/zarr-python/issues/2450
+        # A fresh ZipStore should be openable in read mode without error.
+        zip_path = tmp_path / "fresh.zip"
+        assert not zip_path.exists()
+
+        store = await ZipStore.open(path=zip_path, mode="r")
+        assert store._is_open
+        assert store.read_only
+
+        keys = [k async for k in store.list()]
+        assert keys == []
+
+        assert await store.get("nonexistent", default_buffer_prototype()) is None
+        assert not await store.exists("nonexistent")
+
+        store.close()
