@@ -1601,6 +1601,51 @@ class TestGroupMetadata:
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
         assert result == expected
 
+    def test_from_dict_extra_fields_v3_allowed(self):
+        data = {
+            "attributes": {"key": "value"},
+            "zarr_format": 3,
+            "node_type": "group",
+            "my_ext": {"must_understand": False, "data": [1, 2, 3]},
+        }
+        result = GroupMetadata.from_dict(data)
+        expected = GroupMetadata(
+            attributes={"key": "value"},
+            zarr_format=3,
+            extra_fields={"my_ext": {"must_understand": False, "data": [1, 2, 3]}},
+        )
+        assert result == expected
+
+    def test_from_dict_extra_fields_v3_must_understand_true(self):
+        data = {
+            "attributes": {"key": "value"},
+            "zarr_format": 3,
+            "node_type": "group",
+            "my_ext": {"must_understand": True},
+        }
+        with pytest.raises(MetadataValidationError, match="disallowed extra fields"):
+            GroupMetadata.from_dict(data)
+
+    def test_from_dict_extra_fields_v3_non_dict(self):
+        data = {
+            "attributes": {"key": "value"},
+            "zarr_format": 3,
+            "node_type": "group",
+            "my_ext": 42,
+        }
+        with pytest.raises(MetadataValidationError, match="disallowed extra fields"):
+            GroupMetadata.from_dict(data)
+
+    def test_to_dict_extra_fields_v3(self):
+        metadata = GroupMetadata(
+            attributes={"key": "value"},
+            zarr_format=3,
+            extra_fields={"my_ext": {"must_understand": False, "data": [1, 2, 3]}},
+        )
+        result = metadata.to_dict()
+        assert result["my_ext"] == {"must_understand": False, "data": [1, 2, 3]}
+        assert "extra_fields" not in result
+
 
 class TestInfo:
     def test_info(self):
