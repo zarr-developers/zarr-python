@@ -8,6 +8,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import MetadataFieldV3
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
@@ -46,7 +47,7 @@ If absent, out-of-range values are an encoding/decoding error.
 OUT_OF_RANGE_MODE: Final = ("clamp", "wrap")
 """Tuple of permitted values for the `out_of_range` field of the `cast_value` codec."""
 
-ScalarMapEntry = tuple[object, object]
+ScalarMapEntry = tuple[JSONValue, JSONValue]
 """A single `[input, output]` mapping in a `scalar_map` direction.
 
 Each scalar is JSON-encoded per its data type's fill-value rules (so

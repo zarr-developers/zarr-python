@@ -4,6 +4,7 @@ import asyncio
 import math
 import os
 import pathlib
+import re
 import sys
 from collections.abc import Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -53,7 +54,7 @@ if IS_WASM:
 
 
 from zarr.abc.store import Store
-from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.codecs.sharding import IndexLocation, ShardingCodec
 from zarr.core.array import (
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
@@ -88,6 +89,7 @@ from zarr.testing.store import LatencyStore
 if TYPE_CHECKING:
     import contextvars
     from collections.abc import Generator
+    from contextlib import AbstractContextManager
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -102,7 +104,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import ZDType
 
 
-@dataclass
+@dataclass(frozen=True)
 class Expect[TIn, TOut]:
     """A test case with explicit input, expected output, and a human-readable id."""
 
@@ -111,14 +113,27 @@ class Expect[TIn, TOut]:
     id: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExpectFail[TIn]:
-    """A test case that should raise an exception."""
+    """A test case that should raise an exception.
+
+    `msg` is a regex matched against the exception text (pytest's native
+    `match=` semantics). Leave it `None` to assert only the exception type. Set
+    `escape=True` when `msg` is a literal that contains regex metacharacters
+    such as `(`, `[`, or `.`; `escape` has no effect when `msg` is `None`.
+    """
 
     input: TIn
     exception: type[Exception]
     id: str
-    msg: str
+    msg: str | None = None
+    escape: bool = False
+
+    def raises(self) -> AbstractContextManager[pytest.ExceptionInfo[Exception]]:
+        if self.msg is None:
+            return pytest.raises(self.exception)
+        pattern = re.escape(self.msg) if self.escape else self.msg
+        return pytest.raises(self.exception, match=pattern)
 
 
 async def parse_store(
@@ -439,11 +454,9 @@ def create_array_metadata(
         codecs_out: tuple[Codec, ...]
         if inner is not None:
             inner_chunks_flat = as_regular_shape(inner.outer_chunks)
-            index_location = None
+            index_location: IndexLocation = "end"
             if isinstance(shards, dict):
-                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
-            if index_location is None:
-                index_location = ShardingCodecIndexLocation.end
+                index_location = cast("IndexLocation", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat,
                 codecs=sub_codecs,
@@ -571,3 +584,31 @@ def deep_nan_equal(a: object, b: object) -> bool:
     if isinstance(a, Sequence) and isinstance(b, Sequence):
         return all(deep_nan_equal(a[i], b[i]) for i in range(len(a)))
     return nan_equal(a, b)
+
+
+# Shared mock-S3 (moto) backend. A single server is reused across the whole test session by
+# every test that needs S3 -- both the fsspec store tests and the documentation examples --
+# instead of each module standing up its own. Consumers create their own buckets and choose
+# how the endpoint reaches the client (explicit storage_options vs. the AWS_ENDPOINT_URL
+# env var) on top of this fixture.
+MOTO_SERVER_PORT = 5555
+MOTO_ENDPOINT_URL = f"http://127.0.0.1:{MOTO_SERVER_PORT}/"
+
+
+@pytest.fixture(scope="session")
+def moto_server() -> Generator[str, None, None]:
+    """Start a session-scoped moto S3 server and yield its endpoint URL.
+
+    importorskip lives inside the fixture so moto is only required when a test actually
+    requests an S3 backend, not for the whole test session."""
+    moto_server_mod = pytest.importorskip("moto.moto_server.threaded_moto_server")
+
+    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_SERVER_PORT)
+    server.start()
+    # moto needs *some* credentials present; use throwaway values if the environment has none.
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
+    try:
+        yield MOTO_ENDPOINT_URL
+    finally:
+        server.stop()

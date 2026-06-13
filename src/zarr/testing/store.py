@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Self
@@ -557,46 +556,6 @@ class StoreTests[S: Store, B: Buffer]:
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
-
-    async def test_get_bytes(self, store: S) -> None:
-        """
-        Test that the get_bytes method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
-        with pytest.raises(FileNotFoundError):
-            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
-
-    def test_get_bytes_sync(self, store: S) -> None:
-        """
-        Test that the get_bytes_sync method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
-
-    async def test_get_json(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
-
-    def test_get_json_sync(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
 
     # -------------------------------------------------------------------
     # Synchronous store methods (SupportsSyncStore protocol)
