@@ -222,3 +222,5 @@ async def test_decode_region_readonly(store: Store) -> None:
     _, meta = _filled(store)
     observed = await decode_region(meta, store, "a", (slice(0, 4), slice(0, 4)))
     assert not observed.flags.writeable
+    empty = await decode_region(meta, store, "a", (slice(0, 0), slice(None)))
+    assert not empty.flags.writeable

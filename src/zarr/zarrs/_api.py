@@ -410,6 +410,7 @@ async def decode_region(
     starts, lengths, post_index = _normalize_selection(selection, shape)
     if 0 in lengths:
         block = np.empty(lengths, dtype=dtype)
+        block.flags.writeable = False
     else:
         raw = await asyncio.to_thread(
             _zb.retrieve_array_subset,
