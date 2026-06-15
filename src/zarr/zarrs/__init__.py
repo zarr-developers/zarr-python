@@ -1,13 +1,11 @@
 """
-Low-level functional API for zarr hierarchies, backed by the Rust
+The zarrs CRUD backend for `zarr.crud`, backed by the Rust
 [`zarrs`](https://zarrs.dev) crate.
 
-This subpackage is experimental. It requires the `zarrs-bindings` package
-(in-repo Rust crate; install for development with `uv sync --group zarrs`).
-
-All array routines take an explicit metadata document (a `dict` matching the
-`zarr.json` / `.zarray` document) rather than reading metadata from the store,
-which makes read-only and virtual views possible.
+Importing this module registers the `"zarrs"` backend. Requires the
+`zarrs-bindings` extension (in-repo Rust crate; `uv sync --group zarrs`). Select
+it with `zarr.config.set({"crud.backend": "zarrs"})` or per call via
+`backend="zarrs"`.
 """
 
 try:
@@ -18,39 +16,11 @@ except ImportError as e:
         "It is built from the zarr-python repository: run `uv sync --group zarrs`."
     ) from e
 
+from zarr.crud import register_backend
+from zarr.zarrs._backend import ZarrsBackend
+
 __version__: str = _zarrs_bindings.version()
 
-from zarr.zarrs._api import (
-    NodeExistsError,
-    ZarrsOptions,
-    create_new_array,
-    create_new_group,
-    create_overwrite_array,
-    create_overwrite_group,
-    decode_chunk,
-    decode_region,
-    delete_node,
-    encode_chunk,
-    erase_chunk,
-    list_children,
-    read_encoded_chunk,
-    read_metadata,
-)
+register_backend("zarrs", ZarrsBackend())
 
-__all__ = [
-    "NodeExistsError",
-    "ZarrsOptions",
-    "__version__",
-    "create_new_array",
-    "create_new_group",
-    "create_overwrite_array",
-    "create_overwrite_group",
-    "decode_chunk",
-    "decode_region",
-    "delete_node",
-    "encode_chunk",
-    "erase_chunk",
-    "list_children",
-    "read_encoded_chunk",
-    "read_metadata",
-]
+__all__ = ["ZarrsBackend", "__version__"]
