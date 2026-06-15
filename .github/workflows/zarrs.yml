@@ -31,4 +31,4 @@ jobs:
       - name: Run zarrs bindings tests
         # the ubuntu runner image ships a Rust toolchain; the maturin build
         # backend is fetched by uv on demand
-        run: uv run --group zarrs pytest tests/zarrs -v
+        run: uv run --group zarrs pytest tests/crud tests/zarrs -v
