@@ -88,7 +88,6 @@ class CrudBackend(Protocol):
     async def create_group(self, store, path, metadata, *, overwrite: bool) -> None: ...
     async def read_metadata(self, store, path) -> dict[str, JSON]: ...
     async def read_chunk(self, store, path, metadata, coords) -> bytes: ...
-    async def read_encoded_chunk(self, store, path, metadata, coords) -> bytes | None: ...
     async def read_subset(self, store, path, metadata, start, shape) -> bytes: ...
     async def write_chunk(self, store, path, metadata, coords, data: bytes) -> None: ...
     async def delete_chunk(self, store, path, metadata, coords) -> None: ...
@@ -96,21 +95,24 @@ class CrudBackend(Protocol):
     async def list_children(self, store, path) -> list[tuple[str, dict[str, JSON]]]: ...
 ```
 
+Nine methods. `read_encoded_chunk` is deliberately **not** a backend method —
+see below; it is a backend-independent facade helper over `store.get`.
+
 Byte conventions: `read_chunk`/`read_subset` return C-contiguous raw bytes in the
 array's native byte order for the requested chunk / step-1 bounding box;
-`write_chunk` takes the same. `read_encoded_chunk` returns the raw stored
-(still-encoded) chunk bytes or `None` if absent. `read_metadata`/
-`list_children` return parsed JSON documents as dicts.
+`write_chunk` takes the same. `read_metadata`/`list_children` return parsed JSON
+documents as dicts.
 
 ### Two read-addressing axes (no overlap)
 
 Reads are addressed in one of two coordinate spaces, and the two never overlap:
 
 - **Chunk-grid coordinates** — `read_chunk(coords)` / `read_encoded_chunk(coords)`
-  return a whole chunk addressed by its grid position. `read_chunk` returns the
-  *full* chunk shape, including the fill-padded overhang of edge chunks;
-  `read_encoded_chunk` returns the raw stored bytes. These pair with
-  `write_chunk` / `delete_chunk`, which are also chunk-grid-addressed.
+  return a whole chunk addressed by its grid position. `read_chunk` (a backend
+  method) decodes and returns the *full* chunk shape, including the fill-padded
+  overhang of edge chunks; `read_encoded_chunk` (a facade helper, not a backend
+  method) returns the raw stored bytes or `None`. These pair with `write_chunk` /
+  `delete_chunk`, which are chunk-grid-addressed backend methods.
 - **Array-element coordinates** — `read_subset(start, shape)` returns an
   arbitrary box in array space, which generally spans multiple chunks and is
   clipped to the array bounds. The facade's `read_region(selection)` normalizes
@@ -124,6 +126,27 @@ zarrs backend), so a chunk-relative partial-read needs no separate API. The
 single-chunk box, not a parameter on `read_chunk`; `read_subset` itself has no
 single-`get` analogue — it is closer to "`get_partial_values` across many keys,
 stitched into one array."
+
+### `read_encoded_chunk` is facade-level, not a backend method
+
+Reading a chunk's raw stored bytes is just `store.get(chunk_key)`, and the chunk
+key is computable from the metadata document alone via zarr-python's
+`chunk_key_encoding` — no decoding, no codec pipeline, nothing backend-specific.
+Both backends would implement it identically. So the facade implements
+`read_encoded_chunk(store, path, metadata, coords)` directly as: encode the chunk
+key from the metadata, `store.get` it, return the bytes or `None`. It works the
+same regardless of which backend (or none) is selected, which is correct since it
+is pure store I/O. Under sharding the chunk key holds the whole shard blob, and
+this returns exactly that raw object.
+
+This raw read can also be *expressed* through `read_chunk` by supplying a view
+metadata document (`data_type: uint8` + a single `bytes` codec, identity decode)
+— a nice demonstration that the read-only-view mechanism is general — but that
+route requires knowing the encoded byte length up front to set the chunk shape (a
+`store.getsize` round-trip) and would synthesize a fill-valued array for a missing
+chunk instead of returning `None`. So `store.get` is the correct implementation
+for fetching stored bytes; the view trick is the general tool for *reinterpreting*
+decoded data under a different dtype/shape, which `read_chunk` already supports.
 
 ## Method naming
 
@@ -139,7 +162,7 @@ Public facade (`zarr.crud`):
 | `create_new_array` / `create_overwrite_array` | create | node lifecycle |
 | `read_metadata` | read | array or group document |
 | `read_chunk` | read | decoded chunk → `ndarray` |
-| `read_encoded_chunk` | read | raw stored bytes, no decode |
+| `read_encoded_chunk` | read | raw stored bytes, no decode (facade-only, `store.get`) |
 | `read_region` | read | numpy basic-indexing selection → `ndarray` |
 | `write_chunk` | write | encode + store a chunk |
 | `delete_chunk` | delete | remove one chunk |
@@ -147,13 +170,13 @@ Public facade (`zarr.crud`):
 | `list_children` | list | direct children of a group |
 
 Facade → backend mapping for the byte-level methods: `read_chunk` →
-`backend.read_chunk`, `read_encoded_chunk` → `backend.read_encoded_chunk`,
-`read_region` → `backend.read_subset` (the facade normalizes the selection to a
-step-1 bounding box `(start, shape)`), `write_chunk` → `backend.write_chunk`,
-`delete_chunk` → `backend.delete_chunk`. The two distinct names `read_region`
-(selection-based, public) and `read_subset` (bounding-box bytes, backend) are
-intentional: they have different signatures and the facade is the adapter
-between them.
+`backend.read_chunk`, `read_region` → `backend.read_subset` (the facade
+normalizes the selection to a step-1 bounding box `(start, shape)`),
+`write_chunk` → `backend.write_chunk`, `delete_chunk` → `backend.delete_chunk`.
+`read_encoded_chunk` maps to no backend method — the facade serves it from
+`store.get`. The two distinct names `read_region` (selection-based, public) and
+`read_subset` (bounding-box bytes, backend) are intentional: they have different
+signatures and the facade is the adapter between them.
 
 ## Facade / backend split
 
@@ -164,6 +187,8 @@ What stays in the `zarr.crud` facade (written once, backend-neutral):
 - numpy assembly: `np.frombuffer(...).reshape(...)` and the strided/reversed/
   integer-axis post-index views; read-only result guarantee;
 - the empty-selection short circuit (no backend call);
+- `read_encoded_chunk`: encode the chunk key from the metadata and `store.get`
+  it (no backend involved);
 - `ZarrsOptions` acceptance (still a placeholder) and backend resolution.
 
 What moves into each backend:
