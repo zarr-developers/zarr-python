@@ -24,6 +24,13 @@ fn array_cache() -> &'static Mutex<LruCache<CacheKey, Arc<DynArray>>> {
     ARRAY_CACHE.get_or_init(|| Mutex::new(LruCache::new(NonZeroUsize::new(128).unwrap())))
 }
 
+/// Acquire the array cache lock, recovering gracefully from a poisoned mutex
+/// (e.g. a thread panicked while holding it). The worst case is a stale or
+/// partially-updated cache entry — far preferable to wedging all array I/O.
+fn lock_cache() -> std::sync::MutexGuard<'static, LruCache<CacheKey, Arc<DynArray>>> {
+    array_cache().lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn build_array(
     storage: ReadableWritableListableStorage,
     path: &str,
@@ -44,11 +51,11 @@ fn array_view(
 ) -> PyResult<Arc<DynArray>> {
     if let Some(root) = cache_key {
         let key = (root, path.to_string(), metadata_json.to_string());
-        if let Some(array) = array_cache().lock().unwrap().get(&key).cloned() {
+        if let Some(array) = lock_cache().get(&key).cloned() {
             return Ok(array);
         }
         let array = Arc::new(build_array(storage, path, metadata_json)?);
-        array_cache().lock().unwrap().put(key, Arc::clone(&array));
+        lock_cache().put(key, Arc::clone(&array));
         Ok(array)
     } else {
         Ok(Arc::new(build_array(storage, path, metadata_json)?))
@@ -57,12 +64,12 @@ fn array_view(
 
 #[pyfunction]
 pub(crate) fn array_cache_len() -> usize {
-    array_cache().lock().unwrap().len()
+    lock_cache().len()
 }
 
 #[pyfunction]
 pub(crate) fn clear_array_cache() {
-    array_cache().lock().unwrap().clear();
+    lock_cache().clear();
 }
 
 #[pyfunction]
