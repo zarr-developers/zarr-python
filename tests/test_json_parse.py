@@ -10,13 +10,13 @@ and the fallback ``TypeError`` for unsupported annotations.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, NotRequired, Optional, Union
 
 import pytest
 
 # ``parse_json`` (the module under test) uses ``typing_extensions`` for its
 # TypedDict bookkeeping, so we build TypedDicts the same way for consistency.
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 from zarr.core.json_parse import parse_json
 
@@ -159,7 +159,7 @@ def test_literal_one_does_not_match_bool_literal() -> None:
 
 
 def test_literal_mixed_members() -> None:
-    annotation = Literal["a", 3, None]
+    annotation = Literal["a", 3] | None
     assert parse_json("a", annotation) == "a"
     assert parse_json(3, annotation) == 3
     # ``None`` is a valid literal member.
@@ -169,11 +169,15 @@ def test_literal_mixed_members() -> None:
 # ---------------------------------------------------------------------------
 # Union / Optional
 # ---------------------------------------------------------------------------
+# These tests deliberately use the ``typing.Union`` / ``typing.Optional``
+# spelling (which yields a ``typing.Union`` origin) to cover that code path;
+# the ``X | Y`` spelling (``types.UnionType``) is covered separately below.
+# The legacy-spelling lines therefore suppress ruff's UP007/UP045 rules.
 
 
 @pytest.mark.parametrize("value", ["hello", 5])
 def test_union_each_member_accepted(value: Any) -> None:
-    assert parse_json(value, Union[str, int]) == value
+    assert parse_json(value, Union[str, int]) == value  # noqa: UP007
 
 
 def test_union_pep604_syntax() -> None:
@@ -184,27 +188,27 @@ def test_union_pep604_syntax() -> None:
 
 def test_union_no_member_matches_raises() -> None:
     with pytest.raises(ValueError, match="Expected a value matching one of"):
-        parse_json(1.5, Union[str, int])
+        parse_json(1.5, Union[str, int])  # noqa: UP007
 
 
 def test_union_error_lists_each_member() -> None:
     with pytest.raises(ValueError, match="Tried each union member"):
-        parse_json([], Union[str, int])
+        parse_json([], Union[str, int])  # noqa: UP007
 
 
 @pytest.mark.parametrize("value", [None, "x"])
 def test_optional_accepts_none_and_value(value: Any) -> None:
-    assert parse_json(value, Optional[str]) == value
+    assert parse_json(value, Optional[str]) == value  # noqa: UP045
 
 
 def test_optional_rejects_other_types() -> None:
     with pytest.raises(ValueError, match="Expected a value matching one of"):
-        parse_json(5, Optional[str])
+        parse_json(5, Optional[str])  # noqa: UP045
 
 
 def test_union_with_coercion_returns_coerced_value() -> None:
     """A union member that coerces (Sequence -> tuple) returns the coerced form."""
-    result = parse_json([1, 2, 3], Union[str, Sequence[int]])
+    result = parse_json([1, 2, 3], Union[str, Sequence[int]])  # noqa: UP007
     assert result == (1, 2, 3)
     assert isinstance(result, tuple)
 
@@ -358,15 +362,14 @@ class Point(TypedDict):
 
 
 # NOTE: This module uses ``from __future__ import annotations``, which stringizes
-# annotations. With the *class* TypedDict syntax, ``typing_extensions`` cannot see
-# a ``NotRequired[...]`` wrapper at class-creation time (the annotation is a string),
-# so the key is wrongly recorded as required. This is a known limitation of
-# stringized annotations + ``NotRequired`` -- NOT a bug in ``json_parse``. The
-# functional ``TypedDict(...)`` form keeps ``NotRequired`` as a real runtime object,
-# so ``__optional_keys__`` is populated correctly; we use it here to genuinely
-# exercise NotRequired. (``total=False``, used by ``PartialConfig`` below, is
-# class-level and works correctly even with stringized annotations.)
-Config = TypedDict("Config", {"name": str, "count": NotRequired[int]})
+# annotations -- so a class-syntax ``NotRequired[...]`` is invisible to the
+# TypedDict's ``__optional_keys__``. ``_parse_typeddict`` handles this by
+# resolving the hints with ``get_type_hints(..., include_extras=True)`` and
+# reading the ``Required`` / ``NotRequired`` wrappers directly, so the class
+# form below genuinely exercises NotRequired under stringized annotations.
+class Config(TypedDict):
+    name: str
+    count: NotRequired[int]
 
 
 class PartialConfig(TypedDict, total=False):

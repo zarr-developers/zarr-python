@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import types
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Any, Literal, NotRequired, Required, Union, get_args, get_origin
 
 from typing_extensions import get_type_hints, is_typeddict
 
@@ -101,8 +101,7 @@ def parse_json(value: object, type_annotation: object) -> Any:
 
     # 9. Fallback
     raise TypeError(
-        f"Cannot parse value {value!r} against unsupported type annotation "
-        f"{type_annotation!r}."
+        f"Cannot parse value {value!r} against unsupported type annotation {type_annotation!r}."
     )
 
 
@@ -154,7 +153,7 @@ def _parse_union(value: object, type_annotation: object) -> Any:
     for member in members:
         try:
             return parse_json(value, member)
-        except (ValueError, TypeError) as exc:  # noqa: PERF203
+        except (ValueError, TypeError) as exc:
             errors.append(f"  - against {member!r}: {exc}")
     joined = "\n".join(errors)
     raise ValueError(
@@ -193,7 +192,9 @@ def _parse_tuple(value: object, type_annotation: object) -> tuple[Any, ...]:
             f"Expected a sequence of length {len(args)}, got {value!r} of "
             f"length {len(value)} instead."
         )
-    return tuple(parse_json(item, element_type) for item, element_type in zip(value, args, strict=True))
+    return tuple(
+        parse_json(item, element_type) for item, element_type in zip(value, args, strict=True)
+    )
 
 
 def _parse_sequence(value: object, type_annotation: object) -> tuple[Any, ...]:
@@ -239,19 +240,36 @@ def _parse_mapping(value: object, type_annotation: object) -> dict[str, Any]:
 def _parse_typeddict(value: object, type_annotation: Any) -> dict[str, Any]:
     """Validate a :class:`~typing.TypedDict` annotation.
 
-    Each required key must be present and is parsed against its annotation.
-    Optional keys are parsed when present. Totality is respected via the
-    TypedDict's ``__required_keys__`` / ``__optional_keys__`` attributes.
+    Each required key must be present and is parsed against its annotation;
+    optional keys are parsed when present. Whether a key is required is derived
+    from the *resolved* annotations -- their ``Required`` / ``NotRequired``
+    wrappers combined with the TypedDict's totality (``__total__``).
+
+    This deliberately does not use ``__required_keys__`` / ``__optional_keys__``:
+    under ``from __future__ import annotations`` those are computed from
+    stringized annotations at class-creation time, so a ``NotRequired[...]``
+    wrapper is invisible to them. Resolving the hints with
+    ``include_extras=True`` evaluates the strings and makes the wrappers visible.
     """
     if not isinstance(value, Mapping):
         raise TypeError(f"Expected a mapping, got {value!r} instead.")
 
-    # ``include_extras=True`` keeps ``Required`` / ``NotRequired`` / ``ReadOnly``
-    # wrappers visible if needed; the required/optional split is taken from the
-    # TypedDict's own bookkeeping which already accounts for totality.
-    hints = get_type_hints(type_annotation, include_extras=False)
-    required_keys: frozenset[str] = getattr(type_annotation, "__required_keys__", frozenset())
-    optional_keys: frozenset[str] = getattr(type_annotation, "__optional_keys__", frozenset())
+    hints = get_type_hints(type_annotation, include_extras=True)
+    total = getattr(type_annotation, "__total__", True)
+
+    required_keys: set[str] = set()
+    field_types: dict[str, Any] = {}
+    for key, hint in hints.items():
+        origin = get_origin(hint)
+        if origin is Required:
+            required_keys.add(key)
+            field_types[key] = get_args(hint)[0]
+        elif origin is NotRequired:
+            field_types[key] = get_args(hint)[0]
+        else:
+            if total:
+                required_keys.add(key)
+            field_types[key] = hint
 
     missing = [key for key in required_keys if key not in value]
     if missing:
@@ -261,9 +279,9 @@ def _parse_typeddict(value: object, type_annotation: Any) -> dict[str, Any]:
         )
 
     result: dict[str, Any] = {}
-    for key in required_keys | optional_keys:
+    for key, field_type in field_types.items():
         if key in value:
-            result[key] = parse_json(value[key], hints[key])
+            result[key] = parse_json(value[key], field_type)
     # Preserve any extra keys not declared on the TypedDict.
     for key, val in value.items():
         if key not in result:
