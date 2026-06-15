@@ -43,6 +43,27 @@ async def test_create_new_group(backend: str, store: Store) -> None:
     assert dict(zarr.open_group(store=store, path="foo", mode="r").attrs) == {"answer": 42}
 
 
+async def test_v2_group_attrs_zarr_python_compatible_reference(store: Store) -> None:
+    # The reference backend writes standard v2 `.zattrs` (the bare attributes
+    # dict), so zarr-python and other readers see the right attributes.
+    await create_new_group(GROUP_META_V2, store, "g2", backend="reference")
+    assert dict(zarr.open_group(store=store, path="g2", mode="r").attrs) == {"answer": 42}
+
+
+@pytest.mark.xfail(
+    reason="the zarrs backend writes v2 group attributes in a non-standard `.zattrs` "
+    "layout (nested under an 'attributes' key) that zarr-python reads back wrong; "
+    "tracked zarrs-crate limitation",
+    strict=True,
+)
+async def test_v2_group_attrs_zarr_python_compatible_zarrs(store: Store) -> None:
+    pytest.importorskip("_zarrs_bindings", reason="zarrs-bindings is not installed")
+    import zarr.zarrs
+
+    await create_new_group(GROUP_META_V2, store, "g2", backend="zarrs")
+    assert dict(zarr.open_group(store=store, path="g2", mode="r").attrs) == {"answer": 42}
+
+
 async def test_create_new_group_existing_raises(backend: str, store: Store) -> None:
     await create_new_group(GROUP_META, store, "foo", backend=backend)
     with pytest.raises(NodeExistsError):

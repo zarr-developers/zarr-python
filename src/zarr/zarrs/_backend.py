@@ -41,6 +41,13 @@ class ZarrsBackend:
     the `/`-prefixed node-path form, store resolution, offloading the blocking
     Rust calls to a worker thread, and translating binding exceptions to the
     canonical `zarr.crud` / `zarr.errors` types.
+
+    Known limitation: creating a Zarr v2 *group* with attributes writes a
+    non-standard `.zattrs` (the attributes nested under an ``"attributes"`` key)
+    that zarr-python and other readers interpret incorrectly. This is a
+    zarrs-crate behavior; the pure-Python reference backend writes the standard
+    layout. Prefer the reference backend for writing v2 groups until the zarrs
+    crate is fixed.
     """
 
     async def create_array(
