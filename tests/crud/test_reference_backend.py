@@ -51,3 +51,23 @@ async def test_reference_read_metadata_missing_raises() -> None:
     be = get_backend("reference")
     with pytest.raises(NodeNotFoundError):
         await be.read_metadata(MemoryStore(), "nope")
+
+
+async def test_reference_v2_fortran_order_round_trip() -> None:
+    be = get_backend("reference")
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store=store, name="f", shape=(4, 6), chunks=(4, 6), dtype="uint16", order="F", zarr_format=2
+    )
+    data = np.arange(24, dtype="uint16").reshape(4, 6)
+    arr[:, :] = data
+    meta = dict(arr.metadata.to_dict())
+    meta.pop("attributes", None)
+    # read_chunk must return native C-contiguous bytes matching the logical data
+    raw = await be.read_chunk(store, "f", meta, (0, 0))
+    np.testing.assert_array_equal(np.frombuffer(raw, dtype="uint16").reshape(4, 6), data)
+    # write_chunk must store data zarr-python reads back correctly
+    new = (data + 100).astype("uint16")
+    await be.write_chunk(store, "f", meta, (0, 0), np.ascontiguousarray(new).tobytes())
+    back = zarr.open_array(store=store, path="f", mode="r")
+    np.testing.assert_array_equal(back[:, :], new)

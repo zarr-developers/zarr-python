@@ -48,11 +48,12 @@ def _chunk_shape(meta_obj: ArrayV3Metadata | ArrayV2Metadata) -> tuple[int, ...]
 
 
 def _array_spec(meta_obj: ArrayV3Metadata | ArrayV2Metadata, shape: tuple[int, ...]) -> ArraySpec:
+    order = meta_obj.order if isinstance(meta_obj, ArrayV2Metadata) else "C"
     return ArraySpec(
         shape=shape,
         dtype=meta_obj.dtype,
         fill_value=meta_obj.fill_value,
-        config=ArrayConfig.from_dict({}),
+        config=ArrayConfig.from_dict({"order": order}),
         prototype=default_buffer_prototype(),
     )
 
