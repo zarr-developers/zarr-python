@@ -23,7 +23,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
-from zarr.core.codec_pipeline import ChunkTransform
+from zarr.core.chunk_utils import ChunkTransform
 from zarr.core.dtype import get_data_type_from_native_dtype
 
 

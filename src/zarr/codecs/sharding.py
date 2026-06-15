@@ -37,6 +37,13 @@ from zarr.core.buffer import (
     numpy_buffer_prototype,
 )
 from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.chunk_utils import (
+    ChunkTransform,
+    decode_and_scatter_chunk,
+    encode_or_elide_chunk,
+    evolve_codecs,
+    merge_and_encode_chunk,
+)
 from zarr.core.common import (
     ShapeLike,
     parse_enum,
@@ -483,13 +490,24 @@ class ShardingCodec(
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        # Thread the spec through the inner chain (`evolve_codecs`): each codec
-        # is evolved against the spec produced by the previous one. Evolving
-        # every codec against the same unthreaded spec is the bug shape that
-        # strips `BytesCodec.endian` behind a dtype-changing codec — and this
-        # method runs on the real array-creation path, baking the damaged chain
-        # into the evolved instance before the transform builders ever run.
-        from zarr.core.codec_pipeline import evolve_codecs
+        """Thread the spec through the inner chain.
+
+        Each codec is evolved against the spec produced by the previous one.
+        Evolving every codec against the same unthreaded spec is the bug shape that
+        strips `BytesCodec.endian` behind a dtype-changing codec — and this
+        method runs on the real array-creation path, baking the damaged chain
+        into the evolved instance before the transform builders ever run.
+
+        Parameters
+        ----------
+        array_spec
+            The base spec to be evolved as we thread it.
+
+        Returns
+        -------
+            This codec with the evolved code chain.
+        """
+        from zarr.core.chunk_utils import evolve_codecs
 
         shard_spec = self._get_chunk_spec(array_spec)
         evolved_codecs = evolve_codecs(self.codecs, shard_spec)
@@ -541,7 +559,6 @@ class ShardingCodec(
         the pipeline level (see `evolve_codecs`) — the inner chain must use the
         same single source of truth.
         """
-        from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
 
         chunk_spec = self._get_chunk_spec(shard_spec)
         return ChunkTransform(codecs=evolve_codecs(self.codecs, chunk_spec))
@@ -552,7 +569,6 @@ class ShardingCodec(
         Memoized via instance-local `lru_cache` and spec-threaded for the same
         reasons as `_get_inner_chunk_transform`.
         """
-        from zarr.core.codec_pipeline import ChunkTransform, evolve_codecs
 
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         return ChunkTransform(codecs=evolve_codecs(self.index_codecs, index_spec))
@@ -633,8 +649,6 @@ class ShardingCodec(
             out.fill(shard_spec.fill_value)
             return out
 
-        from zarr.core.codec_pipeline import decode_and_scatter_chunk
-
         for chunk_coords, chunk_selection, out_selection, _ in indexer:
             # the GetResult status is discarded: missing INNER chunks of a
             # present shard always fill (read_missing_chunks is a store-key
@@ -690,8 +704,6 @@ class ShardingCodec(
             shape=shard_shape,
             chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
         )
-
-        from zarr.core.codec_pipeline import encode_or_elide_chunk
 
         # Key order here is immaterial; _encode_shard_dict_sync lays the present
         # chunks out in subchunk_write_order.
@@ -769,8 +781,6 @@ class ShardingCodec(
                 )
             else:
                 shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
-
-        from zarr.core.codec_pipeline import merge_and_encode_chunk
 
         # Merge, encode, and store each affected inner chunk into shard_dict via
         # the canonical merge_and_encode_chunk (None = normalized to missing).
@@ -1214,8 +1224,6 @@ class ShardingCodec(
             if partial is None:
                 return None
             shard_dict = partial
-
-        from zarr.core.codec_pipeline import decode_and_scatter_chunk
 
         # Decode each needed inner chunk and scatter into out (statuses
         # discarded: missing inner chunks fill, see _decode_sync).
