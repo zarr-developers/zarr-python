@@ -47,10 +47,13 @@ if TYPE_CHECKING:
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    if data == 3:
-        return 3
-    msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
-    raise MetadataValidationError(msg)
+    from zarr.core.json_parse import parse_json
+
+    try:
+        return cast("Literal[3]", parse_json(data, Literal[3]))
+    except (ValueError, TypeError) as exc:
+        msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+        raise MetadataValidationError(msg) from exc
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:

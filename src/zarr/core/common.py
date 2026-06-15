@@ -206,15 +206,15 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+    from zarr.core.json_parse import parse_json
+
+    return cast("Literal['C', 'F']", parse_json(data, Literal["C", "F"]))
 
 
 def parse_bool(data: Any) -> bool:
-    if isinstance(data, bool):
-        return data
-    raise ValueError(f"Expected bool, got {data} instead.")
+    from zarr.core.json_parse import parse_json
+
+    return cast("bool", parse_json(data, bool))
 
 
 def _warn_write_empty_chunks_kwarg() -> None:
