@@ -136,6 +136,30 @@ function calls a blocking Rust entry point via `asyncio.to_thread`; the Rust
 side releases the GIL during I/O and compute (reacquiring it only inside
 `PyStore` callbacks). zarrs's experimental async feature is not used.
 
+## Array construction cache
+
+`Array::new_with_metadata` (serde-parsing the metadata document and building the
+codec chain) is the dominant per-call cost on the native path — measured at
+~20µs for a bytes-only array up to ~80µs for sharded+blosc, against single-digit
+µs of actual chunk I/O on a warm filesystem. To amortize it across the common
+"open one array, then do many chunk operations" pattern, the chunk/region
+routines memoize the constructed `Array` in a process-global LRU cache
+(capacity 128) keyed on `(filesystem root, node path, metadata JSON)`.
+
+This is safe because a zarrs `Array` caches no chunk data — it is metadata plus
+codec chain plus a storage handle — so every read/write still goes through to
+the store, and a correctly-keyed hit is behaviorally identical to a fresh build.
+The key must include all three components: the same document at a different path
+or store is a different array. Only native filesystem stores are cached; the
+generic `PyStore` callback path has no stable cross-call identity to key on and
+is left uncached (a future change may cache it if a store can supply a stable
+value-based token). No invalidation hook is needed: delete/overwrite with
+different metadata yields a different key, and an entry for a deleted-and-rebuilt
+array with identical metadata stays valid because reads go through to the store.
+A poisoned cache mutex is recovered rather than propagated, so the cache can
+never wedge array I/O. Measured win: 14–20% faster per repeated call on a local
+store, free on every hit.
+
 ## Error handling
 
 The binding layer raises a small set of typed exceptions defined in one place:
