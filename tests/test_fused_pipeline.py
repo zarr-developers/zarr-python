@@ -348,7 +348,7 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
     from zarr.abc.codec import BytesBytesCodec
     from zarr.core.array_spec import ArrayConfig, ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
-    from zarr.core.codec_pipeline import ChunkTransform
+    from zarr.core.chunk_utils import ChunkTransform
     from zarr.core.dtype import get_data_type_from_native_dtype
 
     class _PrototypeRecordingCodec(BytesBytesCodec):  # type: ignore[misc,unused-ignore]
@@ -717,7 +717,8 @@ def test_async_chunk_transform_matches_sync(codecs: tuple[Any, ...]) -> None:
     from zarr.core.array_spec import ArrayConfig, ArraySpec
     from zarr.core.buffer import default_buffer_prototype
     from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.codec_pipeline import AsyncChunkTransform, ChunkTransform, evolve_codecs
+    from zarr.core.chunk_utils import ChunkTransform, evolve_codecs
+    from zarr.core.codec_pipeline import AsyncChunkTransform
     from zarr.core.dtype import get_data_type_from_native_dtype
 
     shape = (4, 4)
