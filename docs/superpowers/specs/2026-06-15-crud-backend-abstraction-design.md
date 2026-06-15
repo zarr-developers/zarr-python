@@ -21,7 +21,7 @@ Non-goals for this change (deliberately deferred):
 - Entrypoint-based backend discovery (this change uses explicit import-time
   registration).
 - Region/selection features beyond what already exists (`encode_region`,
-  chunk-subset `selection` on `decode_chunk` remain future work, unchanged).
+  chunk-subset `selection` on `read_chunk` remain future work, unchanged).
 
 ## Background
 
@@ -88,20 +88,50 @@ class CrudBackend(Protocol):
     async def create_array(self, store, path, metadata, *, overwrite: bool) -> None: ...
     async def create_group(self, store, path, metadata, *, overwrite: bool) -> None: ...
     async def read_metadata(self, store, path) -> dict[str, JSON]: ...
+    async def read_chunk(self, store, path, metadata, coords) -> bytes: ...
+    async def read_encoded_chunk(self, store, path, metadata, coords) -> bytes | None: ...
+    async def read_subset(self, store, path, metadata, start, shape) -> bytes: ...
+    async def write_chunk(self, store, path, metadata, coords, data: bytes) -> None: ...
+    async def delete_chunk(self, store, path, metadata, coords) -> None: ...
     async def delete_node(self, store, path) -> None: ...
     async def list_children(self, store, path) -> list[tuple[str, dict[str, JSON]]]: ...
-    async def retrieve_chunk(self, store, path, metadata, coords) -> bytes: ...
-    async def retrieve_encoded_chunk(self, store, path, metadata, coords) -> bytes | None: ...
-    async def retrieve_subset(self, store, path, metadata, start, shape) -> bytes: ...
-    async def store_chunk(self, store, path, metadata, coords, data: bytes) -> None: ...
-    async def erase_chunk(self, store, path, metadata, coords) -> None: ...
 ```
 
-Byte conventions: `retrieve_chunk`/`retrieve_subset` return C-contiguous raw
-bytes in the array's native byte order for the requested chunk / step-1 bounding
-box; `store_chunk` takes the same. `retrieve_encoded_chunk` returns the raw
-stored (still-encoded) chunk bytes or `None` if absent. `read_metadata`/
+Byte conventions: `read_chunk`/`read_subset` return C-contiguous raw bytes in the
+array's native byte order for the requested chunk / step-1 bounding box;
+`write_chunk` takes the same. `read_encoded_chunk` returns the raw stored
+(still-encoded) chunk bytes or `None` if absent. `read_metadata`/
 `list_children` return parsed JSON documents as dicts.
+
+## Method naming
+
+Both the public facade and the backend contract use a single, consistent verb
+set: **create / read / write / delete / list**. No `decode`/`encode`/`retrieve`/
+`store`/`erase` synonyms.
+
+Public facade (`zarr.crud`):
+
+| Function | Verb | Notes |
+|---|---|---|
+| `create_new_group` / `create_overwrite_group` | create | node lifecycle |
+| `create_new_array` / `create_overwrite_array` | create | node lifecycle |
+| `read_metadata` | read | array or group document |
+| `read_chunk` | read | decoded chunk → `ndarray` |
+| `read_encoded_chunk` | read | raw stored bytes, no decode |
+| `read_region` | read | numpy basic-indexing selection → `ndarray` |
+| `write_chunk` | write | encode + store a chunk |
+| `delete_chunk` | delete | remove one chunk |
+| `delete_node` | delete | remove a node + descendants |
+| `list_children` | list | direct children of a group |
+
+Facade → backend mapping for the byte-level methods: `read_chunk` →
+`backend.read_chunk`, `read_encoded_chunk` → `backend.read_encoded_chunk`,
+`read_region` → `backend.read_subset` (the facade normalizes the selection to a
+step-1 bounding box `(start, shape)`), `write_chunk` → `backend.write_chunk`,
+`delete_chunk` → `backend.delete_chunk`. The two distinct names `read_region`
+(selection-based, public) and `read_subset` (bounding-box bytes, backend) are
+intentional: they have different signatures and the facade is the adapter
+between them.
 
 ## Facade / backend split
 
@@ -170,6 +200,11 @@ surfaces native exceptions directly.
 
 - Move the 13 functions and the neutral helpers from `zarr.zarrs._api` into
   `zarr.crud._api`; delete `zarr.zarrs._api`. No aliases in `zarr.zarrs`.
+- Rename to the consistent verb set in the move (no compatibility aliases, since
+  the surface is unreleased): `decode_chunk` → `read_chunk`, `decode_region` →
+  `read_region`, `encode_chunk` → `write_chunk`, `erase_chunk` → `delete_chunk`.
+  `read_metadata`, `read_encoded_chunk`, `delete_node`, `list_children`, and the
+  `create_*` functions keep their names.
 - `zarr.zarrs.__init__` exports only what is needed to register and identify the
   zarrs backend (`ZarrsBackend`, and re-registers `"zarrs"` on import).
 - The changelog fragment is updated to describe `zarr.crud` as the public CRUD
