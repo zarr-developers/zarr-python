@@ -12,6 +12,21 @@ Array routines take an explicit metadata document (a `dict` matching the
 makes read-only and virtual views possible.
 """
 
+from zarr.crud._api import (
+    CrudOptions,
+    create_new_array,
+    create_new_group,
+    create_overwrite_array,
+    create_overwrite_group,
+    delete_chunk,
+    delete_node,
+    list_children,
+    read_chunk,
+    read_encoded_chunk,
+    read_metadata,
+    read_region,
+    write_chunk,
+)
 from zarr.crud._backend import CrudBackend, NodeExistsError
 from zarr.crud._reference import ReferenceBackend
 from zarr.crud._registry import get_backend, register_backend
@@ -20,8 +35,21 @@ register_backend("reference", ReferenceBackend())
 
 __all__ = [
     "CrudBackend",
+    "CrudOptions",
     "NodeExistsError",
     "ReferenceBackend",
+    "create_new_array",
+    "create_new_group",
+    "create_overwrite_array",
+    "create_overwrite_group",
+    "delete_chunk",
+    "delete_node",
     "get_backend",
+    "list_children",
+    "read_chunk",
+    "read_encoded_chunk",
+    "read_metadata",
+    "read_region",
     "register_backend",
+    "write_chunk",
 ]
