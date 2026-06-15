@@ -260,7 +260,9 @@ def _parse_typeddict(value: object, type_annotation: Any) -> dict[str, Any]:
     required_keys: set[str] = set()
     field_types: dict[str, Any] = {}
     for key, hint in hints.items():
-        origin = get_origin(hint)
+        # Annotated as ``Any`` so mypy does not narrow the ``is`` comparisons
+        # against the ``Required`` / ``NotRequired`` special forms.
+        origin: Any = get_origin(hint)
         if origin is Required:
             required_keys.add(key)
             field_types[key] = get_args(hint)[0]
