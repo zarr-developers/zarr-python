@@ -252,3 +252,9 @@ async def test_read_region_fancy_rejected(backend: str, store: Store) -> None:
     _, meta = filled(store)
     with pytest.raises(TypeError, match="only integers, slices"):
         await read_region(meta, store, "a", ([0, 1], slice(None)), backend=backend)  # type: ignore[arg-type]
+
+
+async def test_read_region_out_of_bounds(backend: str, store: Store) -> None:
+    _, meta = filled(store)
+    with pytest.raises(IndexError, match="out of bounds"):
+        await read_region(meta, store, "a", (8, slice(None)), backend=backend)

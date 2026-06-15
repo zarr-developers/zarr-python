@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.crud._common import parse_array_metadata
 from zarr.crud._registry import get_backend
 
 if TYPE_CHECKING:
@@ -18,8 +19,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON
-    from zarr.core.metadata.v2 import ArrayV2Metadata
-    from zarr.core.metadata.v3 import ArrayV3Metadata
     from zarr.crud._backend import CrudBackend
 
 
@@ -42,18 +41,6 @@ def _resolve_backend(backend: CrudBackend | str | None) -> CrudBackend:
     return backend
 
 
-def _parse_array_metadata(
-    metadata: Mapping[str, JSON],
-) -> ArrayV3Metadata | ArrayV2Metadata:
-    from zarr.core.metadata.v2 import ArrayV2Metadata
-    from zarr.core.metadata.v3 import ArrayV3Metadata
-
-    data = dict(metadata)
-    if data.get("zarr_format") == 3:
-        return ArrayV3Metadata.from_dict(data)
-    return ArrayV2Metadata.from_dict(data)
-
-
 def _chunk_dtype_and_shape(
     metadata: Mapping[str, JSON],
 ) -> tuple[np.dtype[Any], tuple[int, ...]]:
@@ -64,7 +51,7 @@ def _chunk_dtype_and_shape(
     """
     from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 
-    meta_obj = _parse_array_metadata(metadata)
+    meta_obj = parse_array_metadata(metadata)
     if isinstance(meta_obj, ArrayV3Metadata):
         grid = meta_obj.chunk_grid
         if not isinstance(grid, RegularChunkGridMetadata):
@@ -90,7 +77,7 @@ def _array_shape(metadata: Mapping[str, JSON]) -> tuple[int, ...]:
 
 
 def _chunk_key(metadata: Mapping[str, JSON], path: str, coords: tuple[int, ...]) -> str:
-    meta_obj = _parse_array_metadata(metadata)
+    meta_obj = parse_array_metadata(metadata)
     rel = meta_obj.encode_chunk_key(coords)
     p = path.strip("/")
     return f"{p}/{rel}" if p else rel

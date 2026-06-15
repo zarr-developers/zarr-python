@@ -13,6 +13,7 @@ from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.crud._backend import NodeExistsError
+from zarr.crud._common import parse_array_metadata
 from zarr.errors import NodeNotFoundError
 from zarr.storage._common import StorePath
 
@@ -21,16 +22,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON
-
-
-def _parse_array_metadata(
-    metadata: Mapping[str, JSON],
-) -> ArrayV3Metadata | ArrayV2Metadata:
-    """Parse a metadata document into a v2 or v3 array metadata object."""
-    data = dict(metadata)
-    if data.get("zarr_format") == 3:
-        return ArrayV3Metadata.from_dict(data)
-    return ArrayV2Metadata.from_dict(data)
 
 
 def _native_dtype(meta_obj: ArrayV3Metadata | ArrayV2Metadata) -> np.dtype[Any]:
@@ -75,7 +66,7 @@ class ReferenceBackend:
     async def create_array(
         self, store: Store, path: str, metadata: Mapping[str, JSON], *, overwrite: bool
     ) -> None:
-        meta_obj = _parse_array_metadata(metadata)
+        meta_obj = parse_array_metadata(metadata)
         await self._create(store, path, meta_obj, meta_obj.zarr_format, overwrite=overwrite)
 
     async def create_group(
@@ -118,7 +109,7 @@ class ReferenceBackend:
     async def read_chunk(
         self, store: Store, path: str, metadata: Mapping[str, JSON], coords: tuple[int, ...]
     ) -> bytes:
-        meta_obj = _parse_array_metadata(metadata)
+        meta_obj = parse_array_metadata(metadata)
         shape = _chunk_shape(meta_obj)
         np_dtype = _native_dtype(meta_obj)
         sp = StorePath(store, path.strip("/"))
@@ -145,7 +136,7 @@ class ReferenceBackend:
         start: Sequence[int],
         shape: Sequence[int],
     ) -> bytes:
-        meta_obj = _parse_array_metadata(metadata)
+        meta_obj = parse_array_metadata(metadata)
         np_dtype = _native_dtype(meta_obj)
         async_arr = AsyncArray(metadata=meta_obj, store_path=StorePath(store, path.strip("/")))
         selection = tuple(slice(s, s + length) for s, length in zip(start, shape, strict=True))
@@ -160,7 +151,7 @@ class ReferenceBackend:
         coords: tuple[int, ...],
         data: bytes,
     ) -> None:
-        meta_obj = _parse_array_metadata(metadata)
+        meta_obj = parse_array_metadata(metadata)
         shape = _chunk_shape(meta_obj)
         np_dtype = _native_dtype(meta_obj)
         sp = StorePath(store, path.strip("/"))
@@ -178,7 +169,7 @@ class ReferenceBackend:
     async def delete_chunk(
         self, store: Store, path: str, metadata: Mapping[str, JSON], coords: tuple[int, ...]
     ) -> None:
-        meta_obj = _parse_array_metadata(metadata)
+        meta_obj = parse_array_metadata(metadata)
         sp = StorePath(store, path.strip("/"))
         await (sp / meta_obj.encode_chunk_key(coords)).delete()
 
