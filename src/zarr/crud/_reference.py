@@ -7,7 +7,7 @@ import numpy as np
 from zarr.core.array import AsyncArray, create_codec_pipeline
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import NDBuffer, default_buffer_prototype
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.core.group import GroupMetadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -49,10 +49,16 @@ def _array_spec(meta_obj: ArrayV3Metadata | ArrayV2Metadata, shape: tuple[int, .
     )
 
 
-def _meta_key(path: str, zarr_format: int) -> str:
-    fname = ZARR_JSON if zarr_format == 3 else ZARRAY_JSON
-    p = path.strip("/")
-    return f"{p}/{fname}" if p else fname
+def _is_all_fill_value(
+    arr: np.ndarray[Any, np.dtype[Any]], fill_value: Any, dtype: np.dtype[Any]
+) -> bool:
+    """Whether every element of `arr` equals the fill value (NaN-aware for floats)."""
+    if fill_value is None:
+        return False
+    fill = np.asarray(fill_value, dtype=dtype)
+    if np.issubdtype(dtype, np.floating) or np.issubdtype(dtype, np.complexfloating):
+        return bool(np.array_equal(arr, np.broadcast_to(fill, arr.shape), equal_nan=True))
+    return bool(np.all(arr == fill))
 
 
 class ReferenceBackend:
@@ -63,47 +69,50 @@ class ReferenceBackend:
     subset reads, which is exactly the `BasicIndexer` + codec-pipeline read path.
     """
 
+    async def _node_exists(self, store: Store, path: str) -> bool:
+        proto = default_buffer_prototype()
+        sp = StorePath(store, path.strip("/"))
+        for meta_key in (ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON):
+            if await (sp / meta_key).get(prototype=proto) is not None:
+                return True
+        return False
+
     async def create_array(
         self, store: Store, path: str, metadata: Mapping[str, JSON], *, overwrite: bool
     ) -> None:
         meta_obj = parse_array_metadata(metadata)
-        await self._create(store, path, meta_obj, meta_obj.zarr_format, overwrite=overwrite)
+        await self._create(store, path, meta_obj, overwrite=overwrite)
 
     async def create_group(
         self, store: Store, path: str, metadata: Mapping[str, JSON], *, overwrite: bool
     ) -> None:
         meta_obj = GroupMetadata.from_dict(dict(metadata))
-        await self._create(store, path, meta_obj, meta_obj.zarr_format, overwrite=overwrite)
+        await self._create(store, path, meta_obj, overwrite=overwrite)
 
-    async def _create(
-        self, store: Store, path: str, meta_obj: Any, zarr_format: int, *, overwrite: bool
-    ) -> None:
+    async def _create(self, store: Store, path: str, meta_obj: Any, *, overwrite: bool) -> None:
         sp = StorePath(store, path.strip("/"))
-        proto = default_buffer_prototype()
         if overwrite:
             await store.delete_dir(path.strip("/"))
-        else:
-            key = _meta_key(path, zarr_format)
-            if await store.get(key, prototype=proto) is not None:
-                raise NodeExistsError(f"a node already exists at path {path!r}")
+        elif await self._node_exists(store, path):
+            raise NodeExistsError(f"a node already exists at path {path!r}")
         await save_metadata(sp, meta_obj, ensure_parents=True)
 
     async def read_metadata(self, store: Store, path: str) -> dict[str, JSON]:
         from zarr.core._json import buffer_to_json_object
 
         proto = default_buffer_prototype()
-        p = path.strip("/")
-        sp = StorePath(store, p)
+        sp = StorePath(store, path.strip("/"))
         buf = await (sp / ZARR_JSON).get(prototype=proto)
         if buf is not None:
             return buffer_to_json_object(buf)
-        buf2 = await (sp / ZARRAY_JSON).get(prototype=proto)
-        if buf2 is not None:
-            doc = buffer_to_json_object(buf2)
-            zattrs = await (sp / ZATTRS_JSON).get(prototype=proto)
-            if zattrs is not None:
-                doc["attributes"] = buffer_to_json_object(zattrs)
-            return doc
+        for meta_key in (ZARRAY_JSON, ZGROUP_JSON):
+            b = await (sp / meta_key).get(prototype=proto)
+            if b is not None:
+                doc = buffer_to_json_object(b)
+                zattrs = await (sp / ZATTRS_JSON).get(prototype=proto)
+                if zattrs is not None:
+                    doc["attributes"] = buffer_to_json_object(zattrs)
+                return doc
         raise NodeNotFoundError(f"no node found at path {path!r}")
 
     async def read_chunk(
@@ -157,6 +166,9 @@ class ReferenceBackend:
         sp = StorePath(store, path.strip("/"))
         chunk_key = meta_obj.encode_chunk_key(coords)
         arr = np.frombuffer(data, dtype=np_dtype).reshape(shape)
+        if _is_all_fill_value(arr, meta_obj.fill_value, np_dtype):
+            await (sp / chunk_key).delete()
+            return
         pipeline = create_codec_pipeline(meta_obj)
         spec = _array_spec(meta_obj, shape)
         encoded = list(await pipeline.encode([(NDBuffer.from_ndarray_like(arr), spec)]))
@@ -174,34 +186,18 @@ class ReferenceBackend:
         await (sp / meta_obj.encode_chunk_key(coords)).delete()
 
     async def delete_node(self, store: Store, path: str) -> None:
-        proto = default_buffer_prototype()
-        p = path.strip("/")
-        sp = StorePath(store, p)
-        present = (
-            await (sp / ZARR_JSON).get(prototype=proto) is not None
-            or await (sp / ZARRAY_JSON).get(prototype=proto) is not None
-        )
-        if not present:
+        if not await self._node_exists(store, path):
             raise NodeNotFoundError(f"no node found at path {path!r}")
-        await store.delete_dir(p)
+        await store.delete_dir(path.strip("/"))
 
     async def list_children(self, store: Store, path: str) -> list[tuple[str, dict[str, JSON]]]:
-        proto = default_buffer_prototype()
         p = path.strip("/")
-        sp = StorePath(store, p)
-        if (
-            await (sp / ZARR_JSON).get(prototype=proto) is None
-            and await (sp / ZARRAY_JSON).get(prototype=proto) is None
-        ):
+        if not await self._node_exists(store, path):
             raise NodeNotFoundError(f"no node found at path {path!r}")
         prefix = f"{p}/" if p else ""
         children: list[tuple[str, dict[str, JSON]]] = []
         async for name in store.list_dir(prefix):
             child_path = f"{p}/{name}" if p else name
-            child_sp = StorePath(store, child_path)
-            if (
-                await (child_sp / ZARR_JSON).get(prototype=proto) is not None
-                or await (child_sp / ZARRAY_JSON).get(prototype=proto) is not None
-            ):
+            if await self._node_exists(store, child_path):
                 children.append((name, await self.read_metadata(store, child_path)))
         return children

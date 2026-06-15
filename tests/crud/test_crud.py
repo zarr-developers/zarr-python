@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
 
 GROUP_META: dict[str, Any] = {"zarr_format": 3, "node_type": "group", "attributes": {"answer": 42}}
+GROUP_META_V2: dict[str, Any] = {"zarr_format": 2, "attributes": {"answer": 42}}
 
 
 # --- node lifecycle ---
@@ -109,6 +110,23 @@ async def test_list_children(backend: str, store: Store) -> None:
     assert by_path["sub_group"]["node_type"] == "group"
     assert by_path["sub_array"]["node_type"] == "array"
     assert not any(p.startswith("/") for p in by_path)
+
+
+async def test_create_read_delete_v2_group(backend: str, store: Store) -> None:
+    await create_new_group(GROUP_META_V2, store, "g2", backend=backend)
+    meta = await read_metadata(store, "g2", backend=backend)
+    assert meta["zarr_format"] == 2
+    with pytest.raises(NodeExistsError):
+        await create_new_group(GROUP_META_V2, store, "g2", backend=backend)
+    await delete_node(store, "g2", backend=backend)
+    with pytest.raises(NodeNotFoundError):
+        await read_metadata(store, "g2", backend=backend)
+
+
+async def test_read_metadata_v2_array(backend: str, store: Store) -> None:
+    await create_new_array(array_metadata(zarr_format=2), store, "arr", backend=backend)
+    meta = await read_metadata(store, "arr", backend=backend)
+    assert meta["zarr_format"] == 2
 
 
 # --- chunk I/O ---
@@ -194,6 +212,26 @@ async def test_delete_chunk(backend: str, store: Store) -> None:
     _data, meta = filled(store)
     assert await store.exists("a/c/0/0")
     await delete_chunk(meta, store, "a", (0, 0), backend=backend)
+    assert not await store.exists("a/c/0/0")
+
+
+async def test_write_all_fill_chunk_is_dropped(backend: str, store: Store) -> None:
+    arr = zarr.create_array(
+        store=store, name="a", shape=(8, 8), chunks=(4, 4), dtype="uint16", fill_value=0
+    )
+    meta = dict(arr.metadata.to_dict())
+    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), backend=backend)
+    assert not await store.exists("a/c/0/0")
+    np.testing.assert_array_equal(
+        await read_chunk(meta, store, "a", (0, 0), backend=backend),
+        np.zeros((4, 4), dtype="uint16"),
+    )
+
+
+async def test_overwrite_chunk_with_fill_removes_it(backend: str, store: Store) -> None:
+    _data, meta = filled(store)  # chunk (0,0) exists with nonzero data, fill_value default 0
+    assert await store.exists("a/c/0/0")
+    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), backend=backend)
     assert not await store.exists("a/c/0/0")
 
 
