@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-from zarr.abc.codec import SupportsSyncCodec
+from zarr.abc.codec import GetResult, SupportsSyncCodec
 from zarr.core.indexing import is_scalar
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from zarr.abc.codec import Codec, GetResult
+    from zarr.abc.codec import Codec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.indexing import SelectorTuple
@@ -52,7 +52,6 @@ def encode_or_elide_chunk(
     chain elided it). ``None`` is the single "missing" convention shared by
     the chunk write paths and the shard dicts.
     """
-    from zarr.core.codec_pipeline import chunk_is_empty
 
     if chunk_is_empty(chunk_array, chunk_spec):
         return None
@@ -70,6 +69,47 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         return chunk_spec.dtype.default_scalar()
     else:
         return fill_value
+
+
+def chunk_is_empty(chunk_array: NDBuffer, chunk_spec: ArraySpec) -> bool:
+    """THE empty-chunk normalization rule, in one place.
+
+    With ``write_empty_chunks=False`` (the default), a chunk whose decoded
+    content equals the fill value normalizes to *missing*: it must not be
+    stored, and readers reconstruct it from the fill value. Every write path
+    (fused, async fallback, shard inner chunks) must apply this same rule —
+    scattering inline ``all_equal`` checks is how the rule drifts.
+    """
+    return not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+        fill_value_or_default(chunk_spec)
+    )
+
+
+def scatter_chunk(
+    selected: NDBuffer | None,
+    out: NDBuffer,
+    *,
+    chunk_spec: ArraySpec,
+    out_selection: SelectorTuple,
+    drop_axes: tuple[int, ...],
+) -> GetResult:
+    """Scatter one chunk's (already-selected) decoded region into ``out``.
+
+    ``None`` = the chunk is missing: the fill value is scattered instead and a
+    ``missing`` status is returned. POLICY-FREE by design: whether a missing
+    chunk is an error (``read_missing_chunks=False``) is decided by the array
+    layer from the returned statuses — which is also what makes missing INNER
+    chunks of a present shard fill rather than raise (the sharding codec
+    discards the nested read's statuses; only top-level statuses reach the
+    array layer).
+    """
+    if selected is None:
+        out[out_selection] = fill_value_or_default(chunk_spec)
+        return GetResult(status="missing")
+    if drop_axes:
+        selected = selected.squeeze(axis=drop_axes)
+    out[out_selection] = selected
+    return GetResult(status="present")
 
 
 def _merge_chunk_array(
@@ -164,8 +204,6 @@ def decode_and_scatter_chunk(
     missing), select, and scatter into ``out`` via `scatter_chunk`. The read
     twin of `merge_and_encode_chunk`.
     """
-    from zarr.core.codec_pipeline import scatter_chunk
-
     if chunk_bytes is None:
         return scatter_chunk(
             None, out, chunk_spec=chunk_spec, out_selection=out_selection, drop_axes=drop_axes

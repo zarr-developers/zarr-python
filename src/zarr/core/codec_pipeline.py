@@ -21,10 +21,12 @@ from zarr.abc.codec import (
 from zarr.core.chunk_utils import (
     ChunkTransform,
     _merge_chunk_array,
+    chunk_is_empty,
     decode_and_scatter_chunk,
     evolve_codecs,
     fill_value_or_default,
     merge_and_encode_chunk,
+    scatter_chunk,
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
@@ -199,47 +201,6 @@ def pipeline_supports_partial_encode(
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
     return isinstance(array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-
-
-def chunk_is_empty(chunk_array: NDBuffer, chunk_spec: ArraySpec) -> bool:
-    """THE empty-chunk normalization rule, in one place.
-
-    With ``write_empty_chunks=False`` (the default), a chunk whose decoded
-    content equals the fill value normalizes to *missing*: it must not be
-    stored, and readers reconstruct it from the fill value. Every write path
-    (fused, async fallback, shard inner chunks) must apply this same rule —
-    scattering inline ``all_equal`` checks is how the rule drifts.
-    """
-    return not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-        fill_value_or_default(chunk_spec)
-    )
-
-
-def scatter_chunk(
-    selected: NDBuffer | None,
-    out: NDBuffer,
-    *,
-    chunk_spec: ArraySpec,
-    out_selection: SelectorTuple,
-    drop_axes: tuple[int, ...],
-) -> GetResult:
-    """Scatter one chunk's (already-selected) decoded region into ``out``.
-
-    ``None`` = the chunk is missing: the fill value is scattered instead and a
-    ``missing`` status is returned. POLICY-FREE by design: whether a missing
-    chunk is an error (``read_missing_chunks=False``) is decided by the array
-    layer from the returned statuses — which is also what makes missing INNER
-    chunks of a present shard fill rather than raise (the sharding codec
-    discards the nested read's statuses; only top-level statuses reach the
-    array layer).
-    """
-    if selected is None:
-        out[out_selection] = fill_value_or_default(chunk_spec)
-        return GetResult(status="missing")
-    if drop_axes:
-        selected = selected.squeeze(axis=drop_axes)
-    out[out_selection] = selected
-    return GetResult(status="present")
 
 
 async def _async_read_fallback(
