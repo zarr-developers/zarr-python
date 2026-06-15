@@ -1058,7 +1058,7 @@ class ShardingCodec(
                 raise ValueError(f"Unrecognized subchunk write order: {subchunk_write_order!r}.")
         return subchunk_iter
 
-    def _decode_full_shard_bulk(
+    def _decode_full_shard_bulk_if_uncompressed(
         self,
         shard_bytes: Buffer,
         shard_spec: ArraySpec,
@@ -1201,13 +1201,7 @@ class ShardingCodec(
             shard_bytes = byte_getter.get_sync(prototype=chunk_spec.prototype)
             if shard_bytes is None:
                 return None
-            # Bulk fast path: a whole-shard read of a dense, fixed-size shard
-            # (no compression/filters) is just the data section reshaped and
-            # reordered into the grid -- no per-chunk decode/scatter loop.
-            # Order-agnostic: chunk positions come from the stored index, so it
-            # is correct for any subchunk_write_order. Falls through on any
-            # mismatch (compression, partial shard, non-trivial inner codec).
-            bulk = self._decode_full_shard_bulk(shard_bytes, shard_spec, indexer)
+            bulk = self._decode_full_shard_bulk_if_uncompressed(shard_bytes, shard_spec, indexer)
             if bulk is not None:
                 if hasattr(indexer, "sel_shape"):
                     return bulk.reshape(indexer.sel_shape)

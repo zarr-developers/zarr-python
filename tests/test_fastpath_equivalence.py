@@ -97,7 +97,7 @@ def test_merge_complete_chunk_equals_general_path(
 
 
 # ---------------------------------------------------------------------------
-# _decode_full_shard_bulk: the vectorized dense-shard decode must equal the
+# _decode_full_shard_bulk_if_uncompressed: the vectorized dense-shard decode must equal the
 # general per-chunk decode (_decode_sync), across dtypes, endianness, write
 # orders, and index locations. This is the bug class of the historical
 # bulk-decode endianness fix.
@@ -146,7 +146,7 @@ def test_bulk_shard_decode_equals_general_decode(case: dict[str, Any]) -> None:
         shape=case["shard_shape"],
         chunk_grid=ChunkGrid.from_sizes(case["shard_shape"], case["chunk_shape"]),
     )
-    bulk = codec._decode_full_shard_bulk(blob, spec, indexer)
+    bulk = codec._decode_full_shard_bulk_if_uncompressed(blob, spec, indexer)
     # the fast path must APPLY for this dense uncompressed configuration —
     # a vacuous None would silently stop testing the equivalence
     assert bulk is not None
