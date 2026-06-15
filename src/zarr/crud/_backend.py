@@ -25,6 +25,10 @@ class CrudBackend(Protocol):
     `create_*` raise `zarr.crud.NodeExistsError` when a node exists and
     `overwrite` is false. `read_metadata`/`delete_node`/`list_children` raise
     `zarr.errors.NodeNotFoundError` when the target is missing.
+
+    Note: because this protocol is `runtime_checkable`, `isinstance` checks only
+    verify that the method names exist, not their signatures or that they are
+    async. Static type checking (mypy) is the authoritative conformance check.
     """
 
     async def create_array(
