@@ -13,11 +13,15 @@ makes read-only and virtual views possible.
 """
 
 from zarr.crud._backend import CrudBackend, NodeExistsError
+from zarr.crud._reference import ReferenceBackend
 from zarr.crud._registry import get_backend, register_backend
+
+register_backend("reference", ReferenceBackend())
 
 __all__ = [
     "CrudBackend",
     "NodeExistsError",
+    "ReferenceBackend",
     "get_backend",
     "register_backend",
 ]
