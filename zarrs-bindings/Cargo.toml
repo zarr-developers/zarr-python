@@ -12,6 +12,7 @@ name = "_zarrs_bindings"
 crate-type = ["cdylib"]
 
 [dependencies]
+lru = "0.12"
 pyo3 = { version = "0.28", features = ["abi3-py312"] }
 serde_json = "1"
 zarrs = "0.23"

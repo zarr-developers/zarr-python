@@ -46,5 +46,7 @@ fn _zarrs_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chunk::store_chunk, m)?)?;
     m.add_function(wrap_pyfunction!(chunk::erase_chunk, m)?)?;
     m.add_function(wrap_pyfunction!(chunk::retrieve_array_subset, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::array_cache_len, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk::clear_array_cache, m)?)?;
     Ok(())
 }

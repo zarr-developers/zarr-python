@@ -200,17 +200,26 @@ impl ListableStorageTraits for PyStore {
     }
 }
 
-/// Convert the Python-side store representation (`zarr.zarrs._bridge.resolve_store`
-/// output) into a zarrs storage handle.
-pub(crate) fn resolve_store(obj: &Bound<'_, PyAny>) -> PyResult<ReadableWritableListableStorage> {
+/// Like `resolve_store`, but also returns a cache key for the constructed
+/// storage: `Some(root)` for native filesystem stores (which are safe to key an
+/// Array cache on), `None` for the generic Python-callback path (uncached).
+pub(crate) fn resolve_store_with_key(
+    obj: &Bound<'_, PyAny>,
+) -> PyResult<(ReadableWritableListableStorage, Option<String>)> {
     if let Ok(config) = obj.cast::<PyDict>() {
         if let Some(root) = config.get_item("filesystem")? {
             let root: String = root.extract()?;
             let store =
-                FilesystemStore::new(root).map_err(|e| PyValueError::new_err(e.to_string()))?;
-            return Ok(Arc::new(store));
+                FilesystemStore::new(&root).map_err(|e| PyValueError::new_err(e.to_string()))?;
+            return Ok((Arc::new(store), Some(root)));
         }
         return Err(PyValueError::new_err("unrecognized store configuration"));
     }
-    Ok(Arc::new(PyStore(obj.clone().unbind())))
+    Ok((Arc::new(PyStore(obj.clone().unbind())), None))
+}
+
+/// Convert the Python-side store representation (`zarr.zarrs._bridge.resolve_store`
+/// output) into a zarrs storage handle.
+pub(crate) fn resolve_store(obj: &Bound<'_, PyAny>) -> PyResult<ReadableWritableListableStorage> {
+    Ok(resolve_store_with_key(obj)?.0)
 }
