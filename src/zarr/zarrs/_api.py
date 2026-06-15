@@ -189,6 +189,8 @@ def _array_shape(metadata: Mapping[str, JSON]) -> tuple[int, ...]:
     for s in shape:
         if not isinstance(s, (int, float)):
             raise TypeError(f"shape element {s!r} is not a number")
+        if isinstance(s, float) and not s.is_integer():
+            raise TypeError(f"shape element {s!r} is not an integer")
         result.append(int(s))
     return tuple(result)
 
@@ -245,11 +247,7 @@ def _normalize_selection(
                 lengths.append(start - last + 1)
                 post.append(slice(None, None, step))
         else:
-            if isinstance(sel, types.EllipsisType):
-                raise TypeError(
-                    "unsupported selection element "
-                    f"{sel!r}: only integers, slices, and Ellipsis are supported"
-                )
+            assert not isinstance(sel, types.EllipsisType), "Ellipsis already expanded above"
             try:
                 idx = operator.index(sel)
             except TypeError:
@@ -404,6 +402,11 @@ async def decode_region(
     result. Missing chunks decode to the fill value. Fancy indexing (integer
     or boolean arrays) is not supported and raises `TypeError`. The returned
     array is a read-only view; call `.copy()` if you need a writable array.
+
+    Note: zarrs fetches the step-1 bounding box of the selection. A selection
+    like `slice(0, N, step)` reads `O(N)` bytes from the store even though only
+    `O(N / step)` are returned; for sparse selections over large arrays, prefer
+    reading per-chunk with `decode_chunk`.
     """
     dtype, _ = _chunk_dtype_and_shape(metadata)
     shape = _array_shape(metadata)
