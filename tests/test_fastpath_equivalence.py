@@ -31,7 +31,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
 from zarr.core.chunk_grids import ChunkGrid
-from zarr.core.codec_pipeline import _merge_chunk_array
+from zarr.core.chunk_utils import _merge_chunk_array
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore

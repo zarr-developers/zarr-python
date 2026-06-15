@@ -20,13 +20,14 @@ from zarr.abc.codec import (
 )
 from zarr.core.chunk_utils import (
     ChunkTransform,
+    _merge_chunk_array,
     decode_and_scatter_chunk,
     evolve_codecs,
+    fill_value_or_default,
     merge_and_encode_chunk,
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
@@ -197,69 +199,6 @@ def pipeline_supports_partial_encode(
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
     return isinstance(array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-
-
-def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
-    fill_value = chunk_spec.fill_value
-    if fill_value is None:
-        # Zarr V2 allowed `fill_value` to be null in the metadata.
-        # Zarr V3 requires it to be set. This has already been
-        # validated when decoding the metadata, but we support reading
-        # Zarr V2 data and need to support the case where fill_value
-        # is None.
-        return chunk_spec.dtype.default_scalar()
-    else:
-        return fill_value
-
-
-def _merge_chunk_array(
-    existing_chunk_array: NDBuffer | None,
-    value: NDBuffer,
-    out_selection: SelectorTuple,
-    chunk_spec: ArraySpec,
-    chunk_selection: SelectorTuple,
-    is_complete_chunk: bool,
-    drop_axes: tuple[int, ...],
-) -> NDBuffer:
-    """Merge `value` into a full-chunk-shaped NDBuffer at `chunk_selection`.
-
-    If `is_complete_chunk` and `value[out_selection]` is exactly chunk-shaped,
-    that VIEW of the caller's `value` is returned without copying — callers
-    (and the codecs they pass it to) must treat it as read-only, since
-    mutating it would corrupt the user's source array. Otherwise, a writable
-    buffer is materialized — either from `existing_chunk_array.copy()` if
-    one was read from the store, or freshly allocated and filled with the
-    chunk's fill value — and the relevant slice of `value` is written into it.
-    """
-    if is_complete_chunk and value.shape != ():
-        selected = value[out_selection]
-        # The shape check guards against a partial edge chunk arriving with
-        # is_complete_chunk=True, and against dropped axes (size-1 integer
-        # dims), where the selection is not exactly chunk-shaped.
-        if selected.shape == chunk_spec.shape:
-            return selected
-    if existing_chunk_array is None:
-        chunk_array = chunk_spec.prototype.nd_buffer.create(
-            shape=chunk_spec.shape,
-            dtype=chunk_spec.dtype.to_native_dtype(),
-            order=chunk_spec.order,
-            fill_value=fill_value_or_default(chunk_spec),
-        )
-    else:
-        chunk_array = existing_chunk_array.copy()
-    if chunk_selection == () or is_scalar(
-        value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
-    ):
-        chunk_value = value
-    else:
-        chunk_value = value[out_selection]
-        if drop_axes:
-            item = tuple(
-                None if idx in drop_axes else slice(None) for idx in range(chunk_spec.ndim)
-            )
-            chunk_value = chunk_value[item]
-    chunk_array[chunk_selection] = chunk_value
-    return chunk_array
 
 
 def chunk_is_empty(chunk_array: NDBuffer, chunk_spec: ArraySpec) -> bool:
