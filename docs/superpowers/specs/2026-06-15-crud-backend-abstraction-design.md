@@ -20,8 +20,7 @@ Non-goals for this change (deliberately deferred):
 - Wiring the CRUD layer under zarr-python's own `Array`/`Group` classes.
 - Entrypoint-based backend discovery (this change uses explicit import-time
   registration).
-- Region/selection features beyond what already exists (`encode_region`,
-  chunk-subset `selection` on `read_chunk` remain future work, unchanged).
+- A write-side region operation (`write_region`) remains future work.
 
 ## Background
 
@@ -102,6 +101,29 @@ array's native byte order for the requested chunk / step-1 bounding box;
 `write_chunk` takes the same. `read_encoded_chunk` returns the raw stored
 (still-encoded) chunk bytes or `None` if absent. `read_metadata`/
 `list_children` return parsed JSON documents as dicts.
+
+### Two read-addressing axes (no overlap)
+
+Reads are addressed in one of two coordinate spaces, and the two never overlap:
+
+- **Chunk-grid coordinates** — `read_chunk(coords)` / `read_encoded_chunk(coords)`
+  return a whole chunk addressed by its grid position. `read_chunk` returns the
+  *full* chunk shape, including the fill-padded overhang of edge chunks;
+  `read_encoded_chunk` returns the raw stored bytes. These pair with
+  `write_chunk` / `delete_chunk`, which are also chunk-grid-addressed.
+- **Array-element coordinates** — `read_subset(start, shape)` returns an
+  arbitrary box in array space, which generally spans multiple chunks and is
+  clipped to the array bounds. The facade's `read_region(selection)` normalizes
+  a numpy selection to a step-1 bounding box and calls it.
+
+`read_chunk` takes no `selection` parameter. A sub-region *within* a single
+chunk is simply a `read_region` whose bounding box lies inside one chunk; the
+backend already decodes only the overlapping chunk(s) (sharding-aware in the
+zarrs backend), so a chunk-relative partial-read needs no separate API. The
+`Store.get(key, byte_range=)` analogue is therefore `read_region` over a
+single-chunk box, not a parameter on `read_chunk`; `read_subset` itself has no
+single-`get` analogue — it is closer to "`get_partial_values` across many keys,
+stitched into one array."
 
 ## Method naming
 
