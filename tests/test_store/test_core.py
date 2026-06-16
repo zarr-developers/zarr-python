@@ -89,7 +89,7 @@ async def test_contains_invalid_format_raises(local_store: LocalStore, func: _Co
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid zarr_format provided. Got 3.0, expected 2 or 3"):
         assert await func(store_path, "3.0")  # type: ignore[arg-type]
 
 
@@ -215,7 +215,7 @@ async def test_make_store_path_invalid() -> None:
     """
     Test that invalid types raise TypeError
     """
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
         await make_store_path(1)
 
 
@@ -263,7 +263,7 @@ def test_normalize_path_none() -> None:
 
 @pytest.mark.parametrize("path", [".", ".."])
 def test_normalize_path_invalid(path: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="is invalid because its string representation contains"):
         normalize_path(path)
 
 

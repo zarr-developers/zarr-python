@@ -396,7 +396,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subgroup"]["subarray"] == subsubarray
     assert group["subgroup/subarray"] == subsubarray
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="nope"):
         group["nope"]
 
     with pytest.raises(KeyError, match="subarray/subsubarray"):
@@ -484,11 +484,11 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subarray"] == subarray
 
     del group["subgroup"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subgroup"):
         group["subgroup"]
 
     del group["subarray"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subarray"):
         group["subarray"]
 
 
@@ -1061,7 +1061,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     assert await agroup.getitem(sub_group_path) == sub_group
 
     # check that asking for a nonexistent key raises KeyError
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="foo"):
         await agroup.getitem("foo")
 
 
@@ -1317,7 +1317,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     #     await root.require_group("foo", overwrite=True)
 
     # test that requiring a group where an array is fails
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Incompatible object"):
         await foo_group.require_group("bar")
 
 
@@ -1651,7 +1651,7 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="0/0"):
         g1["0/0"]
 
 

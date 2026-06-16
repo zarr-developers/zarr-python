@@ -158,7 +158,9 @@ def test_replace_ellipsis() -> None:
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.xfail(reason="structured dtypes (fields) are not supported in v3"),
         ),
     ],
 )
@@ -598,7 +600,9 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.xfail(reason="structured dtypes (fields) are not supported in v3"),
         ),
     ],
 )
