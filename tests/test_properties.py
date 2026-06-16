@@ -119,7 +119,6 @@ def test_array_creates_implicit_groups(array):
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
 
 
-@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
@@ -146,7 +145,6 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     # TODO test async setitem?
 
 
-@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
@@ -156,7 +154,6 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], zarray[indexer])
 
 
-@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
@@ -193,7 +190,6 @@ async def test_oindex(data: st.DataObject) -> None:
     # note: async oindex setitem not yet implemented
 
 
-@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:

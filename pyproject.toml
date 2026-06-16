@@ -447,9 +447,7 @@ filterwarnings = [
     "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
-    "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
-    "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
 ]
 
