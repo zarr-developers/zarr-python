@@ -7,7 +7,7 @@ exclude = [
   "/.github",
   "/bench",
   "/docs",
-  "/zarrs-bindings",
+  "/packages/zarrs-bindings",
 ]
 
 [project]
@@ -499,4 +499,4 @@ ignore-words-list = "astroid"
 zarr = "zarr.testing"
 
 [tool.uv.sources]
-zarrs-bindings = { path = "zarrs-bindings" }
+zarrs-bindings = { path = "packages/zarrs-bindings" }

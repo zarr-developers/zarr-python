@@ -96,4 +96,4 @@ zarr.egg-info/
 packages/zarr-metadata/uv.lock
 
 # zarrs-bindings Rust build artifacts
-zarrs-bindings/target/
+packages/zarrs-bindings/target/

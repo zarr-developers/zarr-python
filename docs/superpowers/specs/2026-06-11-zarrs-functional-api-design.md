@@ -39,7 +39,8 @@ codec-pipeline registry through this API (possible later), fancy
 
 Two distributions in this repo, hard boundary between them:
 
-1. **Rust crate `zarrs-bindings`** at the repo root (`zarrs-bindings/`),
+1. **Rust crate `zarrs-bindings`** under `packages/` (`packages/zarrs-bindings/`,
+   alongside the existing `zarr-metadata` subpackage),
    built with maturin (PyO3, `abi3-py312`), publishing wheel `zarrs-bindings`
    with native module `_zarrs_bindings`. It is a thin, mechanical binding over
    `zarrs`: functions/pyclasses take metadata as a **JSON string**, a

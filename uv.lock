@@ -4190,9 +4190,9 @@ zarrs = [
     { name = "pytest-xdist" },
     { name = "tomlkit" },
     { name = "uv" },
-    { name = "zarrs-bindings", directory = "zarrs-bindings" },
+    { name = "zarrs-bindings", directory = "packages/zarrs-bindings" },
 ]
 
 [[package]]
 name = "zarrs-bindings"
-source = { directory = "zarrs-bindings" }
+source = { directory = "packages/zarrs-bindings" }
