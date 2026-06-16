@@ -13,8 +13,9 @@ from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import is_regular_1d, is_regular_nd
 from zarr.core.config import config
-from zarr.core.dtype import UInt8
+from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
+from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
@@ -281,7 +282,6 @@ def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) 
         ExpectFail(
             input={"data_type": "uint8", "fill_value": {}},
             exception=TypeError,
-            msg=".*",
             id="invalid_fill_value_type",
         ),
     ],
@@ -290,7 +290,7 @@ def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) 
 def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> None:
     """from_dict rejects invalid metadata documents."""
     d = minimal_metadata_dict_v3(**case.input)
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
 
 
@@ -314,7 +314,7 @@ def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> Non
 )
 def test_array_metadata_extra_fields_rejected(case: ExpectFail[dict[str, Any]]) -> None:
     """from_dict rejects extra fields that don't conform to the spec."""
-    with pytest.raises(case.exception, match=case.msg):
+    with case.raises():
         ArrayV3Metadata.from_dict(case.input)
 
 
@@ -333,6 +333,74 @@ def test_init_extra_fields_collision() -> None:
             dimension_names=None,
             extra_fields=extra_fields,  # type: ignore[arg-type]
         )
+
+
+# ---------------------------------------------------------------------------
+# Equality
+# ---------------------------------------------------------------------------
+
+
+def test_eq_nan_fill_value() -> None:
+    """Two metadata objects with an identical NaN fill_value compare equal.
+
+    NaN is not equal to itself under IEEE 754, so the default dataclass __eq__
+    reports two otherwise-identical metadata objects as unequal. Metadata
+    equality must treat matching NaN fill values as equal (see issue #2929).
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+
+
+def test_eq_distinct_fill_value() -> None:
+    """Metadata objects that differ only in fill_value do not compare equal."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=1.0))  # type: ignore[arg-type]
+    assert a != b
+
+
+@pytest.mark.parametrize("fill_value", ["Infinity", "-Infinity"])
+def test_eq_inf_fill_value(fill_value: str) -> None:
+    """Two metadata objects with an identical infinite fill_value compare equal."""
+    a = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    b = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    assert a == b
+
+
+def test_hash_consistent_with_eq_nan_fill_value() -> None:
+    """Equal metadata objects with a NaN fill_value hash equal.
+
+    NaN hashes by identity, so a field-based hash would break the
+    ``a == b implies hash(a) == hash(b)`` invariant for objects that compare
+    equal under the to_dict-based __eq__.
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_non_metadata() -> None:
+    """Comparison against a non-metadata object returns False rather than erroring."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    assert a != object()
+
+
+def test_eq_across_zarr_formats() -> None:
+    """A v2 and v3 metadata describing the same array do not compare equal.
+
+    Each __eq__ guards on its own concrete type and returns NotImplemented
+    otherwise, so the two versions are never equal even when they describe the
+    same array.
+    """
+    v3 = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    v2 = ArrayV2Metadata(shape=(4, 4), dtype=Float64(), chunks=(4, 4), fill_value=0.0, order="C")
+    assert v2 != v3
+    assert v3 != v2
 
 
 # ---------------------------------------------------------------------------
