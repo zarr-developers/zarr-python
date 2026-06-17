@@ -530,7 +530,6 @@ def _trigger_partial_shard_read(array_config: ArrayConfigParams | None = None) -
     read via the public read path, and return the `get_ranges` mock.
     """
     import zarr
-    from zarr.codecs.sharding import ShardingCodecIndexLocation
 
     chunk_shape = (2,)
     shard_shape = (8,)
@@ -541,7 +540,7 @@ def _trigger_partial_shard_read(array_config: ArrayConfigParams | None = None) -
 
     shards: ShardsConfigParam = {
         "shape": shard_shape,
-        "index_location": ShardingCodecIndexLocation.end,
+        "index_location": "end",
     }
     a = zarr.create_array(
         StorePath(store_mock),
