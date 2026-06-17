@@ -13,6 +13,7 @@ nav:
   - "quick-start.md"
   - User Guide:
       - user-guide/index.md
+      - Understanding Zarr: user-guide/data_model.md
       - user-guide/installation.md
       - user-guide/arrays.md
       - user-guide/groups.md
@@ -264,7 +265,11 @@ markdown_extensions:
       hide_protocol: true
       repo_url_shortener: true
   - pymdownx.smartsymbols
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
