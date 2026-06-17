@@ -1,3 +1,4 @@
+import itertools
 import math
 import sys
 from collections.abc import Callable, Mapping
@@ -593,20 +594,30 @@ def orthogonal_indices(
 
 @st.composite
 def block_indices(
-    draw: st.DrawFn, *, chunk_grid_shape: tuple[int, ...], chunks: tuple[int, ...]
+    draw: st.DrawFn, *, chunk_sizes: tuple[tuple[int, ...], ...]
 ) -> tuple[tuple[int | slice, ...], tuple[slice, ...]]:
     """
-    Strategy for block-selection indexers over a *regular* chunk grid.
+    Strategy for block-selection indexers over a chunk grid.
 
     Block indexing is basic indexing applied to the block grid (the grid of
     chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
-    count from ``chunk_grid_shape`` (e.g. ``Array.cdata_shape``), mirroring how
-    ``orthogonal_indices`` reuses ``basic_indices`` per axis. Block indexing only
-    supports integers and step-1 slices whose start references an existing chunk,
-    so strided slices and slices starting at the grid edge are filtered out. The
-    array-space translation assumes a regular (uniform) chunk grid; an over-long
-    stop into a smaller last chunk is left for numpy to clamp when the oracle is
-    applied.
+    count, mirroring how ``orthogonal_indices`` reuses ``basic_indices`` per
+    axis. ``chunk_sizes`` gives the per-chunk data sizes of the array's *outer*
+    (block) grid for every axis — i.e. ``Array.write_chunk_sizes``, the grid that
+    ``Array.blocks`` addresses (the shard grid when sharding is used). For
+    example ``(3, 3, 3, 1)`` for a length-10 axis with a regular chunk size of 3,
+    or the explicit edges of a rectilinear axis; ``nchunks`` for an axis is
+    ``len(chunk_sizes[axis])``.
+
+    The array-space translation uses the cumulative sum of those sizes, matching
+    ``BlockIndexer``'s use of ``dim_grid.chunk_offset``. Because the sizes are
+    clipped to the array extent, the final offset equals the extent and the
+    translation is exact for regular (uniform), rectilinear, and sharded grids
+    alike.
+
+    Block indexing only supports integers and step-1 slices whose start
+    references an existing chunk, so strided slices and slices starting at the
+    grid edge are filtered out.
 
     Returns
     -------
@@ -634,7 +645,10 @@ def block_indices(
 
     block_indexer: list[int | slice] = []
     array_indexer: list[slice] = []
-    for chunk, nchunks in zip(chunks, chunk_grid_shape, strict=True):
+    for sizes in chunk_sizes:
+        nchunks = len(sizes)
+        # offsets[i] is the array-space start of chunk i; length nchunks + 1.
+        offsets = list(itertools.accumulate(sizes, initial=0))
         (dim_sel,) = draw(
             basic_indices(min_dims=1, shape=(nchunks,), allow_ellipsis=False)
             # normalize bare ints / slices to a 1-tuple, skip the empty tuple
@@ -645,11 +659,66 @@ def block_indices(
         block_indexer.append(dim_sel)
         if isinstance(dim_sel, slice):
             start, stop, _ = dim_sel.indices(nchunks)
-            array_indexer.append(slice(start * chunk, stop * chunk))
+            array_indexer.append(slice(offsets[start], offsets[stop]))
         else:
             block = dim_sel % nchunks
-            array_indexer.append(slice(block * chunk, (block + 1) * chunk))
+            array_indexer.append(slice(offsets[block], offsets[block + 1]))
     return tuple(block_indexer), tuple(array_indexer)
+
+
+@st.composite
+def block_test_arrays(
+    draw: st.DrawFn,
+) -> tuple[Array[Any], np.ndarray[Any, Any], tuple[tuple[int, ...], ...]]:
+    """Draw an array for block-indexing property tests with its contents and sizes.
+
+    Two arms, selected with equal probability:
+
+    - **regular**: a regular chunk grid, optionally wrapped in sharding.
+    - **rectilinear**: a variable (rectilinear) chunk grid, always unsharded.
+
+    Returns ``(zarray, nparray, chunk_sizes)`` where ``chunk_sizes`` is
+    ``Array.write_chunk_sizes`` — the per-axis sizes of the array's *outer*
+    (block / shard) grid, which is exactly the grid ``Array.blocks`` addresses.
+    Using it keeps the oracle correct for regular, sharded, and rectilinear
+    grids alike, without reaching into the private chunk grid.
+    """
+    if draw(st.booleans()):
+        # regular arm, optionally sharded
+        nparray, chunks = draw(
+            np_array_and_chunks(
+                arrays=numpy_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1))
+            )
+        )
+        # shard_shapes needs shape // chunk >= 1 on every axis; min_side=1 chunking
+        # already guarantees this, but guard defensively.
+        if all(s // c >= 1 for s, c in zip(nparray.shape, chunks, strict=True)):
+            shards = draw(st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks))
+        else:
+            shards = None
+        event("block regular sharded" if shards is not None else "block regular unsharded")
+        store = draw(stores)
+        zarray = zarr.create_array(
+            store=store,
+            shape=nparray.shape,
+            chunks=chunks,
+            shards=shards,
+            dtype=nparray.dtype,
+        )
+        zarray[...] = nparray
+        return zarray, nparray, zarray.write_chunk_sizes
+
+    # rectilinear arm, always unsharded
+    event("block rectilinear")
+    shape = draw(_rectilinear_shapes)
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
+    np_dtype = draw(dtypes())
+    nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=np_dtype))
+    store = draw(stores)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarray = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype=np_dtype)
+        zarray[...] = nparray
+    return zarray, nparray, zarray.write_chunk_sizes
 
 
 def key_ranges(
