@@ -669,20 +669,19 @@ def block_indices(
 @st.composite
 def block_test_arrays(
     draw: st.DrawFn,
-) -> tuple[Array[Any], np.ndarray[Any, Any], tuple[tuple[int, ...], ...]]:
-    """Draw an array for block-indexing property tests with its contents and sizes.
+) -> tuple[Array[Any], np.ndarray[Any, Any]]:
+    """Draw an array for block-indexing property tests, with its source contents.
 
     Two arms, selected with equal probability:
 
     - **regular**: a regular chunk grid, optionally wrapped in sharding.
     - **rectilinear**: a variable (rectilinear) chunk grid, always unsharded.
 
-    Returns ``(zarray, nparray, chunk_sizes)`` where ``chunk_sizes`` is
-    ``Array.write_chunk_sizes`` — the per-axis sizes of the array's *outer*
-    (block / shard) grid, which is exactly the grid ``Array.blocks`` addresses.
-    Using it keeps the oracle correct for regular, sharded, and rectilinear
-    grids alike, without reaching into the private chunk grid.
+    Returns ``(zarray, nparray)``. The per-axis block sizes the oracle needs are
+    ``zarray.write_chunk_sizes`` — the array's *outer* (block / shard) grid, which
+    is exactly the grid ``Array.blocks`` addresses; the caller reads it directly.
     """
+    chunks: tuple[int, ...] | list[list[int]]
     if draw(st.booleans()):
         # regular arm, optionally sharded
         nparray, chunks = draw(
@@ -690,14 +689,21 @@ def block_test_arrays(
                 arrays=numpy_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1))
             )
         )
-        # shard_shapes needs shape // chunk >= 1 on every axis; min_side=1 chunking
-        # already guarantees this, but guard defensively.
-        if all(s // c >= 1 for s, c in zip(nparray.shape, chunks, strict=True)):
-            shards = draw(st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks))
-        else:
-            shards = None
+        # min_side=1 chunking guarantees shape // chunk >= 1 on every axis, which
+        # shard_shapes requires.
+        shards = draw(st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks))
         event("block regular sharded" if shards is not None else "block regular unsharded")
-        store = draw(stores)
+        rectilinear = False
+    else:
+        # rectilinear arm, always unsharded
+        event("block rectilinear")
+        shape = draw(_rectilinear_shapes)
+        chunks = draw(rectilinear_chunks(shape=shape))
+        nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=draw(dtypes())))
+        shards, rectilinear = None, True
+
+    store = draw(stores)
+    with zarr.config.set({"array.rectilinear_chunks": rectilinear}):
         zarray = zarr.create_array(
             store=store,
             shape=nparray.shape,
@@ -705,20 +711,8 @@ def block_test_arrays(
             shards=shards,
             dtype=nparray.dtype,
         )
-        zarray[...] = nparray
-        return zarray, nparray, zarray.write_chunk_sizes
-
-    # rectilinear arm, always unsharded
-    event("block rectilinear")
-    shape = draw(_rectilinear_shapes)
-    chunk_shapes = draw(rectilinear_chunks(shape=shape))
-    np_dtype = draw(dtypes())
-    nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=np_dtype))
-    store = draw(stores)
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        zarray = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype=np_dtype)
-        zarray[...] = nparray
-    return zarray, nparray, zarray.write_chunk_sizes
+    zarray[...] = nparray
+    return zarray, nparray
 
 
 def key_ranges(

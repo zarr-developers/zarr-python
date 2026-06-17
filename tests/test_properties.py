@@ -265,9 +265,9 @@ def test_block_indexing(data: st.DataObject) -> None:
     # array-space oracle from cumulative chunk offsets, so it works for regular
     # (uniform), rectilinear, and sharded grids alike; block_test_arrays draws
     # across that matrix (rectilinear + sharded is unsupported and not drawn).
-    zarray, nparray, chunk_sizes = data.draw(block_test_arrays())
+    zarray, nparray = data.draw(block_test_arrays())
 
-    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=chunk_sizes))
+    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=zarray.write_chunk_sizes))
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
