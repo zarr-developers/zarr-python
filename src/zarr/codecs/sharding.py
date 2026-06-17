@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Self
 
+    from zarr.core.chunk_layouts import ChunkLayout
     from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -401,6 +402,17 @@ class ShardingCodec(
                 "index_location": self.index_location,
             },
         }
+
+    def inner_chunk_layout(self) -> ChunkLayout:
+        """The sub-chunk structure this sharding codec declares inside each shard.
+
+        Nested sharding falls out of the recursion: if this shard's single inner
+        codec is itself a sharding codec, its layout becomes ``inner.inner``.
+        """
+        from zarr.core.chunk_layouts import ChunkLayout
+
+        inner = self.codecs[0].inner_chunk_layout() if len(self.codecs) == 1 else None
+        return ChunkLayout(chunks=tuple(self.chunk_shape), inner=inner)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
