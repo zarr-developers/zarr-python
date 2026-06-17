@@ -1,5 +1,7 @@
 # Release notes
 
+<!-- markdownlint-disable MD012 -- towncrier intentionally emits a blank line between releases -->
+
 <!-- towncrier release notes start -->
 
 ## 3.2.1 (2026-05-05)

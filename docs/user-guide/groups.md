@@ -130,4 +130,3 @@ Groups also have the [`zarr.Group.tree`][] method, e.g.:
 ```python exec="true" session="groups" source="above" result="ansi"
 print(root.tree())
 ```
-

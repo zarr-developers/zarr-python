@@ -78,7 +78,6 @@ print(f"Speedup is {speedup}")
 
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
 
-
 ## Cache Configuration
 
 The CacheStore can be configured with several parameters:

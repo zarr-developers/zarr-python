@@ -46,7 +46,6 @@ written to a `LocalStore` in the `data/example-1.zarr` directory.
 
 Zarr supports data compression and filters. For example, to use Blosc compression:
 
-
 ```python exec="true" session="quickstart" source="above" result="code"
 
 # Create a 2D Zarr array with Blosc compression
@@ -68,7 +67,6 @@ print(z.info)
 ```
 
 This compresses the data using the Blosc codec with shuffle enabled for better compression.
-
 
 ### Hierarchical Groups
 

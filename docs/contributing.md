@@ -12,23 +12,23 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can format the code nicely using markdown, e.g.:
 
-```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
-import zarr
-g = zarr.group()
-# etc.
-```
+    ```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
+    import zarr
+    g = zarr.group()
+    # etc.
+    ```
 
 2. An explanation of why the current behaviour is wrong/not desired, and what you expect instead.
 
 3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` property. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
-```console
-python
-```
+    ```console
+    python
+    ```
 
-```ansi
-Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
-```
+    ```ansi
+    Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
+    ```
 
 ## Enhancement proposals
 
@@ -397,7 +397,6 @@ Zarr developers should make changes as smooth as possible for users. This means 
 The Zarr library is an implementation of a file format standard defined externally -- see the [Zarr specifications website](https://zarr-specs.readthedocs.io) for the list of Zarr file format specifications.
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
-
 
 ## Experimental API policy
 

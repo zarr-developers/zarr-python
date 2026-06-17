@@ -41,17 +41,21 @@ group = zarr.create_group(store=data)
 print(group)
 ```
 
+<!-- markdownlint-disable-next-line MD042 -- empty link is an intentional MkDocs anchor target -->
 [](){#user-guide-store-like}
+
 ### StoreLike
 
 `StoreLike` values can be:
 
 - a `Path` or string indicating a location on the local file system.
   This will create a [local store](#local-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    from pathlib import Path
    group = zarr.open_group(store=Path('data/foo/bar'))
@@ -59,6 +63,7 @@ print(group)
    ```
 
 - an FSSpec URI string, indicating a [remote store](#remote-store) location:
+
    ```python exec="true" session="storage" source="above" result="ansi"
    # Note: requires s3fs to be installed
    group = zarr.open_group(
@@ -70,10 +75,12 @@ print(group)
    ```
 
 - an empty dictionary or None, which will create a new [memory store](#memory-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store={})
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store=None)
    print(group)
@@ -150,7 +157,6 @@ fs = fsspec.filesystem(
 store = zarr.storage.FsspecStore(fs)
 print(store)
 ```
-
 
 ### Memory Store
 

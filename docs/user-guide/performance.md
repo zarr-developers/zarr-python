@@ -119,7 +119,6 @@ The order of chunks **within each shard** can be changed via the `subchunk_write
 
 By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality. [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired, and `colexicographic` is its reverse. `unordered` makes no guarantee about the order in which subchunks are laid out within a shard.
 
-
 ### Empty chunks
 
 It is possible to configure how Zarr handles the storage of chunks that are "empty"
@@ -215,11 +214,13 @@ zarr.config.set({'async.concurrency': 128})
 ```
 
 Higher concurrency values can improve throughput when:
+
 - Working with remote storage (e.g., S3, GCS) where network latency is high
 - Reading/writing many small chunks in parallel
 - The storage backend can handle many concurrent requests
 
 Lower concurrency values may be beneficial when:
+
 - Working with local storage with limited I/O bandwidth
 - Memory is constrained (each concurrent operation requires buffer space)
 - Using Zarr within a parallel computing framework (see below)
@@ -252,7 +253,7 @@ concurrently.
 
 **Important**: When using many Dask threads, you may need to reduce both Zarr's `async.concurrency` and `threading.max_workers` settings to avoid creating too many concurrent operations. The total number of concurrent I/O operations can be roughly estimated as:
 
-```
+```text
 total_concurrency ≈ dask_threads × zarr_async_concurrency
 ```
 
@@ -292,6 +293,7 @@ You may need to experiment with different values to find the optimal balance for
 Zarr arrays are designed to be thread-safe for concurrent reads and writes from multiple threads within the same process. However, proper synchronization is required when writing to overlapping regions from multiple threads.
 
 For multi-process parallelism, Zarr provides safe concurrent writes as long as:
+
 - Different processes write to different chunks
 - The storage backend supports atomic writes (most do)
 
