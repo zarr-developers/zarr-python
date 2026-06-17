@@ -649,12 +649,19 @@ def block_indices(
         nchunks = len(sizes)
         # offsets[i] is the array-space start of chunk i; length nchunks + 1.
         offsets = list(itertools.accumulate(sizes, initial=0))
-        (dim_sel,) = draw(
+        dim_strategy = (
             basic_indices(min_dims=1, shape=(nchunks,), allow_ellipsis=False)
             # normalize bare ints / slices to a 1-tuple, skip the empty tuple
             .map(lambda x: (x,) if not isinstance(x, tuple) else x)
             .filter(bool)
             .filter(supported(nchunks))
+        )
+        # basic_indices draws slices far more often than bare integers, so the
+        # integer (single-block) branch below would only be hit on rare draws.
+        # Union in an explicit integer so it is reliably exercised — keeping
+        # coverage deterministic under the derandomized ``ci`` Hypothesis profile.
+        (dim_sel,) = draw(
+            dim_strategy | st.integers(min_value=0, max_value=nchunks - 1).map(lambda i: (i,))
         )
         block_indexer.append(dim_sel)
         if isinstance(dim_sel, slice):
