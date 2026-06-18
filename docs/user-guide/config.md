@@ -35,6 +35,7 @@ Configuration options include the following:
 - Async and threading options, e.g. `async.concurrency` and `threading.max_workers`
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See GPU support for more.
+- Control request merging when reading multiple chunks from the same shard with `array.sharding_coalesce_max_gap_bytes` and `array.sharding_coalesce_max_bytes`. Reads of nearby chunks are coalesced into a single request to the store when separated by at most `sharding_coalesce_max_gap_bytes` and the resulting merged read is no larger than `sharding_coalesce_max_bytes`.
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
