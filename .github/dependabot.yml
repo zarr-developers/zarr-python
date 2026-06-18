@@ -12,6 +12,19 @@ updates:
           - "*"
     cooldown:
       default-days: 7
+  # Keep the pinned dev tooling in pyproject.toml's [dependency-groups] and the
+  # uv.lock current. Without this the exact pins (e.g. pytest) would never be
+  # bumped automatically and would silently rot.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "support/v2"

@@ -35,7 +35,7 @@ dependencies = [
     'numpy>=2',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
-    'typing_extensions>=4.13',
+    'typing_extensions>=4.14',
     'donfig>=0.8',
 ]
 
@@ -83,20 +83,29 @@ Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 documentation = "https://zarr.readthedocs.io/"
 homepage = "https://github.com/zarr-developers/zarr-python"
 
+# Dev *tooling* is pinned to exact versions for reproducible CI: the hatch envs
+# (see `tool.hatch.envs.*`) and bare `uv run` resolve these groups fresh from
+# PyPI and do NOT consult uv.lock, so an unrelated tooling release can break CI
+# without any change on our side (e.g. the pytest 9.1.0 `duplicate
+# parametrization` regression). Runtime/integration deps (fsspec, obstore, s3fs,
+# botocore, numcodecs, universal-pathlib) are intentionally left floating so the
+# `optional` test matrix keeps exercising their latest releases; their floor and
+# bleeding edge are covered by the `min_deps` and `upstream` hatch envs. Bump the
+# pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage>=7.10",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-accept",
-    "numpydoc",
-    "hypothesis",
-    "pytest-xdist",
-    "pytest-benchmark",
-    "pytest-codspeed",
-    "tomlkit",
-    "uv",
+    "coverage==7.14.1",
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pytest-accept==0.2.3",
+    "numpydoc==1.10.0",
+    "hypothesis==6.155.2",
+    "pytest-xdist==3.8.0",
+    "pytest-benchmark==5.2.3",
+    "pytest-codspeed==5.0.3",
+    "tomlkit==0.15.0",
+    "uv==0.11.20",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -104,35 +113,38 @@ remote-tests = [
     "obstore>=0.5.1",
     "botocore",
     "s3fs>=2023.10.0",
-    "moto[s3,server]",
-    "requests",
+    "moto[s3,server]==5.2.2",
+    "requests==2.34.2",
+]
+release = [
+    "towncrier==25.8.0",
 ]
 docs = [
     # Doc building
-    "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1,<2",
-    "mkdocstrings>=0.29.1",
-    "mkdocstrings-python>=1.16.10",
-    "mike>=2.1.3",
-    "mkdocs-jupyter>=0.25.1",
-    "mkdocs-redirects>=1.2.0",
-    "markdown-exec[ansi]",
-    "griffe-inherited-docstrings",
-    "ruff",
+    "mkdocs-material[imaging]==9.7.6",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.4",
+    "mkdocstrings-python==2.0.4",
+    "mike==2.2.0",
+    "mkdocs-jupyter==0.26.3",
+    "mkdocs-redirects==1.2.3",
+    "markdown-exec[ansi]==1.12.1",
+    "griffe-inherited-docstrings==1.1.3",
+    "ruff==0.15.16",
     # Changelog generation
-    "towncrier",
+    {include-group = "release"},
     # Optional dependencies to run examples
     "numcodecs[msgpack]",
     "s3fs>=2023.10.0",
-    "astroid<4",
-    "pytest",
+    "astroid==4.1.2",
+    "pytest==9.0.3",
 ]
 dev = [
     {include-group = "test"},
     {include-group = "remote-tests"},
     {include-group = "docs"},
     "universal-pathlib",
-    "mypy",
+    "mypy==2.1.0",
 ]
 
 [tool.coverage.report]
@@ -204,6 +216,10 @@ list-env = "pip list"
 template = "test"
 extra-dependencies = [
     "universal_pathlib",
+    # Needed so tests/test_docs.py is collectable under `pytest -m gpu`; otherwise its
+    # module-level importorskip("pytest_examples") skips the whole module and the gpu
+    # docs example is never executed on GPU hardware.
+    "pytest-examples",
 ]
 features = ["gpu"]
 
@@ -252,12 +268,12 @@ extra-dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
-    'typing_extensions==4.13.*',
+    'typing_extensions==4.14.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
 ]
 
-[tool.hatch.envs.defaults]
+[tool.hatch.envs.default]
 installer = "uv"
 
 [tool.hatch.envs.docs]
@@ -277,9 +293,8 @@ readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
 features = ['remote']
-dependency-groups = ['test']
+dependency-groups = ['remote-tests']
 extra-dependencies = [
-    "s3fs>=2023.10.0",
     "pytest-examples",
 ]
 
@@ -378,7 +393,7 @@ show_error_code_links = true
 show_error_context = true
 strict = true
 warn_unreachable = true
-enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "truthy-iterable"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -414,7 +429,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests", "docs/user-guide"]
+testpaths = ["src", "tests", "docs/user-guide"]
 log_cli_level = "INFO"
 log_level = "INFO"
 xfail_strict = true
@@ -430,6 +445,9 @@ addopts = [
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
     "-ra", "--strict-config", "--strict-markers",
+    "--doctest-modules",
+    "--ignore=tests/test_regression/scripts",
+    "--ignore=src/zarr/_cli",
 ]
 filterwarnings = [
     "error",
@@ -443,6 +461,7 @@ filterwarnings = [
 markers = [
     "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
+    "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
 ]
 

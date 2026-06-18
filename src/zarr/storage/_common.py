@@ -12,6 +12,7 @@ from zarr.abc.store import (
     SupportsGetSync,
     SupportsSetSync,
 )
+from zarr.core._json import buffer_to_json_object, get_json
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -35,6 +36,7 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import JSON
 
 
 class StorePath:
@@ -161,6 +163,23 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_json(self, *, byte_range: ByteRequest | None = None) -> JSON | None:
+        """
+        Read and parse the JSON document at this path, or None if it is absent.
+
+        Parameters
+        ----------
+        byte_range : ByteRequest, optional
+            If given, read only this portion of the value. Note that a partial
+            read of a JSON document may not be valid JSON.
+
+        Returns
+        -------
+        JSON or None
+            The parsed JSON value, or None if this path does not exist.
+        """
+        return await get_json(self.store, self.path, byte_range=byte_range)
 
     async def set(self, value: Buffer) -> None:
         """
@@ -527,14 +546,14 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
     # if no metadata document could be loaded, then we just return "nothing"
     if extant_meta_bytes is not None:
         try:
-            extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+            extant_meta_json = buffer_to_json_object(extant_meta_bytes)
             # avoid constructing a full metadata document here in the name of speed.
             if extant_meta_json["node_type"] == "array":
                 result = "array"
             elif extant_meta_json["node_type"] == "group":
                 result = "group"
-        except (KeyError, json.JSONDecodeError):
-            # either of these errors is consistent with no array or group present.
+        except (KeyError, TypeError, json.JSONDecodeError):
+            # any of these errors is consistent with no array or group present.
             pass
     return result
 
@@ -598,11 +617,11 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             return False
         else:
             try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
                 # we avoid constructing a full metadata document here in the name of speed.
                 if extant_meta_json["node_type"] == "array":
                     return True
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError):
                 return False
     elif zarr_format == 2:
         return await (store_path / ZARRAY_JSON).exists()
@@ -635,10 +654,10 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             return False
         else:
             try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
                 # we avoid constructing a full metadata document here in the name of speed.
                 result: bool = extant_meta_json["node_type"] == "group"
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError):
                 return False
             else:
                 return result
