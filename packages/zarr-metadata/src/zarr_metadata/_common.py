@@ -9,7 +9,19 @@ Codec and dtype spec types live under `zarr_metadata.v3.codec` and
 from collections.abc import Mapping
 from typing import NotRequired
 
-from typing_extensions import TypedDict
+from typing_extensions import TypeAliasType, TypedDict
+
+JSONValue = TypeAliasType(
+    "JSONValue",
+    "int | float | bool | None | str | list[JSONValue] | tuple[JSONValue, ...] | Mapping[str, JSONValue]",  # type: ignore[reportInvalidTypeForm]
+)
+"""A recursive type alias for JSON-encodable values.
+
+Defined via `TypeAliasType` (rather than a plain `TypeAlias`) so the
+self-reference is a named recursion point that pydantic can resolve when
+building a `TypeAdapter`; a bare recursive `TypeAlias` raises
+`PydanticUserError`/`RecursionError` at validation time.
+"""
 
 
 class NamedConfig(TypedDict):
@@ -17,9 +29,8 @@ class NamedConfig(TypedDict):
     Externally-tagged union member for a metadata field.
 
     The `configuration` mapping holds arbitrary JSON-encodable values;
-    it is typed as `Mapping[str, object]` because the type system cannot
-    express or verify JSON-encodability.
+    it is typed as `Mapping[str, JSONValue]`.
     """
 
     name: str
-    configuration: NotRequired[Mapping[str, object]]
+    configuration: NotRequired[Mapping[str, JSONValue]]

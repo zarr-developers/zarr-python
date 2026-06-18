@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import pathlib
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -16,7 +17,7 @@ from hypothesis import HealthCheck, Verbosity, settings
 import zarr.registry
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
-from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.codecs.sharding import IndexLocation, ShardingCodec
 from zarr.core.array import (
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
@@ -50,6 +51,7 @@ from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from contextlib import AbstractContextManager
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -64,7 +66,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import ZDType
 
 
-@dataclass
+@dataclass(frozen=True)
 class Expect[TIn, TOut]:
     """A test case with explicit input, expected output, and a human-readable id."""
 
@@ -73,14 +75,27 @@ class Expect[TIn, TOut]:
     id: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExpectFail[TIn]:
-    """A test case that should raise an exception."""
+    """A test case that should raise an exception.
+
+    `msg` is a regex matched against the exception text (pytest's native
+    `match=` semantics). Leave it `None` to assert only the exception type. Set
+    `escape=True` when `msg` is a literal that contains regex metacharacters
+    such as `(`, `[`, or `.`; `escape` has no effect when `msg` is `None`.
+    """
 
     input: TIn
     exception: type[Exception]
     id: str
-    msg: str
+    msg: str | None = None
+    escape: bool = False
+
+    def raises(self) -> AbstractContextManager[pytest.ExceptionInfo[Exception]]:
+        if self.msg is None:
+            return pytest.raises(self.exception)
+        pattern = re.escape(self.msg) if self.escape else self.msg
+        return pytest.raises(self.exception, match=pattern)
 
 
 async def parse_store(
@@ -399,11 +414,9 @@ def create_array_metadata(
         codecs_out: tuple[Codec, ...]
         if inner is not None:
             inner_chunks_flat = as_regular_shape(inner.outer_chunks)
-            index_location = None
+            index_location: IndexLocation = "end"
             if isinstance(shards, dict):
-                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
-            if index_location is None:
-                index_location = ShardingCodecIndexLocation.end
+                index_location = cast("IndexLocation", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat,
                 codecs=sub_codecs,
