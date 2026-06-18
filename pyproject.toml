@@ -101,11 +101,11 @@ test = [
     "pytest-accept==0.2.3",
     "numpydoc==1.10.0",
     "hypothesis==6.155.2",
-    "pytest-xdist==3.8.0",
+    "pytest-xdist==3.8.0; sys_platform != 'emscripten'",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.0",
-    "uv==0.11.19",
+    "uv==0.11.19; sys_platform != 'emscripten'",
 ]
 remote-tests = [
     {include-group = "test"},
