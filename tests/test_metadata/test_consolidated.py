@@ -51,6 +51,74 @@ async def memory_store_with_hierarchy(memory_store: Store) -> Store:
 
 
 class TestConsolidated:
+    @pytest.mark.filterwarnings("ignore:Consolidated metadata")
+    async def test_getitem_consolidated_empty_leaf_group(
+        self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
+    ) -> None:
+        # This test writes the bytes directly, rather than using the zarr API, to mimic
+        # how older versions of zarr-python wrote the consolidated metadata.
+        # Notably, zarr-python 2.x does not include a
+        #
+        #     "consolidated_metadata": {"metadata": {}}
+        #
+        # field on the leaf group nodes.
+        if zarr_format == 2:
+            zmetadata: dict[str, JSON] = {
+                "metadata": {
+                    ".zattrs": {},
+                    ".zgroup": {"zarr_format": 2},
+                    "raw/.zattrs": {},
+                    "raw/.zgroup": {"zarr_format": 2},
+                    "raw/varm/.zattrs": {},
+                    "raw/varm/.zgroup": {"zarr_format": 2},
+                },
+                "zarr_consolidated_format": 1,
+            }
+            await memory_store.set(
+                ".zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
+            )
+            await memory_store.set(".zattrs", cpu.Buffer.from_bytes(json.dumps({}).encode()))
+            await memory_store.set(
+                ".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode())
+            )
+
+        else:
+            zmetadata = {
+                "attributes": {},
+                "zarr_format": 3,
+                "consolidated_metadata": {
+                    "kind": "inline",
+                    "must_understand": False,
+                    "metadata": {
+                        "raw": {
+                            "attributes": {},
+                            "zarr_format": 3,
+                            "node_type": "group",
+                        },
+                        "raw/varm": {
+                            "attributes": {},
+                            "zarr_format": 3,
+                            "node_type": "group",
+                        },
+                    },
+                },
+                "node_type": "group",
+            }
+            await memory_store.set(
+                "zarr.json", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode())
+            )
+
+        group = await zarr.api.asynchronous.open_consolidated(
+            store=memory_store, zarr_format=zarr_format
+        )
+        raw = await group.getitem("raw")
+        assert isinstance(raw, zarr.AsyncGroup)
+        assert raw.metadata.consolidated_metadata is not None
+
+        varm = await raw.getitem("varm")
+        assert isinstance(varm, zarr.AsyncGroup)
+        assert varm.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
+
     async def test_open_consolidated_false_raises(self) -> None:
         store = zarr.storage.MemoryStore()
         with pytest.raises(TypeError, match="use_consolidated"):
@@ -691,6 +759,21 @@ class TestConsolidated:
         )
         expected = ["b", "b/c"]
         assert result == expected
+
+    async def test_absolute_path_for_subgroup(self, memory_store: zarr.storage.MemoryStore) -> None:
+        root = await zarr.api.asynchronous.create_group(store=memory_store)
+        await root.create_group("a/b")
+        with pytest.warns(
+            ZarrUserWarning,
+            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+        ):
+            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+        group = await zarr.api.asynchronous.open_group(store=memory_store)
+        subgroup = await group.getitem("/a")
+        assert isinstance(subgroup, AsyncGroup)
+        members = [x async for x in subgroup.keys()]  # noqa: SIM118
+        assert members == ["b"]
 
 
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])

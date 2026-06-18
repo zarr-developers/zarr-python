@@ -5,21 +5,24 @@ import pytest
 
 import zarr
 from zarr import Array
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, SupportsSyncCodec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
+from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
-numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType, "S", "U"]
-expected_array_string_dtype: np.dtype[Any]
-if _NUMPY_SUPPORTS_VLEN_STRING:
-    numpy_str_dtypes.append(np.dtypes.StringDType)
-    expected_array_string_dtype = np.dtypes.StringDType()
-else:
-    expected_array_string_dtype = np.dtype("O")
+numpy_str_dtypes: list[type | str | None] = [
+    None,
+    str,
+    "str",
+    np.dtypes.StrDType,
+    "S",
+    "U",
+    np.dtypes.StringDType,
+]
+expected_array_string_dtype: np.dtype[Any] = np.dtypes.StringDType()
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -62,3 +65,11 @@ def test_vlen_string(
     assert np.array_equal(data, b[:, :])
     assert b.metadata.data_type == get_data_type_from_native_dtype(data.dtype)
     assert a.dtype == data.dtype
+
+
+def test_vlen_utf8_codec_supports_sync() -> None:
+    assert isinstance(VLenUTF8Codec(), SupportsSyncCodec)
+
+
+def test_vlen_bytes_codec_supports_sync() -> None:
+    assert isinstance(VLenBytesCodec(), SupportsSyncCodec)

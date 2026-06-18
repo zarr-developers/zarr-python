@@ -3,14 +3,13 @@ from __future__ import annotations
 import asyncio
 import pickle
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Self
 
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from zarr.abc.store import ByteRequest
     from zarr.core.buffer.core import BufferPrototype
 
 import pytest
@@ -21,22 +20,42 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.sync import _collect_aiterator
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
 
 __all__ = ["StoreTests"]
 
 
-S = TypeVar("S", bound=Store)
-B = TypeVar("B", bound=Buffer)
-
-
-class StoreTests(Generic[S, B]):
+class StoreTests[S: Store, B: Buffer]:
     store_cls: type[S]
     buffer_cls: type[B]
+
+    @staticmethod
+    def _require_get_sync(store: S) -> SupportsGetSync:
+        """Skip unless *store* implements :class:`SupportsGetSync`."""
+        if not isinstance(store, SupportsGetSync):
+            pytest.skip("store does not implement SupportsGetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_set_sync(store: S) -> SupportsSetSync:
+        """Skip unless *store* implements :class:`SupportsSetSync`."""
+        if not isinstance(store, SupportsSetSync):
+            pytest.skip("store does not implement SupportsSetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_delete_sync(store: S) -> SupportsDeleteSync:
+        """Skip unless *store* implements :class:`SupportsDeleteSync`."""
+        if not isinstance(store, SupportsDeleteSync):
+            pytest.skip("store does not implement SupportsDeleteSync")
+        return store  # type: ignore[unreachable]
 
     @abstractmethod
     async def set(self, store: S, key: str, value: Buffer) -> None:
@@ -280,10 +299,16 @@ class StoreTests(Generic[S, B]):
     async def test_getsize_prefix(self, store: S) -> None:
         """
         Test the result of store.getsize_prefix().
+
+        Includes a sibling key ("cc/0") that shares the string prefix "c" but
+        belongs to a different directory: getsize_prefix("c") must not count it,
+        i.e. the prefix is matched as a directory ("c/...") not a raw substring.
         """
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         keys = ["c/0/0", "c/0/1", "c/1/0", "c/1/1"]
-        keys_values = [(k, data_buf) for k in keys]
+        # Sibling directory sharing the "c" string prefix; must be excluded.
+        sibling_keys = ["cc/0"]
+        keys_values = [(k, data_buf) for k in keys + sibling_keys]
         await store._set_many(keys_values)
         expected = len(data_buf) * len(keys)
         observed = await store.getsize_prefix("c")
@@ -351,10 +376,18 @@ class StoreTests(Generic[S, B]):
         for key, _ in key_ranges:
             await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
-        # read back just part of it
+        # read back just part of it. Pass key_ranges as a one-shot generator
+        # (a valid Iterable per the method signature) to ensure stores and
+        # wrappers do not exhaust the iterable before handing it to the backend.
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype(), key_ranges=key_ranges
+            prototype=default_buffer_prototype(),
+            key_ranges=(kr for kr in key_ranges),
         )
+
+        # One result must be returned per requested key range. Checking this
+        # explicitly guards against a store/wrapper exhausting the key_ranges
+        # iterable early and silently returning fewer (or no) results.
+        assert len(observed_maybe) == len(key_ranges)
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -363,8 +396,7 @@ class StoreTests(Generic[S, B]):
             assert obs is not None
             observed.append(obs)
 
-        for idx in range(len(observed)):
-            key, byte_range = key_ranges[idx]
+        for key, byte_range in key_ranges:
             result = await store.get(
                 key, prototype=default_buffer_prototype(), byte_range=byte_range
             )
@@ -429,8 +461,8 @@ class StoreTests(Generic[S, B]):
         prefix = "foo"
         data = self.buffer_cls.from_bytes(b"")
         store_dict = {
-            prefix + "/zarr.json": data,
-            **{prefix + f"/c/{idx}": data for idx in range(10)},
+            f"{prefix}/zarr.json": data,
+            **{f"{prefix}/c/{idx}": data for idx in range(10)},
         }
         await store._set_many(store_dict.items())
         expected_sorted = sorted(store_dict.keys())
@@ -491,24 +523,36 @@ class StoreTests(Generic[S, B]):
         assert observed_prefix_sorted == expected_prefix_sorted
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
-        store_dict = {
-            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
-            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
-        }
+        roots_and_keys: list[tuple[str, dict[str, Buffer]]] = [
+            (
+                "foo",
+                {
+                    "foo/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+                    "foo/c/1": self.buffer_cls.from_bytes(b"\x01"),
+                },
+            ),
+            (
+                "foo/bar",
+                {
+                    "foo/bar/foobar_first_child": self.buffer_cls.from_bytes(b"1"),
+                    "foo/bar/foobar_second_child/zarr.json": self.buffer_cls.from_bytes(b"2"),
+                },
+            ),
+        ]
 
         assert await _collect_aiterator(store.list_dir("")) == ()
-        assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        await store._set_many(store_dict.items())
+        for root, store_dict in roots_and_keys:
+            assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            await store._set_many(store_dict.items())
 
-        assert sorted(keys_observed) == sorted(keys_expected)
+            keys_observed = await _collect_aiterator(store.list_dir(root))
+            keys_expected = {k.removeprefix(f"{root}/").split("/")[0] for k in store_dict}
+            assert sorted(keys_observed) == sorted(keys_expected)
 
-        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
-        assert sorted(keys_expected) == sorted(keys_observed)
+            keys_observed = await _collect_aiterator(store.list_dir(f"{root}/"))
+            assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
@@ -526,6 +570,52 @@ class StoreTests(Generic[S, B]):
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods (SupportsSyncStore protocol)
+    # -------------------------------------------------------------------
+
+    def test_get_sync(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_get"
+        sync(self.set(store, key, data_buf))
+        result = getter.get_sync(key)
+        assert result is not None
+        assert_bytes_equal(result, data_buf)
+
+    def test_get_sync_missing(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        result = getter.get_sync("nonexistent")
+        assert result is None
+
+    def test_set_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_set"
+        setter.set_sync(key, data_buf)
+        result = sync(self.get(store, key))
+        assert_bytes_equal(result, data_buf)
+
+    def test_delete_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        deleter = self._require_delete_sync(store)
+        getter = self._require_get_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_delete"
+        setter.set_sync(key, data_buf)
+        deleter.delete_sync(key)
+        result = getter.get_sync(key)
+        assert result is None
+
+    def test_delete_sync_missing(self, store: S) -> None:
+        deleter = self._require_delete_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        # should not raise
+        deleter.delete_sync("nonexistent_sync")
+
 
 class LatencyStore(WrapperStore[Store]):
     """
@@ -537,10 +627,13 @@ class LatencyStore(WrapperStore[Store]):
     get_latency: float
     set_latency: float
 
-    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+    def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
         self.get_latency = float(get_latency)
         self.set_latency = float(set_latency)
-        self._store = cls
+        self._store = store
+
+    def _with_store(self, store: Store) -> Self:
+        return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)
 
     async def set(self, key: str, value: Buffer) -> None:
         """

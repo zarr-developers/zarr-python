@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
 
-    from zarr.codecs.bytes import Endian
+    from zarr.codecs.bytes import EndianLiteral
     from zarr.core.common import BytesLike
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
@@ -70,8 +71,13 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
-    ) -> Self: ...
+        self,
+        shape: tuple[int, ...],
+        /,
+        *,
+        order: Literal["A", "C", "F"] | None = ...,
+        copy: bool | None = ...,
+    ) -> NDArrayLike: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
@@ -91,7 +97,7 @@ class NDArrayLike(Protocol):
 
     def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
 
-    def all(self) -> bool: ...
+    def all(self) -> np.bool_: ...
 
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
@@ -124,7 +130,7 @@ class Buffer(ABC):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -218,7 +224,7 @@ class Buffer(ABC):
         Parameters
         ----------
         bytes_like
-           bytes-like object
+            bytes-like object
 
         Returns
         -------
@@ -266,7 +272,7 @@ class Buffer(ABC):
         -------
             An object that implements the Python buffer protocol
         """
-        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
+        return memoryview(self.as_numpy_array())
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -294,9 +300,13 @@ class Buffer(ABC):
         return self._data.size
 
     @abstractmethod
+    def combine(self, others: Iterable[Buffer]) -> Self:
+        """Concatenate many buffers"""
+        ...
+
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-        ...
+        return self.combine([other])
 
     def __eq__(self, other: object) -> bool:
         # Another Buffer class can override this to choose a more efficient path
@@ -310,7 +320,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -363,7 +373,7 @@ class NDBuffer:
 
         Notes
         -----
-        A subclass can overwrite this method to create a ndarray-like object
+        A subclass can overwrite this method to create an ndarray-like object
         other then the default Numpy array.
         """
         if cls is NDBuffer:
@@ -411,7 +421,7 @@ class NDBuffer:
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        """Create a new buffer of a ndarray-like object
+        """Create a new buffer of an ndarray-like object
 
         Parameters
         ----------
@@ -486,18 +496,19 @@ class NDBuffer:
         return self._data.shape
 
     @property
-    def byteorder(self) -> Endian:
-        from zarr.codecs.bytes import Endian
-
+    def byteorder(self) -> EndianLiteral:
         if self.dtype.byteorder == "<":
-            return Endian.little
+            return "little"
         elif self.dtype.byteorder == ">":
-            return Endian.big
+            return "big"
         else:
-            return Endian(sys.byteorder)
+            return sys.byteorder
 
     def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
-        return self.__class__(self._data.reshape(newshape))
+        # numpy accepts a bare -1, but the NDArrayLike protocol only types the
+        # tuple form; normalize so the forwarded value matches the protocol.
+        shape = (newshape,) if newshape == -1 else newshape
+        return self.__class__(self._data.reshape(shape))
 
     def squeeze(self, axis: tuple[int, ...]) -> Self:
         newshape = tuple(a for i, a in enumerate(self.shape) if i not in axis)
@@ -530,14 +541,14 @@ class NDBuffer:
             and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
         ):
             _data, other = np.broadcast_arrays(self._data, np.asarray(other, self._data.dtype))
-            void_dtype = "V" + str(_data.dtype.itemsize)
+            void_dtype = f"V{_data.dtype.itemsize}"
             return np.array_equal(_data.view(void_dtype), other.view(void_dtype))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
         # every single time we have to write data?
         _data, other = np.broadcast_arrays(self._data, other)
         return np.array_equal(
-            self._data,
+            _data,
             other,
             equal_nan=equal_nan
             if self._data.dtype.kind not in ("U", "S", "T", "O", "V")

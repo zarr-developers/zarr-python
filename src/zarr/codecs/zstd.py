@@ -12,7 +12,6 @@ from packaging.version import Version
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -39,7 +38,7 @@ def parse_checksum(data: JSON) -> bool:
 class ZstdCodec(BytesBytesCodec):
     """zstd codec"""
 
-    is_fixed_size = True
+    is_fixed_size = False
 
     level: int = 0
     checksum: bool = False
@@ -72,26 +71,33 @@ class ZstdCodec(BytesBytesCodec):
         config_dict = {"level": self.level, "checksum": self.checksum}
         return Zstd.from_config(config_dict)
 
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return as_numpy_array_wrapper(self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype)
+
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await asyncio.to_thread(
-            as_numpy_array_wrapper, self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype
-        )
+        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
+
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return as_numpy_array_wrapper(self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype)
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await asyncio.to_thread(
-            as_numpy_array_wrapper, self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype
-        )
+        return await asyncio.to_thread(self._encode_sync, chunk_bytes, chunk_spec)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
-
-register_codec("zstd", ZstdCodec)

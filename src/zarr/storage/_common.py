@@ -3,9 +3,16 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    Store,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
+)
+from zarr.core._json import buffer_to_json_object, get_json
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -17,8 +24,8 @@ from zarr.core.common import (
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
-from zarr.storage._memory import MemoryStore
-from zarr.storage._utils import normalize_path
+from zarr.storage._memory import ManagedMemoryStore, MemoryStore
+from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -28,14 +35,7 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-
-
-def _dereference_path(root: str, path: str) -> str:
-    assert isinstance(root, str)
-    assert isinstance(path, str)
-    root = root.rstrip("/")
-    path = f"{root}/{path}" if root else path
-    return path.rstrip("/")
+    from zarr.core.common import JSON
 
 
 class StorePath:
@@ -163,6 +163,23 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
+    async def get_json(self, *, byte_range: ByteRequest | None = None) -> JSON | None:
+        """
+        Read and parse the JSON document at this path, or None if it is absent.
+
+        Parameters
+        ----------
+        byte_range : ByteRequest, optional
+            If given, read only this portion of the value. Note that a partial
+            read of a JSON document may not be valid JSON.
+
+        Returns
+        -------
+        JSON or None
+            The parsed JSON value, or None if this path does not exist.
+        """
+        return await get_json(self.store, self.path, byte_range=byte_range)
+
     async def set(self, value: Buffer) -> None:
         """
         Write bytes to the store.
@@ -224,12 +241,43 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        if not isinstance(self.store, SupportsGetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        if not isinstance(self.store, SupportsSetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
+        self.store.set_sync(self.path, value)
+
+    def delete_sync(self) -> None:
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        if not isinstance(self.store, SupportsDeleteSync):
+            raise TypeError(
+                f"Store {type(self.store).__name__} does not support synchronous delete."
+            )
+        self.store.delete_sync(self.path)
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
-        return self.__class__(self.store, _dereference_path(self.path, other))
+        return self.__class__(self.store, _join_paths([self.path, other]))
 
     def __str__(self) -> str:
-        return _dereference_path(str(self.store), self.path)
+        return _join_paths([str(self.store), self.path])
 
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, '{self}')"
@@ -255,7 +303,108 @@ class StorePath:
         return False
 
 
-StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+
+
+async def make_store(
+    store_like: StoreLike | None,
+    *,
+    mode: AccessModeLiteral | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> Store:
+    """
+    Convert a `StoreLike` object into a Store object.
+
+    `StoreLike` objects are converted to `Store` as follows:
+
+    - `Store` or `StorePath` = `Store` object.
+    - `Path` or `str` = `LocalStore` object.
+    - `str` that starts with a protocol = `FsspecStore` object.
+    - `dict[str, Buffer]` = `MemoryStore` object.
+    - `None` = `MemoryStore` object.
+    - `FSMap` = `FsspecStore` object.
+
+    Parameters
+    ----------
+    store_like : StoreLike | None
+        The `StoreLike` object to convert to a `Store` object. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
+    mode : StoreAccessMode | None, optional
+        The mode to use when creating the `Store` object.  If None, the
+        default mode is 'r'.
+    storage_options : dict[str, Any] | None, optional
+        The storage options to use when creating the `RemoteStore` object.  If
+        None, the default storage options are used.
+
+    Returns
+    -------
+    Store
+        The converted Store object.
+
+    Raises
+    ------
+    TypeError
+        If the StoreLike object is not one of the supported types, or if storage_options is provided but not used.
+    """
+    from zarr.storage._fsspec import FsspecStore  # circular import
+
+    # Parse URL early so we can reuse the result for both validation and routing
+    parsed = parse_store_url(store_like) if isinstance(store_like, str) else None
+
+    # Check if storage_options is valid for this store_like
+    if storage_options is not None:
+        is_fsspec_uri = parsed is not None and parsed.scheme not in ("", "memory", "file")
+        if not is_fsspec_uri:
+            raise TypeError(
+                "'storage_options' was provided but unused. "
+                "'storage_options' is only used when the store is passed as an FSSpec URI string.",
+            )
+
+    assert mode in (None, "r", "r+", "a", "w", "w-")
+    _read_only = mode == "r"
+
+    if isinstance(store_like, StorePath):
+        # Get underlying store
+        return store_like.store
+
+    elif isinstance(store_like, Store):
+        # Already a Store
+        return store_like
+
+    elif isinstance(store_like, dict):
+        # Already a dictionary that can be a MemoryStore
+        #
+        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
+        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
+        return await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+
+    elif store_like is None:
+        # Create a new in-memory store
+        return await make_store({}, mode=mode, storage_options=storage_options)
+
+    elif isinstance(store_like, Path):
+        # Create a new LocalStore
+        return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
+
+    elif isinstance(store_like, str) and parsed is not None:
+        if parsed.scheme == "memory" and not _has_fsspec:
+            # Create or get a ManagedMemoryStore
+            return ManagedMemoryStore(name=parsed.name, path=parsed.path, read_only=_read_only)
+        elif parsed.scheme == "file" or not parsed.scheme:
+            # Local filesystem path — use parsed.path to strip the file:// scheme
+            return await make_store(Path(parsed.path), mode=mode, storage_options=storage_options)
+        else:
+            # Assume fsspec can handle it (s3://, gs://, http://, etc.)
+            return FsspecStore.from_url(
+                store_like, storage_options=storage_options, read_only=_read_only
+            )
+
+    elif _has_fsspec and isinstance(store_like, FSMap):
+        return FsspecStore.from_mapper(store_like, read_only=_read_only)
+
+    else:
+        raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
 
 async def make_store_path(
@@ -268,30 +417,15 @@ async def make_store_path(
     """
     Convert a `StoreLike` object into a StorePath object.
 
-    This function takes a `StoreLike` object and returns a `StorePath` object.  The
-    `StoreLike` object can be a `Store`, `StorePath`, `Path`, `str`, or `dict[str, Buffer]`.
-    If the `StoreLike` object is a Store or `StorePath`, it is converted to a
-    `StorePath` object.  If the `StoreLike` object is a Path or str, it is converted
-    to a LocalStore object and then to a `StorePath` object.  If the `StoreLike`
-    object is a dict[str, Buffer], it is converted to a `MemoryStore` object and
-    then to a `StorePath` object.
-
-    If the `StoreLike` object is None, a `MemoryStore` object is created and
-    converted to a `StorePath` object.
-
-    If the `StoreLike` object is a str and starts with a protocol, it is
-    converted to a RemoteStore object and then to a `StorePath` object.
-
-    If the `StoreLike` object is a dict[str, Buffer] and the mode is not None,
-    the `MemoryStore` object is created with the given mode.
-
-    If the `StoreLike` object is a str and starts with a protocol, the
-    RemoteStore object is created with the given mode and storage options.
+    This function takes a `StoreLike` object and returns a `StorePath` object. See `make_store` for details
+    of which `Store` is used for each type of `store_like` object.
 
     Parameters
     ----------
-    store_like : StoreLike | None
-        The object to convert to a `StorePath` object.
+    store_like : StoreLike or None, default=None
+        The `StoreLike` object to convert to a `StorePath` object. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
         default path is the empty string.
@@ -310,88 +444,40 @@ async def make_store_path(
     Raises
     ------
     TypeError
-        If the StoreLike object is not one of the supported types.
+        If the StoreLike object is not one of the supported types, or if storage_options is provided but not used.
+    ValueError
+        If path is provided for a store that does not support it.
+
+    See Also
+    --------
+    make_store
     """
-    from zarr.storage._fsspec import FsspecStore  # circular import
-
     path_normalized = normalize_path(path)
-
-    if (
-        not (isinstance(store_like, str) and _is_fsspec_uri(store_like))
-        and storage_options is not None
-    ):
-        raise TypeError(
-            "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as a FSSpec URI string.",
-        )
-
-    assert mode in (None, "r", "r+", "a", "w", "w-")
-    _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
+        if storage_options:
+            raise TypeError(
+                "'storage_options' was provided but unused. "
+                "'storage_options' is only used when the store is passed as an FSSpec URI string.",
+            )
         return store_like / path_normalized
 
-    elif isinstance(store_like, Store):
-        # Already a Store
-        store = store_like
+    elif _has_fsspec and isinstance(store_like, FSMap) and path:
+        raise ValueError(
+            "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
+        )
 
-    elif isinstance(store_like, dict):
-        # Already a dictionary that can be a MemoryStore
-        #
-        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
-        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
-
-    elif store_like is None:
-        # Create a new in-memory store
-        return await make_store_path({}, path=path, mode=mode, storage_options=storage_options)
-
-    elif isinstance(store_like, Path):
-        # Create a new LocalStore
-        store = await LocalStore.open(root=store_like, mode=mode)
-
-    elif isinstance(store_like, str):
-        # Either a FSSpec URI or a local filesystem path
-        if _is_fsspec_uri(store_like):
-            store = FsspecStore.from_url(
-                store_like, storage_options=storage_options, read_only=_read_only
-            )
-        else:
-            # Assume a filesystem path
-            return await make_store_path(
-                Path(store_like), path=path, mode=mode, storage_options=storage_options
-            )
-
-    elif _has_fsspec and isinstance(store_like, FSMap):
-        if path:
-            raise ValueError(
-                "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
-            )
-        store = FsspecStore.from_mapper(store_like, read_only=_read_only)
     else:
-        raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
-
-    return await StorePath.open(store, path=path_normalized, mode=mode)
-
-
-def _is_fsspec_uri(uri: str) -> bool:
-    """
-    Check if a URI looks like a non-local fsspec URI.
-
-    Examples
-    --------
-    >>> _is_fsspec_uri("s3://bucket")
-    True
-    >>> _is_fsspec_uri("my-directory")
-    False
-    >>> _is_fsspec_uri("local://my-directory")
-    False
-    """
-    return "://" in uri or ("::" in uri and "local://" not in uri)
+        store = await make_store(store_like, mode=mode, storage_options=storage_options)
+        return await StorePath.open(store, path=path_normalized, mode=mode)
 
 
-async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
+async def ensure_no_existing_node(
+    store_path: StorePath,
+    zarr_format: ZarrFormat,
+    node_type: Literal["array", "group"] | None = None,
+) -> None:
     """
     Check if a store_path is safe for array / group creation.
     Returns `None` or raises an exception.
@@ -402,6 +488,8 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
         The storage location to check.
     zarr_format : ZarrFormat
         The Zarr format to check.
+    node_type : str | None, optional
+        Raise an error if an "array", or "group" exists. By default (when None), raises an error for either.
 
     Raises
     ------
@@ -412,16 +500,23 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
     elif zarr_format == 3:
         extant_node = await _contains_node_v3(store_path)
 
-    if extant_node == "array":
-        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
-        raise ContainsArrayError(msg)
-    elif extant_node == "group":
-        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
-        raise ContainsGroupError(msg)
-    elif extant_node == "nothing":
-        return
-    msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
-    raise ValueError(msg)
+    match extant_node:
+        case "array":
+            if node_type != "group":
+                msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsArrayError(msg)
+
+        case "group":
+            if node_type != "array":
+                msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsGroupError(msg)
+
+        case "nothing":
+            return
+
+        case _:
+            msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
+            raise ValueError(msg)
 
 
 async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", "nothing"]:
@@ -445,14 +540,14 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
     # if no metadata document could be loaded, then we just return "nothing"
     if extant_meta_bytes is not None:
         try:
-            extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+            extant_meta_json = buffer_to_json_object(extant_meta_bytes)
             # avoid constructing a full metadata document here in the name of speed.
             if extant_meta_json["node_type"] == "array":
                 result = "array"
             elif extant_meta_json["node_type"] == "group":
                 result = "group"
-        except (KeyError, json.JSONDecodeError):
-            # either of these errors is consistent with no array or group present.
+        except (KeyError, TypeError, json.JSONDecodeError):
+            # any of these errors is consistent with no array or group present.
             pass
     return result
 
@@ -516,11 +611,11 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             return False
         else:
             try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
                 # we avoid constructing a full metadata document here in the name of speed.
                 if extant_meta_json["node_type"] == "array":
                     return True
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError):
                 return False
     elif zarr_format == 2:
         return await (store_path / ZARRAY_JSON).exists()
@@ -553,10 +648,10 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             return False
         else:
             try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
                 # we avoid constructing a full metadata document here in the name of speed.
                 result: bool = extant_meta_json["node_type"] == "group"
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError):
                 return False
             else:
                 return result

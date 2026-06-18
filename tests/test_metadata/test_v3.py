@@ -1,340 +1,471 @@
+"""Tests for zarr v3 metadata classes and parsing helpers."""
+
 from __future__ import annotations
 
 import json
-import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
-from zarr.codecs.bytes import BytesCodec
+from tests.conftest import Expect, ExpectFail
+from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.core.chunk_grids import is_regular_1d, is_regular_nd
 from zarr.core.config import config
-from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
-from zarr.core.dtype.npy.time import DateTime64
+from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
+from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import (
+    ARRAY_METADATA_KEYS,
+    ArrayMetadataJSON_V3,
     ArrayV3Metadata,
     parse_codecs,
     parse_dimension_names,
+    parse_node_type_array,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import (
+    MetadataValidationError,
+    NodeTypeValidationError,
+    UnknownCodecError,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from typing import Any
 
-    from zarr.abc.codec import Codec
-    from zarr.core.common import JSON
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
 
 
-from zarr.core.metadata.v3 import (
-    parse_node_type_array,
-)
-
-bool_dtypes = ("bool",)
-
-int_dtypes = (
-    "int8",
-    "int16",
-    "int32",
-    "int64",
-    "uint8",
-    "uint16",
-    "uint32",
-    "uint64",
-)
-
-float_dtypes = (
-    "float16",
-    "float32",
-    "float64",
-)
-
-complex_dtypes = ("complex64", "complex128")
-flexible_dtypes = ("str", "bytes", "void")
-if _NUMPY_SUPPORTS_VLEN_STRING:
-    vlen_string_dtypes = ("T",)
-else:
-    vlen_string_dtypes = ("O",)
-
-dtypes = (
-    *bool_dtypes,
-    *int_dtypes,
-    *float_dtypes,
-    *complex_dtypes,
-    *flexible_dtypes,
-    *vlen_string_dtypes,
-)
+def test_parse_zarr_format_valid() -> None:
+    """The integer 3 is the only valid zarr_format for v3."""
+    assert parse_zarr_format(3) == 3
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(
-        MetadataValidationError,
-        match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'.",
-    ):
+    """Non-3 values are rejected."""
+    with pytest.raises(MetadataValidationError):
         parse_zarr_format(data)
 
 
-def test_parse_zarr_format_valid() -> None:
-    assert parse_zarr_format(3) == 3
-
-
 def test_parse_node_type_valid() -> None:
+    """'array' and 'group' are the only valid node types."""
     assert parse_node_type("array") == "array"
     assert parse_node_type("group") == "group"
 
 
-@pytest.mark.parametrize("node_type", [None, 2, "other"])
-def test_parse_node_type_invalid(node_type: Any) -> None:
-    with pytest.raises(
-        MetadataValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{node_type}'.",
-    ):
-        parse_node_type(node_type)
+@pytest.mark.parametrize("data", [None, 2, "other"])
+def test_parse_node_type_invalid(data: Any) -> None:
+    """Non-string and unrecognized values are rejected."""
+    with pytest.raises(MetadataValidationError):
+        parse_node_type(data)
+
+
+def test_parse_node_type_array_valid() -> None:
+    """parse_node_type_array accepts only 'array'."""
+    assert parse_node_type_array("array") == "array"
 
 
 @pytest.mark.parametrize("data", [None, "group"])
 def test_parse_node_type_array_invalid(data: Any) -> None:
-    with pytest.raises(
-        NodeTypeValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'.",
-    ):
+    """parse_node_type_array rejects 'group' and non-string values."""
+    with pytest.raises(NodeTypeValidationError):
         parse_node_type_array(data)
 
 
-def test_parse_node_typev_array_alid() -> None:
-    assert parse_node_type_array("array") == "array"
+@pytest.mark.parametrize("data", [None, ("a", "b", "c"), ["a", "a", "a"], ()])
+def test_parse_dimension_names_valid(data: Any) -> None:
+    """None, tuples of strings, lists of strings, and empty tuples are accepted."""
+    result = parse_dimension_names(data)
+    if data is None:
+        assert result is None
+    else:
+        assert result == tuple(data)
 
 
-@pytest.mark.parametrize("data", [(), [1, 2, "a"], {"foo": 10}])
-def parse_dimension_names_invalid(data: Any) -> None:
-    with pytest.raises(TypeError, match="Expected either None or iterable of str,"):
+@pytest.mark.parametrize("data", [[1, 2, "a"], [None, 3]])
+def test_parse_dimension_names_invalid(data: Any) -> None:
+    """Iterables containing non-string elements are rejected."""
+    with pytest.raises(TypeError, match="Expected either None or"):
         parse_dimension_names(data)
 
 
-@pytest.mark.parametrize("data", [None, ("a", "b", "c"), ["a", "a", "a"]])
-def parse_dimension_names_valid(data: Sequence[str] | None) -> None:
-    assert parse_dimension_names(data) == data
+def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unregistered codec name raises UnknownCodecError."""
+    from collections import defaultdict
+
+    import zarr.registry
+    from zarr.registry import Registry
+
+    monkeypatch.setattr(zarr.registry, "_codec_registries", defaultdict(Registry))
+    with pytest.raises(UnknownCodecError):
+        parse_codecs([{"name": "unknown"}])
 
 
-@pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1]])
-@pytest.mark.parametrize("dtype_str", [*complex_dtypes])
-def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
-    as length-2 sequences
-    """
-    zarr_format: Literal[3] = 3
-    dtype = get_data_type_from_native_dtype(dtype_str)
-    expected = dtype.to_native_dtype().type(complex(*fill_value))
-    observed = dtype.from_json_scalar(fill_value, zarr_format=zarr_format)
-    assert observed == expected
-    assert dtype.to_json_scalar(observed, zarr_format=zarr_format) == tuple(fill_value)
+# ---------------------------------------------------------------------------
+# Chunk-grid regularity helpers
+# ---------------------------------------------------------------------------
+
+# Cases used for both list/tuple (Python-sequence path) and ndarray (vectorized
+# path) of `is_regular_1d`. Parametrizing the input form ensures both branches
+# are exercised by the same suite of edge cases.
+_REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
+    Expect(input=[], output=True, id="empty"),
+    Expect(input=[10], output=True, id="single-chunk"),
+    Expect(input=[10, 10, 10], output=True, id="all-equal"),
+    Expect(input=[10, 10, 10, 7], output=True, id="smaller-boundary"),
+    Expect(input=[10, 10, 10, 10], output=True, id="exact-multiple"),
+    Expect(input=[10, 5, 10], output=False, id="middle-mismatch"),
+    Expect(input=[10, 10, 10, 12], output=False, id="last-larger"),
+    # The first chunk anchors the size; later mismatches in the middle fail
+    # before the boundary check.
+    Expect(input=[5, 10, 5], output=False, id="middle-larger"),
+]
 
 
-@pytest.mark.parametrize("fill_value", [{"foo": 10}])
-@pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
-def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
-    This test excludes bool because the bool constructor takes anything.
-    """
-    dtype_instance = get_data_type_from_native_dtype(dtype_str)
-    with pytest.raises(TypeError, match=f"Invalid type: {fill_value}"):
-        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
+@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
+def test_is_regular_1d_sequence(case: Expect[list[int], bool]) -> None:
+    """`is_regular_1d` accepts plain Python sequences and uses the iterative path."""
+    # list and tuple both go through the non-ndarray branch.
+    assert is_regular_1d(case.input) is case.output
+    assert is_regular_1d(tuple(case.input)) is case.output
+
+
+@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
+def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
+    """`is_regular_1d` accepts int64 ndarrays and uses the vectorized path."""
+    arr = np.asarray(case.input, dtype=np.int64)
+    assert is_regular_1d(arr) is case.output
 
 
 @pytest.mark.parametrize(
-    "fill_value",
+    "case",
     [
-        [
-            1,
-        ],
-        (1, 23, 4),
+        Expect(input=[[10, 10, 10], [5, 5]], output=True, id="all-regular"),
+        Expect(input=[[10, 10, 7], [5, 5, 5, 3]], output=True, id="all-regular-with-boundary"),
+        Expect(input=[[10, 10, 10], [5, 8, 5]], output=False, id="second-dim-irregular"),
+        Expect(input=[[10, 5, 10], [5, 5]], output=False, id="first-dim-irregular"),
+        Expect(input=[], output=True, id="zero-dims"),
     ],
+    ids=lambda c: c.id,
 )
-@pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes])
-def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str) -> None:
+def test_is_regular_nd_sequence(case: Expect[list[list[int]], bool]) -> None:
+    """`is_regular_nd` returns True iff every per-dim spec is regular."""
+    assert is_regular_nd(case.input) is case.output
+    # Same result via ndarray inputs.
+    assert is_regular_nd([np.asarray(d, dtype=np.int64) for d in case.input]) is case.output
+
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+
+
+def test_array_metadata_keys_matches_typeddict() -> None:
     """
-    Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid sequential types.
-    This test excludes bool because the bool constructor takes anything, and complex because
-    complex values can be created from length-2 sequences.
+    Test that the variable modelling the set of keys for array v3 metadata matches
+    the keys of the typeddict model for the metadata.
     """
-    dtype_instance = get_data_type_from_native_dtype(dtype_str)
-    with pytest.raises(TypeError, match=re.escape(f"Invalid type: {fill_value}")):
-        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
+    assert ARRAY_METADATA_KEYS == set(ArrayMetadataJSON_V3.__annotations__.keys())
 
 
-@pytest.mark.parametrize("chunk_grid", ["regular"])
-@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("codecs", [[BytesCodec(endian=None)]])
-@pytest.mark.parametrize("fill_value", [0, 1])
-@pytest.mark.parametrize("chunk_key_encoding", ["v2", "default"])
-@pytest.mark.parametrize("dimension_separator", [".", "/", None])
-@pytest.mark.parametrize("dimension_names", ["nones", "strings", "missing"])
-@pytest.mark.parametrize("storage_transformers", [None, ()])
-def test_metadata_to_dict(
-    chunk_grid: str,
-    codecs: list[Codec],
-    fill_value: Any,
-    chunk_key_encoding: Literal["v2", "default"],
-    dimension_separator: Literal[".", "/"] | None,
-    dimension_names: Literal["nones", "strings", "missing"],
-    attributes: dict[str, Any] | None,
-    storage_transformers: tuple[dict[str, JSON]] | None,
-) -> None:
-    shape = (1, 2, 3)
-    data_type_str = "uint8"
-    if chunk_grid == "regular":
-        cgrid = {"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}
+# ---------------------------------------------------------------------------
+# ArrayV3Metadata: round-trip
+# ---------------------------------------------------------------------------
 
-    cke: dict[str, Any]
-    cke_name_dict = {"name": chunk_key_encoding}
-    if dimension_separator is not None:
-        cke = cke_name_dict | {"configuration": {"separator": dimension_separator}}
-    else:
-        cke = cke_name_dict
-    dnames: tuple[str | None, ...] | None
+# Codecs after evolution for single-byte (uint8) and multi-byte (float64) types.
+_UINT8_CODECS = ({"name": "bytes"},)
+_FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
 
-    if dimension_names == "strings":
-        dnames = tuple(map(str, range(len(shape))))
-    elif dimension_names == "missing":
-        dnames = None
-    elif dimension_names == "nones":
-        dnames = (None,) * len(shape)
 
-    metadata_dict = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": shape,
-        "chunk_grid": cgrid,
-        "data_type": data_type_str,
-        "chunk_key_encoding": cke,
-        "codecs": tuple(c.to_dict() for c in codecs),
-        "fill_value": fill_value,
-        "storage_transformers": storage_transformers,
-    }
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input={},
+            output=minimal_metadata_dict_v3(codecs=_UINT8_CODECS),
+            id="minimal",
+        ),
+        Expect(
+            input={"attributes": {"key": "value"}},
+            output=minimal_metadata_dict_v3(attributes={"key": "value"}, codecs=_UINT8_CODECS),
+            id="with_attributes",
+        ),
+        Expect(
+            input={"dimension_names": ("x", "y")},
+            output=minimal_metadata_dict_v3(dimension_names=("x", "y"), codecs=_UINT8_CODECS),
+            id="with_dimension_names",
+        ),
+        Expect(
+            input={"storage_transformers": ()},
+            output=minimal_metadata_dict_v3(storage_transformers=(), codecs=_UINT8_CODECS),
+            id="with_storage_transformers",
+        ),
+        Expect(
+            input={"data_type": "float64", "fill_value": 0.0},
+            output=minimal_metadata_dict_v3(
+                data_type="float64", fill_value=0.0, codecs=_FLOAT64_CODECS
+            ),
+            id="float64",
+        ),
+        Expect(
+            input={"chunk_key_encoding": {"name": "v2", "configuration": {"separator": "."}}},
+            output=minimal_metadata_dict_v3(
+                chunk_key_encoding={"name": "v2", "configuration": {"separator": "."}},
+                codecs=_UINT8_CODECS,
+            ),
+            id="v2_chunk_key_encoding",
+        ),
+        Expect(
+            input={"data_type": "float64", "fill_value": "NaN"},
+            output=minimal_metadata_dict_v3(
+                data_type="float64", fill_value="NaN", codecs=_FLOAT64_CODECS
+            ),
+            id="nan_fill_value",
+        ),
+        Expect(
+            input={"data_type": "float64", "fill_value": "Infinity"},
+            output=minimal_metadata_dict_v3(
+                data_type="float64", fill_value="Infinity", codecs=_FLOAT64_CODECS
+            ),
+            id="inf_fill_value",
+        ),
+        Expect(
+            input={"data_type": "float64", "fill_value": "-Infinity"},
+            output=minimal_metadata_dict_v3(
+                data_type="float64", fill_value="-Infinity", codecs=_FLOAT64_CODECS
+            ),
+            id="neg_inf_fill_value",
+        ),
+        Expect(
+            input={
+                "attributes": {},
+                "storage_transformers": (),
+                "extra_fields": {"my_ext": {"must_understand": False, "data": [1, 2, 3]}},
+            },
+            output=minimal_metadata_dict_v3(
+                attributes={},
+                storage_transformers=(),
+                codecs=_UINT8_CODECS,
+                extra_fields={"my_ext": {"must_understand": False, "data": [1, 2, 3]}},
+            ),
+            id="extra_fields",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_array_metadata_roundtrip(case: Expect[dict[str, Any], dict[str, Any]]) -> None:
+    """from_dict(d).to_dict() produces the expected output, including codec evolution."""
+    d = minimal_metadata_dict_v3(**case.input)
+    m = ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
+    assert m.to_dict() == case.output
 
-    if attributes is not None:
-        metadata_dict["attributes"] = attributes
-    if dnames is not None:
-        metadata_dict["dimension_names"] = dnames
 
-    metadata = ArrayV3Metadata.from_dict(metadata_dict)
-    observed = metadata.to_dict()
-    expected = metadata_dict.copy()
+# ---------------------------------------------------------------------------
+# ArrayV3Metadata: failure modes
+# ---------------------------------------------------------------------------
 
-    # if unset or None or (), storage_transformers gets normalized to ()
-    assert observed["storage_transformers"] == ()
-    observed.pop("storage_transformers")
-    expected.pop("storage_transformers")
 
-    if attributes is None:
-        assert observed["attributes"] == {}
-        observed.pop("attributes")
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input={"dimension_names": ("x", "y", "z")},
+            exception=ValueError,
+            msg="dimension_names.*shape",
+            id="dimension_names_length_mismatch",
+        ),
+        ExpectFail(
+            input={"data_type": "uint8", "fill_value": {}},
+            exception=TypeError,
+            id="invalid_fill_value_type",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> None:
+    """from_dict rejects invalid metadata documents."""
+    d = minimal_metadata_dict_v3(**case.input)
+    with case.raises():
+        ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
 
-    if dimension_separator is None:
-        if chunk_key_encoding == "default":
-            expected_cke_dict = DefaultChunkKeyEncoding(separator="/").to_dict()
-        else:
-            expected_cke_dict = V2ChunkKeyEncoding(separator=".").to_dict()
-        assert observed["chunk_key_encoding"] == expected_cke_dict
-        observed.pop("chunk_key_encoding")
-        expected.pop("chunk_key_encoding")
-    assert observed == expected
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input=minimal_metadata_dict_v3(extra_fields={"my_ext": {"must_understand": True}}),
+            exception=MetadataValidationError,
+            msg="disallowed extra fields",
+            id="must_understand_true",
+        ),
+        ExpectFail(
+            input=minimal_metadata_dict_v3(extra_fields={"my_ext": 42}),
+            exception=MetadataValidationError,
+            msg="disallowed extra fields",
+            id="non_dict_extra_field",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_array_metadata_extra_fields_rejected(case: ExpectFail[dict[str, Any]]) -> None:
+    """from_dict rejects extra fields that don't conform to the spec."""
+    with case.raises():
+        ArrayV3Metadata.from_dict(case.input)
+
+
+def test_init_extra_fields_collision() -> None:
+    """Extra field keys that collide with reserved metadata field names are rejected."""
+    extra_fields: dict[str, object] = {"shape": (10,), "data_type": "uint8"}
+    with pytest.raises(ValueError, match="collide with keys reserved"):
+        ArrayV3Metadata(
+            shape=(10,),
+            data_type=UInt8(),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": (10,)}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
+            fill_value=0,
+            codecs=({"name": "bytes", "configuration": {"endian": "little"}},),
+            attributes={},
+            dimension_names=None,
+            extra_fields=extra_fields,  # type: ignore[arg-type]
+        )
+
+
+# ---------------------------------------------------------------------------
+# Equality
+# ---------------------------------------------------------------------------
+
+
+def test_eq_nan_fill_value() -> None:
+    """Two metadata objects with an identical NaN fill_value compare equal.
+
+    NaN is not equal to itself under IEEE 754, so the default dataclass __eq__
+    reports two otherwise-identical metadata objects as unequal. Metadata
+    equality must treat matching NaN fill values as equal (see issue #2929).
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+
+
+def test_eq_distinct_fill_value() -> None:
+    """Metadata objects that differ only in fill_value do not compare equal."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=1.0))  # type: ignore[arg-type]
+    assert a != b
+
+
+@pytest.mark.parametrize("fill_value", ["Infinity", "-Infinity"])
+def test_eq_inf_fill_value(fill_value: str) -> None:
+    """Two metadata objects with an identical infinite fill_value compare equal."""
+    a = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    b = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=fill_value)  # type: ignore[arg-type]
+    )
+    assert a == b
+
+
+def test_hash_consistent_with_eq_nan_fill_value() -> None:
+    """Equal metadata objects with a NaN fill_value hash equal.
+
+    NaN hashes by identity, so a field-based hash would break the
+    ``a == b implies hash(a) == hash(b)`` invariant for objects that compare
+    equal under the to_dict-based __eq__.
+    """
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    b = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value="NaN"))  # type: ignore[arg-type]
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_non_metadata() -> None:
+    """Comparison against a non-metadata object returns False rather than erroring."""
+    a = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    assert a != object()
+
+
+def test_eq_across_zarr_formats() -> None:
+    """A v2 and v3 metadata describing the same array do not compare equal.
+
+    Each __eq__ guards on its own concrete type and returns NotImplemented
+    otherwise, so the two versions are never equal even when they describe the
+    same array.
+    """
+    v3 = ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(data_type="float64", fill_value=0.0))  # type: ignore[arg-type]
+    v2 = ArrayV2Metadata(shape=(4, 4), dtype=Float64(), chunks=(4, 4), fill_value=0.0, order="C")
+    assert v2 != v3
+    assert v3 != v2
+
+
+# ---------------------------------------------------------------------------
+# JSON indent
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("indent", [2, 4, None])
-def test_json_indent(indent: int) -> None:
+def test_json_indent(indent: int | None) -> None:
+    """The json_indent config setting controls indentation in to_buffer_dict output."""
     with config.set({"json_indent": indent}):
         m = GroupMetadata()
         d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
         assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
-@pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
-@pytest.mark.parametrize("precision", ["ns", "D"])
-async def test_datetime_metadata(fill_value: int, precision: Literal["ns", "D"]) -> None:
-    dtype = DateTime64(unit=precision)
-    metadata_dict: dict[str, Any] = {
+# ---------------------------------------------------------------------------
+# GroupMetadata.to_dict
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
+def test_group_metadata_to_dict(attributes: dict[str, Any] | None) -> None:
+    """GroupMetadata.to_dict produces the expected v3 JSON structure."""
+    meta = GroupMetadata(attributes=attributes)
+    assert meta.to_dict() == {
         "zarr_format": 3,
-        "node_type": "array",
-        "shape": (1,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": dtype.to_json(zarr_format=3),
-        "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (BytesCodec(),),
-        "fill_value": dtype.to_json_scalar(
-            dtype.to_native_dtype().type(fill_value, dtype.unit), zarr_format=3
-        ),
+        "node_type": "group",
+        "attributes": attributes or {},
     }
-    metadata = ArrayV3Metadata.from_dict(metadata_dict)
-    # ensure there isn't a TypeError here.
-    d = metadata.to_buffer_dict(default_buffer_prototype())
-
-    result = json.loads(d["zarr.json"].to_bytes())
-    assert result["fill_value"] == fill_value
 
 
-@pytest.mark.parametrize(
-    ("data_type", "fill_value"), [("uint8", {}), ("int32", [0, 1]), ("float32", "foo")]
-)
-async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> None:
-    metadata_dict: dict[str, Any] = {
+@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
+def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) -> None:
+    """GroupMetadata.to_dict includes consolidated_metadata when present."""
+    from zarr import consolidate_metadata, create_group
+    from zarr.errors import ZarrUserWarning
+
+    store: dict[str, object] = {}
+    group = create_group(store, attributes=attributes, zarr_format=3)
+    group.create_group("foo")
+    with pytest.warns(
+        ZarrUserWarning,
+        match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+    ):
+        group = consolidate_metadata(store)
+
+    assert group.metadata.to_dict() == {
         "zarr_format": 3,
-        "node_type": "array",
-        "shape": (1,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": data_type,
-        "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": ({"name": "bytes"},),
-        "fill_value": fill_value,  # this is not a valid fill value for uint8
+        "node_type": "group",
+        "attributes": attributes or {},
+        "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {
+                "foo": {
+                    "attributes": {},
+                    "zarr_format": 3,
+                    "node_type": "group",
+                    "consolidated_metadata": {
+                        "kind": "inline",
+                        "metadata": {},
+                        "must_understand": False,
+                    },
+                }
+            },
+        },
     }
-    # multiple things can go wrong here, so we don't match on the error message.
-    with pytest.raises(TypeError):
-        ArrayV3Metadata.from_dict(metadata_dict)
-
-
-@pytest.mark.parametrize("fill_value", [("NaN"), "Infinity", "-Infinity"])
-async def test_special_float_fill_values(fill_value: str) -> None:
-    metadata_dict: dict[str, Any] = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": (1,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "float64",
-        "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": [{"name": "bytes"}],
-        "fill_value": fill_value,  # this is not a valid fill value for uint8
-    }
-    m = ArrayV3Metadata.from_dict(metadata_dict)
-    d = json.loads(m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes())
-    assert m.fill_value is not None
-    if fill_value == "NaN":
-        assert np.isnan(m.fill_value)
-        assert d["fill_value"] == "NaN"
-    elif fill_value == "Infinity":
-        assert np.isposinf(m.fill_value)
-        assert d["fill_value"] == "Infinity"
-    elif fill_value == "-Infinity":
-        assert np.isneginf(m.fill_value)
-        assert d["fill_value"] == "-Infinity"
-
-
-def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    from collections import defaultdict
-
-    import zarr.registry
-    from zarr.registry import Registry
-
-    # to make sure the codec is always unknown (not sure if that's necessary)
-    monkeypatch.setattr(zarr.registry, "__codec_registries", defaultdict(Registry))
-
-    codecs = [{"name": "unknown"}]
-    with pytest.raises(UnknownCodecError):
-        parse_codecs(codecs)

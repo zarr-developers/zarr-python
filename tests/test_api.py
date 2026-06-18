@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import zarr.codecs
 import zarr.storage
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.types import AnyArray
 
 import contextlib
 from typing import Literal
@@ -82,6 +83,91 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "func",
+    [
+        zarr.api.asynchronous.zeros_like,
+        zarr.api.asynchronous.ones_like,
+        zarr.api.asynchronous.empty_like,
+        zarr.api.asynchronous.full_like,
+        zarr.api.asynchronous.open_like,
+    ],
+)
+@pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+@pytest.mark.parametrize("out_fill", ["keep", 4])
+async def test_array_like_creation(
+    zarr_format: ZarrFormat,
+    func: Callable[[Any], Any],
+    out_shape: Literal["keep"] | tuple[int, ...],
+    out_chunks: Literal["keep"] | tuple[int, ...],
+    out_dtype: str,
+    out_fill: Literal["keep"] | int,
+) -> None:
+    """
+    Test zeros_like, ones_like, empty_like, full_like, ensuring that we can override the
+    shape, chunks, dtype and fill_value of the array-like object provided to these functions with
+    appropriate keyword arguments
+    """
+    ref_fill = 100
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=ref_fill,
+    )
+    kwargs: dict[str, object] = {}
+    if func is zarr.api.asynchronous.full_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            expect_fill = out_fill
+            kwargs["fill_value"] = expect_fill
+    elif func is zarr.api.asynchronous.zeros_like:
+        expect_fill = 0
+    elif func is zarr.api.asynchronous.ones_like:
+        expect_fill = 1
+    elif func is zarr.api.asynchronous.empty_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+    elif func is zarr.api.asynchronous.open_like:  # type: ignore[comparison-overlap]
+        if out_fill == "keep":  # type: ignore[unreachable]
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+        kwargs["mode"] = "w"
+    else:
+        raise AssertionError
+    if out_shape != "keep":
+        kwargs["shape"] = out_shape
+        expect_shape = out_shape
+    else:
+        expect_shape = ref_arr.shape
+    if out_chunks != "keep":
+        kwargs["chunks"] = out_chunks
+        expect_chunks = out_chunks
+    else:
+        expect_chunks = ref_arr.chunks
+    if out_dtype != "keep":
+        kwargs["dtype"] = out_dtype
+        expect_dtype = out_dtype
+    else:
+        expect_dtype = ref_arr.dtype  # type: ignore[assignment]
+
+    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)
+    assert new_arr.shape == expect_shape
+    assert new_arr.chunks == expect_chunks
+    assert new_arr.dtype == expect_dtype
+    assert np.all(Array(new_arr)[:] == expect_fill)
+
+
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
@@ -101,7 +187,7 @@ def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
     array_w[:] = data_val
     assert array_w.shape == shape
     assert array_w.attrs == attrs
-    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)
+    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)  # type: ignore[unreachable]
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
@@ -146,7 +232,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
     arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
     assert isinstance(arr2, zarr.Array)
 
-    assert arr2._async_array._config.write_empty_chunks is True
+    assert arr2.async_array.config.write_empty_chunks is True
 
     arr2[0:5] = np.zeros(5)
     assert arr2.nchunks_initialized == 1
@@ -157,7 +243,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
 def test_open_normalized_path(
     memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
 ) -> None:
-    node: Group | Array
+    node: Group | AnyArray
     if node_type == "group":
         node = group(store=memory_store, path=path)
     elif node_type == "array":
@@ -194,6 +280,19 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
+def test_open_array_rectilinear_chunks(tmp_path: Path) -> None:
+    """zarr.open with rectilinear (dask-style) chunks preserves the chunk grid."""
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
+
+    chunks = ((3, 3, 4), (5, 5))
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        z = zarr.open(store=tmp_path, shape=(10, 10), dtype="float64", chunks=chunks, mode="w")
+    assert isinstance(z, Array)
+    assert z.shape == (10, 10)
+    assert isinstance(z.metadata.chunk_grid, RectilinearChunkGridMetadata)
+    assert z.read_chunk_sizes == ((3, 3, 4), (5, 5))
+
+
 @pytest.mark.asyncio
 async def test_async_array_open_array_not_found() -> None:
     """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
@@ -227,7 +326,7 @@ async def test_create_group(store: Store, zarr_format: ZarrFormat) -> None:
     node = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
     assert isinstance(node, Group)
     assert node.attrs == attrs
-    assert node.metadata.zarr_format == zarr_format
+    assert node.metadata.zarr_format == zarr_format  # type: ignore[unreachable]
 
 
 async def test_open_group(memory_store: MemoryStore) -> None:
@@ -513,7 +612,6 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
 
 
 def test_tree() -> None:
-    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
@@ -724,9 +822,9 @@ def test_tree() -> None:
 #             assert len(source) == len(dest)
 #             for key in source:
 #                 if self._version == 3:
-#                     dest_key = key[:10] + "new/" + key[10:]
+#                     dest_key = f"{key[:10]}new/{key[10:]}"
 #                 else:
-#                     dest_key = "new/" + key
+#                     dest_key = f"new/{key}"
 #                 assert source[key] == dest[dest_key]
 
 #     def test_source_dest_path(self):
@@ -743,7 +841,7 @@ def test_tree() -> None:
 #                         assert source[key] == dest[dest_key]
 #                     else:
 #                         assert key not in dest
-#                         assert ("new/" + key) not in dest
+#                         assert (f"new/{key}") not in dest
 
 #     def test_excludes_includes(self):
 #         source = self.source
@@ -755,16 +853,16 @@ def test_tree() -> None:
 #         assert len(dest) == 2
 
 #         root = ""
-#         assert root + "foo" not in dest
+#         assert "f{root}foo" not in dest
 
 #         # multiple excludes
 #         dest = self._get_dest_store()
 #         excludes = "b.z", ".*x"
 #         copy_store(source, dest, excludes=excludes)
 #         assert len(dest) == 1
-#         assert root + "foo" in dest
-#         assert root + "bar/baz" not in dest
-#         assert root + "bar/qux" not in dest
+#         assert f"{root}foo" in dest
+#         assert f"{root}bar/baz" not in dest
+#         assert f"{root}bar/qux" not in dest
 
 #         # excludes and includes
 #         dest = self._get_dest_store()
@@ -772,9 +870,9 @@ def test_tree() -> None:
 #         includes = ".*x"
 #         copy_store(source, dest, excludes=excludes, includes=includes)
 #         assert len(dest) == 2
-#         assert root + "foo" in dest
-#         assert root + "bar/baz" not in dest
-#         assert root + "bar/qux" in dest
+#         assert f"{root}foo" in dest
+#         assert f"{root}bar/baz" not in dest
+#         assert f"{root}bar/qux" in dest
 
 #     def test_dry_run(self):
 #         source = self.source
@@ -786,7 +884,7 @@ def test_tree() -> None:
 #         source = self.source
 #         dest = self._get_dest_store()
 #         root = ""
-#         dest[root + "bar/baz"] = b"mmm"
+#         dest[f"{root}bar/baz"] = b"mmm"
 
 #         # default ('raise')
 #         with pytest.raises(CopyError):
@@ -799,16 +897,16 @@ def test_tree() -> None:
 #         # skip
 #         copy_store(source, dest, if_exists="skip")
 #         assert 3 == len(dest)
-#         assert dest[root + "foo"] == b"xxx"
-#         assert dest[root + "bar/baz"] == b"mmm"
-#         assert dest[root + "bar/qux"] == b"zzz"
+#         assert dest[f"{root}foo"] == b"xxx"
+#         assert dest[f"{root}bar/baz"] == b"mmm"
+#         assert dest[f"{root}bar/qux"] == b"zzz"
 
 #         # replace
 #         copy_store(source, dest, if_exists="replace")
 #         assert 3 == len(dest)
-#         assert dest[root + "foo"] == b"xxx"
-#         assert dest[root + "bar/baz"] == b"yyy"
-#         assert dest[root + "bar/qux"] == b"zzz"
+#         assert dest[f"{root}foo"] == b"xxx"
+#         assert dest[f"{root}bar/baz"] == b"yyy"
+#         assert dest[f"{root}bar/qux"] == b"zzz"
 
 #         # invalid option
 #         with pytest.raises(ValueError):
@@ -1434,7 +1532,7 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
         zarr.zeros_like,
     ],
 )
-def test_auto_chunks(f: Callable[..., Array]) -> None:
+def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     # Make sure chunks are set automatically across the public API
     # TODO: test shards with this test too
     shape = (1000, 1000)
@@ -1443,6 +1541,7 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
     array = np.zeros(shape, dtype=dtype)
     store = zarr.storage.MemoryStore()
 
+    # ruff: disable[FURB171]
     if f in [zarr.full, zarr.full_like]:
         kwargs["fill_value"] = 0
     if f in [zarr.array]:
@@ -1451,6 +1550,7 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
         kwargs["a"] = array
     if f in [zarr.create_array]:
         kwargs["store"] = store
+    # ruff: enable[FURB171]
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)

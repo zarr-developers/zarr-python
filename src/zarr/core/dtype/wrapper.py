@@ -28,11 +28,9 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     ClassVar,
-    Generic,
     Literal,
     Self,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
@@ -44,20 +42,14 @@ if TYPE_CHECKING:
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type
-TBaseScalar = np.generic | str | bytes
+type TBaseScalar = np.generic | str | bytes
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
-TBaseDType = np.dtype[np.generic]
-
-# These two type parameters are covariant because we want
-# x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
-# to type check
-TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
-TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
+type TBaseDType = np.dtype[np.generic]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType(ABC, Generic[TDType_co, TScalar_co]):
+class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
@@ -71,14 +63,11 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     """
 
     # this class will create a native data type
-    # mypy currently disallows class variables to contain type parameters
-    # but it seems OK for us to use it here:
-    # https://github.com/python/typing/discussions/1424#discussioncomment-7989934
-    dtype_cls: ClassVar[type[TDType_co]]  # type: ignore[misc]
+    dtype_cls: ClassVar[type[TBaseDType]]
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[DType]:
         """
         Check that a native data type matches the dtype_cls class attribute.
 
@@ -123,7 +112,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def to_native_dtype(self: Self) -> TDType_co:
+    def to_native_dtype(self: Self) -> DType:
         """
         Return an instance of the wrapped data type. This operation inverts ``from_native_dtype``.
 
@@ -194,7 +183,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @abstractmethod
     def _check_scalar(self, data: object) -> bool:
         """
-        Check that an python object is a valid scalar value for the wrapped data type.
+        Check that a python object is a valid scalar value for the wrapped data type.
 
         Parameters
         ----------
@@ -209,7 +198,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def cast_scalar(self, data: object) -> TScalar_co:
+    def cast_scalar(self, data: object) -> Scalar:
         """
         Cast a python object to the wrapped scalar type.
 
@@ -229,7 +218,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def default_scalar(self) -> TScalar_co:
+    def default_scalar(self) -> Scalar:
         """
         Get the default scalar value for the wrapped data type.
 
@@ -245,7 +234,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
+    def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> Scalar:
         """
         Read a JSON-serializable value as a scalar.
 

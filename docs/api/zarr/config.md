@@ -1,0 +1,5 @@
+---
+title: config
+---
+
+::: zarr.config

@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, overload
 import numpy as np
 
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -23,8 +23,8 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     """
     A Zarr data type for arrays containing booleans.
 
-    Wraps the ``np.dtypes.BoolDType`` data type. Scalars for this data type are instances of
-    ``np.bool_``.
+    Wraps the [`np.dtypes.BoolDType`][numpy.dtypes.BoolDType] data type. Scalars for this data type are instances of
+    [`np.bool_`][numpy.bool_].
 
     Attributes
     ----------
@@ -41,7 +41,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     ----------
     This class implements the boolean data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding)and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     _zarr_v3_name: ClassVar[Literal["bool"]] = "bool"
@@ -236,7 +236,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The numpy boolean scalar.
 
         Raises
@@ -258,7 +258,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The default value.
         """
         return np.False_
@@ -294,7 +294,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The numpy boolean scalar.
 
         Raises

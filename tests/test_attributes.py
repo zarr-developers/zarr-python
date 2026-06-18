@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -9,6 +9,9 @@ import zarr.core.attributes
 import zarr.storage
 from tests.conftest import deep_nan_equal
 from zarr.core.common import ZarrFormat
+
+if TYPE_CHECKING:
+    from zarr.types import AnyArray
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -74,7 +77,7 @@ def test_update_no_changes() -> None:
 @pytest.mark.parametrize("group", [True, False])
 def test_del_works(group: bool) -> None:
     store = zarr.storage.MemoryStore()
-    z: zarr.Group | zarr.Array
+    z: zarr.Group | AnyArray
     if group:
         z = zarr.create_group(store)
     else:
@@ -84,7 +87,7 @@ def test_del_works(group: bool) -> None:
     del z.attrs["a"]
     assert dict(z.attrs) == {"c": 4}
 
-    z2: zarr.Group | zarr.Array
+    z2: zarr.Group | AnyArray
     if group:
         z2 = zarr.open_group(store)
     else:

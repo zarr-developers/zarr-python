@@ -18,7 +18,7 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import BasicSelection, morton_order_iter
+from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
@@ -29,11 +29,12 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
     from zarr.core.common import MemoryOrder
+    from zarr.types import AnyAsyncArray
 
 
 @dataclass(frozen=True)
 class _AsyncArrayProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
 
     def __getitem__(self, selection: BasicSelection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
@@ -41,7 +42,7 @@ class _AsyncArrayProxy:
 
 @dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
     selection: BasicSelection
 
     async def get(self) -> NDArrayLikeOrScalar:
@@ -170,9 +171,10 @@ def test_open(store: Store) -> None:
     assert a.metadata == b.metadata
 
 
-def test_morton() -> None:
-    assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
-    assert list(morton_order_iter((2, 2, 2))) == [
+def test_morton_exact_order() -> None:
+    """Test exact morton ordering for power-of-2 shapes."""
+    assert list(morton_order_coords((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
+    assert list(morton_order_coords((2, 2, 2))) == [
         (0, 0, 0),
         (1, 0, 0),
         (0, 1, 0),
@@ -182,7 +184,7 @@ def test_morton() -> None:
         (0, 1, 1),
         (1, 1, 1),
     ]
-    assert list(morton_order_iter((2, 2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2, 2, 2))) == [
         (0, 0, 0, 0),
         (1, 0, 0, 0),
         (0, 1, 0, 0),
@@ -205,21 +207,59 @@ def test_morton() -> None:
 @pytest.mark.parametrize(
     "shape",
     [
-        [2, 2, 2],
-        [5, 2],
-        [2, 5],
-        [2, 9, 2],
-        [3, 2, 12],
-        [2, 5, 1],
-        [4, 3, 6, 2, 7],
-        [3, 2, 1, 6, 4, 5, 2],
+        (2, 2, 2),
+        (5, 2),
+        (2, 5),
+        (2, 9, 2),
+        (3, 2, 12),
+        (2, 5, 1),
+        (4, 3, 6, 2, 7),
+        (3, 2, 1, 6, 4, 5, 2),
+        (1,),
+        (1, 1),
+        (5, 1, 3),
+        (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
-def test_morton2(shape: tuple[int, ...]) -> None:
-    order = list(morton_order_iter(shape))
-    for i, x in enumerate(order):
-        assert x not in order[:i]  # no duplicates
-        assert all(x[j] < shape[j] for j in range(len(shape)))  # all indices are within bounds
+def test_morton_is_permutation(shape: tuple[int, ...]) -> None:
+    """Test that morton_order_coords produces every valid coordinate exactly once."""
+    import itertools
+
+    from zarr.core.common import product
+
+    order = list(morton_order_coords(shape))
+    expected_len = product(shape)
+    # completeness: every valid coordinate is present
+    assert len(order) == expected_len
+    # no duplicates
+    assert len(set(order)) == expected_len
+    # all coordinates are within bounds
+    assert all(all(c < s for c, s in zip(coord, shape, strict=True)) for coord in order)
+    # the set of coordinates equals the full cartesian product
+    assert set(order) == set(itertools.product(*(range(s) for s in shape)))
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 2),
+        (4, 4),
+        (2, 2, 2),
+        (4, 4, 4),
+        (2, 2, 2, 2),
+    ],
+)
+def test_morton_ordering(shape: tuple[int, ...]) -> None:
+    """Test that the iteration order matches consecutive decode_morton outputs.
+
+    For power-of-2 shapes, every decode_morton output is in-bounds,
+    so the ordering should be exactly decode_morton(0), decode_morton(1), ...
+    """
+
+    order = list(morton_order_coords(shape))
+    for i, coord in enumerate(order):
+        assert coord == decode_morton(i, shape)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -308,7 +348,7 @@ def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
         ArrayV3Metadata(
             shape=shape,
             chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
-            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},  # type: ignore[arg-type]
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
             fill_value=0,
             data_type=data_type,
             codecs=codecs,

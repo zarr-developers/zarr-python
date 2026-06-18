@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final
 
-from zarr.core.dtype.common import (
-    DataTypeValidationError,
-    DTypeJSON,
-)
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import (
     NullTerminatedBytes,
@@ -21,7 +17,13 @@ from zarr.core.dtype.npy.bytes import (
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.structured import (
+    Struct,
+    StructJSON_V3,
+    Structured,
+    StructuredJSON_V2,
+    StructuredJSON_V3,
+)
 from zarr.core.dtype.npy.time import (
     DateTime64,
     DateTime64JSON_V2,
@@ -33,6 +35,7 @@ from zarr.core.dtype.npy.time import (
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON
 
 from collections.abc import Mapping
 
@@ -55,7 +58,6 @@ __all__ = [
     "Complex64",
     "Complex128",
     "DataTypeRegistry",
-    "DataTypeValidationError",
     "DateTime64",
     "DateTime64JSON_V2",
     "DateTime64JSON_V3",
@@ -75,12 +77,13 @@ __all__ = [
     "RawBytes",
     "RawBytesJSON_V2",
     "RawBytesJSON_V3",
+    "Struct",
+    "StructJSON_V3",
     "Structured",
     "StructuredJSON_V2",
     "StructuredJSON_V3",
     "TBaseDType",
     "TBaseScalar",
-    "TimeDelta64",
     "TimeDelta64",
     "TimeDelta64JSON_V2",
     "TimeDelta64JSON_V3",
@@ -125,7 +128,7 @@ AnyDType = (
     | ComplexFloatDType
     | StringDType
     | BytesDType
-    | Structured
+    | Struct
     | TimeDType
     | VariableLengthBytes
 )
@@ -138,7 +141,7 @@ ANY_DTYPE: Final = (
     *COMPLEX_FLOAT_DTYPE,
     *STRING_DTYPE,
     *BYTES_DTYPE,
-    Structured,
+    Struct,
     *TIME_DTYPE,
     VariableLengthBytes,
 )
@@ -150,7 +153,7 @@ ANY_DTYPE: Final = (
 VLEN_UTF8_ALIAS: Final = ("str", str, "string")
 
 # This type models inputs that can be coerced to a ZDType
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
+type ZDTypeLike = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
 
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType
@@ -213,14 +216,16 @@ def parse_data_type(
 
     Examples
     --------
-    >>> from zarr.dtype import parse_data_type
-    >>> import numpy as np
-    >>> parse_data_type("int32", zarr_format=2)
-    Int32(endianness='little')
-    >>> parse_data_type(np.dtype('S10'), zarr_format=2)
-    NullTerminatedBytes(length=10)
-    >>> parse_data_type({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
-    DateTime64(endianness='little', scale_factor=10, unit='s')
+    ```python
+    from zarr.dtype import parse_data_type
+    import numpy as np
+    parse_data_type("int32", zarr_format=2)
+    # Int32(endianness='little')
+    parse_data_type(np.dtype('S10'), zarr_format=2)
+    # NullTerminatedBytes(length=10)
+    parse_data_type({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    # DateTime64(endianness='little', scale_factor=10, unit='s')
+    ```
     """
     return parse_dtype(dtype_spec, zarr_format=zarr_format)
 
@@ -251,21 +256,23 @@ def parse_dtype(
 
     Examples
     --------
-    >>> from zarr.dtype import parse_dtype
-    >>> import numpy as np
-    >>> parse_dtype("int32", zarr_format=2)
-    Int32(endianness='little')
-    >>> parse_dtype(np.dtype('S10'), zarr_format=2)
-    NullTerminatedBytes(length=10)
-    >>> parse_dtype({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
-    DateTime64(endianness='little', scale_factor=10, unit='s')
+    ```python
+    from zarr.dtype import parse_dtype
+    import numpy as np
+    parse_dtype("int32", zarr_format=2)
+    # Int32(endianness='little')
+    parse_dtype(np.dtype('S10'), zarr_format=2)
+    # NullTerminatedBytes(length=10)
+    parse_dtype({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    # DateTime64(endianness='little', scale_factor=10, unit='s')
+    ```
     """
     if isinstance(dtype_spec, ZDType):
         return dtype_spec
     # First attempt to interpret the input as JSON
     if isinstance(dtype_spec, Mapping | str | Sequence):
         try:
-            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)
         except ValueError:
             # no data type matched this JSON-like input
             pass
@@ -276,3 +283,19 @@ def parse_dtype(
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a native dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
+
+
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.core.dtype is deprecated. "
+            "Use zarr.errors.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

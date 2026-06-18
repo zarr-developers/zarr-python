@@ -9,14 +9,12 @@ from typing import (
     SupportsIndex,
     SupportsInt,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
 import numpy as np
 
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasEndianness,
@@ -25,10 +23,13 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import (
     check_json_int,
+    check_json_intish_float,
+    check_json_intish_str,
     endianness_to_numpy_str,
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -46,13 +47,15 @@ _NumpyIntDType = (
 _NumpyIntScalar = (
     np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
 )
-TIntDType_co = TypeVar("TIntDType_co", bound=_NumpyIntDType, covariant=True)
-TIntScalar_co = TypeVar("TIntScalar_co", bound=_NumpyIntScalar, covariant=True)
+
 IntLike = SupportsInt | SupportsIndex | bytes | str
 
 
 @dataclass(frozen=True)
-class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
+class BaseInt[
+    DType: _NumpyIntDType,
+    Scalar: np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64,
+](ZDType[DType, Scalar], HasItemSize):
     """
     A base class for integer data types in Zarr.
 
@@ -127,7 +130,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         return isinstance(data, IntLike)
 
-    def _cast_scalar_unchecked(self, data: IntLike) -> TIntScalar_co:
+    def _cast_scalar_unchecked(self, data: IntLike) -> Scalar:
         """
         Casts a given scalar value to the native integer scalar type without type checking.
 
@@ -138,13 +141,13 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The casted integer scalar of the native dtype.
         """
 
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
-    def cast_scalar(self, data: object) -> TIntScalar_co:
+    def cast_scalar(self, data: object) -> Scalar:
         """
         Attempt to cast a given object to a NumPy integer scalar.
 
@@ -155,7 +158,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The data cast as a NumPy integer scalar.
 
         Raises
@@ -172,18 +175,18 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         )
         raise TypeError(msg)
 
-    def default_scalar(self) -> TIntScalar_co:
+    def default_scalar(self) -> Scalar:
         """
         Get the default value, which is 0 cast to this dtype.
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The default value.
         """
         return self._cast_scalar_unchecked(0)
 
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> Scalar:
         """
         Read a JSON-serializable value as a NumPy int scalar.
 
@@ -196,7 +199,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The NumPy int scalar.
 
         Raises
@@ -206,6 +209,12 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         """
         if check_json_int(data):
             return self._cast_scalar_unchecked(data)
+        if check_json_intish_float(data):
+            return self._cast_scalar_unchecked(int(data))
+
+        if check_json_intish_str(data):
+            return self._cast_scalar_unchecked(int(data))
+
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
@@ -233,8 +242,8 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     """
     A Zarr data type for arrays containing 8-bit signed integers.
 
-    Wraps the ``np.dtypes.Int8DType`` data type. Scalars for this data type are
-    instances of ``np.int8``.
+    Wraps the [`np.dtypes.Int8DType`][numpy.dtypes.Int8DType] data type. Scalars for this data type are
+    instances of [`np.int8`][numpy.int8].
 
     Attributes
     ----------
@@ -245,7 +254,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     ----------
     This class implements the 8-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int8DType
@@ -255,7 +264,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an Int8 from a np.dtype('int8') instance.
+        Create an Int8 from an np.dtype('int8') instance.
 
         Parameters
         ----------
@@ -280,7 +289,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
     def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
         """
-        Convert the Int8 instance to a np.dtype('int8') instance.
+        Convert the Int8 instance to an np.dtype('int8') instance.
 
         Returns
         -------
@@ -390,7 +399,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     """
     A Zarr data type for arrays containing 8-bit unsigned integers.
 
-    Wraps the ``np.dtypes.UInt8DType`` data type. Scalars for this data type are instances of ``np.uint8``.
+    Wraps the [`np.dtypes.UInt8DType`][numpy.dtypes.UInt8DType] data type. Scalars for this data type are instances of [`np.uint8`][numpy.uint8].
 
     Attributes
     ----------
@@ -401,7 +410,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     ----------
     This class implements the 8-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt8DType
@@ -411,7 +420,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a UInt8 from a np.dtype('uint8') instance.
+        Create a UInt8 from an np.dtype('uint8') instance.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -536,8 +545,8 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     """
     A Zarr data type for arrays containing 16-bit signed integers.
 
-    Wraps the ``np.dtypes.Int16DType`` data type. Scalars for this data type are instances of
-    ``np.int16``.
+    Wraps the [`np.dtypes.Int16DType`][numpy.dtypes.Int16DType] data type. Scalars for this data type are instances of
+    [`np.int16`][numpy.int16].
 
     Attributes
     ----------
@@ -548,7 +557,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     ----------
     This class implements the 16-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int16DType
@@ -558,7 +567,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an instance of this data type from a np.dtype('int16') instance.
+        Create an instance of this data type from an np.dtype('int16') instance.
 
         Parameters
         ----------
@@ -583,7 +592,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
 
     def to_native_dtype(self) -> np.dtypes.Int16DType:
         """
-        Convert the data type to a np.dtype('int16') instance.
+        Convert the data type to an np.dtype('int16') instance.
 
         Returns
         -------
@@ -591,7 +600,8 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
             The np.dtype('int16') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -698,8 +708,8 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     """
     A Zarr data type for arrays containing 16-bit unsigned integers.
 
-    Wraps the ``np.dtypes.UInt16DType`` data type. Scalars for this data type are instances of
-    ``np.uint16``.
+    Wraps the [`np.dtypes.UInt16DType`][numpy.dtypes.UInt16DType] data type. Scalars for this data type are instances of
+    [`np.uint16`][numpy.uint16].
 
     Attributes
     ----------
@@ -710,7 +720,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     ----------
     This class implements the unsigned 16-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt16DType
@@ -720,7 +730,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an instance of this data type from a np.dtype('uint16') instance.
+        Create an instance of this data type from an np.dtype('uint16') instance.
 
         Parameters
         ----------
@@ -745,7 +755,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
 
     def to_native_dtype(self) -> np.dtypes.UInt16DType:
         """
-        Convert the data type to a np.dtype('uint16') instance.
+        Convert the data type to an np.dtype('uint16') instance.
 
         Returns
         -------
@@ -753,7 +763,8 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
             The np.dtype('uint16') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -860,8 +871,8 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     """
     A Zarr data type for arrays containing 32-bit signed integers.
 
-    Wraps the ``np.dtypes.Int32DType`` data type. Scalars for this data type are instances of
-    ``np.int32``.
+    Wraps the [`np.dtypes.Int32DType`][numpy.dtypes.Int32DType] data type. Scalars for this data type are instances of
+    [`np.int32`][numpy.int32].
 
     Attributes
     ----------
@@ -872,7 +883,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     ----------
     This class implements the 32-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int32DType
@@ -903,7 +914,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
-        Create an Int32 from a np.dtype('int32') instance.
+        Create an Int32 from an np.dtype('int32') instance.
 
         Parameters
         ----------
@@ -928,7 +939,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
 
     def to_native_dtype(self: Self) -> np.dtypes.Int32DType:
         """
-        Convert the Int32 instance to a np.dtype('int32') instance.
+        Convert the Int32 instance to an np.dtype('int32') instance.
 
         Returns
         -------
@@ -936,7 +947,8 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
             The np.dtype('int32') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1043,8 +1055,8 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     """
     A Zarr data type for arrays containing 32-bit unsigned integers.
 
-    Wraps the ``np.dtypes.UInt32DType`` data type. Scalars for this data type are instances of
-    ``np.uint32``.
+    Wraps the [`np.dtypes.UInt32DType`][numpy.dtypes.UInt32DType] data type. Scalars for this data type are instances of
+    [`np.uint32`][numpy.uint32].
 
     Attributes
     ----------
@@ -1055,7 +1067,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     ----------
     This class implements the 32-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt32DType
@@ -1063,9 +1075,31 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
 
     @classmethod
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.UInt32DType]:
+        """
+        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
+
+        This method is overridden for this particular data type because of a Windows-specific issue
+        where ``np.array([1], dtype=np.uint32) & 1`` creates an instance of ``np.dtypes.UIntDType``,
+        rather than an instance of ``np.dtypes.UInt32DType``, even though both represent 32-bit
+        unsigned integers. (In contrast to ``np.dtype('i')``, ``np.dtype('u')`` raises an error.)
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return super()._check_native_dtype(dtype) or dtype == np.dtypes.UInt32DType()
+
+    @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a UInt32 from a np.dtype('uint32') instance.
+        Create a UInt32 from an np.dtype('uint32') instance.
 
         Parameters
         ----------
@@ -1099,7 +1133,8 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
             The NumPy unsigned 32-bit integer dtype.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1201,8 +1236,8 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     """
     A Zarr data type for arrays containing 64-bit signed integers.
 
-    Wraps the ``np.dtypes.Int64DType`` data type. Scalars for this data type are instances of
-    ``np.int64``.
+    Wraps the [`np.dtypes.Int64DType`][numpy.dtypes.Int64DType] data type. Scalars for this data type are instances of
+    [`np.int64`][numpy.int64].
 
     Attributes
     ----------
@@ -1213,7 +1248,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     ----------
     This class implements the 64-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int64DType
@@ -1223,7 +1258,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an Int64 from a np.dtype('int64') instance.
+        Create an Int64 from an np.dtype('int64') instance.
 
         Parameters
         ----------
@@ -1257,7 +1292,8 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
             The NumPy signed 64-bit integer dtype.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1359,8 +1395,8 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     """
     A Zarr data type for arrays containing 64-bit unsigned integers.
 
-    Wraps the ``np.dtypes.UInt64DType`` data type. Scalars for this data type
-    are instances of ``np.uint64``.
+    Wraps the [`np.dtypes.UInt64DType`][numpy.dtypes.UInt64DType] data type. Scalars for this data type
+    are instances of [`np.uint64`][numpy.uint64].
 
     Attributes
     ----------
@@ -1371,7 +1407,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     ----------
     This class implements the unsigned 64-bit integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt64DType
@@ -1388,7 +1424,8 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
             The native NumPy dtype.eeeeeeeeeeeeeeeee
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
