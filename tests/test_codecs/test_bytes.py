@@ -5,14 +5,14 @@ from __future__ import annotations
 import enum
 import sys
 import warnings
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pytest
 
 import zarr
+from tests.conftest import Expect, ExpectFail
 from zarr.abc.codec import SupportsSyncCodec
-from zarr.abc.store import Store
 from zarr.codecs.bytes import (
     ENDIAN,
     BytesCodec,
@@ -27,6 +27,9 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
+
+if TYPE_CHECKING:
+    from zarr.abc.store import Store
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -121,38 +124,31 @@ def test_bytes_codec_json_roundtrip(endian: EndianLiteral) -> None:
     assert restored == codec
 
 
-@pytest.mark.parametrize(
-    ("endian", "expected"),
-    [
-        pytest.param(
-            "little", {"name": "bytes", "configuration": {"endian": "little"}}, id="little"
-        ),
-        pytest.param("big", {"name": "bytes", "configuration": {"endian": "big"}}, id="big"),
-        pytest.param(None, {"name": "bytes"}, id="missing"),
-    ],
-)
-def test_to_dict(endian: EndianLiteral | None, expected: dict[str, Any]) -> None:
-    codec = BytesCodec(endian=endian)
+# to_dict and from_dict are inverses over this (endian setting, wire dict) mapping:
+# to_dict turns the endian setting into the dict; from_dict recovers it.
+_ENDIAN_DICT_CASES: list[Expect[EndianLiteral | None, dict[str, Any]]] = [
+    Expect(
+        input="little",
+        output={"name": "bytes", "configuration": {"endian": "little"}},
+        id="little",
+    ),
+    Expect(
+        input="big",
+        output={"name": "bytes", "configuration": {"endian": "big"}},
+        id="big",
+    ),
+    Expect(input=None, output={"name": "bytes"}, id="missing"),
+]
 
-    actual = codec.to_dict()
 
-    assert actual == expected
+@pytest.mark.parametrize("case", _ENDIAN_DICT_CASES, ids=lambda c: c.id)
+def test_to_dict(case: Expect[EndianLiteral | None, dict[str, Any]]) -> None:
+    assert BytesCodec(endian=case.input).to_dict() == case.output
 
 
-@pytest.mark.parametrize(
-    ("mapping", "expected"),
-    [
-        pytest.param(
-            {"name": "bytes", "configuration": {"endian": "little"}}, "little", id="little"
-        ),
-        pytest.param({"name": "bytes", "configuration": {"endian": "big"}}, "big", id="big"),
-        pytest.param({"name": "bytes"}, None, id="missing"),
-    ],
-)
-def test_from_dict(mapping: dict[str, Any], expected: EndianLiteral | None) -> None:
-    actual = BytesCodec.from_dict(mapping)
-
-    assert actual.endian == expected
+@pytest.mark.parametrize("case", _ENDIAN_DICT_CASES, ids=lambda c: c.id)
+def test_from_dict(case: Expect[EndianLiteral | None, dict[str, Any]]) -> None:
+    assert BytesCodec.from_dict(case.output).endian == case.input
 
 
 @pytest.mark.parametrize("endian", ["little", "big", pytest.param(None, id="missing")])
@@ -224,14 +220,25 @@ def test_bytes_codec_init_with_deprecated_class_member() -> None:
     assert codec.endian == "little"
 
 
-def test_bytes_codec_rejects_unknown_endian() -> None:
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input="north",
+            exception=ValueError,
+            id="unknown-string",
+            msg="endian must be one of",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_bytes_codec_rejects_unknown_endian(case: ExpectFail[Any]) -> None:
     """
-    `BytesCodec.__init__` raises `ValueError` when given a string outside
+    `BytesCodec.__init__` raises `ValueError` when given a value outside
     `ENDIAN`, and the error message names the offending parameter.
     """
-    kwargs: dict[str, Any] = {"endian": "north"}
-    with pytest.raises(ValueError, match="endian must be one of"):
-        BytesCodec(**kwargs)
+    with case.raises():
+        BytesCodec(endian=case.input)
 
 
 def test_endian_attribute_error_for_unknown_member() -> None:
