@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from zarr.storage._utils import ParsedStoreUrl, parse_store_url
+from zarr.abc.store import SuffixByteRequest
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.storage._utils import ParsedStoreUrl, _normalize_byte_range_index, parse_store_url
 
 
 class TestParseStoreUrl:
@@ -95,3 +97,32 @@ class TestParseStoreUrl:
             result = parse_store_url(url)
         # urlparse interprets the drive letter as a scheme
         assert result.scheme == "c"
+
+
+class TestNormalizeByteRangeIndex:
+    """Tests for _normalize_byte_range_index."""
+
+    def test_suffix_larger_than_data_returns_all_bytes(self) -> None:
+        """Regression: SuffixByteRequest with suffix > len(data) must not produce a
+        negative start index that causes numpy to return fewer bytes than available."""
+        prototype = default_buffer_prototype()
+        data = prototype.buffer.from_bytes(b"hello")  # 5 bytes
+        byte_range = SuffixByteRequest(suffix=7)
+        start, stop = _normalize_byte_range_index(data, byte_range)
+        assert start == 0, f"start should be 0 (clamped), got {start}"
+        result = data[start:stop]
+        assert len(result) == 5, f"expected all 5 bytes, got {len(result)}"
+
+    def test_suffix_exact_length(self) -> None:
+        """SuffixByteRequest with suffix == len(data) returns all bytes."""
+        prototype = default_buffer_prototype()
+        data = prototype.buffer.from_bytes(b"hello")
+        start, _stop = _normalize_byte_range_index(data, SuffixByteRequest(suffix=5))
+        assert start == 0
+
+    def test_suffix_shorter_than_data(self) -> None:
+        """SuffixByteRequest with suffix < len(data) returns the last n bytes."""
+        prototype = default_buffer_prototype()
+        data = prototype.buffer.from_bytes(b"hello")
+        start, _stop = _normalize_byte_range_index(data, SuffixByteRequest(suffix=3))
+        assert start == 2
