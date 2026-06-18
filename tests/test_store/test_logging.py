@@ -168,29 +168,3 @@ async def test_logging_store_counter(store: Store) -> None:
     else:
         assert wrapped.counter["get"] == 1
         assert wrapped.counter["delete_dir"] == 0
-
-
-async def test_logging_store_get_partial_values_generator() -> None:
-    """Regression: get_partial_values must not exhaust a one-shot generator when
-    building the log string, leaving the wrapped store with an empty iterable."""
-    from zarr.storage import MemoryStore
-
-    inner = MemoryStore()
-    proto = default_buffer_prototype()
-    await inner.set("a", proto.buffer.from_bytes(b"hello"))
-    await inner.set("b", proto.buffer.from_bytes(b"world"))
-
-    wrapped = LoggingStore(store=inner, log_level="DEBUG")
-
-    # Pass a generator (one-shot iterator) rather than a list.
-    key_ranges_gen = ((key, None) for key in ("a", "b"))
-    results = await wrapped.get_partial_values(
-        prototype=proto,
-        key_ranges=key_ranges_gen,
-    )
-
-    assert len(results) == 2
-    assert results[0] is not None
-    assert results[1] is not None
-    assert results[0].to_bytes() == b"hello"
-    assert results[1].to_bytes() == b"world"

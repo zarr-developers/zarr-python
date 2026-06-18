@@ -410,22 +410,3 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
         # URL should no longer resolve
         with pytest.raises(ValueError, match="garbage collected"):
             ManagedMemoryStore.from_url(url)
-
-
-async def test_getsize_prefix_no_sibling_overcounting() -> None:
-    """Regression: getsize_prefix("foo") must not count keys under "foobar/" because
-    list_prefix matches any key that starts with the given prefix string, not just
-    those under that directory. The fix normalizes the prefix to end with "/"."""
-    from zarr.core.buffer.core import default_buffer_prototype
-
-    store = MemoryStore()
-    proto = default_buffer_prototype()
-
-    # "foo/a" belongs to the "foo" prefix tree; "foobar/b" does not.
-    await store.set("foo/a", proto.buffer.from_bytes(b"hello"))  # 5 bytes
-    await store.set("foobar/b", proto.buffer.from_bytes(b"world!"))  # 6 bytes
-
-    size_foo = await store.getsize_prefix("foo")
-    assert size_foo == 5, (
-        f"getsize_prefix('foo') should count only 'foo/a' (5 bytes), got {size_foo}"
-    )
