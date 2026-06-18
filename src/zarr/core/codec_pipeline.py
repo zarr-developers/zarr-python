@@ -438,15 +438,12 @@ async def _async_write_fallback(
             is_complete_chunk,
         ) in zip(chunk_array_decoded, batch, strict=False)
     ]
-    chunk_array_batch: list[NDBuffer | None] = []
-    for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch, strict=False):
-        if chunk_array is None:
-            chunk_array_batch.append(None)  # type: ignore[unreachable]
-        else:
-            if chunk_is_empty(chunk_array, chunk_spec):
-                chunk_array_batch.append(None)
-            else:
-                chunk_array_batch.append(chunk_array)
+    # _merge_chunk_array always returns a real NDBuffer (never None), so the only
+    # way a chunk drops to None here is the empty-chunk normalization.
+    chunk_array_batch: list[NDBuffer | None] = [
+        None if chunk_is_empty(chunk_array, chunk_spec) else chunk_array
+        for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch, strict=False)
+    ]
 
     if use_sync:
         sync_transform = cast(FusedCodecPipeline, pipeline).sync_transform
