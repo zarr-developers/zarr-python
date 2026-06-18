@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
+
+pytest.importorskip("hypothesis")
+
+import hypothesis.strategies as st
+from hypothesis import given
 
 import zarr
 from zarr.codecs import BytesCodec, CastValue, GzipCodec, TransposeCodec
@@ -10,6 +17,11 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.codec_pipeline import codecs_from_list
 from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from zarr.abc.codec import Codec
 
 
 @pytest.mark.parametrize(
@@ -123,15 +135,63 @@ def test_codec_pipeline_threads_dtype_through_evolve(source_dtype: str, target_d
     np.testing.assert_array_equal(arr[:], np.asarray([0, 1, 2, 3], dtype=source_dtype))
 
 
-def test_codecs_from_list_bytes_bytes_after_array_array_raises() -> None:
-    """Regression: placing a BytesBytesCodec immediately after an ArrayArrayCodec
-    (with no ArrayBytesCodec in between) must raise TypeError. Previously the error
-    message was assigned to ``msg`` but never raised, so the function silently
-    continued and later raised the unrelated ValueError "Required ArrayBytesCodec
-    was not found." instead of the descriptive TypeError."""
-    aa_codec = TransposeCodec(order=(0, 1))
-    bb_codec = GzipCodec()
+# Property-based check of codecs_from_list ordering validation.
+#
+# Valid codec orderings are exactly: (ArrayArrayCodec)* (ArrayBytesCodec)
+# (BytesBytesCodec)*. codecs_from_list walks adjacent pairs and must raise
+# TypeError the moment a codec appears in a structurally invalid position --
+# notably, a BytesBytesCodec immediately following an ArrayArrayCodec with no
+# ArrayBytesCodec in between (which previously built an error message but never
+# raised it, falling through to an unrelated ValueError instead).
+_AA = "AA"  # ArrayArrayCodec   -> TransposeCodec
+_AB = "AB"  # ArrayBytesCodec   -> BytesCodec
+_BB = "BB"  # BytesBytesCodec   -> GzipCodec
 
-    # [ArrayArrayCodec, BytesBytesCodec] — no ArrayBytesCodec between them.
-    with pytest.raises(TypeError, match="Invalid codec order"):
-        codecs_from_list([aa_codec, bb_codec])
+_CODEC_FACTORY: dict[str, Callable[[], Codec]] = {
+    _AA: lambda: TransposeCodec(order=(0, 1)),
+    _AB: BytesCodec,
+    _BB: GzipCodec,
+}
+
+
+def _expected_codec_order_outcome(labels: list[str]) -> str:
+    """Independently predict codecs_from_list's outcome: 'TypeError',
+    'ValueError' or 'ok', mirroring its left-to-right scan and the order in
+    which it checks ordering violations (TypeError) vs. the ArrayBytes-count
+    constraints (ValueError)."""
+    prev = None
+    seen_array_bytes = False
+    for cur in labels:
+        if cur == _AA:
+            if prev in (_AB, _BB):
+                return "TypeError"
+        elif cur == _AB:
+            if prev == _BB:
+                return "TypeError"
+            if seen_array_bytes:
+                return "ValueError"  # two ArrayBytesCodecs
+            seen_array_bytes = True
+        else:  # _BB
+            if prev == _AA:
+                return "TypeError"
+        prev = cur
+    if not seen_array_bytes:
+        return "ValueError"  # Required ArrayBytesCodec was not found
+    return "ok"
+
+
+@given(labels=st.lists(st.sampled_from([_AA, _AB, _BB]), min_size=1, max_size=5))
+def test_codecs_from_list_outcome_matches_order_rules(labels: list[str]) -> None:
+    codecs = [_CODEC_FACTORY[label]() for label in labels]
+    expected = _expected_codec_order_outcome(labels)
+    if expected == "TypeError":
+        with pytest.raises(TypeError):
+            codecs_from_list(codecs)
+    elif expected == "ValueError":
+        with pytest.raises(ValueError):
+            codecs_from_list(codecs)
+    else:
+        # Valid ordering: must classify without raising.
+        aa, _ab, bb = codecs_from_list(codecs)
+        assert labels.count(_AA) == len(aa)
+        assert labels.count(_BB) == len(bb)

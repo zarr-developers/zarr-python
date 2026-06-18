@@ -370,10 +370,18 @@ class StoreTests[S: Store, B: Buffer]:
         for key, _ in key_ranges:
             await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
-        # read back just part of it
+        # read back just part of it. Pass key_ranges as a one-shot generator
+        # (a valid Iterable per the method signature) to ensure stores and
+        # wrappers do not exhaust the iterable before handing it to the backend.
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype(), key_ranges=key_ranges
+            prototype=default_buffer_prototype(),
+            key_ranges=(kr for kr in key_ranges),
         )
+
+        # One result must be returned per requested key range. Checking this
+        # explicitly guards against a store/wrapper exhausting the key_ranges
+        # iterable early and silently returning fewer (or no) results.
+        assert len(observed_maybe) == len(key_ranges)
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -382,8 +390,7 @@ class StoreTests[S: Store, B: Buffer]:
             assert obs is not None
             observed.append(obs)
 
-        for idx in range(len(observed)):
-            key, byte_range = key_ranges[idx]
+        for key, byte_range in key_ranges:
             result = await store.get(
                 key, prototype=default_buffer_prototype(), byte_range=byte_range
             )
