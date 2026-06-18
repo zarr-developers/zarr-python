@@ -5,6 +5,8 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Self
 
+import numpy as np
+
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
@@ -611,13 +613,41 @@ class LatencyStore(WrapperStore[Store]):
     performance testing.
     """
 
-    get_latency: float
-    set_latency: float
+    _get_latency: float | tuple[float, float]
+    _set_latency: float | tuple[float, float]
 
-    def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
-        self.get_latency = float(get_latency)
-        self.set_latency = float(set_latency)
+    def __init__(
+        self,
+        store: Store,
+        *,
+        get_latency: float | tuple[float, float] = 0,
+        set_latency: float | tuple[float, float] = 0,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        store
+            The underlying store to which to apply latency
+        get_latency
+            The get latency, either a single  uniform value or loc/scale for a normal distribution to be sampled from, by default 0
+        set_latency
+            The set latency, either a single  uniform value or loc/scale for a normal distribution to be sampled from, by default 0
+        """
+        self._get_latency = get_latency
+        self._set_latency = set_latency
         self._store = store
+
+    @property
+    def get_latency(self) -> float:
+        if isinstance(self._get_latency, float):
+            return self._get_latency
+        return max(0.0, np.random.normal(loc=self._get_latency[0], scale=self._get_latency[1]))
+
+    @property
+    def set_latency(self) -> float:
+        if isinstance(self._set_latency, float):
+            return self._set_latency
+        return max(0.0, np.random.normal(loc=self._set_latency[0], scale=self._set_latency[1]))
 
     def _with_store(self, store: Store) -> Self:
         return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)

@@ -68,7 +68,9 @@ def bench_store(store: Store, latency: float, request: pytest.FixtureRequest) ->
     if latency > 0:
         if store_kind == "local":
             pytest.skip("latency injection only applies to in-memory store")
-        return LatencyStore(store, get_latency=latency, set_latency=latency)
+        return LatencyStore(
+            store, get_latency=(latency, latency / 4), set_latency=(latency, latency / 4)
+        )
     return store
 
 
