@@ -1024,3 +1024,40 @@ def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ..
     assert starts[0] == 10
     assert ends[0] == 14
     np.testing.assert_array_equal(starts[~expected_valid], MAX_UINT_64)
+
+
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+def test_sharding_vlen_inner_codec_roundtrip(pipeline_path: str) -> None:
+    """A sharded array whose inner codec chain is a variable-length codec
+    (VLenUTF8) must round-trip under either pipeline.
+
+    Regression: the Fused pipeline's bulk-decode gate calls `c.is_fixed_size`
+    on every inner codec. `is_fixed_size` is declared on the Codec ABC but had
+    no default, so codecs that don't set it (VLenUTF8/VLenBytes, numcodecs
+    wrappers) raised AttributeError on read — crashing every sharded read whose
+    inner chain included such a codec.
+    """
+    # The variable-length StringDType resolves to a VLenUTF8Codec inner chain
+    # (a fixed-width <U dtype would use BytesCodec, which has is_fixed_size).
+    data = np.array(["aa", "bbbb", "c", "dddddd", "ee", "f"], dtype=np.dtypes.StringDType())
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        arr = zarr.create_array(
+            store=MemoryStore(),
+            shape=(6,),
+            chunks=(2,),
+            shards=(6,),
+            dtype=data.dtype,
+            fill_value="",
+        )
+        arr[:] = data
+        # full read (would hit the bulk-decode gate under Fused) ...
+        assert np.array_equal(arr[:], data)
+        # ... and a reordering read (partial-decode path)
+        assert np.array_equal(arr.vindex[np.array([5, 4, 3, 2, 1, 0])], data[[5, 4, 3, 2, 1, 0]])
