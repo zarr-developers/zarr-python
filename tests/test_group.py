@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from _pytest.compat import LEGACY_PATH
+    from zarr_metadata import GroupMetadataV2, GroupMetadataV3
 
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ZarrFormat
@@ -587,6 +588,19 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             else:
                 group = zarr.consolidate_metadata(store)
         if zarr_format == 2:
+            # The v2 spec defines `.zgroup` as `{"zarr_format": 2}` only;
+            # `node_type` is v3 only. The subgroup metadata here uses the
+            # in-memory merged form (zarr-python folds `.zattrs` and the
+            # `consolidated_metadata` extension into a single dict).
+            subgroup: GroupMetadataV2 = {
+                "attributes": {},
+                "consolidated_metadata": {  # type: ignore[typeddict-unknown-key]
+                    "metadata": {},
+                    "kind": "inline",
+                    "must_understand": False,
+                },
+                "zarr_format": 2,
+            }
             metadata = {
                 "subarray": {
                     "attributes": {},
@@ -599,16 +613,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "compressor": Blosc(),
                     "zarr_format": zarr_format,
                 },
-                "subgroup": {
-                    "attributes": {},
-                    "consolidated_metadata": {
-                        "metadata": {},
-                        "kind": "inline",
-                        "must_understand": False,
-                    },
-                    "node_type": "group",
-                    "zarr_format": zarr_format,
-                },
+                "subgroup": subgroup,
             }
         else:
             metadata = {
@@ -1021,15 +1026,16 @@ async def test_asyncgroup_open_wrong_format(
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
-# todo: replace the dict[str, Any] type with something a bit more specific
+_FROM_DICT_V3: GroupMetadataV3 = {
+    "zarr_format": 3,
+    "node_type": "group",
+    "attributes": {"foo": 100},
+}
+_FROM_DICT_V2: GroupMetadataV2 = {"zarr_format": 2, "attributes": {"foo": 100}}
+
+
 # should this be async?
-@pytest.mark.parametrize(
-    "data",
-    [
-        {"zarr_format": 3, "node_type": "group", "attributes": {"foo": 100}},
-        {"zarr_format": 2, "attributes": {"foo": 100}},
-    ],
-)
+@pytest.mark.parametrize("data", [_FROM_DICT_V3, _FROM_DICT_V2])
 def test_asyncgroup_from_dict(store: Store, data: dict[str, Any]) -> None:
     """
     Test that we can create an AsyncGroup from a dict

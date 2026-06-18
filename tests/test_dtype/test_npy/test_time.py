@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import get_args
+from typing import TYPE_CHECKING, ClassVar, get_args
 
 import numpy as np
 import pytest
@@ -9,6 +9,10 @@ import pytest
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.common import DateTimeUnit
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64, datetime_from_int
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyDatetime64
+    from zarr_metadata.v3.data_type.numpy_timedelta64 import NumpyTimedelta64
 
 
 class _TestTimeBase(BaseTestZDType):
@@ -40,7 +44,7 @@ class TestDateTime64(_TestTimeBase):
         {"name": "<M8[10s]", "object_codec_id": None},
         {"name": "<M8[10us]", "object_codec_id": None},
     )
-    valid_json_v3 = (
+    valid_json_v3: ClassVar[tuple[NumpyDatetime64, ...]] = (
         {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
     )
@@ -90,7 +94,7 @@ class TestTimeDelta64(_TestTimeBase):
         {"name": "<m8[10s]", "object_codec_id": None},
         {"name": "<m8[10us]", "object_codec_id": None},
     )
-    valid_json_v3 = (
+    valid_json_v3: ClassVar[tuple[NumpyTimedelta64, ...]] = (
         {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},
     )

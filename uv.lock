@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "zarr",
+    "zarr-metadata",
+]
+
 [[package]]
 name = "aiobotocore"
 version = "3.7.0"
@@ -3952,6 +3958,7 @@ dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "typing-extensions" },
+    { name = "zarr-metadata" },
 ]
 
 [package.optional-dependencies]
@@ -4077,6 +4084,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
+    { name = "zarr-metadata", editable = "packages/zarr-metadata" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 
@@ -4167,4 +4175,26 @@ test = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "tomlkit", specifier = "==0.15.0" },
     { name = "uv", specifier = "==0.11.20" },
+]
+
+[[package]]
+name = "zarr-metadata"
+source = { editable = "packages/zarr-metadata" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+
+[package.dev-dependencies]
+test = [
+    { name = "pydantic" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "typing-extensions", specifier = ">=4.13" }]
+
+[package.metadata.requires-dev]
+test = [
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pytest" },
 ]

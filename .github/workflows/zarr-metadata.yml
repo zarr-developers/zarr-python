@@ -20,6 +20,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # zarr-metadata CI installs zarr-metadata standalone, not as a uv
+  # workspace member. The workspace at the repo root forces uv to honor
+  # `requires-python = ">=3.12"` from zarr-python's pyproject.toml, which
+  # blocks Python 3.11 even though zarr-metadata itself supports 3.11+.
+  # Using `uv venv` + `uv pip install` from a tmp directory bypasses
+  # workspace resolution and tests zarr-metadata the way downstream users
+  # actually install it: as a standalone package from PyPI.
   test:
     name: pytest py=${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -39,12 +46,18 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: true
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-      - name: Sync test dependency group
-        run: uv sync --group test --python ${{ matrix.python-version }}
+      - name: Create standalone Python ${{ matrix.python-version }} venv
+        # Place the venv outside the workspace tree so uv doesn't try
+        # to resolve workspace-wide requirements.
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python ${{ matrix.python-version }} --seed
+      - name: Install zarr-metadata and test deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:test \
+            .
       - name: Run pytest
-        run: uv run --group test pytest tests
+        run: '"$RUNNER_TEMP/zm-venv/bin/python" -m pytest tests'
 
   ruff:
     name: ruff
@@ -77,12 +90,16 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: true
-      - name: Set up Python
-        run: uv python install 3.11
-      - name: Sync test dependency group
-        run: uv sync --group test --python 3.11
+      - name: Create standalone Python 3.11 venv
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python 3.11 --seed
+      - name: Install zarr-metadata and test deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:test \
+            .
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        run: uvx --python "$RUNNER_TEMP/zm-venv/bin/python" pyright src
 
   zarr-metadata-complete:
     name: zarr-metadata complete

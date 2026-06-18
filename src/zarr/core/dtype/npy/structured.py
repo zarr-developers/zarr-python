@@ -590,10 +590,14 @@ class Struct(Structured):
             return {"name": fields_v2, "object_codec_id": None}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
-            fields_v3 = [
+            # `fields` is emitted as a tuple, not a list: a JSON array is a
+            # typed fixed-length container, which `tuple` models faithfully.
+            # This matches zarr-metadata's `StructConfiguration.fields` type.
+            # `json.dumps` serializes tuple and list identically.
+            fields_v3 = tuple(
                 {"name": f_name, "data_type": f_dtype.to_json(zarr_format=zarr_format)}
                 for f_name, f_dtype in self.fields
-            ]
+            )
             return cast(
                 "StructJSON_V3",
                 {"name": self._zarr_v3_name, "configuration": {"fields": fields_v3}},

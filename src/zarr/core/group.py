@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 import logging
 import unicodedata
 import warnings
@@ -72,6 +73,8 @@ if TYPE_CHECKING:
         Mapping,
     )
     from typing import Any
+
+    from zarr_metadata.v2 import ConsolidatedMetadataV2
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -434,6 +437,12 @@ class GroupMetadata(Metadata):
         else:
             # Leave consolidated metadata unset if it's None
             result.pop("consolidated_metadata")
+        # `node_type` is a v3-only field. v2 group metadata (.zgroup) has
+        # only `zarr_format`; attributes live in a sibling .zattrs file.
+        # The dataclass carries `node_type` for in-memory use; strip it
+        # from the serialized v2 form.
+        if self.zarr_format == 2:
+            result.pop("node_type", None)
         return result
 
 
@@ -624,8 +633,12 @@ class AsyncGroup:
         group_metadata: dict[str, Any] = {**zgroup, "attributes": zattrs}
 
         if consolidated_metadata_bytes is not None:
-            v2_consolidated_doc = buffer_to_json_object(consolidated_metadata_bytes)
-            v2_consolidated_metadata = cast("dict[str, Any]", v2_consolidated_doc["metadata"])
+            # The parsed file has the shape of `ConsolidatedMetadataV2` from
+            # zarr-metadata (keys like `foo/.zarray`, `foo/.zgroup`,
+            # `foo/.zattrs`). Mutate it below to strip and reorganize
+            # entries, so convert to a mutable `dict` after parsing.
+            parsed: ConsolidatedMetadataV2 = json.loads(consolidated_metadata_bytes.to_bytes())
+            v2_consolidated_metadata = dict(parsed["metadata"])
             # We already read zattrs and zgroup. Should we ignore these?
             v2_consolidated_metadata.pop(".zattrs", None)
             v2_consolidated_metadata.pop(".zgroup", None)
