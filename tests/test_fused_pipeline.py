@@ -556,6 +556,53 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
                     np.testing.assert_array_equal(fut.result(), data[i * 4 : (i + 1) * 4, :])
 
 
+def test_shared_transform_decode_alternating_specs() -> None:
+    """A single ChunkTransform must decode chunks of DIFFERENT specs correctly
+    when calls alternate, exercising eviction/refill of its single-entry
+    `_resolve_specs` cache.
+
+    The two specs differ in shape, so each call evicts the other's cached entry.
+    A transpose filter forces the cache to be used (with no AA codec the cache is
+    bypassed). The cache entry is stored as one atomic tuple precisely so a
+    concurrent reader can never observe a key paired with another spec's resolved
+    chain; this test pins the sequential eviction/refill correctness that
+    underpins that guarantee. (The concurrent counterpart is
+    `test_concurrent_reads_shared_transform_with_pool`.)
+    """
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+    from zarr.core.chunk_utils import ChunkTransform
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    def _spec(shape: tuple[int, ...]) -> ArraySpec:
+        zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
+        return ArraySpec(
+            shape=shape,
+            dtype=zdtype,
+            fill_value=zdtype.cast_scalar(0),
+            config=ArrayConfig(order="C", write_empty_chunks=True),
+            prototype=default_buffer_prototype(),
+        )
+
+    transform = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec()))
+
+    # two distinct specs (different shapes) sharing the one transform + cache slot
+    cases = []
+    for shape in [(5, 7), (3, 11)]:
+        spec = _spec(shape)
+        arr = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
+        encoded = transform.encode_chunk(CPUNDBuffer.from_numpy_array(arr), spec)
+        assert encoded is not None
+        cases.append((spec, encoded, arr))
+
+    # Alternate specs so every call evicts and refills the single cache slot.
+    for i in range(20):
+        spec, encoded, expected = cases[i % len(cases)]
+        got = transform.decode_chunk(encoded, spec).as_numpy_array()
+        np.testing.assert_array_equal(got, expected)
+
+
 def test_sharded_fallback_inner_chunks_avoid_async_transform() -> None:
     """Inner chunks of a shard on a NON-sync store decode through the sync
     ChunkTransform, not per-chunk AsyncChunkTransform coroutines.

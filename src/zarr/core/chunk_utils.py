@@ -253,11 +253,16 @@ class ChunkTransform:
         self._ab_codec = cast("SupportsSyncCodec[NDBuffer, Buffer]", ab)
         self._bb_codecs = cast("tuple[SupportsSyncCodec[Buffer, Buffer], ...]", tuple(bb))
 
-    _cached_key: ArraySpec | None = field(init=False, repr=False, compare=False, default=None)
-    _cached_aa_specs: tuple[ArraySpec, ...] | None = field(
+    # The whole cache entry — (key, aa_specs, ab_spec) — is stored as ONE field
+    # and replaced with a single attribute write. A `ChunkTransform` is shared
+    # across thread-pool workers (read_sync/write_sync with max_workers > 1), and
+    # storing the key separately from the specs would race: a worker could read a
+    # freshly-set key while the matching specs were still the previous (or None)
+    # value. A single tuple assignment is atomic under the GIL, so a reader sees
+    # either the complete old entry or the complete new one — never a torn mix.
+    _cache: tuple[ArraySpec, tuple[ArraySpec, ...], ArraySpec] | None = field(
         init=False, repr=False, compare=False, default=None
     )
-    _cached_ab_spec: ArraySpec | None = field(init=False, repr=False, compare=False, default=None)
 
     def _resolve_specs(self, chunk_spec: ArraySpec) -> tuple[tuple[ArraySpec, ...], ArraySpec]:
         """Return per-AA-codec input specs and the AB spec for `chunk_spec`.
@@ -268,21 +273,22 @@ class ChunkTransform:
         recycled after garbage collection, so a freed spec's id reused by a
         different spec (same shape, different prototype/dtype/config) could yield
         a stale hit. Value identity avoids that entirely.
+
+        Thread-safety: a benign construction race is possible (two workers with
+        different specs may each compute and overwrite the single-entry cache —
+        last writer wins), but a torn read is not, because the entry is written
+        atomically as one tuple. Worst case is a recompute, never a wrong result.
         """
         from zarr.core.codec_pipeline import resolve_aa_specs
 
         if not self._aa_codecs:
             return (), chunk_spec
-        key = chunk_spec
-        if self._cached_key == key:
-            assert self._cached_aa_specs is not None
-            assert self._cached_ab_spec is not None
-            return self._cached_aa_specs, self._cached_ab_spec
+        cache = self._cache
+        if cache is not None and cache[0] == chunk_spec:
+            return cache[1], cache[2]
 
         aa_specs_t, spec = resolve_aa_specs(cast("tuple[Codec, ...]", self._aa_codecs), chunk_spec)
-        self._cached_key = key
-        self._cached_aa_specs = aa_specs_t
-        self._cached_ab_spec = spec
+        self._cache = (chunk_spec, aa_specs_t, spec)
         return aa_specs_t, spec
 
     def decode_chunk(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
