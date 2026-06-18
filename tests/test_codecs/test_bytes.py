@@ -29,24 +29,44 @@ from zarr.storage import StorePath
 from .test_codecs import _AsyncArrayProxy
 
 
-@pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("endian", ["big", "little"])
-async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
-    data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+@pytest.mark.parametrize("input_dtype", [">u2", "<u2"])
+@pytest.mark.parametrize("store_endian", ["big", "little"])
+async def test_endian(
+    store: Store,
+    input_dtype: Literal[">u2", "<u2"],
+    store_endian: Literal["big", "little"],
+) -> None:
+    """
+    The `bytes` codec stores multi-byte data in the byte order configured on the
+    codec, regardless of the input array's byte order, and reads it back to the
+    original values. The input-dtype/store-endian cross-product exercises the
+    encode-side byteswap (input byte order != store byte order) and the no-op
+    case alike. Compression is disabled so the stored chunk is the codec's raw
+    output and its byte layout can be asserted directly.
+    """
+    data = np.arange(0, 256, dtype=input_dtype).reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
     a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
         chunks=(16, 16),
-        dtype=data.dtype,
+        dtype="uint16",
         fill_value=0,
-        chunk_key_encoding={"name": "v2", "separator": "."},
-        serializer=BytesCodec(endian=endian),
+        compressors=None,
+        serializer=BytesCodec(endian=store_endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
+
+    # The stored chunk is laid out in the byte order configured on the codec.
+    stored = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
+    assert stored is not None
+    expected_dtype = ">u2" if store_endian == "big" else "<u2"
+    assert stored.to_bytes() == data.astype(expected_dtype).tobytes()
+
+    # ... and the data reads back to the original values.
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
 
@@ -74,33 +94,6 @@ def test_bytes_codec_sync_roundtrip() -> None:
     assert encoded is not None
     decoded = codec._decode_sync(encoded, spec)
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
-
-
-@pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
-@pytest.mark.parametrize("dtype_store_endian", ["big", "little"])
-async def test_endian_write(
-    store: Store,
-    dtype_input_endian: Literal[">u2", "<u2"],
-    dtype_store_endian: Literal["big", "little"],
-) -> None:
-    data = np.arange(0, 256, dtype=dtype_input_endian).reshape((16, 16))
-    path = "endian"
-    spath = StorePath(store, path)
-    a = await zarr.api.asynchronous.create_array(
-        spath,
-        shape=data.shape,
-        chunks=(16, 16),
-        dtype="uint16",
-        fill_value=0,
-        chunk_key_encoding={"name": "v2", "separator": "."},
-        serializer=BytesCodec(endian=dtype_store_endian),
-    )
-
-    await _AsyncArrayProxy(a)[:, :].set(data)
-    readback_data = await _AsyncArrayProxy(a)[:, :].get()
-    assert np.array_equal(data, readback_data)
 
 
 @pytest.mark.parametrize("endian", ENDIAN)
