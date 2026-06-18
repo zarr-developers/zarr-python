@@ -120,6 +120,8 @@ class ZipStore(Store):
 
     def close(self) -> None:
         # docstring inherited
+        if not self._is_open:
+            return
         super().close()
         with self._lock:
             self._zf.close()
@@ -245,6 +247,8 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         with self._lock:
             try:
                 self._zf.getinfo(key)
@@ -255,6 +259,8 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         with self._lock:
             for key in self._zf.namelist():
                 yield key
@@ -267,6 +273,8 @@ class ZipStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         prefix = prefix.rstrip("/")
 
         keys = self._zf.namelist()
@@ -279,8 +287,8 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key.strip("/") != prefix:
-                    k = key.removeprefix(prefix + "/").split("/")[0]
+                if key.startswith(f"{prefix}/") and key.strip("/") != prefix:
+                    k = key.removeprefix(f"{prefix}/").split("/")[0]
                     if k not in seen:
                         seen.add(k)
                         yield k

@@ -8,14 +8,16 @@ import numpy as np
 import zarr
 import zarr.codecs.numcodecs as numcodecs
 
+store = zarr.storage.MemoryStore()
 array = zarr.create_array(
-  store="data_numcodecs.zarr",
-  shape=(1024, 1024),
-  chunks=(64, 64),
-  dtype="uint32",
-  filters=[numcodecs.Delta(dtype="uint32")],
-  compressors=[numcodecs.BZ2(level=5)],
-  overwrite=True)
+    store=store,
+    shape=(1024, 1024),
+    chunks=(64, 64),
+    dtype="uint32",
+    filters=[numcodecs.Delta(dtype="uint32")],
+    compressors=[numcodecs.BZ2(level=5)],
+    overwrite=True
+)
 array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
 ```
 

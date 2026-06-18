@@ -16,7 +16,6 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.numcodecs import LZMA, Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.int import UInt8, UInt16
@@ -61,7 +60,7 @@ def test_migrate_array(local_store: LocalStore) -> None:
     expected_metadata = ArrayV3Metadata(
         shape=shape,
         data_type=UInt16(endianness="little"),
-        chunk_grid=RegularChunkGrid(chunk_shape=chunks),
+        chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
         chunk_key_encoding=V2ChunkKeyEncoding(separator="."),
         fill_value=fill_value,
         codecs=(

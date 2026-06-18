@@ -15,7 +15,6 @@ from typing import (
 import numpy as np
 
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasEndianness,
@@ -30,6 +29,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -600,7 +600,8 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
             The np.dtype('int16') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -762,7 +763,8 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
             The np.dtype('uint16') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -945,7 +947,8 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
             The np.dtype('int32') instance.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1130,7 +1133,8 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
             The NumPy unsigned 32-bit integer dtype.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1288,7 +1292,8 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
             The NumPy signed 64-bit integer dtype.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1419,7 +1424,8 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
             The native NumPy dtype.eeeeeeeeeeeeeeeee
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
+        # numpy 2.x stub: newbyteorder widens to base dtype, runtime preserves the concrete subclass
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:

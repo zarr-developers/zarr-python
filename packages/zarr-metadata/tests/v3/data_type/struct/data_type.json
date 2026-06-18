@@ -1,0 +1,16 @@
+{
+  "name": "struct",
+  "configuration": {
+    "fields": [
+      {"name": "x", "data_type": "float32"},
+      {"name": "y", "data_type": "float32"},
+      {
+        "name": "when",
+        "data_type": {
+          "name": "numpy.datetime64",
+          "configuration": {"unit": "ns", "scale_factor": 1}
+        }
+      }
+    ]
+  }
+}

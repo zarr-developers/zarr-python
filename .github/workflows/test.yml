@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Use the uv from astral-sh/setup-uv; without an explicit path hatch
+  # bootstraps its own (pyapp) uv, which fails on non-3.12 runners.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +25,12 @@ concurrency:
 jobs:
   test:
     name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
+    environment:
+      name: codecov-upload
+      deployment: false
+    defaults:
+      run:
+        shell: bash
 
     strategy:
       matrix:
@@ -45,37 +56,44 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
-      with:
-        version: '1.16.5'
+      run: python -m pip install hatch==1.16.5
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
     name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
-
+    environment:
+      name: codecov-upload
+      deployment: false
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -87,53 +105,81 @@ jobs:
           - python-version: "3.12"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         fetch-depth: 0
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
-      with:
-        version: '1.16.5'
+      run: python -m pip install hatch==1.16.5
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env create ${{ matrix.dependency-set }}
-        hatch env run -e ${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: tests
         verbose: true # optional (default = false)
 
   doctests:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: '3.13'
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
-      with:
-        version: '1.16.5'
+      run: python -m pip install hatch==1.16.5
     - name: Set Up Hatch Env
       run: |
         hatch run doctest:pip list
     - name: Run Tests
       run: |
         hatch run doctest:test
+
+  benchmarks:
+    name: Benchmark smoke test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+    - name: Install Hatch
+      run: python -m pip install hatch==1.16.5
+    - name: Run Benchmarks
+      run: |
+        hatch env run --env "test.py3.13-minimal" run-benchmark
 
   test-complete:
     name: Test complete
@@ -142,7 +188,8 @@ jobs:
       [
         test,
         test-upstream-and-min-deps,
-        doctests
+        doctests,
+        benchmarks
       ]
     if: always()
     runs-on: ubuntu-latest

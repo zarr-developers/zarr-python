@@ -161,7 +161,7 @@ class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):
-            return type(self) is type(other) and self._store.__eq__(other._store)  # type: ignore[attr-defined]
+            return type(self) is type(other) and self._store.__eq__(other._store)
 
     async def get(
         self,
@@ -179,6 +179,7 @@ class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        key_ranges = list(key_ranges)
         keys = ",".join([k[0] for k in key_ranges])
         with self.log(keys):
             return await self._store.get_partial_values(prototype=prototype, key_ranges=key_ranges)

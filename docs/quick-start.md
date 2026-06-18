@@ -58,7 +58,7 @@ z = zarr.create_array(
     compressors=zarr.codecs.BloscCodec(
         cname="zstd",
         clevel=3,
-        shuffle=zarr.codecs.BloscShuffle.shuffle
+        shuffle="shuffle"
     )
 )
 
@@ -127,18 +127,6 @@ be done in a separate step.
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
 utilized a [`zarr.storage.LocalStore`][], a number of other storage options are available.
 
-Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
-using external libraries like [s3fs](https://s3fs.readthedocs.io) or
-[gcsfs](https://gcsfs.readthedocs.io):
-
-```python
-
-import s3fs
-
-z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4")
-z[:, :] = np.random.random((100, 100))
-```
-
 A single-file store can also be created using the [`zarr.storage.ZipStore`][]:
 
 ```python exec="true" session="quickstart" source="above"
@@ -171,6 +159,20 @@ z = zarr.open_array(store, mode='r')
 
 # read the data as a NumPy Array
 print(z[:])
+```
+
+Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google
+Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io) or
+[gcsfs](https://gcsfs.readthedocs.io):
+
+```python test="true" session="s3demo" markers="s3" source="above"
+import zarr
+import numpy as np
+
+z = zarr.create_array(
+    "s3://example-bucket/foo", shape=(100, 100), chunks=(10, 10), dtype="f4"
+)
+z[:, :] = np.random.random((100, 100))
 ```
 
 Read more about Zarr's storage options in the [User Guide](user-guide/index.md).

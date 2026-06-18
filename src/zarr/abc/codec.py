@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 __all__ = [
     "ArrayArrayCodec",
@@ -67,20 +67,19 @@ CodecJSON = str | Mapping[str, object]
 
 
 @runtime_checkable
-class SupportsSyncCodec(Protocol):
+class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     """Protocol for codecs that support synchronous encode/decode.
 
-    Codecs implementing this protocol provide ``_decode_sync`` and ``_encode_sync``
+    Codecs implementing this protocol provide `_decode_sync` and `_encode_sync`
     methods that perform encoding/decoding without requiring an async event loop.
+
+    The type parameters mirror `BaseCodec`: `CI` is the decoded type and `CO` is
+    the encoded type.
     """
 
-    def _decode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer: ...
+    def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
 
-    def _encode_sync(
-        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
-    ) -> NDBuffer | Buffer | None: ...
+    def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
 
 
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
@@ -146,7 +145,7 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
@@ -157,8 +156,8 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
             The array shape
         dtype : np.dtype[Any]
             The array data type
-        chunk_grid : ChunkGrid
-            The array chunk grid
+        chunk_grid : ChunkGridMetadata
+            The array chunk grid metadata
         """
 
     async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
@@ -361,7 +360,7 @@ class CodecPipeline:
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
@@ -372,8 +371,8 @@ class CodecPipeline:
             The array shape
         dtype : np.dtype[Any]
             The array data type
-        chunk_grid : ChunkGrid
-            The array chunk grid
+        chunk_grid : ChunkGridMetadata
+            The array chunk grid metadata
         """
         ...
 

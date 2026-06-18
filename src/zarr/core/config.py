@@ -96,7 +96,11 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
+                "read_missing_chunks": True,
                 "target_shard_size_bytes": None,
+                "rectilinear_chunks": False,
+                "sharding_coalesce_max_gap_bytes": 1 << 20,  # 1 MiB
+                "sharding_coalesce_max_bytes": 16 << 20,  # 16 MiB
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
