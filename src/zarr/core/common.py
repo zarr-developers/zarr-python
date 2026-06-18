@@ -217,6 +217,12 @@ def parse_bool(data: Any) -> bool:
     raise ValueError(f"Expected bool, got {data} instead.")
 
 
+def parse_int(data: Any) -> int:
+    if isinstance(data, int) and not isinstance(data, bool):
+        return data
+    raise ValueError(f"Expected int, got {data} instead.")
+
+
 def _warn_write_empty_chunks_kwarg() -> None:
     # TODO: link to docs page on array configuration in this message
     msg = (
