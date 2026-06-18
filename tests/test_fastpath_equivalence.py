@@ -195,6 +195,76 @@ def test_merge_complete_chunk_returns_view_and_write_does_not_mutate_source() ->
 
 
 # ---------------------------------------------------------------------------
+# Whole-shard bulk decode under arbitrary indexing: the bulk decode only fires
+# for a *contiguous full-shard* read, but it is reached through the partial-read
+# path (`_decode_partial_sync`), whose only gate is `indexer.shape ==
+# shard_spec.shape`. A reordering coordinate/orthogonal selection that happens
+# to touch every chunk (so the flattened point count equals the shard shape)
+# must NOT be served by the bulk path in natural order — it must honor the
+# selection. This pins the END-TO-END read (the gate lives in the array read
+# path, not in `_decode_full_shard_bulk_if_uncompressed` itself), which
+# `test_bulk_shard_decode_equals_general_decode` (BasicIndexer only) cannot
+# reach. See the vindex-on-uncompressed-shard corruption bug.
+# ---------------------------------------------------------------------------
+
+
+@st.composite
+def _uncompressed_shard_index_cases(draw: st.DrawFn) -> dict[str, Any]:
+    # 1-D is where the trigger is easiest: a CoordinateIndexer's `.shape` is the
+    # flattened point count, which equals a 1-D shard shape exactly when the
+    # selection visits `shard_len` points.
+    chunk = draw(st.integers(1, 4))
+    grid = draw(st.integers(1, 4))
+    shard_len = chunk * grid
+    dtype = draw(_DTYPES)
+    data = draw(npst.arrays(dtype=np.dtype(dtype), shape=(shard_len,)))
+    perm = draw(st.permutations(list(range(shard_len))))
+    return {
+        "chunk": chunk,
+        "shard_len": shard_len,
+        "data": data,
+        "perm": np.array(perm),
+        "endian": draw(st.sampled_from(["little", "big"])),
+        "index_location": draw(st.sampled_from(list(ShardingCodecIndexLocation))),
+        "subchunk_write_order": draw(
+            st.sampled_from(["morton", "lexicographic", "colexicographic", "unordered"])
+        ),
+    }
+
+
+@settings(max_examples=200, deadline=None)
+@given(case=_uncompressed_shard_index_cases())
+def test_reordering_read_on_uncompressed_shard_honors_selection(case: dict[str, Any]) -> None:
+    """A reordering vindex/oindex over a full uncompressed shard must return the
+    permuted data, not the shard in natural order — under the Fused pipeline
+    (where the bulk-decode fast path engages) exactly as under numpy."""
+    perm = case["perm"]
+    data = case["data"]
+    serializer = BytesCodec(endian=case["endian"])
+
+    with zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(
+            store=MemoryStore(),
+            shape=(case["shard_len"],),
+            chunks=(case["chunk"],),
+            shards=(case["shard_len"],),
+            dtype=data.dtype,
+            serializer=serializer,
+            compressors=None,
+            filters=None,
+            fill_value=0,
+        )
+        arr[:] = data
+
+        # vindex with a full-coverage permutation: flattened point count ==
+        # shard shape, so the buggy gate would mis-classify this as a contiguous
+        # full-shard read and return data unpermuted.
+        np.testing.assert_array_equal(arr.vindex[perm], data[perm])
+        # oindex with a single reordering index list along the only axis.
+        np.testing.assert_array_equal(arr.oindex[perm], data[perm])
+
+
+# ---------------------------------------------------------------------------
 # Scalar-broadcast write memoization: writing a scalar must produce the same
 # STORED BYTES as writing the equivalent broadcast array.
 # ---------------------------------------------------------------------------

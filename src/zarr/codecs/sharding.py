@@ -1100,10 +1100,20 @@ class ShardingCodec(
         if n_chunks == 0:
             return None
 
-        # Only valid when the read is the ENTIRE shard contiguously (output shape
-        # equals the shard shape). A strided/fancy read may touch all chunks but
-        # not want the whole grid laid out densely — those must use the per-chunk
-        # path so chunk_selection / out_selection are honored.
+        # Only valid for a plain contiguous full-shard read, where each chunk
+        # lands at its natural grid position. The `sel_shape` check is
+        # load-bearing: a gather indexer (CoordinateIndexer, from vindex / an
+        # oindex with an integer-array selection) reorders points and exposes
+        # `sel_shape`, but its `.shape` is the FLATTENED point count, which can
+        # equal the shard shape by coincidence (trivially in 1-D). Gating on
+        # shape alone lets such a selection through, and the bulk path then
+        # returns the shard in natural order, silently dropping the reordering.
+        # A contiguous full read (BasicIndexer, or a non-gathering
+        # OrthogonalIndexer from `arr[:]`) has no `sel_shape` and is served here.
+        # Anything that gathers must fall through to the per-chunk path so
+        # chunk_selection / out_selection are honored.
+        if getattr(indexer, "sel_shape", None) is not None:
+            return None
         if tuple(indexer.shape) != tuple(shard_spec.shape):
             return None
         chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
