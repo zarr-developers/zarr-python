@@ -1,3 +1,4 @@
+import inspect
 import os
 from collections.abc import Iterable
 from typing import Any
@@ -18,7 +19,7 @@ from zarr.codecs import (
     Crc32cCodec,
     ShardingCodec,
 )
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
@@ -57,6 +58,8 @@ def test_config_defaults_set() -> None:
                     "read_missing_chunks": True,
                     "target_shard_size_bytes": None,
                     "rectilinear_chunks": False,
+                    "sharding_coalesce_max_gap_bytes": 1 << 20,
+                    "sharding_coalesce_max_bytes": 16 << 20,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": 1 if IS_WASM else None},
@@ -108,6 +111,25 @@ def test_config_defaults_set() -> None:
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
+
+
+def test_array_config_init_defaults_match_global_config() -> None:
+    """Each `ArrayConfig.__init__` parameter that has a default must match the
+    value of `array.<param_name>` in the global config. Catches drift between
+    the two sources of truth."""
+    params = inspect.signature(ArrayConfig.__init__).parameters
+    has_defaults = {
+        name: p.default
+        for name, p in params.items()
+        if name != "self" and p.default is not inspect.Parameter.empty
+    }
+    assert has_defaults, "expected at least one default to check"
+    for name, default in has_defaults.items():
+        assert default == config.get(f"array.{name}"), (
+            f"ArrayConfig.__init__ default for {name!r} ({default!r}) does not "
+            f"match global config value for 'array.{name}' "
+            f"({config.get(f'array.{name}')!r})"
+        )
 
 
 @pytest.mark.parametrize(
