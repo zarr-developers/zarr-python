@@ -424,30 +424,31 @@ class FsspecStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        if key_ranges:
-            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
-            key_ranges = list(key_ranges)
-            paths: list[str] = []
-            starts: list[int | None] = []
-            stops: list[int | None] = []
-            for key, byte_range in key_ranges:
-                paths.append(_dereference_path(self.path, key))
-                if byte_range is None:
-                    starts.append(None)
-                    stops.append(None)
-                elif isinstance(byte_range, RangeByteRequest):
-                    starts.append(byte_range.start)
-                    stops.append(byte_range.end)
-                elif isinstance(byte_range, OffsetByteRequest):
-                    starts.append(byte_range.offset)
-                    stops.append(None)
-                elif isinstance(byte_range, SuffixByteRequest):
-                    starts.append(-byte_range.suffix)
-                    stops.append(None)
-                else:
-                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
-        else:
+        # Materialise first: key_ranges may be a one-shot iterable, so a bare
+        # truthiness check (e.g. `if key_ranges`) would be unreliable for an
+        # empty generator. _cat_ranges also expects lists of paths/starts/stops.
+        key_ranges = list(key_ranges)
+        if not key_ranges:
             return []
+        paths: list[str] = []
+        starts: list[int | None] = []
+        stops: list[int | None] = []
+        for key, byte_range in key_ranges:
+            paths.append(_dereference_path(self.path, key))
+            if byte_range is None:
+                starts.append(None)
+                stops.append(None)
+            elif isinstance(byte_range, RangeByteRequest):
+                starts.append(byte_range.start)
+                stops.append(byte_range.end)
+            elif isinstance(byte_range, OffsetByteRequest):
+                starts.append(byte_range.offset)
+                stops.append(None)
+            elif isinstance(byte_range, SuffixByteRequest):
+                starts.append(-byte_range.suffix)
+                stops.append(None)
+            else:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         # TODO: expectations for exceptions or missing keys?
         res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak

@@ -25,7 +25,7 @@ from hypothesis import given, settings
 import zarr
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.codecs.sharding import ShardingCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
@@ -117,7 +117,7 @@ def _shard_cases(draw: st.DrawFn) -> dict[str, Any]:
         "shard_shape": shard_shape,
         "data": data,
         "endian": draw(st.sampled_from(["little", "big"])),
-        "index_location": draw(st.sampled_from(list(ShardingCodecIndexLocation))),
+        "index_location": draw(st.sampled_from(["start", "end"])),
         "subchunk_write_order": draw(
             st.sampled_from(["morton", "lexicographic", "colexicographic", "unordered"])
         ),
@@ -225,7 +225,7 @@ def _uncompressed_shard_index_cases(draw: st.DrawFn) -> dict[str, Any]:
         "data": data,
         "perm": np.array(perm),
         "endian": draw(st.sampled_from(["little", "big"])),
-        "index_location": draw(st.sampled_from(list(ShardingCodecIndexLocation))),
+        "index_location": draw(st.sampled_from(["start", "end"])),
         "subchunk_write_order": draw(
             st.sampled_from(["morton", "lexicographic", "colexicographic", "unordered"])
         ),

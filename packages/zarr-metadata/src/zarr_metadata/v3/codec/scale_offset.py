@@ -8,6 +8,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
+
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
 
@@ -26,8 +28,8 @@ class ScaleOffsetCodecConfiguration(TypedDict):
     permitted in addition to numbers.
     """
 
-    offset: NotRequired[object]
-    scale: NotRequired[object]
+    offset: NotRequired[JSONValue]
+    scale: NotRequired[JSONValue]
 
 
 class ScaleOffsetCodecObject(TypedDict):

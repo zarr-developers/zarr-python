@@ -5,16 +5,24 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
+pytest.importorskip("hypothesis")
+
+import hypothesis.strategies as st
+from hypothesis import given
+
 import zarr
-from zarr.codecs import BytesCodec, CastValue
+from zarr.codecs import BytesCodec, CastValue, GzipCodec, TransposeCodec
 from zarr.core.array import _get_chunk_spec
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.codec_pipeline import codecs_from_list
 from zarr.core.config import config as zarr_config
 from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
+
+    from zarr.abc.codec import Codec
 
 
 @pytest.fixture(autouse=True)
@@ -251,3 +259,65 @@ def test_evolve_threads_spec_preserving_serializer_endian(pipeline_class: str) -
         "BytesCodec serializer lost its `endian` — evolve_from_array_spec did not "
         "thread the dtype-widening AA codec's spec into the serializer"
     )
+
+
+# Property-based check of codecs_from_list ordering validation.
+#
+# Valid codec orderings are exactly: (ArrayArrayCodec)* (ArrayBytesCodec)
+# (BytesBytesCodec)*. codecs_from_list walks adjacent pairs and must raise
+# TypeError the moment a codec appears in a structurally invalid position --
+# notably, a BytesBytesCodec immediately following an ArrayArrayCodec with no
+# ArrayBytesCodec in between (which previously built an error message but never
+# raised it, falling through to an unrelated ValueError instead).
+_AA = "AA"  # ArrayArrayCodec   -> TransposeCodec
+_AB = "AB"  # ArrayBytesCodec   -> BytesCodec
+_BB = "BB"  # BytesBytesCodec   -> GzipCodec
+
+_CODEC_FACTORY: dict[str, Callable[[], Codec]] = {
+    _AA: lambda: TransposeCodec(order=(0, 1)),
+    _AB: BytesCodec,
+    _BB: GzipCodec,
+}
+
+
+def _expected_codec_order_outcome(labels: list[str]) -> str:
+    """Independently predict codecs_from_list's outcome: 'TypeError',
+    'ValueError' or 'ok', mirroring its left-to-right scan and the order in
+    which it checks ordering violations (TypeError) vs. the ArrayBytes-count
+    constraints (ValueError)."""
+    prev = None
+    seen_array_bytes = False
+    for cur in labels:
+        if cur == _AA:
+            if prev in (_AB, _BB):
+                return "TypeError"
+        elif cur == _AB:
+            if prev == _BB:
+                return "TypeError"
+            if seen_array_bytes:
+                return "ValueError"  # two ArrayBytesCodecs
+            seen_array_bytes = True
+        else:  # _BB
+            if prev == _AA:
+                return "TypeError"
+        prev = cur
+    if not seen_array_bytes:
+        return "ValueError"  # Required ArrayBytesCodec was not found
+    return "ok"
+
+
+@given(labels=st.lists(st.sampled_from([_AA, _AB, _BB]), min_size=1, max_size=5))
+def test_codecs_from_list_outcome_matches_order_rules(labels: list[str]) -> None:
+    codecs = [_CODEC_FACTORY[label]() for label in labels]
+    expected = _expected_codec_order_outcome(labels)
+    if expected == "TypeError":
+        with pytest.raises(TypeError):
+            codecs_from_list(codecs)
+    elif expected == "ValueError":
+        with pytest.raises(ValueError):
+            codecs_from_list(codecs)
+    else:
+        # Valid ordering: must classify without raising.
+        aa, _ab, bb = codecs_from_list(codecs)
+        assert labels.count(_AA) == len(aa)
+        assert labels.count(_BB) == len(bb)

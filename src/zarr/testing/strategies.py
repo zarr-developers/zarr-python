@@ -11,7 +11,13 @@ from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
-from zarr.abc.store import RangeByteRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
@@ -668,22 +674,29 @@ def block_indices(
 
 def key_ranges(
     keys: SearchStrategy[str] = node_names, max_size: int = sys.maxsize
-) -> SearchStrategy[list[tuple[str, RangeByteRequest]]]:
+) -> SearchStrategy[list[tuple[str, ByteRequest | None]]]:
     """
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::
 
-        [(key, (range_start, range_end)),
-         (key, (range_start, range_end)),...]
+        [(key, byte_request),
+         (key, byte_request),...]
+
+    where ``byte_request`` is ``None`` or any of the concrete ``ByteRequest``
+    subtypes. The bounds are drawn independently of each value's length, so the
+    offsets/suffixes routinely exceed the data and exercise the clamping logic
+    in ``_normalize_byte_range_index``.
     """
 
-    def make_request(start: int, length: int) -> RangeByteRequest:
+    def make_range(start: int, length: int) -> RangeByteRequest:
         return RangeByteRequest(start, end=min(start + length, max_size))
 
-    byte_ranges = st.builds(
-        make_request,
-        start=st.integers(min_value=0, max_value=max_size),
-        length=st.integers(min_value=0, max_value=max_size),
+    bound = st.integers(min_value=0, max_value=max_size)
+    byte_ranges: SearchStrategy[ByteRequest | None] = st.one_of(
+        st.none(),
+        st.builds(make_range, start=bound, length=bound),
+        st.builds(OffsetByteRequest, offset=bound),
+        st.builds(SuffixByteRequest, suffix=bound),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

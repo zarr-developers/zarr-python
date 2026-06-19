@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
-from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +25,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
     SupportsGetSync,
 )
+from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -46,7 +46,6 @@ from zarr.core.chunk_utils import (
 )
 from zarr.core.common import (
     ShapeLike,
-    parse_enum,
     parse_named_configuration,
     parse_shapelike,
     product,
@@ -58,9 +57,11 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
-    c_order_iter,
+    _lexicographic_order,
+    colexicographic_order_coords,
     get_indexer,
-    morton_order_iter,
+    lexicographic_order_coords,
+    morton_order_coords,
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
@@ -74,7 +75,7 @@ from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Final, Self
+    from typing import Self
 
     from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -84,13 +85,19 @@ ShardMapping = Mapping[tuple[int, ...], Buffer | None]
 ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer | None]
 
 
-class ShardingCodecIndexLocation(Enum):
+IndexLocation = Literal["start", "end"]
+"""Position of the shard index within the encoded shard."""
+
+INDEX_LOCATION: Final = ("start", "end")
+
+
+class ShardingCodecIndexLocation(metaclass=_DeprecatedStrEnumMeta):
     """
-    Enum for index location used by the sharding codec.
+    Deprecated. Pass a literal string (`"start"` or `"end"`) directly to
+    `ShardingCodec` instead.
     """
 
-    start = "start"
-    end = "end"
+    _members: ClassVar[dict[str, str]] = {"start": "start", "end": "end"}
 
 
 SubchunkWriteOrder = Literal["morton", "unordered", "lexicographic", "colexicographic"]
@@ -102,8 +109,10 @@ SUBCHUNK_WRITE_ORDER: Final[tuple[str, str, str, str]] = (
 )
 
 
-def parse_index_location(data: object) -> ShardingCodecIndexLocation:
-    return parse_enum(data, ShardingCodecIndexLocation)
+def _parse_index_location(data: object) -> IndexLocation:
+    if isinstance(data, str) and data in INDEX_LOCATION:
+        return data  # type: ignore[return-value]
+    raise ValueError(f"index_location must be one of {list(INDEX_LOCATION)!r}. Got {data!r}.")
 
 
 @dataclass(frozen=True)
@@ -285,7 +294,7 @@ class _ShardReader(ShardMapping):
         shard_index_size = codec._shard_index_size(chunks_per_shard)
         obj = cls()
         obj.buf = buf
-        if codec.index_location == ShardingCodecIndexLocation.start:
+        if codec.index_location == "start":
             shard_index_bytes = obj.buf[:shard_index_size]
         else:
             shard_index_bytes = obj.buf[-shard_index_size:]
@@ -315,31 +324,42 @@ class _ShardReader(ShardMapping):
         return int(self.index.offsets_and_lengths.size / 2)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return c_order_iter(self.index.chunks_per_shard)
+        return iter(lexicographic_order_coords(self.index.chunks_per_shard))
 
-    def to_dict_vectorized(
-        self,
-        chunk_coords_array: npt.NDArray[np.integer[Any]],
-    ) -> dict[tuple[int, ...], Buffer | None]:
+    def to_dict_vectorized(self) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
 
-        Parameters
-        ----------
-        chunk_coords_array : ndarray of shape (n_chunks, n_dims)
-            Array of chunk coordinates for vectorized index lookup.
+        The full per-shard chunk coordinate grid (both the array used for the
+        vectorized index lookup and the plain tuples used as dict keys) is
+        cached on `chunks_per_shard`, so neither is rebuilt on every call. For a
+        shard with tens of thousands of chunks this avoids reconstructing that
+        many tuples on every partial write.
 
         Returns
         -------
         dict mapping chunk coordinate tuples to Buffer or None
         """
+        chunks_per_shard = self.index.chunks_per_shard
+        # The same chunk-grid coordinates are needed in two forms, and neither can
+        # stand in for the other:
+        #   - `chunk_coords_array`: an (n_chunks, n_dims) numpy array, fed to the
+        #     vectorized index lookup, which does modulo + advanced indexing on it.
+        #     A list of tuples can't be used for that without first being arrayified.
+        #   - `chunk_coords_keys`: the same coordinates as hashable Python tuples,
+        #     used as the result dict's keys. numpy array rows are unhashable
+        #     (mutable), so they can't key a dict.
+        # Both are cached per shape (see indexing.py), so neither is rebuilt here;
+        # row i of the array and key i refer to the same chunk.
+        chunk_coords_array = _lexicographic_order(chunks_per_shard)
+        chunk_coords_keys = lexicographic_order_coords(chunks_per_shard)
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_array):
+        for i, coords in enumerate(chunk_coords_keys):
             if valid[i]:
-                result[tuple(coords.ravel())] = self.buf[int(starts[i]) : int(ends[i])]
+                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
             else:
-                result[tuple(coords.ravel())] = None
+                result[coords] = None
 
         return result
 
@@ -360,7 +380,7 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
-    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
+    index_location: IndexLocation = "end"
     subchunk_write_order: SubchunkWriteOrder = "morton"
 
     def __init__(
@@ -369,13 +389,16 @@ class ShardingCodec(
         chunk_shape: ShapeLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
-        index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
-        index_location_parsed = parse_index_location(index_location)
+        index_location_coerced = _coerce_enum_input(
+            index_location, "index_location", "ShardingCodec"
+        )
+        index_location_parsed = _parse_index_location(index_location_coerced)
         if subchunk_write_order not in SUBCHUNK_WRITE_ORDER:
             raise ValueError(
                 f"Unrecognized subchunk write order: {subchunk_write_order}. Only {SUBCHUNK_WRITE_ORDER} are allowed."
@@ -414,7 +437,7 @@ class ShardingCodec(
         object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
-        object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+        object.__setattr__(self, "index_location", _parse_index_location(config["index_location"]))
         object.__setattr__(self, "subchunk_write_order", state["subchunk_write_order"])
 
         # Use instance-local lru_cache to avoid memory leaks
@@ -485,7 +508,7 @@ class ShardingCodec(
                 "chunk_shape": self.chunk_shape,
                 "codecs": tuple(s.to_dict() for s in self.codecs),
                 "index_codecs": tuple(s.to_dict() for s in self.index_codecs),
-                "index_location": self.index_location.value,
+                "index_location": self.index_location,
             },
         }
 
@@ -596,7 +619,7 @@ class ShardingCodec(
     ) -> _ShardReader:
         """Sync version of _ShardReader.from_bytes."""
         shard_index_size = self._shard_index_size(chunks_per_shard)
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             shard_index_bytes = buf[:shard_index_size]
         else:
             shard_index_bytes = buf[-shard_index_size:]
@@ -708,7 +731,7 @@ class ShardingCodec(
         # Key order here is immaterial; _encode_shard_dict_sync lays the present
         # chunks out in subchunk_write_order.
         shard_builder: dict[tuple[int, ...], Buffer | None] = dict.fromkeys(
-            morton_order_iter(chunks_per_shard)
+            lexicographic_order_coords(chunks_per_shard)
         )
 
         for chunk_coords, _chunk_selection, out_selection, _ in indexer:
@@ -764,7 +787,7 @@ class ShardingCodec(
         # the async path's shard_dict).
         if is_complete:
             shard_dict: dict[tuple[int, ...], Buffer | None] = dict.fromkeys(
-                morton_order_iter(chunks_per_shard)
+                lexicographic_order_coords(chunks_per_shard)
             )
         else:
             existing_bytes = byte_setter.get_sync(prototype=shard_spec.prototype)
@@ -775,12 +798,11 @@ class ShardingCodec(
                 # Build the dict with one vectorized index lookup over all chunks,
                 # matching the async _encode_partial_single path. A per-coordinate
                 # __getitem__ loop here is O(n_chunks) Python overhead that dominates
-                # partial writes into shards with many inner chunks.
-                shard_dict = shard_reader_fb.to_dict_vectorized(
-                    np.indices(chunks_per_shard).reshape(len(chunks_per_shard), -1).T
-                )
+                # partial writes into shards with many inner chunks. The coordinate
+                # array and keys are cached on the reader, so neither is rebuilt here.
+                shard_dict = shard_reader_fb.to_dict_vectorized()
             else:
-                shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
+                shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
 
         # Merge, encode, and store each affected inner chunk into shard_dict via
         # the canonical merge_and_encode_chunk (None = normalized to missing).
@@ -859,9 +881,7 @@ class ShardingCodec(
         index = _ShardIndex.create_empty(chunks_per_shard)
         buffers: list[Buffer] = []
         chunk_start = (
-            self._shard_index_size(chunks_per_shard)
-            if self.index_location == ShardingCodecIndexLocation.start
-            else 0
+            self._shard_index_size(chunks_per_shard) if self.index_location == "start" else 0
         )
 
         for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
@@ -897,7 +917,7 @@ class ShardingCodec(
                 "encoded shard index size does not match _shard_index_size; "
                 "variable-size index codecs are not supported"
             )
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             buffers.insert(0, index_bytes)
         else:
             buffers.append(index_bytes)
@@ -1014,6 +1034,8 @@ class ShardingCodec(
                 chunk_spec.prototype,
                 chunks_per_shard,
                 all_chunk_coords,
+                max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
+                max_coalesced_bytes=shard_spec.config.sharding_coalesce_max_bytes,
             )
 
         if shard_dict_maybe is None:
@@ -1043,13 +1065,14 @@ class ShardingCodec(
     def _subchunk_order_iter(
         self, chunks_per_shard: tuple[int, ...], subchunk_write_order: SubchunkWriteOrder
     ) -> Iterable[tuple[int, ...]]:
+        subchunk_iter: Iterable[tuple[int, ...]]
         match subchunk_write_order:
             case "morton":
-                subchunk_iter = morton_order_iter(chunks_per_shard)
+                subchunk_iter = morton_order_coords(chunks_per_shard)
             case "lexicographic":
-                subchunk_iter = np.ndindex(chunks_per_shard)
+                subchunk_iter = lexicographic_order_coords(chunks_per_shard)
             case "colexicographic":
-                subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
+                subchunk_iter = colexicographic_order_coords(chunks_per_shard)
             case "unordered":
                 # "unordered" promises no particular layout; today it happens to be
                 # lexicographic, but callers must not rely on that.
@@ -1123,7 +1146,7 @@ class ShardingCodec(
             return None  # not a dense fixed-size shard
 
         # --- decode the index; require dense layout ---
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             index_bytes = shard_bytes[:shard_index_size]
         else:
             index_bytes = shard_bytes[-shard_index_size:]
@@ -1144,8 +1167,9 @@ class ShardingCodec(
         # data type (zarr v3). Build the read-view dtype from the codec's endian
         # exactly as BytesCodec._decode_sync does, so a big-endian shard read on a
         # little-endian host (or vice versa) is interpreted correctly. Assigning
-        # into the native-dtype `out` then performs any needed byteswap.
-        endian_str = ab_codec.endian.value if ab_codec.endian is not None else None
+        # into the native-dtype `out` then performs any needed byteswap. `endian`
+        # is now a plain Literal['little', 'big'] | None string (no longer an enum).
+        endian_str = ab_codec.endian
         if isinstance(chunk_spec.dtype, HasEndianness):
             stored_dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
         else:
@@ -1223,7 +1247,12 @@ class ShardingCodec(
             # adjacent byte ranges (mirrors the async _load_partial_shard_maybe
             # / #3004). Returns None if the shard is absent.
             partial = self._load_partial_shard_maybe_sync(
-                byte_getter, chunk_spec.prototype, chunks_per_shard, all_chunk_coords
+                byte_getter,
+                chunk_spec.prototype,
+                chunks_per_shard,
+                all_chunk_coords,
+                max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
+                max_coalesced_bytes=shard_spec.config.sharding_coalesce_max_bytes,
             )
             if partial is None:
                 return None
@@ -1263,9 +1292,7 @@ class ShardingCodec(
                 chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
-        # The key order of this intermediate dict is immaterial; the physical layout is
-        # decided later by the `subchunk_write_order` loop in `_encode_shard_dict`.
-        shard_builder = dict.fromkeys(np.ndindex(chunks_per_shard))
+        shard_builder = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
 
         await self._get_inner_pipeline(shard_spec).write(
             [
@@ -1308,8 +1335,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            # Intermediate key order is immaterial (see `_encode_single`).
-            shard_dict = dict.fromkeys(np.ndindex(chunks_per_shard))
+            shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -1317,10 +1343,10 @@ class ShardingCodec(
                 chunks_per_shard=chunks_per_shard,
             )
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
-            # Use vectorized lookup for better performance
-            shard_dict = shard_reader.to_dict_vectorized(
-                np.indices(chunks_per_shard).reshape(len(chunks_per_shard), -1).T
-            )
+            # Use vectorized lookup for better performance. The lexicographic
+            # coordinate array and keys are cached, so neither is rebuilt on
+            # every write.
+            shard_dict = shard_reader.to_dict_vectorized()
 
         await self._get_inner_pipeline(shard_spec).write(
             [
@@ -1367,9 +1393,13 @@ class ShardingCodec(
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
-        return len(all_chunk_coords) == product(chunks_per_shard) and all(
-            chunk_coords in all_chunk_coords for chunk_coords in c_order_iter(chunks_per_shard)
-        )
+        # `all_chunk_coords` comes from an indexer over this shard's chunk grid, so
+        # it is always a subset of that grid (`validate` requires the shard shape to
+        # be divisible by the inner chunk shape, so the indexer cannot produce an
+        # out-of-grid coordinate). A subset whose size equals the grid's is the
+        # whole grid, so the count check alone proves totality — no need to build
+        # and membership-test the full coordinate set on this hot path.
+        return len(all_chunk_coords) == product(chunks_per_shard)
 
     def _is_complete_shard_write(
         self,
@@ -1475,7 +1505,7 @@ class ShardingCodec(
         sync and async index loaders so they cannot drift.
         """
         shard_index_size = self._shard_index_size(chunks_per_shard)
-        if self.index_location == ShardingCodecIndexLocation.start:
+        if self.index_location == "start":
             return RangeByteRequest(0, shard_index_size)
         return SuffixByteRequest(shard_index_size)
 
@@ -1538,10 +1568,16 @@ class ShardingCodec(
         prototype: BufferPrototype,
         chunks_per_shard: tuple[int, ...],
         all_chunk_coords: set[tuple[int, ...]],
+        max_gap_bytes: int,
+        max_coalesced_bytes: int,
     ) -> ShardMapping | None:
         """
         Read chunks from `byte_getter` for the case where the read is less than a full shard.
         Returns a mapping of chunk coordinates to bytes or None.
+
+        `max_gap_bytes` and `max_coalesced_bytes` are forwarded to
+        `Store.get_ranges` to control byte-range coalescing across the requested
+        chunks.
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
@@ -1558,7 +1594,11 @@ class ShardingCodec(
             byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
             try:
                 async for group in byte_getter.store.get_ranges(
-                    byte_getter.path, byte_ranges, prototype=prototype
+                    byte_getter.path,
+                    byte_ranges,
+                    prototype=prototype,
+                    max_gap_bytes=max_gap_bytes,
+                    max_coalesced_bytes=max_coalesced_bytes,
                 ):
                     for idx, buf in group:
                         if buf is not None:
@@ -1603,12 +1643,17 @@ class ShardingCodec(
         prototype: BufferPrototype,
         chunks_per_shard: tuple[int, ...],
         all_chunk_coords: set[tuple[int, ...]],
+        *,
+        max_gap_bytes: int,
+        max_coalesced_bytes: int,
     ) -> ShardMapping | None:
         """Sync counterpart of `_load_partial_shard_maybe` (the #3004 read path).
 
         Reads the shard index, then fetches only the touched inner chunks via the
         store's coalescing `get_ranges_sync` (merging adjacent ranges into fewer
         reads), matching the async path's IO shape without an event loop.
+        `max_gap_bytes` and `max_coalesced_bytes` control the coalescing, forwarded
+        from the array's `sharding_coalesce_*` config exactly as the async path.
         """
         shard_index = self._load_shard_index_maybe_sync(byte_getter, chunks_per_shard)
         if shard_index is None:
@@ -1626,7 +1671,11 @@ class ShardingCodec(
             byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
             try:
                 for idx, buf in store.get_ranges_sync(
-                    byte_getter.path, byte_ranges, prototype=prototype
+                    byte_getter.path,
+                    byte_ranges,
+                    prototype=prototype,
+                    max_gap_bytes=max_gap_bytes,
+                    max_coalesced_bytes=max_coalesced_bytes,
                 ):
                     if buf is not None:
                         chunk_coord, _ = chunk_coord_byte_ranges[idx]

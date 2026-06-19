@@ -301,10 +301,16 @@ class StoreTests[S: Store, B: Buffer]:
     async def test_getsize_prefix(self, store: S) -> None:
         """
         Test the result of store.getsize_prefix().
+
+        Includes a sibling key ("cc/0") that shares the string prefix "c" but
+        belongs to a different directory: getsize_prefix("c") must not count it,
+        i.e. the prefix is matched as a directory ("c/...") not a raw substring.
         """
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         keys = ["c/0/0", "c/0/1", "c/1/0", "c/1/1"]
-        keys_values = [(k, data_buf) for k in keys]
+        # Sibling directory sharing the "c" string prefix; must be excluded.
+        sibling_keys = ["cc/0"]
+        keys_values = [(k, data_buf) for k in keys + sibling_keys]
         await store._set_many(keys_values)
         expected = len(data_buf) * len(keys)
         observed = await store.getsize_prefix("c")
@@ -372,10 +378,18 @@ class StoreTests[S: Store, B: Buffer]:
         for key, _ in key_ranges:
             await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
-        # read back just part of it
+        # read back just part of it. Pass key_ranges as a one-shot generator
+        # (a valid Iterable per the method signature) to ensure stores and
+        # wrappers do not exhaust the iterable before handing it to the backend.
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype(), key_ranges=key_ranges
+            prototype=default_buffer_prototype(),
+            key_ranges=(kr for kr in key_ranges),
         )
+
+        # One result must be returned per requested key range. Checking this
+        # explicitly guards against a store/wrapper exhausting the key_ranges
+        # iterable early and silently returning fewer (or no) results.
+        assert len(observed_maybe) == len(key_ranges)
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -384,8 +398,7 @@ class StoreTests[S: Store, B: Buffer]:
             assert obs is not None
             observed.append(obs)
 
-        for idx in range(len(observed)):
-            key, byte_range = key_ranges[idx]
+        for key, byte_range in key_ranges:
             result = await store.get(
                 key, prototype=default_buffer_prototype(), byte_range=byte_range
             )

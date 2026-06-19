@@ -9,6 +9,7 @@ import pytest
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    parse_int,
     parse_name,
     parse_shapelike,
     product,
@@ -70,6 +71,18 @@ def test_parse_name_valid(data: tuple[Any, Any]) -> None:
 def test_parse_indexing_order_invalid(data: Any) -> None:
     with pytest.raises(ValueError, match="Expected one of"):
         parse_indexing_order(data)
+
+
+@pytest.mark.parametrize("data", ["1", 1.0, True, False, None, [1], (1,)])
+def test_parse_int_invalid(data: Any) -> None:
+    """Non-int values (including bools, which are int subclasses) are rejected."""
+    with pytest.raises(ValueError, match="Expected int"):
+        parse_int(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, -1, 2**63])
+def test_parse_int_valid(data: int) -> None:
+    assert parse_int(data) == data
 
 
 @pytest.mark.parametrize("data", ["C", "F"])

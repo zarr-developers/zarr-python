@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
@@ -21,9 +24,14 @@ from zarr.core.buffer import Buffer as ABCBuffer
 from zarr.core.buffer import NDBuffer, default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
 from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage._common import StorePath
 from zarr.storage._memory import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.core.array import ShardsConfigParam
+    from zarr.core.array_spec import ArrayConfigParams
 
 # ============================================================================
 # _ShardIndex tests
@@ -167,6 +175,8 @@ async def test_load_partial_shard_maybe_index_load_fails() -> None:
         prototype=default_buffer_prototype(),
         chunks_per_shard=(2,),
         all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result is None
@@ -199,6 +209,8 @@ async def test_load_partial_shard_maybe_with_empty_chunks(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,), (1,), (2,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result is not None
@@ -232,6 +244,8 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,), (1,), (2,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result == {}
@@ -263,6 +277,8 @@ async def test_load_partial_shard_returns_chunk_contents(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,), (1,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result is not None
@@ -304,6 +320,8 @@ async def test_load_partial_shard_shard_disappears_returns_none(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result is None
@@ -348,6 +366,8 @@ async def test_load_partial_shard_non_fnf_error_propagates(
             prototype=default_buffer_prototype(),
             chunks_per_shard=chunks_per_shard,
             all_chunk_coords={(0,)},
+            max_gap_bytes=1 << 20,
+            max_coalesced_bytes=16 << 20,
         )
 
 
@@ -380,6 +400,8 @@ async def test_load_partial_shard_nested_sharding_path(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,), (1,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result is not None
@@ -417,6 +439,8 @@ async def test_load_partial_shard_nested_sharding_missing_outer_chunk(
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
     )
 
     assert result == {}
@@ -532,7 +556,7 @@ class _WidenToInt16(ArrayArrayCodec):
         return {"name": "_widen_to_int16"}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "_WidenToInt16":
+    def from_dict(cls, data: dict[str, Any]) -> _WidenToInt16:
         return cls()
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
@@ -710,10 +734,10 @@ class _AsyncOnlyBytesCodec(ArrayBytesCodec):
         return {"name": "_async_only_bytes"}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "_AsyncOnlyBytesCodec":
+    def from_dict(cls, data: dict[str, Any]) -> _AsyncOnlyBytesCodec:
         return cls()
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> "_AsyncOnlyBytesCodec":
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> _AsyncOnlyBytesCodec:
         return self
 
     def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
@@ -749,3 +773,140 @@ def test_shard_index_async_fallback_for_async_only_index_codec() -> None:
     encoded = asyncio.run(codec._encode_shard_index(index))
     decoded = asyncio.run(codec._decode_shard_index(encoded, chunks_per_shard))
     np.testing.assert_array_equal(decoded.offsets_and_lengths, index.offsets_and_lengths)
+
+
+# ============================================================================
+# Coalescing config option tests
+#
+# Assert that the `array.sharding_coalesce_max_gap_bytes` and
+# `array.sharding_coalesce_max_bytes` global config keys flow through
+# `ArrayConfig` to `Store.get_ranges` as `max_gap_bytes` /
+# `max_coalesced_bytes` kwargs, and that per-array `config={...}` overrides
+# the global default.
+# ============================================================================
+
+
+def _trigger_partial_shard_read(array_config: ArrayConfigParams | None = None) -> AsyncMock:
+    """Build a sharded array on a mocked `MemoryStore`, trigger a partial-shard
+    read via the public read path, and return the `get_ranges` mock.
+    """
+    import zarr
+
+    chunk_shape = (2,)
+    shard_shape = (8,)
+    data = np.arange(8, dtype="int32")
+
+    store = MemoryStore()
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+
+    shards: ShardsConfigParam = {
+        "shape": shard_shape,
+        "index_location": "end",
+    }
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=(8,),
+        chunks=chunk_shape,
+        shards=shards,
+        dtype=data.dtype,
+        fill_value=-1,
+        config=array_config,
+    )
+    a[:] = data
+
+    store_mock.reset_mock()
+
+    # Read a strict subset of chunks to take the partial-shard read path.
+    _ = a[0:4]
+
+    return cast(AsyncMock, store_mock.get_ranges)
+
+
+def test_load_partial_shard_forwards_global_config_to_get_ranges() -> None:
+    """Global `array.sharding_coalesce_*` values flow into ArrayConfig at
+    array-creation time and are forwarded to `Store.get_ranges`."""
+    with config.set(
+        {
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
+        }
+    ):
+        get_ranges_mock = _trigger_partial_shard_read()
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == 4242
+        assert kwargs["max_coalesced_bytes"] == 424242
+
+
+def test_load_partial_shard_per_array_config_overrides_global() -> None:
+    """Per-array `config={...}` passed to `create_array` takes precedence over
+    the global config and is forwarded to `Store.get_ranges`."""
+    with config.set(
+        {
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
+        }
+    ):
+        get_ranges_mock = _trigger_partial_shard_read(
+            array_config={
+                "sharding_coalesce_max_gap_bytes": 99,
+                "sharding_coalesce_max_bytes": 9999,
+            },
+        )
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == 99
+        assert kwargs["max_coalesced_bytes"] == 9999
+
+
+def test_load_partial_shard_uses_config_defaults() -> None:
+    """Without explicit config, defaults from `zarr.config` are forwarded."""
+    get_ranges_mock = _trigger_partial_shard_read()
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == config.get("array.sharding_coalesce_max_gap_bytes")
+        assert kwargs["max_coalesced_bytes"] == config.get("array.sharding_coalesce_max_bytes")
+
+
+async def test_load_partial_shard_explicit_kwargs_passthrough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_load_partial_shard_maybe` forwards its explicit kwargs to `get_ranges`."""
+    codec = ShardingCodec(chunk_shape=(2,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(200, 300))
+
+    store = MemoryStore()
+    await store.set("shard", Buffer.from_bytes(b"x" * 300))
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    byte_getter = StorePath(store_mock, "shard")
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (2,)},
+        max_gap_bytes=12345,
+        max_coalesced_bytes=67890,
+    )
+
+    store_mock.get_ranges.assert_called_once()
+    kwargs = store_mock.get_ranges.call_args.kwargs
+    assert kwargs["max_gap_bytes"] == 12345
+    assert kwargs["max_coalesced_bytes"] == 67890

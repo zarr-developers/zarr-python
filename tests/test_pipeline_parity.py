@@ -42,7 +42,12 @@ import zarr
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
+from zarr.codecs.sharding import (
+    SUBCHUNK_WRITE_ORDER,
+    IndexLocation,
+    ShardingCodec,
+    SubchunkWriteOrder,
+)
 from zarr.core.config import config as zarr_config
 from zarr.storage import MemoryStore
 
@@ -344,7 +349,7 @@ def test_pipeline_parity(
 @pytest.mark.parametrize("subchunk_write_order", SUBCHUNK_WRITE_ORDER)
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_pipeline_parity_subchunk_write_order(
-    subchunk_write_order: SubchunkWriteOrder, index_location: str
+    subchunk_write_order: SubchunkWriteOrder, index_location: IndexLocation
 ) -> None:
     """Both pipelines must agree across every subchunk_write_order, including a
     PARTIAL write into an already-dense fixed-size shard.
