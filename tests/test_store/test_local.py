@@ -8,10 +8,6 @@ import pytest
 
 import zarr
 from zarr import create_array
-
-# SupportsSetRange import disabled with the byte-range-write tests below
-# (removed from this PR pending a store-interface decision).
-# from zarr.abc.store import SupportsSetRange
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.storage._local import _atomic_write

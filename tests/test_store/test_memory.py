@@ -8,10 +8,6 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-
-# SupportsSetRange import disabled with the byte-range-write tests below
-# (removed from this PR pending a store-interface decision).
-# from zarr.abc.store import SupportsSetRange
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
