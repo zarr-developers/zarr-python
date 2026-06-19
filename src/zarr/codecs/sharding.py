@@ -1237,8 +1237,9 @@ class ShardingCodec(
                 return None
             bulk = self._decode_full_shard_bulk_if_uncompressed(shard_bytes, shard_spec, indexer)
             if bulk is not None:
-                if hasattr(indexer, "sel_shape"):
-                    return bulk.reshape(indexer.sel_shape)
+                # The bulk path only fires for a contiguous full-shard read (it
+                # returns None for any gather indexer that exposes `sel_shape`),
+                # so the result is already shard-shaped — no reshape needed.
                 return bulk
             shard_reader = self._shard_reader_from_bytes_sync(shard_bytes, chunks_per_shard)
             shard_dict: ShardMapping = shard_reader
