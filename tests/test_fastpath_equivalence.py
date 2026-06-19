@@ -308,12 +308,15 @@ def test_scalar_write_equals_broadcast_write(case: dict[str, Any]) -> None:
         )
         return store, arr
 
-    store_a, arr_a = build()
-    arr_a[case["sel"]] = case["scalar"]
+    # The scalar-broadcast memoization lives in the Fused sync write path; pin it
+    # explicitly since Fused is no longer the default pipeline.
+    with zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        store_a, arr_a = build()
+        arr_a[case["sel"]] = case["scalar"]
 
-    store_b, arr_b = build()
-    n = case["sel"].stop - case["sel"].start
-    arr_b[case["sel"]] = np.full(n, case["scalar"], dtype="uint8")
+        store_b, arr_b = build()
+        n = case["sel"].stop - case["sel"].start
+        arr_b[case["sel"]] = np.full(n, case["scalar"], dtype="uint8")
 
     keys_a = {k: bytes(v.to_bytes()) for k, v in store_a._store_dict.items()}
     keys_b = {k: bytes(v.to_bytes()) for k, v in store_b._store_dict.items()}

@@ -104,9 +104,16 @@ config = Config(
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.core.codec_pipeline.FusedCodecPipeline",
+                # FusedCodecPipeline is the faster synchronous pipeline, but it stays
+                # opt-in for now so behavior is unchanged for existing users. Early
+                # adopters can switch with
+                #   zarr.config.set(
+                #       {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+                #   )
+                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
-                # Default to sequential (no thread pool). Threading-by-default is a
+                # Only read by FusedCodecPipeline (BatchedCodecPipeline ignores it).
+                # Default to sequential (no thread pool): threading-by-default is a
                 # separate, larger change (downstream thread-safety, oversubscription
                 # on many-core nodes); opt in with codec_pipeline.max_workers > 1.
                 "max_workers": 1,
