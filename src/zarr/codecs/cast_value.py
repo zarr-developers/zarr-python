@@ -23,7 +23,12 @@ from zarr.core.dtype import get_data_type_from_json
 if TYPE_CHECKING:
     from typing import NotRequired, Self
 
-    from zarr_metadata.v3.codec.cast_value import OutOfRangeMode, RoundingMode
+    from zarr_metadata.v3.codec.cast_value import (
+        CastOutOfRangeMode as OutOfRangeMode,
+    )
+    from zarr_metadata.v3.codec.cast_value import (
+        CastRoundingMode as RoundingMode,
+    )
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer

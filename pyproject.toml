@@ -37,7 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
-    'zarr-metadata>=0.2.0,<0.3',
+    'zarr-metadata>=0.3.0,<0.4',
 ]
 
 dynamic = [
@@ -298,7 +298,7 @@ extra-dependencies = [
     # Pin to the floor of zarr-python's declared zarr-metadata range. Must
     # match the >= bound in [project.dependencies] above; the
     # `check_min_deps_floor.py` pre-commit hook enforces this invariant.
-    'zarr-metadata==0.2.0',
+    'zarr-metadata==0.3.0',
 ]
 
 [tool.hatch.envs.default]

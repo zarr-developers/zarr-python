@@ -124,7 +124,7 @@ Both mechanisms point at the same in-tree path. They have to be declared separat
 What this means in practice:
 
 - **During local development** (whether you invoke `uv run pytest` or `hatch env run --env test.py3.12-optional run`), zarr-python resolves `zarr-metadata` from the in-tree source under `packages/zarr-metadata/`. Changes you make there are immediately visible to zarr-python without reinstalling.
-- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.2.0,<0.3`) is carried. The workspace declarations are development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
+- **In the published wheel**, only the `[project.dependencies]` version requirement (`zarr-metadata>=0.3.0,<0.4`) is carried. The workspace declarations are development-only configuration. Users installing zarr-python from PyPI get the published zarr-metadata wheel.
 - **In CI**, the primary test matrix (`test.yml`) runs `hatch env run` against the in-tree zarr-metadata. A change in `packages/zarr-metadata/` that breaks zarr-python surfaces immediately, before zarr-metadata is released to PyPI. The `min_deps` job additionally exercises the published floor on every PR, so a change in zarr-python that *requires* an unreleased zarr-metadata feature also gets caught.
 
 If you change zarr-metadata, also run zarr-python's test suite. The workspace setup makes this transparent — your usual `uv run pytest` or `hatch env run` picks up the in-tree source automatically.
@@ -480,7 +480,7 @@ zarr-python depends on the [`zarr-metadata`](https://pypi.org/project/zarr-metad
 
 1. **Bump zarr-metadata's version** in `packages/zarr-metadata/pyproject.toml` and `packages/zarr-metadata/src/zarr_metadata/__init__.py` (the version literal). Use semver: bump the minor for breaking type changes, the patch for additive changes.
 2. **Release zarr-metadata to PyPI.** Tag and publish from `packages/zarr-metadata/`.
-3. **Bump zarr-python's floor** on zarr-metadata in `[project.dependencies]` (e.g. `zarr-metadata>=0.1.1,<0.2` → `zarr-metadata>=0.2.0,<0.3`). Update `[tool.uv.workspace]` and `[tool.uv.sources]` only if necessary.
+3. **Bump zarr-python's floor** on zarr-metadata in `[project.dependencies]` (e.g. `zarr-metadata>=0.2.0,<0.3` → `zarr-metadata>=0.3.0,<0.4`). Update `[tool.uv.workspace]` and `[tool.uv.sources]` only if necessary.
 4. **Release zarr-python.**
 
 If steps 1 and 2 are skipped (or step 3's bumped floor names a version that does not yet exist on PyPI), the `verify_pypi_dependency` job in [`releases.yml`](https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/releases.yml) will fail before the upload step runs. This gate exists because the wheel ships only a version-range requirement; pip resolves that against PyPI on the user's machine, and there is no built-in equivalent of `cargo publish`'s automatic check that the declared dependency is actually available in the registry.
