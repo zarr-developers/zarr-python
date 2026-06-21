@@ -75,6 +75,34 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
 
+    def test_store_supports_deletes(self, store: ZipStore) -> None:
+        assert store.supports_deletes
+
+    async def test_delete_compacts_duplicates(self, store: ZipStore) -> None:
+        # Overwriting a key leaves a duplicate member in the archive; deleting
+        # another key rewrites the archive and should compact the duplicates so
+        # the surviving key has a single, most-recent entry (issue #828).
+        await store.set("foo", cpu.Buffer.from_bytes(b"v1"))
+        with pytest.warns(UserWarning, match="Duplicate name: 'foo'"):
+            await store.set("foo", cpu.Buffer.from_bytes(b"v2"))
+        await store.set("bar", cpu.Buffer.from_bytes(b"bar"))
+
+        await store.delete("bar")
+
+        assert not await store.exists("bar")
+        assert store._zf.namelist().count("foo") == 1
+        buf = await self.get(store, "foo")
+        assert buf.to_bytes() == b"v2"
+
+    async def test_delete_then_set(self, store: ZipStore) -> None:
+        # after a delete (which reopens the archive) writes must still work
+        await store.set("foo", cpu.Buffer.from_bytes(b"foo"))
+        await store.delete("foo")
+        assert not await store.exists("foo")
+        await store.set("baz", cpu.Buffer.from_bytes(b"baz"))
+        buf = await self.get(store, "baz")
+        assert buf.to_bytes() == b"baz"
+
     # TODO: fix this warning
     @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
@@ -92,17 +120,19 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
             z[0, 0] = 100
 
-        # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
-        # a work around will be needed here.
-        with pytest.raises(NotImplementedError):
-            z[0:10, 0:10] = 99
+        # assigning an entire chunk to the fill value deletes the chunk;
+        # ZipStore now supports deletes by rewriting the archive (issue #828)
+        z[0:10, 0:10] = 99
+        expected = data.copy()
+        expected[0:10, 0:10] = 99
+        assert np.array_equal(expected, z[:])
 
         bar = root.create_group("bar", attributes={"hello": "world"})
         assert "hello" in dict(bar.attrs)
 
-        # keys cannot be deleted
-        with pytest.raises(NotImplementedError):
-            del root["bar"]
+        # keys can now be deleted
+        del root["bar"]
+        assert "bar" not in root
 
         store.close()
 
