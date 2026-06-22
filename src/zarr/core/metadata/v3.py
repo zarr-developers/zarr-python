@@ -6,6 +6,12 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
 
 from typing_extensions import TypedDict
+from zarr_metadata import (
+    RECTILINEAR_CHUNK_GRID_NAME,
+    REGULAR_CHUNK_GRID_NAME,
+    RectilinearChunkGridName,
+    RegularChunkGridName,
+)
 from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -191,10 +197,10 @@ class RectilinearChunkGridMetadataConfig(TypedDict):
 
 
 RegularChunkGridMetadataJSON = NamedRequiredConfig[
-    Literal["regular"], RegularChunkGridMetadataConfig
+    RegularChunkGridName, RegularChunkGridMetadataConfig
 ]
 RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
-    Literal["rectilinear"], RectilinearChunkGridMetadataConfig
+    RectilinearChunkGridName, RectilinearChunkGridMetadataConfig
 ]
 
 
@@ -259,13 +265,13 @@ class RegularChunkGridMetadata(Metadata):
 
     def to_dict(self) -> RegularChunkGridMetadataJSON:  # type: ignore[override]
         return {
-            "name": "regular",
+            "name": REGULAR_CHUNK_GRID_NAME,
             "configuration": {"chunk_shape": self.chunk_shape},
         }
 
     @classmethod
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
-        parse_named_configuration(data, "regular")  # validate name
+        parse_named_configuration(data, REGULAR_CHUNK_GRID_NAME)  # validate name
         configuration = data["configuration"]
         return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
 
@@ -315,7 +321,7 @@ class RectilinearChunkGridMetadata(Metadata):
                 else:
                     serialized_dims.append(list(dim_spec))
         return {
-            "name": "rectilinear",
+            "name": RECTILINEAR_CHUNK_GRID_NAME,
             "configuration": {
                 "kind": "inline",
                 "chunk_shapes": tuple(serialized_dims),
@@ -348,7 +354,7 @@ class RectilinearChunkGridMetadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: RectilinearChunkGridMetadataJSON) -> Self:  # type: ignore[override]
-        parse_named_configuration(data, "rectilinear")  # validate name
+        parse_named_configuration(data, RECTILINEAR_CHUNK_GRID_NAME)  # validate name
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
@@ -412,9 +418,9 @@ def parse_chunk_grid(
         return data
 
     name, _ = parse_named_configuration(data)
-    if name == "regular":
+    if name == REGULAR_CHUNK_GRID_NAME:
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
-    if name == "rectilinear":
+    if name == RECTILINEAR_CHUNK_GRID_NAME:
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
 

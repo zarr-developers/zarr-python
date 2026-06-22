@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, TypedDict, cast
 
 import numpy as np
+from zarr_metadata import CAST_VALUE_CODEC_NAME
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -226,7 +227,7 @@ class CastValue(ArrayArrayCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
-            data, "cast_value", require_configuration=True
+            data, CAST_VALUE_CODEC_NAME, require_configuration=True
         )
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
@@ -248,7 +249,7 @@ class CastValue(ArrayArrayCodec):
                         (k, v) for k, v in self.scalar_map[direction].items()
                     )
             config["scalar_map"] = cast("JSON", json_map)
-        return {"name": "cast_value", "configuration": config}
+        return {"name": CAST_VALUE_CODEC_NAME, "configuration": config}
 
     def validate(
         self,

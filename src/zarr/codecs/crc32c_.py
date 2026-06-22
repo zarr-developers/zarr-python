@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 import google_crc32c
 import numpy as np
 import typing_extensions
+from zarr_metadata import CRC32C_CODEC_NAME
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -25,11 +26,11 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        parse_named_configuration(data, "crc32c", require_configuration=False)
+        parse_named_configuration(data, CRC32C_CODEC_NAME, require_configuration=False)
         return cls()
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "crc32c"}
+        return {"name": CRC32C_CODEC_NAME}
 
     def _decode_sync(
         self,

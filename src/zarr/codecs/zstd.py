@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numcodecs
 from numcodecs.zstd import Zstd
 from packaging.version import Version
+from zarr_metadata import ZSTD_CODEC_NAME
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -60,11 +61,14 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "zstd")
+        _, configuration_parsed = parse_named_configuration(data, ZSTD_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+        return {
+            "name": ZSTD_CODEC_NAME,
+            "configuration": {"level": self.level, "checksum": self.checksum},
+        }
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

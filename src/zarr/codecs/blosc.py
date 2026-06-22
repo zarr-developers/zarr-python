@@ -3,22 +3,18 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict
 
 import numcodecs
+import zarr_metadata
 from numcodecs.blosc import Blosc
 from packaging.version import Version
-from zarr_metadata.v3.codec.blosc import (
-    BloscCName as _BloscCName,
-)
+from zarr_metadata import BLOSC_CODEC_NAME
 from zarr_metadata.v3.codec.blosc import (
     BloscCodecConfiguration as _BloscCodecConfiguration,
 )
 from zarr_metadata.v3.codec.blosc import (
     BloscCodecObject as _BloscCodecObject,
-)
-from zarr_metadata.v3.codec.blosc import (
-    BloscShuffle as _BloscShuffle,
 )
 
 from zarr.abc.codec import BytesBytesCodec
@@ -33,17 +29,18 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
 
-# Re-export under zarr-python's historical names; canonical definitions
-# live in `zarr_metadata.v3.codec.blosc`.
-BloscShuffleLiteral = _BloscShuffle
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+BloscShuffleLiteral = zarr_metadata.BloscShuffle
 """The shuffle values permitted for the blosc codec"""
 
-BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+BLOSC_SHUFFLE = zarr_metadata.BLOSC_SHUFFLE
 
-BloscCnameLiteral = _BloscCName
+BloscCnameLiteral = zarr_metadata.BloscCName
 """The codec identifiers used in the blosc codec"""
 
-BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
+BLOSC_CNAME = zarr_metadata.BLOSC_CNAME
 
 
 class BloscConfigV2(TypedDict):
@@ -268,12 +265,12 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "blosc")
+        _, configuration_parsed = parse_named_configuration(data, BLOSC_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         result: BloscJSON_V3 = {
-            "name": "blosc",
+            "name": BLOSC_CODEC_NAME,
             "configuration": {
                 "typesize": self.typesize,
                 "cname": self.cname,

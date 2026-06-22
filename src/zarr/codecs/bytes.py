@@ -3,7 +3,10 @@ from __future__ import annotations
 import sys
 import warnings
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, ClassVar, Final
+
+import zarr_metadata
+from zarr_metadata import BYTES_CODEC_NAME
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
@@ -17,11 +20,13 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
 
-
-EndianLiteral = Literal["little", "big"]
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+EndianLiteral = zarr_metadata.Endianness
 """Byte order of multi-byte numeric data."""
 
-ENDIAN: Final = ("little", "big")
+ENDIAN: Final = zarr_metadata.ENDIANNESS
 
 
 class Endian(metaclass=_DeprecatedStrEnumMeta):
@@ -59,7 +64,7 @@ class BytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
-            data, "bytes", require_configuration=False
+            data, BYTES_CODEC_NAME, require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         configuration_parsed.setdefault("endian", None)
@@ -67,9 +72,9 @@ class BytesCodec(ArrayBytesCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         if self.endian is None:
-            return {"name": "bytes"}
+            return {"name": BYTES_CODEC_NAME}
         else:
-            return {"name": "bytes", "configuration": {"endian": self.endian}}
+            return {"name": BYTES_CODEC_NAME, "configuration": {"endian": self.endian}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if isinstance(array_spec.dtype, Struct):

@@ -16,6 +16,8 @@ from typing import (
 
 import numpy as np
 from typing_extensions import ReadOnly
+from zarr_metadata import NUMPY_TIME_UNIT as DATETIME_UNIT
+from zarr_metadata import NumpyTimeUnit as DateTimeUnit
 
 from zarr.core.common import NamedRequiredConfig
 from zarr.core.dtype.common import (
@@ -26,8 +28,6 @@ from zarr.core.dtype.common import (
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
-    DATETIME_UNIT,
-    DateTimeUnit,
     check_json_int,
     endianness_to_numpy_str,
     get_endianness_from_numpy_dtype,

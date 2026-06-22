@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
+from zarr_metadata import GZIP_CODEC_NAME
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -43,11 +44,11 @@ class GzipCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "gzip")
+        _, configuration_parsed = parse_named_configuration(data, GZIP_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "gzip", "configuration": {"level": self.level}}
+        return {"name": GZIP_CODEC_NAME, "configuration": {"level": self.level}}
 
     @cached_property
     def _gzip_codec(self) -> GZip:

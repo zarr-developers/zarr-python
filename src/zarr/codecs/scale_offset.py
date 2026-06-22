@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
+from zarr_metadata import SCALE_OFFSET_CODEC_NAME
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -327,20 +328,20 @@ class ScaleOffset(ArrayArrayCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
-            data, "scale_offset", require_configuration=False
+            data, SCALE_OFFSET_CODEC_NAME, require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)
 
     def to_dict(self) -> dict[str, JSON]:
         if self.offset == 0 and self.scale == 1:
-            return {"name": "scale_offset"}
+            return {"name": SCALE_OFFSET_CODEC_NAME}
         config: dict[str, JSON] = {}
         if self.offset != 0:
             config["offset"] = self.offset
         if self.scale != 1:
             config["scale"] = self.scale
-        return {"name": "scale_offset", "configuration": config}
+        return {"name": SCALE_OFFSET_CODEC_NAME, "configuration": config}
 
     def validate(
         self,
