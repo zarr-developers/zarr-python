@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
+# Sentinel value written to a zip entry to mark it as soft-deleted.
+# The ZIP format does not support native deletion, so we overwrite the entry
+# with this value and treat it as absent in all read/list operations.
+_SOFT_DELETE_SENTINEL = b""
+
 
 class ZipStore(Store):
     """
@@ -52,10 +57,18 @@ class ZipStore(Store):
     path
     compression
     allowZip64
+
+    Notes
+    -----
+    Deletion is implemented as a soft-delete: the zip entry is overwritten with
+    an empty byte string (b"").  All read, exists, and list operations
+    filter out soft-deleted entries so they appear absent to callers.  Because
+    the ZIP format does not allow removing entries, soft-deleted entries remain
+    on disk but are invisible through the store API.
     """
 
     supports_writes: bool = True
-    supports_deletes: bool = False
+    supports_deletes: bool = True  # soft-delete via empty-byte overwrite
     supports_listing: bool = True
 
     path: Path
@@ -153,22 +166,25 @@ class ZipStore(Store):
             self._sync_open()
         # docstring inherited
         try:
-            with self._zf.open(key) as f:  # will raise KeyError
-                if byte_range is None:
-                    return prototype.buffer.from_bytes(f.read())
-                elif isinstance(byte_range, RangeByteRequest):
-                    f.seek(byte_range.start)
-                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
-                size = f.seek(0, os.SEEK_END)
-                if isinstance(byte_range, OffsetByteRequest):
-                    f.seek(byte_range.offset)
-                elif isinstance(byte_range, SuffixByteRequest):
-                    f.seek(max(0, size - byte_range.suffix))
-                else:
-                    raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                return prototype.buffer.from_bytes(f.read())
+            with self._zf.open(key) as f:
+                data = f.read()
         except KeyError:
             return None
+
+        # Treat soft-deleted entries (empty bytes) as missing
+        if data == _SOFT_DELETE_SENTINEL:
+            return None
+
+        if byte_range is None:
+            return prototype.buffer.from_bytes(data)
+        elif isinstance(byte_range, RangeByteRequest):
+            return prototype.buffer.from_bytes(data[byte_range.start : byte_range.end])
+        elif isinstance(byte_range, OffsetByteRequest):
+            return prototype.buffer.from_bytes(data[byte_range.offset :])
+        elif isinstance(byte_range, SuffixByteRequest):
+            return prototype.buffer.from_bytes(data[max(0, len(data) - byte_range.suffix) :])
+        else:
+            raise TypeError(f"Unexpected byte_range, got {byte_range}.")
 
     async def get(
         self,
@@ -227,21 +243,31 @@ class ZipStore(Store):
             if key not in members:
                 self._set(key, value)
 
+    async def delete(self, key: str) -> None:
+        # docstring inherited
+        # Soft-delete: overwrite the entry with an empty byte sentinel.
+        # The ZIP format has no native delete API, so we mark the entry as
+        # deleted by writing b"" and filtering it out in all read/list paths.
+        # If the key does not exist in the archive, this is a no-op.
+        self._check_writable()
+        with self._lock:
+            if key in self._zf.namelist():
+                keyinfo = zipfile.ZipInfo(
+                    filename=key, date_time=time.localtime(time.time())[:6]
+                )
+                keyinfo.compress_type = self.compression
+                keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
+                self._zf.writestr(keyinfo, _SOFT_DELETE_SENTINEL)
+
     async def delete_dir(self, prefix: str) -> None:
-        # only raise NotImplementedError if any keys are found
+        # docstring inherited
+        # Collect all live keys under the prefix first, then soft-delete each.
         self._check_writable()
         if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
-        async for _ in self.list_prefix(prefix):
-            raise NotImplementedError
-
-    async def delete(self, key: str) -> None:
-        # docstring inherited
-        # we choose to only raise NotImplementedError here if the key exists
-        # this allows the array/group APIs to avoid the overhead of existence checks
-        self._check_writable()
-        if await self.exists(key):
-            raise NotImplementedError
+        keys_to_delete = [key async for key in self.list_prefix(prefix)]
+        for key in keys_to_delete:
+            await self.delete(key)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
@@ -252,16 +278,26 @@ class ZipStore(Store):
                 self._zf.getinfo(key)
             except KeyError:
                 return False
-            else:
-                return True
+            # Key physically exists — check it hasn't been soft-deleted
+            with self._zf.open(key) as f:
+                return f.read() != _SOFT_DELETE_SENTINEL
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         if not self._is_open:
             self._sync_open()
         with self._lock:
+            seen: set[str] = set()
             for key in self._zf.namelist():
-                yield key
+                if key in seen:
+                    continue
+                seen.add(key)
+                try:
+                    with self._zf.open(key) as f:
+                        if f.read() != _SOFT_DELETE_SENTINEL:
+                            yield key
+                except KeyError:
+                    pass
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
@@ -274,8 +310,7 @@ class ZipStore(Store):
         if not self._is_open:
             self._sync_open()
         prefix = prefix.rstrip("/")
-
-        keys = self._zf.namelist()
+        keys = [k async for k in self.list()]
         seen = set()
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in keys}
@@ -292,9 +327,7 @@ class ZipStore(Store):
                         yield k
 
     async def move(self, path: Path | str) -> None:
-        """
-        Move the store to another path.
-        """
+        """Move the store to another path."""
         if isinstance(path, str):
             path = Path(path)
         self.close()
