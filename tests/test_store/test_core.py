@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from _pytest.compat import LEGACY_PATH
 
 import zarr
 from zarr import Group
@@ -163,7 +162,7 @@ async def test_make_store_path_none(path: str) -> None:
 @pytest.mark.parametrize("store_type", [str, Path])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
-    tmpdir: LEGACY_PATH,
+    tmp_path: Path,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
     mode: AccessModeLiteral,
@@ -171,10 +170,10 @@ async def test_make_store_path_local(
     """
     Test the various ways of invoking make_store_path that create a LocalStore
     """
-    store_like = store_type(str(tmpdir))
+    store_like = store_type(str(tmp_path))
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.root) == Path(tmp_path)
     assert store_path.path == normalize_path(path)
     assert store_path.read_only == (mode == "r")
 
@@ -336,7 +335,7 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+def test_different_open_mode(tmp_path: Path) -> None:
     # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
