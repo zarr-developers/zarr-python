@@ -589,8 +589,7 @@ class ShardingCodec(
     def _get_index_chunk_transform(self, chunks_per_shard: tuple[int, ...]) -> Any:
         """The synchronous transform for the index codec chain.
 
-        Memoized via instance-local `lru_cache` and spec-threaded for the same
-        reasons as `_get_inner_chunk_transform`.
+        Memoized via instance-local `lru_cache`.
         """
 
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
