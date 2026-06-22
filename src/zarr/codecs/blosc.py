@@ -3,16 +3,24 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict
 
 import numcodecs
+import zarr_metadata
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from zarr_metadata import BLOSC_CODEC_NAME
+from zarr_metadata.v3.codec.blosc import (
+    BloscCodecConfiguration as _BloscCodecConfiguration,
+)
+from zarr_metadata.v3.codec.blosc import (
+    BloscCodecObject as _BloscCodecObject,
+)
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, NamedRequiredConfig, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
 
 if TYPE_CHECKING:
@@ -21,19 +29,24 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
 
-BloscShuffleLiteral = Literal["noshuffle", "shuffle", "bitshuffle"]
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+BloscShuffleLiteral = zarr_metadata.BloscShuffle
 """The shuffle values permitted for the blosc codec"""
 
-BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
+BLOSC_SHUFFLE = zarr_metadata.BLOSC_SHUFFLE
 
-BloscCnameLiteral = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
+BloscCnameLiteral = zarr_metadata.BloscCName
 """The codec identifiers used in the blosc codec"""
 
-BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
+BLOSC_CNAME = zarr_metadata.BLOSC_CNAME
 
 
 class BloscConfigV2(TypedDict):
-    """Configuration for the V2 Blosc codec"""
+    """Configuration for the V2 Blosc codec.
+
+    v2 codec shapes predate zarr-metadata, which models only v3 codecs."""
 
     cname: BloscCnameLiteral
     clevel: int
@@ -42,20 +55,8 @@ class BloscConfigV2(TypedDict):
     typesize: NotRequired[int]
 
 
-class BloscConfigV3(TypedDict):
-    """Configuration for the V3 Blosc codec"""
-
-    cname: BloscCnameLiteral
-    clevel: int
-    shuffle: BloscShuffleLiteral
-    blocksize: int
-    typesize: int
-
-
-class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
-    """
-    The JSON form of the Blosc codec in Zarr V3.
-    """
+BloscConfigV3 = _BloscCodecConfiguration
+BloscJSON_V3 = _BloscCodecObject
 
 
 class BloscShuffle(metaclass=_DeprecatedStrEnumMeta):
@@ -264,12 +265,12 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "blosc")
+        _, configuration_parsed = parse_named_configuration(data, BLOSC_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         result: BloscJSON_V3 = {
-            "name": "blosc",
+            "name": BLOSC_CODEC_NAME,
             "configuration": {
                 "typesize": self.typesize,
                 "cname": self.cname,

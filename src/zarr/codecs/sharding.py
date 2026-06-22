@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple, cas
 
 import numpy as np
 import numpy.typing as npt
+import zarr_metadata
+from zarr_metadata import SHARDING_INDEXED_CODEC_NAME
 
 from zarr.abc.codec import (
     ArrayBytesCodec,
@@ -73,10 +75,13 @@ ShardMapping = Mapping[tuple[int, ...], Buffer | None]
 ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer | None]
 
 
-IndexLocation = Literal["start", "end"]
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+IndexLocation = zarr_metadata.ShardingIndexLocation
 """Position of the shard index within the encoded shard."""
 
-INDEX_LOCATION: Final = ("start", "end")
+INDEX_LOCATION: Final = zarr_metadata.SHARDING_INDEX_LOCATION
 
 
 class ShardingCodecIndexLocation(metaclass=_DeprecatedStrEnumMeta):
@@ -384,7 +389,7 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
+        _, configuration_parsed = parse_named_configuration(data, SHARDING_INDEXED_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @property
@@ -393,7 +398,7 @@ class ShardingCodec(
 
     def to_dict(self) -> dict[str, JSON]:
         return {
-            "name": "sharding_indexed",
+            "name": SHARDING_INDEXED_CODEC_NAME,
             "configuration": {
                 "chunk_shape": self.chunk_shape,
                 "codecs": tuple(s.to_dict() for s in self.codecs),

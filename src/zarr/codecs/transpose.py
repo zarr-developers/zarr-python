@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from zarr_metadata import TRANSPOSE_CODEC_NAME
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
@@ -41,11 +42,11 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "transpose")
+        _, configuration_parsed = parse_named_configuration(data, TRANSPOSE_CODEC_NAME)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
+        return {"name": TRANSPOSE_CODEC_NAME, "configuration": {"order": tuple(self.order)}}
 
     def validate(
         self,
