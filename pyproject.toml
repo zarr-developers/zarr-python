@@ -272,6 +272,15 @@ PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
 PIP_PRE = "1"
 
 [tool.hatch.envs.min_deps]
+# Use pip rather than the inherited uv installer. This env must resolve
+# zarr-metadata from PyPI (the published floor pinned below), not the in-tree
+# workspace member. uv would honor the root `[tool.uv.sources] zarr-metadata =
+# { workspace = true }` and substitute the workspace copy (whose hatch-vcs dev
+# version can never equal the `==` floor), producing "No solution found" — see
+# https://github.com/pypa/hatch/issues/1639. pip ignores `[tool.uv.sources]`
+# entirely, so the `zarr-metadata==<floor>` pin below resolves against the
+# published wheel and keeps the "minimum supported deps" guarantee honest.
+installer = "pip"
 description = """Test environment for minimum supported dependencies
 
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
@@ -280,11 +289,6 @@ template = "test"
 python = "3.12"
 features = ["remote"]
 dependency-groups = ["remote-tests"]
-# Override the inherited workspace.members so this env tests against the
-# minimum supported zarr-metadata from PyPI (the floor of the version range
-# declared in [project.dependencies]) instead of the in-tree source. This
-# keeps the "minimum supported deps" guarantee honest.
-workspace.members = []
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
