@@ -460,6 +460,7 @@ filterwarnings = [
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
+    "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
 ]
 
