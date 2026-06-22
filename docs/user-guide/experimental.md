@@ -16,14 +16,11 @@ On real workloads the scheduling cost can dominate the actual codec work, so rem
 
 ### When it helps
 
-The benefit shows up when storage IO is fast enough that the *scheduling* overhead, not the IO itself,
-is the bottleneck. That means **low-latency stores** -- in particular
-[`zarr.storage.MemoryStore`][] and [`zarr.storage.LocalStore`][].
+There are two main benefits in this new pipeline:
 
-For high-latency stores (e.g. S3 or HTTP), where each access is dominated by network round-trips, the
-pipeline transparently **falls back to the asynchronous path**, so there is no benefit but also no
-regression. Compute-bound workloads (heavy compression on large chunks) see no regression either,
-since the codec work is the same.
+1. When storage IO is fast enough that the *scheduling* overhead, not the IO itself, is the bottleneck. That means **low-latency stores** that are themselves synchronous -- in particular [`zarr.storage.MemoryStore`][] and [`zarr.storage.LocalStore`][].
+
+2. Whenever codec work that is truly synchronous will not need the overhead of `async` scheduling i.e., inner-chunk codec work in sharding using something like `zstd`. We also now make use of `asyncio.as_completed` so that IO from asynchronous sources can begin decompression immediately.
 
 ### Opting in
 
