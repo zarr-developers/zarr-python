@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import math
-import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -83,7 +81,7 @@ class NamedRequiredConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
 
 
 def product(tup: tuple[int, ...]) -> int:
-    return functools.reduce(operator.mul, tup, 1)
+    return math.prod(tup)
 
 
 def ceildiv(a: float, b: float) -> int:
