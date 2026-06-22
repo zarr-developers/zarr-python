@@ -72,10 +72,97 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: ZipStore) -> None:
         assert store.supports_writes
 
+    def test_store_supports_deletes(self, store: ZipStore) -> None:
+        assert store.supports_deletes
+
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
 
-    # TODO: fix this warning
+    # ------------------------------------------------------------------
+    # delete() tests
+    # ------------------------------------------------------------------
+
+    async def test_delete_makes_key_inaccessible(self, store: ZipStore) -> None:
+        key = "chunk/0/0"
+        value = cpu.Buffer.from_bytes(b"hello zarr")
+
+        await store.set(key, value)
+        assert await store.exists(key)
+
+        await store.delete(key)
+
+        assert not await store.exists(key)
+        result = await store.get(key, prototype=default_buffer_prototype())
+        assert result is None
+        listed = [k async for k in store.list()]
+        assert key not in listed
+
+    async def test_delete_nonexistent_key_is_noop(self, store: ZipStore) -> None:
+        await store.delete("does/not/exist")  # must not raise
+
+    async def test_delete_does_not_affect_other_keys(self, store: ZipStore) -> None:
+        await store.set("a", cpu.Buffer.from_bytes(b"aaa"))
+        await store.set("b", cpu.Buffer.from_bytes(b"bbb"))
+
+        await store.delete("a")
+
+        assert not await store.exists("a")
+        assert await store.exists("b")
+        buf = await store.get("b", prototype=default_buffer_prototype())
+        assert buf is not None
+        assert buf.to_bytes() == b"bbb"
+
+    async def test_delete_already_deleted_key_is_noop(self, store: ZipStore) -> None:
+        key = "redundant/key"
+        await store.set(key, cpu.Buffer.from_bytes(b"data"))
+        await store.delete(key)
+        await store.delete(key)  # second delete — no-op
+        assert not await store.exists(key)
+
+    # ------------------------------------------------------------------
+    # delete_dir() tests
+    # ------------------------------------------------------------------
+
+    async def test_delete_dir_removes_all_keys_under_prefix(self, store: ZipStore) -> None:
+        keys_under = ["prefix/a", "prefix/b", "prefix/sub/c"]
+        key_other = "other/d"
+
+        for key in keys_under + [key_other]:
+            await store.set(key, cpu.Buffer.from_bytes(b"data"))
+
+        await store.delete_dir("prefix")
+
+        listed = [k async for k in store.list()]
+        for key in keys_under:
+            assert key not in listed
+            assert not await store.exists(key)
+        assert key_other in listed
+
+    async def test_delete_dir_empty_prefix_is_noop(self, store: ZipStore) -> None:
+        await store.set("unrelated/key", cpu.Buffer.from_bytes(b"data"))
+        await store.delete_dir("nonexistent_prefix")
+        assert await store.exists("unrelated/key")
+
+    # ------------------------------------------------------------------
+    # list() soft-delete filtering
+    # ------------------------------------------------------------------
+
+    async def test_list_excludes_soft_deleted_keys(self, store: ZipStore) -> None:
+        for key in ["a", "b", "c"]:
+            await store.set(key, cpu.Buffer.from_bytes(b"x"))
+
+        await store.delete("b")
+
+        listed = [k async for k in store.list()]
+        assert "a" in listed
+        assert "b" not in listed
+        assert "c" in listed
+
+    # ------------------------------------------------------------------
+    # Updated integration test
+    # ------------------------------------------------------------------
+
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
         root = zarr.open_group(store=store, mode="a")
@@ -92,17 +179,14 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
             z[0, 0] = 100
 
-        # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
-        # a work around will be needed here.
-        with pytest.raises(NotImplementedError):
-            z[0:10, 0:10] = 99
+        # assigning fill value to a chunk now works via soft-delete
+        z[0:10, 0:10] = 99
 
         bar = root.create_group("bar", attributes={"hello": "world"})
         assert "hello" in dict(bar.attrs)
 
-        # keys cannot be deleted
-        with pytest.raises(NotImplementedError):
-            del root["bar"]
+        # keys can now be deleted via soft-delete
+        del root["bar"]
 
         store.close()
 
@@ -126,7 +210,6 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert store.read_only == read_only
 
     def test_externally_zipped_store(self, tmp_path: Path) -> None:
-        # See: https://github.com/zarr-developers/zarr-python/issues/2757
         zarr_path = tmp_path / "foo.zarr"
         root = zarr.open_group(store=zarr_path, mode="w")
         root.require_group("foo")
@@ -140,8 +223,6 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert list(group.keys()) == list(group.keys())
 
     async def test_list_without_explicit_open(self, tmp_path: Path) -> None:
-        # ZipStore.list(), list_dir(), and exists() should auto-open
-        # the zip file just like _get() and _set() do.
         zip_path = tmp_path / "data.zip"
         zarr_path = tmp_path / "foo.zarr"
         root = zarr.open_group(store=zarr_path, mode="w")
