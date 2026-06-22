@@ -8,11 +8,20 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from hypothesis import settings
+from hypothesis.stateful import (
+    RuleBasedStateMachine,
+    initialize,
+    precondition,
+    rule,
+    run_state_machine_as_test,
+)
 
 import zarr
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.group import Group
+from zarr.core.sync import sync
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
@@ -177,3 +186,66 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+
+class ZipStoreLifecycleMachine(RuleBasedStateMachine):
+    """Drive a ZipStore through construct / open / write / close transitions.
+
+    Invariant under test: a constructed ZipStore can always be closed without
+    raising, regardless of whether it was ever opened or did any I/O. This is a
+    property-based generalization of the former example-based regression tests
+    for ZipStore.close() being called on a never-opened store (which raised
+    AttributeError because ``_lock`` is created lazily in ``_sync_open``).
+    """
+
+    def __init__(self, tmp_path: Path) -> None:
+        super().__init__()
+        self._tmp_path = tmp_path
+        self._counter = 0
+        self.store: ZipStore | None = None
+        self._opened = False
+
+    @initialize()
+    def start(self) -> None:
+        self.store = None
+        self._opened = False
+
+    @precondition(lambda self: self.store is None)
+    @rule()
+    def construct(self) -> None:
+        # Fresh path each time so mode="w" never clobbers a closed archive.
+        self._counter += 1
+        self.store = ZipStore(self._tmp_path / f"s{self._counter}.zip", mode="w")
+        self._opened = False
+
+    @precondition(lambda self: self.store is not None and not self._opened)
+    @rule()
+    def open(self) -> None:
+        assert self.store is not None
+        self.store._sync_open()
+        self._opened = True
+
+    @precondition(lambda self: self.store is not None and not self._opened)
+    @rule()
+    def write(self) -> None:
+        assert self.store is not None
+        # store.set auto-opens the store.
+        sync(self.store.set("a", cpu.Buffer.from_bytes(b"hi")))
+        self._opened = True
+
+    @precondition(lambda self: self.store is not None)
+    @rule()
+    def close(self) -> None:
+        assert self.store is not None
+        # The property under test: close() must never raise, even with no
+        # prior open or I/O.
+        self.store.close()
+        self.store = None
+        self._opened = False
+
+
+def test_zipstore_close_lifecycle(tmp_path: Path) -> None:
+    run_state_machine_as_test(  # type: ignore[no-untyped-call]
+        lambda: ZipStoreLifecycleMachine(tmp_path),
+        settings=settings(max_examples=50, deadline=None),
+    )
