@@ -671,6 +671,7 @@ def codecs_from_list(
                     "must be preceded by either another BytesBytesCodec, or an ArrayBytesCodec. "
                     f"Got {type(prev_codec)} instead."
                 )
+                raise TypeError(msg)
             bytes_bytes += (cur_codec,)
         else:
             raise TypeError
