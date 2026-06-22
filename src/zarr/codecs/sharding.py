@@ -459,7 +459,7 @@ class ShardingCodec(
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-return get_pipeline_class().from_codecs(self.codecs)
+        return get_pipeline_class().from_codecs(self.codecs)
 
     def _get_inner_pipeline(self, shard_spec: ArraySpec) -> CodecPipeline:
         """The nested pipeline for inner-chunk IO, evolved against the inner
@@ -576,6 +576,7 @@ return get_pipeline_class().from_codecs(self.codecs)
         unthreaded spec is the bug shape that stripped `BytesCodec.endian` at
         the pipeline level (see `evolve_codecs`) — the inner chain must use the
         same single source of truth.
+        """
 
         chunk_spec = self._get_chunk_spec(shard_spec)
         return ChunkTransform(codecs=evolve_codecs(self.codecs, chunk_spec))
