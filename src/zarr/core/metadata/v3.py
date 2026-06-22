@@ -57,10 +57,13 @@ def parse_zarr_format(data: object) -> Literal[3]:
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    if data == "array":
-        return "array"
-    msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
-    raise NodeTypeValidationError(msg)
+    from zarr.core.json_parse import parse_json
+
+    try:
+        return cast('Literal["array"]', parse_json(data, Literal["array"]))
+    except (ValueError, TypeError) as exc:
+        msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+        raise NodeTypeValidationError(msg) from exc
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:

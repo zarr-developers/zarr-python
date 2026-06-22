@@ -126,12 +126,15 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    if isinstance(data, str):
-        if expected is None or data == expected:
-            return data
-        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
-    else:
-        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+    from zarr.core.json_parse import parse_json
+
+    try:
+        data = cast("str", parse_json(data, str))
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.") from exc
+    if expected is None or data == expected:
+        return data
+    raise ValueError(f"Expected '{expected}'. Got {data} instead.")
 
 
 def parse_configuration(data: JSON) -> JSON:
