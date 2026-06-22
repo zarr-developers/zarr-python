@@ -21,17 +21,25 @@ if TYPE_CHECKING:
 
 
 def parse_zstd_level(data: JSON) -> int:
-    if isinstance(data, int):
-        if data >= 23:
-            raise ValueError(f"Value must be less than or equal to 22. Got {data} instead.")
-        return data
-    raise TypeError(f"Got value with type {type(data)}, but expected an int.")
+    from zarr.core.json_parse import parse_json
+
+    try:
+        parsed: int = parse_json(data, int)
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Got value with type {type(data)}, but expected an int.") from exc
+    if parsed >= 23:
+        raise ValueError(f"Value must be less than or equal to 22. Got {parsed} instead.")
+    return parsed
 
 
 def parse_checksum(data: JSON) -> bool:
-    if isinstance(data, bool):
-        return data
-    raise TypeError(f"Expected bool. Got {type(data)}.")
+    from zarr.core.json_parse import parse_json
+
+    try:
+        parsed: bool = parse_json(data, bool)
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Expected bool. Got {type(data)}.") from exc
+    return parsed
 
 
 @dataclass(frozen=True)
