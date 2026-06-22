@@ -4,19 +4,15 @@ This section contains documentation for experimental Zarr Python features. The f
 
 ## `FusedCodecPipeline`
 
-A *codec pipeline* is the machinery that turns chunks of array data into stored bytes and back, by
-running the configured codecs (filters, serializer, compressors) and performing the storage IO. The
-default pipeline, `BatchedCodecPipeline`, schedules this work asynchronously -- roughly one coroutine
-per chunk.
+A *codec pipeline* is the machinery that turns chunks of array data into stored bytes and back, by running the configured codecs (filters, serializer, compressors) and performing the storage IO.
+The default pipeline, `BatchedCodecPipeline`, schedules both the IO and codec work asynchronously -- roughly one coroutine per chunk operation.
 
-`FusedCodecPipeline` is an experimental alternative that runs codec compute *synchronously*, avoiding
-that per-chunk async scheduling overhead. On real workloads the scheduling cost can dominate the
-actual codec work, so removing it is a significant speedup -- especially for **sharded arrays**, where
-a single shard read or write involves many inner chunks.
+`FusedCodecPipeline` is an experimental alternative that runs codec compute and synchronous IO *synchronously*, avoiding that per-chunk async scheduling overhead and nasty [`asyncio.to_thread` overhead](https://github.com/python/cpython/issues/136084).
+On real workloads the scheduling cost can dominate the actual codec work, so removing it is a significant speedup -- especially for **sharded arrays**, where a single shard read or write involves many inner chunks.
 
 > **Note:** The win is *not* a faster compressor or a different on-disk format -- the bytes written are
 > identical. It is purely the removal of async scheduling overhead, plus a few vectorized fast paths
-> for dense, uncompressed shards.
+> for dense, uncompressed shards i.e., removing compute where it is not needed.
 
 ### When it helps
 
