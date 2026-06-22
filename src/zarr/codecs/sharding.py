@@ -459,12 +459,7 @@ class ShardingCodec(
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        # Resolve against the configured pipeline (registry default), matching the
-        # rest of this module's use of get_pipeline_class — NOT a hard-coded
-        # BatchedCodecPipeline. This restores main's behavior (#2179) that the
-        # branch had reverted: the inner sub-chunk pipeline follows the same
-        # codec_pipeline.path config as the outer array.
-        return get_pipeline_class().from_codecs(self.codecs)
+return get_pipeline_class().from_codecs(self.codecs)
 
     def _get_inner_pipeline(self, shard_spec: ArraySpec) -> CodecPipeline:
         """The nested pipeline for inner-chunk IO, evolved against the inner
