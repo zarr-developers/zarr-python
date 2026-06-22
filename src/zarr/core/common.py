@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import math
-import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -83,7 +81,7 @@ class NamedRequiredConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
 
 
 def product(tup: tuple[int, ...]) -> int:
-    return functools.reduce(operator.mul, tup, 1)
+    return math.prod(tup)
 
 
 def ceildiv(a: float, b: float) -> int:
@@ -218,6 +216,12 @@ def parse_bool(data: Any) -> bool:
     from zarr.core.json_parse import parse_json
 
     return cast("bool", parse_json(data, bool))
+
+
+def parse_int(data: Any) -> int:
+    if isinstance(data, int) and not isinstance(data, bool):
+        return data
+    raise ValueError(f"Expected int, got {data} instead.")
 
 
 def _warn_write_empty_chunks_kwarg() -> None:
