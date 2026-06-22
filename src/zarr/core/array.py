@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
@@ -905,7 +906,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return np.prod(self.metadata.shape).item()
+        return math.prod(self.metadata.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:

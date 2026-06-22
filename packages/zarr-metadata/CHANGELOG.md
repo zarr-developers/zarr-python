@@ -2,6 +2,34 @@
 
 <!-- towncrier release notes start -->
 
+## 0.3.0 (2026-06-19)
+
+### Deprecations and Removals
+
+- Introduces a new `JSONValue` type that models python objects that serialize directly to JSON. This type is used to annotate the contents of `attributes` and `fill_value` fields, replacing the use of the overly wide `object` type. This is technically a breaking change. ([#4037](https://github.com/zarr-developers/zarr-python/issues/4037))
+- Promoted a curated "front door" of names to the top-level `zarr_metadata`
+  namespace, so consumers can write e.g. `from zarr_metadata import
+  ArrayMetadataV3, ShardingIndexLocation, BLOSC_CNAME` instead of importing from
+  deep submodule paths. The front door covers every metadata-document TypedDict,
+  each codec/chunk-grid/chunk-key-encoding canonical type, the full data-type
+  trio for every dtype, and every constant + `Literal` pair. Deep submodule paths
+  continue to work unchanged.
+
+  Several promoted names were given clearer, less ambiguous spellings than their
+  deep-module names, since they now appear bare at the top level:
+  `Endian`/`ENDIAN` → `Endianness`/`ENDIANNESS`,
+  `IndexLocation`/`INDEX_LOCATION` → `ShardingIndexLocation`/`SHARDING_INDEX_LOCATION`,
+  `RoundingMode`/`ROUNDING_MODE` → `CastRoundingMode`/`CAST_ROUNDING_MODE`,
+  `OutOfRangeMode`/`OUT_OF_RANGE_MODE` → `CastOutOfRangeMode`/`CAST_OUT_OF_RANGE_MODE`,
+  `DateTimeUnit` → `NumpyTimeUnit`,
+  `NamedConfig` → `NamedConfigV3`, and
+  `MetadataFieldV3` → `MetadataV3` (matching the name `zarrs` uses for this
+  `name`-or-`{name, configuration}` shape).
+
+  Also added the `NUMPY_TIME_UNIT` runtime constant (a `Final` tuple paired with
+  the `NumpyTimeUnit` Literal) in `zarr_metadata.v3.data_type.numpy_timedelta64`. ([#4083](https://github.com/zarr-developers/zarr-python/issues/4083))
+
+
 ## 0.2.0 (2026-05-19)
 
 ### Bugfixes
