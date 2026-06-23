@@ -49,5 +49,3 @@ def test_zarr_store(sync_store: Store) -> None:
         # But LocalStore, directories can hang around even after a key is delete-d.
         pytest.skip(reason="Test isn't suitable for LocalStore.")
     run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
-
-
