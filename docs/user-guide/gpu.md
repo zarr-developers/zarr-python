@@ -16,7 +16,7 @@ Zarr can use GPUs to accelerate your workload by running `zarr.Config.enable_gpu
 [`zarr.config`][] configures Zarr to use GPU memory for the data
 buffers used internally by Zarr via `enable_gpu()`.
 
-```python
+```python test="true" session="gpu-demo" markers="gpu" source="above"
 import zarr
 import cupy as cp
 zarr.config.enable_gpu()

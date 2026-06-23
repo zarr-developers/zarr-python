@@ -153,7 +153,7 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) ->
         start = byte_range.offset
         stop = len(data) + 1
     elif isinstance(byte_range, SuffixByteRequest):
-        start = len(data) - byte_range.suffix
+        start = max(0, len(data) - byte_range.suffix)
         stop = len(data) + 1
     else:
         raise ValueError(f"Unexpected byte_range, got {byte_range}.")

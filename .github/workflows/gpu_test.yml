@@ -12,6 +12,8 @@ on:
 
 env:
   LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
+  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 permissions:
   contents: read
@@ -32,7 +34,7 @@ jobs:
         python-version: ['3.12']
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         fetch-depth: 0  # grab all branches and tags
         persist-credentials: false
@@ -59,6 +61,8 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
     - name: Install Hatch
       uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
       with:
@@ -76,7 +80,7 @@ jobs:
         hatch env run --env "$HATCH_ENV" run-coverage
 
     - name: Upload coverage
-      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: gpu

@@ -115,9 +115,9 @@ filters (e.g., byte-shuffle) have been applied.
 
 ### Subchunk memory layout
 
-The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec`. That parameter is a string which must be one of `["morton", "lexicographic", "colexicographic", "unordered"]`.
+The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec`. That parameter is a string which must be one of `["morton", "unordered", "lexicographic", "colexicographic"]`.
 
-By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality however [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired. The options are `lexicographic`, `morton`, `unordered` (i.e., random), and `colexicographic`.
+By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality. [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired, and `colexicographic` is its reverse. `unordered` makes no guarantee about the order in which subchunks are laid out within a shard.
 
 
 ### Empty chunks
@@ -204,7 +204,7 @@ determines the maximum number of concurrent I/O operations.
 The default value is 10, which is a conservative value. You may get improved performance by tuning
 the concurrency limit. You can adjust this value based on your specific needs:
 
-```python
+```python exec="true" session="perf-concurrency"
 import zarr
 
 # Set concurrency for the current session
@@ -234,7 +234,7 @@ By default it is `None`, which lets Python choose the pool size (typically
 
 You can set it explicitly when you want more predictable resource usage:
 
-```python
+```python exec="true" session="perf-workers"
 import zarr
 
 zarr.config.set({'threading.max_workers': 8})
@@ -260,7 +260,7 @@ For example, if you're running Dask with 10 threads and Zarr's default concurren
 
 **Recommendation**: When using Dask with many threads, configure Zarr's concurrency settings:
 
-```python
+```python exec="false" reason="requires dask, which is not in the docs test environment"
 import zarr
 import dask.array as da
 

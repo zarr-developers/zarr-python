@@ -45,9 +45,13 @@ This will write new `zarr.json` files to `input.zarr`, leaving the existing v2 m
 
 To open the array/group using the new metadata use:
 
-```python
+```python exec="true" session="cli-open" source="above"
 import zarr
-zarr_with_v3_metadata = zarr.open('path/to/input.zarr', zarr_format=3)
+
+# create a small array to open (stands in for the migrated store)
+zarr.create_array("data/cli-demo.zarr", shape=(4, 4), chunks=(2, 2), dtype="i4", overwrite=True)
+
+zarr_with_v3_metadata = zarr.open("data/cli-demo.zarr", zarr_format=3)
 ```
 
 Once you are happy with the conversion, you can run the following to remove the old v2 metadata:
