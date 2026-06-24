@@ -103,9 +103,9 @@ jobs:
       with:
         enable-cache: true
         python-version: ${{ matrix.python-version }}
-    # min_deps and upstream are intentionally unlocked (floors via --resolution
-    # lowest-direct; nightly + git mains overlay). The recipe names match the
-    # matrix values — see the Justfile.
+    # min_deps and upstream are intentionally unlocked (floor constraints from
+    # ci/min-deps-constraints.txt; nightly + git mains overlay). The recipe names
+    # match the matrix values — see the Justfile.
     - name: Run Tests
       run: uvx --from rust-just just ${{ matrix.dependency-set }}
     - name: Upload coverage

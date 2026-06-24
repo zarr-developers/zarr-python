@@ -4084,7 +4084,7 @@ requires-dist = [
     { name = "packaging", specifier = ">=22.0" },
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
-    { name = "universal-pathlib", marker = "extra == 'optional'", specifier = ">=0.2.0" },
+    { name = "universal-pathlib", marker = "extra == 'optional'" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 

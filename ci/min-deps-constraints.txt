@@ -1,0 +1,28 @@
+# Lowest supported dependency versions (the SPEC 0 floor), exercised by the
+# `min_deps` CI job (`just min_deps`). These pin the *runtime* dependencies to
+# their minimums; transitive deps (e.g. flask, werkzeug) are left to resolve to
+# their latest compatible release. Keep each pin in sync with the matching `>=`
+# lower bound in pyproject.toml. SPEC 0 drop schedule:
+# https://scientific-python.org/specs/spec-0000/
+#
+# Why a hand-pinned list, and not uv's `--resolution lowest-direct` (which would
+# derive the floors automatically from the `>=` bounds)?
+#   * It tests the EXACT floor we advertise. lowest-direct resolves to the lowest
+#     *mutually consistent* set, which can sit above a declared floor and thus
+#     silently skip a broken minimum (it resolved packaging 23.0, not 22.0).
+#   * lowest-direct drives under-constrained *transitive* deps to their absolute
+#     floor too: moto only says `flask!=2.2.0,!=2.2.1`, so flask floored to 2.0.3
+#     (which imports `url_quote`, removed in werkzeug 2.3+) -> ImportError.
+#
+# Applied with `uv pip install --constraint`, which does not touch uv.lock. The
+# same pins in a [dependency-groups] entry would leak into the single universal
+# lock and drag the locked envs down too.
+packaging==22.*
+numpy==2.0.*
+numcodecs==0.14.1
+fsspec==2023.10.0
+s3fs==2023.10.0
+universal_pathlib==0.2.0
+typing_extensions==4.14.*
+donfig==0.8.*
+obstore==0.5.*

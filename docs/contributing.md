@@ -152,6 +152,21 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 > **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
 
+#### Minimum supported dependencies
+
+Zarr follows [SPEC 0](https://scientific-python.org/specs/spec-0000/) for the minimum versions of its dependencies. CI exercises those minimums in a dedicated `min_deps` job, which you can reproduce locally with:
+
+```bash
+just min_deps
+```
+
+The supported floor for each runtime dependency is declared twice, and the two must be kept in sync:
+
+- the `>=` lower bound in `pyproject.toml` (`[project.dependencies]` and `[project.optional-dependencies]`) — what users actually get; and
+- an exact pin in `ci/min-deps-constraints.txt` — what the `min_deps` job installs.
+
+When you raise a floor, update **both**. The `min_deps` job builds an isolated environment with `uv pip install --constraint ci/min-deps-constraints.txt`, which pins the runtime dependencies to their floors while letting transitive packages (e.g. flask, werkzeug) resolve to their latest compatible release. We pin the floors by hand rather than deriving them with uv's `--resolution lowest-direct` on purpose: hand-pinning tests the *exact* version we advertise (auto-derivation resolves to the lowest mutually consistent set, which can sit above the declared floor and hide a broken minimum), and it avoids dragging the committed `uv.lock` down. See the comments in `ci/min-deps-constraints.txt` for details.
+
 ### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.

@@ -75,9 +75,15 @@ benchmark *args:
 min_deps *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    # uv derives the floors from the `>=` constraints in pyproject.toml.
-    uv sync --resolution lowest-direct --no-default-groups \
-        --group test --group remote-tests --extra remote --extra optional
+    # Build the env imperatively with `uv pip` (does not read/write uv.lock) so
+    # the floors in ci/min-deps-constraints.txt apply only here. Runtime deps are
+    # pinned to their floors; everything else (e.g. flask/werkzeug) resolves to
+    # its latest compatible release. Isolated venv so the dev .venv is untouched.
+    export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-.venv-min-deps}"
+    export VIRTUAL_ENV="$UV_PROJECT_ENVIRONMENT"
+    uv venv --clear "$UV_PROJECT_ENVIRONMENT"
+    uv pip install --editable '.[remote,optional]' --group test --group remote-tests \
+        --constraint ci/min-deps-constraints.txt
     if [ -n "${CI:-}" ]; then uv pip list; fi
     uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks \
         --junitxml=junit.xml -o junit_family=legacy {{args}}

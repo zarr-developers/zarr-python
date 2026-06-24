@@ -30,10 +30,14 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
+# The `>=` lower bounds below (and in [project.optional-dependencies]) are the
+# minimum versions we support. The `min_deps` CI job tests them via the matching
+# pins in `ci/min-deps-constraints.txt` — keep the two in sync when you bump a
+# floor (per the SPEC 0 drop schedule: https://scientific-python.org/specs/spec-0000/).
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.14.1',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -70,9 +74,7 @@ gpu = [
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
-# Floor is the minimum we support and test (exercised by the `min_deps` CI job
-# via `uv --resolution lowest-direct`); was the old `min_deps` hatch pin.
-optional = ["universal-pathlib>=0.2.0"]
+optional = ["universal-pathlib"]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
@@ -90,9 +92,9 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # Runtime/integration deps (fsspec, obstore, s3fs, botocore, numcodecs,
 # universal-pathlib) instead carry floor (`>=`) constraints, so the `optional`
 # test matrix keeps exercising their latest releases; their floor is covered by
-# the `min_deps` CI job (`uv sync --resolution lowest-direct`, which derives the
-# floors from these `>=` constraints) and their bleeding edge by the `upstream`
-# job (the `just upstream` recipe). Bump the pins deliberately, e.g. via
+# the `min_deps` CI job (hand-pinned in `ci/min-deps-constraints.txt`) and their
+# bleeding edge by the `upstream` job (the `just upstream` recipe). Bump the
+# floors/pins deliberately, e.g. via
 # dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
