@@ -29,5 +29,5 @@ jobs:
       # docs code block that fails to execute at build time fails CI) against the
       # locked docs env. check_unlinked_types runs in that same synced env.
       - run: uvx --from rust-just just docs-build
-      - run: uv run --no-sync python ci/check_unlinked_types.py
+      - run: uvx --from rust-just just check-doc-links
         continue-on-error: true
