@@ -633,8 +633,8 @@ class LatencyStore(WrapperStore[Store]):
         self,
         store: Store,
         *,
-        get_latency: float | tuple[float, float] = 0,
-        set_latency: float | tuple[float, float] = 0,
+        get_latency: float | tuple[float, float] = 0.,
+        set_latency: float | tuple[float, float] = 0.,
     ) -> None:
         """
         Parameters
