@@ -60,21 +60,16 @@ jobs:
       with:
         enable-cache: true
         python-version: ${{ matrix.python-version }}
-    # One universal uv.lock serves every os/python cell of this matrix;
-    # `uv sync --locked` fails if it is stale vs pyproject.toml — a
-    # cross-platform drift gate. setup-uv's python-version sets UV_PYTHON, so uv
-    # selects the right interpreter. The shared coverage runner lives in
-    # ci/run-coverage.sh so CI and local dev invoke an identical command.
+    # The `just` recipe (see Justfile) runs `uv sync --locked`, so one universal
+    # uv.lock serves every os/python cell — and it fails if the lock is stale vs
+    # pyproject.toml (a cross-platform drift gate). setup-uv's python-version
+    # sets UV_PYTHON so uv picks the right interpreter. CI and local dev invoke
+    # the identical recipe; `uvx --from rust-just` provides `just` without a
+    # separate install.
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
-      run: |
-        EXTRAS=""
-        if [ "${{ matrix.dependency-set }}" = "optional" ]; then
-          EXTRAS="--extra remote --extra optional --extra cli --extra cast-value-rs --group remote-tests"
-        fi
-        uv sync --locked --no-default-groups --group test $EXTRAS
-        bash ci/run-coverage.sh
+      run: uvx --from rust-just just test-${{ matrix.dependency-set }}
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
@@ -108,17 +103,11 @@ jobs:
       with:
         enable-cache: true
         python-version: ${{ matrix.python-version }}
-    # Both intentionally unlocked: min_deps derives floors via uv's --resolution
-    # lowest-direct (replacing the hand-pinned tool.hatch.envs.min_deps);
-    # upstream overlays nightly + git mains (ci/sync-upstream.sh).
+    # min_deps and upstream are intentionally unlocked (floors via --resolution
+    # lowest-direct; nightly + git mains overlay). The recipe names match the
+    # matrix values — see the Justfile.
     - name: Run Tests
-      run: |
-        if [ "${{ matrix.dependency-set }}" = "min_deps" ]; then
-          uv sync --resolution lowest-direct --no-default-groups --group test --group remote-tests --extra remote --extra optional
-        else
-          bash ci/sync-upstream.sh
-        fi
-        bash ci/run-coverage.sh
+      run: uvx --from rust-just just ${{ matrix.dependency-set }}
     - name: Upload coverage
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
@@ -140,10 +129,7 @@ jobs:
         enable-cache: true
         python-version: '3.13'
     - name: Run doctests
-      run: |
-        uv sync --locked --no-default-groups --extra remote --group remote-tests
-        uv pip list
-        uv run --no-sync --with pytest-examples pytest tests/test_docs.py -v
+      run: uvx --from rust-just just doctest
 
   benchmarks:
     name: Benchmark smoke test
@@ -159,9 +145,7 @@ jobs:
         enable-cache: true
         python-version: '3.13'
     - name: Run Benchmarks
-      run: |
-        uv sync --locked --no-default-groups --group test
-        uv run --no-sync pytest --benchmark-enable tests/benchmarks
+      run: uvx --from rust-just just benchmark
 
   test-complete:
     name: Test complete

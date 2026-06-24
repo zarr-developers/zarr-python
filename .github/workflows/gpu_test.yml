@@ -60,10 +60,7 @@ jobs:
         enable-cache: true
         python-version: ${{ matrix.python-version }}
     - name: Run Tests
-      run: |
-        uv sync --locked --no-default-groups --group test --extra gpu --extra optional
-        uv pip install pytest-examples
-        bash ci/run-coverage.sh -m gpu
+      run: uvx --from rust-just just gpu
 
     - name: Upload coverage
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0

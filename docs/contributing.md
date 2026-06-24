@@ -88,6 +88,13 @@ uv sync --locked  # create .venv/ with Zarr and all development dependencies
 
 This creates a virtual environment in `.venv/`. Prefix commands with `uv run` to run them inside it, or activate it directly with `source .venv/bin/activate`. To use a specific Python version, pass `-p`, e.g. `uv sync --locked -p 3.13`.
 
+Common developer tasks (running the matrix test environments, building docs, etc.) are defined as [`just`](https://github.com/casey/just) recipes in the `Justfile`. Install `just` and list the available recipes with:
+
+```bash
+uv tool install rust-just  # or: brew install just
+just                       # list all recipes
+```
+
 To verify that your development environment is working, you can run the unit tests:
 
 ```bash
@@ -132,12 +139,14 @@ Zarr includes a suite of unit tests. The simplest way to run them is within your
 uv run pytest
 ```
 
-To reproduce a CI test environment exactly — the optional integration dependencies, with coverage — sync that environment and run the shared coverage script:
+To reproduce a CI test environment exactly — the same dependency set CI uses, with coverage — run the matching `just` recipe. These sync the locked environment and run the test suite the way CI does:
 
 ```bash
-uv sync --locked --no-default-groups --group test --extra remote --extra optional --extra cli --extra cast-value-rs --group remote-tests
-bash ci/run-coverage.sh
+just test-minimal    # the minimal dependency set
+just test-optional   # the full optional/integration dependency set
 ```
+
+Pass extra pytest arguments through, e.g. `just test-optional -k test_attributes`, and select a Python version with `UV_PYTHON`, e.g. `UV_PYTHON=3.13 just test-optional`.
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
 
@@ -195,18 +204,18 @@ If you would like to skip the failing checks and push the code for further discu
 
 > **Note:** Test coverage for Zarr-Python 3 is currently not at 100%. This is a known issue and help is welcome to bring test coverage back to 100%. See issue #2613 for more details.
 
-Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. From your development environment, running:
+Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-bash ci/run-coverage.sh
+just test-optional
 ```
 
 will run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
-You can then generate an HTML coverage report from the collected data by running:
+You can also generate a browsable HTML coverage report by running:
 
 ```bash
-uv run --no-sync coverage html
+just coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -220,7 +229,7 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-uv run --group docs --extra remote mkdocs build
+just docs-build
 ```
 
 The resulting built documentation will be available in the `site/` folder.
@@ -228,7 +237,7 @@ The resulting built documentation will be available in the `site/` folder.
 You can also serve a continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/) by running:
 
 ```bash
-uv run --group docs --extra remote mkdocs serve --watch src
+just docs-serve
 ```
 
 #### Adding executable code blocks in the documentation

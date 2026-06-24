@@ -92,7 +92,7 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # test matrix keeps exercising their latest releases; their floor is covered by
 # the `min_deps` CI job (`uv sync --resolution lowest-direct`, which derives the
 # floors from these `>=` constraints) and their bleeding edge by the `upstream`
-# job (`scripts/sync-upstream.sh`). Bump the pins deliberately, e.g. via
+# job (the `just upstream` recipe). Bump the pins deliberately, e.g. via
 # dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
@@ -173,9 +173,9 @@ version.raw-options = { git_describe_command = "git describe --dirty --tags --lo
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 # NOTE: `tool.hatch.envs.*` used to define the test/docs/min_deps/upstream
-# environments and their run scripts. Those are gone: CI now drives `uv` directly
-# (`uv sync --locked ...`) with the shared runners in `scripts/`, and the dep sets
-# (extras/groups) live in `.github/workflows/`. See docs/contributing.md.
+# environments and their run scripts. Those are gone: tasks are now `just`
+# recipes (see the Justfile) that wrap `uv sync --locked ...`; CI runs the same
+# recipes via `uvx --from rust-just just <recipe>`. See docs/contributing.md.
 
 [tool.ruff]
 line-length = 100
@@ -346,7 +346,7 @@ ignore = [
     "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
-	"PY007",  # task running is uv + ci/*.sh shell scripts, not nox/tox/hatch envs
+	"PY007",  # task runner is a Justfile (just); not in PY007's nox/tox/hatch allowlist
 ]
 
 [tool.numpydoc_validation]

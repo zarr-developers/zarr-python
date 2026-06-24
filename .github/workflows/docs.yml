@@ -25,15 +25,9 @@ jobs:
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: '3.12'
-      # Mirror the former hatch `docs` env exactly: remote extra + docs group,
-      # from the universal lock. --strict turns warnings into errors, so a docs
-      # code block that fails to execute at build time (e.g. a non-exec python
-      # fence disrupting a later exec="true" block) fails CI instead of merging
-      # as a silent warning.
-      - run: uv sync --locked --no-default-groups --extra remote --group docs
-      - run: uv run --no-sync mkdocs build --strict
-        env:
-          DISABLE_MKDOCS_2_WARNING: "true"
-          NO_MKDOCS_2_WARNING: "true"
+      # `just docs-build` runs `mkdocs build --strict` (warnings are errors, so a
+      # docs code block that fails to execute at build time fails CI) against the
+      # locked docs env. check_unlinked_types runs in that same synced env.
+      - run: uvx --from rust-just just docs-build
       - run: uv run --no-sync python ci/check_unlinked_types.py
         continue-on-error: true

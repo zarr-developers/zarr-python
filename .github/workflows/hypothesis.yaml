@@ -69,8 +69,7 @@ jobs:
       id: status
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        uv sync --locked --no-default-groups --group test --group remote-tests --extra remote --extra optional --extra cli --extra cast-value-rs
-        bash ci/run-hypothesis.sh
+        uvx --from rust-just just hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory
