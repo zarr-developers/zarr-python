@@ -80,17 +80,18 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 ### Creating a development environment
 
-To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
+To work with the Zarr source code, we recommend [uv](https://docs.astral.sh/uv/) to create and manage development environments. uv installs all Zarr dependencies pinned to the same versions used by continuous integration, via the committed `uv.lock`. Assuming you have [installed uv](https://docs.astral.sh/uv/getting-started/installation/), cloned the Zarr source code, and your current working directory is the root of the repository, run:
 
 ```bash
-pip install hatch
-hatch env show  # list all available environments
+uv sync --locked  # create .venv/ with Zarr and all development dependencies
 ```
 
-To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
+This creates a virtual environment in `.venv/`. Prefix commands with `uv run` to run them inside it, or activate it directly with `source .venv/bin/activate`. To use a specific Python version, pass `-p`, e.g. `uv sync --locked -p 3.13`.
+
+To verify that your development environment is working, you can run the unit tests:
 
 ```bash
-hatch env run --env test.py3.12-optional run
+uv run pytest
 ```
 
 ### Creating a branch
@@ -125,10 +126,17 @@ Again, any conflicts need to be resolved before submitting a pull request.
 
 ### Running the test suite
 
-Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
+Zarr includes a suite of unit tests. The simplest way to run them is within your development environment (see [creating a development environment](#creating-a-development-environment) above):
 
 ```bash
-hatch env run --env test.py3.12-optional run
+uv run pytest
+```
+
+To reproduce a CI test environment exactly — the optional integration dependencies, with coverage — sync that environment and run the shared coverage script:
+
+```bash
+uv sync --locked --no-default-groups --group test --extra remote --extra optional --extra cli --extra cast-value-rs --group remote-tests
+bash ci/run-coverage.sh
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
@@ -187,18 +195,18 @@ If you would like to skip the failing checks and push the code for further discu
 
 > **Note:** Test coverage for Zarr-Python 3 is currently not at 100%. This is a known issue and help is welcome to bring test coverage back to 100%. See issue #2613 for more details.
 
-Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
+Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. From your development environment, running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage
+bash ci/run-coverage.sh
 ```
 
-will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
+will run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
-You can also generate an HTML coverage report by running:
+You can then generate an HTML coverage report from the collected data by running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage-html
+uv run --no-sync coverage html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -212,15 +220,15 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-hatch --env docs run build
+uv run --group docs --extra remote mkdocs build
 ```
 
-The resulting built documentation will be available in the `docs/_build/html` folder.
+The resulting built documentation will be available in the `site/` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
+You can also serve a continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/) by running:
 
 ```bash
-hatch --env docs run serve
+uv run --group docs --extra remote mkdocs serve --watch src
 ```
 
 #### Adding executable code blocks in the documentation
