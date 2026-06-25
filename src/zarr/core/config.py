@@ -434,6 +434,28 @@ class ZarrConfigManager:
             return default
 
     # --- string API: set --------------------------------------------------
+    #
+    # NOTE: `set` accepts `Mapping[str, Any]`, so — unlike `get`, which is fully
+    # typed via per-key overloads — it does NOT statically validate values:
+    # `config.set({"array.order": "Q"})` is not a type error; it is caught at
+    # runtime instead. This is a deliberate, documented limitation.
+    #
+    # Static value typing would require an *open* TypedDict — declared structured
+    # keys validated by type, PLUS arbitrary `codecs.<name>` string keys allowed
+    # (PEP 728 `extra_items`/`closed`). mypy (2.x) supports PEP 728 in no syntax
+    # and offers no feature flag for it. A *closed* TypedDict would instead reject
+    # the open codec-selection idiom
+    # `config.set({"codecs.bytes": "your.module.NewBytesCodec"})` and any
+    # dynamically built `dict[str, Any]` — a backwards-compatibility regression
+    # (the `codecs` namespace maps a codec name to a class path and is extended at
+    # runtime by users/plugins, so its keys cannot be enumerated statically).
+    # So `set` is intentionally permissive and validated at runtime: unknown
+    # structured keys raise (see `replace_path`), while `codecs.*` stays writable.
+    #
+    # REVISIT when mypy ships PEP 728 open-TypedDict support, or if zarr adopts a
+    # type checker that supports it (e.g. pyright's open/closed TypedDicts). At
+    # that point `set` can take an open TypedDict for static value validation
+    # while keeping `codecs.*` open.
     def set(self, updates: Mapping[str, Any] | None = None, **kwargs: Any) -> _ConfigSet:
         """Apply one or more config overrides.
 
@@ -442,6 +464,12 @@ class ZarrConfigManager:
 
             config.set({"array.order": "F"})
             config.set(default_zarr_format=2)
+
+        Unlike `get`, `set` does not statically type-check values: an invalid
+        value such as `config.set({"array.order": "Q"})` is reported at runtime,
+        not by the type checker. See the implementation comment above for the
+        rationale (the open `codecs.*` namespace prevents a precise TypedDict
+        under current mypy).
         """
         all_updates: dict[str, Any] = {}
         if updates:
