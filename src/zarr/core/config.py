@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import difflib
 import os
 import warnings
 from collections.abc import Mapping
@@ -183,6 +184,40 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     child = getattr(obj, field_name)
     new_child = _replace_recursive(child, segments[1:], value, key)
     return replace(obj, **{field_name: new_child})
+
+
+def _all_keys(cfg: ZarrConfig) -> list[str]:
+    """Return every valid dotted key for ``cfg``.
+
+    Includes container keys (e.g. ``array``), leaf keys (e.g. ``array.order``),
+    and the current ``codecs.<name>`` entries.  Used to suggest a close match
+    when an unknown key is requested.
+    """
+    keys: list[str] = []
+
+    # `obj: Any` is load-bearing: `dataclasses.fields` requires a dataclass arg.
+    def walk(obj: Any, prefix: str) -> None:
+        for f in fields(obj):
+            serialized = _SERIALIZED_NAMES.get(f.name, f.name)
+            key = f"{prefix}.{serialized}" if prefix else serialized
+            keys.append(key)
+            value = getattr(obj, f.name)
+            if isinstance(value, Mapping):
+                keys.extend(f"{key}.{name}" for name in value)
+            elif hasattr(type(value), "__dataclass_fields__"):
+                walk(value, key)
+
+    walk(cfg, "")
+    return keys
+
+
+def _unknown_key_error(key: str, cfg: ZarrConfig) -> KeyError:
+    """Build a `KeyError` for an unknown config key, suggesting the closest match."""
+    msg = f"{key!r} is not a valid configuration key."
+    matches = difflib.get_close_matches(key, _all_keys(cfg), n=1)
+    if matches:
+        msg += f" Did you mean {matches[0]!r}?"
+    return KeyError(msg)
 
 
 def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
@@ -440,11 +475,12 @@ class ZarrConfigManager:
             if default is _MISSING:
                 raise KeyError(key)
             return default
+        current = self._current()
         try:
-            return get_path(self._current(), resolved)
+            return get_path(current, resolved)
         except KeyError:
             if default is _MISSING:
-                raise
+                raise _unknown_key_error(key, current) from None
             return default
 
     # --- string API: set --------------------------------------------------
@@ -493,7 +529,10 @@ class ZarrConfigManager:
         new = self._current()
         for key, value in all_updates.items():
             resolved = self._apply_deprecation(key, raise_on_removed=True)
-            new = replace_path(new, resolved, value)
+            try:
+                new = replace_path(new, resolved, value)
+            except KeyError:
+                raise _unknown_key_error(key, new) from None
         self._base = new
         token = self._scope.set(new)
         return _ConfigSet(self, prev_base, token)

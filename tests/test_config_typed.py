@@ -292,6 +292,45 @@ def test_set_invalid_key_raises(case: ExpectFail[dict[str, object]]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 10. Unknown keys produce a helpful "did you mean" message (get and set)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(input="array.0rder", exception=KeyError, msg=r"array\.order", id="get-typo"),
+        ExpectFail(
+            input="zzzzzzzz",
+            exception=KeyError,
+            msg="not a valid configuration key",
+            id="get-no-match",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_get_unknown_key_message(case: ExpectFail[str]) -> None:
+    """get() on an unknown key reports it and suggests the closest valid key."""
+    with case.raises():
+        ZarrConfigManager().get(case.input)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input={"array.0rder": "F"}, exception=KeyError, msg=r"array\.order", id="set-typo"
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_set_unknown_key_message(case: ExpectFail[dict[str, object]]) -> None:
+    """set() on an unknown structured key suggests the closest valid key."""
+    with case.raises():
+        ZarrConfigManager().set(case.input)
+
+
+# ---------------------------------------------------------------------------
 # Default config values (dedicated — direct attribute assertions are clearest here)
 # ---------------------------------------------------------------------------
 
