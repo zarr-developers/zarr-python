@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from tests.conftest import Expect, ExpectFail
 from zarr.core.config import (
     _SERIALIZED_NAMES,
     DEFAULT_CODECS,
@@ -24,6 +25,272 @@ from zarr.core.config import (
 if typing.TYPE_CHECKING:
     import pathlib
 
+# ---------------------------------------------------------------------------
+# Module-level constants used in parametrize lists (evaluated at collection time)
+# ---------------------------------------------------------------------------
+
+_REMOVED_KEY = "array.v2_default_compressor.numeric"
+_DEFAULT = make_default_config()
+
+# ---------------------------------------------------------------------------
+# 1. get_path — success cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input="array.order", output="C", id="array-order"),
+        Expect(input="async.concurrency", output=10, id="async-concurrency-alias"),
+        Expect(input="json_indent", output=2, id="json-indent"),
+        Expect(input="codecs", output=DEFAULT_CODECS, id="codecs-dict"),
+        Expect(input="codecs.blosc", output="zarr.codecs.blosc.BloscCodec", id="codecs-blosc"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_get_path(case: Expect[str, object]) -> None:
+    assert get_path(make_default_config(), case.input) == case.output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(input="array.nonexistent", exception=KeyError, id="nonexistent-key"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_get_path_raises(case: ExpectFail[str]) -> None:
+    with case.raises():
+        get_path(make_default_config(), case.input)
+
+
+# ---------------------------------------------------------------------------
+# 2. replace_path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=("array.order", "F"), output="F", id="array-order"),
+        Expect(input=("async.concurrency", 99), output=99, id="async-concurrency-alias"),
+        Expect(
+            input=("codecs.my_codec", "my.module.MyCodec"),
+            output="my.module.MyCodec",
+            id="codec-new-key",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_replace_path(case: Expect[tuple[str, object], object]) -> None:
+    key, value = case.input
+    result = replace_path(make_default_config(), key, value)
+    assert get_path(result, key) == case.output
+
+
+def test_replace_path_is_immutable() -> None:
+    """Original config is unchanged after replace_path (frozen dataclass)."""
+    cfg = make_default_config()
+    _ = replace_path(cfg, "array.order", "F")
+    assert cfg.array.order == "C"
+
+
+# ---------------------------------------------------------------------------
+# 3. collect_env
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input={
+                "ZARR_ARRAY__ORDER": "F",
+                "ZARR_ASYNC__CONCURRENCY": "32",
+                "ZARR_CODECS__MY_CODEC": "my.module.MyCodec",
+                "UNRELATED": "ignored",
+            },
+            output={
+                "array.order": "F",
+                "async.concurrency": 32,
+                "codecs.my_codec": "my.module.MyCodec",
+            },
+            id="nested-and-literal",
+        ),
+        Expect(
+            input={"ZARR_CONFIG": "/some/path.yaml", "ZARR_ARRAY__ORDER": "F"},
+            output={"array.order": "F"},
+            id="zarr-config-meta-var-skipped",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_collect_env(case: Expect[dict[str, str], dict[str, object]]) -> None:
+    assert collect_env(case.input) == case.output
+
+
+# ---------------------------------------------------------------------------
+# 4. build_config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input={}, output=_DEFAULT, id="empty-environ"),
+        Expect(
+            input={"ZARR_CONFIG": "/nonexistent/path.yaml"},
+            output=_DEFAULT,
+            id="zarr-config-nonexistent",
+        ),
+        Expect(
+            input={"ZARR_JSON_INDENT": "4"},
+            output=replace_path(_DEFAULT, "json_indent", 4),
+            id="json-indent-env",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_build_config(case: Expect[dict[str, str], ZarrConfig]) -> None:
+    assert build_config(environ=case.input) == case.output
+
+
+# ---------------------------------------------------------------------------
+# 5. apply_overrides
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input={"array.order": "F", "codecs.x": "pkg.X"},
+            output=replace_path(replace_path(_DEFAULT, "array.order", "F"), "codecs.x", "pkg.X"),
+            id="array-order-and-codec",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_apply_overrides(case: Expect[dict[str, object], ZarrConfig]) -> None:
+    assert apply_overrides(build_config(environ={}), case.input) == case.output
+
+
+# ---------------------------------------------------------------------------
+# 6. to_nested_dict
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=make_default_config(),
+            output=("C", 10, "zarr.codecs.blosc.BloscCodec"),
+            id="default-serialized-keys",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_to_nested_dict(case: Expect[ZarrConfig, tuple[str, int, str]]) -> None:
+    nested = to_nested_dict(case.input)
+    order, concurrency, blosc = case.output
+    assert nested["array"]["order"] == order
+    assert nested["async"]["concurrency"] == concurrency
+    assert "async_" not in nested  # serialized key, not the Python attribute name
+    assert nested["codecs"]["blosc"] == blosc
+
+
+# ---------------------------------------------------------------------------
+# 7. ZarrConfigManager.get — proxy string access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input="array.order", output="C", id="array-order"),
+        Expect(input="async.concurrency", output=10, id="async-concurrency-alias"),
+        Expect(input="codecs", output=DEFAULT_CODECS, id="codecs-dict"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_proxy_get(case: Expect[str, object]) -> None:
+    assert ZarrConfigManager().get(case.input) == case.output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=("does.not.exist", "fallback"), output="fallback", id="default-fallback"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_proxy_get_with_default(case: Expect[tuple[str, object], object]) -> None:
+    key, default = case.input
+    assert ZarrConfigManager().get(key, default) == case.output
+
+
+# ---------------------------------------------------------------------------
+# 8. Removed-deprecated-key behavior
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input="fallback", output="fallback", id="get-with-default"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_removed_deprecated_key_get_default(case: Expect[str, str]) -> None:
+    """get() with a removed deprecated key and a default returns the default silently."""
+    assert ZarrConfigManager().get(_REMOVED_KEY, case.input) == case.output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(input=_REMOVED_KEY, exception=KeyError, id="get-no-default"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_removed_deprecated_key_get_raises(case: ExpectFail[str]) -> None:
+    """get() with a removed deprecated key and no default raises KeyError."""
+    with case.raises():
+        ZarrConfigManager().get(case.input)
+
+
+# ---------------------------------------------------------------------------
+# 9. set() must raise for both removed-deprecated keys and totally unknown keys
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ExpectFail(
+            input={_REMOVED_KEY: "some_value"},
+            exception=BadConfigError,
+            id="set-removed-deprecated",
+        ),
+        ExpectFail(
+            input={"totally.bogus.key": 1},
+            exception=KeyError,
+            id="set-unknown-key",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_set_invalid_key_raises(case: ExpectFail[dict[str, object]]) -> None:
+    """set() raises for both removed deprecated keys and totally unknown structured keys."""
+    with case.raises():
+        ZarrConfigManager().set(case.input)
+
+
+# ---------------------------------------------------------------------------
+# Default config values (dedicated — direct attribute assertions are clearest here)
+# ---------------------------------------------------------------------------
+
 
 def test_default_config_values() -> None:
     cfg = make_default_config()
@@ -37,89 +304,14 @@ def test_default_config_values() -> None:
     assert cfg.codec_pipeline.path == "zarr.core.codec_pipeline.BatchedCodecPipeline"
     assert cfg.codecs["blosc"] == "zarr.codecs.blosc.BloscCodec"
     assert cfg.codecs == DEFAULT_CODECS
+    # proxy attribute access via ZarrConfigManager
+    mgr = ZarrConfigManager()
+    assert mgr.array.order == "C"
 
 
-def test_get_path_structured_and_async_alias() -> None:
-    cfg = make_default_config()
-    assert get_path(cfg, "array.order") == "C"
-    assert get_path(cfg, "async.concurrency") == 10  # serialized key, not async_
-    assert get_path(cfg, "json_indent") == 2
-    assert get_path(cfg, "codecs") == DEFAULT_CODECS
-    assert get_path(cfg, "codecs.blosc") == "zarr.codecs.blosc.BloscCodec"
-    with pytest.raises(KeyError):
-        get_path(cfg, "array.nonexistent")
-
-
-def test_replace_path_is_immutable_and_typed() -> None:
-    cfg = make_default_config()
-    cfg2 = replace_path(cfg, "array.order", "F")
-    assert cfg.array.order == "C"  # original unchanged (frozen)
-    assert cfg2.array.order == "F"
-    cfg3 = replace_path(cfg, "async.concurrency", 99)
-    assert cfg3.async_.concurrency == 99
-    cfg4 = replace_path(cfg, "codecs.my_codec", "my.module.MyCodec")
-    assert cfg4.codecs["my_codec"] == "my.module.MyCodec"
-    assert "my_codec" not in cfg.codecs
-
-
-def test_to_nested_dict_uses_serialized_keys() -> None:
-    nested = to_nested_dict(make_default_config())
-    assert nested["array"]["order"] == "C"
-    assert nested["async"]["concurrency"] == 10  # serialized key
-    assert "async_" not in nested
-    assert nested["codecs"]["blosc"] == "zarr.codecs.blosc.BloscCodec"
-
-
-def test_collect_env_parses_nested_and_literal() -> None:
-    env = {
-        "ZARR_ARRAY__ORDER": "F",
-        "ZARR_ASYNC__CONCURRENCY": "32",
-        "ZARR_CODECS__MY_CODEC": "my.module.MyCodec",
-        "UNRELATED": "ignored",
-    }
-    out = collect_env(env)
-    assert out["array.order"] == "F"
-    assert out["async.concurrency"] == 32  # ast.literal_eval -> int
-    assert out["codecs.my_codec"] == "my.module.MyCodec"  # non-literal -> raw str
-    assert "unrelated" not in out
-
-
-def test_apply_overrides_and_build_config_precedence() -> None:
-    cfg = apply_overrides(
-        build_config(environ={}),
-        {"array.order": "F", "codecs.x": "pkg.X"},
-    )
-    assert cfg.array.order == "F"
-    assert cfg.codecs["x"] == "pkg.X"
-    # env overrides defaults
-    cfg2 = build_config(environ={"ZARR_JSON_INDENT": "4"})
-    assert cfg2.json_indent == 4
-
-
-def test_collect_env_skips_zarr_config_meta_var() -> None:
-    """ZARR_CONFIG is a directive about where config lives, not a config key itself."""
-    env = {"ZARR_CONFIG": "/some/path.yaml", "ZARR_ARRAY__ORDER": "F"}
-    out = collect_env(env)
-    assert "config" not in out
-    assert out["array.order"] == "F"
-
-
-def test_build_config_zarr_config_env_does_not_raise() -> None:
-    """Setting ZARR_CONFIG to a nonexistent path must not crash build_config."""
-    cfg = build_config(environ={"ZARR_CONFIG": "/nonexistent/path.yaml"})
-    # The nonexistent YAML path is simply skipped; defaults remain intact.
-    from zarr.core.config import make_default_config
-
-    assert cfg == make_default_config()
-
-
-def test_proxy_attribute_and_string_access() -> None:
-    cfg = ZarrConfigManager()
-    assert cfg.array.order == "C"
-    assert cfg.get("array.order") == "C"
-    assert cfg.get("async.concurrency") == 10
-    assert cfg.get("codecs", {})["blosc"] == "zarr.codecs.blosc.BloscCodec"
-    assert cfg.get("does.not.exist", "fallback") == "fallback"
+# ---------------------------------------------------------------------------
+# Stateful / behavioral tests (kept as dedicated functions)
+# ---------------------------------------------------------------------------
 
 
 def test_set_permanent_and_context() -> None:
@@ -172,34 +364,6 @@ def test_refresh_not_shadowed_by_prior_scope(monkeypatch: pytest.MonkeyPatch) ->
 
 
 # ---------------------------------------------------------------------------
-# Removed-deprecated-key behavior (donfig-faithful)
-# ---------------------------------------------------------------------------
-
-_REMOVED_KEY = "array.v2_default_compressor.numeric"
-
-
-def test_get_removed_deprecated_key_with_default() -> None:
-    """get() with a removed deprecated key and a default must return the default silently."""
-    mgr = ZarrConfigManager()
-    result = mgr.get(_REMOVED_KEY, "fallback")
-    assert result == "fallback"
-
-
-def test_get_removed_deprecated_key_no_default_raises_key_error() -> None:
-    """get() with a removed deprecated key and no default must raise KeyError, not BadConfigError."""
-    mgr = ZarrConfigManager()
-    with pytest.raises(KeyError):
-        mgr.get(_REMOVED_KEY)
-
-
-def test_set_removed_deprecated_key_raises_bad_config_error() -> None:
-    """set() with a removed deprecated key must still raise BadConfigError."""
-    mgr = ZarrConfigManager()
-    with pytest.raises(BadConfigError):
-        mgr.set({_REMOVED_KEY: "some_value"})
-
-
-# ---------------------------------------------------------------------------
 # Tolerant ingest: unknown env/YAML keys must warn and be skipped, not crash
 # ---------------------------------------------------------------------------
 
@@ -227,10 +391,9 @@ def test_apply_overrides_unknown_key_warns_and_returns_default() -> None:
     assert result == default
 
 
-def test_config_set_still_strict_for_unknown_keys() -> None:
-    """config.set() must remain strict: unknown structured keys raise KeyError."""
-    with pytest.raises(KeyError):
-        ZarrConfigManager().set({"totally.bogus.key": 1})
+# ---------------------------------------------------------------------------
+# donfig not imported
+# ---------------------------------------------------------------------------
 
 
 def test_donfig_not_imported() -> None:
