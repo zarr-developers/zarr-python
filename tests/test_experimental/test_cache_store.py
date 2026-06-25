@@ -1219,9 +1219,51 @@ class TestCacheStoreNegativeCaching:
         for i in range(5):
             assert await cs.get(f"absent/{i}", proto) is None
 
-        # The present value survives; negative markers were evicted to make room.
+        # The present value survives; markers are bounded and never evict it.
         info = cs.cache_info()
         assert info["cached_keys"] == 1
         assert "present" in cs._state.entries
         assert cs._state.entries["present"].present
+        # Markers fill only the room left over by the cached value (2 here), proving
+        # both that misses were actually recorded and that they were bounded.
+        assert info["missing_keys"] == 2
         assert info["current_size"] <= cs.max_size
+
+    async def test_no_size_leak_on_miss_then_write(self) -> None:
+        """Recording a miss then writing the key must not leak the marker's charge
+        against ``current_size`` (regression for negative-entry accounting)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 50)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=10_000)
+        proto = default_buffer_prototype()
+
+        # Miss → marker charged; then write the same key → marker must be reclaimed.
+        assert await cs.get("k", proto) is None
+        assert cs.cache_info()["current_size"] == _NEGATIVE_ENTRY_SIZE
+        await cs.set("k", value)
+
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0
+        assert info["cached_keys"] == 1
+        # Only the value's bytes remain — no leftover marker overhead.
+        assert info["current_size"] == len(value)
+        # And the invariant holds: current_size == sum of all tracked entry sizes.
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]
+
+    async def test_no_size_leak_on_miss_then_set_if_not_exists(self) -> None:
+        """``set_if_not_exists`` after a miss reclaims the marker's charge too."""
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 50)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=10_000)
+        proto = default_buffer_prototype()
+
+        assert await cs.get("k", proto) is None
+        await cs.set_if_not_exists("k", value)
+
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]

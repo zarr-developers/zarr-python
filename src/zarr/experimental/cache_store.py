@@ -118,6 +118,11 @@ class CacheStore(WrapperStore[Store]):
           both caches are unbounded, so a scan over a very large sparse key space will
           accumulate one small entry per absent key; set ``max_size`` (and/or a finite
           ``max_age_seconds``, or ``cache_missing=False``) for such workloads.
+        - This is store-level, per-key negative caching aimed at the stock ``arr[:]``
+          path, which probes every chunk. For very large sparse arrays, prefer the
+          array-level sparse-read primitives ``zarr.shards_initialized`` and
+          ``zarr.read_regions`` (PR #4028), which touch only populated chunks and so
+          never issue the empty-chunk reads this cache would otherwise remember.
 
     Examples
     --------
@@ -218,31 +223,47 @@ class CacheStore(WrapperStore[Store]):
     async def _record_missing(self, key: str) -> None:
         """Record *key* as known-missing (absent in the source store).
 
-        Overwrites any existing slot for *key*, so a key cannot be both cached and
-        marked missing.  The marker is charged ``_NEGATIVE_ENTRY_SIZE`` against the
-        shared ``max_size`` budget, then the budget is re-enforced (evicting
-        absent entries first).  Must be called while holding ``self._state.lock``.
-        Staleness is bounded by ``max_age_seconds`` via ``_is_fresh``.
+        Charges a flat ``_NEGATIVE_ENTRY_SIZE`` against the shared ``max_size``
+        budget.  A negative marker is strictly lower priority than cached data: it
+        may only displace *other* (older) absent markers to fit, never a cached
+        value, and is skipped entirely if the budget is full of cached values.
+
+        The caller (``_cache_miss``) has already removed any backing-store value and
+        tracking slot for *key*, so this records a fresh marker.  Must be called
+        while holding ``self._state.lock``.  Staleness is bounded by
+        ``max_age_seconds`` via ``_is_fresh``.
         """
-        old = self._state.entries.get(key)
+        # Drop any pre-existing slot for this key, reclaiming its bytes.
+        old = self._state.entries.pop(key, None)
         if old is not None:
             self._state.current_size = max(0, self._state.current_size - old.size)
+
+        # Make room by evicting older absent markers only — never cached values.
+        if self.max_size is not None:
+            while self._state.current_size + _NEGATIVE_ENTRY_SIZE > self.max_size:
+                lru_absent = next(
+                    (k for k, e in self._state.entries.items() if not e.present), None
+                )
+                if lru_absent is None:
+                    return  # only cached values fill the budget — don't record the miss
+                await self._evict_key(lru_absent)
+
         self._state.entries[key] = _Entry(
             insert_time=time.monotonic(), size=_NEGATIVE_ENTRY_SIZE, present=False
         )
         self._state.entries.move_to_end(key)
         self._state.current_size += _NEGATIVE_ENTRY_SIZE
-        # Re-enforce the shared budget (no further incoming bytes to reserve).
-        await self._accommodate_value(0)
 
     def _evict_missing(self, key: str) -> None:
         """Drop any negative entry for *key* (it is now present or being written).
 
         Only removes an *absent* slot — a present (cached) value for the same key is
-        left untouched.  Must be called while holding ``self._state.lock``.
+        left untouched — and reclaims the marker's charged bytes.  Must be called
+        while holding ``self._state.lock``.
         """
         entry = self._state.entries.get(key)
         if entry is not None and not entry.present:
+            self._state.current_size = max(0, self._state.current_size - entry.size)
             del self._state.entries[key]
 
     async def _accommodate_value(self, value_size: int) -> None:
@@ -341,8 +362,10 @@ class CacheStore(WrapperStore[Store]):
 
     async def _update_access_order(self, entry_key: _CacheEntryKey) -> None:
         """Update the access order for LRU tracking."""
-        if entry_key in self._state.entries:
-            async with self._state.lock:
+        async with self._state.lock:
+            # Re-check membership under the lock: the entry may have been evicted
+            # by a concurrent operation between the call and acquiring the lock.
+            if entry_key in self._state.entries:
                 self._state.entries.move_to_end(entry_key)
 
     def _remove_from_tracking(self, entry_key: _CacheEntryKey) -> None:
