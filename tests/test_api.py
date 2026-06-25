@@ -293,7 +293,6 @@ def test_open_array_rectilinear_chunks(tmp_path: Path) -> None:
     assert z.read_chunk_sizes == ((3, 3, 4), (5, 5))
 
 
-@pytest.mark.asyncio
 async def test_async_array_open_array_not_found() -> None:
     """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
     store = MemoryStore()
@@ -352,16 +351,16 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(tmpdir: Path, zarr_format: ZarrFormat) -> None:
+async def test_open_group_unspecified_version(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
     _ = await zarr.api.asynchronous.open_group(
-        store=str(tmpdir), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
+        store=str(tmp_path), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
     )
 
     # now open that group without specifying the format
-    g2 = await zarr.api.asynchronous.open_group(store=str(tmpdir), mode="r")
+    g2 = await zarr.api.asynchronous.open_group(store=str(tmp_path), mode="r")
 
     assert g2.attrs == {"foo": "bar"}
 

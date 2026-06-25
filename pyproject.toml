@@ -105,7 +105,7 @@ test = [
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.0",
-    "uv==0.11.19",
+    "uv==0.11.20",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -393,7 +393,7 @@ show_error_code_links = true
 show_error_context = true
 strict = true
 warn_unreachable = true
-enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "truthy-iterable"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -459,7 +459,6 @@ filterwarnings = [
     "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
-    "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
     "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
