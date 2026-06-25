@@ -36,7 +36,7 @@ dependencies = [
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
-    'donfig>=0.8',
+    'pyyaml',
 ]
 
 dynamic = [
@@ -243,7 +243,6 @@ extra-dependencies = [
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
-    'donfig @ git+https://github.com/pytroll/donfig',
     'obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore',
 ]
 
@@ -269,7 +268,7 @@ extra-dependencies = [
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
     'typing_extensions==4.14.*',
-    'donfig==0.8.*',
+    'pyyaml==6.*',
     'obstore==0.5.*',
 ]
 

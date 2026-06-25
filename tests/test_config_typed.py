@@ -224,3 +224,11 @@ def test_config_set_still_strict_for_unknown_keys() -> None:
     """config.set() must remain strict: unknown structured keys raise KeyError."""
     with pytest.raises(KeyError):
         ZarrConfigManager().set({"totally.bogus.key": 1})
+
+
+def test_donfig_not_imported() -> None:
+    import sys
+
+    import zarr  # noqa: F401
+
+    assert "donfig" not in sys.modules

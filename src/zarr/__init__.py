@@ -68,7 +68,7 @@ def print_debug_info() -> None:
         "numpy",
         "numcodecs",
         "typing_extensions",
-        "donfig",
+        "pyyaml",
     ]
     optional = [
         "botocore",
