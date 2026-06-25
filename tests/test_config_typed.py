@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import dataclasses
+import typing
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from zarr.core.config import (
+    _SERIALIZED_NAMES,
     DEFAULT_CODECS,
     BadConfigError,
+    ZarrConfig,
     ZarrConfigManager,
     apply_overrides,
     build_config,
@@ -232,3 +236,57 @@ def test_donfig_not_imported() -> None:
     import zarr  # noqa: F401
 
     assert "donfig" not in sys.modules
+
+
+# ---------------------------------------------------------------------------
+# Drift-protection: every structured leaf key must have a get() overload
+# ---------------------------------------------------------------------------
+
+
+def _structured_leaf_keys(cfg_cls: type, prefix: str = "") -> list[str]:
+    """Walk a settings dataclass recursively and return every dotted leaf key.
+
+    Uses ``typing.get_type_hints`` instead of ``f.type`` so that the
+    ``from __future__ import annotations`` string-annotation form is resolved
+    to real types before ``dataclasses.is_dataclass`` is called.
+    """
+    keys: list[str] = []
+    resolved_hints = typing.get_type_hints(cfg_cls)
+    for f in dataclasses.fields(cfg_cls):
+        serialized = _SERIALIZED_NAMES.get(f.name, f.name)
+        key = f"{prefix}.{serialized}" if prefix else serialized
+        resolved_type = resolved_hints[f.name]
+        if dataclasses.is_dataclass(resolved_type):
+            keys.extend(_structured_leaf_keys(typing.cast(type, resolved_type), key))
+        elif f.name == "codecs":
+            # open mapping — intentionally not enumerated
+            continue
+        else:
+            keys.append(key)
+    return keys
+
+
+def test_every_structured_key_has_a_get_overload() -> None:
+    """Enumerate every typed leaf key in ZarrConfig and assert a matching get() overload exists."""
+    overloads = typing.get_overloads(ZarrConfigManager.get)
+    literal_keys: set[str] = set()
+    for ov in overloads:
+        hints = typing.get_type_hints(ov)
+        key_hint = hints.get("key")
+        if typing.get_origin(key_hint) is typing.Literal:
+            literal_keys.update(typing.get_args(key_hint))
+    leaf_keys = _structured_leaf_keys(ZarrConfig)
+    missing = set(leaf_keys) - literal_keys
+    assert not missing, f"get() overloads missing for: {sorted(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# Static-typing smoke test (only checked by mypy, not executed at runtime)
+# ---------------------------------------------------------------------------
+
+if typing.TYPE_CHECKING:
+
+    def _typing_smoke(cfg: ZarrConfigManager) -> None:
+        typing.assert_type(cfg.get("array.order"), typing.Literal["C", "F"])
+        typing.assert_type(cfg.array.order, typing.Literal["C", "F"])
+        typing.assert_type(cfg.get("async.concurrency"), int)

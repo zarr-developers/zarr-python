@@ -36,7 +36,7 @@ dependencies = [
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
-    'pyyaml',
+    'pyyaml>=6',
 ]
 
 dynamic = [

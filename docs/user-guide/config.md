@@ -1,7 +1,8 @@
 # Runtime configuration
 
-[`zarr.config`][] is responsible for managing the configuration of zarr and
-is based on the [donfig](https://github.com/pytroll/donfig) Python library.
+[`zarr.config`][] is a `ZarrConfigManager` instance that manages all runtime
+settings for zarr.  It provides both typed attribute access and a dotted-string
+key API.
 
 Configuration values can be set using code like the following:
 
@@ -18,12 +19,13 @@ zarr.config.set({'array.order': 'F'})
 print(zarr.config.get('array.order'))
 ```
 
-Alternatively, configuration values can be set using environment variables, e.g.
+Alternatively, configuration values can be set using environment variables.
+The variable name uses a `ZARR_` prefix, with `__` to denote nesting, e.g.
 `ZARR_ARRAY__ORDER=F`.
 
-The configuration can also be read from a YAML file in standard locations.
-For more information, see the
-[donfig documentation](https://donfig.readthedocs.io/en/latest/).
+The configuration can also be read from YAML files.  Place a `zarr.yaml` (or
+any `.yaml`/`.yml` file) in `~/.config/zarr/`, or point the `ZARR_CONFIG`
+environment variable at a specific file path.
 
 Configuration options include the following:
 
@@ -46,8 +48,5 @@ This is the current default configuration:
 
 ```python exec="true" session="config" source="above" result="ansi"
 from pprint import pprint
-import io
-output = io.StringIO()
-zarr.config.pprint(stream=output, width=60)
-print(output.getvalue())
+pprint(zarr.config.to_dict())
 ```
