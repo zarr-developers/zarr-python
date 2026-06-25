@@ -239,6 +239,49 @@ def test_donfig_not_imported() -> None:
 
 
 # ---------------------------------------------------------------------------
+# YAML codec block merging — regression for the "wipes all defaults" bug
+# ---------------------------------------------------------------------------
+
+
+def test_yaml_codecs_block_merges_not_replaces(tmp_path: pytest.TempPathFactory) -> None:
+    """A YAML file with a codecs: block must MERGE into the defaults, not replace them."""
+    yaml_file = tmp_path / "zarr.yaml"  # type: ignore[operator]
+    yaml_file.write_text("codecs:\n  bytes: my.custom.BytesCodec\n  mycodec: my.Mod.MyCodec\n")
+    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    # overrides applied
+    assert cfg.codecs["bytes"] == "my.custom.BytesCodec"
+    assert cfg.codecs["mycodec"] == "my.Mod.MyCodec"
+    # defaults PRESERVED
+    assert cfg.codecs["blosc"] == "zarr.codecs.blosc.BloscCodec"
+    assert cfg.codecs["zstd"] == "zarr.codecs.zstd.ZstdCodec"
+    # exactly one net-new key added ("bytes" overwrites existing; "mycodec" is new)
+    assert len(cfg.codecs) == len(DEFAULT_CODECS) + 1
+
+
+def test_yaml_dotted_codec_name_merges(tmp_path: pytest.TempPathFactory) -> None:
+    """Dotted codec keys like numcodecs.bz2 in YAML must merge, not replace the whole dict."""
+    yaml_file = tmp_path / "zarr.yaml"  # type: ignore[operator]
+    yaml_file.write_text("codecs:\n  numcodecs.bz2: my.Override\n")
+    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    # dotted key correctly round-tripped
+    assert cfg.codecs["numcodecs.bz2"] == "my.Override"
+    # all other defaults preserved
+    assert cfg.codecs["blosc"] == "zarr.codecs.blosc.BloscCodec"
+    assert len(cfg.codecs) == len(DEFAULT_CODECS)  # bz2 was already there; just overwritten
+
+
+def test_build_config_environ_yaml_path_is_read(tmp_path: pytest.TempPathFactory) -> None:
+    """ZARR_CONFIG supplied via build_config(environ=...) must actually be read."""
+    yaml_file = tmp_path / "zarr.yaml"  # type: ignore[operator]
+    yaml_file.write_text("json_indent: 9\n")
+    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    assert cfg.json_indent == 9
+    # Non-existent path must still not raise
+    cfg2 = build_config(environ={"ZARR_CONFIG": "/nonexistent/path.yaml"})
+    assert cfg2.json_indent == make_default_config().json_indent
+
+
+# ---------------------------------------------------------------------------
 # Drift-protection: every structured leaf key must have a get() overload
 # ---------------------------------------------------------------------------
 

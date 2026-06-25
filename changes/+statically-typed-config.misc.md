@@ -6,3 +6,7 @@ ingestion (`ZARR_FOO__BAR`), YAML config files, `config.set` (permanent and
 as a context manager), `config.reset`, `config.enable_gpu`, and the
 `deprecations` mechanism are all preserved. The `donfig` dependency has been
 removed.
+
+Note: `zarr.config.defaults` now returns a nested `dict` directly; donfig
+previously returned a one-element `list[dict]`, so callers that used
+`config.defaults[0]` must be updated to use `config.defaults`.

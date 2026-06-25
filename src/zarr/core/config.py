@@ -235,10 +235,10 @@ def collect_env(environ: Mapping[str, str]) -> dict[str, Any]:
     return out
 
 
-def _config_search_paths() -> list[str]:
+def _config_search_paths(environ: Mapping[str, str]) -> list[str]:
     """Standard YAML config locations, mirroring donfig's search order."""
     paths: list[str] = []
-    env_path = os.environ.get("ZARR_CONFIG")
+    env_path = environ.get("ZARR_CONFIG")
     if env_path:
         paths.append(env_path)
     paths.append(os.path.join(os.path.expanduser("~"), ".config", "zarr"))
@@ -273,7 +273,7 @@ def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any
     out: dict[str, Any] = {}
     for k, v in data.items():
         key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
-        if isinstance(v, Mapping) and k != "codecs":
+        if isinstance(v, Mapping):
             out.update(_flatten_mapping(v, key))
         else:
             out[key] = v
@@ -304,7 +304,7 @@ def build_config(environ: Mapping[str, str] | None = None) -> ZarrConfig:
     if environ is None:
         environ = os.environ
     return apply_overrides(
-        apply_overrides(make_default_config(), collect_yaml(_config_search_paths())),
+        apply_overrides(make_default_config(), collect_yaml(_config_search_paths(environ))),
         collect_env(environ),
     )
 
