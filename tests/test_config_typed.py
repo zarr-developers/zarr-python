@@ -83,3 +83,20 @@ def test_apply_overrides_and_build_config_precedence() -> None:
     # env overrides defaults
     cfg2 = build_config(environ={"ZARR_JSON_INDENT": "4"})
     assert cfg2.json_indent == 4
+
+
+def test_collect_env_skips_zarr_config_meta_var() -> None:
+    """ZARR_CONFIG is a directive about where config lives, not a config key itself."""
+    env = {"ZARR_CONFIG": "/some/path.yaml", "ZARR_ARRAY__ORDER": "F"}
+    out = collect_env(env)
+    assert "config" not in out
+    assert out["array.order"] == "F"
+
+
+def test_build_config_zarr_config_env_does_not_raise() -> None:
+    """Setting ZARR_CONFIG to a nonexistent path must not crash build_config."""
+    cfg = build_config(environ={"ZARR_CONFIG": "/nonexistent/path.yaml"})
+    # The nonexistent YAML path is simply skipped; defaults remain intact.
+    from zarr.core.config import make_default_config
+
+    assert cfg == make_default_config()

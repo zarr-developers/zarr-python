@@ -198,6 +198,10 @@ def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
 
 ENV_PREFIX = "ZARR_"
 
+# Meta-variables that control WHERE config is loaded from, not config values themselves.
+# These must be excluded from the env-override map to avoid spurious KeyErrors.
+_ENV_META_VARS: frozenset[str] = frozenset({"ZARR_CONFIG"})
+
 
 def _parse_env_value(raw: str) -> Any:
     """Parse an env value with ``ast.literal_eval``; fall back to the raw string."""
@@ -212,10 +216,15 @@ def collect_env(environ: Mapping[str, str]) -> dict[str, Any]:
 
     ``ZARR_FOO__BAR_BAZ=1`` becomes ``{"foo.bar_baz": 1}`` — the key is
     lower-cased and ``__`` denotes nested access.
+
+    Variables listed in ``_ENV_META_VARS`` (e.g. ``ZARR_CONFIG``) are
+    directives about where config lives and are skipped.
     """
     out: dict[str, Any] = {}
     for name, raw in environ.items():
         if not name.startswith(ENV_PREFIX):
+            continue
+        if name in _ENV_META_VARS:
             continue
         body = name[len(ENV_PREFIX) :]
         dotted = body.lower().replace("__", ".")
