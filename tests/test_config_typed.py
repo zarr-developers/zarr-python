@@ -4,6 +4,9 @@ import pytest
 
 from zarr.core.config import (
     DEFAULT_CODECS,
+    apply_overrides,
+    build_config,
+    collect_env,
     get_path,
     make_default_config,
     replace_path,
@@ -54,3 +57,29 @@ def test_to_nested_dict_uses_serialized_keys() -> None:
     assert nested["async"]["concurrency"] == 10  # serialized key
     assert "async_" not in nested
     assert nested["codecs"]["blosc"] == "zarr.codecs.blosc.BloscCodec"
+
+
+def test_collect_env_parses_nested_and_literal() -> None:
+    env = {
+        "ZARR_ARRAY__ORDER": "F",
+        "ZARR_ASYNC__CONCURRENCY": "32",
+        "ZARR_CODECS__MY_CODEC": "my.module.MyCodec",
+        "UNRELATED": "ignored",
+    }
+    out = collect_env(env)
+    assert out["array.order"] == "F"
+    assert out["async.concurrency"] == 32  # ast.literal_eval -> int
+    assert out["codecs.my_codec"] == "my.module.MyCodec"  # non-literal -> raw str
+    assert "unrelated" not in out
+
+
+def test_apply_overrides_and_build_config_precedence() -> None:
+    cfg = apply_overrides(
+        build_config(environ={}),
+        {"array.order": "F", "codecs.x": "pkg.X"},
+    )
+    assert cfg.array.order == "F"
+    assert cfg.codecs["x"] == "pkg.X"
+    # env overrides defaults
+    cfg2 = build_config(environ={"ZARR_JSON_INDENT": "4"})
+    assert cfg2.json_indent == 4

@@ -29,6 +29,9 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 
 from __future__ import annotations
 
+import ast
+import contextlib
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -191,6 +194,95 @@ def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
         return obj
 
     return convert(cfg)  # type: ignore[no-any-return]
+
+
+ENV_PREFIX = "ZARR_"
+
+
+def _parse_env_value(raw: str) -> Any:
+    """Parse an env value with ``ast.literal_eval``; fall back to the raw string."""
+    try:
+        return ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return raw
+
+
+def collect_env(environ: Mapping[str, str]) -> dict[str, Any]:
+    """Collect ``ZARR_*`` environment variables into a flat dotted-key map.
+
+    ``ZARR_FOO__BAR_BAZ=1`` becomes ``{"foo.bar_baz": 1}`` — the key is
+    lower-cased and ``__`` denotes nested access.
+    """
+    out: dict[str, Any] = {}
+    for name, raw in environ.items():
+        if not name.startswith(ENV_PREFIX):
+            continue
+        body = name[len(ENV_PREFIX) :]
+        dotted = body.lower().replace("__", ".")
+        out[dotted] = _parse_env_value(raw)
+    return out
+
+
+def _config_search_paths() -> list[str]:
+    """Standard YAML config locations, mirroring donfig's search order."""
+    paths: list[str] = []
+    env_path = os.environ.get("ZARR_CONFIG")
+    if env_path:
+        paths.append(env_path)
+    paths.append(os.path.join(os.path.expanduser("~"), ".config", "zarr"))
+    return paths
+
+
+def collect_yaml(paths: list[str]) -> dict[str, Any]:
+    """Merge YAML config files found at ``paths`` into a flat dotted-key map."""
+    import yaml
+
+    merged: dict[str, Any] = {}
+    for path in paths:
+        candidates: list[str] = []
+        if os.path.isdir(path):
+            candidates.extend(
+                os.path.join(path, fn)
+                for fn in sorted(os.listdir(path))
+                if fn.endswith((".yaml", ".yml"))
+            )
+        elif os.path.isfile(path):
+            candidates.append(path)
+        for candidate in candidates:
+            with contextlib.suppress(FileNotFoundError):
+                with open(candidate) as fh:
+                    data = yaml.safe_load(fh)
+                if isinstance(data, Mapping):
+                    merged.update(_flatten_mapping(data))
+    return merged
+
+
+def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in data.items():
+        key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
+        if isinstance(v, Mapping) and k != "codecs":
+            out.update(_flatten_mapping(v, key))
+        else:
+            out[key] = v
+    return out
+
+
+def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, Any]) -> ZarrConfig:
+    """Apply a flat dotted-key override map to a snapshot."""
+    for key, value in overrides.items():
+        cfg = replace_path(cfg, key, value)
+    return cfg
+
+
+def build_config(environ: Mapping[str, str] | None = None) -> ZarrConfig:
+    """Build the base snapshot: defaults < YAML files < environment variables."""
+    if environ is None:
+        environ = os.environ
+    return apply_overrides(
+        apply_overrides(make_default_config(), collect_yaml(_config_search_paths())),
+        collect_env(environ),
+    )
 
 
 class BadConfigError(ValueError):
