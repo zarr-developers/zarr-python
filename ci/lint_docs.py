@@ -44,6 +44,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 DEFAULT_PATHS = (REPO_ROOT / "src" / "zarr", REPO_ROOT / "docs")
@@ -73,11 +74,27 @@ RST_LINK = re.compile(r"`[^`\n]+<https?://[^>\n]+>`_")
 # not matched -- the list-break check only fires on top-level items.
 LIST_ITEM = re.compile(r"^(?:\d+[.)]|[-*+])\s+\S")
 
+
+class Check(NamedTuple):
+    """One docs-residue check: its category, the line pattern that flags it (None for a
+    structural check matched outside ``_scan_line``), and the user-facing remediation
+    shown by ``main()``. Keeping ``example``/``fix`` here makes this the single source for
+    the help text, so adding a check can't leave the help out of date."""
+
+    category: str
+    pattern: re.Pattern[str] | None
+    example: str
+    fix: str
+
+
+# ``list-break`` carries no pattern -- it is detected structurally in find_list_breaking_fences,
+# not by scanning a single line -- but it appears here so it shares the remediation help.
 CHECKS = (
-    ("sphinx-role", SPHINX_ROLE),
-    ("rst-directive", RST_DIRECTIVE),
-    ("rst-field", RST_FIELD),
-    ("rst-link", RST_LINK),
+    Check("sphinx-role", SPHINX_ROLE, ":class:`X`", "[`X`][zarr.X]"),
+    Check("rst-directive", RST_DIRECTIVE, ".. note::", "MkDocs admonition (!!! note)"),
+    Check("rst-field", RST_FIELD, ":param x:", "numpydoc Parameters/Returns/Raises section"),
+    Check("rst-link", RST_LINK, "`text <url>`_", "[text](url)"),
+    Check("list-break", None, "fence between items", "indent the fence 4 spaces to nest it"),
 )
 
 
@@ -99,7 +116,7 @@ class Finding:
 def _scan_line(text: str) -> list[str]:
     """Return every RST-residue category found in a single line (a line can carry more
     than one, e.g. a role and an external link)."""
-    return [category for category, pattern in CHECKS if pattern.search(text)]
+    return [c.category for c in CHECKS if c.pattern is not None and c.pattern.search(text)]
 
 
 def lint_python(path: Path) -> list[Finding]:
@@ -130,13 +147,22 @@ def lint_python(path: Path) -> list[Finding]:
     ]
 
 
-def fenced_blocks(lines: list[str]) -> list[tuple[int, int, bool]]:
-    """Index every fenced code block as ``(open_index, close_index, terminated)``, 0-based.
+class Fence(NamedTuple):
+    """A fenced code block, by 0-based line index. ``terminated`` is False when the fence
+    has no closing delimiter before EOF, in which case ``close`` is the last line."""
 
-    ``terminated`` is False for a fence with no closing delimiter before EOF; its
-    ``close_index`` is the last line so callers skipping code can skip to EOF. An
-    unterminated fence is malformed Markdown that `mkdocs build` surfaces anyway."""
-    blocks: list[tuple[int, int, bool]] = []
+    open: int
+    close: int
+    terminated: bool
+
+
+def fenced_blocks(lines: list[str]) -> list[Fence]:
+    """Index every fenced code block in ``lines``.
+
+    An unterminated fence is malformed Markdown that `mkdocs build` surfaces anyway; it is
+    still returned (with ``terminated=False``, ``close`` at the last line) so callers that
+    skip code can skip to EOF."""
+    blocks: list[Fence] = []
     fence: str | None = None
     open_idx = -1
     for i, line in enumerate(lines):
@@ -145,16 +171,14 @@ def fenced_blocks(lines: list[str]) -> list[tuple[int, int, bool]]:
             if stripped.startswith(("```", "~~~")):
                 fence, open_idx = stripped[:3], i
         elif stripped.startswith(fence):
-            blocks.append((open_idx, i, True))
+            blocks.append(Fence(open_idx, i, terminated=True))
             fence = None
     if fence is not None:
-        blocks.append((open_idx, len(lines) - 1, False))
+        blocks.append(Fence(open_idx, len(lines) - 1, terminated=False))
     return blocks
 
 
-def find_list_breaking_fences(
-    lines: list[str], blocks: list[tuple[int, int, bool]]
-) -> list[tuple[int, str]]:
+def find_list_breaking_fences(lines: list[str], blocks: list[Fence]) -> list[tuple[int, str]]:
     """Return ``(lineno, snippet)`` for each fenced code block at column 0 that splits a
     list -- i.e. one whose nearest non-blank neighbours on both sides are top-level list
     items. Such a fence is not indented into the preceding item, so Markdown closes the
@@ -181,9 +205,9 @@ def find_list_breaking_fences(
         return bool(before and after and LIST_ITEM.match(before) and LIST_ITEM.match(after))
 
     return [
-        (open_i + 1, lines[open_i])
-        for open_i, close_i, terminated in blocks
-        if terminated and splits_a_list(open_i, close_i)
+        (fence.open + 1, lines[fence.open])
+        for fence in blocks
+        if fence.terminated and splits_a_list(fence.open, fence.close)
     ]
 
 
@@ -192,7 +216,7 @@ def lint_markdown(path: Path) -> list[Finding]:
     fenced code blocks that break a list (see find_list_breaking_fences)."""
     lines = path.read_text(encoding="utf-8").splitlines()
     blocks = fenced_blocks(lines)
-    in_code = {i for open_i, close_i, _ in blocks for i in range(open_i, close_i + 1)}
+    in_code = {i for fence in blocks for i in range(fence.open, fence.close + 1)}
 
     prose = [
         Finding(path, lineno, category, line)
@@ -248,13 +272,9 @@ def main() -> int:
     )
     for finding in findings:
         print(finding.format(), file=sys.stderr)
+    remediation = "\n".join(f"  {c.category:<13} {c.example:<19} -> {c.fix}" for c in CHECKS)
     print(
-        "\nFix each issue (see ci/lint_docs.py header):\n"
-        "  sphinx-role   :class:`X`           -> [`X`][zarr.X]\n"
-        "  rst-directive .. note::            -> MkDocs admonition (!!! note)\n"
-        "  rst-field     :param x:            -> numpydoc Parameters/Returns/Raises section\n"
-        "  rst-link      `text <url>`_        -> [text](url)\n"
-        "  list-break    fence between items  -> indent the fence 4 spaces to nest it",
+        f"\nFix each issue (see ci/lint_docs.py header):\n{remediation}",
         file=sys.stderr,
     )
     return 1
