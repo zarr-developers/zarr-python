@@ -387,16 +387,18 @@ A deprecation cycle has a real cost: every user of the affected API must eventua
 - **Who benefits.** Benefits can include improved functionality, usability, and performance for users, as well as lower maintenance cost and better future extensibility for developers. A change that gives users something they want is a stronger case than one that benefits only maintainers, since users pay the migration cost either way.
 - **Whether the goal can be met without removal.** Often a refactor, an alias, or an additive change achieves the same end without breaking anyone. Prefer those. Removing public API is never free; the deprecation cycle is the price, and it is mandatory.
 
-If, after weighing these factors, a removal is not clearly worthwhile, prefer to keep the API. Conversely, do not leave the decision to remove an API indefinitely deferred: a vague intention to "eventually" break something is itself a form of technical debt. Either commit to the deprecation and begin the cycle, or decide to keep the API and design around it.
+If, after weighing these factors, a removal is not clearly worthwhile, prefer to keep the API. A deprecation warning is a commitment to remove: if you only want to steer users away from an API without removing it, say so in its documentation rather than emitting a warning. Conversely, do not leave a decision to remove an API indefinitely deferred: a vague intention to "eventually" break something is itself a form of technical debt. Either commit to the deprecation and begin the cycle, or decide to keep the API and design around it.
 
 #### How to deprecate
 
 Once a deprecation is decided, it must follow these steps so that users get a consistent, actionable signal:
 
-1. **Emit a warning at runtime.** Raise `zarr.errors.ZarrDeprecationWarning` for an API that will be *removed*. Use `zarr.errors.ZarrFutureWarning` instead when behavior will *change* rather than disappear (for example, a default value that will change), since `FutureWarning` is shown to end users by default. The [`typing_extensions.deprecated`](https://typing-extensions.readthedocs.io/en/latest/#deprecated) decorator is the preferred way to deprecate whole functions, methods, and classes.
+1. **Emit a warning at runtime.** Raise `zarr.errors.ZarrDeprecationWarning` for an API that will be *removed*. Use `zarr.errors.ZarrFutureWarning` instead when behavior will *change* rather than disappear (for example, a default value that will change), since `FutureWarning` is shown to end users by default. The [`typing_extensions.deprecated`](https://typing-extensions.readthedocs.io/en/latest/#deprecated) decorator is the preferred way to deprecate whole functions, methods, and classes. When calling `warnings.warn` directly, set `stacklevel` so the warning points at the caller's code rather than zarr internals.
 2. **Write an actionable message.** The warning message must state the release the deprecation first appeared in, the planned removal (a specific version if known, otherwise "a future release"), and the migration path -- what the user should do instead. A deprecation warning with no replacement guidance is incomplete.
 3. **Document it.** Mark the deprecation in the docstring (via the `deprecated` decorator or a "Deprecated" admonition) so it appears in the rendered API documentation, and update any affected user-guide prose.
 4. **Add a changelog entry.** Add a `removal` changelog fragment in `changes/` (for example, `changes/1234.removal.md`) so the deprecation is announced under "Deprecations and Removals" in the release notes. When the API is finally removed, add a second `removal` fragment for that release.
+
+When an API is being replaced rather than simply dropped, deprecate the old name and introduce its replacement in a single step, rather than repeatedly adjusting the same signature across releases. Users should have to migrate only once.
 
 #### How long a deprecation lasts
 
