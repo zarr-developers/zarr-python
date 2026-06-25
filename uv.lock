@@ -4078,13 +4078,13 @@ requires-dist = [
     { name = "donfig", specifier = ">=0.8" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2023.10.0" },
     { name = "google-crc32c", specifier = ">=1.5" },
-    { name = "numcodecs", specifier = ">=0.14" },
+    { name = "numcodecs", specifier = ">=0.14.1" },
     { name = "numpy", specifier = ">=2" },
     { name = "obstore", marker = "extra == 'remote'", specifier = ">=0.5.1" },
     { name = "packaging", specifier = ">=22.0" },
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
-    { name = "universal-pathlib", marker = "extra == 'optional'" },
+    { name = "universal-pathlib", marker = "extra == 'optional'", specifier = ">=0.2.0" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 

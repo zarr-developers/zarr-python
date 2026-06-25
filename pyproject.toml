@@ -74,7 +74,7 @@ gpu = [
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
-optional = ["universal-pathlib"]
+optional = ["universal-pathlib>=0.2.0"]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
