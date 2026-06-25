@@ -456,27 +456,33 @@ def test_build_config_environ_yaml_path_is_read(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _structured_leaf_keys(cfg_cls: type, prefix: str = "") -> list[str]:
-    """Walk a settings dataclass recursively and return every dotted leaf key.
+def _structured_leaf_specs(cfg_cls: type, prefix: str = "") -> dict[str, object]:
+    """Walk a settings dataclass recursively and return ``{dotted_key: resolved_type}``.
 
     Uses ``typing.get_type_hints`` instead of ``f.type`` so that the
     ``from __future__ import annotations`` string-annotation form is resolved
-    to real types before ``dataclasses.is_dataclass`` is called.
+    to real types before ``dataclasses.is_dataclass`` is called.  The open
+    ``codecs`` mapping is intentionally excluded.
     """
-    keys: list[str] = []
+    specs: dict[str, object] = {}
     resolved_hints = typing.get_type_hints(cfg_cls)
     for f in dataclasses.fields(cfg_cls):
         serialized = _SERIALIZED_NAMES.get(f.name, f.name)
         key = f"{prefix}.{serialized}" if prefix else serialized
         resolved_type = resolved_hints[f.name]
         if dataclasses.is_dataclass(resolved_type):
-            keys.extend(_structured_leaf_keys(typing.cast(type, resolved_type), key))
+            specs.update(_structured_leaf_specs(typing.cast(type, resolved_type), key))
         elif f.name == "codecs":
             # open mapping — intentionally not enumerated
             continue
         else:
-            keys.append(key)
-    return keys
+            specs[key] = resolved_type
+    return specs
+
+
+def _structured_leaf_keys(cfg_cls: type, prefix: str = "") -> list[str]:
+    """Return every dotted leaf key for a settings dataclass (derived from specs)."""
+    return list(_structured_leaf_specs(cfg_cls, prefix))
 
 
 def test_every_structured_key_has_a_get_overload() -> None:
@@ -493,6 +499,48 @@ def test_every_structured_key_has_a_get_overload() -> None:
     assert not missing, f"get() overloads missing for: {sorted(missing)}"
 
 
+def test_get_overload_return_types_match_fields() -> None:
+    """Assert that each get() overload's return type matches the dataclass field type.
+
+    Builds two maps using ``typing.get_type_hints`` — one from the dataclass
+    field annotations, one from the overload return hints — then compares them
+    key by key.  A mismatch (e.g. ``-> str`` instead of ``-> Literal["C","F"]``)
+    is reported as a clear failure rather than a missing-overload failure.
+    """
+    # Build map: key -> return type from overloads
+    overloads = typing.get_overloads(ZarrConfigManager.get)
+    overload_return: dict[str, object] = {}
+    for ov in overloads:
+        hints = typing.get_type_hints(ov)
+        key_hint = hints.get("key")
+        if typing.get_origin(key_hint) is typing.Literal:
+            (literal_val,) = typing.get_args(key_hint)
+            overload_return[literal_val] = hints["return"]
+
+    # Build map: key -> field type from the dataclass schema
+    field_specs = _structured_leaf_specs(ZarrConfig)
+
+    missing: list[str] = []
+    mismatched: list[str] = []
+    for key, expected_type in field_specs.items():
+        if key not in overload_return:
+            missing.append(f"  {key!r}: missing overload")
+        elif overload_return[key] != expected_type:
+            mismatched.append(
+                f"  {key!r}: overload returns {overload_return[key]!r},"
+                f" field type is {expected_type!r}"
+            )
+
+    errors: list[str] = []
+    if missing:
+        errors.append("get() overloads missing for keys:\n" + "\n".join(missing))
+    if mismatched:
+        errors.append(
+            "get() overload return types do not match field types:\n" + "\n".join(mismatched)
+        )
+    assert not errors, "\n\n".join(errors)
+
+
 # ---------------------------------------------------------------------------
 # Static-typing smoke test (only checked by mypy, not executed at runtime)
 # ---------------------------------------------------------------------------
@@ -500,6 +548,23 @@ def test_every_structured_key_has_a_get_overload() -> None:
 if typing.TYPE_CHECKING:
 
     def _typing_smoke(cfg: ZarrConfigManager) -> None:
+        # --- positive assertions: each distinct return shape ---
         typing.assert_type(cfg.get("array.order"), typing.Literal["C", "F"])
-        typing.assert_type(cfg.array.order, typing.Literal["C", "F"])
         typing.assert_type(cfg.get("async.concurrency"), int)
+        typing.assert_type(cfg.get("array.write_empty_chunks"), bool)
+        typing.assert_type(cfg.get("async.timeout"), float | None)
+        typing.assert_type(cfg.get("threading.max_workers"), int | None)
+        typing.assert_type(cfg.get("default_zarr_format"), typing.Literal[2, 3])
+        typing.assert_type(cfg.get("buffer"), str)
+        typing.assert_type(cfg.array.order, typing.Literal["C", "F"])
+
+        # --- negative: precision-from-above guards ---
+        # The return type is Literal["C","F"], which is narrower than str.
+        # If the overload were widened to -> str, assert_type would pass and
+        # the ignore below would become unused, causing warn_unused_ignores to
+        # fail CI.
+        typing.assert_type(cfg.get("array.order"), str)  # type: ignore[assert-type]
+        typing.assert_type(cfg.get("default_zarr_format"), int)  # type: ignore[assert-type]
+
+        # --- negative: bad key type must be rejected by all overloads ---
+        cfg.get(123)  # type: ignore[call-overload]
