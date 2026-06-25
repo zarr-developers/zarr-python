@@ -119,6 +119,47 @@ Notes:
   layers translate correctly. Attribute access for `async` is only available via
   the string API (`config.get("async.concurrency")`); this matches donfig, which
   also has no `config.async` attribute.
+
+#### Why the `async_` alias is unavoidable (and harmless)
+
+A natural objection: the `async_` alias is ugly — can't a programmatic
+`TypedDict("ZarrConfig", {"async": int, ...})` keep the real key `"async"` and
+avoid the alias? It can keep the *string* key, but it does **not** avoid the
+problem, because the constraint here is a **syntax** rule, not a typing one:
+
+- `async` has been a hard keyword since Python 3.7. `config.async` is a
+  `SyntaxError` regardless of the type machinery behind it. `getattr(config,
+  "async")` works at runtime but cannot be statically typed precisely. So
+  attribute access to a field literally named `async` is impossible in any
+  approach.
+- Functional/programmatic `TypedDict` does **not** lose static typing — type
+  checkers fully support `cfg["async"]` typed from a functional TypedDict. But it
+  does not rescue attribute access either; it merely moves you from `config.async`
+  (illegal) to `config["async"]` (subscript). It buys nothing the alias didn't,
+  and it gives up the natural dotted-attribute ergonomics (`config.array.order`)
+  for *every other* namespace, which would then also be subscript access.
+
+So the real axis is attribute-access vs subscript/string-access, not "typed vs
+untyped". Every option is fully typed; only `config.async` (the attribute form) is
+forbidden, by Python syntax, in all of them.
+
+Crucially, this is confined to the new typed-attribute convenience and does **not**
+touch backwards compatibility. donfig never exposed a `config.async` attribute; the
+only place `async` appears today is the *string key* `"async.concurrency"` (and the
+env var `ZARR_ASYNC__CONCURRENCY`). Those are strings and behave identically
+whether the schema is a dataclass or a TypedDict, and the serialized key stays
+`"async"`. Therefore we keep both, fully typed:
+
+- `config.get("async.concurrency") -> int` — the real key, full backwards compat,
+  the **primary** documented path.
+- `config.async_.concurrency -> int` — the optional typed-attribute convenience,
+  with the alias documented.
+
+Net: the dataclass approach keeps full static typing *and* clean attribute access
+for every namespace except the one Python forbids by syntax — and for that one, no
+approach can do better than an alias or a subscript. The `async_` wrinkle is
+cosmetic, confined to attribute access, and costs nothing on the compatibility
+surface that matters.
 - `codecs` is an open `Mapping[str, str]` subtree (per design decision): users
   register arbitrary codec names at runtime via `config.set({"codecs.foo": ...})`
   and `ZARR_CODECS__FOO=...`. Structured keys get precise static types; codec keys
