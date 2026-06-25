@@ -20,24 +20,52 @@ if TYPE_CHECKING:
 # live in the in-memory range cache.
 _CacheEntryKey = str | tuple[str, ByteRequest]
 
+# Nominal byte cost charged to ``max_size`` for a negative (known-absent) entry.
+# Such entries carry no data, but each one occupies an index slot (the key plus a
+# small ``_Entry`` record), so it is charged a flat overhead.  This lets a single
+# ``max_size`` budget bound *total* cache memory — cached values and miss-markers
+# together — rather than letting negative entries grow without limit.
+_NEGATIVE_ENTRY_SIZE = 128
+
+
+@dataclass(slots=True)
+class _Entry:
+    """A single cache slot, tracked in :attr:`_CacheState.entries`.
+
+    ``present=True`` (the default): a value is cached for this key — in the
+    Store-backed cache for full keys, or the in-memory range cache for
+    byte-range keys — occupying ``size`` bytes.
+
+    ``present=False``: the full key is known-*absent* in the source store (a
+    negative-cache entry). It carries no data, but is charged a flat
+    ``_NEGATIVE_ENTRY_SIZE`` against ``max_size`` for the index slot it occupies,
+    so cached values and miss-markers share one memory budget. Its staleness is
+    bounded by ``max_age_seconds``.
+
+    Because every key maps to exactly one ``_Entry``, "present" and "absent" are
+    mutually exclusive by construction: a key cannot simultaneously be cached and
+    marked missing.
+    """
+
+    insert_time: float
+    size: int = 0
+    present: bool = True
+
 
 @dataclass(slots=True)
 class _CacheState:
-    cache_order: OrderedDict[_CacheEntryKey, None] = field(default_factory=OrderedDict)
+    # Single source of truth for every tracked key (full-key and byte-range,
+    # present and absent).  Ordered for LRU eviction; ``move_to_end`` marks a key
+    # most-recently-used.  Replaces the former parallel cache_order / key_sizes /
+    # key_insert_times / missing_keys structures so a key has one unambiguous state.
+    entries: OrderedDict[_CacheEntryKey, _Entry] = field(default_factory=OrderedDict)
     current_size: int = 0
-    key_sizes: dict[_CacheEntryKey, int] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     hits: int = 0
     misses: int = 0
     evictions: int = 0
     negative_hits: int = 0
-    key_insert_times: dict[_CacheEntryKey, float] = field(default_factory=dict)
     range_cache: dict[str, dict[ByteRequest, Buffer]] = field(default_factory=dict)
-    # Negative cache: full keys known to be absent in the source store, mapped to their
-    # (monotonic) insertion time. Used to short-circuit repeat reads of absent keys.
-    # Entries carry no data, so they are kept out of the byte-size accounting above;
-    # staleness is bounded by ``max_age_seconds``.
-    missing_keys: dict[str, float] = field(default_factory=dict)
 
 
 class CacheStore(WrapperStore[Store]):
@@ -83,11 +111,13 @@ class CacheStore(WrapperStore[Store]):
           expires, so a key written to the source by another process stays invisible
           through this cache. Pair ``cache_missing=True`` with a finite
           ``max_age_seconds`` if the source may be written concurrently.
-        - Like the positive cache (which is unbounded when ``max_size is None``), the
-          negative cache is bounded only by ``max_age_seconds``. With an infinite TTL,
-          a scan over a very large sparse key space will accumulate one small entry per
-          absent key. Set a finite ``max_age_seconds`` (or ``cache_missing=False``) for
-          such workloads.
+        - Negative entries share the ``max_size`` budget with cached values: each is
+          charged a small flat overhead, and under memory pressure miss-markers are
+          evicted (least-recently-used first) before any cached value. A single
+          ``max_size`` therefore bounds *total* cache memory. When ``max_size is None``
+          both caches are unbounded, so a scan over a very large sparse key space will
+          accumulate one small entry per absent key; set ``max_size`` (and/or a finite
+          ``max_age_seconds``, or ``cache_missing=False``) for such workloads.
 
     Examples
     --------
@@ -170,55 +200,83 @@ class CacheStore(WrapperStore[Store]):
         store._state = self._state
         return store
 
-    def _is_key_fresh(self, entry_key: _CacheEntryKey) -> bool:
-        """Check if a cached entry is still fresh based on max_age_seconds.
+    def _is_fresh(self, entry_key: _CacheEntryKey) -> bool:
+        """Check if a tracked entry (present or absent) is still fresh.
 
-        Uses monotonic time for accurate elapsed time measurement.
+        Uses monotonic time for accurate elapsed time measurement.  A key with no
+        entry is treated as not fresh (except under an infinite TTL, matching the
+        previous behaviour of routing unseen keys through the cache path).
         """
         if self.max_age_seconds == "infinity":
             return True
-        now = time.monotonic()
-        elapsed = now - self._state.key_insert_times.get(entry_key, 0)
+        entry = self._state.entries.get(entry_key)
+        if entry is None:
+            return False
+        elapsed = time.monotonic() - entry.insert_time
         return elapsed < self.max_age_seconds
 
-    def _is_missing_fresh(self, key: str) -> bool:
-        """Check if a negative (missing-key) entry is still fresh.
-
-        Mirrors ``_is_key_fresh`` but reads the negative-cache insertion time.
-        """
-        if self.max_age_seconds == "infinity":
-            return True
-        elapsed = time.monotonic() - self._state.missing_keys.get(key, 0.0)
-        return elapsed < self.max_age_seconds
-
-    def _record_missing(self, key: str) -> None:
+    async def _record_missing(self, key: str) -> None:
         """Record *key* as known-missing (absent in the source store).
 
-        Must be called while holding ``self._state.lock``. Staleness is bounded by
-        ``max_age_seconds`` via ``_is_missing_fresh``.
+        Overwrites any existing slot for *key*, so a key cannot be both cached and
+        marked missing.  The marker is charged ``_NEGATIVE_ENTRY_SIZE`` against the
+        shared ``max_size`` budget, then the budget is re-enforced (evicting
+        absent entries first).  Must be called while holding ``self._state.lock``.
+        Staleness is bounded by ``max_age_seconds`` via ``_is_fresh``.
         """
-        self._state.missing_keys[key] = time.monotonic()
+        old = self._state.entries.get(key)
+        if old is not None:
+            self._state.current_size = max(0, self._state.current_size - old.size)
+        self._state.entries[key] = _Entry(
+            insert_time=time.monotonic(), size=_NEGATIVE_ENTRY_SIZE, present=False
+        )
+        self._state.entries.move_to_end(key)
+        self._state.current_size += _NEGATIVE_ENTRY_SIZE
+        # Re-enforce the shared budget (no further incoming bytes to reserve).
+        await self._accommodate_value(0)
 
     def _evict_missing(self, key: str) -> None:
         """Drop any negative entry for *key* (it is now present or being written).
 
-        Must be called while holding ``self._state.lock``.
+        Only removes an *absent* slot — a present (cached) value for the same key is
+        left untouched.  Must be called while holding ``self._state.lock``.
         """
-        self._state.missing_keys.pop(key, None)
+        entry = self._state.entries.get(key)
+        if entry is not None and not entry.present:
+            del self._state.entries[key]
 
     async def _accommodate_value(self, value_size: int) -> None:
-        """Ensure there is enough space in the cache for a new value.
+        """Evict until ``value_size`` more bytes fit within ``max_size``.
 
-        Must be called while holding self._state.lock.
+        Eviction is *absent-first*: least-recently-used negative markers are
+        dropped before any cached value, because miss-markers are cheap to
+        regenerate (just re-probe the source) while cached data is not.  A cached
+        value is only evicted once no negative markers remain.  Must be called
+        while holding self._state.lock.
         """
         if self.max_size is None:
             return
 
-        # Remove least recently used items until we have enough space
-        while self._state.current_size + value_size > self.max_size and self._state.cache_order:
-            # Get the least recently used key (first in OrderedDict)
-            lru_key = next(iter(self._state.cache_order))
+        while self._state.current_size + value_size > self.max_size:
+            lru_key = self._next_eviction_candidate()
+            if lru_key is None:
+                break
             await self._evict_key(lru_key)
+
+    def _next_eviction_candidate(self) -> _CacheEntryKey | None:
+        """Return the next entry to evict, preferring absent markers (LRU-first).
+
+        Walks entries in LRU order: the first absent entry found is returned; if
+        none are absent, the least-recently-used present entry is returned.  Must
+        be called while holding self._state.lock.
+        """
+        lru_present: _CacheEntryKey | None = None
+        for entry_key, entry in self._state.entries.items():
+            if not entry.present:
+                return entry_key
+            if lru_present is None:
+                lru_present = entry_key
+        return lru_present
 
     async def _evict_key(self, entry_key: _CacheEntryKey) -> None:
         """Evict a cache entry.
@@ -229,10 +287,13 @@ class CacheStore(WrapperStore[Store]):
         For ``(str, ByteRequest)`` keys the entry is removed from the
         in-memory range cache.
         """
-        key_size = self._state.key_sizes.get(entry_key, 0)
+        entry = self._state.entries.pop(entry_key, None)
+        key_size = entry.size if entry is not None else 0
 
         if isinstance(entry_key, str):
-            await self._cache.delete(entry_key)
+            # Absent markers store no value in the backing cache — skip the delete.
+            if entry is None or entry.present:
+                await self._cache.delete(entry_key)
         else:
             base_key, byte_range = entry_key
             per_key = self._state.range_cache.get(base_key)
@@ -241,9 +302,6 @@ class CacheStore(WrapperStore[Store]):
                 if not per_key:
                     del self._state.range_cache[base_key]
 
-        self._state.cache_order.pop(entry_key, None)
-        self._state.key_insert_times.pop(entry_key, None)
-        self._state.key_sizes.pop(entry_key, None)
         self._state.current_size = max(0, self._state.current_size - key_size)
         self._state.evictions += 1
 
@@ -263,36 +321,38 @@ class CacheStore(WrapperStore[Store]):
             return False
 
         async with self._state.lock:
-            # If key already exists, subtract old size first
-            if entry_key in self._state.key_sizes:
-                old_size = self._state.key_sizes[entry_key]
-                self._state.current_size -= old_size
+            # If key already exists, subtract old size first (an absent slot has
+            # size 0, so this also cleanly upgrades a negative entry to present).
+            old = self._state.entries.get(entry_key)
+            if old is not None:
+                self._state.current_size -= old.size
 
             # Make room for the new value
             await self._accommodate_value(value_size)
 
-            # Update tracking atomically
-            self._state.cache_order[entry_key] = None
+            # Update tracking atomically.  Assigning to an existing key preserves
+            # its LRU position, matching the previous behaviour.
+            self._state.entries[entry_key] = _Entry(
+                insert_time=time.monotonic(), size=value_size, present=True
+            )
             self._state.current_size += value_size
-            self._state.key_sizes[entry_key] = value_size
-            self._state.key_insert_times[entry_key] = time.monotonic()
 
         return True
 
     async def _update_access_order(self, entry_key: _CacheEntryKey) -> None:
         """Update the access order for LRU tracking."""
-        if entry_key in self._state.cache_order:
+        if entry_key in self._state.entries:
             async with self._state.lock:
-                self._state.cache_order.move_to_end(entry_key)
+                self._state.entries.move_to_end(entry_key)
 
     def _remove_from_tracking(self, entry_key: _CacheEntryKey) -> None:
-        """Remove an entry from all tracking structures.
+        """Remove an entry from tracking, reclaiming any bytes it accounted for.
 
         Must be called while holding self._state.lock.
         """
-        self._state.cache_order.pop(entry_key, None)
-        self._state.key_insert_times.pop(entry_key, None)
-        self._state.key_sizes.pop(entry_key, None)
+        entry = self._state.entries.pop(entry_key, None)
+        if entry is not None:
+            self._state.current_size = max(0, self._state.current_size - entry.size)
 
     def _invalidate_range_entries(self, key: str) -> None:
         """Remove all byte-range entries for *key* from the range cache and tracking.
@@ -303,10 +363,9 @@ class CacheStore(WrapperStore[Store]):
         if per_key is not None:
             for byte_range in per_key:
                 entry_key: _CacheEntryKey = (key, byte_range)
-                entry_size = self._state.key_sizes.pop(entry_key, 0)
-                self._state.cache_order.pop(entry_key, None)
-                self._state.key_insert_times.pop(entry_key, None)
-                self._state.current_size = max(0, self._state.current_size - entry_size)
+                entry = self._state.entries.pop(entry_key, None)
+                if entry is not None:
+                    self._state.current_size = max(0, self._state.current_size - entry.size)
 
     # ------------------------------------------------------------------
     # get helpers
@@ -324,7 +383,7 @@ class CacheStore(WrapperStore[Store]):
                     # The key is absent in the source: remember the miss so a repeat
                     # read can short-circuit without a source round-trip.
                     if self.cache_missing:
-                        self._record_missing(key)
+                        await self._record_missing(key)
             else:
                 entry_key: _CacheEntryKey = (key, byte_range)
                 async with self._state.lock:
@@ -337,11 +396,10 @@ class CacheStore(WrapperStore[Store]):
         else:
             if byte_range is None:
                 await self._cache.set(key, result)
+                # ``_track_entry`` overwrites the key's single slot with a present
+                # entry, so any prior negative marker is structurally replaced —
+                # no separate negative-cache eviction is needed here.
                 await self._track_entry(key, result)
-                # A value now exists for this key: drop any stale negative entry.
-                if self.cache_missing:
-                    async with self._state.lock:
-                        self._evict_missing(key)
             else:
                 entry_key = (key, byte_range)
                 self._state.range_cache.setdefault(key, {})[byte_range] = result
@@ -420,12 +478,13 @@ class CacheStore(WrapperStore[Store]):
         # key has no positive entry and would otherwise be routed straight to the source.
         if self.cache_missing and byte_range is None:
             async with self._state.lock:
-                if key in self._state.missing_keys and self._is_missing_fresh(key):
+                entry = self._state.entries.get(key)
+                if entry is not None and not entry.present and self._is_fresh(key):
                     self._state.negative_hits += 1
                     return None
 
         entry_key: _CacheEntryKey = (key, byte_range) if byte_range is not None else key
-        if not self._is_key_fresh(entry_key):
+        if not self._is_fresh(entry_key):
             return await self._get_no_cache(key, prototype, byte_range)
         else:
             return await self._get_try_cache(key, prototype, byte_range)
@@ -495,6 +554,8 @@ class CacheStore(WrapperStore[Store]):
 
     def cache_info(self) -> dict[str, Any]:
         """Return information about the cache state."""
+        present = sum(1 for entry in self._state.entries.values() if entry.present)
+        missing = len(self._state.entries) - present
         return {
             "cache_store_type": type(self._cache).__name__,
             "max_age_seconds": "infinity"
@@ -504,9 +565,9 @@ class CacheStore(WrapperStore[Store]):
             "current_size": self._state.current_size,
             "cache_set_data": self.cache_set_data,
             "cache_missing": self.cache_missing,
-            "tracked_keys": len(self._state.key_insert_times),
-            "cached_keys": len(self._state.cache_order),
-            "missing_keys": len(self._state.missing_keys),
+            "tracked_keys": len(self._state.entries),
+            "cached_keys": present,
+            "missing_keys": missing,
         }
 
     def cache_stats(self) -> dict[str, Any]:
@@ -535,16 +596,14 @@ class CacheStore(WrapperStore[Store]):
 
         # Reset tracking
         async with self._state.lock:
-            self._state.key_insert_times.clear()
-            self._state.cache_order.clear()
-            self._state.key_sizes.clear()
+            self._state.entries.clear()
             self._state.range_cache.clear()
-            self._state.missing_keys.clear()
             self._state.current_size = 0
             self._state.negative_hits = 0
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""
+        cached_keys = sum(1 for entry in self._state.entries.values() if entry.present)
         return (
             f"{self.__class__.__name__}("
             f"store={self._store!r}, "
@@ -552,5 +611,5 @@ class CacheStore(WrapperStore[Store]):
             f"max_age_seconds={self.max_age_seconds}, "
             f"max_size={self.max_size}, "
             f"current_size={self._state.current_size}, "
-            f"cached_keys={len(self._state.cache_order)})"
+            f"cached_keys={cached_keys})"
         )
