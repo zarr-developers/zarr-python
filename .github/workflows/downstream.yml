@@ -21,38 +21,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Check out xarray
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: pydata/xarray
           path: xarray
           persist-credentials: false
 
-      - name: Set up pixi
-        uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
+      # We install xarray with plain pip/uv rather than pixi. pixi solves
+      # xarray's entire manifest (it has no committed lockfile), which drags in
+      # the `mypy-upstream` environment; that environment sources numcodecs from
+      # git and fails to build under newer pixi with
+      # `meson-python: error: Unknown option "pixi-conda-environment"`, breaking
+      # the job before any test runs. Tests that need a backend we don't install
+      # are skipped via xarray's `requires_*` markers, not failed.
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          manifest-path: xarray/pixi.toml
-          # Only install the environment our steps use. Installing every
-          # environment in xarray's manifest (the default) drags in
-          # `mypy-upstream`, which builds numcodecs from git and fails under
-          # newer pixi with `meson-python: error: Unknown option
-          # "pixi-conda-environment"` — unrelated to the zarr-python branch
-          # under test.
-          environments: test-py313
+          python-version: '3.13'
 
-      - name: Install zarr-python from branch
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install xarray and test dependencies
         working-directory: xarray
-        run: pixi run -e test-py313 -- pip install --no-deps ..
+        run: |
+          uv venv
+          # xarray's pytest tooling lives in the PEP 735 `dev` dependency group;
+          # the zarr-relevant backends come from the `io` and `parallel` extras.
+          uv pip install --group dev ".[io,parallel,accel]"
+
+      - name: Override zarr-python with branch version
+        working-directory: xarray
+        run: uv pip install --no-deps ..
 
       - name: Show versions
         working-directory: xarray
         run: |
-          pixi run -e test-py313 -- python -c "
+          uv run python -c "
           import zarr; print(f'zarr {zarr.__version__}')
           import xarray; print(f'xarray {xarray.__version__}')
           "
@@ -60,7 +70,7 @@ jobs:
       - name: Run xarray zarr backend tests
         working-directory: xarray
         run: |
-          pixi run -e test-py313 -- python -m pytest --no-header -q \
+          uv run python -m pytest --no-header -q \
             xarray/tests/test_backends.py \
             xarray/tests/test_backends_api.py \
             xarray/tests/test_backends_datatree.py
@@ -73,13 +83,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out zarr-python
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Check out numcodecs
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: zarr-developers/numcodecs
           fetch-depth: 0
@@ -92,7 +102,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Install numcodecs with test-zarr-main group
         working-directory: numcodecs

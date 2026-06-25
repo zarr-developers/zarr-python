@@ -1,16 +1,21 @@
 import tempfile
-from collections.abc import Callable, Generator
+from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from _pytest.compat import LEGACY_PATH
 
 import zarr
 from zarr import Group
-from zarr.core.common import AccessModeLiteral, ZarrFormat
+from zarr.core.buffer import cpu
+from zarr.core.common import ZARR_JSON, AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
-from zarr.storage._common import contains_array, contains_group, make_store_path
+from zarr.storage._common import (
+    _contains_node_v3,
+    contains_array,
+    contains_group,
+    make_store_path,
+)
 from zarr.storage._utils import (
     _join_paths,
     _normalize_path_keys,
@@ -18,6 +23,9 @@ from zarr.storage._utils import (
     _relativize_path,
     normalize_path,
 )
+
+# contains_array and contains_group share this signature.
+_ContainsFunc = Callable[[StorePath, ZarrFormat], Awaitable[bool]]
 
 
 @pytest.fixture(
@@ -75,15 +83,69 @@ async def test_contains_array(
 
 
 @pytest.mark.parametrize("func", [contains_array, contains_group])
-async def test_contains_invalid_format_raises(
-    local_store: LocalStore, func: Callable[[Any], Any]
-) -> None:
+async def test_contains_invalid_format_raises(local_store: LocalStore, func: _ContainsFunc) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
     with pytest.raises(ValueError):
-        assert await func(store_path, zarr_format="3.0")  # type: ignore[call-arg]
+        assert await func(store_path, "3.0")  # type: ignore[arg-type]
+
+
+async def _write_zarr_json(store_path: StorePath, data: bytes) -> None:
+    """Write raw bytes to the v3 metadata key under `store_path`."""
+    await (store_path / ZARR_JSON).set(cpu.Buffer.from_bytes(data))
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_malformed_json_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is not valid JSON reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"{not valid json")
+    assert await func(store_path, 3) is False
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_non_object_json_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is valid JSON but not an object reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"[1, 2, 3]")
+    assert await func(store_path, 3) is False
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_missing_node_type_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document with no 'node_type' key reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b'{"zarr_format": 3}')
+    assert await func(store_path, 3) is False
+
+
+async def test_contains_node_v3_malformed_json_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not valid JSON."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"{not valid json")
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_non_object_json_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not a JSON object."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"[1, 2, 3]")
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_missing_node_type_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document lacks a 'node_type' key."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b'{"zarr_format": 3}')
+    assert await _contains_node_v3(store_path) == "nothing"
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -100,7 +162,7 @@ async def test_make_store_path_none(path: str) -> None:
 @pytest.mark.parametrize("store_type", [str, Path])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
-    tmpdir: LEGACY_PATH,
+    tmp_path: Path,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
     mode: AccessModeLiteral,
@@ -108,10 +170,10 @@ async def test_make_store_path_local(
     """
     Test the various ways of invoking make_store_path that create a LocalStore
     """
-    store_like = store_type(str(tmpdir))
+    store_like = store_type(str(tmp_path))
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.root) == Path(tmp_path)
     assert store_path.path == normalize_path(path)
     assert store_path.read_only == (mode == "r")
 
@@ -273,7 +335,7 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+def test_different_open_mode(tmp_path: Path) -> None:
     # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
