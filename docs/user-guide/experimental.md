@@ -137,6 +137,51 @@ cache = CacheStore(
 )
 ```
 
+**cache_missing**: Controls *negative caching* — remembering keys that are absent in the
+source store (on by default). Without it, the positive cache cannot help with an absent
+key: there is no value to store, so every read re-pays a source round-trip. This is the
+dominant cost when reading sparse arrays (mostly empty chunks) repeatedly through a cache.
+With `cache_missing=True`, a full-key read that finds the key absent records that absence,
+so subsequent reads of the same key return immediately without consulting the source. The
+remembered miss is evicted when the key is written and respects `max_age_seconds`.
+
+```python exec="true" session="experimental" source="above"
+import asyncio
+from zarr.storage import MemoryStore
+from zarr.core.buffer import default_buffer_prototype
+
+neg_cache = CacheStore(
+    store=MemoryStore(),
+    cache_store=MemoryStore(),
+    cache_missing=True,     # default; pass False to disable
+    max_age_seconds=300,    # recommended: bound staleness of remembered misses
+)
+
+async def read_absent_twice():
+    proto = default_buffer_prototype()
+    await neg_cache.get("c/0", proto)  # first read: real miss, consults the source
+    await neg_cache.get("c/0", proto)  # second read: served from the negative cache
+
+asyncio.run(read_absent_twice())
+
+info = neg_cache.cache_info()
+print(info['cache_missing'])   # True
+print(info['missing_keys'])    # 1 — one remembered absent key
+print(neg_cache.cache_stats()['negative_hits'])  # 1 — one read served without a source round-trip
+```
+
+Negative markers share the `max_size` budget with cached values: each is charged a small
+flat overhead, and under memory pressure markers are evicted (least-recently-used first)
+before any cached value, so a flood of empty-chunk reads can never evict real cached data.
+Only full-key reads are affected — byte-range reads and `exists()` are unchanged.
+
+> **Note:** With the default `max_age_seconds="infinity"`, a remembered miss never expires,
+> so a key written to the source by another process stays invisible through the cache until
+> it is written through the cache. Pair `cache_missing=True` with a finite `max_age_seconds`
+> when the source may be written concurrently. For very large sparse arrays, prefer the
+> array-level sparse-read primitives `zarr.shards_initialized` / `zarr.read_regions`, which
+> read only populated chunks and avoid the empty-chunk reads entirely.
+
 ## Cache Statistics
 
 The CacheStore provides statistics to monitor cache performance and state:
@@ -155,9 +200,19 @@ print(info['current_size'])
 print(info['tracked_keys'])
 print(info['cached_keys'])
 print(info['cache_set_data'])
+print(info['cache_missing'])     # negative caching enabled?
+print(info['missing_keys'])      # number of remembered absent keys
+
+# cache_stats() reports hit/miss counts and negative-cache activity
+stats = cached_store.cache_stats()
+print(stats['hits'])
+print(stats['misses'])
+print(stats['negative_hits'])    # absent-key reads served without a source round-trip
 ```
 
 The `cache_info()` method returns a dictionary with detailed information about the cache state.
+A negative hit (an absent key served from the negative cache) is reported separately as
+`negative_hits` and counts as neither a hit nor a miss, so it does not affect `hit_rate`.
 
 ## Cache Management
 
@@ -185,6 +240,7 @@ The `clear_cache()` method is an async method that clears both the cache store
 4. **Monitor cache statistics**: Use `cache_info()` to tune cache size and access patterns
 5. **Consider data locality**: Group related data accesses together to improve cache efficiency
 6. **Set appropriate expiration**: Use `max_age_seconds` for time-sensitive data or "infinity" for static data
+7. **Negative caching for sparse data**: Leave `cache_missing` on (the default) to skip repeated source round-trips for absent keys; pair it with a finite `max_age_seconds` if the source may be written by another process
 
 ## Working with Different Store Types
 
