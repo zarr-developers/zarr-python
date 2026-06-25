@@ -8,7 +8,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3._common import MetadataFieldV3
+from zarr_metadata.v3._common import MetadataV3
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -16,10 +16,10 @@ SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 ShardingIndexedCodecName = Literal["sharding_indexed"]
 """Literal type of the `name` field of the `sharding_indexed` codec."""
 
-IndexLocation = Literal["start", "end"]
+ShardingIndexLocation = Literal["start", "end"]
 """Literal type of the position of the shard index within the encoded shard."""
 
-INDEX_LOCATION: Final = ("start", "end")
+SHARDING_INDEX_LOCATION: Final = ("start", "end")
 """Tuple of permitted values for the `index_location` field of the `sharding_indexed` codec."""
 
 
@@ -40,9 +40,9 @@ class ShardingIndexedCodecConfiguration(TypedDict):
     """
 
     chunk_shape: tuple[int, ...]
-    codecs: tuple[MetadataFieldV3, ...]
-    index_codecs: tuple[MetadataFieldV3, ...]
-    index_location: NotRequired[IndexLocation]
+    codecs: tuple[MetadataV3, ...]
+    index_codecs: tuple[MetadataV3, ...]
+    index_location: NotRequired[ShardingIndexLocation]
 
 
 class ShardingIndexedCodecObject(TypedDict):
@@ -61,9 +61,9 @@ form is not permitted by the spec for this codec.
 """
 
 __all__ = [
-    "INDEX_LOCATION",
     "SHARDING_INDEXED_CODEC_NAME",
-    "IndexLocation",
+    "SHARDING_INDEX_LOCATION",
+    "ShardingIndexLocation",
     "ShardingIndexedCodecConfiguration",
     "ShardingIndexedCodecMetadata",
     "ShardingIndexedCodecName",
