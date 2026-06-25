@@ -39,7 +39,7 @@ import contextlib
 import os
 import warnings
 from collections.abc import Mapping
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Literal, Self, cast, overload
 
@@ -131,12 +131,12 @@ def make_default_config() -> ZarrConfig:
     return ZarrConfig()
 
 
-def _resolve_field(obj: Any, segment: str) -> str:
+def _resolve_field(obj: object, segment: str) -> str:
     """Translate a serialized key segment to the dataclass field name."""
     return _FIELD_ALIASES.get(segment, segment)
 
 
-def get_path(cfg: ZarrConfig, key: str) -> Any:
+def get_path(cfg: ZarrConfig, key: str) -> object:
     """Read a dotted-string key from a `ZarrConfig` snapshot.
 
     Raises
@@ -144,7 +144,7 @@ def get_path(cfg: ZarrConfig, key: str) -> Any:
     KeyError
         If the key does not resolve to a value.
     """
-    obj: Any = cfg
+    obj: object = cfg
     segments = key.split(".")
     for i, segment in enumerate(segments):
         if isinstance(obj, Mapping):
@@ -161,13 +161,16 @@ def get_path(cfg: ZarrConfig, key: str) -> Any:
     return obj
 
 
-def replace_path(cfg: ZarrConfig, key: str, value: Any) -> ZarrConfig:
+def replace_path(cfg: ZarrConfig, key: str, value: object) -> ZarrConfig:
     """Return a new `ZarrConfig` with the dotted-string key set to ``value``."""
     segments = key.split(".")
     return cast(ZarrConfig, _replace_recursive(cfg, segments, value, key))
 
 
-def _replace_recursive(obj: Any, segments: list[str], value: Any, key: str) -> Any:
+# `obj: Any` is load-bearing here: the function dispatches dynamically between a
+# `Mapping` (codecs subtree) and a dataclass instance, and `dataclasses.replace`
+# requires a dataclass-typed argument that `object` would reject.
+def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -> object:
     segment = segments[0]
     if isinstance(obj, Mapping):
         remainder = ".".join(segments)
@@ -183,8 +186,14 @@ def _replace_recursive(obj: Any, segments: list[str], value: Any, key: str) -> A
 
 
 def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
-    """Convert a `ZarrConfig` to a donfig-style nested dict (serialized keys)."""
+    """Convert a `ZarrConfig` to a donfig-style nested dict (serialized keys).
 
+    Returns a heterogeneous, JSON-like tree (nested dicts and scalars) that
+    callers navigate by key, so `Any` values are appropriate here.
+    """
+
+    # `obj: Any` is also load-bearing: `dataclasses.fields` requires a
+    # dataclass-typed argument that `object` would reject.
     def convert(obj: Any) -> Any:
         if isinstance(obj, Mapping):
             return dict(obj)
@@ -206,7 +215,7 @@ ENV_PREFIX = "ZARR_"
 _ENV_META_VARS: frozenset[str] = frozenset({"ZARR_CONFIG"})
 
 
-def _parse_env_value(raw: str) -> Any:
+def _parse_env_value(raw: str) -> object:
     """Parse an env value with ``ast.literal_eval``; fall back to the raw string."""
     try:
         return ast.literal_eval(raw)
@@ -214,7 +223,7 @@ def _parse_env_value(raw: str) -> Any:
         return raw
 
 
-def collect_env(environ: Mapping[str, str]) -> dict[str, Any]:
+def collect_env(environ: Mapping[str, str]) -> dict[str, object]:
     """Collect ``ZARR_*`` environment variables into a flat dotted-key map.
 
     ``ZARR_FOO__BAR_BAZ=1`` becomes ``{"foo.bar_baz": 1}`` — the key is
@@ -223,7 +232,7 @@ def collect_env(environ: Mapping[str, str]) -> dict[str, Any]:
     Variables listed in ``_ENV_META_VARS`` (e.g. ``ZARR_CONFIG``) are
     directives about where config lives and are skipped.
     """
-    out: dict[str, Any] = {}
+    out: dict[str, object] = {}
     for name, raw in environ.items():
         if not name.startswith(ENV_PREFIX):
             continue
@@ -245,11 +254,11 @@ def _config_search_paths(environ: Mapping[str, str]) -> list[str]:
     return paths
 
 
-def collect_yaml(paths: list[str]) -> dict[str, Any]:
+def collect_yaml(paths: list[str]) -> dict[str, object]:
     """Merge YAML config files found at ``paths`` into a flat dotted-key map."""
     import yaml
 
-    merged: dict[str, Any] = {}
+    merged: dict[str, object] = {}
     for path in paths:
         candidates: list[str] = []
         if os.path.isdir(path):
@@ -269,8 +278,8 @@ def collect_yaml(paths: list[str]) -> dict[str, Any]:
     return merged
 
 
-def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
-    out: dict[str, Any] = {}
+def _flatten_mapping(data: Mapping[str, object], prefix: str = "") -> dict[str, object]:
+    out: dict[str, object] = {}
     for k, v in data.items():
         key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
         if isinstance(v, Mapping):
@@ -280,7 +289,7 @@ def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any
     return out
 
 
-def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, Any]) -> ZarrConfig:
+def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, object]) -> ZarrConfig:
     """Apply a flat dotted-key override map to a snapshot.
 
     Used exclusively by `build_config` for env/YAML ingest.  Unknown keys are
@@ -319,7 +328,9 @@ class _ConfigSet:
     as a ``with`` block restores the prior state on exit.
     """
 
-    def __init__(self, manager: ZarrConfigManager, prev_base: ZarrConfig, token: Any) -> None:
+    def __init__(
+        self, manager: ZarrConfigManager, prev_base: ZarrConfig, token: Token[ZarrConfig]
+    ) -> None:
         self._manager = manager
         self._prev_base = prev_base
         self._token = token
@@ -342,7 +353,7 @@ class ZarrConfigManager:
     def _current(self) -> ZarrConfig:
         return self._scope.get(self._base)
 
-    def _restore(self, prev_base: ZarrConfig, token: Any) -> None:
+    def _restore(self, prev_base: ZarrConfig, token: Token[ZarrConfig]) -> None:
         self._base = prev_base
         self._scope.reset(token)
 
@@ -417,9 +428,12 @@ class ZarrConfigManager:
     @overload
     def get(self, key: Literal["ndbuffer"]) -> str: ...
     @overload
-    def get(self, key: str, default: Any = ...) -> Any: ...
+    # The fallback `-> Any` is deliberate: it lets `config.get("codecs", {})` be
+    # used as a mapping (e.g. `.get(name)` in the registry) and supports unknown
+    # keys. `object` here would force every such call site to narrow first.
+    def get(self, key: str, default: object = ...) -> Any: ...
 
-    def get(self, key: str, default: Any = _MISSING) -> Any:
+    def get(self, key: str, default: object = _MISSING) -> Any:
         resolved = self._apply_deprecation(key, raise_on_removed=False)
         if resolved is None:
             # Key was removed; treat as absent — honour the caller's default.
@@ -456,7 +470,7 @@ class ZarrConfigManager:
     # type checker that supports it (e.g. pyright's open/closed TypedDicts). At
     # that point `set` can take an open TypedDict for static value validation
     # while keeping `codecs.*` open.
-    def set(self, updates: Mapping[str, Any] | None = None, **kwargs: Any) -> _ConfigSet:
+    def set(self, updates: Mapping[str, object] | None = None, **kwargs: object) -> _ConfigSet:
         """Apply one or more config overrides.
 
         Accepts either a mapping of dotted keys to values, keyword arguments
@@ -471,7 +485,7 @@ class ZarrConfigManager:
         rationale (the open `codecs.*` namespace prevents a precise TypedDict
         under current mypy).
         """
-        all_updates: dict[str, Any] = {}
+        all_updates: dict[str, object] = {}
         if updates:
             all_updates.update(updates)
         all_updates.update(kwargs)
@@ -509,7 +523,7 @@ class ZarrConfigManager:
     def to_dict(self) -> dict[str, Any]:
         return to_nested_dict(self._current())
 
-    def update(self, updates: Mapping[str, Any]) -> None:
+    def update(self, updates: Mapping[str, object]) -> None:
         self.set(updates)
 
     def pprint(self) -> None:
@@ -584,8 +598,9 @@ deprecations: dict[str, str | None] = {
 config = ZarrConfigManager()
 
 
-def parse_indexing_order(data: Any) -> Literal["C", "F"]:
+def parse_indexing_order(data: object) -> Literal["C", "F"]:
     if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
+        # the membership check narrows `data` to Literal["C", "F"]
+        return data
     msg = f"Expected one of ('C', 'F'), got {data} instead."
     raise ValueError(msg)
