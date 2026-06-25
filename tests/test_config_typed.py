@@ -6,6 +6,7 @@ import pytest
 
 from zarr.core.config import (
     DEFAULT_CODECS,
+    BadConfigError,
     ZarrConfigManager,
     apply_overrides,
     build_config,
@@ -161,3 +162,31 @@ def test_refresh_not_shadowed_by_prior_scope(monkeypatch: pytest.MonkeyPatch) ->
     # refresh must be visible in THIS context, not shadowed by the prior scope
     assert mgr.get("json_indent") == 7
     assert mgr.get("array.order") == "C"  # the prior permanent set is gone after rebuild
+
+
+# ---------------------------------------------------------------------------
+# Removed-deprecated-key behavior (donfig-faithful)
+# ---------------------------------------------------------------------------
+
+_REMOVED_KEY = "array.v2_default_compressor.numeric"
+
+
+def test_get_removed_deprecated_key_with_default() -> None:
+    """get() with a removed deprecated key and a default must return the default silently."""
+    mgr = ZarrConfigManager()
+    result = mgr.get(_REMOVED_KEY, "fallback")
+    assert result == "fallback"
+
+
+def test_get_removed_deprecated_key_no_default_raises_key_error() -> None:
+    """get() with a removed deprecated key and no default must raise KeyError, not BadConfigError."""
+    mgr = ZarrConfigManager()
+    with pytest.raises(KeyError):
+        mgr.get(_REMOVED_KEY)
+
+
+def test_set_removed_deprecated_key_raises_bad_config_error() -> None:
+    """set() with a removed deprecated key must still raise BadConfigError."""
+    mgr = ZarrConfigManager()
+    with pytest.raises(BadConfigError):
+        mgr.set({_REMOVED_KEY: "some_value"})

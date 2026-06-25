@@ -3,7 +3,7 @@ Typed configuration for zarr.
 
 The module exposes a single `config` object (a `ZarrConfigManager` instance) that
 holds all runtime settings.  Values can be read, overridden, and restored through a
-simple string-key API that mirrors the old donfig interface:
+simple string-key API:
 
 - `config.get(key)` — read a dotted-key value (e.g. `config.get("async.concurrency")`).
 - `config.set({key: value})` — permanent override; also usable as a context manager to
@@ -408,8 +408,9 @@ class ZarrConfigManager:
     def get(self, key: str, default: Any = ...) -> Any: ...
 
     def get(self, key: str, default: Any = _MISSING) -> Any:
-        resolved = self._apply_deprecation(key)
+        resolved = self._apply_deprecation(key, raise_on_removed=False)
         if resolved is None:
+            # Key was removed; treat as absent — honour the caller's default.
             if default is _MISSING:
                 raise KeyError(key)
             return default
@@ -437,9 +438,7 @@ class ZarrConfigManager:
         prev_base = self._base
         new = self._current()
         for key, value in all_updates.items():
-            resolved = self._apply_deprecation(key)
-            if resolved is None:
-                continue
+            resolved = self._apply_deprecation(key, raise_on_removed=True)
             new = replace_path(new, resolved, value)
         self._base = new
         token = self._scope.set(new)
@@ -479,14 +478,38 @@ class ZarrConfigManager:
         _pp.pprint(self.to_dict())
 
     # --- deprecations -----------------------------------------------------
-    def _apply_deprecation(self, key: str) -> str | None:
+    @overload
+    def _apply_deprecation(self, key: str, *, raise_on_removed: Literal[True]) -> str: ...
+    @overload
+    def _apply_deprecation(self, key: str, *, raise_on_removed: Literal[False]) -> str | None: ...
+
+    def _apply_deprecation(self, key: str, *, raise_on_removed: bool) -> str | None:
+        """Resolve a possibly-deprecated config key.
+
+        Parameters
+        ----------
+        key : str
+            The dotted config key supplied by the caller.
+        raise_on_removed : bool
+            When `True` (used by `set`), raise `BadConfigError` if the key has been
+            removed.  When `False` (used by `get`), return `None` instead so the
+            caller can treat the key as absent and honour the caller's default.
+
+        Returns
+        -------
+        str or None
+            The canonical (possibly redirected) key, or `None` when the key was
+            removed and `raise_on_removed` is `False`.
+        """
         if key not in deprecations:
             return key
         new_key = deprecations[key]
         if new_key is None:
-            raise BadConfigError(
-                f"Configuration key {key!r} has been removed and no longer has any effect."
-            )
+            if raise_on_removed:
+                raise BadConfigError(
+                    f"Configuration key {key!r} has been removed and no longer has any effect."
+                )
+            return None
         warnings.warn(
             f"Configuration key {key!r} has been renamed to {new_key!r}.",
             ZarrDeprecationWarning,
