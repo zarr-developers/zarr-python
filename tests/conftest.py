@@ -54,8 +54,6 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from typing import Any, Literal
 
-    from _pytest.compat import LEGACY_PATH
-
     from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import (
@@ -121,14 +119,14 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = await LocalStore.open(str(tmpdir))
+async def store_path(tmp_path: pathlib.Path) -> StorePath:
+    store = await LocalStore.open(str(tmp_path))
     return StorePath(store)
 
 
 @pytest.fixture
-async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return await LocalStore.open(str(tmpdir))
+async def local_store(tmp_path: pathlib.Path) -> LocalStore:
+    return await LocalStore.open(str(tmp_path))
 
 
 @pytest.fixture
@@ -142,26 +140,27 @@ async def memory_store() -> MemoryStore:
 
 
 @pytest.fixture
-async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
-    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
+async def zip_store(tmp_path: pathlib.Path) -> ZipStore:
+    return await ZipStore.open(str(tmp_path / "zarr.zip"), mode="w")
 
 
 @pytest.fixture
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmp_path))
 
 
 @pytest.fixture
-async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store2(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     """Fixture to create a second store for testing copy operations between stores"""
     param = request.param
-    store2_path = tmpdir.mkdir("store2")
+    store2_path = tmp_path / "store2"
+    store2_path.mkdir()
     return await parse_store(param, str(store2_path))
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
+def sync_store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     result = sync(parse_store(request.param, str(tmp_path)))
     if not isinstance(result, Store):
         raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
@@ -176,10 +175,10 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture
-async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = await parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmp_path))
     return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
