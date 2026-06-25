@@ -43,7 +43,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Literal, Self, cast, overload
 
-from zarr.errors import ZarrDeprecationWarning
+from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
 
 DEFAULT_CODECS: dict[str, str] = {
     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -281,9 +281,21 @@ def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any
 
 
 def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, Any]) -> ZarrConfig:
-    """Apply a flat dotted-key override map to a snapshot."""
+    """Apply a flat dotted-key override map to a snapshot.
+
+    Used exclusively by `build_config` for env/YAML ingest.  Unknown keys are
+    skipped with a warning rather than raising, so a stray environment variable
+    or extra YAML key never prevents `import zarr` from succeeding.
+    """
     for key, value in overrides.items():
-        cfg = replace_path(cfg, key, value)
+        try:
+            cfg = replace_path(cfg, key, value)
+        except KeyError:
+            warnings.warn(
+                f"Unrecognized zarr config key {key!r} from environment or YAML — ignoring.",
+                ZarrUserWarning,
+                stacklevel=2,
+            )
     return cfg
 
 

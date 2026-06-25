@@ -190,3 +190,37 @@ def test_set_removed_deprecated_key_raises_bad_config_error() -> None:
     mgr = ZarrConfigManager()
     with pytest.raises(BadConfigError):
         mgr.set({_REMOVED_KEY: "some_value"})
+
+
+# ---------------------------------------------------------------------------
+# Tolerant ingest: unknown env/YAML keys must warn and be skipped, not crash
+# ---------------------------------------------------------------------------
+
+
+def test_build_config_unknown_env_key_warns_and_skips() -> None:
+    """build_config with an unrecognized env var warns and skips it; known keys still apply."""
+    with pytest.warns(UserWarning, match="future.key"):
+        cfg = build_config(environ={"ZARR_FUTURE__KEY": "1", "ZARR_ARRAY__ORDER": "F"})
+    # Known key was applied
+    assert cfg.array.order == "F"
+    # All other fields are still at default
+    default = make_default_config()
+    from dataclasses import fields as dc_fields
+
+    for f in dc_fields(default):
+        if f.name != "array":
+            assert getattr(cfg, f.name) == getattr(default, f.name)
+
+
+def test_apply_overrides_unknown_key_warns_and_returns_default() -> None:
+    """apply_overrides with a totally unknown key warns and returns an otherwise-default config."""
+    default = make_default_config()
+    with pytest.warns(UserWarning, match="totally.bogus.key"):
+        result = apply_overrides(default, {"totally.bogus.key": 123})
+    assert result == default
+
+
+def test_config_set_still_strict_for_unknown_keys() -> None:
+    """config.set() must remain strict: unknown structured keys raise KeyError."""
+    with pytest.raises(KeyError):
+        ZarrConfigManager().set({"totally.bogus.key": 1})
