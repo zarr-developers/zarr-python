@@ -113,25 +113,48 @@ def lint_python(path: Path) -> list[Finding]:
     except SyntaxError as exc:  # pragma: no cover - surfaced, not silently skipped
         return [Finding(path, exc.lineno or 0, "syntax-error", str(exc.msg))]
 
-    findings: list[Finding] = []
     doc_nodes = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    for node in ast.walk(tree):
-        if not isinstance(node, doc_nodes):
-            continue
-        docstring = ast.get_docstring(node, clean=False)
-        if not docstring:
-            continue
-        # node.body[0].value is the docstring literal; its lineno is the line the string
-        # opens on, so content line i maps to source line (start + i).
-        start = node.body[0].value.lineno  # type: ignore[attr-defined]
-        for offset, line in enumerate(docstring.splitlines()):
-            findings.extend(
-                Finding(path, start + offset, category, line) for category in _scan_line(line)
-            )
-    return findings
+    # node.body[0].value is the docstring literal; its lineno is the line the string opens
+    # on, so content line i maps to source line (start + i).
+    docstrings = [
+        (docstring, node.body[0].value.lineno)  # type: ignore[attr-defined]
+        for node in ast.walk(tree)
+        if isinstance(node, doc_nodes)
+        if (docstring := ast.get_docstring(node, clean=False))
+    ]
+    return [
+        Finding(path, start + offset, category, line)
+        for docstring, start in docstrings
+        for offset, line in enumerate(docstring.splitlines())
+        for category in _scan_line(line)
+    ]
 
 
-def find_list_breaking_fences(lines: list[str]) -> list[tuple[int, str]]:
+def fenced_blocks(lines: list[str]) -> list[tuple[int, int, bool]]:
+    """Index every fenced code block as ``(open_index, close_index, terminated)``, 0-based.
+
+    ``terminated`` is False for a fence with no closing delimiter before EOF; its
+    ``close_index`` is the last line so callers skipping code can skip to EOF. An
+    unterminated fence is malformed Markdown that `mkdocs build` surfaces anyway."""
+    blocks: list[tuple[int, int, bool]] = []
+    fence: str | None = None
+    open_idx = -1
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if fence is None:
+            if stripped.startswith(("```", "~~~")):
+                fence, open_idx = stripped[:3], i
+        elif stripped.startswith(fence):
+            blocks.append((open_idx, i, True))
+            fence = None
+    if fence is not None:
+        blocks.append((open_idx, len(lines) - 1, False))
+    return blocks
+
+
+def find_list_breaking_fences(
+    lines: list[str], blocks: list[tuple[int, int, bool]]
+) -> list[tuple[int, str]]:
     """Return ``(lineno, snippet)`` for each fenced code block at column 0 that splits a
     list -- i.e. one whose nearest non-blank neighbours on both sides are top-level list
     items. Such a fence is not indented into the preceding item, so Markdown closes the
@@ -140,21 +163,7 @@ def find_list_breaking_fences(lines: list[str]) -> list[tuple[int, str]]:
 
     Conservative on purpose: it requires a list item *directly* before and after (a
     continuation line or paragraph in between is not matched), keeping false positives low
-    for a check that fails CI."""
-    # Index fenced blocks as (open_index, close_index), 0-based. An unterminated fence is
-    # malformed Markdown that `mkdocs build` will surface, so it is ignored here.
-    blocks: list[tuple[int, int]] = []
-    fence: str | None = None
-    open_idx = -1
-    for i, line in enumerate(lines):
-        stripped = line.lstrip()
-        if fence is None:
-            if stripped.startswith(("```", "~~~")):
-                fence = stripped[:3]
-                open_idx = i
-        elif stripped.startswith(fence):
-            blocks.append((open_idx, i))
-            fence = None
+    for a check that fails CI. Unterminated fences are ignored."""
 
     def neighbour(start: int, step: int) -> str | None:
         j = start + step
@@ -164,43 +173,38 @@ def find_list_breaking_fences(lines: list[str]) -> list[tuple[int, str]]:
             j += step
         return None
 
-    findings: list[tuple[int, str]] = []
-    for open_i, close_i in blocks:
+    def splits_a_list(open_i: int, close_i: int) -> bool:
         if lines[open_i][:1].isspace():
-            continue  # indented fence: already nested in the list item, not a break
+            return False  # indented fence: already nested in the list item, not a break
         before = neighbour(open_i, -1)
         after = neighbour(close_i, +1)
-        if (
-            before is not None
-            and after is not None
-            and LIST_ITEM.match(before)
-            and LIST_ITEM.match(after)
-        ):
-            findings.append((open_i + 1, lines[open_i]))
-    return findings
+        return bool(before and after and LIST_ITEM.match(before) and LIST_ITEM.match(after))
+
+    return [
+        (open_i + 1, lines[open_i])
+        for open_i, close_i, terminated in blocks
+        if terminated and splits_a_list(open_i, close_i)
+    ]
 
 
 def lint_markdown(path: Path) -> list[Finding]:
     """Scan a Markdown file: RST residue in prose (skipping fenced code blocks), plus
     fenced code blocks that break a list (see find_list_breaking_fences)."""
     lines = path.read_text(encoding="utf-8").splitlines()
-    findings: list[Finding] = []
-    fence: str | None = None
-    for lineno, line in enumerate(lines, start=1):
-        stripped = line.lstrip()
-        if fence is None and stripped.startswith(("```", "~~~")):
-            fence = stripped[:3]
-            continue
-        if fence is not None:
-            if stripped.startswith(fence):
-                fence = None
-            continue
-        findings.extend(Finding(path, lineno, category, line) for category in _scan_line(line))
-    findings.extend(
+    blocks = fenced_blocks(lines)
+    in_code = {i for open_i, close_i, _ in blocks for i in range(open_i, close_i + 1)}
+
+    prose = [
+        Finding(path, lineno, category, line)
+        for lineno, line in enumerate(lines, start=1)
+        if lineno - 1 not in in_code
+        for category in _scan_line(line)
+    ]
+    breaks = [
         Finding(path, lineno, "list-break", snippet)
-        for lineno, snippet in find_list_breaking_fences(lines)
-    )
-    return findings
+        for lineno, snippet in find_list_breaking_fences(lines, blocks)
+    ]
+    return prose + breaks
 
 
 def iter_files(paths: tuple[Path, ...]) -> list[Path]:
@@ -216,14 +220,16 @@ def iter_files(paths: tuple[Path, ...]) -> list[Path]:
     return files
 
 
+LINTERS = {".py": lint_python, ".md": lint_markdown}
+
+
 def lint(paths: tuple[Path, ...]) -> list[Finding]:
-    findings: list[Finding] = []
-    for file in iter_files(paths):
-        if file.suffix == ".py":
-            findings.append(lint_python(file))
-        elif file.suffix == ".md":
-            findings.append(lint_markdown(file))
-    return [f for group in findings for f in group]
+    return [
+        finding
+        for file in iter_files(paths)
+        if file.suffix in LINTERS
+        for finding in LINTERS[file.suffix](file)
+    ]
 
 
 def main() -> int:

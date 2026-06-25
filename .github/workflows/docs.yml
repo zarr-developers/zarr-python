@@ -27,7 +27,7 @@ jobs:
       # Fast source-level guards that need no built site, so they run before the (slower)
       # build for a quick failure: every public export is in the API reference, and no
       # docstring/Markdown carries reStructuredText markup that MkDocs won't render.
-      - run: uv run python ci/check_documented_exports.py
+      - run: uv run python ci/check_documented_exports.py docs/api
       - run: uv run python ci/lint_docs.py
       # --strict turns warnings into errors, so a docs code block that fails to execute
       # at build time (e.g. a non-exec python fence disrupting a later exec="true" block)
