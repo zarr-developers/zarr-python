@@ -41,7 +41,7 @@ import os
 import warnings
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from typing import Any, Literal, Self, cast, overload
 
 from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
@@ -186,37 +186,62 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     return replace(obj, **{field_name: new_child})
 
 
-def _all_keys(cfg: ZarrConfig) -> list[str]:
-    """Return every valid dotted key for ``cfg``.
+_ROSTER_LIMIT = 10
 
-    Includes container keys (e.g. ``array``), leaf keys (e.g. ``array.order``),
-    and the current ``codecs.<name>`` entries.  Used to suggest a close match
-    when an unknown key is requested.
+
+def _children(obj: object) -> list[str]:
+    """Return the immediate child key names of a config node (else an empty list)."""
+    if isinstance(obj, Mapping):
+        return list(obj)
+    if is_dataclass(obj):
+        return [_SERIALIZED_NAMES.get(f.name, f.name) for f in fields(obj)]
+    return []
+
+
+def _resolve_for_suggestion(cfg: ZarrConfig, key: str) -> tuple[str, list[str], str]:
+    """Walk ``key`` as far as it resolves.
+
+    Returns the deepest resolvable dotted prefix, that node's child key names,
+    and the first segment that failed to resolve (the remainder is treated as a
+    single key once an open mapping like ``codecs`` is reached). For
+    ``"array.bogus"`` this is ``("array", [<ArraySettings fields>], "bogus")``;
+    for an unknown top-level key, ``("", [<top-level keys>], <key>)``.
     """
-    keys: list[str] = []
-
-    # `obj: Any` is load-bearing: `dataclasses.fields` requires a dataclass arg.
-    def walk(obj: Any, prefix: str) -> None:
-        for f in fields(obj):
-            serialized = _SERIALIZED_NAMES.get(f.name, f.name)
-            key = f"{prefix}.{serialized}" if prefix else serialized
-            keys.append(key)
-            value = getattr(obj, f.name)
-            if isinstance(value, Mapping):
-                keys.extend(f"{key}.{name}" for name in value)
-            elif hasattr(type(value), "__dataclass_fields__"):
-                walk(value, key)
-
-    walk(cfg, "")
-    return keys
+    obj: object = cfg
+    prefix = ""
+    segments = key.split(".")
+    for i, segment in enumerate(segments):
+        if isinstance(obj, Mapping):
+            # the remainder indexes into an open mapping as a single key
+            return prefix, _children(obj), ".".join(segments[i:])
+        field_name = _resolve_field(obj, segment)
+        if not hasattr(obj, field_name):
+            return prefix, _children(obj), segment
+        obj = getattr(obj, field_name)
+        prefix = f"{prefix}.{segment}" if prefix else segment
+    return prefix, _children(obj), ""
 
 
 def _unknown_key_error(key: str, cfg: ZarrConfig) -> KeyError:
-    """Build a `KeyError` for an unknown config key, suggesting the closest match."""
+    """Build a `KeyError` for an unknown config key.
+
+    Resolves ``key`` to the deepest valid level, then suggests the closest child
+    key there if one is similar enough; otherwise lists the available keys at
+    that level (capped at `_ROSTER_LIMIT`).
+    """
     msg = f"{key!r} is not a valid configuration key."
-    matches = difflib.get_close_matches(key, _all_keys(cfg), n=1)
-    if matches:
-        msg += f" Did you mean {matches[0]!r}?"
+    prefix, children, failed = _resolve_for_suggestion(cfg, key)
+    matches = difflib.get_close_matches(failed, children, n=1) if failed != "" else []
+    if len(matches) > 0:
+        suggestion = f"{prefix}.{matches[0]}" if prefix != "" else matches[0]
+        return KeyError(f"{msg} Did you mean {suggestion!r}?")
+    if len(children) > 0:
+        shown = sorted(children)
+        roster = ", ".join(shown[:_ROSTER_LIMIT])
+        if len(shown) > _ROSTER_LIMIT:
+            roster += f", ... ({len(shown) - _ROSTER_LIMIT} more)"
+        where = f" under {prefix!r}" if prefix != "" else ""
+        msg = f"{msg} Valid keys{where}: {roster}."
     return KeyError(msg)
 
 

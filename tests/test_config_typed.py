@@ -299,18 +299,41 @@ def test_set_invalid_key_raises(case: ExpectFail[dict[str, object]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectFail(input="array.0rder", exception=KeyError, msg=r"array\.order", id="get-typo"),
+        # close match at the deepest resolvable level -> "Did you mean ...?"
         ExpectFail(
-            input="zzzzzzzz",
+            input="arr4y", exception=KeyError, msg=r"Did you mean .array.", id="suggest-top"
+        ),
+        ExpectFail(
+            input="array.0rder",
             exception=KeyError,
-            msg="not a valid configuration key",
-            id="get-no-match",
+            msg=r"Did you mean .array\.order.",
+            id="suggest-nested",
+        ),
+        ExpectFail(
+            input="codecs.bl0sc",
+            exception=KeyError,
+            msg=r"Did you mean .codecs\.blosc.",
+            id="suggest-codec",
+        ),
+        # no close match -> roster of available keys at the last resolvable level
+        ExpectFail(input="foo", exception=KeyError, msg=r"Valid keys: .*array", id="roster-top"),
+        ExpectFail(
+            input="array.foo",
+            exception=KeyError,
+            msg=r"Valid keys under .array.: .*order",
+            id="roster-nested",
+        ),
+        ExpectFail(
+            input="codecs.zzzzzzzz",
+            exception=KeyError,
+            msg=r"under .codecs.: .*more\)",
+            id="roster-truncated",
         ),
     ],
     ids=lambda c: c.id,
 )
 def test_get_unknown_key_message(case: ExpectFail[str]) -> None:
-    """get() on an unknown key reports it and suggests the closest valid key."""
+    """get() on an unknown key suggests the closest key or lists what's available."""
     with case.raises():
         ZarrConfigManager().get(case.input)
 
@@ -319,13 +342,22 @@ def test_get_unknown_key_message(case: ExpectFail[str]) -> None:
     "case",
     [
         ExpectFail(
-            input={"array.0rder": "F"}, exception=KeyError, msg=r"array\.order", id="set-typo"
+            input={"array.0rder": "F"},
+            exception=KeyError,
+            msg=r"Did you mean .array\.order.",
+            id="set-suggest",
+        ),
+        ExpectFail(
+            input={"array.foo": "F"},
+            exception=KeyError,
+            msg=r"Valid keys under .array.: .*order",
+            id="set-roster",
         ),
     ],
     ids=lambda c: c.id,
 )
 def test_set_unknown_key_message(case: ExpectFail[dict[str, object]]) -> None:
-    """set() on an unknown structured key suggests the closest valid key."""
+    """set() shares the same helpful unknown-key error as get()."""
     with case.raises():
         ZarrConfigManager().set(case.input)
 
