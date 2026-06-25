@@ -18,10 +18,10 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12']
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: conda-incubator/setup-miniconda@v3.2.0
+      - uses: conda-incubator/setup-miniconda@v4.0.1
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
