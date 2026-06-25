@@ -32,11 +32,15 @@ from __future__ import annotations
 import ast
 import contextlib
 import os
+import warnings
 from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast, overload
 
 from donfig import Config as DConfig
+
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
@@ -294,6 +298,192 @@ def build_config(environ: Mapping[str, str] | None = None) -> ZarrConfig:
     )
 
 
+_MISSING = object()
+
+
+class _ConfigSet:
+    """Context manager returned by ``ZarrConfigManager.set``.
+
+    The change is applied immediately (permanent by default); using the object
+    as a ``with`` block restores the prior state on exit.
+    """
+
+    def __init__(self, manager: ZarrConfigManager, prev_base: ZarrConfig, token: Any) -> None:
+        self._manager = manager
+        self._prev_base = prev_base
+        self._token = token
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._manager._restore(self._prev_base, self._token)
+
+
+class ZarrConfigManager:
+    """Typed, donfig-compatible configuration object."""
+
+    def __init__(self) -> None:
+        self._base: ZarrConfig = build_config()
+        self._scope: ContextVar[ZarrConfig] = ContextVar("zarr_config_scope")
+
+    # --- state resolution -------------------------------------------------
+    def _current(self) -> ZarrConfig:
+        return self._scope.get(self._base)
+
+    def _restore(self, prev_base: ZarrConfig, token: Any) -> None:
+        self._base = prev_base
+        self._scope.reset(token)
+
+    # --- typed attribute access ------------------------------------------
+    @property
+    def default_zarr_format(self) -> Literal[2, 3]:
+        return self._current().default_zarr_format
+
+    @property
+    def array(self) -> ArraySettings:
+        return self._current().array
+
+    @property
+    def async_(self) -> AsyncSettings:
+        return self._current().async_
+
+    @property
+    def threading(self) -> ThreadingSettings:
+        return self._current().threading
+
+    @property
+    def codec_pipeline(self) -> CodecPipelineSettings:
+        return self._current().codec_pipeline
+
+    @property
+    def json_indent(self) -> int:
+        return self._current().json_indent
+
+    @property
+    def codecs(self) -> Mapping[str, str]:
+        return self._current().codecs
+
+    @property
+    def buffer(self) -> str:
+        return self._current().buffer
+
+    @property
+    def ndbuffer(self) -> str:
+        return self._current().ndbuffer
+
+    # --- string API: get --------------------------------------------------
+    @overload
+    def get(self, key: Literal["default_zarr_format"]) -> Literal[2, 3]: ...
+    @overload
+    def get(self, key: Literal["array.order"]) -> Literal["C", "F"]: ...
+    @overload
+    def get(self, key: Literal["array.write_empty_chunks"]) -> bool: ...
+    @overload
+    def get(self, key: Literal["array.read_missing_chunks"]) -> bool: ...
+    @overload
+    def get(self, key: Literal["array.target_shard_size_bytes"]) -> int | None: ...
+    @overload
+    def get(self, key: Literal["array.rectilinear_chunks"]) -> bool: ...
+    @overload
+    def get(self, key: Literal["array.sharding_coalesce_max_gap_bytes"]) -> int: ...
+    @overload
+    def get(self, key: Literal["array.sharding_coalesce_max_bytes"]) -> int: ...
+    @overload
+    def get(self, key: Literal["async.concurrency"]) -> int: ...
+    @overload
+    def get(self, key: Literal["async.timeout"]) -> float | None: ...
+    @overload
+    def get(self, key: Literal["threading.max_workers"]) -> int | None: ...
+    @overload
+    def get(self, key: Literal["json_indent"]) -> int: ...
+    @overload
+    def get(self, key: Literal["codec_pipeline.path"]) -> str: ...
+    @overload
+    def get(self, key: Literal["codec_pipeline.batch_size"]) -> int: ...
+    @overload
+    def get(self, key: Literal["buffer"]) -> str: ...
+    @overload
+    def get(self, key: Literal["ndbuffer"]) -> str: ...
+    @overload
+    def get(self, key: str, default: Any = ...) -> Any: ...
+
+    def get(self, key: str, default: Any = _MISSING) -> Any:
+        resolved = self._apply_deprecation(key)
+        if resolved is None:
+            if default is _MISSING:
+                raise KeyError(key)
+            return default
+        try:
+            return get_path(self._current(), resolved)
+        except KeyError:
+            if default is _MISSING:
+                raise
+            return default
+
+    # --- string API: set --------------------------------------------------
+    def set(self, updates: Mapping[str, Any]) -> _ConfigSet:
+        prev_base = self._base
+        new = self._current()
+        for key, value in updates.items():
+            resolved = self._apply_deprecation(key)
+            if resolved is None:
+                continue
+            new = replace_path(new, resolved, value)
+        self._base = new
+        token = self._scope.set(new)
+        return _ConfigSet(self, prev_base, token)
+
+    # --- lifecycle --------------------------------------------------------
+    def reset(self) -> None:
+        self._base = build_config()
+        with contextlib.suppress(LookupError):
+            self._scope.set(self._base)
+
+    def refresh(self) -> None:
+        self._base = build_config()
+
+    def enable_gpu(self) -> _ConfigSet:
+        return self.set(
+            {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
+        )
+
+    # --- compat / introspection ------------------------------------------
+    @property
+    def defaults(self) -> dict[str, Any]:
+        return to_nested_dict(make_default_config())
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_nested_dict(self._current())
+
+    def update(self, updates: Mapping[str, Any]) -> None:
+        self.set(updates)
+
+    def pprint(self) -> None:
+        import pprint as _pp
+
+        _pp.pprint(self.to_dict())
+
+    # --- deprecations -----------------------------------------------------
+    def _apply_deprecation(self, key: str) -> str | None:
+        if key not in deprecations:
+            return key
+        new_key = deprecations[key]
+        if new_key is None:
+            warnings.warn(
+                f"Configuration key {key!r} has been removed and no longer has any effect.",
+                ZarrDeprecationWarning,
+                stacklevel=3,
+            )
+            return None
+        warnings.warn(
+            f"Configuration key {key!r} has been renamed to {new_key!r}.",
+            ZarrDeprecationWarning,
+            stacklevel=3,
+        )
+        return new_key
+
+
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
 
@@ -326,8 +516,8 @@ class Config(DConfig):  # type: ignore[misc]
 
 
 # these keys were removed from the config as part of the 3.1.0 release.
-# these deprecations should be removed in 3.1.1 or thereabouts.
-deprecations = {
+# These deprecations should be removed in 3.1.1 or thereabouts.
+deprecations: dict[str, str | None] = {
     "array.v2_default_compressor.numeric": None,
     "array.v2_default_compressor.string": None,
     "array.v2_default_compressor.bytes": None,
@@ -343,6 +533,9 @@ deprecations = {
     "array.v3_default_compressors.bytes": None,
     "array.v3_default_compressors": None,
 }
+
+# Provisional new instance; Task 4 makes this THE module-level `config`.
+_typed_config = ZarrConfigManager()
 
 # The default configuration for zarr
 config = Config(

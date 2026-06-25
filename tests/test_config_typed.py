@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from zarr.core.config import (
     DEFAULT_CODECS,
+    ZarrConfigManager,
     apply_overrides,
     build_config,
     collect_env,
@@ -100,3 +103,47 @@ def test_build_config_zarr_config_env_does_not_raise() -> None:
     from zarr.core.config import make_default_config
 
     assert cfg == make_default_config()
+
+
+def test_proxy_attribute_and_string_access() -> None:
+    cfg = ZarrConfigManager()
+    assert cfg.array.order == "C"
+    assert cfg.get("array.order") == "C"
+    assert cfg.get("async.concurrency") == 10
+    assert cfg.get("codecs", {})["blosc"] == "zarr.codecs.blosc.BloscCodec"
+    assert cfg.get("does.not.exist", "fallback") == "fallback"
+
+
+def test_set_permanent_and_context() -> None:
+    cfg = ZarrConfigManager()
+    cfg.set({"array.order": "F"})
+    assert cfg.get("array.order") == "F"  # permanent
+    with cfg.set({"array.order": "C"}):
+        assert cfg.get("array.order") == "C"
+    assert cfg.get("array.order") == "F"  # restored to permanent value
+    cfg.reset()
+    assert cfg.get("array.order") == "C"
+
+
+def test_permanent_set_visible_in_worker_thread() -> None:
+    cfg = ZarrConfigManager()
+    cfg.set({"async.concurrency": 77})
+    try:
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            seen = ex.submit(lambda: cfg.get("async.concurrency")).result()
+        assert seen == 77  # ThreadPoolExecutor does not copy contextvars
+    finally:
+        cfg.reset()
+
+
+def test_defaults_and_enable_gpu() -> None:
+    cfg = ZarrConfigManager()
+    assert cfg.defaults["array"]["order"] == "C"
+    with cfg.set({"buffer": "x"}):
+        pass
+    cfg.enable_gpu()
+    try:
+        assert cfg.get("buffer") == "zarr.buffer.gpu.Buffer"
+        assert cfg.get("ndbuffer") == "zarr.buffer.gpu.NDBuffer"
+    finally:
+        cfg.reset()
