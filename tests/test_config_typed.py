@@ -93,6 +93,10 @@ def test_replace_path_is_immutable() -> None:
     cfg = make_default_config()
     _ = replace_path(cfg, "array.order", "F")
     assert cfg.array.order == "C"
+    # the open `codecs` dict must not be mutated in place either: a frozen
+    # dataclass forbids attribute re-assignment but not `dict.__setitem__`.
+    _ = replace_path(cfg, "codecs.my_codec", "my.module.MyCodec")
+    assert "my_codec" not in cfg.codecs
 
 
 # ---------------------------------------------------------------------------
