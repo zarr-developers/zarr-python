@@ -437,11 +437,14 @@ class ZarrConfigManager:
     # --- lifecycle --------------------------------------------------------
     def reset(self) -> None:
         self._base = build_config()
-        with contextlib.suppress(LookupError):
-            self._scope.set(self._base)
+        # Sync the scope so _current() returns the new base in this context.
+        self._scope.set(self._base)
 
     def refresh(self) -> None:
         self._base = build_config()
+        # Sync the scope so the rebuilt base is visible in the calling context.
+        # Without this, any prior reset()/set() scope entry would shadow the refresh.
+        self._scope.set(self._base)
 
     def enable_gpu(self) -> _ConfigSet:
         return self.set(

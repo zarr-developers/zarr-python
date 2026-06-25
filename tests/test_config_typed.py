@@ -147,3 +147,17 @@ def test_defaults_and_enable_gpu() -> None:
         assert cfg.get("ndbuffer") == "zarr.buffer.gpu.NDBuffer"
     finally:
         cfg.reset()
+
+
+def test_refresh_not_shadowed_by_prior_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """refresh() must be visible in the calling context even after a prior set()/reset()."""
+    mgr = ZarrConfigManager()
+    # plant a scope entry in this thread/context (as reset()/set() would)
+    mgr.set({"array.order": "F"})
+    assert mgr.get("array.order") == "F"
+    # change the environment so a rebuild differs, then refresh
+    monkeypatch.setenv("ZARR_JSON_INDENT", "7")
+    mgr.refresh()
+    # refresh must be visible in THIS context, not shadowed by the prior scope
+    assert mgr.get("json_indent") == 7
+    assert mgr.get("array.order") == "C"  # the prior permanent set is gone after rebuild
