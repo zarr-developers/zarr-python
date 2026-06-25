@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import islice, pairwise
+from itertools import batched, pairwise
 from typing import TYPE_CHECKING, Any
 from warnings import warn
 
@@ -40,14 +40,6 @@ def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
         out0.append(item0)
         out1.append(item1)
     return (out0, out1)
-
-
-def batched[T](iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
-    if n < 1:
-        raise ValueError("n must be at least one")
-    it = iter(iterable)
-    while batch := tuple(islice(it, n)):
-        yield batch
 
 
 def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[ArraySpec]:
@@ -679,6 +671,7 @@ def codecs_from_list(
                     "must be preceded by either another BytesBytesCodec, or an ArrayBytesCodec. "
                     f"Got {type(prev_codec)} instead."
                 )
+                raise TypeError(msg)
             bytes_bytes += (cur_codec,)
         else:
             raise TypeError
