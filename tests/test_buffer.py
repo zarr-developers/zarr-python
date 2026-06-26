@@ -44,7 +44,6 @@ def test_nd_array_like(xp: types.ModuleType) -> None:
     assert isinstance(ary, NDArrayLike)
 
 
-@pytest.mark.asyncio
 async def test_async_array_prototype() -> None:
     """Test the use of a custom buffer prototype"""
 
@@ -73,7 +72,6 @@ async def test_async_array_prototype() -> None:
 
 
 @gpu_test
-@pytest.mark.asyncio
 async def test_async_array_gpu_prototype() -> None:
     """Test the use of the GPU buffer prototype"""
 
@@ -97,7 +95,6 @@ async def test_async_array_gpu_prototype() -> None:
     assert cp.array_equal(expect, got)
 
 
-@pytest.mark.asyncio
 async def test_codecs_use_of_prototype() -> None:
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await zarr.api.asynchronous.create_array(
@@ -126,7 +123,6 @@ async def test_codecs_use_of_prototype() -> None:
 
 
 @gpu_test
-@pytest.mark.asyncio
 async def test_codecs_use_of_gpu_prototype() -> None:
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
     a = await zarr.api.asynchronous.create_array(
@@ -155,7 +151,6 @@ async def test_codecs_use_of_gpu_prototype() -> None:
 
 
 @gpu_test
-@pytest.mark.asyncio
 async def test_sharding_use_of_gpu_prototype() -> None:
     with zarr.config.enable_gpu():
         expect = cp.zeros((10, 10), dtype="uint16", order="F")
