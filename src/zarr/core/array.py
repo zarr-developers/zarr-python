@@ -4019,6 +4019,15 @@ async def shards_initialized(
         The storage keys of the populated shards (or chunks, when unsharded),
         in chunk-grid order.
 
+    Notes
+    -----
+    This reports membership at the granularity of *stored objects* and does not
+    introspect the contents of a shard. For a sharded array, a shard is reported as
+    initialized if its object exists in the store, even if some (or all) of its inner
+    chunks were never written — those positions still read back as the fill value. In
+    other words, an "initialized" region may contain empty inner chunks. For unsharded
+    arrays there is one object per chunk, so no such ambiguity arises.
+
     See Also
     --------
     initialized_regions : The array regions spanned by the populated shards.
@@ -4079,6 +4088,12 @@ async def initialized_regions(
     -------
     list[tuple[slice, ...]]
         The regions spanned by the populated shards, in chunk-grid order.
+
+    Notes
+    -----
+    Regions are reported at stored-object granularity: a sharded region may contain
+    empty inner chunks that were never written (they read back as the fill value). See
+    [shards_initialized][zarr.shards_initialized] for details.
 
     See Also
     --------

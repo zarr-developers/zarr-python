@@ -2480,14 +2480,16 @@ def test_shards_initialized_unknown_strategy(store: Store) -> None:
         zarr.shards_initialized(arr, strategy="nonsense")  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_list_strategy_ignores_non_chunk_objects(store: Store) -> None:
-    """The ``list`` strategy must not mistake unrelated objects sharing the array's
-    prefix (e.g. metadata) for populated chunks."""
-    arr, _ = _ca_sparse_1d(store)
-    keys = set(zarr.shards_initialized(arr, strategy="list"))
-    assert keys == {"c/1", "c/5"}
-    assert all(k.startswith("c/") for k in keys)
+async def test_list_strategy_ignores_non_chunk_objects() -> None:
+    """The ``list`` strategy must ignore objects that share the array's prefix but are
+    not chunks (metadata, stray writes). With no chunks written, an unrelated object
+    under the prefix must not be reported as an initialized shard."""
+    store = MemoryStore()
+    arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=0)
+    # No chunks written; drop a non-chunk object under the array's prefix.
+    await store.set("foo", default_buffer_prototype().buffer.from_bytes(b"blablabla"))
+    keys = await zarr.api.asynchronous.shards_initialized(arr._async_array, strategy="list")
+    assert keys == ()
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -2499,9 +2501,25 @@ def test_initialized_regions_count_matches_keys(store: Store, setup_name: str) -
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_initialized_regions_values(store: Store) -> None:
-    arr, _ = _ca_sparse_1d(store)
-    assert set(zarr.initialized_regions(arr)) == {(slice(8, 16, 1),), (slice(40, 48, 1),)}
+@pytest.mark.parametrize(
+    "regions",
+    [
+        (),
+        ((slice(8, 16, 1),),),
+        ((slice(0, 8, 1),), (slice(8, 16, 1),)),
+        ((slice(8, 16, 1),), (slice(40, 48, 1),)),
+    ],
+    ids=["none", "single", "adjacent", "non_adjacent"],
+)
+def test_initialized_regions_are_exactly_written(
+    store: Store, regions: tuple[tuple[slice, ...], ...]
+) -> None:
+    """Writing a set of chunk-aligned regions makes ``initialized_regions`` report
+    exactly those regions, and nothing else."""
+    arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=0)
+    for region in regions:
+        arr[region] = 1  # non-fill value so the chunk is persisted
+    assert set(zarr.initialized_regions(arr)) == set(regions)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
