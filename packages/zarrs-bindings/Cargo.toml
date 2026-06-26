@@ -1,0 +1,21 @@
+[package]
+name = "zarrs-bindings"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+publish = false
+license = "MIT"
+description = "PyO3 bindings to the zarrs Rust crate, consumed by zarr.zarrs"
+
+[lib]
+name = "_zarrs_bindings"
+crate-type = ["cdylib"]
+
+[dependencies]
+lru = "0.12"
+pyo3 = { version = "0.28", features = ["abi3-py312"] }
+serde_json = "1"
+zarrs = "0.23"
+
+[profile.release]
+lto = "thin"

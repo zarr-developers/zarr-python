@@ -94,3 +94,6 @@ zarr.egg-info/
 
 # zarr-metadata package lockfile (a library, not an app)
 packages/zarr-metadata/uv.lock
+
+# zarrs-bindings Rust build artifacts
+packages/zarrs-bindings/target/
