@@ -151,7 +151,6 @@ The following stores have been renamed or changed:
 | `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
 | `FSStore`          | [`zarr.storage.FsspecStore`][]         |
 | `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
-| `zarr.
 
 
 A number of deprecated stores were also removed.
@@ -161,6 +160,9 @@ See issue #1274 for more details on the removal of these stores.
   N5 formatted data.
 - `ABSStore` - use the [`zarr.storage.FsspecStore`][] instead along with fsspec's
   [adlfs backend](https://github.com/fsspec/adlfs).
+- `LRUStoreCache` - no direct equivalent in Zarr-Python 3. Caching behaviour can be
+  achieved by wrapping a store with a third-party caching layer, or by using an
+  `FsspecStore` with a caching filesystem (e.g. `fsspec.implementations.caching`).
 - `DBMStore`
 - `LMDBStore`
 - `SQLiteStore`
