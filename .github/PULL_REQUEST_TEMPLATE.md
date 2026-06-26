@@ -1,3 +1,8 @@
+<!-- The PR title becomes the squash-merge commit on main. Please use a descriptive,
+     Conventional Commits-style title, e.g. "fix: handle empty chunk in v3 reader".
+     This is the commit type (feat/fix/docs/chore/...), not the changelog category.
+     See https://www.conventionalcommits.org/en/v1.0.0/ -->
+
 ## Summary
 
 [Describe what this PR changes and why, in your own words.]
