@@ -75,11 +75,11 @@ def test_create(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
     # create array with float shape
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Expected an iterable of integers"):
         z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore[arg-type]
 
     # create array with float chunk shape
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="'float' object is not iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
@@ -293,7 +293,6 @@ def test_open_array_rectilinear_chunks(tmp_path: Path) -> None:
     assert z.read_chunk_sizes == ((3, 3, 4), (5, 5))
 
 
-@pytest.mark.asyncio
 async def test_async_array_open_array_not_found() -> None:
     """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
     store = MemoryStore()
@@ -352,16 +351,16 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(tmpdir: Path, zarr_format: ZarrFormat) -> None:
+async def test_open_group_unspecified_version(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
     _ = await zarr.api.asynchronous.open_group(
-        store=str(tmpdir), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
+        store=str(tmp_path), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
     )
 
     # now open that group without specifying the format
-    g2 = await zarr.api.asynchronous.open_group(store=str(tmpdir), mode="r")
+    g2 = await zarr.api.asynchronous.open_group(store=str(tmp_path), mode="r")
 
     assert g2.attrs == {"foo": "bar"}
 
@@ -379,7 +378,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
 
     if n_kwargs == 0 and n_args == 0:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one array must be provided"):
             save(store, path=path)
     elif n_args == 1 and n_kwargs == 0:
         save(store, *args, path=path)
@@ -398,17 +397,19 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
 
 
 def test_save_errors() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least one array must be provided"):
         # no arrays provided
         save_group("data/group.zarr")
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="missing 1 required positional argument: 'arr'"):
         # no array provided
         save_array("data/group.zarr")  # type: ignore[call-arg]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least one array must be provided"):
         # no arrays provided
         save("data/group.zarr")
     a = np.arange(10)
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        TypeError, match="Keyword argument 'mode' must be a numpy or other NDArrayLike array"
+    ):
         # mode is no valid argument and would get handled as an array
         zarr.save("data/example.zarr", a, mode="w")
 

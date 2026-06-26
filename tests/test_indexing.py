@@ -158,7 +158,9 @@ def test_replace_ellipsis() -> None:
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning"),
         ),
     ],
 )
@@ -171,8 +173,8 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
 
     assert_array_equal(arr_np, arr_z.get_basic_selection(Ellipsis))
     assert_array_equal(arr_np, arr_z[...])
-    assert value == arr_z.get_basic_selection(())
-    assert value == arr_z[()]
+    assert arr_np[()] == arr_z.get_basic_selection(())
+    assert arr_np[()] == arr_z[()]
 
     if use_out:
         # test out param
@@ -598,7 +600,9 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning"),
         ),
     ],
 )
@@ -612,11 +616,11 @@ def test_set_basic_selection_0d(
     assert_array_equal(arr_np_zeros, arr_z)
 
     arr_z.set_basic_selection(Ellipsis, value)
-    assert_array_equal(value, arr_z)
-    arr_z[...] = 0
+    assert_array_equal(arr_np, arr_z)
+    arr_z[...] = arr_np_zeros[()]
     assert_array_equal(arr_np_zeros, arr_z)
     arr_z[...] = value
-    assert_array_equal(value, arr_z)
+    assert_array_equal(arr_np, arr_z)
 
     # todo: uncomment the structured array tests when we can make them pass,
     # or delete them if we formally decide not to support structured dtypes.
