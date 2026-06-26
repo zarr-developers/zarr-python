@@ -75,11 +75,11 @@ def test_create(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
     # create array with float shape
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Expected an iterable of integers"):
         z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore[arg-type]
 
     # create array with float chunk shape
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="'float' object is not iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
@@ -378,7 +378,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
 
     if n_kwargs == 0 and n_args == 0:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one array must be provided"):
             save(store, path=path)
     elif n_args == 1 and n_kwargs == 0:
         save(store, *args, path=path)
@@ -396,18 +396,36 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
         assert group.nmembers() == n_args + n_kwargs
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        np.array(42, dtype=np.int64),
+        np.array("teststr", dtype=np.bytes_),
+    ],
+)
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+def test_group_setitem_loads_scalar_arrays(sync_store: Store, data: np.ndarray) -> None:
+    root = zarr.open_group(store=sync_store)
+    root["test"] = data
+
+    assert_array_equal(root["test"][...], data)
+    assert_array_equal(zarr.load(store=sync_store, path="test"), data)
+
+
 def test_save_errors() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least one array must be provided"):
         # no arrays provided
         save_group("data/group.zarr")
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="missing 1 required positional argument: 'arr'"):
         # no array provided
         save_array("data/group.zarr")  # type: ignore[call-arg]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least one array must be provided"):
         # no arrays provided
         save("data/group.zarr")
     a = np.arange(10)
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        TypeError, match="Keyword argument 'mode' must be a numpy or other NDArrayLike array"
+    ):
         # mode is no valid argument and would get handled as an array
         zarr.save("data/example.zarr", a, mode="w")
 
