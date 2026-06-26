@@ -26,6 +26,7 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
 from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
+from zarr.storage._zip import ZipStore
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -318,7 +319,8 @@ async def make_store(
     `StoreLike` objects are converted to `Store` as follows:
 
     - `Store` or `StorePath` = `Store` object.
-    - `Path` or `str` = `LocalStore` object.
+    - `Path` or `str` with a .zip suffix = `ZipStore` object.
+    - other `Path` or `str` = `LocalStore` object.
     - `str` that starts with a protocol = `FsspecStore` object.
     - `dict[str, Buffer]` = `MemoryStore` object.
     - `None` = `MemoryStore` object.
@@ -382,6 +384,10 @@ async def make_store(
     elif store_like is None:
         # Create a new in-memory store
         return await make_store({}, mode=mode, storage_options=storage_options)
+
+    elif isinstance(store_like, Path) and store_like.suffix == ".zip":
+        # Create a new LocalStore
+        return await ZipStore.open(path=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore

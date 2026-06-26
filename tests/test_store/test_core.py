@@ -3,10 +3,11 @@ from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 import pytest
 
 import zarr
-from zarr import Group
+from zarr import Group, open_group
 from zarr.core.buffer import cpu
 from zarr.core.common import ZARR_JSON, AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
@@ -175,6 +176,36 @@ async def test_make_store_path_local(
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmp_path)
     assert store_path.path == normalize_path(path)
+    assert store_path.read_only == (mode == "r")
+
+
+@pytest.mark.parametrize("store_type", [str, Path])
+@pytest.mark.parametrize("mode", ["r", "w"])
+async def test_make_store_path_zip_path(
+    tmpdir: LEGACY_PATH,
+    store_type: type[str] | type[Path] | type[LocalStore],
+    mode: AccessModeLiteral,
+) -> None:
+    """
+    Test that make_store_path creates a ZipStore given a path ending in .zip
+    """
+    zippath = Path(tmpdir) / "zarr.zip"
+    store_like = store_type(str(zippath))
+
+    if mode == "r":
+        store = ZipStore(zippath, mode="w")
+        root = open_group(store=store, mode="w")
+        data = np.arange(10000, dtype=np.uint16).reshape(100, 100)
+        z = root.create_array(
+            shape=data.shape, chunks=(10, 10), name="foo", dtype=np.uint16, fill_value=99
+        )
+        z[:] = data
+        store.close()
+
+    store_path = await make_store_path(store_like, mode=mode)
+    assert isinstance(store_path.store, ZipStore)
+    assert Path(store_path.store.path) == zippath
+    assert store_path.path == normalize_path("")
     assert store_path.read_only == (mode == "r")
 
 
