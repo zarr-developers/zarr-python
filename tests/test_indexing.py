@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import itertools
 from collections import Counter
 from typing import TYPE_CHECKING, Any
@@ -2088,6 +2089,12 @@ def test_iter_regions(
     assert observed == expected
 
 
+requires_array_async_methods = pytest.mark.skipif(
+    not hasattr(Array, "getitem_async"),
+    reason="Array.*_async methods do not exist on this version",
+)
+
+
 class TestAsync:
     @pytest.mark.parametrize(
         ("indexer", "expected"),
@@ -2193,3 +2200,52 @@ class TestAsync:
 
         with pytest.raises(IndexError):
             await async_zarr.oindex.getitem("invalid_indexer")
+
+    @requires_array_async_methods
+    @pytest.mark.parametrize("method", ["orthogonal", "coordinate", "block", "mask"])
+    @pytest.mark.asyncio
+    async def test_get_selection_async_matches_sync(self, store, method):
+        # Each Array.get_*_selection_async method must return the same result
+        # as its sync twin, so the two surfaces cannot drift apart.
+        z = zarr.create_array(store=store, shape=(4, 4), chunks=(2, 2), zarr_format=3, dtype="i8")
+        z[...] = np.arange(16, dtype="i8").reshape(4, 4)
+        selection = {
+            "orthogonal": ([0, 2], slice(None)),
+            "coordinate": ([0, 1], [0, 1]),
+            "block": (0, 0),
+            "mask": np.arange(16).reshape(4, 4) % 5 == 0,
+        }[method]
+        expected = getattr(z, f"get_{method}_selection")(selection)
+        actual = await getattr(z, f"get_{method}_selection_async")(selection)
+        assert_array_equal(expected, actual)
+
+    @requires_array_async_methods
+    @pytest.mark.asyncio
+    async def test_getitem_setitem_async_match_sync(self, store):
+        z = zarr.create_array(store=store, shape=(4, 4), chunks=(2, 2), zarr_format=3, dtype="i8")
+        await z.setitem_async(Ellipsis, np.arange(16, dtype="i8").reshape(4, 4))
+        assert_array_equal(z[1:3, :], await z.getitem_async((slice(1, 3), slice(None))))
+
+    @requires_array_async_methods
+    @pytest.mark.asyncio
+    async def test_get_basic_selection_async_supports_out(self, store):
+        # Zero-copy reads via ``out=`` must not be lost on the async surface.
+        z = zarr.create_array(store=store, shape=(4, 4), chunks=(2, 2), zarr_format=3, dtype="i8")
+        z[...] = np.arange(16, dtype="i8").reshape(4, 4)
+        expected = z.get_basic_selection((slice(1, 3), slice(None)))
+        out = get_ndbuffer_class().from_numpy_array(np.empty_like(expected))
+        await z.get_basic_selection_async((slice(1, 3), slice(None)), out=out)
+        assert_array_equal(expected, out.as_numpy_array())
+
+    @requires_array_async_methods
+    def test_item_async_twins_expose_full_sync_parameter_surface(self):
+        # getitem_async/setitem_async mirror the basic selection path; they
+        # must not silently drop parameters (out=, fields=) that the sync
+        # surface supports, or users migrating sync -> async lose capability
+        # without an error.
+        get_sync = set(inspect.signature(Array.get_basic_selection).parameters)
+        get_async = set(inspect.signature(Array.getitem_async).parameters)
+        assert get_sync - {"self"} <= get_async
+        set_sync = set(inspect.signature(Array.set_basic_selection).parameters)
+        set_async = set(inspect.signature(Array.setitem_async).parameters)
+        assert set_sync - {"self"} <= set_async
