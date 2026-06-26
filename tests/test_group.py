@@ -54,17 +54,16 @@ from zarr.testing.store import LatencyStore
 from .conftest import meta_from_array, parse_store
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Callable
-
-    from _pytest.compat import LEGACY_PATH
 
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
-    result = await parse_store(request.param, str(tmpdir))
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
+    result = await parse_store(request.param, str(tmp_path))
     if not isinstance(result, Store):
         raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
@@ -396,7 +395,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subgroup"]["subarray"] == subsubarray
     assert group["subgroup/subarray"] == subsubarray
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="nope"):
         group["nope"]
 
     with pytest.raises(KeyError, match="subarray/subsubarray"):
@@ -484,11 +483,11 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subarray"] == subarray
 
     del group["subgroup"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subgroup"):
         group["subgroup"]
 
     del group["subarray"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subarray"):
         group["subarray"]
 
 
@@ -1061,7 +1060,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     assert await agroup.getitem(sub_group_path) == sub_group
 
     # check that asking for a nonexistent key raises KeyError
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="foo"):
         await agroup.getitem("foo")
 
 
@@ -1317,7 +1316,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     #     await root.require_group("foo", overwrite=True)
 
     # test that requiring a group where an array is fails
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Incompatible object"):
         await foo_group.require_group("bar")
 
 
@@ -1651,7 +1650,7 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="0/0"):
         g1["0/0"]
 
 

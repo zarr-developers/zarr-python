@@ -11,7 +11,7 @@ from operator import getitem
 
 import pytest
 
-from zarr import create_array, initialized_regions, read_regions
+from zarr import create_array
 
 indexers = (
     (0,) * 3,
@@ -74,7 +74,7 @@ def test_sharded_morton_indexing(
     The Morton order cache is cleared before each iteration to measure the
     full computation cost.
     """
-    from zarr.core.indexing import _morton_order, _morton_order_keys
+    from zarr.core.indexing import _morton_order, morton_order_coords
 
     # Create array where each shard contains many small chunks
     # e.g., shards=(32,32,32) with chunks=(2,2,2) means 16x16x16 = 4096 chunks per shard
@@ -98,7 +98,7 @@ def test_sharded_morton_indexing(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
-        _morton_order_keys.cache_clear()
+        morton_order_coords.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
@@ -126,7 +126,7 @@ def test_sharded_morton_indexing_large(
     the Morton order computation a more significant portion of total time.
     The Morton order cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order, _morton_order_keys
+    from zarr.core.indexing import _morton_order, morton_order_coords
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -149,7 +149,7 @@ def test_sharded_morton_indexing_large(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
-        _morton_order_keys.cache_clear()
+        morton_order_coords.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
@@ -169,7 +169,7 @@ def test_sharded_morton_single_chunk(
     computing the full Morton order, making the optimization impact clear.
     The Morton order cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order, _morton_order_keys
+    from zarr.core.indexing import _morton_order, morton_order_coords
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -192,13 +192,13 @@ def test_sharded_morton_single_chunk(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
-        _morton_order_keys.cache_clear()
+        morton_order_coords.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
 
 
-# Benchmark for morton_order_iter directly (no I/O)
+# Benchmark for morton_order_coords directly (no I/O)
 morton_iter_shapes = (
     (8, 8, 8),  # 512 elements    (power-of-2)
     (10, 10, 10),  # 1000 elements   (non-power-of-2)
@@ -211,23 +211,23 @@ morton_iter_shapes = (
 
 
 @pytest.mark.parametrize("shape", morton_iter_shapes, ids=str)
-def test_morton_order_iter(
+def test_morton_order(
     shape: tuple[int, ...],
     benchmark: BenchmarkFixture,
 ) -> None:
-    """Benchmark morton_order_iter directly without I/O.
+    """Benchmark morton_order_coords directly without I/O.
 
     This isolates the Morton order computation to measure the
     optimization impact without array read/write overhead.
     The cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order, _morton_order_keys, morton_order_iter
+    from zarr.core.indexing import _morton_order, morton_order_coords
 
     def compute_morton_order() -> None:
         _morton_order.cache_clear()
-        _morton_order_keys.cache_clear()
-        # Consume the iterator to force computation
-        list(morton_order_iter(shape))
+        morton_order_coords.cache_clear()
+        # Build the full sequence to force computation
+        list(morton_order_coords(shape))
 
     benchmark(compute_morton_order)
 
@@ -250,7 +250,12 @@ def test_sharded_morton_write_single_chunk(
     """
     import numpy as np
 
-    from zarr.core.indexing import _morton_order, _morton_order_keys
+    from zarr.core.indexing import (
+        _lexicographic_order,
+        _morton_order,
+        lexicographic_order_coords,
+        morton_order_coords,
+    )
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -272,53 +277,67 @@ def test_sharded_morton_write_single_chunk(
     indexer = (slice(1), slice(1), slice(1))
 
     def write_with_cache_clear() -> None:
+        # Clear every coordinate cache the write path touches, not just morton:
+        # the sharded write also builds the lexicographic grid (dict.fromkeys /
+        # to_dict_vectorized), so a partial clear would leave that path warm and
+        # under-report the cold build cost.
         _morton_order.cache_clear()
-        _morton_order_keys.cache_clear()
+        morton_order_coords.cache_clear()
+        _lexicographic_order.cache_clear()
+        lexicographic_order_coords.cache_clear()
         data[indexer] = write_data
 
     benchmark(write_with_cache_clear)
 
 
-# Sparse-read benchmark: most chunks empty (resolve to the fill value).
-sparse_shards = (
-    None,
-    (64,),
-)
-
-
-@pytest.mark.parametrize("store", ["memory", "memory_get_latency"], indirect=["store"])
-@pytest.mark.parametrize("shards", sparse_shards, ids=str)
-@pytest.mark.parametrize("reader", ["full", "read_regions"], ids=str)
-def test_sparse_read(
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_write_single_chunk_warm_cache(
     store: Store,
-    shards: tuple[int, ...] | None,
-    reader: str,
+    shards: tuple[int, ...],
     benchmark: BenchmarkFixture,
 ) -> None:
-    """Benchmark reading a sparse array (most chunks empty) two ways.
+    """Benchmark a single-chunk shard write with the chunk-order cache warm.
 
-    ``full`` is the stock ``arr[:]`` read, which issues a store request for every chunk
-    including the empty ones; ``read_regions`` discovers the populated regions and reads
-    only those. The gap is largest on ``memory_get_latency``, where each skipped
-    empty-chunk request avoids a round-trip.
+    Unlike ``test_sharded_morton_write_single_chunk``, this does NOT clear the
+    order cache between iterations: it warms the cache once, then repeatedly
+    writes the same single chunk. This isolates the amortized per-write cost the
+    cache exists to optimize — the regime where the coordinate grid was already
+    built (by an earlier write to this shard, or to any same-shaped shard) and is
+    reused rather than rebuilt. Repeated writes to one shard and writes spread
+    across many same-shaped shards exercise that cache reuse identically.
+
+    This is the regime the cold benchmark cannot see. A regression that rebuilds
+    the per-shard coordinate tuples on every write (rather than reusing the
+    cached sequence) is invisible to the cold benchmark but shows up here.
     """
-    n_chunks = 256
-    chunk = 16
+    import numpy as np
+
+    from zarr.core.indexing import _morton_order, morton_order_coords
+
+    shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
+    chunks = (1,) * 3  # 1x1x1 chunks: chunks_per_shard = shards
+
     data = create_array(
         store=store,
-        shape=(n_chunks * chunk,),
+        shape=shape,
         dtype="uint8",
-        chunks=(chunk,),
+        chunks=chunks,
         shards=shards,
         compressors=None,
         filters=None,
         fill_value=0,
     )
-    # populate ~3% of chunks, spread across the array
-    for ci in range(0, n_chunks, 32):
-        data[ci * chunk : ci * chunk + chunk] = 1
 
-    if reader == "full":
-        benchmark(getitem, data, slice(None))
-    else:
-        benchmark(lambda: read_regions(data, initialized_regions(data)))
+    write_data = np.ones((1, 1, 1), dtype="uint8")
+    indexer = (slice(1), slice(1), slice(1))
+
+    # Warm the cache once up front; the timed writes then hit the warm path.
+    _morton_order.cache_clear()
+    morton_order_coords.cache_clear()
+    data[indexer] = write_data
+
+    def write_warm() -> None:
+        data[indexer] = write_data
+
+    benchmark(write_warm)

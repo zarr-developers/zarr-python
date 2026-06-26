@@ -67,7 +67,6 @@ nav:
       - Testing:
         - api/zarr/testing/index.md
         - api/zarr/testing/buffer.md
-        - api/zarr/testing/conftest.md
         - api/zarr/testing/stateful.md
         - api/zarr/testing/store.md
         - api/zarr/testing/strategies.md
