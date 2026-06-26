@@ -248,10 +248,10 @@ class CacheStore(WrapperStore[Store]):
                     return  # only cached values fill the budget — don't record the miss
                 await self._evict_key(lru_absent)
 
+        # The key was popped above, so this assignment appends it as most-recent.
         self._state.entries[key] = _Entry(
             insert_time=time.monotonic(), size=_NEGATIVE_ENTRY_SIZE, present=False
         )
-        self._state.entries.move_to_end(key)
         self._state.current_size += _NEGATIVE_ENTRY_SIZE
 
     def _evict_missing(self, key: str) -> None:
@@ -281,7 +281,9 @@ class CacheStore(WrapperStore[Store]):
         while self._state.current_size + value_size > self.max_size:
             lru_key = self._next_eviction_candidate()
             if lru_key is None:
-                break
+                # Defensive: the sole caller (``_track_entry``) guarantees
+                # ``value_size <= max_size``, so an empty cache always has room.
+                break  # pragma: no cover
             await self._evict_key(lru_key)
 
     def _next_eviction_candidate(self) -> _CacheEntryKey | None:
@@ -342,17 +344,19 @@ class CacheStore(WrapperStore[Store]):
             return False
 
         async with self._state.lock:
-            # If key already exists, subtract old size first (an absent slot has
-            # size 0, so this also cleanly upgrades a negative entry to present).
-            old = self._state.entries.get(entry_key)
+            # Pop any existing slot for this key first, reclaiming its bytes. Popping
+            # (rather than leaving it in place) is essential: it removes the key from
+            # the eviction candidates so ``_accommodate_value`` cannot select the very
+            # key being (re)tracked — which would double-subtract its size, stop the
+            # eviction loop early, and (for a present overwrite) delete the value the
+            # caller just wrote to the backing store. The caller has already written
+            # the new value, so we do not touch the backing store here.
+            old = self._state.entries.pop(entry_key, None)
             if old is not None:
-                self._state.current_size -= old.size
+                self._state.current_size = max(0, self._state.current_size - old.size)
 
-            # Make room for the new value
+            # Make room for the new value, then track it (appended as most-recent).
             await self._accommodate_value(value_size)
-
-            # Update tracking atomically.  Assigning to an existing key preserves
-            # its LRU position, matching the previous behaviour.
             self._state.entries[entry_key] = _Entry(
                 insert_time=time.monotonic(), size=value_size, present=True
             )
@@ -402,11 +406,14 @@ class CacheStore(WrapperStore[Store]):
             if byte_range is None:
                 await self._cache.delete(key)
                 async with self._state.lock:
-                    self._remove_from_tracking(key)
-                    # The key is absent in the source: remember the miss so a repeat
-                    # read can short-circuit without a source round-trip.
+                    # The key is absent in the source. Either remember the miss (so a
+                    # repeat read short-circuits without a source round-trip) or just
+                    # drop any stale tracking slot — ``_record_missing`` replaces the
+                    # slot itself, reclaiming the bytes of any prior cached value.
                     if self.cache_missing:
                         await self._record_missing(key)
+                    else:
+                        self._remove_from_tracking(key)
             else:
                 entry_key: _CacheEntryKey = (key, byte_range)
                 async with self._state.lock:
@@ -550,13 +557,17 @@ class CacheStore(WrapperStore[Store]):
             The data to store
         """
         await super().set_if_not_exists(key, value)
-        # Whether or not the write happened, any negative entry is now unsafe: either
-        # we just wrote the key, or it already existed (so the record was already
-        # wrong). Evicting unconditionally is always safe. We do not populate the
-        # positive cache here — there is no guaranteed-fresh value to store.
-        if self.cache_missing:
-            async with self._state.lock:
-                self._evict_missing(key)
+        # Whether or not the write happened, any cached state for this key may now be
+        # stale (we may have just written a new value, or it already existed). Drop
+        # all of it — byte-range entries, any positive value, and any negative marker
+        # — so the next read reflects the source. Invalidating unconditionally is
+        # always safe. We do not populate the positive cache here: there is no
+        # guaranteed-fresh value to store (the write may have been a no-op).
+        async with self._state.lock:
+            self._invalidate_range_entries(key)
+        await self._cache.delete(key)
+        async with self._state.lock:
+            self._remove_from_tracking(key)
 
     async def delete(self, key: str) -> None:
         """
@@ -617,12 +628,12 @@ class CacheStore(WrapperStore[Store]):
         if hasattr(self._cache, "clear"):
             await self._cache.clear()
 
-        # Reset tracking
+        # Reset tracking. Cumulative performance counters (hits/misses/evictions/
+        # negative_hits) are lifetime stats and intentionally survive a clear.
         async with self._state.lock:
             self._state.entries.clear()
             self._state.range_cache.clear()
             self._state.current_size = 0
-            self._state.negative_hits = 0
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""

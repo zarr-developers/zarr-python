@@ -1267,3 +1267,134 @@ class TestCacheStoreNegativeCaching:
         assert info["missing_keys"] == 0
         total = sum(entry.size for entry in cs._state.entries.values())
         assert total == info["current_size"]
+
+    async def test_stale_cached_value_becomes_negative_entry(self) -> None:
+        """A cached value whose source key later reads absent is replaced by a negative
+        marker, reclaiming the value's bytes (no leftover positive accounting)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 200)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_age_seconds=1)
+        proto = default_buffer_prototype()
+
+        # Cache a present value, then delete the key from the source out-of-band.
+        await cs.set("k", value)
+        assert cs.cache_info()["current_size"] == len(value)
+        await source.delete("k")
+        # Force the cached entry stale so the next read consults the (now empty) source.
+        cs._state.entries["k"].insert_time = time.monotonic() - 10
+
+        assert await cs.get("k", proto) is None  # source absent -> records a miss
+        info = cs.cache_info()
+        assert info["cached_keys"] == 0
+        assert info["missing_keys"] == 1
+        # The 200-byte value was reclaimed; only the marker's overhead remains.
+        assert info["current_size"] == _NEGATIVE_ENTRY_SIZE
+
+    async def test_miss_not_recorded_when_budget_full_of_values(self) -> None:
+        """When the budget is full of cached values and no markers exist to evict, a
+        miss is not recorded (a marker never displaces a cached value)."""
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 200)
+        # Budget fits exactly one value, with no room for a negative marker.
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=200)
+        proto = default_buffer_prototype()
+
+        await cs.set("present", value)
+        assert cs.cache_info()["cached_keys"] == 1
+
+        assert await cs.get("absent", proto) is None
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0  # no room -> miss not remembered
+        assert info["cached_keys"] == 1  # cached value untouched
+        assert info["current_size"] == len(value)
+
+    async def test_caching_value_evicts_absent_markers(self) -> None:
+        """Caching a present value reclaims room by evicting negative markers first."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        cs = CacheStore(
+            source,
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_size=3 * _NEGATIVE_ENTRY_SIZE,
+        )
+        proto = default_buffer_prototype()
+
+        # Fill the budget with three negative markers.
+        for i in range(3):
+            assert await cs.get(f"absent/{i}", proto) is None
+        assert cs.cache_info()["missing_keys"] == 3
+
+        # Caching a value must evict marker(s) to fit — markers go before any value.
+        await cs.set("v", CPUBuffer.from_bytes(b"v" * 100))
+        info = cs.cache_info()
+        assert info["cached_keys"] == 1
+        assert info["missing_keys"] < 3  # at least one marker evicted to make room
+        assert info["current_size"] <= cs.max_size
+
+    async def test_upgrade_marker_to_value_under_pressure_evicts_other_entry(self) -> None:
+        """Upgrading a stale negative marker to a cached value under memory pressure must
+        evict a *different* entry, not self-evict (which would under-count current_size
+        and breach max_size)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        cs = CacheStore(
+            source,
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_age_seconds=1000,
+            max_size=300,
+        )
+        proto = default_buffer_prototype()
+
+        # One cached value "a" (128 B) and one negative marker "k" (128 B) → 256 B used.
+        await cs.set("a", CPUBuffer.from_bytes(b"a" * (_NEGATIVE_ENTRY_SIZE)))
+        assert await cs.get("k", proto) is None
+        assert cs.cache_info()["current_size"] == 2 * _NEGATIVE_ENTRY_SIZE
+
+        # "k" now exists in the source with a 200 B value; force the marker stale so the
+        # next read fetches it and upgrades the slot to a present value (needs eviction).
+        await source.set("k", CPUBuffer.from_bytes(b"k" * 200))
+        cs._state.entries["k"].insert_time = time.monotonic() - 5000
+
+        result = await cs.get("k", proto)
+        assert result is not None
+        assert result.to_bytes() == b"k" * 200
+
+        info = cs.cache_info()
+        # Only "k" remains (the other value "a" was evicted to make room); the bound
+        # holds and the size accounting matches the actual tracked entries exactly.
+        assert info["cached_keys"] == 1
+        assert "a" not in cs._state.entries
+        assert not await cs._cache.exists("a")
+        assert info["current_size"] == 200
+        assert info["current_size"] <= cs.max_size
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]
+
+    async def test_set_if_not_exists_invalidates_stale_byte_range(self) -> None:
+        """``set_if_not_exists`` must invalidate cached byte-range entries, not just the
+        negative marker, so a later byte-range read does not return stale bytes."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"old data!!"))
+        r1 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
+        assert r1 is not None
+        assert r1.to_bytes() == b"old"
+        assert ("k", RangeByteRequest(0, 3)) in cs._state.entries
+
+        # Source key removed out-of-band, then re-created via set_if_not_exists.
+        await source.delete("k")
+        await cs.set_if_not_exists("k", CPUBuffer.from_bytes(b"NEW data!!"))
+
+        # The stale byte-range entry must be gone, and a fresh read returns new bytes.
+        assert ("k", RangeByteRequest(0, 3)) not in cs._state.entries
+        r2 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
+        assert r2 is not None
+        assert r2.to_bytes() == b"NEW"
