@@ -9,8 +9,6 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 
-from typing_extensions import ParamSpec
-
 from zarr._constants import IS_WASM
 from zarr.core.config import config
 
@@ -20,8 +18,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-P = ParamSpec("P")
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 

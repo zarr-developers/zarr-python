@@ -27,8 +27,8 @@ from zarr.testing.strategies import (
     arrays,
     basic_indices,
     block_indices,
+    block_test_arrays,
     complex_rectilinear_arrays,
-    np_array_and_chunks,
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
@@ -120,12 +120,11 @@ def test_array_creates_implicit_groups(array):
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
 
 
+@settings(deadline=None)
 @pytest.mark.skipif(
     IS_WASM,
     reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
 )
-@pytest.mark.asyncio
-@settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing(data: st.DataObject) -> None:
@@ -151,12 +150,11 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     # TODO test async setitem?
 
 
+@settings(deadline=None)
 @pytest.mark.skipif(
     IS_WASM,
     reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
 )
-@pytest.mark.asyncio
-@settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
@@ -165,12 +163,11 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], zarray[indexer])
 
 
+@given(data=st.data())
 @pytest.mark.skipif(
     IS_WASM,
     reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
 )
-@pytest.mark.asyncio
-@given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -206,12 +203,11 @@ async def test_oindex(data: st.DataObject) -> None:
     # note: async oindex setitem not yet implemented
 
 
+@given(data=st.data())
 @pytest.mark.skipif(
     IS_WASM,
     reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
 )
-@pytest.mark.asyncio
-@given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -278,27 +274,21 @@ def test_mask_indexing(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 def test_block_indexing(data: st.DataObject) -> None:
-    # Block indexing addresses whole chunks on a regular grid; the array-space
-    # oracle in block_indices() assumes regular, unsharded chunks, so build the
-    # array directly from a regular chunking rather than drawing one that might
-    # be rectilinear or sharded.
-    nparray, chunks = data.draw(
-        np_array_and_chunks(arrays=numpy_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
-    )
-    store = data.draw(stores)
-    zarray = zarr.create_array(store=store, shape=nparray.shape, chunks=chunks, dtype=nparray.dtype)
-    zarray[...] = nparray
+    # Block indexing addresses whole inner chunks. block_indices() builds its
+    # array-space oracle from cumulative chunk offsets, so it works for regular
+    # (uniform), rectilinear, and sharded grids alike; block_test_arrays draws
+    # across that matrix (rectilinear + sharded is unsupported and not drawn).
+    zarray, nparray = data.draw(block_test_arrays())
 
-    block_indexer, array_indexer = data.draw(
-        block_indices(chunk_grid_shape=zarray.cdata_shape, chunks=chunks)
-    )
+    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=zarray.write_chunk_sizes))
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
     assert_array_equal(expected, zarray.blocks[block_indexer])
     assert_array_equal(expected, zarray.get_block_selection(block_indexer))
 
-    # sync set, via both interfaces
+    # sync set, via both interfaces; sharded set is broken upstream (GH2834)
+    assume(zarray.shards is None)
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
     nparray[array_indexer] = new_data
     zarray.blocks[block_indexer] = new_data
