@@ -852,7 +852,7 @@ def _guess_num_chunks_per_axis_shard(
     -------
         The number of chunks per axis.
     """
-    bytes_per_chunk = np.prod(chunk_shape) * item_size
+    bytes_per_chunk = math.prod(chunk_shape) * item_size
     if max_bytes < bytes_per_chunk:
         return 1
     num_axes = len(chunk_shape)

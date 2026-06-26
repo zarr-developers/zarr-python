@@ -1,6 +1,6 @@
 import builtins
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, cast
 
 import hypothesis.extra.numpy as npst
@@ -18,7 +18,12 @@ from hypothesis.strategies import DataObject
 
 import zarr
 from zarr import Array
-from zarr.abc.store import Store
+from zarr.abc.store import (
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_prototype
 from zarr.core.sync import SyncMixin
@@ -306,7 +311,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
         matches = set()
         for node in self.all_groups | self.all_arrays:
-            if node.startswith(path):
+            if node == path or node.startswith(path + "/"):
                 matches.add(node)
         self.all_groups = self.all_groups - matches
         self.all_arrays = self.all_arrays - matches
@@ -460,7 +465,7 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         return self._sync(self.store.get(key, prototype=prototype))
 
     def get_partial_values(
-        self, key_ranges: builtins.list[Any], prototype: BufferPrototype
+        self, key_ranges: Iterable[Any], prototype: BufferPrototype
     ) -> builtins.list[Buffer | None]:
         return self._sync(self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges))
 
@@ -475,6 +480,9 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
 
     def exists(self, key: str) -> bool:
         return self._sync(self.store.exists(key))
+
+    def getsize_prefix(self, prefix: str) -> int:
+        return self._sync(self.store.getsize_prefix(prefix))
 
     def list_dir(self, prefix: str) -> None:
         raise NotImplementedError
@@ -555,7 +563,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             key_ranges(keys=st.sampled_from(sorted(self.model.keys())), max_size=MAX_BINARY_SIZE)
         )
         note(f"(get partial) {key_range=}")
-        obs_maybe = self.store.get_partial_values(key_range, self.prototype)
+        # Pass a one-shot generator rather than a list: stores (and wrappers such
+        # as LoggingStore) must not exhaust the iterable before using it.
+        obs_maybe = self.store.get_partial_values((kr for kr in key_range), self.prototype)
         observed = []
 
         for obs in obs_maybe:
@@ -565,9 +575,23 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         model_vals_ls = []
 
         for key, byte_range in key_range:
-            start = byte_range.start
-            stop = byte_range.end
-            model_vals_ls.append(self.model[key][start:stop])
+            # Independently model each ByteRequest variant (do NOT reuse the
+            # store's _normalize_byte_range_index helper, so this stays an
+            # independent oracle). Bounds may exceed the value length.
+            value = self.model[key]
+            n = len(value)
+            if byte_range is None:
+                expected = value[:]
+            elif isinstance(byte_range, RangeByteRequest):
+                expected = value[byte_range.start : byte_range.end]
+            elif isinstance(byte_range, OffsetByteRequest):
+                expected = value[byte_range.offset :]
+            elif isinstance(byte_range, SuffixByteRequest):
+                # "last suffix bytes"; suffix > n means the whole value.
+                expected = value[max(0, n - byte_range.suffix) :]
+            else:
+                raise AssertionError(f"unexpected byte_range {byte_range!r}")
+            model_vals_ls.append(expected)
 
         assert all(
             obs == exp.to_bytes() for obs, exp in zip(observed, model_vals_ls, strict=True)
@@ -611,6 +635,21 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         note("(exists)")
 
         assert self.store.exists(key) == (key in self.model)
+
+    @precondition(lambda self: len(self.model.keys()) > 0)
+    @rule(data=st.data())
+    def getsize_prefix(self, data: DataObject) -> None:
+        # Measure the size under the first path segment of some existing key.
+        # getsize_prefix(node) must count only keys under the directory "node/",
+        # not sibling keys that merely share the string prefix (e.g. measuring
+        # "a" must not include a sibling key "ab/...").
+        key = data.draw(st.sampled_from(sorted(self.model.keys())))
+        node = key.split("/")[0]
+        note(f"(getsize_prefix) {node=}")
+
+        observed = self.store.getsize_prefix(node)
+        expected = sum(len(value) for k, value in self.model.items() if k.startswith(node + "/"))
+        assert observed == expected, (observed, expected, node)
 
     @invariant()
     def check_paths_equal(self) -> None:

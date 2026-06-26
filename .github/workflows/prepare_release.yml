@@ -36,21 +36,18 @@ jobs:
           VERSION: ${{ inputs.version }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.target_branch }}
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-
-      - name: Install towncrier
-        run: pip install towncrier
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Build changelog
-        run: towncrier build --version "$VERSION" --yes
+        # Use the pinned towncrier from the `release` dependency group (single
+        # source of truth) rather than an unpinned standalone install.
+        run: uv run --only-group release towncrier build --version "$VERSION" --yes
         env:
           VERSION: ${{ inputs.version }}
 
