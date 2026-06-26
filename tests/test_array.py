@@ -2374,3 +2374,217 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+# --- shards_initialized / initialized_regions / read_regions ---------------------------
+
+
+def _ca_sparse_1d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=42)
+    # populate two non-adjacent chunks (chunks 1 and 5)
+    arr[8:16] = np.arange(8, dtype="int32")
+    arr[40:48] = np.arange(100, 108, dtype="int32")
+    return arr, np.asarray(arr[:])
+
+
+def _ca_dense_1d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=0)
+    arr[:] = np.arange(32, dtype="int32")
+    return arr, np.asarray(arr[:])
+
+
+def _ca_sparse_2d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    arr = zarr.create_array(store=store, shape=(8, 8), chunks=(2, 2), dtype="int32", fill_value=-1)
+    arr[0:2, 0:2] = np.ones((2, 2), dtype="int32")
+    arr[4:6, 4:6] = np.full((2, 2), 7, dtype="int32")
+    return arr, np.asarray(arr[:])
+
+
+def _ca_sharded_sparse(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    # chunks (2, 2) within shards (4, 4): the shard grid is 2x2 over the 8x8 array.
+    arr = zarr.create_array(
+        store=store, shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="int32", fill_value=42
+    )
+    arr[0:2, 0:2] = np.ones((2, 2), dtype="int32")  # shard (0, 0)
+    arr[4:6, 4:6] = np.full((2, 2), 7, dtype="int32")  # shard (1, 1)
+    return arr, np.asarray(arr[:])
+
+
+def _ca_all_empty(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=7)
+    return arr, np.asarray(arr[:])
+
+
+def _ca_all_populated(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
+    arr = zarr.create_array(store=store, shape=(32,), chunks=(8,), dtype="int32", fill_value=0)
+    arr[:] = np.arange(32, dtype="int32")
+    return arr, np.asarray(arr[:])
+
+
+_CA_SETUPS = {
+    "sparse_1d": _ca_sparse_1d,
+    "dense_1d": _ca_dense_1d,
+    "sparse_2d": _ca_sparse_2d,
+    "sharded_sparse": _ca_sharded_sparse,
+    "all_empty": _ca_all_empty,
+    "all_populated": _ca_all_populated,
+}
+_CA_STRATEGIES = ["auto", "list", "probe"]
+
+
+def _ca_pack(
+    arr: Array[Any],
+    results: list[tuple[tuple[slice, ...], Any]],
+    baseline: npt.NDArray[Any],
+) -> npt.NDArray[Any]:
+    """Scatter ``(region, data)`` pairs onto a fill-valued array."""
+    out = np.full(baseline.shape, arr.fill_value, dtype=baseline.dtype)
+    for region, data in results:
+        out[region] = np.asarray(data)
+    return out
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
+@pytest.mark.parametrize("strategy", _CA_STRATEGIES)
+def test_shards_initialized_strategies_agree(
+    store: Store, setup_name: str, strategy: Literal["auto", "list", "probe"]
+) -> None:
+    """Every strategy reports the same set of populated keys."""
+    arr, _ = _CA_SETUPS[setup_name](store)
+    keys = set(zarr.shards_initialized(arr, strategy=strategy))
+    assert keys == set(zarr.shards_initialized(arr, strategy="auto"))
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    ("setup_name", "expected_count"),
+    [
+        ("sparse_1d", 2),
+        ("dense_1d", 4),
+        ("sparse_2d", 2),
+        ("sharded_sparse", 2),
+        ("all_empty", 0),
+        ("all_populated", 4),
+    ],
+)
+def test_shards_initialized_counts(store: Store, setup_name: str, expected_count: int) -> None:
+    arr, _ = _CA_SETUPS[setup_name](store)
+    assert len(zarr.shards_initialized(arr)) == expected_count
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_shards_initialized_unknown_strategy(store: Store) -> None:
+    arr, _ = _ca_sparse_1d(store)
+    with pytest.raises(ValueError, match="Unknown strategy"):
+        zarr.shards_initialized(arr, strategy="nonsense")  # type: ignore[arg-type]
+
+
+async def test_list_strategy_ignores_non_chunk_objects() -> None:
+    """The ``list`` strategy must ignore objects that share the array's prefix but are
+    not chunks (metadata, stray writes). With no chunks written, an unrelated object
+    under the prefix must not be reported as an initialized shard."""
+    store = MemoryStore()
+    arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=0)
+    # No chunks written; drop a non-chunk object under the array's prefix.
+    await store.set("foo", default_buffer_prototype().buffer.from_bytes(b"blablabla"))
+    keys = await zarr.api.asynchronous.shards_initialized(arr._async_array, strategy="list")
+    assert keys == ()
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
+def test_initialized_regions_count_matches_keys(store: Store, setup_name: str) -> None:
+    """There is one initialized region per populated shard key."""
+    arr, _ = _CA_SETUPS[setup_name](store)
+    assert len(zarr.initialized_regions(arr)) == len(zarr.shards_initialized(arr))
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    "regions",
+    [
+        (),
+        ((slice(8, 16, 1),),),
+        ((slice(0, 8, 1),), (slice(8, 16, 1),)),
+        ((slice(8, 16, 1),), (slice(40, 48, 1),)),
+    ],
+    ids=["none", "single", "adjacent", "non_adjacent"],
+)
+def test_initialized_regions_are_exactly_written(
+    store: Store, regions: tuple[tuple[slice, ...], ...]
+) -> None:
+    """Writing a set of chunk-aligned regions makes ``initialized_regions`` report
+    exactly those regions, and nothing else."""
+    arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=0)
+    for region in regions:
+        arr[region] = 1  # non-fill value so the chunk is persisted
+    assert set(zarr.initialized_regions(arr)) == set(regions)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
+def test_read_initialized_regions_reconstructs_baseline(store: Store, setup_name: str) -> None:
+    """Reading the initialized regions and scattering them onto a fill-valued array
+    reproduces the full ``arr[:]`` read exactly."""
+    arr, baseline = _CA_SETUPS[setup_name](store)
+    results = zarr.read_regions(arr, zarr.initialized_regions(arr))
+    result = _ca_pack(arr, results, baseline)
+    assert np.array_equal(result, baseline)
+    assert result.dtype == baseline.dtype
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_read_regions_explicit_regions(store: Store) -> None:
+    """Explicit regions are read and returned with their decoded data."""
+    arr, baseline = _ca_sparse_1d(store)
+    explicit = [(slice(8, 16),), (slice(40, 48),)]
+    regions = dict(zarr.read_regions(arr, explicit))
+    assert set(regions) == set(explicit)
+    assert np.array_equal(np.asarray(regions[(slice(8, 16),)]), baseline[8:16])
+    assert np.array_equal(np.asarray(regions[(slice(40, 48),)]), baseline[40:48])
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_read_regions_concurrency_one(store: Store) -> None:
+    """A concurrency limit of 1 produces the same result as the default."""
+    arr, baseline = _ca_sparse_2d(store)
+    results = zarr.read_regions(arr, zarr.initialized_regions(arr), concurrency=1)
+    assert np.array_equal(_ca_pack(arr, results, baseline), baseline)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
+async def test_read_regions_async_matches_sync(store: Store, setup_name: str) -> None:
+    """The async streaming generator yields the same ``(region, data)`` set as the
+    synchronous wrapper."""
+    arr, _ = _CA_SETUPS[setup_name](store)
+    regions = zarr.initialized_regions(arr)
+    async_pairs = {
+        region: np.asarray(data).tobytes()
+        async for region, data in zarr.api.asynchronous.read_regions(arr._async_array, regions)
+    }
+    sync_pairs = {
+        region: np.asarray(data).tobytes() for region, data in zarr.read_regions(arr, regions)
+    }
+    assert async_pairs == sync_pairs
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+async def test_shards_initialized_async(store: Store) -> None:
+    arr, _ = _ca_sparse_1d(store)
+    keys = await zarr.api.asynchronous.shards_initialized(arr._async_array)
+    assert set(keys) == {"c/1", "c/5"}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+async def test_async_chunk_access_accepts_sync_array(store: Store) -> None:
+    """The async API also accepts a synchronous ``Array``, unwrapping it to the
+    underlying async array."""
+    arr, _ = _ca_sparse_1d(store)
+    keys = await zarr.api.asynchronous.shards_initialized(arr)
+    regions = await zarr.api.asynchronous.initialized_regions(arr)
+    results = [pair async for pair in zarr.api.asynchronous.read_regions(arr, regions)]
+    assert set(keys) == {"c/1", "c/5"}
+    assert set(regions) == {(slice(8, 16, 1),), (slice(40, 48, 1),)}
+    assert len(results) == 2
