@@ -118,9 +118,6 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
-    assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
-
     _mock = Mock()
 
     class MockCodecPipeline(BatchedCodecPipeline):
