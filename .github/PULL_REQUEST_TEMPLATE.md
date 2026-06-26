@@ -1,5 +1,5 @@
 <!-- The PR title becomes the squash-merge commit on main. Please use a descriptive,
-     Conventional Commits-style title, e.g. "fix: handle empty chunk in v3 reader".
+     Conventional Commits-style title, e.g. "fix: handle 0-d arrays in `save_array`".
      This is the commit type (feat/fix/docs/chore/...), not the changelog category.
      See https://www.conventionalcommits.org/en/v1.0.0/ -->
 
