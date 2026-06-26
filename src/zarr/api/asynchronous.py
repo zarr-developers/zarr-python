@@ -310,7 +310,7 @@ async def load(
 
     obj = await open(store=store, path=path, zarr_format=zarr_format)
     if isinstance(obj, AsyncArray):
-        return await obj.getitem(slice(None))
+        return await obj.getitem(Ellipsis)
     else:
         raise NotImplementedError("loading groups not yet supported")
 
@@ -498,7 +498,7 @@ async def save_array(
         overwrite=overwrite,
         **kwargs,
     )
-    await new.setitem(slice(None), arr)
+    await new.setitem(Ellipsis, arr)
 
 
 async def save_group(

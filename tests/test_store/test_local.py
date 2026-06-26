@@ -29,8 +29,8 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         (store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir: str) -> dict[str, str]:
-        return {"root": str(tmpdir)}
+    def store_kwargs(self, tmp_path: pathlib.Path) -> dict[str, str]:
+        return {"root": str(tmp_path)}
 
     def test_store_repr(self, store: LocalStore) -> None:
         assert str(store) == f"file://{store.root.as_posix()}"

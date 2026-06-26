@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
@@ -153,7 +154,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
-    from zarr.codecs.sharding import ShardingCodecIndexLocation
+    from zarr.codecs.sharding import IndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -905,7 +906,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return np.prod(self.metadata.shape).item()
+        return math.prod(self.metadata.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -1745,7 +1746,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Read-only          : False
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 480
         """
@@ -3921,7 +3922,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Read-only          : False
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 40
         """
@@ -4006,7 +4007,7 @@ type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 class ShardsConfigParam(TypedDict):
     shape: tuple[int, ...]
-    index_location: ShardingCodecIndexLocation | None
+    index_location: IndexLocation | None
 
 
 type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
@@ -4392,7 +4393,7 @@ async def init_array(
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
-    from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+    from zarr.codecs.sharding import ShardingCodec
 
     zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
@@ -4480,11 +4481,9 @@ async def init_array(
         codecs_out: tuple[Codec, ...]
         if inner is not None:
             inner_chunks_flat = as_regular_shape(inner.outer_chunks)
-            index_location = None
+            index_location: IndexLocation = "end"
             if isinstance(shards, dict):
-                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
-            if index_location is None:
-                index_location = ShardingCodecIndexLocation.end
+                index_location = cast("IndexLocation", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat, codecs=sub_codecs, index_location=index_location
             )
