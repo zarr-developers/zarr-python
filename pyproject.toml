@@ -155,7 +155,6 @@ exclude_also = [
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
-    "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
 
 [tool.hatch]
@@ -471,7 +470,6 @@ filterwarnings = [
     "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
-    "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
     "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",

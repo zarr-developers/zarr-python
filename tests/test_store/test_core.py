@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from _pytest.compat import LEGACY_PATH
 
 import zarr
 from zarr import Group
@@ -89,7 +88,7 @@ async def test_contains_invalid_format_raises(local_store: LocalStore, func: _Co
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid zarr_format provided. Got 3.0, expected 2 or 3"):
         assert await func(store_path, "3.0")  # type: ignore[arg-type]
 
 
@@ -163,7 +162,7 @@ async def test_make_store_path_none(path: str) -> None:
 @pytest.mark.parametrize("store_type", [str, Path])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
-    tmpdir: LEGACY_PATH,
+    tmp_path: Path,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
     mode: AccessModeLiteral,
@@ -171,10 +170,10 @@ async def test_make_store_path_local(
     """
     Test the various ways of invoking make_store_path that create a LocalStore
     """
-    store_like = store_type(str(tmpdir))
+    store_like = store_type(str(tmp_path))
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.root) == Path(tmp_path)
     assert store_path.path == normalize_path(path)
     assert store_path.read_only == (mode == "r")
 
@@ -215,7 +214,7 @@ async def test_make_store_path_invalid() -> None:
     """
     Test that invalid types raise TypeError
     """
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
         await make_store_path(1)
 
 
@@ -263,7 +262,7 @@ def test_normalize_path_none() -> None:
 
 @pytest.mark.parametrize("path", [".", ".."])
 def test_normalize_path_invalid(path: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="is invalid because its string representation contains"):
         normalize_path(path)
 
 
@@ -336,7 +335,7 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+def test_different_open_mode(tmp_path: Path) -> None:
     # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
