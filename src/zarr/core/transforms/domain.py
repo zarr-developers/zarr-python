@@ -13,7 +13,7 @@ Unlike NumPy, domains can have **non-zero origins**. After slicing
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -28,6 +28,11 @@ class IndexDomain:
     inclusive_min: tuple[int, ...]
     exclusive_max: tuple[int, ...]
     labels: tuple[str, ...] | None = None
+    # Lazily-memoized shape. Excluded from init/repr/eq/hash: it is derived
+    # state, not part of the domain's identity. The domain is frozen, so the
+    # value is computed at most once (see ``shape``). ``None`` is the unset
+    # sentinel; an empty shape caches as ``()``.
+    _shape: tuple[int, ...] | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if len(self.inclusive_min) != len(self.exclusive_max):
@@ -65,7 +70,13 @@ class IndexDomain:
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return tuple(hi - lo for lo, hi in zip(self.inclusive_min, self.exclusive_max, strict=True))
+        cached = self._shape
+        if cached is None:
+            cached = tuple(
+                hi - lo for lo, hi in zip(self.inclusive_min, self.exclusive_max, strict=True)
+            )
+            object.__setattr__(self, "_shape", cached)
+        return cached
 
     def contains(self, index: tuple[int, ...]) -> bool:
         if len(index) != self.ndim:

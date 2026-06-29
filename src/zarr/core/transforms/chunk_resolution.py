@@ -167,10 +167,9 @@ def sub_transform_to_selections(
     n_array_maps = 0
 
     for m in sub_transform.output:
-        t = type(m)
-        if t is ConstantMap:
+        if isinstance(m, ConstantMap):
             chunk_sel.append(m.offset)
-        elif t is DimensionMap:
+        elif isinstance(m, DimensionMap):
             d = m.input_dimension
             dim_lo = inclusive_min[d]
             dim_hi = exclusive_max[d]

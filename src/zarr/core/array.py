@@ -384,13 +384,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
         object.__setattr__(self, "_transform", IndexTransform.from_shape(metadata_parsed.shape))
-        object.__setattr__(self, "_shape", self._transform.domain.shape)
-        # A freshly-opened array has the identity transform: input coord i maps to
-        # storage coord i over the full storage domain. Eager indexing on such an
-        # array can use the original (legacy) indexers directly, avoiding the
-        # transform-resolution overhead. Lazy views (created via _with_transform)
-        # carry a non-identity transform and must go through the transform path.
-        object.__setattr__(self, "_is_identity", True)
 
     @classmethod
     async def _create(
@@ -813,10 +806,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         object.__setattr__(new, "_chunk_grid", self._chunk_grid)
         object.__setattr__(new, "codec_pipeline", self.codec_pipeline)
         object.__setattr__(new, "_transform", transform)
-        object.__setattr__(new, "_shape", transform.domain.shape)
-        object.__setattr__(
-            new, "_is_identity", _transform_is_identity(transform, self.metadata.shape)
-        )
         return new
 
     @property
@@ -837,7 +826,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the Array.
         """
-        return len(self._shape)
+        return len(self.shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -848,7 +837,21 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             The shape of the Array.
         """
-        return self._shape
+        return self._transform.domain.shape
+
+    @property
+    def _is_identity(self) -> bool:
+        """Whether this array's transform is the identity over the full storage domain.
+
+        A freshly-opened or resized array has the identity transform: input coord
+        ``i`` maps to storage coord ``i`` over the whole storage shape. Eager
+        indexing on such an array produces the same coordinates the legacy
+        indexers compute, so it can take the legacy fast path and skip
+        transform resolution. Lazy views (created via :meth:`_with_transform`)
+        carry a non-identity transform and must go through the transform path.
+        Cheap (O(ndim)); the domain's shape lookup it relies on is memoized.
+        """
+        return _transform_is_identity(self._transform, self.metadata.shape)
 
     @property
     def storage_shape(self) -> tuple[int, ...]:
@@ -3166,7 +3169,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None or self._async_array._is_identity or not is_basic_selection(selection):
+        if (
+            fields is not None
+            or self._async_array._is_identity
+            or not is_basic_selection(selection)
+        ):
             # Eager (identity) arrays, structured dtypes, and advanced selections
             # use the original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
@@ -3290,7 +3297,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None or self._async_array._is_identity or not is_basic_selection(selection):
+        if (
+            fields is not None
+            or self._async_array._is_identity
+            or not is_basic_selection(selection)
+        ):
             # Eager (identity) arrays, structured dtypes, and advanced selections
             # use the original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
@@ -3633,7 +3644,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         sel_arrays = [np.asarray(s) for s in sel_tuple]
         sel_shape = np.broadcast_shapes(*(s.shape for s in sel_arrays))
         if hasattr(out_array, "shape") and sel_shape != ():
-            out_array = np.array(out_array).reshape(sel_shape)
+            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(sel_shape))
         return out_array
 
     def set_coordinate_selection(
@@ -6479,8 +6490,6 @@ async def _resize(
     object.__setattr__(array, "metadata", new_metadata)
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
     object.__setattr__(array, "_transform", IndexTransform.from_shape(new_shape))
-    object.__setattr__(array, "_shape", array._transform.domain.shape)
-    object.__setattr__(array, "_is_identity", True)
 
 
 async def _append(
