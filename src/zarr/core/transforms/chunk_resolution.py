@@ -157,51 +157,40 @@ def sub_transform_to_selections(
         ``(chunk_selection, out_selection, drop_axes)``
     """
     chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
-    drop_axes: list[int] = []
+    out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+
+    # Hoist the per-dimension domain bounds out of the loop (attribute-chain +
+    # tuple indexing per output dim otherwise). Build chunk_sel and out_sel in a
+    # single pass; ConstantMap dims are dropped (no out_sel entry).
+    inclusive_min = sub_transform.domain.inclusive_min
+    exclusive_max = sub_transform.domain.exclusive_max
+    n_array_maps = 0
 
     for m in sub_transform.output:
-        if isinstance(m, ConstantMap):
+        t = type(m)
+        if t is ConstantMap:
             chunk_sel.append(m.offset)
-        elif isinstance(m, DimensionMap):
-            dim_lo = sub_transform.domain.inclusive_min[m.input_dimension]
-            dim_hi = sub_transform.domain.exclusive_max[m.input_dimension]
+        elif t is DimensionMap:
+            d = m.input_dimension
+            dim_lo = inclusive_min[d]
+            dim_hi = exclusive_max[d]
             start = m.offset + m.stride * dim_lo
             stop = m.offset + m.stride * dim_hi
             if m.stride < 0:
                 start, stop = stop + 1, start + 1
             chunk_sel.append(slice(start, stop, m.stride))
-        elif isinstance(m, ArrayMap):
+            out_sel.append(slice(dim_lo, dim_hi))
+        else:  # ArrayMap
+            n_array_maps += 1
             if m.offset == 0 and m.stride == 1:
                 chunk_sel.append(m.index_array)
             else:
-                storage_coords = m.offset + m.stride * m.index_array
-                chunk_sel.append(storage_coords.astype(np.intp))
+                chunk_sel.append((m.offset + m.stride * m.index_array).astype(np.intp))
+            # Orthogonal ArrayMap: out_indices holds the surviving positions.
+            out_sel.append(out_indices if out_indices is not None else slice(0, len(m.index_array)))
 
-    # Build out_sel: one entry per non-dropped output dim.
-    out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+    # Vectorized: ≥2 correlated ArrayMaps scatter through a single shared index.
+    if out_indices is not None and n_array_maps >= 2:
+        out_sel = [out_indices]
 
-    # Vectorized: multiple correlated ArrayMaps share one scatter index
-    is_vectorized = (
-        out_indices is not None
-        and sum(1 for m in sub_transform.output if isinstance(m, ArrayMap)) >= 2
-    )
-
-    if is_vectorized:
-        assert out_indices is not None
-        out_sel.append(out_indices)
-    else:
-        for m in sub_transform.output:
-            if isinstance(m, ConstantMap):
-                continue
-            if isinstance(m, DimensionMap):
-                lo = sub_transform.domain.inclusive_min[m.input_dimension]
-                hi = sub_transform.domain.exclusive_max[m.input_dimension]
-                out_sel.append(slice(lo, hi))
-            elif isinstance(m, ArrayMap):
-                if out_indices is not None:
-                    # Orthogonal ArrayMap: out_indices has the surviving positions
-                    out_sel.append(out_indices)
-                else:
-                    out_sel.append(slice(0, len(m.index_array)))
-
-    return tuple(chunk_sel), tuple(out_sel), tuple(drop_axes)
+    return tuple(chunk_sel), tuple(out_sel), ()
