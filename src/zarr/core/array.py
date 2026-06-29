@@ -41,6 +41,7 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    ChunkSpec,
     _is_rectilinear_chunks,
     as_regular_shape,
     guess_chunks,
@@ -5606,6 +5607,27 @@ async def _nbytes_stored(
     return await store_path.store.getsize_prefix(store_path.path)
 
 
+def _array_spec_from_chunk_spec(
+    metadata: ArrayMetadata,
+    spec: ChunkSpec,
+    array_config: ArrayConfig,
+    prototype: BufferPrototype,
+) -> ArraySpec:
+    """Build an ArraySpec from an already-resolved ChunkSpec.
+
+    Split out from :func:`_get_chunk_spec` so the transform read/write path can
+    resolve ``chunk_grid[chunk_coords]`` once per chunk and feed the same
+    ``spec`` to both this and :func:`_is_complete_chunk`.
+    """
+    return ArraySpec(
+        shape=spec.codec_shape,
+        dtype=metadata.dtype,
+        fill_value=metadata.fill_value,
+        config=array_config,
+        prototype=prototype,
+    )
+
+
 def _get_chunk_spec(
     metadata: ArrayMetadata,
     chunk_grid: ChunkGrid,
@@ -5617,13 +5639,7 @@ def _get_chunk_spec(
     spec = chunk_grid[chunk_coords]
     if spec is None:
         raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
-    return ArraySpec(
-        shape=spec.codec_shape,
-        dtype=metadata.dtype,
-        fill_value=metadata.fill_value,
-        config=array_config,
-        prototype=prototype,
-    )
+    return _array_spec_from_chunk_spec(metadata, spec, array_config, prototype)
 
 
 def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
@@ -5653,25 +5669,25 @@ def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, 
     return True
 
 
-def _is_complete_chunk(
-    sub_transform: IndexTransform, chunk_grid: ChunkGrid, chunk_coords: tuple[int, ...]
-) -> bool:
-    """Check if a sub-transform covers an entire chunk."""
+def _is_complete_chunk(sub_transform: IndexTransform, spec: ChunkSpec) -> bool:
+    """Check if a sub-transform covers an entire chunk.
+
+    ``spec`` is the chunk's already-resolved :class:`ChunkSpec` (the caller looks
+    it up once and shares it with :func:`_array_spec_from_chunk_spec`).
+    """
     from zarr.core.transforms.output_map import ConstantMap, DimensionMap
 
-    spec = chunk_grid[chunk_coords]
-    if spec is None:
-        return False
+    shape = spec.shape
     for out_dim, m in enumerate(sub_transform.output):
         if isinstance(m, ConstantMap):
             # A ConstantMap means a single element is selected along this output dimension,
             # so the write does not cover the full chunk along this dimension.
-            chunk_dim_size = spec.shape[out_dim]
+            chunk_dim_size = shape[out_dim]
             if chunk_dim_size > 1:
                 return False
             continue  # chunk dim size is 1, so selecting the single element is complete
         if isinstance(m, DimensionMap):
-            chunk_dim_size = spec.shape[out_dim]
+            chunk_dim_size = shape[out_dim]
             # Compute actual storage range: storage = offset + stride * input_coord
             dim_lo = sub_transform.domain.inclusive_min[m.input_dimension]
             dim_hi = sub_transform.domain.exclusive_max[m.input_dimension]
@@ -5746,16 +5762,18 @@ async def _get_selection_via_transform(
         for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(
             transform, chunk_grid
         ):
+            chunk_spec = chunk_grid[chunk_coords]
+            if chunk_spec is None:
+                continue
             chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
             drop_axes = da  # same for all chunks
-            is_complete = _is_complete_chunk(sub_transform, chunk_grid, chunk_coords)
             batch_info.append(
                 (
                     store_path / metadata.encode_chunk_key(chunk_coords),
-                    _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                    _array_spec_from_chunk_spec(metadata, chunk_spec, _config, prototype),
                     chunk_sel,
                     out_sel,
-                    is_complete,
+                    _is_complete_chunk(sub_transform, chunk_spec),
                 )
             )
 
@@ -5876,16 +5894,18 @@ async def _set_selection_via_transform(
     batch_info = []
     drop_axes: tuple[int, ...] = ()
     for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
+        chunk_spec = chunk_grid[chunk_coords]
+        if chunk_spec is None:
+            continue
         chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
         drop_axes = da  # same for all chunks
-        is_complete = _is_complete_chunk(sub_transform, chunk_grid, chunk_coords)
         batch_info.append(
             (
                 store_path / metadata.encode_chunk_key(chunk_coords),
-                _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
+                _array_spec_from_chunk_spec(metadata, chunk_spec, _config, prototype),
                 chunk_sel,
                 out_sel,
-                is_complete,
+                _is_complete_chunk(sub_transform, chunk_spec),
             )
         )
 
