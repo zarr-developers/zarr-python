@@ -104,10 +104,10 @@ numcodecs.blosc.use_threads = False
 
 
 def parse_typesize(data: JSON) -> int:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        parsed: int = parse_json(data, int)
+        parsed: int = convert(data, int)
     except (ValueError, TypeError) as exc:
         raise TypeError(f"Value must be an int. Got {type(data)} instead.") from exc
     if parsed > 0:
@@ -120,20 +120,20 @@ def parse_typesize(data: JSON) -> int:
 
 # todo: real validation
 def parse_clevel(data: JSON) -> int:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        parsed: int = parse_json(data, int)
+        parsed: int = convert(data, int)
     except (ValueError, TypeError) as exc:
         raise TypeError(f"Value should be an int. Got {type(data)} instead.") from exc
     return parsed
 
 
 def parse_blocksize(data: JSON) -> int:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        parsed: int = parse_json(data, int)
+        parsed: int = convert(data, int)
     except (ValueError, TypeError) as exc:
         raise TypeError(f"Value should be an int. Got {type(data)} instead.") from exc
     return parsed

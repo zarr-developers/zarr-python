@@ -85,10 +85,10 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        return cast("ZarrFormat", parse_json(data, Literal[2, 3]))
+        return cast("ZarrFormat", convert(data, Literal[2, 3]))
     except (ValueError, TypeError) as exc:
         msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
         raise ValueError(msg) from exc
@@ -96,10 +96,10 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        return cast("Literal['array', 'group']", parse_json(data, Literal["array", "group"]))
+        return cast("Literal['array', 'group']", convert(data, Literal["array", "group"]))
     except (ValueError, TypeError) as exc:
         msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
         raise MetadataValidationError(msg) from exc

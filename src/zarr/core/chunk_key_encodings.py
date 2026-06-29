@@ -19,10 +19,10 @@ SeparatorLiteral = Literal[".", "/"]
 
 
 def parse_separator(data: JSON) -> SeparatorLiteral:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        return cast("SeparatorLiteral", parse_json(data, Literal[".", "/"]))
+        return cast("SeparatorLiteral", convert(data, Literal[".", "/"]))
     except (ValueError, TypeError) as exc:
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.") from exc
 

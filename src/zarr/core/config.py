@@ -151,6 +151,9 @@ config = Config(
 
 
 def parse_indexing_order(data: Any) -> Literal["C", "F"]:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
-    return cast("Literal['C', 'F']", parse_json(data, Literal["C", "F"]))
+    try:
+        return cast("Literal['C', 'F']", convert(data, Literal["C", "F"]))
+    except TypeError as exc:
+        raise ValueError(f"Expected one of ('C', 'F'), got {data!r} instead.") from exc

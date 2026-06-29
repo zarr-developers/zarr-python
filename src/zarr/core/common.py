@@ -124,10 +124,10 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        data = cast("str", parse_json(data, str))
+        data = cast("str", convert(data, str))
     except (ValueError, TypeError) as exc:
         raise TypeError(f"Expected a string, got an instance of {type(data)}.") from exc
     if expected is None or data == expected:
@@ -207,15 +207,21 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
-    return cast("Literal['C', 'F']", parse_json(data, Literal["C", "F"]))
+    try:
+        return cast("Literal['C', 'F']", convert(data, Literal["C", "F"]))
+    except TypeError as exc:
+        raise ValueError(f"Expected one of ('C', 'F'), got {data!r} instead.") from exc
 
 
 def parse_bool(data: Any) -> bool:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
-    return cast("bool", parse_json(data, bool))
+    try:
+        return cast("bool", convert(data, bool))
+    except TypeError as exc:
+        raise ValueError(f"Expected bool, got {data!r} instead.") from exc
 
 
 def parse_int(data: Any) -> int:

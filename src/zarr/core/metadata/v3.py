@@ -47,20 +47,20 @@ if TYPE_CHECKING:
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        return cast("Literal[3]", parse_json(data, Literal[3]))
+        return cast("Literal[3]", convert(data, Literal[3]))
     except (ValueError, TypeError) as exc:
         msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
         raise MetadataValidationError(msg) from exc
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    from zarr.core.json_parse import parse_json
+    from zarr.core.json_parse import convert
 
     try:
-        return cast('Literal["array"]', parse_json(data, Literal["array"]))
+        return cast('Literal["array"]', convert(data, Literal["array"]))
     except (ValueError, TypeError) as exc:
         msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
         raise NodeTypeValidationError(msg) from exc
@@ -136,11 +136,12 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
     if data is None:
         return ()
-    if isinstance(data, Iterable):
-        if len(tuple(data)) >= 1:
-            return data  # type: ignore[return-value]
-        else:
-            return ()
+    if isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+        # Materialise once. The previous implementation called ``len(tuple(data))``
+        # and then returned ``data`` itself, which exhausted (and discarded) a
+        # one-shot iterable and could return a value typed as a tuple that was not
+        # actually a tuple.
+        return tuple(data)
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
@@ -616,6 +617,8 @@ class ArrayV3Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        from zarr.core.json_parse import validate_json_value
+
         # make a copy because we are modifying the dict
         _data = data.copy()
 
@@ -662,7 +665,7 @@ class ArrayV3Metadata(Metadata):
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
-            attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
+            attributes=validate_json_value(_data_typed.get("attributes", {})),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,
             data_type=data_type,
