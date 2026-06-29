@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Literal, TypeGuard
 
 from typing_extensions import ReadOnly, TypedDict
+from zarr_interfaces.codec.v1 import ArrayArrayCodec as _ArrayArrayCodecInterface
+from zarr_interfaces.codec.v1 import ArrayBytesCodec as _ArrayBytesCodecInterface
+from zarr_interfaces.codec.v1 import BaseCodec as _BaseCodecInterface
+from zarr_interfaces.codec.v1 import BytesBytesCodec as _BytesBytesCodecInterface
+from zarr_interfaces.codec.v1 import SupportsSyncCodec
 
-from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
@@ -66,23 +70,7 @@ CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
 
 
-@runtime_checkable
-class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
-    """Protocol for codecs that support synchronous encode/decode.
-
-    Codecs implementing this protocol provide `_decode_sync` and `_encode_sync`
-    methods that perform encoding/decoding without requiring an async event loop.
-
-    The type parameters mirror `BaseCodec`: `CI` is the decoded type and `CO` is
-    the encoded type.
-    """
-
-    def _decode_sync(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI: ...
-
-    def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
-
-
-class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
+class BaseCodec[CI: CodecInput, CO: CodecOutput](_BaseCodecInterface[CI, CO]):
     """Generic base class for codecs.
 
     Codecs can be registered via zarr.codecs.registry.
@@ -203,16 +191,34 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         return await _batching_helper(self._encode_single, chunks_and_specs)
 
 
-class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
+class ArrayArrayCodec(_ArrayArrayCodecInterface, BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
+    @classmethod
+    def __subclasshook__(cls, C: type) -> bool:
+        if cls is ArrayArrayCodec:
+            return _ArrayArrayCodecInterface in C.__mro__
+        return NotImplemented
 
-class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
+
+class ArrayBytesCodec(_ArrayBytesCodecInterface, BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
+    @classmethod
+    def __subclasshook__(cls, C: type) -> bool:
+        if cls is ArrayBytesCodec:
+            return _ArrayBytesCodecInterface in C.__mro__
+        return NotImplemented
 
-class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
+
+class BytesBytesCodec(_BytesBytesCodecInterface, BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
+
+    @classmethod
+    def __subclasshook__(cls, C: type) -> bool:
+        if cls is BytesBytesCodec:
+            return _BytesBytesCodecInterface in C.__mro__
+        return NotImplemented
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec

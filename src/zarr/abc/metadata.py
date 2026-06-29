@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from zarr_interfaces.metadata.v1 import Metadata as MetadataProtocol
+
 if TYPE_CHECKING:
     from typing import Self
 
@@ -26,12 +28,14 @@ class Metadata:
         for field in fields(self):
             key = field.name
             value = getattr(self, key)
-            if isinstance(value, Metadata):
-                out_dict[field.name] = getattr(self, field.name).to_dict()
+            if isinstance(value, MetadataProtocol):
+                out_dict[key] = value.to_dict()
             elif isinstance(value, str):
                 out_dict[key] = value
             elif isinstance(value, Sequence):
-                out_dict[key] = tuple(v.to_dict() if isinstance(v, Metadata) else v for v in value)
+                out_dict[key] = tuple(
+                    v.to_dict() if isinstance(v, MetadataProtocol) else v for v in value
+                )
             else:
                 out_dict[key] = value
 
