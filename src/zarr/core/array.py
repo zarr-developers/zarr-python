@@ -5403,6 +5403,7 @@ async def _get_selection(
 
     # check fields are sensible
     out_dtype = check_fields(fields, dtype)
+    has_fields = bool(fields)
 
     # setup output buffer
     if out is not None:
@@ -5420,6 +5421,11 @@ async def _get_selection(
             dtype=out_dtype,
             order=order,
         )
+    read_buffer = (
+        prototype.nd_buffer.empty(shape=indexer.shape, dtype=dtype, order=order)
+        if has_fields
+        else out_buffer
+    )
     if product(indexer.shape) > 0:
         # need to use the order from the metadata for v2
         _config = config
@@ -5452,7 +5458,7 @@ async def _get_selection(
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
             ],
-            out_buffer,
+            read_buffer,
             drop_axes=indexer.drop_axes,
         )
         if _config.read_missing_chunks is False:
@@ -5470,6 +5476,8 @@ async def _get_selection(
                     f"missing chunks with the fill value.\n"
                     f"Missing chunks:\n{chunks_str}"
                 )
+    if has_fields:
+        out_buffer[...] = read_buffer[fields]
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return out_buffer.as_scalar()
     return out_buffer.as_ndarray_like()
