@@ -19,12 +19,9 @@ if TYPE_CHECKING:
 
 
 def parse_gzip_level(data: JSON) -> int:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        parsed: int = convert(data, int)
-    except (ValueError, TypeError) as exc:
-        raise TypeError(f"Expected int, got {type(data)}") from exc
+    parsed: int = parse_field(data, int, "level", error=TypeError)
     if parsed not in range(10):
         raise ValueError(
             f"Expected an integer from the inclusive range (0, 9). Got {parsed} instead."

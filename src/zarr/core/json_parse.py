@@ -26,24 +26,43 @@ import msgspec
 if TYPE_CHECKING:
     from zarr.core.common import JSON
 
-__all__ = ["MAX_JSON_DEPTH", "convert", "validate_json_value"]
+__all__ = ["MAX_JSON_DEPTH", "convert", "parse_field", "validate_json_value"]
 
 MAX_JSON_DEPTH: Final = 64
 """Maximum nesting depth accepted by :func:`validate_json_value`."""
 
 
+def _type_name(type_: Any) -> str:
+    return getattr(type_, "__name__", None) or str(type_).replace("typing.", "")
+
+
 def convert(value: object, type_: Any, *, strict: bool = True) -> Any:
     """Validate and coerce ``value`` against ``type_`` via :func:`msgspec.convert`.
 
-    msgspec handles the JSON-shaped coercions Zarr needs but raises
-    :class:`msgspec.ValidationError` on a mismatch. We translate that to
-    ``TypeError`` so callers can keep raising the exception types the rest of
-    Zarr already expects.
+    On a mismatch msgspec raises :class:`msgspec.ValidationError`; this re-raises
+    a plain, field-agnostic ``ValueError`` naming the expected type, so callers
+    can add their own field context (see :func:`parse_field`).
     """
     try:
         return msgspec.convert(value, type_, strict=strict)
     except msgspec.ValidationError as exc:
-        raise TypeError(str(exc)) from exc
+        raise ValueError(f"Expected instance of {_type_name(type_)}, got {value!r}.") from exc
+
+
+def parse_field(
+    data: object, type_: Any, field: str, *, error: type[Exception] = ValueError
+) -> Any:
+    """Validate ``data`` for metadata field ``field`` against ``type_``.
+
+    Wraps :func:`convert` and, on failure, re-raises ``error`` with field
+    context, chaining the underlying type error. This keeps the
+    ``convert``-then-re-raise pattern in one place rather than repeating it in
+    every per-field parser.
+    """
+    try:
+        return convert(data, type_)
+    except ValueError as exc:
+        raise error(f"Failed to parse input for {field!r}.") from exc
 
 
 def validate_json_value(value: object, *, max_depth: int = MAX_JSON_DEPTH, _depth: int = 0) -> JSON:

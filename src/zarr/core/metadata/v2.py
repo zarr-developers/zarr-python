@@ -280,12 +280,9 @@ def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
 def parse_zarr_format(data: object) -> Literal[2]:
     from typing import Literal
 
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        return cast("Literal[2]", convert(data, Literal[2]))
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"Invalid value. Expected 2. Got {data}.") from exc
+    return cast("Literal[2]", parse_field(data, Literal[2], "zarr_format"))
 
 
 def parse_filters(data: object) -> tuple[Numcodec, ...] | None:

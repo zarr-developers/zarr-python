@@ -71,20 +71,20 @@ def test_parse_name_valid(data: tuple[Any, Any]) -> None:
 
 @pytest.mark.parametrize("data", [0, 1, "hello", "f"])
 def test_parse_indexing_order_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match="Expected one of"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
         parse_indexing_order(data)
 
 
 @pytest.mark.parametrize("data", [0, 1, "hello", "f"])
 def test_parse_order_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match="Expected one of"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
         parse_order(data)
 
 
 @pytest.mark.parametrize("data", [0, 1, "true", None, [True]])
 def test_parse_bool_invalid(data: Any) -> None:
-    """Non-bool values are rejected with a ValueError (preserving prior behavior)."""
-    with pytest.raises(ValueError, match="Expected bool"):
+    """Non-bool values are rejected with a ValueError."""
+    with pytest.raises(ValueError, match="Expected instance of bool"):
         parse_bool(data)
 
 

@@ -13,7 +13,7 @@ from typing import Literal
 
 import pytest
 
-from zarr.core.json_parse import MAX_JSON_DEPTH, convert, validate_json_value
+from zarr.core.json_parse import MAX_JSON_DEPTH, convert, parse_field, validate_json_value
 from zarr.core.metadata.v3 import parse_storage_transformers
 
 
@@ -23,9 +23,9 @@ class TestConvert:
         assert convert("array", Literal["array", "group"]) == "array"
 
     def test_literal_rejects_non_member(self) -> None:
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError, match="Expected instance of"):
             convert(4, Literal[3])
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError, match="Expected instance of"):
             convert("Q", Literal["C", "F"])
 
     def test_sequence_coerced_to_tuple(self) -> None:
@@ -37,13 +37,31 @@ class TestConvert:
 
     def test_bool_int_strictness(self) -> None:
         # bool is an int subclass, but the two must not be interchangeable.
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             convert(True, int)
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             convert(1, bool)
         # ... and True must not satisfy Literal[1].
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             convert(True, Literal[1])
+
+
+class TestParseField:
+    def test_valid_passthrough(self) -> None:
+        assert parse_field(3, Literal[3], "zarr_format") == 3
+
+    def test_wraps_with_field_context(self) -> None:
+        with pytest.raises(ValueError, match="Failed to parse input for 'zarr_format'"):
+            parse_field(4, Literal[3], "zarr_format")
+
+    def test_custom_error_type_and_chaining(self) -> None:
+        class MyError(ValueError):
+            pass
+
+        with pytest.raises(MyError, match="Failed to parse input for 'node_type'") as exc_info:
+            parse_field(5, Literal["array"], "node_type", error=MyError)
+        # the generic type error is chained as the cause
+        assert isinstance(exc_info.value.__cause__, ValueError)
 
 
 class TestValidateJsonValue:

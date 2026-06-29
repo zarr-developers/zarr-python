@@ -47,23 +47,20 @@ if TYPE_CHECKING:
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        return cast("Literal[3]", convert(data, Literal[3]))
-    except (ValueError, TypeError) as exc:
-        msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
-        raise MetadataValidationError(msg) from exc
+    return cast(
+        "Literal[3]", parse_field(data, Literal[3], "zarr_format", error=MetadataValidationError)
+    )
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        return cast('Literal["array"]', convert(data, Literal["array"]))
-    except (ValueError, TypeError) as exc:
-        msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
-        raise NodeTypeValidationError(msg) from exc
+    return cast(
+        'Literal["array"]',
+        parse_field(data, Literal["array"], "node_type", error=NodeTypeValidationError),
+    )
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:

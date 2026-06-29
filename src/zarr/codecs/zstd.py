@@ -21,24 +21,18 @@ if TYPE_CHECKING:
 
 
 def parse_zstd_level(data: JSON) -> int:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        parsed: int = convert(data, int)
-    except (ValueError, TypeError) as exc:
-        raise TypeError(f"Got value with type {type(data)}, but expected an int.") from exc
+    parsed: int = parse_field(data, int, "level", error=TypeError)
     if parsed >= 23:
         raise ValueError(f"Value must be less than or equal to 22. Got {parsed} instead.")
     return parsed
 
 
 def parse_checksum(data: JSON) -> bool:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        parsed: bool = convert(data, bool)
-    except (ValueError, TypeError) as exc:
-        raise TypeError(f"Expected bool. Got {type(data)}.") from exc
+    parsed: bool = parse_field(data, bool, "checksum", error=TypeError)
     return parsed
 
 

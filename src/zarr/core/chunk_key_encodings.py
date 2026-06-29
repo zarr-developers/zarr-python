@@ -19,12 +19,9 @@ SeparatorLiteral = Literal[".", "/"]
 
 
 def parse_separator(data: JSON) -> SeparatorLiteral:
-    from zarr.core.json_parse import convert
+    from zarr.core.json_parse import parse_field
 
-    try:
-        return cast("SeparatorLiteral", convert(data, Literal[".", "/"]))
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.") from exc
+    return cast("SeparatorLiteral", parse_field(data, Literal[".", "/"], "separator"))
 
 
 class ChunkKeyEncodingParams(TypedDict):
