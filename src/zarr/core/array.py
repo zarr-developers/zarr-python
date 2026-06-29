@@ -383,6 +383,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
         object.__setattr__(self, "_transform", IndexTransform.from_shape(metadata_parsed.shape))
+        object.__setattr__(self, "_shape", self._transform.domain.shape)
 
     @classmethod
     async def _create(
@@ -805,6 +806,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         object.__setattr__(new, "_chunk_grid", self._chunk_grid)
         object.__setattr__(new, "codec_pipeline", self.codec_pipeline)
         object.__setattr__(new, "_transform", transform)
+        object.__setattr__(new, "_shape", transform.domain.shape)
         return new
 
     @property
@@ -825,7 +827,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the Array.
         """
-        return len(self.shape)
+        return len(self._shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -836,7 +838,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             The shape of the Array.
         """
-        return self._transform.domain.shape
+        return self._shape
 
     @property
     def storage_shape(self) -> tuple[int, ...]:
@@ -1617,6 +1619,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             self.codec_pipeline,
             prototype=prototype,
             out=out,
+            chunk_grid=self._chunk_grid,
         )
 
     async def _set_selection_t(
@@ -1634,6 +1637,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             value,
             self.codec_pipeline,
             prototype=prototype,
+            chunk_grid=self._chunk_grid,
         )
 
     async def setitem(
@@ -5645,9 +5649,11 @@ async def _get_selection_via_transform(
     *,
     prototype: BufferPrototype,
     out: NDBuffer | None = None,
+    chunk_grid: ChunkGrid | None = None,
 ) -> NDArrayLikeOrScalar:
     """Read data using an IndexTransform."""
-    chunk_grid = ChunkGrid.from_metadata(metadata)
+    if chunk_grid is None:
+        chunk_grid = ChunkGrid.from_metadata(metadata)
 
     # Get dtype (same logic as existing _get_selection)
     if metadata.zarr_format == 2:
@@ -5743,9 +5749,11 @@ async def _set_selection_via_transform(
     codec_pipeline: CodecPipeline,
     *,
     prototype: BufferPrototype,
+    chunk_grid: ChunkGrid | None = None,
 ) -> None:
     """Write data using an IndexTransform."""
-    chunk_grid = ChunkGrid.from_metadata(metadata)
+    if chunk_grid is None:
+        chunk_grid = ChunkGrid.from_metadata(metadata)
 
     # Get dtype from metadata
     if metadata.zarr_format == 2:
@@ -6404,6 +6412,7 @@ async def _resize(
     object.__setattr__(array, "metadata", new_metadata)
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
     object.__setattr__(array, "_transform", IndexTransform.from_shape(new_shape))
+    object.__setattr__(array, "_shape", array._transform.domain.shape)
 
 
 async def _append(
