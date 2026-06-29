@@ -155,6 +155,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
     from zarr.codecs.sharding import IndexLocation
+    from zarr.core.chunk_layouts import ChunkLayout
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -896,6 +897,30 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             The shard shape of the Array.
         """
         return self.metadata.shards
+
+    @property
+    def chunk_layout(self) -> ChunkLayout:
+        """The declared chunk structure of the array.
+
+        A distillation of the chunk grid metadata and sharding codecs into the
+        form :func:`zarr.create_array` accepts, for every grid kind without
+        exceptions or private imports. Unlike :attr:`chunks` / :attr:`shards`,
+        this does not raise for rectilinear grids. See ``zarr.ChunkLayout``.
+        """
+        from zarr.core.chunk_layouts import ChunkLayout
+
+        return ChunkLayout.from_metadata(self.metadata)
+
+    @property
+    def is_sharded(self) -> bool:
+        """True if this array's chunks have internal sub-chunk structure (sharding).
+
+        Derived from the codec pipeline rather than from :attr:`chunk_layout`,
+        so it answers correctly even for grid kinds ``chunk_layout`` cannot
+        distill.
+        """
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        return bool(codecs) and codecs[0].inner_chunk_layout() is not None
 
     @property
     def size(self) -> int:
@@ -2051,6 +2076,22 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
         return self.async_array.shards
+
+    @property
+    def chunk_layout(self) -> ChunkLayout:
+        """The declared chunk structure of the array.
+
+        A distillation of the chunk grid metadata and sharding codecs into the
+        form :func:`zarr.create_array` accepts, for every grid kind without
+        exceptions or private imports. Unlike :attr:`chunks` / :attr:`shards`,
+        this does not raise for rectilinear grids. See ``zarr.ChunkLayout``.
+        """
+        return self.async_array.chunk_layout
+
+    @property
+    def is_sharded(self) -> bool:
+        """True if this array's chunks have internal sub-chunk structure (sharding)."""
+        return self.async_array.is_sharded
 
     @property
     def size(self) -> int:

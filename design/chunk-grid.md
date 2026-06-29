@@ -1,6 +1,6 @@
 # Unified Chunk Grid
 
-Version: 6
+Version: 7
 
 Design document for adding rectilinear (variable) chunk grid support to **zarr-python**, conforming to the [rectilinear chunk grid extension spec](https://github.com/zarr-developers/zarr-extensions/pull/25).
 
@@ -61,22 +61,19 @@ class FixedDimension:
     def __post_init__(self) -> None:
         # validates size >= 0 and extent >= 0
 
-    @property
-    def nchunks(self) -> int:
-        if self.size == 0:
-            return 0
-        return ceildiv(self.extent, self.size)
+    nchunks: int       # cached in __post_init__: 0 if size == 0 else ceildiv(extent, size)
+    ngridcells: int    # cached in __post_init__: equal to nchunks for fixed dimensions
 
     def index_to_chunk(self, idx: int) -> int:
         return idx // self.size                                # raises IndexError if OOB
     def chunk_offset(self, chunk_ix: int) -> int:
-        return chunk_ix * self.size                            # raises IndexError if OOB
+        return chunk_ix * self.size                            # unvalidated; see OOB contract below
     def chunk_size(self, chunk_ix: int) -> int:
-        return self.size                                       # always uniform; raises IndexError if OOB
+        return self.size                                       # always uniform; unvalidated
     def data_size(self, chunk_ix: int) -> int:
-        return max(0, min(self.size, self.extent - chunk_ix * self.size))  # raises IndexError if OOB
+        return max(0, min(self.size, self.extent - chunk_ix * self.size))  # unvalidated
     @property
-    def unique_edge_lengths(self) -> Iterable[int]:
+    def _unique_edge_lengths(self) -> Iterable[int]:
         return (self.size,)                                    # O(1)
     def indices_to_chunks(self, indices: NDArray) -> NDArray:
         return indices // self.size
@@ -102,28 +99,20 @@ class VaryingDimension:
         # computes cumulative via itertools.accumulate
         # uses object.__setattr__ for frozen dataclass
 
-    @property
-    def nchunks(self) -> int:
-        # number of chunks that overlap [0, extent)
-        if extent == 0:
-            return 0
-        return bisect.bisect_left(self.cumulative, extent) + 1
-
-    @property
-    def ngridcells(self) -> int:
-        return len(self.edges)
+    nchunks: int        # cached in __post_init__: number of chunks overlapping [0, extent)
+    ngridcells: int     # cached in __post_init__: len(edges)
 
     def index_to_chunk(self, idx: int) -> int:
         return bisect.bisect_right(self.cumulative, idx)       # raises IndexError if OOB
     def chunk_offset(self, chunk_ix: int) -> int:
-        return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0  # raises IndexError if OOB
+        return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0  # unvalidated
     def chunk_size(self, chunk_ix: int) -> int:
-        return self.edges[chunk_ix]                            # raises IndexError if OOB
+        return self.edges[chunk_ix]                            # unvalidated
     def data_size(self, chunk_ix: int) -> int:
         offset = self.chunk_offset(chunk_ix)
-        return max(0, min(self.edges[chunk_ix], self.extent - offset))  # raises IndexError if OOB
+        return max(0, min(self.edges[chunk_ix], self.extent - offset))  # unvalidated
     @property
-    def unique_edge_lengths(self) -> Iterable[int]:
+    def _unique_edge_lengths(self) -> Iterable[int]:
         # lazy generator: yields unseen values, short-circuits deduplication
     def indices_to_chunks(self, indices: NDArray) -> NDArray:
         return np.searchsorted(self.cumulative, indices, side='right')
@@ -135,9 +124,9 @@ class VaryingDimension:
         # shrink or grow within edge sum: preserve all edges, re-bind extent
 ```
 
-Both types implement the `DimensionGrid` protocol: `nchunks`, `extent`, `index_to_chunk`, `chunk_offset`, `chunk_size`, `data_size`, `indices_to_chunks`, `unique_edge_lengths`, `with_extent`, `resize`. Memory usage scales with the number of *varying* dimensions, not total chunks.
+Both types implement the `DimensionGrid` protocol: `nchunks`, `ngridcells`, `extent`, `index_to_chunk`, `chunk_offset`, `chunk_size`, `data_size`, `indices_to_chunks`, `_unique_edge_lengths`, `with_extent`, `resize`, `_size_repr`. Memory usage scales with the number of *varying* dimensions, not total chunks. `nchunks` and `ngridcells` are cached at construction (`field(init=False)` set in `__post_init__`) rather than computed per call.
 
-All per-chunk methods (`chunk_offset`, `chunk_size`, `data_size`) raise `IndexError` for out-of-bounds chunk indices, providing consistent fail-fast behavior across both dimension types.
+**Out-of-bounds contract:** `index_to_chunk` validates its argument and raises `IndexError`. The per-chunk methods (`chunk_offset`, `chunk_size`, `data_size`) are deliberately *unvalidated* fast paths — callers must ensure `chunk_ix` is in `[0, nchunks)`. Safe access goes through `ChunkGrid.__getitem__`, which returns `None` for out-of-bounds coordinates. (Earlier versions of this design raised `IndexError` from every per-chunk method; the validation was hoisted to the grid level to keep the per-dimension hot paths branch-free.)
 
 The two size methods serve different consumers:
 
@@ -161,15 +150,17 @@ class DimensionGrid(Protocol):
     def ngridcells(self) -> int: ...
     @property
     def extent(self) -> int: ...
-    def index_to_chunk(self, idx: int) -> int: ...
-    def chunk_offset(self, chunk_ix: int) -> int: ...     # raises IndexError if OOB
-    def chunk_size(self, chunk_ix: int) -> int: ...        # raises IndexError if OOB
-    def data_size(self, chunk_ix: int) -> int: ...         # raises IndexError if OOB
+    def index_to_chunk(self, idx: int) -> int: ...          # raises IndexError if OOB
+    def chunk_offset(self, chunk_ix: int) -> int: ...       # unvalidated fast path
+    def chunk_size(self, chunk_ix: int) -> int: ...         # unvalidated fast path
+    def data_size(self, chunk_ix: int) -> int: ...          # unvalidated fast path
     def indices_to_chunks(self, indices: NDArray[np.intp]) -> NDArray[np.intp]: ...
     @property
-    def unique_edge_lengths(self) -> Iterable[int]: ...
+    def _unique_edge_lengths(self) -> Iterable[int]: ...
     def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
+    @property
+    def _size_repr(self) -> str: ...                         # used by ChunkGrid.__repr__
 ```
 
 The protocol is `@runtime_checkable`, enabling polymorphic handling of both dimension types without `isinstance` checks.
@@ -358,6 +349,8 @@ When `chunks="keep"`, the logic checks `data._chunk_grid.is_regular`:
 - Regular: extracts `data.chunks` (flat tuple) and preserves shards
 - Rectilinear: extracts `data.write_chunk_sizes` (nested tuples) and forces shards to None
 
+The `shards=None` branch predates rectilinear + sharding support: now that sharded rectilinear arrays exist, `shards="keep"` silently drops their sharding (see open question 6).
+
 ### Indexing
 
 The indexing pipeline is coupled to regular grid assumptions — every per-dimension indexer takes a scalar `dim_chunk_len: int` and uses `//` and `*`:
@@ -388,7 +381,7 @@ Read:  store → decode to codec_shape → slice via chunk_selection → user da
 
 ### Sharding
 
-The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as extent and the subchunk shape as `FixedDimension`. Each shard is self-contained — it doesn't need to know whether the outer grid is regular or rectilinear. Validation checks that every unique edge length per dimension is divisible by the inner chunk size, using `dim.unique_edge_lengths` for efficient polymorphic iteration (O(1) for fixed dimensions, lazy-deduplicated for varying).
+The sharding codec models each shard as a self-contained array region with its own chunk grid: the shard's shape is the extent, tiled by the inner chunk shape as a regular grid. A shard never needs to know whether the outer grid is regular or rectilinear. How that per-shard grid is realized — a `ChunkGrid` instance per shard operation (the current implementation), instances cached by shard shape, or pure index arithmetic — is an implementation choice this design does not fix. Validation enforces one invariant: every distinct shard edge length per dimension is divisible by the inner chunk size (currently iterated via `dim._unique_edge_lengths`, O(1) for fixed dimensions, lazily deduplicated for varying).
 
 ```
 Level 1 — Outer chunk grid (shard boundaries): regular or rectilinear
@@ -398,12 +391,25 @@ Level 3 — Shard index: ceil(shard_dim / subchunk_dim) entries per dimension
 
 [zarr-specs#370](https://github.com/zarr-developers/zarr-specs/pull/370) lifts the requirement that subchunk shapes evenly divide the shard shape. With the proposed `ChunkGrid`, this just means removing the `shard_shape % subchunk_shape == 0` validation — `FixedDimension` already handles boundary clipping via `data_size`.
 
-| Outer grid | Subchunk divisibility | Required change |
-|---|---|---|
-| Regular | Evenly divides (v1.0) | None |
-| Regular | Non-divisible (v1.1) | Remove divisibility validation |
-| Rectilinear | Evenly divides | Remove "sharding incompatible" guard |
-| Rectilinear | Non-divisible | Both changes |
+| Outer grid | Subchunk divisibility | Required change | Status |
+|---|---|---|---|
+| Regular | Evenly divides (v1.0) | None | Shipped |
+| Regular | Non-divisible (v1.1) | Remove divisibility validation | Not implemented |
+| Rectilinear | Evenly divides | Remove "sharding incompatible" guard | Shipped |
+| Rectilinear | Non-divisible | Both changes | Not implemented |
+
+Rectilinear + sharding shipped after v6 of this document: `ShardingCodec.validate` accepts both grid metadata types and checks that every distinct outer edge length is divisible by the inner chunk size, and the `shards=` parameter of `create_array` accepts nested sequences for rectilinear shard boundaries (see [Creation-time chunk resolution](#creation-time-chunk-resolution)). The introspection gaps this combination exposed (`.shards` cannot express rectilinear shard shapes) are tracked in [#4035](https://github.com/zarr-developers/zarr-python/issues/4035) / [#4036](https://github.com/zarr-developers/zarr-python/issues/4036).
+
+### Creation-time chunk resolution
+
+*(Added in v7; this layer post-dates v6.)* Between user input and grid metadata sits a normalization layer in `chunk_grids.py`:
+
+- `ChunksTuple` — a `NewType` over `tuple[np.ndarray, ...]` (one 1D int64 edge array per dimension) marking a chunk specification as validated and canonical. Produced only by `normalize_chunks_nd` and `guess_chunks`; consumers accept the `NewType` so raw user input cannot bypass normalization.
+- `resolve_outer_and_inner_chunks(array_shape, chunks, shard_shape, item_size)` — resolves the user's `chunks=`/`shards=` pair into a `ChunkLayout`, an internal `NamedTuple` with `outer_chunks: ChunksTuple` (the chunk grid metadata input) and `inner: ChunkLayout | None` (the `ShardingCodec` sub-chunk structure, recursive to support nested sharding; `None` when unsharded).
+- `shards=` accepts `tuple[int, ...]`, nested sequences (rectilinear shard boundaries), a `{"shape": ...}` dict, or `"auto"`. Auto-shard inference is experimental and warns: it targets the `array.target_shard_size_bytes` config value when set, otherwise doubles chunks per axis on axes with more than 8 chunks. When sharding is active and `chunks` is left to auto-chunking, the inner-chunk heuristic caps chunk size at `SHARDED_INNER_CHUNK_MAX_BYTES` (1 MiB).
+- `create_chunk_grid_metadata(chunks)` (in `metadata/v3.py`) maps a `ChunksTuple` to `RegularChunkGridMetadata` when `is_regular_nd` holds, else to `RectilinearChunkGridMetadata` — this is where the uniform-nested-list collapse (open question 4) is implemented.
+
+Naming note: this internal `ChunkLayout` is creation-time plumbing, distinct from the *public* chunk-layout introspection type under discussion in [#4036](https://github.com/zarr-developers/zarr-python/issues/4036). If that public type lands, the internal `NamedTuple` should be renamed (e.g. `_ResolvedChunks`) to free the name.
 
 ### What this replaces
 
@@ -444,7 +450,7 @@ There is no known chunk grid outside the rectilinear family that retains the tes
 
 The resolution: a single `ChunkGrid` class with an `is_regular` property (O(1), cached at construction). This gives downstream code the fast-path detection @dcherian needed without the class hierarchy complexity @d-v-b wanted to avoid. The metadata document's `name` field (`"regular"` vs `"rectilinear"`) is also available for clients who inspect JSON directly.
 
-A backwards-compatibility shim in `chunk_grids.py` preserves the old `RegularChunkGrid` / `RectilinearChunkGrid` import paths with deprecation warnings — see [Backwards compatibility](#backwards-compatibility).
+No import shim for the old `RegularChunkGrid` / `RectilinearChunkGrid` names was ultimately shipped — the no-shims option was chosen and downstream packages migrated directly. See the decision record in [Internal API compatibility trade-off analysis](#internal-api-compatibility-trade-off-analysis).
 
 ### Why is ChunkGrid a concrete class instead of a Protocol/ABC?
 
@@ -517,7 +523,8 @@ The user-facing API is fully backward-compatible. Existing code that creates, op
 
 - `zarr.create_array`, `zarr.open`, `zarr.open_array`, `zarr.open_group` -- unchanged signatures. The `chunks` parameter type is *widened* (now also accepts nested sequences for rectilinear grids), but all existing call patterns still work.
 - `arr.chunks` -- returns `tuple[int, ...]` for regular arrays, same as before.
-- `arr.shape`, `arr.dtype`, `arr.ndim`, `arr.shards` -- unchanged.
+- `arr.shape`, `arr.dtype`, `arr.ndim` -- unchanged.
+- `arr.shards` -- unchanged for regular grids; raises `NotImplementedError` for sharded rectilinear arrays, since its `tuple[int, ...] | None` return type cannot express rectilinear shard shapes. A non-raising public sharding predicate is tracked in [#4036](https://github.com/zarr-developers/zarr-python/issues/4036), and grid-kind detection in [#4035](https://github.com/zarr-developers/zarr-python/issues/4035).
 - Top-level `zarr` exports -- unchanged.
 - Rectilinear chunks are gated behind `zarr.config.set({'array.rectilinear_chunks': True})`, so they cannot be created accidentally.
 
@@ -653,6 +660,8 @@ This covers cubed's `OrthogonalIndexer(selection, shape, RegularChunkGrid(...))`
 
 With Shims 1+2 only, VirtualiZarr's `manifests/array.py` import from `zarr.core.metadata.v3` is covered by Shim 2, and the `parsers/zarr.py` import from `zarr.core.chunk_grids` is covered by Shim 1. The `isinstance` checks work because both shims resolve to `RegularChunkGridMetadata`. The `cast` works because `.chunk_shape` is unchanged. So VirtualiZarr needs 0 changes with Shims 1+2. The 3 lines for cubed remain because Shim 1 resolves the import but `OrthogonalIndexer` still needs a runtime `ChunkGrid`.
 
+**Decision (recorded in v7):** the no-shims baseline shipped. There is no `__getattr__` shim in `chunk_grids.py` or `metadata/v3.py`, no `ChunkGridMetadata` coercion in the indexer constructors, and the `RegularChunkGrid` name no longer appears anywhere in the codebase. VirtualiZarr and cubed made the small migrations described above.
+
 ### Downstream migration
 
 Migration from `main` (where only `RegularChunkGrid` and the abstract `ChunkGrid` ABC exist):
@@ -690,6 +699,7 @@ This implementation builds on prior work:
 3. **`__getitem__` with slices:** Should `grid[0, :]` or `grid[0:3, :]` return a sub-grid or an iterator of `ChunkSpec`s?
 4. **Uniform nested lists:** Should `chunks=[[10, 10], [20, 20]]` serialize as `"rectilinear"` (preserving user intent for future append) or `"regular"` (current behavior, collapses uniform edges)? See [User control over grid serialization format](#user-control-over-grid-serialization-format).
 5. **`zarr.open` with rectilinear:** @tomwhite noted in #3534 that `zarr.open(mode="w")` doesn't support rectilinear chunks directly. This could be addressed in a follow-up.
+6. **`from_array(..., shards="keep")` with rectilinear sources:** the rectilinear branch forces `shards=None`, which was correct before rectilinear + sharding shipped but now silently discards the sharding of a sharded rectilinear source. Should it preserve the shard structure instead, and what should happen when the destination chunk specification is incompatible with the source shards?
 
 ## Proofs of concepts
 
