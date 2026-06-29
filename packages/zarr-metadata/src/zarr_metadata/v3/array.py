@@ -5,10 +5,11 @@ from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3._common import MetadataFieldV3
+from zarr_metadata._common import JSONValue
+from zarr_metadata.v3._common import MetadataV3
 
 
-class ExtensionFieldV3(TypedDict, extra_items=object):  # type: ignore[call-arg]
+class ExtensionFieldV3(TypedDict, extra_items=JSONValue):  # type: ignore[call-arg]
     """
     Required shape of any extension field on a v3 metadata document.
 
@@ -51,14 +52,14 @@ class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: MetadataFieldV3
+    data_type: MetadataV3
     shape: tuple[int, ...]
-    chunk_grid: MetadataFieldV3
-    chunk_key_encoding: MetadataFieldV3
-    fill_value: object
-    codecs: tuple[MetadataFieldV3, ...]
-    attributes: NotRequired[Mapping[str, object]]
-    storage_transformers: NotRequired[tuple[MetadataFieldV3, ...]]
+    chunk_grid: MetadataV3
+    chunk_key_encoding: MetadataV3
+    fill_value: JSONValue
+    codecs: tuple[MetadataV3, ...]
+    attributes: NotRequired[Mapping[str, JSONValue]]
+    storage_transformers: NotRequired[tuple[MetadataV3, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
@@ -87,14 +88,14 @@ class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: MetadataFieldV3
+    data_type: MetadataV3
     shape: tuple[int, ...]
-    chunk_grid: MetadataFieldV3
-    chunk_key_encoding: MetadataFieldV3
-    fill_value: object
-    codecs: tuple[MetadataFieldV3, ...]
-    attributes: NotRequired[Mapping[str, object]]
-    storage_transformers: NotRequired[tuple[MetadataFieldV3, ...]]
+    chunk_grid: MetadataV3
+    chunk_key_encoding: MetadataV3
+    fill_value: JSONValue
+    codecs: tuple[MetadataV3, ...]
+    attributes: NotRequired[Mapping[str, JSONValue]]
+    storage_transformers: NotRequired[tuple[MetadataV3, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
