@@ -384,6 +384,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
         object.__setattr__(self, "_transform", IndexTransform.from_shape(metadata_parsed.shape))
         object.__setattr__(self, "_shape", self._transform.domain.shape)
+        # A freshly-opened array has the identity transform: input coord i maps to
+        # storage coord i over the full storage domain. Eager indexing on such an
+        # array can use the original (legacy) indexers directly, avoiding the
+        # transform-resolution overhead. Lazy views (created via _with_transform)
+        # carry a non-identity transform and must go through the transform path.
+        object.__setattr__(self, "_is_identity", True)
 
     @classmethod
     async def _create(
@@ -807,6 +813,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         object.__setattr__(new, "codec_pipeline", self.codec_pipeline)
         object.__setattr__(new, "_transform", transform)
         object.__setattr__(new, "_shape", transform.domain.shape)
+        object.__setattr__(
+            new, "_is_identity", _transform_is_identity(transform, self.metadata.shape)
+        )
         return new
 
     @property
@@ -2904,8 +2913,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None:
-            # Fall back to legacy path for structured dtype field selection
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity-transform) arrays and structured-dtype field
+            # selection use the original indexer path directly.
             return sync(
                 self.async_array._get_selection(
                     BasicIndexer(selection, self.shape, self._chunk_grid),
@@ -3018,8 +3028,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None:
-            # Fall back to legacy path for structured dtype field selection
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity-transform) arrays and structured-dtype field
+            # selection use the original indexer path directly.
             indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
             sync(
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -3154,8 +3165,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None or not is_basic_selection(selection):
-            # Fall back to legacy path for structured dtypes or advanced selections
+        if fields is not None or self._async_array._is_identity or not is_basic_selection(selection):
+            # Eager (identity) arrays, structured dtypes, and advanced selections
+            # use the original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
             return sync(
                 self.async_array._get_selection(
@@ -3277,8 +3289,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None or not is_basic_selection(selection):
-            # Fall back to legacy path for structured dtypes or advanced selections
+        if fields is not None or self._async_array._is_identity or not is_basic_selection(selection):
+            # Eager (identity) arrays, structured dtypes, and advanced selections
+            # use the original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
             sync(
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -3371,7 +3384,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None:
+        if fields is not None or self._async_array._is_identity:
             indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
             return sync(
                 self.async_array._get_selection(
@@ -3476,7 +3489,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None:
+        if fields is not None or self._async_array._is_identity:
             indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
             sync(
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -3581,7 +3594,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if fields is not None:
+        if fields is not None or self._async_array._is_identity:
             indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
             out_array = sync(
                 self.async_array._get_selection(
@@ -3704,7 +3717,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # Normalize empty fields list to None
         if not fields:
             fields = None
-        if fields is not None:
+        if fields is not None or self._async_array._is_identity:
             indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
             if not is_scalar(value, self.dtype):
                 try:
@@ -3715,6 +3728,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                     value = np.array(value)
             if hasattr(value, "shape") and len(value.shape) > 1:
                 value = np.array(value).reshape(-1)
+            if not is_scalar(value, self.dtype) and (
+                isinstance(value, NDArrayLike) and indexer.shape != value.shape
+            ):
+                raise ValueError(
+                    f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                    f"elements with an array of {value.shape[0]} elements."
+                )
             sync(
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
             )
@@ -5606,6 +5626,33 @@ def _get_chunk_spec(
     )
 
 
+def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
+    """Return True if ``transform`` is the identity over the full storage domain.
+
+    An identity transform maps input coordinate ``i`` to storage coordinate ``i``
+    across the array's whole storage shape (origin 0, unit stride, dimensions in
+    order). Such an array is an ordinary eager array — indexing it produces the
+    same coordinates the legacy indexers compute, so the legacy fast path is
+    safe. Any narrowing, striding, reordering, or fancy selection (i.e. a lazy
+    view) yields a non-identity transform that must go through the transform
+    resolver. Cheap: O(ndim), no array work.
+    """
+    from zarr.core.transforms.output_map import DimensionMap
+
+    domain = transform.domain
+    ndim = len(storage_shape)
+    if domain.ndim != ndim or len(transform.output) != ndim:
+        return False
+    if domain.inclusive_min != (0,) * ndim or domain.exclusive_max != storage_shape:
+        return False
+    for i, m in enumerate(transform.output):
+        if not (
+            type(m) is DimensionMap and m.input_dimension == i and m.offset == 0 and m.stride == 1
+        ):
+            return False
+    return True
+
+
 def _is_complete_chunk(
     sub_transform: IndexTransform, chunk_grid: ChunkGrid, chunk_coords: tuple[int, ...]
 ) -> bool:
@@ -6413,6 +6460,7 @@ async def _resize(
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
     object.__setattr__(array, "_transform", IndexTransform.from_shape(new_shape))
     object.__setattr__(array, "_shape", array._transform.domain.shape)
+    object.__setattr__(array, "_is_identity", True)
 
 
 async def _append(
