@@ -160,7 +160,7 @@ options are forwarded to the underlying fsspec filesystem (for S3 that is
 [`s3fs`](https://s3fs.readthedocs.io/)), so the accepted keys are the ones that filesystem
 understands; for S3 the most common are `key`, `secret`, `token`, and `endpoint_url`:
 
-```python
+```python exec="false" reason="requires private S3 credentials not available in the docs build environment"
 import zarr
 
 store = zarr.storage.FsspecStore.from_url(
