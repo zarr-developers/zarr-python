@@ -10,7 +10,7 @@ import pytest
 from zarr.abc.store import RangeByteRequest, Store, SuffixByteRequest
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
-from zarr.experimental.cache_store import CacheStore
+from zarr.experimental.cache_store import CacheStore, _Entry
 from zarr.storage import MemoryStore
 
 
@@ -62,7 +62,7 @@ class TestCacheStore:
         # Cache configuration and state are shared
         assert writer._cache is cached_ro._cache
         assert writer._state is cached_ro._state
-        assert writer._state.key_insert_times is cached_ro._state.key_insert_times
+        assert writer._state.entries is cached_ro._state.entries
 
         # Writes via the writable cache store succeed and are cached
         await writer.set("foo", buf)
@@ -132,13 +132,13 @@ class TestCacheStore:
         await cached_store.set("expire_key", test_data)
 
         # Should be fresh initially
-        assert cached_store._is_key_fresh("expire_key")
+        assert cached_store._is_fresh("expire_key")
 
         # Wait for expiration
         await asyncio.sleep(1.1)
 
         # Should now be stale
-        assert not cached_store._is_key_fresh("expire_key")
+        assert not cached_store._is_fresh("expire_key")
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
         """Test behavior when cache_set_data=False."""
@@ -222,11 +222,11 @@ class TestCacheStore:
         await cached_store.set("eternal_key", test_data)
 
         # Should always be fresh
-        assert cached_store._is_key_fresh("eternal_key")
+        assert cached_store._is_fresh("eternal_key")
 
         # Even after time passes
         await asyncio.sleep(0.1)
-        assert cached_store._is_key_fresh("eternal_key")
+        assert cached_store._is_fresh("eternal_key")
 
     async def test_cache_returns_cached_data_for_performance(
         self, cached_store: CacheStore, source_store: Store
@@ -235,7 +235,9 @@ class TestCacheStore:
         # Put data in cache but not source (simulates orphaned cache entry)
         test_data = CPUBuffer.from_bytes(b"orphaned data")
         await cached_store._cache.set("orphan_key", test_data)
-        cached_store._state.key_insert_times["orphan_key"] = time.monotonic()
+        cached_store._state.entries["orphan_key"] = _Entry(
+            insert_time=time.monotonic(), size=len(test_data), present=True
+        )
 
         # Cache should return data for performance (no source verification)
         result = await cached_store.get("orphan_key", default_buffer_prototype())
@@ -244,7 +246,7 @@ class TestCacheStore:
 
         # Cache entry should remain (performance optimization)
         assert await cached_store._cache.exists("orphan_key")
-        assert "orphan_key" in cached_store._state.key_insert_times
+        assert "orphan_key" in cached_store._state.entries
 
     async def test_cache_coherency_through_expiration(self) -> None:
         """Test that cache coherency is managed through cache expiration, not source verification."""
@@ -287,8 +289,10 @@ class TestCacheStore:
             "max_size",
             "current_size",
             "cache_set_data",
+            "cache_missing",
             "tracked_keys",
             "cached_keys",
+            "missing_keys",
         }
         assert set(info.keys()) == expected_keys
 
@@ -378,7 +382,7 @@ class TestCacheStore:
         await cached_store.set("test_key", test_data)
 
         # Even after time passes, key should be fresh
-        assert cached_store._is_key_fresh("test_key")
+        assert cached_store._is_fresh("test_key")
 
     async def test_max_age_numeric(self) -> None:
         """Test cache with numeric max age."""
@@ -395,13 +399,13 @@ class TestCacheStore:
         await cached_store.set("test_key", test_data)
 
         # Key should be fresh initially
-        assert cached_store._is_key_fresh("test_key")
+        assert cached_store._is_fresh("test_key")
 
         # Manually set old timestamp to test expiration
-        cached_store._state.key_insert_times["test_key"] = time.monotonic() - 2  # 2 seconds ago
+        cached_store._state.entries["test_key"].insert_time = time.monotonic() - 2  # 2 seconds ago
 
         # Key should now be stale
-        assert not cached_store._is_key_fresh("test_key")
+        assert not cached_store._is_fresh("test_key")
 
     async def test_cache_set_data_disabled(self) -> None:
         """Test cache behavior when cache_set_data is False."""
@@ -551,8 +555,8 @@ class TestCacheStore:
         await cached_store.set("test_key", test_data)
 
         # Manually corrupt the tracking to trigger exception
-        # Remove from one structure but not others to create inconsistency
-        del cached_store._state.cache_order["test_key"]
+        # Remove the tracked entry while leaving the cached value behind
+        del cached_store._state.entries["test_key"]
 
         # Try to evict - should handle the KeyError gracefully
         await cached_store._evict_key("test_key")
@@ -573,16 +577,16 @@ class TestCacheStore:
         await cached_store._track_entry("phantom_key", test_data)
 
         # Verify it's in tracking
-        assert "phantom_key" in cached_store._state.cache_order
-        assert "phantom_key" in cached_store._state.key_insert_times
+        assert "phantom_key" in cached_store._state.entries
 
         # Now try to get it - since it's not in source, should clean up tracking
         result = await cached_store._get_no_cache("phantom_key", default_buffer_prototype())
         assert result is None
 
-        # Should have cleaned up tracking
-        assert "phantom_key" not in cached_store._state.cache_order
-        assert "phantom_key" not in cached_store._state.key_insert_times
+        # Should have cleaned up tracking (the positive entry is gone). With
+        # cache_missing on by default, a negative marker replaces it.
+        entry = cached_store._state.entries.get("phantom_key")
+        assert entry is None or not entry.present
 
     async def test_accommodate_value_no_max_size(self) -> None:
         """Test _accommodate_value early return when max_size is None."""
@@ -642,9 +646,7 @@ class TestCacheStore:
         # Size should be consistent with tracked keys
         assert info["current_size"] <= 200  # Might pass
         # But verify actual cache store size matches tracking
-        total_size = sum(
-            cached_store._state.key_sizes.get(k, 0) for k in cached_store._state.cache_order
-        )
+        total_size = sum(entry.size for entry in cached_store._state.entries.values())
         assert total_size == info["current_size"]  # WOULD FAIL
 
     async def test_concurrent_get_and_evict(self) -> None:
@@ -673,7 +675,10 @@ class TestCacheStore:
         # Verify consistency
         info = cached_store.cache_info()
         assert info["current_size"] <= 100
-        assert len(cached_store._state.cache_order) == len(cached_store._state.key_sizes)
+        # Tracked size accounting stays consistent with all entries (present
+        # values plus any negative markers, which each carry a flat overhead).
+        total_size = sum(entry.size for entry in cached_store._state.entries.values())
+        assert total_size == info["current_size"]
 
     async def test_eviction_actually_deletes_from_cache_store(self) -> None:
         """Test that eviction removes keys from cache_store, not just tracking."""
@@ -694,8 +699,7 @@ class TestCacheStore:
         await cached_store.set("key2", data2)
 
         # Check tracking - key1 should be removed
-        assert "key1" not in cached_store._state.cache_order
-        assert "key1" not in cached_store._state.key_sizes
+        assert "key1" not in cached_store._state.entries
 
         # CRITICAL: key1 should also be removed from cache_store
         assert not await cache_store.exists("key1"), (
@@ -767,19 +771,13 @@ class TestCacheStore:
             data = CPUBuffer.from_bytes(b"x" * 50)
             await cached_store.set(f"key_{i}", data)
 
-        # Every str key in tracking should exist in cache_store
-        # (tuple keys are byte-range entries stored in-memory, not in the Store)
-        for entry_key in cached_store._state.cache_order:
-            if isinstance(entry_key, str):
+        # Every present str key in tracking should exist in cache_store.
+        # (tuple keys are byte-range entries stored in-memory, not in the Store;
+        # absent entries are negative markers with no stored value.)
+        for entry_key, entry in cached_store._state.entries.items():
+            if isinstance(entry_key, str) and entry.present:
                 assert await cache_store.exists(entry_key), (
                     f"Key '{entry_key}' is tracked but doesn't exist in cache_store"
-                )
-
-        # Every str key in _key_sizes should exist in cache_store
-        for entry_key in cached_store._state.key_sizes:
-            if isinstance(entry_key, str):
-                assert await cache_store.exists(entry_key), (
-                    f"Key '{entry_key}' has size tracked but doesn't exist in cache_store"
                 )
 
     # Additional coverage tests for 100% coverage
@@ -997,13 +995,13 @@ class TestCacheStore:
         assert r1.to_bytes() == b"old"
 
         # Byte-range entry should be in range_cache
-        assert ("key", RangeByteRequest(0, 3)) in cached_store._state.cache_order
+        assert ("key", RangeByteRequest(0, 3)) in cached_store._state.entries
 
         # Overwrite via set() — range entries must be invalidated
         await cached_store.set("key", CPUBuffer.from_bytes(b"NEW DATA!!"))
 
         # The old range entry should be gone from tracking and range_cache
-        assert ("key", RangeByteRequest(0, 3)) not in cached_store._state.cache_order
+        assert ("key", RangeByteRequest(0, 3)) not in cached_store._state.entries
         assert "key" not in cached_store._state.range_cache
 
         # A fresh byte-range read should return the new data
@@ -1025,14 +1023,378 @@ class TestCacheStore:
         assert r is not None
         assert r.to_bytes() == b"hello"
 
-        assert ("key", RangeByteRequest(0, 5)) in cached_store._state.cache_order
+        assert ("key", RangeByteRequest(0, 5)) in cached_store._state.entries
 
         # Delete the key — range entries must be cleaned up
         await cached_store.delete("key")
 
-        assert ("key", RangeByteRequest(0, 5)) not in cached_store._state.cache_order
+        assert ("key", RangeByteRequest(0, 5)) not in cached_store._state.entries
         assert "key" not in cached_store._state.range_cache
 
         # Key is gone from source
         result = await cached_store.get("key", proto)
         assert result is None
+
+
+class TestCacheStoreNegativeCaching:
+    """Tests for opt-in negative (missing-key) caching (``cache_missing=True``)."""
+
+    async def test_basic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A second get of an absent key is served from the negative cache without a
+        source round-trip."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        calls = {"n": 0}
+        orig_get = source.get
+
+        async def counting_get(*args: object, **kwargs: object) -> object:
+            calls["n"] += 1
+            return await orig_get(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(source, "get", counting_get)
+
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+        after_first = calls["n"]
+
+        assert await cs.get("c/0", proto) is None
+        assert calls["n"] == after_first  # no further source access
+        assert cs.cache_stats()["negative_hits"] == 1
+
+    async def test_enabled_by_default(self) -> None:
+        """Negative caching is on by default (opt-out)."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+        assert cs.cache_missing is True
+        assert await cs.get("c/0", proto) is None
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+        assert cs.cache_stats()["negative_hits"] == 1
+
+    async def test_can_be_disabled(self) -> None:
+        """With ``cache_missing=False`` nothing is remembered."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=False)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 0
+        assert cs.cache_stats()["negative_hits"] == 0
+
+    async def test_evicted_on_set(self) -> None:
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+
+        await cs.set("c/0", CPUBuffer.from_bytes(b"value"))
+        assert cs.cache_info()["missing_keys"] == 0
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    async def test_evicted_on_set_if_not_exists(self) -> None:
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+        assert cs.cache_info()["missing_keys"] == 1
+
+        await cs.set_if_not_exists("c/0", CPUBuffer.from_bytes(b"value"))
+        assert cs.cache_info()["missing_keys"] == 0
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    async def test_respects_ttl(self) -> None:
+        """A negative entry expires after ``max_age_seconds`` so a key written to the
+        source out-of-band becomes visible again."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_age_seconds=1)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto) is None
+
+        # an external writer adds the key directly to the source store
+        await source.set("c/0", CPUBuffer.from_bytes(b"late"))
+
+        # before TTL: still reported missing from the negative cache
+        assert await cs.get("c/0", proto) is None
+        await asyncio.sleep(1.1)
+
+        # after TTL: the stale negative entry is bypassed, source is consulted
+        result = await cs.get("c/0", proto)
+        assert result is not None
+        assert result.to_bytes() == b"late"
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_byte_range_unaffected(self) -> None:
+        """Byte-range misses do not populate the negative cache."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+        assert await cs.get("c/0", proto, byte_range=RangeByteRequest(0, 4)) is None
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_stats_and_info(self) -> None:
+        """``negative_hits``/``missing_keys``/``cache_missing`` are surfaced and the
+        positive ``hit_rate`` is unaffected by negative hits."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        await cs.set("present", CPUBuffer.from_bytes(b"x"))
+        assert (await cs.get("present", proto)) is not None  # positive hit
+        assert await cs.get("absent", proto) is None  # records miss
+        assert await cs.get("absent", proto) is None  # negative hit
+
+        info = cs.cache_info()
+        stats = cs.cache_stats()
+        assert info["cache_missing"] is True
+        assert info["missing_keys"] == 1
+        assert stats["negative_hits"] == 1
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1  # negative hit counts as neither hit nor miss
+        assert stats["hit_rate"] == 0.5
+
+    async def test_delete_does_not_record(self) -> None:
+        """Deleting a key does not create a negative entry (deletion != checked-absent)."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
+        await cs.delete("c/0")
+        assert cs.cache_info()["missing_keys"] == 0
+
+    async def test_negative_entry_counts_against_max_size(self) -> None:
+        """A negative marker is charged against the shared ``max_size`` budget."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        cs = CacheStore(
+            MemoryStore(), cache_store=MemoryStore(), cache_missing=True, max_size=10_000
+        )
+        proto = default_buffer_prototype()
+        assert cs.cache_info()["current_size"] == 0
+        assert await cs.get("absent", proto) is None
+        assert cs.cache_info()["current_size"] == _NEGATIVE_ENTRY_SIZE
+
+    async def test_shared_budget_bounds_negative_entries(self) -> None:
+        """Many misses cannot grow the cache past ``max_size`` — old negative
+        markers are evicted (LRU) to stay within the shared budget."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        cap = 5
+        cs = CacheStore(
+            MemoryStore(),
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_size=cap * _NEGATIVE_ENTRY_SIZE,
+        )
+        proto = default_buffer_prototype()
+        for i in range(25):
+            assert await cs.get(f"absent/{i}", proto) is None
+
+        info = cs.cache_info()
+        assert info["missing_keys"] == cap
+        assert info["current_size"] <= cap * _NEGATIVE_ENTRY_SIZE
+        # The most-recent misses are retained (LRU eviction of the oldest).
+        assert await cs.get("absent/24", proto) is None
+        assert cs.cache_stats()["negative_hits"] >= 1
+
+    async def test_absent_evicted_before_present(self) -> None:
+        """Under memory pressure, miss-markers are evicted before cached values."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        # Budget for one value plus a couple of negative markers.
+        value = CPUBuffer.from_bytes(b"v" * 64)
+        cs = CacheStore(
+            source,
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_size=len(value) + 2 * _NEGATIVE_ENTRY_SIZE,
+        )
+        proto = default_buffer_prototype()
+
+        # Cache a present value, then record several misses that exceed the budget.
+        await source.set("present", value)
+        assert (await cs.get("present", proto)) is not None
+        for i in range(5):
+            assert await cs.get(f"absent/{i}", proto) is None
+
+        # The present value survives; markers are bounded and never evict it.
+        info = cs.cache_info()
+        assert info["cached_keys"] == 1
+        assert "present" in cs._state.entries
+        assert cs._state.entries["present"].present
+        # Markers fill only the room left over by the cached value (2 here), proving
+        # both that misses were actually recorded and that they were bounded.
+        assert info["missing_keys"] == 2
+        assert info["current_size"] <= cs.max_size
+
+    async def test_no_size_leak_on_miss_then_write(self) -> None:
+        """Recording a miss then writing the key must not leak the marker's charge
+        against ``current_size`` (regression for negative-entry accounting)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 50)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=10_000)
+        proto = default_buffer_prototype()
+
+        # Miss → marker charged; then write the same key → marker must be reclaimed.
+        assert await cs.get("k", proto) is None
+        assert cs.cache_info()["current_size"] == _NEGATIVE_ENTRY_SIZE
+        await cs.set("k", value)
+
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0
+        assert info["cached_keys"] == 1
+        # Only the value's bytes remain — no leftover marker overhead.
+        assert info["current_size"] == len(value)
+        # And the invariant holds: current_size == sum of all tracked entry sizes.
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]
+
+    async def test_no_size_leak_on_miss_then_set_if_not_exists(self) -> None:
+        """``set_if_not_exists`` after a miss reclaims the marker's charge too."""
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 50)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=10_000)
+        proto = default_buffer_prototype()
+
+        assert await cs.get("k", proto) is None
+        await cs.set_if_not_exists("k", value)
+
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]
+
+    async def test_stale_cached_value_becomes_negative_entry(self) -> None:
+        """A cached value whose source key later reads absent is replaced by a negative
+        marker, reclaiming the value's bytes (no leftover positive accounting)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 200)
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_age_seconds=1)
+        proto = default_buffer_prototype()
+
+        # Cache a present value, then delete the key from the source out-of-band.
+        await cs.set("k", value)
+        assert cs.cache_info()["current_size"] == len(value)
+        await source.delete("k")
+        # Force the cached entry stale so the next read consults the (now empty) source.
+        cs._state.entries["k"].insert_time = time.monotonic() - 10
+
+        assert await cs.get("k", proto) is None  # source absent -> records a miss
+        info = cs.cache_info()
+        assert info["cached_keys"] == 0
+        assert info["missing_keys"] == 1
+        # The 200-byte value was reclaimed; only the marker's overhead remains.
+        assert info["current_size"] == _NEGATIVE_ENTRY_SIZE
+
+    async def test_miss_not_recorded_when_budget_full_of_values(self) -> None:
+        """When the budget is full of cached values and no markers exist to evict, a
+        miss is not recorded (a marker never displaces a cached value)."""
+        source = MemoryStore()
+        value = CPUBuffer.from_bytes(b"v" * 200)
+        # Budget fits exactly one value, with no room for a negative marker.
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True, max_size=200)
+        proto = default_buffer_prototype()
+
+        await cs.set("present", value)
+        assert cs.cache_info()["cached_keys"] == 1
+
+        assert await cs.get("absent", proto) is None
+        info = cs.cache_info()
+        assert info["missing_keys"] == 0  # no room -> miss not remembered
+        assert info["cached_keys"] == 1  # cached value untouched
+        assert info["current_size"] == len(value)
+
+    async def test_caching_value_evicts_absent_markers(self) -> None:
+        """Caching a present value reclaims room by evicting negative markers first."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        cs = CacheStore(
+            source,
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_size=3 * _NEGATIVE_ENTRY_SIZE,
+        )
+        proto = default_buffer_prototype()
+
+        # Fill the budget with three negative markers.
+        for i in range(3):
+            assert await cs.get(f"absent/{i}", proto) is None
+        assert cs.cache_info()["missing_keys"] == 3
+
+        # Caching a value must evict marker(s) to fit — markers go before any value.
+        await cs.set("v", CPUBuffer.from_bytes(b"v" * 100))
+        info = cs.cache_info()
+        assert info["cached_keys"] == 1
+        assert info["missing_keys"] < 3  # at least one marker evicted to make room
+        assert info["current_size"] <= cs.max_size
+
+    async def test_upgrade_marker_to_value_under_pressure_evicts_other_entry(self) -> None:
+        """Upgrading a stale negative marker to a cached value under memory pressure must
+        evict a *different* entry, not self-evict (which would under-count current_size
+        and breach max_size)."""
+        from zarr.experimental.cache_store import _NEGATIVE_ENTRY_SIZE
+
+        source = MemoryStore()
+        cs = CacheStore(
+            source,
+            cache_store=MemoryStore(),
+            cache_missing=True,
+            max_age_seconds=1000,
+            max_size=300,
+        )
+        proto = default_buffer_prototype()
+
+        # One cached value "a" (128 B) and one negative marker "k" (128 B) → 256 B used.
+        await cs.set("a", CPUBuffer.from_bytes(b"a" * (_NEGATIVE_ENTRY_SIZE)))
+        assert await cs.get("k", proto) is None
+        assert cs.cache_info()["current_size"] == 2 * _NEGATIVE_ENTRY_SIZE
+
+        # "k" now exists in the source with a 200 B value; force the marker stale so the
+        # next read fetches it and upgrades the slot to a present value (needs eviction).
+        await source.set("k", CPUBuffer.from_bytes(b"k" * 200))
+        cs._state.entries["k"].insert_time = time.monotonic() - 5000
+
+        result = await cs.get("k", proto)
+        assert result is not None
+        assert result.to_bytes() == b"k" * 200
+
+        info = cs.cache_info()
+        # Only "k" remains (the other value "a" was evicted to make room); the bound
+        # holds and the size accounting matches the actual tracked entries exactly.
+        assert info["cached_keys"] == 1
+        assert "a" not in cs._state.entries
+        assert not await cs._cache.exists("a")
+        assert info["current_size"] == 200
+        assert info["current_size"] <= cs.max_size
+        total = sum(entry.size for entry in cs._state.entries.values())
+        assert total == info["current_size"]
+
+    async def test_set_if_not_exists_invalidates_stale_byte_range(self) -> None:
+        """``set_if_not_exists`` must invalidate cached byte-range entries, not just the
+        negative marker, so a later byte-range read does not return stale bytes."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"old data!!"))
+        r1 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
+        assert r1 is not None
+        assert r1.to_bytes() == b"old"
+        assert ("k", RangeByteRequest(0, 3)) in cs._state.entries
+
+        # Source key removed out-of-band, then re-created via set_if_not_exists.
+        await source.delete("k")
+        await cs.set_if_not_exists("k", CPUBuffer.from_bytes(b"NEW data!!"))
+
+        # The stale byte-range entry must be gone, and a fresh read returns new bytes.
+        assert ("k", RangeByteRequest(0, 3)) not in cs._state.entries
+        r2 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
+        assert r2 is not None
+        assert r2.to_bytes() == b"NEW"
