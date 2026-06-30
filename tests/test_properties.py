@@ -448,3 +448,50 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+@st.composite
+def _window(draw: st.DrawFn, shape: tuple[int, ...]) -> tuple[slice, ...]:
+    """A tuple of non-negative, full-rank slice windows (one per axis).
+
+    Used to build a lazy view via the accessor, which treats negative indices as
+    literal coordinates (TensorStore convention) — so the view-defining selection
+    must stay non-negative. The view *methods* tested below normalize negatives.
+    """
+    out: list[slice] = []
+    for size in shape:
+        if size == 0:
+            out.append(slice(0, 0))
+            continue
+        start = draw(st.integers(min_value=0, max_value=size - 1))
+        stop = draw(st.integers(min_value=start + 1, max_value=size))
+        out.append(slice(start, stop))
+    return tuple(out)
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_lazy_view_indexing_matches_numpy(data: st.DataObject) -> None:
+    """Indexing the *methods* of a lazy view must match NumPy on the viewed data.
+
+    Regression guard for the class of bugs where view-object indexing
+    (``v[...]``, ``v.oindex[...]``, ``v.vindex[...]``) bypassed the view's
+    transform. The view is built from a non-negative slice window; the second
+    selection is drawn freely (basic, orthogonal, or coordinate).
+    """
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+    base = data.draw(_window(nparray.shape))
+    view = zarray.lazy[base]
+    vref = nparray[base]
+    assume(vref.ndim >= 1)
+
+    # basic indexing on the view (slices/ints/ellipsis, incl. negative indices)
+    sub = data.draw(basic_indices(shape=vref.shape))
+    assert_array_equal(np.asarray(view[sub]), np.asarray(vref[sub]))
+
+    # orthogonal indexing on the view
+    if all(s > 0 for s in vref.shape):
+        zidx, npidx = data.draw(orthogonal_indices(shape=vref.shape))
+        assert_array_equal(np.asarray(view.oindex[zidx]), np.asarray(vref[npidx]))
