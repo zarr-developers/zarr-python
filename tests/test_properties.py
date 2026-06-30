@@ -30,7 +30,7 @@ from zarr.testing.strategies import (
     block_indices,
     block_test_arrays,
     complex_rectilinear_arrays,
-    indexers,
+    numpy_array_indexers,
     numpy_arrays,
     rectilinear_arrays,
     simple_arrays,
@@ -475,7 +475,7 @@ async def test_indexing_read_parity(data: st.DataObject) -> None:
     nparray = zarray[:]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
     assume(_eligible(mode, nparray.shape))
-    zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=nparray.shape))
 
     assert_read_matches_numpy(zarray, nparray, mode, zsel, npsel)
     expected = np.asarray(nparray[npsel])
@@ -504,7 +504,7 @@ async def test_indexing_write_parity(data: st.DataObject) -> None:
     nparray = zarray[:]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
     assume(_eligible(mode, nparray.shape))
-    zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=nparray.shape))
     if mode in ("oindex", "vindex"):
         assume(_write_is_unambiguous(mode, npsel, nparray.shape))
     if mode == "oindex" and zarray.shards is not None:
@@ -636,7 +636,7 @@ class _IndexingStateMachine(RuleBasedStateMachine):
     def write(self, data: st.DataObject, mode: IndexMode) -> None:
         if not _eligible(mode, self.shape):
             return
-        zsel, npsel = data.draw(indexers(mode=mode, shape=self.shape))
+        zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=self.shape))
         if mode in ("oindex", "vindex") and not _write_is_unambiguous(mode, npsel, self.shape):
             return
         if mode == "oindex" and self.shards is not None and _n_array_axes(npsel) >= 2:
@@ -650,7 +650,7 @@ class _IndexingStateMachine(RuleBasedStateMachine):
     def read(self, data: st.DataObject, mode: IndexMode) -> None:
         if not _eligible(mode, self.shape):
             return
-        zsel, npsel = data.draw(indexers(mode=mode, shape=self.shape))
+        zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=self.shape))
         assert_array_equal(np.asarray(_get(self.zarray, mode, zsel)), np.asarray(self.model[npsel]))
 
     @invariant()
@@ -700,5 +700,5 @@ async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     vref = nparray[window]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
     assume(_eligible(mode, vref.shape))
-    zsel, npsel = data.draw(indexers(mode=mode, shape=vref.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=vref.shape))
     assert_read_matches_numpy(view, vref, mode, zsel, npsel)
