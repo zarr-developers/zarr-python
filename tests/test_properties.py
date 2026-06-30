@@ -435,6 +435,10 @@ async def test_indexing_parity(data: st.DataObject) -> None:
     expected = np.asarray(nparray[npsel])
     assert_array_equal(np.asarray(await _async_get(zarray._async_array, mode, zsel)), expected)
 
+    # a mask can also be spelled via vindex[...]; the two interfaces must agree
+    if mode == "mask":
+        assert_array_equal(np.asarray(zarray.vindex[zsel]), expected)
+
     # write, mirroring the historical per-mode guards:
     #   - vindex setitem is chunk-dependent for repeated coords (skipped)
     #   - oindex/mask writes to sharded arrays are unsupported (GH2834)
@@ -449,6 +453,11 @@ async def test_indexing_parity(data: st.DataObject) -> None:
     _setitem(zarray, mode, zsel, new_data)
     nparray[npsel] = new_data
     assert_array_equal(nparray, zarray[:])
+
+    # the vindex[mask] = ... spelling must agree with set_mask_selection
+    if mode == "mask":
+        zarray.vindex[zsel] = new_data
+        assert_array_equal(nparray, zarray[:])
 
 
 @pytest.mark.skipif(

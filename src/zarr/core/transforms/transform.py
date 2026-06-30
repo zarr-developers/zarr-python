@@ -332,7 +332,6 @@ def _intersect_vectorized(
     storage coordinates fall within the output domain.
     """
     # Compute storage coords per array dim and check bounds simultaneously
-    n_points: int | None = None
     masks: list[np.ndarray[Any, np.dtype[np.bool_]]] = []
 
     for out_dim in array_dims:
@@ -342,8 +341,6 @@ def _intersect_vectorized(
         lo = output_domain.inclusive_min[out_dim]
         hi = output_domain.exclusive_max[out_dim]
         masks.append((storage >= lo) & (storage < hi))
-        if n_points is None:
-            n_points = storage.size
 
     # A point survives only if it's in-bounds on ALL array dims
     combined_mask = masks[0]

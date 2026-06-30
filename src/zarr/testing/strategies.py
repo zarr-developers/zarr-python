@@ -636,8 +636,9 @@ def indexers(draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]) -> tup
 
     The two returned selections differ only for ``oindex`` (zarr's per-axis
     spelling vs the ``np.ix_``-style spelling numpy needs); for the other modes
-    the same object indexes both a zarr array and its numpy reference. Fancy modes
-    (``oindex``/``vindex``) require non-zero-size axes; ``mask``/``basic`` do not.
+    the same object indexes both a zarr array and its numpy reference. The
+    array-based modes (``oindex``/``vindex``/``mask``) need ``shape`` to have no
+    zero-length axis; ``basic`` has no such requirement.
     """
     if mode == "basic":
         sel = draw(basic_indices(shape=shape))

@@ -3727,8 +3727,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        # Normalize empty fields list to None
-        if not fields:
+        # Normalize an empty fields list/tuple to None (pop_fields yields [] for
+        # no fields); keep the exact-emptiness check rather than a falsy one.
+        if fields == [] or fields == ():
             fields = None
         if fields is not None or self._async_array._is_identity:
             indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
@@ -5770,12 +5771,12 @@ async def _get_selection_via_transform(
 
     out_shape = transform.domain.shape
 
-    # Only vectorized indexing (>= 2 correlated ArrayMaps, input_dimension None)
-    # scatters through a single flat index, so the buffer must be 1D during the
-    # read and reshaped to out_shape afterwards. Orthogonal indexing — including
-    # the case where every output is an ArrayMap bound to a distinct input
-    # dimension (oindex[i0, i1]) — keeps a multi-dimensional buffer, one out_sel
-    # entry per dim.
+    # Vectorized indexing (any coordinate ArrayMap, input_dimension None — even a
+    # single one, e.g. vindex[idx_2d]) scatters through a single flat index, so
+    # the buffer must be 1D during the read and reshaped to out_shape afterwards.
+    # Orthogonal indexing — including the case where every output is an ArrayMap
+    # bound to a distinct input dimension (oindex[i0, i1]) — keeps a
+    # multi-dimensional buffer, one out_sel entry per dim.
     needs_flat_buffer = _is_vectorized_transform(transform)
     buffer_shape = (product(out_shape),) if needs_flat_buffer else out_shape
 
