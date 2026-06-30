@@ -44,6 +44,26 @@ assert not __version__.startswith("0.0.0")
 _logger = logging.getLogger(__name__)
 
 
+def list_engines() -> list[str]:
+    """The execution engines accepted by `engine=` and the `array.engine` config.
+
+    The first entry is `"zarr"` (the native Python path); the rest are the
+    available `zarr.crud` backends (`"reference"`, and — when their packages are
+    installed — `"zarrs"`, `"zarrista"`). `"zarr"` and `"reference"` are both
+    pure Python and produce identical results: `"reference"` routes through the
+    crud layer, while the accelerated backends offload to compiled code.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> "zarr" in zarr.list_engines()
+    True
+    """
+    from zarr.crud import list_backends
+
+    return ["zarr", *list_backends()]
+
+
 def print_debug_info() -> None:
     """
     Print version info for use in bug reports.
@@ -164,6 +184,7 @@ __all__ = [
     "full",
     "full_like",
     "group",
+    "list_engines",
     "load",
     "ones",
     "ones_like",

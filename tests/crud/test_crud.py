@@ -39,14 +39,14 @@ GROUP_META_V2: dict[str, Any] = {"zarr_format": 2, "attributes": {"answer": 42}}
 
 
 async def test_create_new_group(backend: str, store: Store) -> None:
-    await create_new_group(GROUP_META, store, "foo", backend=backend)
+    await create_new_group(GROUP_META, store, "foo", engine=backend)
     assert dict(zarr.open_group(store=store, path="foo", mode="r").attrs) == {"answer": 42}
 
 
 async def test_v2_group_attrs_zarr_python_compatible_reference(store: Store) -> None:
     # The reference backend writes standard v2 `.zattrs` (the bare attributes
     # dict), so zarr-python and other readers see the right attributes.
-    await create_new_group(GROUP_META_V2, store, "g2", backend="reference")
+    await create_new_group(GROUP_META_V2, store, "g2", engine="reference")
     assert dict(zarr.open_group(store=store, path="g2", mode="r").attrs) == {"answer": 42}
 
 
@@ -60,45 +60,45 @@ async def test_v2_group_attrs_zarr_python_compatible_zarrs(store: Store) -> None
     pytest.importorskip("_zarrs_bindings", reason="zarrs-bindings is not installed")
     import zarr.zarrs
 
-    await create_new_group(GROUP_META_V2, store, "g2", backend="zarrs")
+    await create_new_group(GROUP_META_V2, store, "g2", engine="zarrs")
     assert dict(zarr.open_group(store=store, path="g2", mode="r").attrs) == {"answer": 42}
 
 
 async def test_create_new_group_existing_raises(backend: str, store: Store) -> None:
-    await create_new_group(GROUP_META, store, "foo", backend=backend)
+    await create_new_group(GROUP_META, store, "foo", engine=backend)
     with pytest.raises(NodeExistsError):
-        await create_new_group(GROUP_META, store, "foo", backend=backend)
+        await create_new_group(GROUP_META, store, "foo", engine=backend)
 
 
 async def test_create_overwrite_group_replaces_array(backend: str, store: Store) -> None:
     arr = zarr.create_array(store=store, name="foo", shape=(4,), chunks=(2,), dtype="uint8")
     arr[:] = 1
-    await create_overwrite_group(GROUP_META, store, "foo", backend=backend)
+    await create_overwrite_group(GROUP_META, store, "foo", engine=backend)
     assert dict(zarr.open_group(store=store, path="foo", mode="r").attrs) == {"answer": 42}
     assert not await store.exists("foo/c/0")
 
 
 async def test_create_new_array(backend: str, store: Store) -> None:
-    await create_new_array(array_metadata(), store, "arr", backend=backend)
+    await create_new_array(array_metadata(), store, "arr", engine=backend)
     a = zarr.open_array(store=store, path="arr", mode="r")
     assert a.shape == (8, 8)
     assert a.dtype == np.dtype("uint16")
 
 
 async def test_create_new_array_v2(backend: str, store: Store) -> None:
-    await create_new_array(array_metadata(zarr_format=2), store, "arr", backend=backend)
+    await create_new_array(array_metadata(zarr_format=2), store, "arr", engine=backend)
     assert zarr.open_array(store=store, path="arr", mode="r").metadata.zarr_format == 2
 
 
 async def test_create_overwrite_array(backend: str, store: Store) -> None:
     zarr.create_group(store=store, path="arr")
-    await create_overwrite_array(array_metadata(), store, "arr", backend=backend)
+    await create_overwrite_array(array_metadata(), store, "arr", engine=backend)
     assert zarr.open_array(store=store, path="arr", mode="r").shape == (8, 8)
 
 
 async def test_read_metadata(backend: str, store: Store) -> None:
-    await create_new_array(array_metadata(), store, "arr", backend=backend)
-    observed = await read_metadata(store, "arr", backend=backend)
+    await create_new_array(array_metadata(), store, "arr", engine=backend)
+    observed = await read_metadata(store, "arr", engine=backend)
     raw = await store.get("arr/zarr.json", prototype=default_buffer_prototype())
     assert raw is not None
     assert observed == json.loads(raw.to_bytes())
@@ -106,27 +106,27 @@ async def test_read_metadata(backend: str, store: Store) -> None:
 
 async def test_read_metadata_missing(backend: str, store: Store) -> None:
     with pytest.raises(NodeNotFoundError):
-        await read_metadata(store, "nope", backend=backend)
+        await read_metadata(store, "nope", engine=backend)
 
 
 async def test_delete_node(backend: str, store: Store) -> None:
     arr = zarr.create_array(store=store, name="doomed", shape=(4,), chunks=(2,), dtype="uint8")
     arr[:] = 1
-    await delete_node(store, "doomed", backend=backend)
+    await delete_node(store, "doomed", engine=backend)
     assert not await store.exists("doomed/zarr.json")
     assert not await store.exists("doomed/c/0")
 
 
 async def test_delete_node_missing(backend: str, store: Store) -> None:
     with pytest.raises(NodeNotFoundError):
-        await delete_node(store, "nope", backend=backend)
+        await delete_node(store, "nope", engine=backend)
 
 
 async def test_list_children(backend: str, store: Store) -> None:
     root = zarr.create_group(store=store)
     root.create_group("sub_group", attributes={"kind": "group"})
     root.create_array("sub_array", shape=(4,), chunks=(2,), dtype="uint8")
-    by_path = dict(await list_children(store, "", backend=backend))
+    by_path = dict(await list_children(store, "", engine=backend))
     assert set(by_path) == {"sub_group", "sub_array"}
     assert by_path["sub_group"]["node_type"] == "group"
     assert by_path["sub_array"]["node_type"] == "array"
@@ -134,19 +134,19 @@ async def test_list_children(backend: str, store: Store) -> None:
 
 
 async def test_create_read_delete_v2_group(backend: str, store: Store) -> None:
-    await create_new_group(GROUP_META_V2, store, "g2", backend=backend)
-    meta = await read_metadata(store, "g2", backend=backend)
+    await create_new_group(GROUP_META_V2, store, "g2", engine=backend)
+    meta = await read_metadata(store, "g2", engine=backend)
     assert meta["zarr_format"] == 2
     with pytest.raises(NodeExistsError):
-        await create_new_group(GROUP_META_V2, store, "g2", backend=backend)
-    await delete_node(store, "g2", backend=backend)
+        await create_new_group(GROUP_META_V2, store, "g2", engine=backend)
+    await delete_node(store, "g2", engine=backend)
     with pytest.raises(NodeNotFoundError):
-        await read_metadata(store, "g2", backend=backend)
+        await read_metadata(store, "g2", engine=backend)
 
 
 async def test_read_metadata_v2_array(backend: str, store: Store) -> None:
-    await create_new_array(array_metadata(zarr_format=2), store, "arr", backend=backend)
-    meta = await read_metadata(store, "arr", backend=backend)
+    await create_new_array(array_metadata(zarr_format=2), store, "arr", engine=backend)
+    meta = await read_metadata(store, "arr", engine=backend)
     assert meta["zarr_format"] == 2
 
 
@@ -156,7 +156,7 @@ async def test_read_metadata_v2_array(backend: str, store: Store) -> None:
 @pytest.mark.parametrize("dtype", ["uint8", "int32", "float64", "<u2", ">u2"])
 async def test_read_chunk_differential(backend: str, store: Store, dtype: str) -> None:
     data, meta = filled(store, dtype=dtype)
-    observed = await read_chunk(meta, store, "a", (1, 0), backend=backend)
+    observed = await read_chunk(meta, store, "a", (1, 0), engine=backend)
     np.testing.assert_array_equal(observed, data[4:8, 0:4])
 
 
@@ -165,25 +165,25 @@ async def test_read_chunk_differential(backend: str, store: Store, dtype: str) -
 )
 async def test_read_chunk_codecs(backend: str, store: Store, compressors: Any) -> None:
     data, meta = filled(store, compressors=compressors)
-    observed = await read_chunk(meta, store, "a", (0, 1), backend=backend)
+    observed = await read_chunk(meta, store, "a", (0, 1), engine=backend)
     np.testing.assert_array_equal(observed, data[0:4, 4:8])
 
 
 async def test_read_chunk_v2(backend: str, store: Store) -> None:
     data, meta = filled(store, dtype="<u2", zarr_format=2)
-    observed = await read_chunk(meta, store, "a", (1, 1), backend=backend)
+    observed = await read_chunk(meta, store, "a", (1, 1), engine=backend)
     np.testing.assert_array_equal(observed, data[4:8, 4:8])
 
 
 async def test_read_chunk_v2_fortran_order(backend: str, store: Store) -> None:
     data, meta = filled(store, dtype="uint16", zarr_format=2, order="F")
-    observed = await read_chunk(meta, store, "a", (1, 1), backend=backend)
+    observed = await read_chunk(meta, store, "a", (1, 1), engine=backend)
     np.testing.assert_array_equal(observed, data[4:8, 4:8])
 
 
 async def test_read_chunk_sharding(backend: str, store: Store) -> None:
     data, meta = filled(store, chunks=(2, 2), shards=(4, 4))
-    observed = await read_chunk(meta, store, "a", (1, 1), backend=backend)
+    observed = await read_chunk(meta, store, "a", (1, 1), engine=backend)
     np.testing.assert_array_equal(observed, data[4:8, 4:8])
 
 
@@ -192,7 +192,7 @@ async def test_read_chunk_missing_is_fill(backend: str, store: Store) -> None:
         store=store, name="a", shape=(8, 8), chunks=(4, 4), dtype="uint16", fill_value=7
     )
     meta = dict(arr.metadata.to_dict())
-    observed = await read_chunk(meta, store, "a", (0, 0), backend=backend)
+    observed = await read_chunk(meta, store, "a", (0, 0), engine=backend)
     np.testing.assert_array_equal(observed, np.full((4, 4), 7, dtype="uint16"))
 
 
@@ -202,37 +202,37 @@ async def test_read_chunk_metadata_view(backend: str, store: Store) -> None:
     view["data_type"] = "uint8"
     view["shape"] = [8, 16]
     view["chunk_grid"]["configuration"]["chunk_shape"] = [4, 8]
-    observed = await read_chunk(view, store, "a", (1, 0), backend=backend)
+    observed = await read_chunk(view, store, "a", (1, 0), engine=backend)
     np.testing.assert_array_equal(observed, data[4:8, 0:4].view("uint8"))
 
 
 async def test_read_chunk_readonly(backend: str, store: Store) -> None:
     _, meta = filled(store)
-    observed = await read_chunk(meta, store, "a", (0, 0), backend=backend)
+    observed = await read_chunk(meta, store, "a", (0, 0), engine=backend)
     assert not observed.flags.writeable
 
 
 async def test_write_chunk_differential(backend: str, store: Store) -> None:
     meta = array_metadata()
-    await create_new_array(meta, store, "a", backend=backend)
+    await create_new_array(meta, store, "a", engine=backend)
     value = np.arange(16, dtype="uint16").reshape(4, 4)
-    await write_chunk(meta, store, "a", (0, 1), value, backend=backend)
+    await write_chunk(meta, store, "a", (0, 1), value, engine=backend)
     np.testing.assert_array_equal(zarr.open_array(store=store, path="a", mode="r")[0:4, 4:8], value)
 
 
 async def test_write_chunk_shape_mismatch(backend: str, store: Store) -> None:
     meta = array_metadata()
-    await create_new_array(meta, store, "a", backend=backend)
+    await create_new_array(meta, store, "a", engine=backend)
     with pytest.raises(ValueError, match="chunk shape"):
         await write_chunk(
-            meta, store, "a", (0, 0), np.zeros((2, 2), dtype="uint16"), backend=backend
+            meta, store, "a", (0, 0), np.zeros((2, 2), dtype="uint16"), engine=backend
         )
 
 
 async def test_delete_chunk(backend: str, store: Store) -> None:
     _data, meta = filled(store)
     assert await store.exists("a/c/0/0")
-    await delete_chunk(meta, store, "a", (0, 0), backend=backend)
+    await delete_chunk(meta, store, "a", (0, 0), engine=backend)
     assert not await store.exists("a/c/0/0")
 
 
@@ -241,10 +241,10 @@ async def test_write_all_fill_chunk_is_dropped(backend: str, store: Store) -> No
         store=store, name="a", shape=(8, 8), chunks=(4, 4), dtype="uint16", fill_value=0
     )
     meta = dict(arr.metadata.to_dict())
-    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), backend=backend)
+    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), engine=backend)
     assert not await store.exists("a/c/0/0")
     np.testing.assert_array_equal(
-        await read_chunk(meta, store, "a", (0, 0), backend=backend),
+        await read_chunk(meta, store, "a", (0, 0), engine=backend),
         np.zeros((4, 4), dtype="uint16"),
     )
 
@@ -252,13 +252,13 @@ async def test_write_all_fill_chunk_is_dropped(backend: str, store: Store) -> No
 async def test_overwrite_chunk_with_fill_removes_it(backend: str, store: Store) -> None:
     _data, meta = filled(store)  # chunk (0,0) exists with nonzero data, fill_value default 0
     assert await store.exists("a/c/0/0")
-    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), backend=backend)
+    await write_chunk(meta, store, "a", (0, 0), np.zeros((4, 4), dtype="uint16"), engine=backend)
     assert not await store.exists("a/c/0/0")
 
 
 async def test_read_encoded_chunk_matches_store(backend: str, store: Store) -> None:
     _, meta = filled(store)
-    raw = await read_encoded_chunk(meta, store, "a", (0, 0), backend=backend)
+    raw = await read_encoded_chunk(meta, store, "a", (0, 0), engine=backend)
     expected = await store.get("a/c/0/0", prototype=default_buffer_prototype())
     assert expected is not None
     assert raw == expected.to_bytes()
@@ -267,7 +267,7 @@ async def test_read_encoded_chunk_matches_store(backend: str, store: Store) -> N
 async def test_read_encoded_chunk_missing_is_none(backend: str, store: Store) -> None:
     arr = zarr.create_array(store=store, name="e", shape=(8, 8), chunks=(4, 4), dtype="uint16")
     meta = dict(arr.metadata.to_dict())
-    assert await read_encoded_chunk(meta, store, "e", (0, 0), backend=backend) is None
+    assert await read_encoded_chunk(meta, store, "e", (0, 0), engine=backend) is None
 
 
 # --- region I/O ---
@@ -291,29 +291,29 @@ SELECTIONS: list[Any] = [
 @pytest.mark.parametrize("sel", SELECTIONS)
 async def test_read_region_differential(backend: str, store: Store, sel: Any) -> None:
     data, meta = filled(store)
-    observed = await read_region(meta, store, "a", sel, backend=backend)
+    observed = await read_region(meta, store, "a", sel, engine=backend)
     np.testing.assert_array_equal(observed, data[sel])
 
 
 async def test_read_region_sharding(backend: str, store: Store) -> None:
     data, meta = filled(store, chunks=(2, 2), shards=(4, 4))
-    observed = await read_region(meta, store, "a", (slice(1, 7), slice(3, 8)), backend=backend)
+    observed = await read_region(meta, store, "a", (slice(1, 7), slice(3, 8)), engine=backend)
     np.testing.assert_array_equal(observed, data[1:7, 3:8])
 
 
 async def test_read_region_too_many_indices(backend: str, store: Store) -> None:
     _, meta = filled(store)
     with pytest.raises(IndexError, match="too many indices"):
-        await read_region(meta, store, "a", (0, 0, 0), backend=backend)
+        await read_region(meta, store, "a", (0, 0, 0), engine=backend)
 
 
 async def test_read_region_fancy_rejected(backend: str, store: Store) -> None:
     _, meta = filled(store)
     with pytest.raises(TypeError, match="only integers, slices"):
-        await read_region(meta, store, "a", ([0, 1], slice(None)), backend=backend)  # type: ignore[arg-type]
+        await read_region(meta, store, "a", ([0, 1], slice(None)), engine=backend)  # type: ignore[arg-type]
 
 
 async def test_read_region_out_of_bounds(backend: str, store: Store) -> None:
     _, meta = filled(store)
     with pytest.raises(IndexError, match="out of bounds"):
-        await read_region(meta, store, "a", (8, slice(None)), backend=backend)
+        await read_region(meta, store, "a", (8, slice(None)), engine=backend)

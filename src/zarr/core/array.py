@@ -786,7 +786,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             from zarr.crud import read_metadata
 
             metadata_dict = await read_metadata(
-                store_path.store, store_path.path, backend=resolved_engine
+                store_path.store, store_path.path, engine=resolved_engine
             )
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
@@ -799,6 +799,15 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def store(self) -> Store:
         return self.store_path.store
+
+    @property
+    def engine(self) -> str:
+        """The execution engine for this array (`self.config.engine`).
+
+        `"zarr"` is the native path; any other value is a `zarr.crud` backend
+        that data access routes through. See `zarr.list_engines()`.
+        """
+        return self.config.engine
 
     @property
     @deprecated("Use AsyncArray.config instead.", category=ZarrDeprecationWarning)
@@ -1842,6 +1851,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         An `ArrayConfig` object that defines the runtime configuration for the array.
         """
         return self.async_array.config
+
+    @property
+    def engine(self) -> str:
+        """The execution engine for this array (`self.config.engine`).
+
+        `"zarr"` is the native path; any other value is a `zarr.crud` backend
+        that data access routes through. See `zarr.list_engines()`.
+        """
+        return self.async_array.config.engine
 
     @property
     def _chunk_grid(self) -> ChunkGrid:
@@ -4540,7 +4558,7 @@ async def init_array(
             dict(meta.to_dict()),
             store_path.store,
             store_path.path,
-            backend=arr.config.engine,
+            engine=arr.config.engine,
         )
     return arr
 
@@ -5443,7 +5461,7 @@ async def _engine_get_selection(
         store_path.store,
         store_path.path,
         selection,
-        backend=config.engine,
+        engine=config.engine,
     )
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return cast("NDArrayLikeOrScalar", result[()])
@@ -5830,7 +5848,7 @@ async def _engine_set_selection(
         store_path.path,
         selection,
         value,
-        backend=config.engine,
+        engine=config.engine,
     )
 
 

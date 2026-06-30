@@ -28,6 +28,13 @@ def register_backend(name: str, backend: CrudBackend) -> None:
     _BACKENDS[name] = backend
 
 
+def list_backends() -> list[str]:
+    """The names of every available CRUD backend: those already registered plus
+    the lazily-loaded ones (`zarrs`, `zarrista`) that import on first use. These
+    are exactly the non-native values accepted by the top-level `engine`."""
+    return sorted(_BACKENDS.keys() | _LAZY_BACKENDS.keys())
+
+
 def get_backend(name: str | None = None) -> CrudBackend:
     """Resolve a backend by name, or the configured default when `name` is None.
 
@@ -53,5 +60,9 @@ def get_backend(name: str | None = None) -> CrudBackend:
         except ImportError as e:
             raise ImportError(f"the {name!r} CRUD backend requires {hint}") from e
     if name not in _BACKENDS:
-        raise KeyError(f"no CRUD backend registered as {name!r}; registered: {sorted(_BACKENDS)}")
+        raise ValueError(
+            f"unknown backend {name!r}; available backends: {list_backends()}. "
+            f"At the top level these are the valid engines, plus 'zarr' for the "
+            f"native path."
+        )
     return _BACKENDS[name]

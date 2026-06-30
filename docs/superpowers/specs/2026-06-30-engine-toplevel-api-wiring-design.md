@@ -102,7 +102,7 @@ global default. No other backend constructs an `AsyncArray`.
 self.config.engine == "zarr":  native path (unchanged)
 otherwise:                      crud.read_region(self.metadata.to_dict(),
                                     self.store_path.store, self.store_path.path,
-                                    selection, backend=self.config.engine)
+                                    selection, engine=self.config.engine)
 ```
 
 `.oindex`/`.vindex`/`.blocks` getters: if engine != "zarr", raise
@@ -116,11 +116,11 @@ outside the supported subset) propagate from the backend unchanged.
 - `create_array(..., engine=e)`: build the metadata document with the existing
   native machinery (param parsing is unchanged), then:
   - `e == "zarr"`: native creation (unchanged).
-  - else: `await crud.create_new_array(metadata, store, path, backend=e)` and
+  - else: `await crud.create_new_array(metadata, store, path, engine=e)` and
     return an `AsyncArray` with `_engine=e`.
 - `open_array(..., engine=e)`:
   - `e == "zarr"`: native open (unchanged).
-  - else: `doc = await crud.read_metadata(store, path, backend=e)`, parse it, and
+  - else: `doc = await crud.read_metadata(store, path, engine=e)`, parse it, and
     construct the `AsyncArray` with `_engine=e`.
 
 ### 5. Write path — `crud.write_region` + `AsyncArray.setitem` (Phase B)
@@ -128,7 +128,7 @@ outside the supported subset) propagate from the backend unchanged.
 New facade function:
 
 ```python
-async def write_region(metadata, store, path, selection, value, *, backend=None): ...
+async def write_region(metadata, store, path, selection, value, *, engine=None): ...
 ```
 
 It decomposes the basic `selection` into chunk projections using zarr-python's
@@ -141,7 +141,7 @@ It decomposes the basic `selection` into chunk projections using zarr-python's
   sub-region, `backend.write_chunk(...)`.
 
 `AsyncArray.setitem`: `self.config.engine == "zarr"` native; else
-`crud.write_region(..., backend=self.config.engine)`. Advanced accessors raise as
+`crud.write_region(..., engine=self.config.engine)`. Advanced accessors raise as
 in the read path.
 
 ### 6. Sync layer
@@ -158,7 +158,7 @@ functions to their async counterparts.
 | basic getitem/setitem, non-native engine | route through crud |
 | `.oindex`/`.vindex`/`.blocks`, non-native engine | `NotImplementedError` |
 | un-ingestable store under `zarrista` | `UnsupportedStoreError` (from backend) |
-| unknown engine name | `KeyError` from `crud.get_backend` |
+| unknown engine name | `ValueError` from `crud.get_backend`, listing available engines |
 | v2 array outside zarrs' supported subset | backend's own error |
 
 ## Testing (TDD, differential)
@@ -195,4 +195,5 @@ functions to their async counterparts.
 `crud.backend` is unreleased on this branch, so replacing it with `array.engine`
 needs no deprecation. Update the existing `tests/crud` and
 `tests/zarrs`/`tests/zarrista` suites that read/set `crud.backend` to use
-`array.engine` (or keep passing `backend=` per call, which is unaffected).
+`array.engine` (or keep passing the per-call selection argument, which is
+unaffected aside from the `backend=` → `engine=` rename).

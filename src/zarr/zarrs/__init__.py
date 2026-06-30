@@ -5,7 +5,7 @@ The zarrs CRUD backend for `zarr.crud`, backed by the Rust
 Importing this module registers the `"zarrs"` backend. Requires the
 `zarrs-bindings` extension (in-repo Rust crate; `uv sync --group zarrs`). Select
 it with `zarr.config.set({"array.engine": "zarrs"})` or per call via
-`backend="zarrs"`.
+`engine="zarrs"`.
 """
 
 try:

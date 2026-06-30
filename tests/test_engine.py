@@ -66,12 +66,34 @@ def test_array_config_engine_from_global_config() -> None:
         assert ArrayConfig.from_dict({}).engine == "reference"
 
 
-def test_unknown_engine_raises(local: LocalStore) -> None:
-    """Selecting an unregistered engine raises when an operation needs the backend."""
-    with pytest.raises(KeyError):
+def test_unknown_engine_raises_listing_available(local: LocalStore) -> None:
+    """An unknown engine raises a ValueError that names the bad engine and lists
+    the available ones (including lazily-loaded backends like zarrista)."""
+    with pytest.raises(ValueError) as exc:
         zarr.create_array(
             store=local, name="a", shape=(4, 4), chunks=(2, 2), dtype="uint8", engine="nope"
         )
+    message = str(exc.value)
+    assert "nope" in message
+    assert "reference" in message  # a valid option is offered
+    assert "zarrista" in message  # lazily-loaded backends are listed too
+
+
+def test_list_engines_reports_available() -> None:
+    """zarr.list_engines() reports the native engine plus the registered backends."""
+    engines = zarr.list_engines()
+    assert engines[0] == "zarr"  # native path listed first
+    assert "reference" in engines
+    if _zarrista_available():
+        assert "zarrista" in engines
+
+
+def test_array_engine_property(local: LocalStore) -> None:
+    """The engine is reachable via the public `array.engine` (and `array.config.engine`)."""
+    zarr.create_array(store=local, name="a", shape=(4, 4), chunks=(2, 2), dtype="uint8")
+    arr = zarr.open_array(store=local, path="a", engine="reference")
+    assert arr.engine == "reference"
+    assert arr.config.engine == "reference"
 
 
 # --- read path ---------------------------------------------------------------

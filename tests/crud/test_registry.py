@@ -16,8 +16,17 @@ def test_default_backend_is_reference() -> None:
 
 
 def test_get_unknown_backend_raises() -> None:
-    with pytest.raises(KeyError, match="no CRUD backend"):
+    with pytest.raises(ValueError, match="unknown backend"):
         get_backend("does-not-exist")
+
+
+def test_list_backends_includes_reference() -> None:
+    from zarr.crud import list_backends
+
+    backends = list_backends()
+    assert "reference" in backends
+    # lazily-loaded backends are listed even before their packages import
+    assert "zarrs" in backends
 
 
 def test_register_and_resolve_instance() -> None:

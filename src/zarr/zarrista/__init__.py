@@ -6,7 +6,7 @@ The zarrista CRUD backend for `zarr.crud`, backed by the Rust
 Importing this module registers the `"zarrista"` backend. Requires the
 `zarrista` package (`uv sync --group zarrista`). Select it with
 `zarr.config.set({"array.engine": "zarrista"})` or per call via
-`backend="zarrista"`.
+`engine="zarrista"`.
 
 Unlike the in-tree zarrs bindings (`zarr.zarrs`), zarrista has no generic
 Python-store callback bridge, so this backend only operates on stores it can map

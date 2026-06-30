@@ -156,11 +156,11 @@ async def create_new_group(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Create a group from a group metadata document. Raises `NodeExistsError`
     if a node already exists at `path`. Not atomic against concurrent writers."""
-    await _resolve_backend(backend).create_group(store, path, metadata, overwrite=False)
+    await _resolve_backend(engine).create_group(store, path, metadata, overwrite=False)
 
 
 async def create_overwrite_group(
@@ -169,11 +169,11 @@ async def create_overwrite_group(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Create a group, deleting any existing node (and children) first. Not
     atomic against concurrent writers."""
-    await _resolve_backend(backend).create_group(store, path, metadata, overwrite=True)
+    await _resolve_backend(engine).create_group(store, path, metadata, overwrite=True)
 
 
 async def create_new_array(
@@ -182,12 +182,12 @@ async def create_new_array(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Create an array from a v2 or v3 metadata document. Raises
     `NodeExistsError` if a node already exists. Not atomic against concurrent
     writers."""
-    await _resolve_backend(backend).create_array(store, path, metadata, overwrite=False)
+    await _resolve_backend(engine).create_array(store, path, metadata, overwrite=False)
 
 
 async def create_overwrite_array(
@@ -196,11 +196,11 @@ async def create_overwrite_array(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Create an array, deleting any existing node (and children) first. Not
     atomic against concurrent writers."""
-    await _resolve_backend(backend).create_array(store, path, metadata, overwrite=True)
+    await _resolve_backend(engine).create_array(store, path, metadata, overwrite=True)
 
 
 async def read_metadata(
@@ -208,11 +208,11 @@ async def read_metadata(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> dict[str, JSON]:
     """Read the metadata document of the array or group at `path`. Raises
     `zarr.errors.NodeNotFoundError` if no node exists there."""
-    return await _resolve_backend(backend).read_metadata(store, path)
+    return await _resolve_backend(engine).read_metadata(store, path)
 
 
 async def delete_node(
@@ -220,11 +220,11 @@ async def delete_node(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Delete the node at `path` and everything under it. Raises
     `zarr.errors.NodeNotFoundError` if absent. `path=""` clears the store."""
-    await _resolve_backend(backend).delete_node(store, path)
+    await _resolve_backend(engine).delete_node(store, path)
 
 
 async def list_children(
@@ -232,12 +232,12 @@ async def list_children(
     path: str,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> list[tuple[str, dict[str, JSON]]]:
     """List the direct children of the group at `path` as
     `(path, metadata_document)` pairs (store-relative, no leading `/`). Raises
     `zarr.errors.NodeNotFoundError` if no group exists there."""
-    return await _resolve_backend(backend).list_children(store, path)
+    return await _resolve_backend(engine).list_children(store, path)
 
 
 # --- chunk I/O ---
@@ -250,12 +250,12 @@ async def read_chunk(
     chunk_coords: tuple[int, ...],
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> np.ndarray[Any, np.dtype[Any]]:
     """Read and decode the whole chunk at `chunk_coords`. The metadata document
     is authoritative; missing chunks decode to the fill value. The result is a
     read-only view (`.copy()` for a writable array)."""
-    be = _resolve_backend(backend)
+    be = _resolve_backend(engine)
     raw = await be.read_chunk(store, path, metadata, tuple(chunk_coords))
     dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
     return np.frombuffer(raw, dtype=dtype).reshape(chunk_shape)
@@ -268,11 +268,11 @@ async def read_encoded_chunk(
     chunk_coords: tuple[int, ...],
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> bytes | None:
     """Read the raw, still-encoded bytes of the chunk at `chunk_coords`, or
     `None` if absent. Pure store I/O (`store.get` on the chunk key): the
-    `backend` argument is accepted for signature uniformity but unused."""
+    `engine` argument is accepted for signature uniformity but unused."""
     key = _chunk_key(metadata, path, tuple(chunk_coords))
     buf = await store.get(key, prototype=default_buffer_prototype())
     return None if buf is None else buf.to_bytes()
@@ -286,11 +286,11 @@ async def write_chunk(
     value: npt.ArrayLike,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Encode `value` with the codecs in `metadata` and store it as the chunk at
     `chunk_coords`. `value` must match the chunk shape exactly."""
-    be = _resolve_backend(backend)
+    be = _resolve_backend(engine)
     dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
     arr = np.ascontiguousarray(np.asarray(value, dtype=dtype))
     if arr.shape != chunk_shape:
@@ -305,10 +305,10 @@ async def delete_chunk(
     chunk_coords: tuple[int, ...],
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Delete the chunk at `chunk_coords`. Deleting a missing chunk is a no-op."""
-    await _resolve_backend(backend).delete_chunk(store, path, metadata, tuple(chunk_coords))
+    await _resolve_backend(engine).delete_chunk(store, path, metadata, tuple(chunk_coords))
 
 
 # --- region I/O ---
@@ -321,7 +321,7 @@ async def read_region(
     selection: BasicSelection,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> np.ndarray[Any, np.dtype[Any]]:
     """Read and decode a region given by a numpy basic-indexing `selection`
     (integers, slices with steps, `Ellipsis`). One backend call fetches the
@@ -331,7 +331,7 @@ async def read_region(
 
     Note: a `slice(0, N, step)` reads `O(N)` bytes even though `O(N / step)` are
     returned; for sparse selections over large arrays prefer `read_chunk`."""
-    be = _resolve_backend(backend)
+    be = _resolve_backend(engine)
     dtype, _ = _chunk_dtype_and_shape(metadata)
     shape = _array_shape(metadata)
     starts, lengths, post_index = _normalize_selection(selection, shape)
@@ -352,7 +352,7 @@ async def write_region(
     value: npt.ArrayLike,
     *,
     options: CrudOptions | None = None,
-    backend: CrudBackend | str | None = None,
+    engine: CrudBackend | str | None = None,
 ) -> None:
     """Write `value` into the region given by a numpy basic-indexing `selection`.
 
@@ -364,7 +364,7 @@ async def write_region(
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.indexing import BasicIndexer
 
-    be = _resolve_backend(backend)
+    be = _resolve_backend(engine)
     meta_obj = parse_array_metadata(metadata)
     dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
     shape = _array_shape(metadata)
