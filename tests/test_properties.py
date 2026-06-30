@@ -120,7 +120,7 @@ def test_array_creates_implicit_groups(array):
 
 
 # Eager basic/oindex/vindex/mask indexing is exercised comprehensively (read,
-# out=, async read, and write) by the single oracle ``test_indexing_parity``
+# out=, async read, and write) by the single oracle `test_indexing_parity`
 # defined below. Special array shapes that the oracle's strategies don't cover
 # keep dedicated tests (complex rectilinear arrays here; block indexing later).
 
@@ -341,7 +341,7 @@ _VECTORIZED_MODES: tuple[IndexMode, ...] = ("vindex", "mask")
 
 
 def _get(target: zarr.Array, mode: IndexMode, zsel: Any, *, out: Any = None) -> Any:
-    """Read ``zsel`` from ``target`` via the get-method for ``mode``."""
+    """Read `zsel` from `target` via the get-method for `mode`."""
     if mode == "basic":
         return target.get_basic_selection(zsel, out=out)
     if mode == "oindex":
@@ -354,7 +354,7 @@ def _get(target: zarr.Array, mode: IndexMode, zsel: Any, *, out: Any = None) -> 
 
 
 def _async_get(async_array: Any, mode: IndexMode, zsel: Any) -> Any:
-    """The async read coroutine for ``mode`` (vindex/mask share the vectorized accessor)."""
+    """The async read coroutine for `mode` (vindex/mask share the vectorized accessor)."""
     if mode == "basic":
         return async_array.getitem(zsel)
     if mode == "oindex":
@@ -363,7 +363,7 @@ def _async_get(async_array: Any, mode: IndexMode, zsel: Any) -> Any:
 
 
 def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None:
-    """Write ``value`` at ``zsel`` via the set-method for ``mode``."""
+    """Write `value` at `zsel` via the set-method for `mode`."""
     if mode == "basic":
         zarray[zsel] = value
     elif mode == "oindex":
@@ -377,9 +377,9 @@ def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None
 
 
 def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -> bool:
-    """Whether a write to ``npsel`` targets each cell at most once.
+    """Whether a write to `npsel` targets each cell at most once.
 
-    Negative indices are normalized first (``[2, -2]`` on length 4 both target cell
+    Negative indices are normalized first (`[2, -2]` on length 4 both target cell
     2), then duplicate targets are detected. A repeated target makes the write
     order-dependent — NumPy has the same ambiguity — so there is no well-defined
     oracle and such an example is skipped (a fundamental limitation, not a bug).
@@ -415,7 +415,7 @@ def _n_array_axes(npsel: Any) -> int:
 
 
 def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
-    """Whether ``mode`` can be exercised on ``shape``.
+    """Whether `mode` can be exercised on `shape`.
 
     Rank-0 arrays have no interesting selections; the fancy modes
     (oindex/vindex/mask via integer/boolean arrays) can't handle zero-size axes.
@@ -428,10 +428,10 @@ def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
 def assert_read_matches_numpy(
     target: zarr.Array, ref: np.ndarray[Any, Any], mode: IndexMode, zsel: Any, npsel: Any
 ) -> None:
-    """Assert ``target``'s read of ``zsel`` (mode) matches ``ref[npsel]``, with/without out=.
+    """Assert `target`'s read of `zsel` (mode) matches `ref[npsel]`, with/without out=.
 
-    Consumer-agnostic: ``target`` is any ``zarr.Array`` (an eager array or a lazy
-    view) and ``ref`` is the NumPy array it must behave like. The ``out=`` buffer
+    Consumer-agnostic: `target` is any `zarr.Array` (an eager array or a lazy
+    view) and `ref` is the NumPy array it must behave like. The `out=` buffer
     is flat for the vectorized vindex/mask modes (which scatter through a flat
     index) and full-shape otherwise.
     """
@@ -490,7 +490,7 @@ async def test_indexing_read_parity(data: st.DataObject) -> None:
 async def test_indexing_write_parity(data: st.DataObject) -> None:
     """Every *supported, well-defined* indexing write on an eager array matches NumPy.
 
-    Two families of selections are filtered out with ``assume`` (they are not
+    Two families of selections are filtered out with `assume` (they are not
     failures to test here):
 
     - **Repeated coordinates** (vindex/oindex selecting a cell more than once):
@@ -498,7 +498,7 @@ async def test_indexing_write_parity(data: st.DataObject) -> None:
       ambiguity. This is a fundamental limitation, not a zarr bug.
     - **Sharded orthogonal writes across >= 2 array axes**: unsupported by the
       sharding partial-write codec; pinned at the pytest level by
-      ``test_oindex_sharded_multiaxis_write_xfail`` rather than hidden here.
+      `test_oindex_sharded_multiaxis_write_xfail` rather than hidden here.
     """
     zarray = _indexing_array(data)
     nparray = zarray[:]
@@ -560,8 +560,8 @@ def test_write_is_unambiguous(
     """A write is well-defined iff each target cell is hit at most once *after*
     negative indices are normalized.
 
-    Regression anchor for the CI fix: vindex ``[2, -2, 0, 1]`` on length 4 maps
-    ``-2 -> 2``, so cell 2 is written twice (order-dependent) and must be rejected,
+    Regression anchor for the CI fix: vindex `[2, -2, 0, 1]` on length 4 maps
+    `-2 -> 2`, so cell 2 is written twice (order-dependent) and must be rejected,
     even though the raw values are all distinct.
     """
     assert _write_is_unambiguous(mode, npsel, shape) is well_defined
@@ -569,8 +569,8 @@ def test_write_is_unambiguous(
 
 @st.composite
 def _bounds_selection(draw: st.DrawFn, mode: IndexMode, shape: tuple[int, ...]) -> Any:
-    """An integer selection whose components may fall outside ``[-size, size)``, to
-    probe out-of-bounds behavior. Returns ``(zarr_sel, numpy_sel)``."""
+    """An integer selection whose components may fall outside `[-size, size)`, to
+    probe out-of-bounds behavior. Returns `(zarr_sel, numpy_sel)`."""
     wide = {s: st.integers(-2 * s - 1, 2 * s) for s in set(shape)}
     if mode == "basic":
         sel = tuple(draw(wide[s]) for s in shape)
@@ -591,7 +591,7 @@ def test_indexing_bounds_error_parity(data: st.DataObject) -> None:
 
     zarr's bounds errors (BoundsCheckError etc.) subclass IndexError, so the eager
     methods must agree with NumPy on *whether* an index is in bounds. This is the
-    ndindex ``check_same`` error-parity idea, and it catches the silent-wrong-data
+    ndindex `check_same` error-parity idea, and it catches the silent-wrong-data
     class — returning garbage where NumPy would raise.
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=6)))
@@ -611,10 +611,10 @@ class _IndexingStateMachine(RuleBasedStateMachine):
     """Apply many random indexing writes to one array while a NumPy model tracks it
     in lockstep; the model must match after every step.
 
-    This is the TensorStore ``driver_testutil`` pattern with NumPy as the oracle:
+    This is the TensorStore `driver_testutil` pattern with NumPy as the oracle:
     a single array accumulates many writes, so it catches read-modify-write,
     chunk-boundary, and shard-merge/persistence bugs that the single-shot
-    ``test_indexing_write_parity`` cannot see. Concrete geometries are defined by
+    `test_indexing_write_parity` cannot see. Concrete geometries are defined by
     subclasses; the rules are dtype-agnostic (fixed i4 — dtype breadth lives in the
     property tests).
     """
@@ -686,11 +686,11 @@ TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.Tes
 async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     """The eager read oracle, applied to a lazy view (the lazy consumer).
 
-    A view (built from a non-negative window) is just another ``zarr.Array``, so
-    it flows through the same ``assert_read_matches_numpy`` harness. The lazy
+    A view (built from a non-negative window) is just another `zarr.Array`, so
+    it flows through the same `assert_read_matches_numpy` harness. The lazy
     indexing bugs found in review were all "the view path diverges from NumPy for
     some (method, parameter) combination" — enumerating that surface here catches
-    the class. Skipped until ``Array.lazy`` exists, so the eager oracle can merge
+    the class. Skipped until `Array.lazy` exists, so the eager oracle can merge
     ahead of the lazy feature.
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
