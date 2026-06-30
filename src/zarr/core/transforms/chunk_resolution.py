@@ -42,10 +42,14 @@ if TYPE_CHECKING:
 
     from zarr.core.chunk_grids import ChunkGrid
 
+OutIndices = (
+    dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]] | None
+)
+
 ChunkTransformResult = tuple[
     tuple[int, ...],
     IndexTransform,
-    np.ndarray[Any, np.dtype[np.intp]] | None,
+    OutIndices,
 ]
 
 
@@ -134,7 +138,7 @@ def iter_chunk_transforms(
 
 def sub_transform_to_selections(
     sub_transform: IndexTransform,
-    out_indices: np.ndarray[Any, np.dtype[np.intp]] | None = None,
+    out_indices: OutIndices = None,
 ) -> tuple[
     tuple[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]], ...],
     tuple[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]], ...],
@@ -156,14 +160,38 @@ def sub_transform_to_selections(
     tuple
         ``(chunk_selection, out_selection, drop_axes)``
     """
+    inclusive_min = sub_transform.domain.inclusive_min
+    exclusive_max = sub_transform.domain.exclusive_max
+
+    # Orthogonal outer product: >= 2 ArrayMaps each bound to a distinct input
+    # dimension. out_indices is a per-output-dim dict of surviving positions. The
+    # codec applies chunk_array[chunk_sel] / out[out_sel] with NumPy semantics, so
+    # build np.ix_-style selections (mirroring the legacy OrthogonalIndexer): one
+    # 1-D selector per dimension, expanded to an open mesh. ConstantMap dims are
+    # size-1 in chunk space and squeezed out via drop_axes.
+    if isinstance(out_indices, dict):
+        chunk_arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+        out_arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+        drop_axes: list[int] = []
+        for out_dim, m in enumerate(sub_transform.output):
+            if isinstance(m, ConstantMap):
+                chunk_arrays.append(np.array([m.offset], dtype=np.intp))
+                drop_axes.append(out_dim)
+            elif isinstance(m, DimensionMap):
+                rng = np.arange(inclusive_min[m.input_dimension], exclusive_max[m.input_dimension])
+                chunk_arrays.append((m.offset + m.stride * rng).astype(np.intp))
+                out_arrays.append(rng.astype(np.intp))
+            else:  # ArrayMap
+                idx = m.index_array.ravel()
+                chunk_arrays.append((m.offset + m.stride * idx).astype(np.intp))
+                out_arrays.append(out_indices[out_dim])
+        return np.ix_(*chunk_arrays), np.ix_(*out_arrays), tuple(drop_axes)
+
     chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
     out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
 
-    # Hoist the per-dimension domain bounds out of the loop (attribute-chain +
-    # tuple indexing per output dim otherwise). Build chunk_sel and out_sel in a
-    # single pass; ConstantMap dims are dropped (no out_sel entry).
-    inclusive_min = sub_transform.domain.inclusive_min
-    exclusive_max = sub_transform.domain.exclusive_max
+    # Single-pass build for the basic / single-array / vectorized cases.
+    # ConstantMap dims are dropped (no out_sel entry).
     n_array_maps = 0
 
     for m in sub_transform.output:

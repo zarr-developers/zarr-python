@@ -5648,6 +5648,19 @@ def _get_chunk_spec(
     return _array_spec_from_chunk_spec(metadata, spec, array_config, prototype)
 
 
+def _is_vectorized_transform(transform: IndexTransform) -> bool:
+    """Return True for a vectorized (vindex) transform: >= 2 correlated ArrayMaps.
+
+    Correlated ArrayMaps (``input_dimension is None``) are jointly indexed and
+    scatter through a single flat index, so the output buffer is flattened during
+    read/write. Orthogonal ArrayMaps (oindex), each bound to a distinct input
+    dimension, form an outer product and keep a multi-dimensional buffer — even
+    when every output happens to be an ArrayMap (e.g. ``oindex[i0, i1]``).
+    """
+    array_maps = [m for m in transform.output if isinstance(m, ArrayMap)]
+    return len(array_maps) >= 2 and all(m.input_dimension is None for m in array_maps)
+
+
 def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
     """Return True if ``transform`` is the identity over the full storage domain.
 
@@ -5735,14 +5748,13 @@ async def _get_selection_via_transform(
 
     out_shape = transform.domain.shape
 
-    # When the transform has ArrayMap outputs, chunk resolution produces
-    # flat scatter indices (out_indices). The output buffer must be 1D
-    # during the read, then reshaped to out_shape afterwards.
-    # For vectorized indexing (all outputs are ArrayMaps), chunk resolution
-    # produces flat scatter indices. The buffer must be 1D during the read.
-    # For orthogonal indexing (mixed ArrayMap + DimensionMap), the buffer
-    # stays multi-dimensional — each dim gets its own out_sel entry.
-    needs_flat_buffer = all(isinstance(m, ArrayMap) for m in transform.output)
+    # Only vectorized indexing (>= 2 correlated ArrayMaps, input_dimension None)
+    # scatters through a single flat index, so the buffer must be 1D during the
+    # read and reshaped to out_shape afterwards. Orthogonal indexing — including
+    # the case where every output is an ArrayMap bound to a distinct input
+    # dimension (oindex[i0, i1]) — keeps a multi-dimensional buffer, one out_sel
+    # entry per dim.
+    needs_flat_buffer = _is_vectorized_transform(transform)
     buffer_shape = (product(out_shape),) if needs_flat_buffer else out_shape
 
     # Setup output buffer
@@ -5851,7 +5863,7 @@ async def _set_selection_via_transform(
 
     # Validate value shape against selection shape
     sel_shape = transform.domain.shape
-    needs_flat_buffer = all(isinstance(m, ArrayMap) for m in transform.output)
+    needs_flat_buffer = _is_vectorized_transform(transform)
     if hasattr(value, "shape") and value.shape != () and value.shape != sel_shape:
         if needs_flat_buffer:
             # For ArrayMap (coordinate/vindex), values are flattened so check total size

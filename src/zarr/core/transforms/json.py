@@ -110,6 +110,9 @@ def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
         result = {"offset": m.offset, "index_array": m.index_array.tolist()}
         if m.stride != 1:
             result["stride"] = m.stride
+        # Present only for orthogonal (oindex) arrays; omitted for vectorized.
+        if m.input_dimension is not None:
+            result["input_dimension"] = m.input_dimension
         return result
 
     raise TypeError(f"Unknown output map type: {type(m)}")
@@ -122,6 +125,7 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
             index_array=np.asarray(data["index_array"], dtype=np.intp),
             offset=data.get("offset", 0),
             stride=data.get("stride", 1),
+            input_dimension=data.get("input_dimension"),
         )
 
     if "input_dimension" in data:

@@ -73,11 +73,26 @@ class ArrayMap:
 
     Represents ``{offset + stride * index_array[i] : i in input_range}``.
     Arises from fancy indexing (e.g., ``arr[[1, 5, 9]]`` or boolean masks).
+
+    ``input_dimension`` records which single input dimension indexes the array,
+    binding it the way :class:`DimensionMap` is bound. It distinguishes the two
+    flavours of multi-array fancy indexing:
+
+    - **orthogonal** (``oindex``): each array indexes a *distinct* input
+      dimension, so ``input_dimension`` is set; the result is their outer
+      product.
+    - **vectorized** (``vindex``): the arrays are correlated and jointly
+      indexed by the same (possibly multi-dimensional) input range, so
+      ``input_dimension`` is ``None``.
+
+    This binding is what lets chunk resolution tell an outer product from a
+    pointwise scatter when more than one ``ArrayMap`` is present.
     """
 
     index_array: npt.NDArray[np.intp]
     offset: int = 0
     stride: int = 1
+    input_dimension: int | None = None
 
 
 OutputIndexMap = ConstantMap | DimensionMap | ArrayMap

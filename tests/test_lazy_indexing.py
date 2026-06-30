@@ -122,10 +122,16 @@ BASIC_CASES = [
     for sel in BASIC_SELECTIONS[len(cfg.shape)]
 ]
 ND_CASES = [pytest.param(cfg, id=cfg.id) for cfg in ND_CONFIGS]
-# Orthogonal indexing across >=2 array axes is currently broken (see
-# TestLazyOIndex.test_multi_axis_read_xfail); these are the configs that have
-# enough dimensions to exercise it.
-MULTI_AXIS_CASES = [pytest.param(cfg, id=cfg.id) for cfg in ND_CONFIGS if len(cfg.shape) >= 2]
+# Configs with >= 2 dimensions, i.e. enough to exercise orthogonal indexing
+# across multiple array axes (the outer-product case).
+MULTI_AXIS = [cfg for cfg in ND_CONFIGS if len(cfg.shape) >= 2]
+MULTI_AXIS_CASES = [pytest.param(cfg, id=cfg.id) for cfg in MULTI_AXIS]
+MULTI_AXIS_UNSHARDED_CASES = [
+    pytest.param(cfg, id=cfg.id) for cfg in MULTI_AXIS if cfg.shards is None
+]
+MULTI_AXIS_SHARDED_CASES = [
+    pytest.param(cfg, id=cfg.id) for cfg in MULTI_AXIS if cfg.shards is not None
+]
 
 
 def _oindex_one_axis(cfg: Config) -> tuple[Any, ...]:
@@ -211,23 +217,39 @@ class TestLazyOIndex:
         a.lazy.oindex[sel] = val
         np.testing.assert_array_equal(a[...], expected)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="lazy oindex with >=2 array axes returns a pointwise scatter, not an outer product",
-    )
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
-    def test_multi_axis_read_xfail(self, cfg: Config) -> None:
-        """Lazy orthogonal indexing across >=2 array axes should equal ``np.ix_``.
-
-        Currently broken: it collapses to the vectorized (pointwise) scatter and
-        fills the rest with the fill value. Eager ``oindex`` is correct, so this
-        is a lazy-path bug; the strict xfail will flag when it is fixed.
-        """
+    def test_multi_axis_read(self, cfg: Config) -> None:
+        """Lazy orthogonal indexing across >=2 array axes is the outer product (np.ix_)."""
         a, ref = _make(cfg)
         idx = FANCY_INDICES[len(cfg.shape)]
         expected = ref[np.ix_(*idx)]
         view = a.lazy.oindex[idx]
+        assert tuple(view.shape) == expected.shape
         np.testing.assert_array_equal(view[...], expected)
+
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_UNSHARDED_CASES)
+    def test_multi_axis_write(self, cfg: Config) -> None:
+        """Write-through lazy orthogonal indexing across >=2 array axes (unsharded)."""
+        a, ref = _make(cfg)
+        idx = FANCY_INDICES[len(cfg.shape)]
+        expected = ref.copy()
+        val = _value_like(ref[np.ix_(*idx)])
+        expected[np.ix_(*idx)] = val
+        a.lazy.oindex[idx] = val
+        np.testing.assert_array_equal(a[...], expected)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="orthogonal multi-array writes are unsupported by the sharding "
+        "partial-write codec (eager oindex raises the same way); a strict xfail "
+        "flags if sharded support is added",
+    )
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_SHARDED_CASES)
+    def test_multi_axis_write_sharded_unsupported(self, cfg: Config) -> None:
+        """Sharded orthogonal multi-array write — a pre-existing codec limitation."""
+        a, ref = _make(cfg)
+        idx = FANCY_INDICES[len(cfg.shape)]
+        a.lazy.oindex[idx] = _value_like(ref[np.ix_(*idx)])
 
 
 class TestLazyVIndex:
