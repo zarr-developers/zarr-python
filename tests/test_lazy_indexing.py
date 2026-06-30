@@ -381,6 +381,15 @@ class TestLazyErrors:
         with pytest.raises(IndexError, match="step must be positive"):
             a.lazy[::-1]
 
+    def test_block_selection_on_view_rejected(self) -> None:
+        """Block selection is ill-defined on a lazy view and must raise, not corrupt."""
+        a, _ = _make(CONFIGS[3])  # 2d-unsharded
+        v = a.lazy[5:15]
+        with pytest.raises(NotImplementedError, match="block selection"):
+            _ = v.blocks[0]
+        with pytest.raises(NotImplementedError, match="block selection"):
+            v.blocks[0] = 0
+
     def test_vindex_with_slice_rejected(self) -> None:
         """vindex is coordinate-only; mixing a slice raises (parity with eager)."""
         a, _ = _make(CONFIGS[3])  # 2d-unsharded

@@ -3872,6 +3872,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        if not self._async_array._is_identity:
+            # Block selection addresses the storage chunk grid; it is ill-defined
+            # on a lazy view (offset/stride) and the legacy indexer would read raw
+            # storage blocks, ignoring the transform. Reject rather than corrupt.
+            raise NotImplementedError(
+                "block selection is not supported on a lazy view; materialize the "
+                "view first (e.g. zarr.array(view[...]))"
+            )
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         return sync(
             self.async_array._get_selection(
@@ -3972,6 +3980,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        if not self._async_array._is_identity:
+            # See get_block_selection: block selection is ill-defined on a lazy
+            # view, so reject rather than write to the wrong storage region.
+            raise NotImplementedError(
+                "block selection is not supported on a lazy view; materialize the "
+                "view first (e.g. zarr.array(view[...]))"
+            )
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
