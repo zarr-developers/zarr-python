@@ -603,27 +603,6 @@ IndexMode = Literal["basic", "oindex", "vindex", "mask"]
 
 
 @st.composite
-def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
-    """A non-negative, full-rank tuple of slice windows — one per axis.
-
-    A rank-preserving sub-region selection: each axis gets `start:stop` with
-    `0 <= start < stop <= size` (an empty `0:0` slice for a zero-length axis).
-    Bounds stay non-negative so the window is valid for any consumer, including
-    those that treat negative indices as literal coordinates rather than
-    from-the-end (e.g. building a sub-array view).
-    """
-    out: list[slice] = []
-    for size in shape:
-        if size == 0:
-            out.append(slice(0, 0))
-            continue
-        start = draw(st.integers(min_value=0, max_value=size - 1))
-        stop = draw(st.integers(min_value=start + 1, max_value=size))
-        out.append(slice(start, stop))
-    return tuple(out)
-
-
-@st.composite
 def numpy_array_indexers(
     draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]
 ) -> tuple[Selection, Selection]:

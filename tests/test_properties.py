@@ -36,7 +36,6 @@ from zarr.testing.strategies import (
     rectilinear_arrays,
     simple_arrays,
     stores,
-    windows,
     zarr_formats,
 )
 
@@ -473,8 +472,8 @@ async def test_indexing_read_parity(data: st.DataObject) -> None:
 
     Covers {basic, oindex, vindex, mask}: sync read, read into an out= buffer, and
     async read. No special-casing — reads are well-defined for every selection.
-    Consumer-agnostic via assert_read_matches_numpy, which test_lazy_view_indexing_parity
-    reuses for lazy views.
+    The work happens in assert_read_matches_numpy, whose `target` is any
+    zarr.Array, so the lazy PR can reuse this harness for lazy views.
     """
     zarray = _indexing_array(data)
     nparray = zarray[:]
@@ -692,30 +691,3 @@ class _ThreeDStateMachine(_IndexingStateMachine):
 TestIndexingStateMachineRegular = pytest.mark.slow_hypothesis(_RegularStateMachine.TestCase)
 TestIndexingStateMachineSharded = pytest.mark.slow_hypothesis(_Sharded2DStateMachine.TestCase)
 TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.TestCase)
-
-
-@pytest.mark.skipif(
-    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
-)
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
-    """The eager read oracle, applied to a lazy view (the lazy consumer).
-
-    A view (built from a non-negative window) is just another `zarr.Array`, so
-    it flows through the same `assert_read_matches_numpy` harness. The lazy
-    indexing bugs found in review were all "the view path diverges from NumPy for
-    some (method, parameter) combination" — enumerating that surface here catches
-    the class. Skipped until `Array.lazy` exists, so the eager oracle can merge
-    ahead of the lazy feature.
-    """
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
-    nparray = zarray[:]
-    window = data.draw(windows(shape=nparray.shape))
-    view = zarray.lazy[window]
-    vref = nparray[window]
-    mode = data.draw(st.sampled_from(_INDEX_MODES))
-    assume(_eligible(mode, vref.shape))
-    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=vref.shape))
-    assert_read_matches_numpy(view, vref, mode, zsel, npsel)
