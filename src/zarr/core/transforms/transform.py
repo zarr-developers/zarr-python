@@ -36,7 +36,7 @@ import numpy as np
 
 from zarr.core.transforms.domain import IndexDomain
 from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr.errors import VindexInvalidSelectionError
+from zarr.errors import BoundsCheckError, VindexInvalidSelectionError
 
 
 @dataclass(frozen=True, slots=True)
@@ -663,6 +663,9 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     for old_dim, sel in enumerate(normalized):
         if isinstance(sel, np.ndarray):
+            lo = transform.domain.inclusive_min[old_dim]
+            hi = transform.domain.exclusive_max[old_dim]
+            _check_array_in_bounds(sel, hi - lo)
             dim_array[old_dim] = sel
             new_inclusive_min.append(0)
             new_exclusive_max.append(len(sel))
@@ -806,6 +809,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     for i, sel in enumerate(processed):
         if isinstance(sel, np.ndarray):
+            lo = transform.domain.inclusive_min[i]
+            hi = transform.domain.exclusive_max[i]
+            _check_array_in_bounds(sel, hi - lo)
             array_dims.append(i)
             arrays.append(sel)
         else:
@@ -953,6 +959,18 @@ def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
     if not isinstance(selection, tuple) and len(result) == 1:
         return result[0]
     return tuple(result)
+
+
+def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], dim_size: int) -> None:
+    """Reject index-array values outside ``[0, dim_size)``.
+
+    Index-array values are literal coordinates (origin 0), so a negative value is
+    out of bounds rather than counting from the end — the Array layer normalizes
+    NumPy-style negatives before building the transform. Matches the eager
+    bounds-check error so out-of-range values raise instead of silently wrapping.
+    """
+    if arr.size and (int(arr.min()) < 0 or int(arr.max()) >= dim_size):
+        raise BoundsCheckError(f"index out of bounds for dimension with length {dim_size}")
 
 
 def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str) -> None:

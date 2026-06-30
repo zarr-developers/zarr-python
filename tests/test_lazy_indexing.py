@@ -381,6 +381,23 @@ class TestLazyErrors:
         with pytest.raises(IndexError, match="step must be positive"):
             a.lazy[::-1]
 
+    def test_accessor_negative_index_is_literal(self) -> None:
+        """The lazy accessor copies TensorStore: indices are literal coordinates.
+
+        Negative indices are absolute (origin 0), not from-the-end, so they fall
+        outside the ``[0, N)`` domain and raise — unlike the NumPy-normalizing
+        eager/view-method paths. Out-of-bounds array values raise cleanly rather
+        than silently wrapping.
+        """
+        a, _ = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
+        with pytest.raises(IndexError):
+            _ = a.lazy[-1][...]
+        for sel in (np.array([-1], dtype=np.intp), np.array([24], dtype=np.intp)):
+            with pytest.raises(IndexError, match="out of bounds"):
+                _ = a.lazy.oindex[(sel,)][...]
+            with pytest.raises(IndexError, match="out of bounds"):
+                _ = a.lazy.vindex[(sel,)][...]
+
     def test_block_selection_on_view_rejected(self) -> None:
         """Block selection is ill-defined on a lazy view and must raise, not corrupt."""
         a, _ = _make(CONFIGS[3])  # 2d-unsharded
