@@ -18,6 +18,7 @@ import hypothesis.strategies as st
 from hypothesis import assume, given, settings
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
+from tests.conftest import Expect
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -544,22 +545,33 @@ def test_oindex_sharded_multiaxis_write_xfail() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "npsel", "shape", "well_defined"),
+    "case",
     [
-        pytest.param("vindex", (np.array([2, -2, 0, 1]),), (4,), False, id="vindex-neg-collision"),
-        pytest.param("vindex", (np.array([0, 1, 2]),), (4,), True, id="vindex-distinct"),
-        pytest.param("oindex", (np.array([1, -3]),), (4,), False, id="oindex-neg-collision"),
-        pytest.param(
-            "oindex", (np.array([0, 2]), np.array([1, 1])), (4, 4), False, id="oindex-repeat"
+        Expect(
+            input=("vindex", (np.array([2, -2, 0, 1]),), (4,)),
+            output=False,
+            id="vindex-neg-collision",
         ),
-        pytest.param(
-            "oindex", (np.array([0, 2]), np.array([1, 3])), (4, 4), True, id="oindex-distinct"
+        Expect(input=("vindex", (np.array([0, 1, 2]),), (4,)), output=True, id="vindex-distinct"),
+        Expect(
+            input=("oindex", (np.array([1, -3]),), (4,)), output=False, id="oindex-neg-collision"
         ),
-        pytest.param("basic", (slice(None),), (4,), True, id="basic-always"),
+        Expect(
+            input=("oindex", (np.array([0, 2]), np.array([1, 1])), (4, 4)),
+            output=False,
+            id="oindex-repeat",
+        ),
+        Expect(
+            input=("oindex", (np.array([0, 2]), np.array([1, 3])), (4, 4)),
+            output=True,
+            id="oindex-distinct",
+        ),
+        Expect(input=("basic", (slice(None),), (4,)), output=True, id="basic-always"),
     ],
+    ids=lambda c: c.id,
 )
 def test_write_is_unambiguous(
-    mode: IndexMode, npsel: Any, shape: tuple[int, ...], well_defined: bool
+    case: Expect[tuple[IndexMode, Any, tuple[int, ...]], bool],
 ) -> None:
     """A write is well-defined iff each target cell is hit at most once *after*
     negative indices are normalized.
@@ -568,7 +580,8 @@ def test_write_is_unambiguous(
     `-2 -> 2`, so cell 2 is written twice (order-dependent) and must be rejected,
     even though the raw values are all distinct.
     """
-    assert _write_is_unambiguous(mode, npsel, shape) is well_defined
+    mode, npsel, shape = case.input
+    assert _write_is_unambiguous(mode, npsel, shape) is case.output
 
 
 @st.composite
