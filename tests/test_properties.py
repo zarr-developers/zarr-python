@@ -375,10 +375,36 @@ def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None
         raise AssertionError(mode)
 
 
-def _has_repeated_indices(npsel: Any) -> bool:
-    """True if any integer-array component selects a coordinate more than once."""
+def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -> bool:
+    """Whether a write to ``npsel`` targets each cell at most once.
+
+    Negative indices are normalized first (``[2, -2]`` on length 4 both target cell
+    2), then duplicate targets are detected. A repeated target makes the write
+    order-dependent — NumPy has the same ambiguity — so there is no well-defined
+    oracle and such an example is skipped (a fundamental limitation, not a bug).
+    """
     sel = npsel if isinstance(npsel, tuple) else (npsel,)
-    return any(isinstance(i, np.ndarray) and i.size != np.unique(i).size for i in sel)
+    if mode == "oindex":
+        # Independent axes: each fancy axis must select each index at most once.
+        for axis, s in enumerate(sel):
+            if isinstance(s, np.ndarray):
+                norm = np.where(s < 0, s + shape[axis], s)
+                if norm.size != np.unique(norm).size:
+                    return False
+        return True
+    if mode == "vindex":
+        # Correlated coordinate arrays: a target is the tuple of normalized coords,
+        # so the write is well-defined iff no coordinate tuple repeats.
+        norm = [
+            np.where(s < 0, s + shape[axis], s)
+            for axis, s in enumerate(sel)
+            if isinstance(s, np.ndarray)
+        ]
+        if not norm:
+            return True
+        coords = np.stack([a.ravel() for a in np.broadcast_arrays(*norm)], axis=-1)
+        return len(coords) == len(np.unique(coords, axis=0))
+    return True  # basic / mask never target a cell twice
 
 
 def _n_array_axes(npsel: Any) -> int:
@@ -473,7 +499,7 @@ async def test_indexing_write_parity(data: st.DataObject) -> None:
     assume(_eligible(mode, nparray.shape))
     zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
     if mode in ("oindex", "vindex"):
-        assume(not _has_repeated_indices(npsel))
+        assume(_write_is_unambiguous(mode, npsel, nparray.shape))
     if mode == "oindex" and zarray.shards is not None:
         assume(_n_array_axes(npsel) < 2)
 
