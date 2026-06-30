@@ -36,6 +36,7 @@ import numpy as np
 
 from zarr.core.transforms.domain import IndexDomain
 from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr.errors import VindexInvalidSelectionError
 
 
 @dataclass(frozen=True, slots=True)
@@ -911,10 +912,12 @@ def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
     else:
         selection_tuple = selection
 
-    # Count real dimensions (non-None, non-Ellipsis) to map each entry to a shape dim
-    has_ellipsis = any(s is Ellipsis for s in selection_tuple)
+    # Count real dimensions (non-None, non-Ellipsis) to map each entry to a shape
+    # dim. The ellipsis covers the dims not consumed by those entries; since
+    # n_non_newaxis already excludes the ellipsis itself, that count is exactly
+    # len(shape) - n_non_newaxis (no +1).
     n_non_newaxis = sum(1 for s in selection_tuple if s is not None and s is not Ellipsis)
-    n_ellipsis_dims = len(shape) - n_non_newaxis + (1 if has_ellipsis else 0)
+    n_ellipsis_dims = len(shape) - n_non_newaxis
 
     result: list[Any] = []
     dim = 0
@@ -963,7 +966,17 @@ def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str)
     """
     items = selection if isinstance(selection, tuple) else (selection,)
     for sel in items:
-        if sel is Ellipsis or isinstance(sel, (int, np.integer, slice)):
+        if isinstance(sel, slice):
+            # vindex is coordinate-only (matches eager zarr): every axis needs an
+            # integer/boolean array, never a slice. Orthogonal (oindex) allows slices.
+            if mode == "vectorized":
+                raise VindexInvalidSelectionError(
+                    "unsupported selection type for vectorized indexing; only "
+                    "coordinate selection (tuple of integer arrays) and mask selection "
+                    f"(single Boolean array) are supported; got {selection!r}"
+                )
+            continue
+        if sel is Ellipsis or isinstance(sel, (int, np.integer)):
             continue
         if isinstance(sel, (list, np.ndarray)):
             continue

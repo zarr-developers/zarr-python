@@ -15,12 +15,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from unittest import mock
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
 import zarr
+from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import MemoryStore
 
 
@@ -286,12 +288,93 @@ class TestLazyComposition:
         np.testing.assert_array_equal(view[...], expected)
 
 
+class TestLazyViewMethods:
+    """Indexing methods called on a lazy *view* object (``v = arr.lazy[...]``) must
+    honor the view's transform, not silently fall back to the storage grid.
+
+    The accessor (``arr.lazy.oindex[...]``) was covered elsewhere, but the methods
+    on the *returned* non-identity Array (``v.oindex[...]``, ``v[..., -1]``) route
+    through ``Array``'s own dispatch, which had correctness gaps.
+    """
+
+    @pytest.mark.parametrize("cfg", ND_CASES)
+    def test_view_oindex_respects_transform(self, cfg: Config) -> None:
+        """``v.oindex[idx]`` on a sub-view reads from the view, not the base array."""
+        a, ref = _make(cfg)
+        n0 = cfg.shape[0]
+        cut = n0 // 2
+        vslice = (slice(cut, n0), *([slice(None)] * (len(cfg.shape) - 1)))
+        vref = ref[vslice]
+        v = a.lazy[vslice]
+        idx = np.array([0, vref.shape[0] - 1], dtype=np.intp)
+        osel: Any = (idx, *([slice(None)] * (len(cfg.shape) - 1)))
+        np.testing.assert_array_equal(v.oindex[osel], vref[osel])
+
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
+    def test_view_negative_index_after_ellipsis(self, cfg: Config) -> None:
+        """``v[..., -1]`` on a view selects the last element of the last axis."""
+        a, ref = _make(cfg)
+        v = a.lazy[1 : cfg.shape[0]]
+        vref = ref[1 : cfg.shape[0]]
+        np.testing.assert_array_equal(v[..., -1], vref[..., -1])
+
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
+    def test_view_basic_tuple_and_int(self, cfg: Config) -> None:
+        """Basic tuple selections on a view (incl. integer axes that drop) honor the view."""
+        a, ref = _make(cfg)
+        cut = cfg.shape[0] // 2
+        v = a.lazy[cut:]
+        vref = ref[cut:]
+        full: Any = (slice(0, 2), *([slice(None)] * (len(cfg.shape) - 1)))
+        np.testing.assert_array_equal(v[full], vref[full])
+        intsel: Any = (1, *([slice(None)] * (len(cfg.shape) - 1)))
+        np.testing.assert_array_equal(v[intsel], vref[intsel])  # int axis drops
+
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
+    def test_view_vindex(self, cfg: Config) -> None:
+        """``v.vindex[...]`` (coordinate selection) on a view honors the view."""
+        a, ref = _make(cfg)
+        cut = cfg.shape[0] // 2
+        v = a.lazy[cut:]
+        vref = ref[cut:]
+        idx = tuple(np.array([0, 1, 2], dtype=np.intp) for _ in cfg.shape)
+        np.testing.assert_array_equal(v.vindex[idx], vref[idx])
+
+    @pytest.mark.parametrize("cfg", MULTI_AXIS_UNSHARDED_CASES)
+    def test_view_write_through_tuple(self, cfg: Config) -> None:
+        """Writing through a view with a basic tuple selection lands in view coords."""
+        a, ref = _make(cfg)
+        cut = cfg.shape[0] // 2
+        v = a.lazy[cut:]
+        expected = ref.copy()
+        wsel: Any = (slice(0, 2), *([slice(None)] * (len(cfg.shape) - 1)))
+        val = _value_like(ref[cut:][wsel])
+        expected[cut:][wsel] = val
+        v[wsel] = val
+        np.testing.assert_array_equal(a[...], expected)
+
+
 class TestLazyErrors:
     def test_negative_step_raises(self) -> None:
         """A negative slice step is unsupported and raises on the lazy path."""
         a, _ = _make(CONFIGS[1])  # 1d-unsharded
         with pytest.raises(IndexError, match="step must be positive"):
             a.lazy[::-1]
+
+    def test_vindex_with_slice_rejected(self) -> None:
+        """vindex is coordinate-only; mixing a slice raises (parity with eager)."""
+        a, _ = _make(CONFIGS[3])  # 2d-unsharded
+        with pytest.raises(IndexError):
+            a.lazy.vindex[(np.array([0, 1], dtype=np.intp), slice(None))]
+
+    def test_result_threads_prototype(self) -> None:
+        """``result(prototype=...)`` forwards the prototype rather than dropping it."""
+        a, ref = _make(CONFIGS[3])  # 2d-unsharded
+        proto = default_buffer_prototype()
+        with mock.patch.object(type(a), "get_basic_selection", autospec=True) as gbs:
+            gbs.return_value = ref
+            a.result(prototype=proto)
+        assert gbs.call_args.kwargs.get("prototype") is proto
 
 
 class TestLazyRandomizedRoundtrip:

@@ -3166,21 +3166,23 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if (
-            fields is not None
-            or self._async_array._is_identity
-            or not is_basic_selection(selection)
-        ):
-            # Eager (identity) arrays, structured dtypes, and advanced selections
-            # use the original indexer path directly.
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity) arrays and structured-dtype field selection use the
+            # original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
             return sync(
                 self.async_array._get_selection(
                     indexer=indexer, out=out, fields=fields, prototype=prototype
                 )
             )
+        # Lazy view (non-identity transform): route through the transform so the
+        # view's offset/stride are honored. Use basic mode for plain int/slice
+        # selections (so integer axes drop), orthogonal mode for fancy selections.
         selection = _normalize_negative_indices(selection, self.shape)
-        transform = selection_to_transform(selection, self._async_array._transform, "basic")
+        mode: Literal["basic", "orthogonal"] = (
+            "basic" if is_basic_selection(selection) else "orthogonal"
+        )
+        transform = selection_to_transform(selection, self._async_array._transform, mode)
         return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_orthogonal_selection(
@@ -3294,20 +3296,22 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        if (
-            fields is not None
-            or self._async_array._is_identity
-            or not is_basic_selection(selection)
-        ):
-            # Eager (identity) arrays, structured dtypes, and advanced selections
-            # use the original indexer path directly.
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity) arrays and structured-dtype field selection use the
+            # original indexer path directly.
             indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
             sync(
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
             )
             return
+        # Lazy view (non-identity transform): route through the transform so the
+        # view's offset/stride are honored. Use basic mode for plain int/slice
+        # selections (so integer axes drop), orthogonal mode for fancy selections.
         selection = _normalize_negative_indices(selection, self.shape)
-        transform = selection_to_transform(selection, self._async_array._transform, "basic")
+        mode: Literal["basic", "orthogonal"] = (
+            "basic" if is_basic_selection(selection) else "orthogonal"
+        )
+        transform = selection_to_transform(selection, self._async_array._transform, mode)
         sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
     def get_mask_selection(
@@ -4005,10 +4009,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def result(self, prototype: BufferPrototype | None = None) -> NDArrayLikeOrScalar:
         """Read and return the data for this array view.
 
-        Equivalent to ``self[...]`` but more explicit for lazy views.
-        Named after `tensorstore.Future.result`.
+        Equivalent to ``self[...]`` but more explicit for lazy views, and forwards
+        ``prototype``. Named after `tensorstore.Future.result`.
         """
-        return self[...]
+        return self.get_basic_selection(Ellipsis, prototype=prototype)
 
     def resize(self, new_shape: ShapeLike) -> None:
         """
