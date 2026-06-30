@@ -28,11 +28,13 @@ from zarr.testing.strategies import (
     block_indices,
     block_test_arrays,
     complex_rectilinear_arrays,
+    indexers,
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
     simple_arrays,
     stores,
+    windows,
     zarr_formats,
 )
 
@@ -450,50 +452,11 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["fill_value"] == -9223372036854775808
 
 
-@st.composite
-def _window(draw: st.DrawFn, shape: tuple[int, ...]) -> tuple[slice, ...]:
-    """A tuple of non-negative, full-rank slice windows (one per axis).
-
-    Used to build a lazy view via the accessor, which treats negative indices as
-    literal coordinates (TensorStore convention) — so the view-defining selection
-    must stay non-negative. The view *methods* tested below normalize negatives.
-    """
-    out: list[slice] = []
-    for size in shape:
-        if size == 0:
-            out.append(slice(0, 0))
-            continue
-        start = draw(st.integers(min_value=0, max_value=size - 1))
-        stop = draw(st.integers(min_value=start + 1, max_value=size))
-        out.append(slice(start, stop))
-    return tuple(out)
-
-
 # The indexing modes and which Array method implements each. vindex/mask are
 # "vectorized" — they scatter through a single flat index, so an out= buffer must
 # be flat (number of selected points) rather than the multi-dimensional result.
 _INDEX_MODES = ("basic", "oindex", "vindex", "mask")
 _VECTORIZED_MODES = frozenset({"vindex", "mask"})
-
-
-def _draw_indexer(data: st.DataObject, mode: str, shape: tuple[int, ...]) -> tuple[Any, Any]:
-    """Draw a (zarr_selection, numpy_selection) pair valid for ``mode`` on ``shape``."""
-    if mode == "basic":
-        sel = data.draw(basic_indices(shape=shape))
-        return sel, sel
-    if mode == "oindex":
-        return data.draw(orthogonal_indices(shape=shape))
-    if mode == "vindex":
-        idx = data.draw(
-            npst.integer_array_indices(
-                shape=shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
-            )
-        )
-        return idx, idx
-    if mode == "mask":
-        m = data.draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
-        return m, m
-    raise AssertionError(mode)
 
 
 def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
@@ -516,7 +479,7 @@ async def test_indexing_parity(data: st.DataObject) -> None:
     """Every indexing method matches NumPy on both an eager array and a lazy view.
 
     Comprehensive cross-path oracle covering the cartesian product of
-    {basic, oindex, vindex, mask} × {eager array, lazy view} × {out=None, out=}.
+    {basic, oindex, vindex, mask} by {eager array, lazy view} by {out=None, out=}.
     All of the lazy-view indexing bugs found in review were "the lazy/view path
     diverges from NumPy/eager for some (method, parameter) combination"; this
     enumerates that surface so the whole class is caught, not one case at a time.
@@ -525,7 +488,7 @@ async def test_indexing_parity(data: st.DataObject) -> None:
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-    window = data.draw(_window(nparray.shape))
+    window = data.draw(windows(shape=nparray.shape))
     view = zarray.lazy[window]
     vref = nparray[window]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
@@ -536,7 +499,7 @@ async def test_indexing_parity(data: st.DataObject) -> None:
         # integer_array_indices / orthogonal strategies can't handle 0-size dims.
         if mode != "basic" and not all(s > 0 for s in ref.shape):
             continue
-        zsel, npsel = _draw_indexer(data, mode, ref.shape)
+        zsel, npsel = data.draw(indexers(mode=mode, shape=ref.shape))
         expected = np.asarray(ref[npsel])
 
         # 1) plain read
