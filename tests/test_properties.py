@@ -380,9 +380,13 @@ def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -
     """Whether a write to `npsel` targets each cell at most once.
 
     Negative indices are normalized first (`[2, -2]` on length 4 both target cell
-    2), then duplicate targets are detected. A repeated target makes the write
-    order-dependent — NumPy has the same ambiguity — so there is no well-defined
-    oracle and such an example is skipped (a fundamental limitation, not a bug).
+    2), then duplicate targets are detected. A repeated target makes the surviving
+    value depend on the order the writes are applied. NumPy happens to be
+    deterministic here (last-write-wins), but only as an implementation detail of
+    iterating the index serially in C order — it is not a guarantee. zarr writes
+    scalars into chunks and cannot in general promise a write order, so it cannot
+    be expected to match NumPy's choice. There is therefore no well-defined oracle
+    for such a write, and we reject it (a fundamental limitation, not a bug).
     """
     sel = npsel if isinstance(npsel, tuple) else (npsel,)
     if mode == "oindex":
