@@ -29,6 +29,7 @@ class ArrayConfigParams(TypedDict):
     order: NotRequired[MemoryOrder]
     write_empty_chunks: NotRequired[bool]
     read_missing_chunks: NotRequired[bool]
+    engine: NotRequired[str]
 
 
 @dataclass(frozen=True)
@@ -45,14 +46,25 @@ class ArrayConfig:
     read_missing_chunks : bool
         If True, missing chunks will be filled with the array's fill value on read.
         If False, reading missing chunks will raise a ``ChunkNotFoundError``.
+    engine : str
+        The execution engine for data access and creation. ``"zarr"`` (the
+        default) is the native Python path; the registered ``zarr.crud`` backend
+        names (``"reference"``, ``"zarrs"``, ``"zarrista"``) route through that
+        backend.
     """
 
     order: MemoryOrder
     write_empty_chunks: bool
     read_missing_chunks: bool
+    engine: str
 
     def __init__(
-        self, order: MemoryOrder, write_empty_chunks: bool, *, read_missing_chunks: bool = True
+        self,
+        order: MemoryOrder,
+        write_empty_chunks: bool,
+        *,
+        read_missing_chunks: bool = True,
+        engine: str = "zarr",
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
@@ -61,6 +73,7 @@ class ArrayConfig:
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
         object.__setattr__(self, "read_missing_chunks", read_missing_chunks_parsed)
+        object.__setattr__(self, "engine", str(engine))
 
     @classmethod
     def from_dict(cls, data: ArrayConfigParams) -> Self:
@@ -72,7 +85,7 @@ class ArrayConfig:
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
             field_name = cast(
-                "Literal['order', 'write_empty_chunks', 'read_missing_chunks']", f.name
+                "Literal['order', 'write_empty_chunks', 'read_missing_chunks', 'engine']", f.name
             )
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
@@ -88,6 +101,7 @@ class ArrayConfig:
             "order": self.order,
             "write_empty_chunks": self.write_empty_chunks,
             "read_missing_chunks": self.read_missing_chunks,
+            "engine": self.engine,
         }
 
 

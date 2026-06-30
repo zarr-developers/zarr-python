@@ -1029,6 +1029,7 @@ class AsyncGroup:
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
+        engine: str | None = None,
     ) -> AnyAsyncArray:
         """Create an array within this group.
 
@@ -2543,6 +2544,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
+        engine: str | None = None,
     ) -> AnyArray:
         """Create an array within this group.
 
@@ -2667,6 +2669,7 @@ class Group(SyncMixin):
                     storage_options=storage_options,
                     config=config,
                     write_data=write_data,
+                    engine=engine,
                 )
             )
         )

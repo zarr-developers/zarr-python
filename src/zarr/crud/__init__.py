@@ -4,7 +4,7 @@ Backend-agnostic low-level functional CRUD API for zarr hierarchies.
 The public functions delegate byte- and metadata-level work to a `CrudBackend`.
 Two backends ship: a pure-Python reference backend (the default) and a
 zarrs-accelerated backend (`zarr.zarrs`, requires the `zarrs-bindings`
-extension). Select one with the `crud.backend` config key or a per-call
+extension). Select one with the `array.engine` config key or a per-call
 `backend=` argument.
 
 Array routines take an explicit metadata document (a `dict` matching the
@@ -26,6 +26,7 @@ from zarr.crud._api import (
     read_metadata,
     read_region,
     write_chunk,
+    write_region,
 )
 from zarr.crud._backend import CrudBackend, NodeExistsError
 from zarr.crud._reference import ReferenceBackend
@@ -52,4 +53,5 @@ __all__ = [
     "read_region",
     "register_backend",
     "write_chunk",
+    "write_region",
 ]

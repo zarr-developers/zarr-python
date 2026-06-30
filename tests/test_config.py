@@ -54,6 +54,7 @@ def test_config_defaults_set() -> None:
                     "order": "C",
                     "write_empty_chunks": False,
                     "read_missing_chunks": True,
+                    "engine": "zarr",
                     "target_shard_size_bytes": None,
                     "rectilinear_chunks": False,
                 },

@@ -818,6 +818,7 @@ def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    engine: str | None = None,
 ) -> AnyArray:
     """Create an array.
 
@@ -967,6 +968,7 @@ def create_array(
                 overwrite=overwrite,
                 config=config,
                 write_data=write_data,
+                engine=engine,
             )
         )
     )

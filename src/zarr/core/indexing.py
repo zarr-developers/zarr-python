@@ -571,6 +571,9 @@ class BasicIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer]
     shape: tuple[int, ...]
     drop_axes: tuple[int, ...]
+    # The ellipsis-normalized selection, retained so engine backends (which work
+    # from a raw basic selection, not an indexer) can re-route the operation.
+    selection: BasicSelection
 
     def __init__(
         self,
@@ -581,6 +584,7 @@ class BasicIndexer(Indexer):
         dim_grids = chunk_grid._dimensions
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
+        object.__setattr__(self, "selection", selection_normalized)
 
         # setup per-dimension indexers
         dim_indexers: list[IntDimIndexer | SliceDimIndexer] = []

@@ -12,6 +12,16 @@ if TYPE_CHECKING:
 # additional locking.
 _BACKENDS: dict[str, CrudBackend] = {}
 
+# Backends that live in a separate, optionally-installed package: the module to
+# import (which self-registers) and the install hint shown when it is missing.
+_LAZY_BACKENDS: dict[str, tuple[str, str]] = {
+    "zarrs": ("zarr.zarrs", "the zarrs-bindings extension; install it with: uv sync --group zarrs"),
+    "zarrista": (
+        "zarr.zarrista",
+        "the `zarrista` package; install it with: uv sync --group zarrista",
+    ),
+}
+
 
 def register_backend(name: str, backend: CrudBackend) -> None:
     """Register a CRUD backend instance under `name`."""
@@ -21,20 +31,27 @@ def register_backend(name: str, backend: CrudBackend) -> None:
 def get_backend(name: str | None = None) -> CrudBackend:
     """Resolve a backend by name, or the configured default when `name` is None.
 
-    Selecting `"zarrs"` imports `zarr.zarrs` if needed so it can self-register.
+    Selecting a lazily-loaded backend (`"zarrs"`, `"zarrista"`) imports its
+    package if needed so it can self-register.
     """
     if name is None:
-        name = config.get("crud.backend")
-    if name not in _BACKENDS and name == "zarrs":
-        # "reference" is pre-registered by zarr.crud at import; "zarrs" lives in a
-        # separate package that may not be imported yet, so load it on demand.
+        # The top-level `array.engine` config drives the default backend. The
+        # `"zarr"` engine means the native path, which never routes here; map it
+        # to the pure-Python reference backend for direct crud callers.
+        name = config.get("array.engine")
+        if name == "zarr":
+            name = "reference"
+    if name not in _BACKENDS and name in _LAZY_BACKENDS:
+        # "reference" is pre-registered by zarr.crud at import; these backends
+        # live in separate packages that may not be imported yet, so load on
+        # demand.
+        import importlib
+
+        module, hint = _LAZY_BACKENDS[name]
         try:
-            import zarr.zarrs  # noqa: F401  (import registers the zarrs backend)
+            importlib.import_module(module)  # import registers the backend
         except ImportError as e:
-            raise ImportError(
-                "the 'zarrs' CRUD backend requires the zarrs-bindings extension; "
-                "install it with: uv sync --group zarrs"
-            ) from e
+            raise ImportError(f"the {name!r} CRUD backend requires {hint}") from e
     if name not in _BACKENDS:
         raise KeyError(f"no CRUD backend registered as {name!r}; registered: {sorted(_BACKENDS)}")
     return _BACKENDS[name]

@@ -732,6 +732,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
+        engine: str | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -744,6 +746,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
+        engine : str | None, optional
+            The execution engine for the opened array. ``None`` uses the
+            ``array.engine`` config default. A non-native engine reads the
+            metadata through ``zarr.crud`` and is carried onto the array so
+            subsequent reads route through that backend.
 
         Returns
         -------
@@ -772,10 +779,22 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         store_path = await make_store_path(store)
-        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+        resolved_engine = engine if engine is not None else zarr_config.get("array.engine")
+        if resolved_engine == "zarr":
+            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+        else:
+            from zarr.crud import read_metadata
+
+            metadata_dict = await read_metadata(
+                store_path.store, store_path.path, backend=resolved_engine
+            )
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(
+            store_path=store_path,
+            metadata=_metadata_dict,
+            config={"engine": resolved_engine},
+        )
 
     @property
     def store(self) -> Store:
@@ -1470,7 +1489,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> asyncio.run(example())
         np.int32(0)
         """
-
         return await _getitem(
             self.store_path,
             self.metadata,
@@ -4509,7 +4527,21 @@ async def init_array(
         )
 
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
-    await arr._save_metadata(meta, ensure_parents=True)
+    if arr.config.engine == "zarr":
+        await arr._save_metadata(meta, ensure_parents=True)
+    else:
+        # Route metadata creation through the selected crud engine. Existence /
+        # overwrite was already enforced above, so a plain overwrite-write of the
+        # document is correct; this is also where an engine that cannot ingest
+        # the store (e.g. zarrista on a non-LocalStore) raises.
+        from zarr.crud import create_overwrite_array
+
+        await create_overwrite_array(
+            dict(meta.to_dict()),
+            store_path.store,
+            store_path.path,
+            backend=arr.config.engine,
+        )
     return arr
 
 
@@ -4535,6 +4567,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    engine: str | None = None,
 ) -> AnyAsyncArray:
     """Create an array.
 
@@ -4660,6 +4693,8 @@ async def create_array(
     ... )
     <AsyncArray memory://... shape=(100, 100) dtype=int32>
     """
+    if engine is not None:
+        config = replace(parse_array_config(config), engine=engine)
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
     )
@@ -5348,6 +5383,73 @@ def _get_chunk_spec(
     )
 
 
+def _engine_basic_selection(indexer: Indexer, engine: str) -> BasicSelection:
+    """Reconstruct a basic (int/slice) selection from an indexer, or raise.
+
+    zarr routes pure-slice/integer indexing through ``OrthogonalIndexer``, so both
+    it and ``BasicIndexer`` may carry a crud-expressible selection. Any array,
+    boolean, coordinate, mask, or block indexer (anything the crud engines cannot
+    express) raises ``NotImplementedError`` per the strict engine policy.
+    """
+    from zarr.core.indexing import (
+        BasicIndexer,
+        IntDimIndexer,
+        OrthogonalIndexer,
+        SliceDimIndexer,
+    )
+
+    unsupported = NotImplementedError(
+        f"the {engine!r} engine supports only basic indexing (integers and slices); "
+        f"this operation requires the native 'zarr' engine"
+    )
+    if not isinstance(indexer, (BasicIndexer, OrthogonalIndexer)):
+        raise unsupported
+    selection: list[int | slice] = []
+    for dim_indexer in indexer.dim_indexers:
+        if isinstance(dim_indexer, IntDimIndexer):
+            selection.append(int(dim_indexer.dim_sel))
+        elif isinstance(dim_indexer, SliceDimIndexer):
+            selection.append(slice(dim_indexer.start, dim_indexer.stop, dim_indexer.step))
+        else:
+            raise unsupported
+    return tuple(selection)
+
+
+async def _engine_get_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    indexer: Indexer,
+    out: NDBuffer | None,
+    fields: Fields | None,
+) -> NDArrayLikeOrScalar:
+    """Read a selection through a non-native ``zarr.crud`` engine (strict policy).
+
+    Only basic indexing is supported; advanced indexers and the ``out``/``fields``
+    arguments raise ``NotImplementedError``. A fully-integer (0-d) ``BasicIndexer``
+    selection returns a numpy scalar, matching native ``_get_selection``.
+    """
+    # `fields` is an empty list (not None) for normal multi-dimensional reads;
+    # only a non-empty field selection is genuinely unsupported.
+    if out is not None or fields:
+        raise NotImplementedError(
+            f"the {config.engine!r} engine does not support the 'out' or 'fields' arguments"
+        )
+    selection = _engine_basic_selection(indexer, config.engine)
+    from zarr.crud import read_region
+
+    result = await read_region(
+        dict(metadata.to_dict()),
+        store_path.store,
+        store_path.path,
+        selection,
+        backend=config.engine,
+    )
+    if isinstance(indexer, BasicIndexer) and indexer.shape == ():
+        return cast("NDArrayLikeOrScalar", result[()])
+    return result
+
+
 async def _get_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
@@ -5387,6 +5489,11 @@ async def _get_selection(
     NDArrayLikeOrScalar
         The selected data.
     """
+    # Engine routing: a non-native engine handles reads through zarr.crud. This
+    # is the single chokepoint every read (basic and advanced) funnels through.
+    if config.engine != "zarr":
+        return await _engine_get_selection(store_path, metadata, config, indexer, out, fields)
+
     # Get dtype from metadata
     if metadata.zarr_format == 2:
         zdtype = metadata.dtype
@@ -5697,6 +5804,36 @@ async def _get_coordinate_selection(
     return out_array
 
 
+async def _engine_set_selection(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    indexer: Indexer,
+    value: npt.ArrayLike,
+    fields: Fields | None,
+) -> None:
+    """Write a selection through a non-native ``zarr.crud`` engine (strict policy).
+
+    Only basic indexing is supported; advanced indexers and a non-empty ``fields``
+    selection raise ``NotImplementedError``.
+    """
+    if fields:
+        raise NotImplementedError(
+            f"the {config.engine!r} engine does not support the 'fields' argument"
+        )
+    selection = _engine_basic_selection(indexer, config.engine)
+    from zarr.crud import write_region
+
+    await write_region(
+        dict(metadata.to_dict()),
+        store_path.store,
+        store_path.path,
+        selection,
+        value,
+        backend=config.engine,
+    )
+
+
 async def _set_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
@@ -5733,6 +5870,12 @@ async def _set_selection(
     fields : Fields | None, optional
         Fields to select from structured arrays.
     """
+    # Engine routing: a non-native engine handles writes through zarr.crud. This
+    # is the single chokepoint every write (basic and advanced) funnels through.
+    if config.engine != "zarr":
+        await _engine_set_selection(store_path, metadata, config, indexer, value, fields)
+        return
+
     # Get dtype from metadata
     if metadata.zarr_format == 2:
         zdtype = metadata.dtype

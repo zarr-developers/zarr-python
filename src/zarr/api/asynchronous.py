@@ -1231,13 +1231,14 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
+    engine = kwargs.pop("engine", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format, engine=engine)
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)

@@ -21,7 +21,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from zarr.abc.store import Store
+    from zarr.core.array_spec import ArrayConfigParams
     from zarr.core.common import JSON
+
+
+# Pin internal AsyncArrays to the native engine so a non-native global
+# `array.engine` cannot route their reads back through crud (see read_subset).
+_NATIVE_ENGINE_CONFIG: ArrayConfigParams = {"engine": "zarr"}
 
 
 def _native_dtype(meta_obj: ArrayV3Metadata | ArrayV2Metadata) -> np.dtype[Any]:
@@ -147,7 +153,14 @@ class ReferenceBackend:
     ) -> bytes:
         meta_obj = parse_array_metadata(metadata)
         np_dtype = _native_dtype(meta_obj)
-        async_arr = AsyncArray(metadata=meta_obj, store_path=StorePath(store, path.strip("/")))
+        # Pin the native engine: this AsyncArray is an internal implementation
+        # detail, and without the pin a non-native global `array.engine` would
+        # route its getitem back through crud, looping into this method.
+        async_arr = AsyncArray(
+            metadata=meta_obj,
+            store_path=StorePath(store, path.strip("/")),
+            config=_NATIVE_ENGINE_CONFIG,
+        )
         selection = tuple(slice(s, s + length) for s, length in zip(start, shape, strict=True))
         result = await async_arr.getitem(selection)
         return np.ascontiguousarray(np.asarray(result, dtype=np_dtype)).tobytes()

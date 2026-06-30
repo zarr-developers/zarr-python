@@ -342,3 +342,46 @@ async def read_region(
         raw = await be.read_subset(store, path, metadata, tuple(starts), tuple(lengths))
         block = np.frombuffer(raw, dtype=dtype).reshape(lengths)
     return cast("np.ndarray[Any, np.dtype[Any]]", block[post_index])
+
+
+async def write_region(
+    metadata: Mapping[str, JSON],
+    store: Store,
+    path: str,
+    selection: BasicSelection,
+    value: npt.ArrayLike,
+    *,
+    options: CrudOptions | None = None,
+    backend: CrudBackend | str | None = None,
+) -> None:
+    """Write `value` into the region given by a numpy basic-indexing `selection`.
+
+    The selection is decomposed into chunks: fully-covered chunks are written
+    directly, and partially-covered (boundary) chunks are read-modify-written.
+    Every write goes through the backend, so the backend's codec pipeline encodes
+    the data. `value` is broadcast to the selection shape. Fancy indexing raises
+    `TypeError`."""
+    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.indexing import BasicIndexer
+
+    be = _resolve_backend(backend)
+    meta_obj = parse_array_metadata(metadata)
+    dtype, chunk_shape = _chunk_dtype_and_shape(metadata)
+    shape = _array_shape(metadata)
+    indexer = BasicIndexer(selection, shape, ChunkGrid.from_metadata(meta_obj))
+    value_arr = np.broadcast_to(np.asarray(value, dtype=dtype), indexer.shape)
+    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer:
+        chunk_value = value_arr[out_selection]
+        if is_complete_chunk and chunk_value.shape == chunk_shape:
+            full = np.ascontiguousarray(chunk_value, dtype=dtype)
+        else:
+            raw = await be.read_chunk(store, path, metadata, tuple(chunk_coords))
+            full = np.frombuffer(raw, dtype=dtype).reshape(chunk_shape).copy()
+            full[chunk_selection] = chunk_value
+        await be.write_chunk(
+            store,
+            path,
+            metadata,
+            tuple(chunk_coords),
+            np.ascontiguousarray(full).tobytes(),
+        )

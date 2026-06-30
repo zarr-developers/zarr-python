@@ -97,6 +97,7 @@ config = Config(
                 "order": "C",
                 "write_empty_chunks": False,
                 "read_missing_chunks": True,
+                "engine": "zarr",
                 "target_shard_size_bytes": None,
                 "rectilinear_chunks": False,
             },
@@ -107,7 +108,6 @@ config = Config(
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
-            "crud": {"backend": "reference"},
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
                 "gzip": "zarr.codecs.gzip.GzipCodec",
