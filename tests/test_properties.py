@@ -472,19 +472,67 @@ def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
     raise AssertionError(mode)
 
 
+def assert_indexing_matches_numpy(
+    target: zarr.Array, ref: np.ndarray[Any, Any], mode: str, data: st.DataObject
+) -> None:
+    """Assert ``target``'s ``mode`` indexing matches NumPy on ``ref``.
+
+    Consumer-agnostic: ``target`` is any ``zarr.Array`` (an ordinary eager array
+    or a lazy view) and ``ref`` is the NumPy array it should behave like. Draws a
+    selection for ``mode`` and checks both a plain read and a read into an ``out=``
+    buffer (flat for the vectorized vindex/mask modes, full-shape otherwise).
+    """
+    if ref.ndim == 0:
+        return
+    # integer_array_indices / orthogonal strategies can't handle 0-size dims.
+    if mode != "basic" and not all(s > 0 for s in ref.shape):
+        return
+    zsel, npsel = data.draw(indexers(mode=mode, shape=ref.shape))
+    expected = np.asarray(ref[npsel])
+
+    # 1) plain read
+    assert_array_equal(np.asarray(_get(target, mode, zsel)), expected)
+
+    # 2) read into an out= buffer (flat for vectorized modes, full otherwise)
+    if expected.ndim >= 1 and expected.size > 0:
+        buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
+        buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=expected.dtype)
+        _get(target, mode, zsel, out=buf)
+        assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
+
+
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_indexing_parity(data: st.DataObject) -> None:
-    """Every indexing method matches NumPy on both an eager array and a lazy view.
+    """Every indexing method on an eager array matches NumPy (all modes, with/without out=).
 
-    Comprehensive cross-path oracle covering the cartesian product of
-    {basic, oindex, vindex, mask} by {eager array, lazy view} by {out=None, out=}.
-    All of the lazy-view indexing bugs found in review were "the lazy/view path
-    diverges from NumPy/eager for some (method, parameter) combination"; this
-    enumerates that surface so the whole class is caught, not one case at a time.
-    The view is built from a non-negative slice window (the accessor treats
-    negative indices as literal); view methods normalize negatives like NumPy.
+    Comprehensive oracle over {basic, oindex, vindex, mask} by {out=None, out=}.
+    Deliberately independent of lazy indexing so it can guard the eager API on its
+    own; ``test_lazy_view_indexing_parity`` reuses the same oracle for the lazy
+    consumer (a view is just another ``zarr.Array``).
+    """
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    assert_indexing_matches_numpy(zarray, nparray, mode, data)
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
+)
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
+    """The eager indexing oracle, applied to a lazy view (the lazy consumer).
+
+    A view (built from a non-negative window) is just another ``zarr.Array``, so
+    it flows through the same ``assert_indexing_matches_numpy`` harness. The lazy
+    indexing bugs found in review were all "the view path diverges from NumPy for
+    some (method, parameter) combination" — enumerating that surface here catches
+    the class. This test is skipped until ``Array.lazy`` exists, so the harness
+    above can merge ahead of the lazy feature.
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
@@ -492,22 +540,4 @@ async def test_indexing_parity(data: st.DataObject) -> None:
     view = zarray.lazy[window]
     vref = nparray[window]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
-
-    for target, ref in ((zarray, nparray), (view, vref)):
-        if ref.ndim == 0:
-            continue
-        # integer_array_indices / orthogonal strategies can't handle 0-size dims.
-        if mode != "basic" and not all(s > 0 for s in ref.shape):
-            continue
-        zsel, npsel = data.draw(indexers(mode=mode, shape=ref.shape))
-        expected = np.asarray(ref[npsel])
-
-        # 1) plain read
-        assert_array_equal(np.asarray(_get(target, mode, zsel)), expected)
-
-        # 2) read into an out= buffer (flat for vectorized modes, full otherwise)
-        if expected.ndim >= 1 and expected.size > 0:
-            buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
-            buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=nparray.dtype)
-            _get(target, mode, zsel, out=buf)
-            assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
+    assert_indexing_matches_numpy(view, vref, mode, data)

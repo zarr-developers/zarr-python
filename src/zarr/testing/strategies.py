@@ -605,11 +605,11 @@ IndexMode = Literal["basic", "oindex", "vindex", "mask"]
 def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
     """A non-negative, full-rank tuple of slice windows — one per axis.
 
-    Useful for building a lazy view (``arr.lazy[window]``) whose rank matches the
-    source array. The lazy accessor treats negative indices as literal
-    coordinates (TensorStore convention), so a view-defining selection must stay
-    non-negative. Each axis gets ``start:stop`` with ``0 <= start < stop <= size``
-    (an empty ``0:0`` slice for a zero-length axis).
+    A rank-preserving sub-region selection: each axis gets ``start:stop`` with
+    ``0 <= start < stop <= size`` (an empty ``0:0`` slice for a zero-length axis).
+    Bounds stay non-negative so the window is valid for any consumer, including
+    those that treat negative indices as literal coordinates rather than
+    from-the-end (e.g. building a sub-array view).
     """
     out: list[slice] = []
     for size in shape:
