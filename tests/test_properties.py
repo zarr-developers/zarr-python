@@ -469,29 +469,82 @@ def _window(draw: st.DrawFn, shape: tuple[int, ...]) -> tuple[slice, ...]:
     return tuple(out)
 
 
+# The indexing modes and which Array method implements each. vindex/mask are
+# "vectorized" — they scatter through a single flat index, so an out= buffer must
+# be flat (number of selected points) rather than the multi-dimensional result.
+_INDEX_MODES = ("basic", "oindex", "vindex", "mask")
+_VECTORIZED_MODES = frozenset({"vindex", "mask"})
+
+
+def _draw_indexer(data: st.DataObject, mode: str, shape: tuple[int, ...]) -> tuple[Any, Any]:
+    """Draw a (zarr_selection, numpy_selection) pair valid for ``mode`` on ``shape``."""
+    if mode == "basic":
+        sel = data.draw(basic_indices(shape=shape))
+        return sel, sel
+    if mode == "oindex":
+        return data.draw(orthogonal_indices(shape=shape))
+    if mode == "vindex":
+        idx = data.draw(
+            npst.integer_array_indices(
+                shape=shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            )
+        )
+        return idx, idx
+    if mode == "mask":
+        m = data.draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
+        return m, m
+    raise AssertionError(mode)
+
+
+def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
+    """Read ``zsel`` from ``target`` via the get-method for ``mode``."""
+    if mode == "basic":
+        return target.get_basic_selection(zsel, out=out)
+    if mode == "oindex":
+        return target.get_orthogonal_selection(zsel, out=out)
+    if mode == "vindex":
+        return target.get_coordinate_selection(zsel, out=out)
+    if mode == "mask":
+        return target.get_mask_selection(zsel, out=out)
+    raise AssertionError(mode)
+
+
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
-async def test_lazy_view_indexing_matches_numpy(data: st.DataObject) -> None:
-    """Indexing the *methods* of a lazy view must match NumPy on the viewed data.
+async def test_indexing_parity(data: st.DataObject) -> None:
+    """Every indexing method matches NumPy on both an eager array and a lazy view.
 
-    Regression guard for the class of bugs where view-object indexing
-    (``v[...]``, ``v.oindex[...]``, ``v.vindex[...]``) bypassed the view's
-    transform. The view is built from a non-negative slice window; the second
-    selection is drawn freely (basic, orthogonal, or coordinate).
+    Comprehensive cross-path oracle covering the cartesian product of
+    {basic, oindex, vindex, mask} × {eager array, lazy view} × {out=None, out=}.
+    All of the lazy-view indexing bugs found in review were "the lazy/view path
+    diverges from NumPy/eager for some (method, parameter) combination"; this
+    enumerates that surface so the whole class is caught, not one case at a time.
+    The view is built from a non-negative slice window (the accessor treats
+    negative indices as literal); view methods normalize negatives like NumPy.
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-    base = data.draw(_window(nparray.shape))
-    view = zarray.lazy[base]
-    vref = nparray[base]
-    assume(vref.ndim >= 1)
+    window = data.draw(_window(nparray.shape))
+    view = zarray.lazy[window]
+    vref = nparray[window]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
 
-    # basic indexing on the view (slices/ints/ellipsis, incl. negative indices)
-    sub = data.draw(basic_indices(shape=vref.shape))
-    assert_array_equal(np.asarray(view[sub]), np.asarray(vref[sub]))
+    for target, ref in ((zarray, nparray), (view, vref)):
+        if ref.ndim == 0:
+            continue
+        # integer_array_indices / orthogonal strategies can't handle 0-size dims.
+        if mode != "basic" and not all(s > 0 for s in ref.shape):
+            continue
+        zsel, npsel = _draw_indexer(data, mode, ref.shape)
+        expected = np.asarray(ref[npsel])
 
-    # orthogonal indexing on the view
-    if all(s > 0 for s in vref.shape):
-        zidx, npidx = data.draw(orthogonal_indices(shape=vref.shape))
-        assert_array_equal(np.asarray(view.oindex[zidx]), np.asarray(vref[npidx]))
+        # 1) plain read
+        assert_array_equal(np.asarray(_get(target, mode, zsel)), expected)
+
+        # 2) read into an out= buffer (flat for vectorized modes, full otherwise)
+        if expected.ndim >= 1 and expected.size > 0:
+            buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
+            buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=nparray.dtype)
+            _get(target, mode, zsel, out=buf)
+            assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)

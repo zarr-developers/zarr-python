@@ -5653,16 +5653,19 @@ def _get_chunk_spec(
 
 
 def _is_vectorized_transform(transform: IndexTransform) -> bool:
-    """Return True for a vectorized (vindex) transform: >= 2 correlated ArrayMaps.
+    """Return True for a vectorized (vindex/coordinate) transform.
 
-    Correlated ArrayMaps (``input_dimension is None``) are jointly indexed and
-    scatter through a single flat index, so the output buffer is flattened during
-    read/write. Orthogonal ArrayMaps (oindex), each bound to a distinct input
-    dimension, form an outer product and keep a multi-dimensional buffer — even
-    when every output happens to be an ArrayMap (e.g. ``oindex[i0, i1]``).
+    Coordinate ArrayMaps (``input_dimension is None``) are jointly indexed over
+    the broadcast input domain and scatter through a single flat index, so the
+    output buffer is flattened during read/write and reshaped afterwards. This
+    holds whenever *any* such map is present — including a single coordinate map
+    with a multi-dimensional index array (``vindex[idx_2d]`` on a 1-D array),
+    whose flat result still needs a flat buffer. Orthogonal ArrayMaps (oindex),
+    each bound to a distinct input dimension, form an outer product and keep a
+    multi-dimensional buffer — even when every output is an ArrayMap
+    (e.g. ``oindex[i0, i1]``).
     """
-    array_maps = [m for m in transform.output if isinstance(m, ArrayMap)]
-    return len(array_maps) >= 2 and all(m.input_dimension is None for m in array_maps)
+    return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
 
 
 def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
@@ -5761,13 +5764,15 @@ async def _get_selection_via_transform(
     needs_flat_buffer = _is_vectorized_transform(transform)
     buffer_shape = (product(out_shape),) if needs_flat_buffer else out_shape
 
-    # Setup output buffer
+    # Setup output buffer. Vectorized reads scatter through a flat index, so the
+    # caller must supply a flat out buffer (matching the eager path); otherwise it
+    # is the full multi-dimensional out_shape.
     if out is not None:
         if not isinstance(out, NDBuffer):
             raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
-        if out.shape != out_shape:
+        if out.shape != buffer_shape:
             raise ValueError(
-                f"shape of out argument doesn't match. Expected {out_shape}, got {out.shape}"
+                f"shape of out argument doesn't match. Expected {buffer_shape}, got {out.shape}"
             )
         out_buffer = out
     else:

@@ -340,6 +340,26 @@ class TestLazyViewMethods:
         idx = tuple(np.array([0, 1, 2], dtype=np.intp) for _ in cfg.shape)
         np.testing.assert_array_equal(v.vindex[idx], vref[idx])
 
+    def test_view_vindex_with_flat_out_buffer(self) -> None:
+        """vindex with a multi-dim result and out= on a view uses a flat out buffer.
+
+        Vectorized indexing scatters through a single flat index, so (as in the
+        eager path) the out buffer must be flat (shape = number of points).
+        """
+        a, ref = _make(CONFIGS[3])  # 2d-unsharded
+        v = a.lazy[2:18]
+        vref = ref[2:18]
+        i0 = np.array([[0, 1], [2, 3]], dtype=np.intp)
+        i1 = np.array([[0, 5], [10, 15]], dtype=np.intp)
+        expected = vref[i0, i1]
+        buf = default_buffer_prototype().nd_buffer.empty(
+            shape=(expected.size,), dtype=np.dtype("i4")
+        )
+        v.get_coordinate_selection((i0, i1), out=buf)
+        np.testing.assert_array_equal(
+            np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected
+        )
+
     @pytest.mark.parametrize("cfg", MULTI_AXIS_UNSHARDED_CASES)
     def test_view_write_through_tuple(self, cfg: Config) -> None:
         """Writing through a view with a basic tuple selection lands in view coords."""
