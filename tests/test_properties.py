@@ -22,6 +22,7 @@ from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.testing.strategies import (
+    IndexMode,
     array_metadata,
     arrays,
     basic_indices,
@@ -332,11 +333,13 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
 # The indexing modes and which Array method implements each. vindex/mask are
 # "vectorized" — they scatter through a single flat index, so an out= buffer must
 # be flat (number of selected points) rather than the multi-dimensional result.
-_INDEX_MODES = ("basic", "oindex", "vindex", "mask")
-_VECTORIZED_MODES = frozenset({"vindex", "mask"})
+_INDEX_MODES: tuple[IndexMode, ...] = ("basic", "oindex", "vindex", "mask")
+# Modes that scatter through a flat index (so an out= buffer must be flat). Kept a
+# tuple like _INDEX_MODES; membership is checked against it below.
+_VECTORIZED_MODES: tuple[IndexMode, ...] = ("vindex", "mask")
 
 
-def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
+def _get(target: zarr.Array, mode: IndexMode, zsel: Any, *, out: Any = None) -> Any:
     """Read ``zsel`` from ``target`` via the get-method for ``mode``."""
     if mode == "basic":
         return target.get_basic_selection(zsel, out=out)
@@ -349,7 +352,7 @@ def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
     raise AssertionError(mode)
 
 
-def _async_get(async_array: Any, mode: str, zsel: Any) -> Any:
+def _async_get(async_array: Any, mode: IndexMode, zsel: Any) -> Any:
     """The async read coroutine for ``mode`` (vindex/mask share the vectorized accessor)."""
     if mode == "basic":
         return async_array.getitem(zsel)
@@ -358,7 +361,7 @@ def _async_get(async_array: Any, mode: str, zsel: Any) -> Any:
     return async_array.vindex.getitem(zsel)
 
 
-def _setitem(zarray: zarr.Array, mode: str, zsel: Any, value: Any) -> None:
+def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None:
     """Write ``value`` at ``zsel`` via the set-method for ``mode``."""
     if mode == "basic":
         zarray[zsel] = value
@@ -376,7 +379,7 @@ def _has_repeated_indices(npsel: Any) -> bool:
     return any(isinstance(i, np.ndarray) and i.size != np.unique(i).size for i in sel)
 
 
-def _eligible(mode: str, shape: tuple[int, ...]) -> bool:
+def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
     """Whether ``mode`` can be exercised on ``shape``.
 
     Rank-0 arrays have no interesting selections; the fancy modes
@@ -388,7 +391,7 @@ def _eligible(mode: str, shape: tuple[int, ...]) -> bool:
 
 
 def assert_read_matches_numpy(
-    target: zarr.Array, ref: np.ndarray[Any, Any], mode: str, zsel: Any, npsel: Any
+    target: zarr.Array, ref: np.ndarray[Any, Any], mode: IndexMode, zsel: Any, npsel: Any
 ) -> None:
     """Assert ``target``'s read of ``zsel`` (mode) matches ``ref[npsel]``, with/without out=.
 

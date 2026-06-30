@@ -27,6 +27,7 @@ from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.indexing import Selection
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -623,7 +624,9 @@ def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
 
 
 @st.composite
-def indexers(draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]) -> tuple[Any, Any]:
+def indexers(
+    draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]
+) -> tuple[Selection, Selection]:
     """A ``(zarr_selection, numpy_selection)`` pair for ``mode`` on ``shape``.
 
     One strategy covering every indexing mode, so a test can be written once and
