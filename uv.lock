@@ -4062,6 +4062,21 @@ test = [
     { name = "tomlkit" },
     { name = "uv" },
 ]
+zarrista = [
+    { name = "coverage" },
+    { name = "hypothesis" },
+    { name = "numpydoc" },
+    { name = "pytest" },
+    { name = "pytest-accept" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "tomlkit" },
+    { name = "uv" },
+    { name = "zarrista" },
+]
 zarrs = [
     { name = "coverage" },
     { name = "hypothesis" },
@@ -4183,20 +4198,72 @@ test = [
     { name = "tomlkit", specifier = "==0.15.0" },
     { name = "uv", specifier = "==0.11.19" },
 ]
+zarrista = [
+    { name = "coverage", specifier = "==7.14.1" },
+    { name = "hypothesis", specifier = "==6.155.2" },
+    { name = "numpydoc", specifier = "==1.10.0" },
+    { name = "pytest", specifier = "==9.0.3" },
+    { name = "pytest-accept", specifier = "==0.2.3" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "pytest-benchmark", specifier = "==5.2.3" },
+    { name = "pytest-codspeed", specifier = "==5.0.3" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "tomlkit", specifier = "==0.15.0" },
+    { name = "uv", specifier = "==0.11.19" },
+    { name = "zarrista", specifier = ">=0.1.0b5" },
+]
 zarrs = [
-    { name = "coverage", specifier = ">=7.10" },
-    { name = "hypothesis" },
-    { name = "numpydoc" },
-    { name = "pytest" },
-    { name = "pytest-accept" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
-    { name = "pytest-codspeed" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
-    { name = "tomlkit" },
-    { name = "uv" },
+    { name = "coverage", specifier = "==7.14.1" },
+    { name = "hypothesis", specifier = "==6.155.2" },
+    { name = "numpydoc", specifier = "==1.10.0" },
+    { name = "pytest", specifier = "==9.0.3" },
+    { name = "pytest-accept", specifier = "==0.2.3" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "pytest-benchmark", specifier = "==5.2.3" },
+    { name = "pytest-codspeed", specifier = "==5.0.3" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "tomlkit", specifier = "==0.15.0" },
+    { name = "uv", specifier = "==0.11.19" },
     { name = "zarrs-bindings", directory = "packages/zarrs-bindings" },
+]
+
+[[package]]
+name = "zarr-metadata"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f2/9c/cfd5aa02a27c63ecec702a77834b395411518da5c748414d7e6a323638ed/zarr_metadata-0.3.0.tar.gz", hash = "sha256:d8fe02feef43380056ea0429ceb50974b7b5afe6f0386853977506b034e89d53", size = 36398, upload-time = "2026-06-19T13:17:38.276Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/96/64137930fb40b96b4d207eb1f1e4e42c5d6c9e682a5a7c3e6feff6eb0e29/zarr_metadata-0.3.0-py3-none-any.whl", hash = "sha256:e6651f418fcc89cc3c6fc11aa852fb6f8dd6f31d62913abc0d4d37ce7302d671", size = 45636, upload-time = "2026-06-19T13:17:37.097Z" },
+]
+
+[[package]]
+name = "zarrista"
+version = "0.1.0b5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zarr-metadata" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/02/93ffdcf915376edb8ea0c44ddd7d51ecacebbba859e88a8301fc3fcce8ee/zarrista-0.1.0b5.tar.gz", hash = "sha256:cd71b3d4f4957ee680f999b091c7cb21f9e5fa47a5d4c02a4a0c60b92d0852aa", size = 206066, upload-time = "2026-06-29T17:03:54.504Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/bc/b2d892b180985f646912a8b89d4af0197b55b53cccf34eb79dc67a5358b6/zarrista-0.1.0b5-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:104524ea0dbf72f2d7c86af5c2d3fafccf9ff28ab01b7f25f92e7564fc64193b", size = 15984625, upload-time = "2026-06-29T17:03:20.943Z" },
+    { url = "https://files.pythonhosted.org/packages/20/5a/5fefbfc6c680501a849b93e24d13dabd7f51511cc43182b422b9ab1fdf62/zarrista-0.1.0b5-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:6d6db298c80d865f8e4d1cb209e4ca6b47023736b10e744826eb6f1872dadbe5", size = 14463814, upload-time = "2026-06-29T17:03:23.773Z" },
+    { url = "https://files.pythonhosted.org/packages/54/3d/5098eac8718aa371f3dadc1612758b23ed8b0b1890526ad7994df5488458/zarrista-0.1.0b5-cp311-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:523a9ec1c4ac7ca88f0cc8433faef0fe07485cd0d2e8dac9fa662286bbe3c59a", size = 15626481, upload-time = "2026-06-29T17:03:25.915Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/f2/6e7b2cb7f1f3a7c273dad49ca9d78f3ed253aa4588fbb2c2a36f9c4a4cbb/zarrista-0.1.0b5-cp311-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:922a25ead7d89c9b5f779359b029432d8465413c078fa3ce1a2c067434b4cd6c", size = 16373662, upload-time = "2026-06-29T17:03:28.275Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/4a/7c06ba0cc7fa9c9def44dca1778644c9d1ec74c327f8e5e22c358ce23bec/zarrista-0.1.0b5-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:c224706e3e0164c55d2c1ed44ea7aaa96521fff836e343d20618a5323d0817f8", size = 22109751, upload-time = "2026-06-29T17:03:30.745Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/37/10d1269cdea8de67f1d2ba26408c788c40d2387a2e323b296fb694ebe7ea/zarrista-0.1.0b5-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6a8305bad20bf91bfce1db964e3eac5d0941e339575fdf696cf1f0d5b1bb83ff", size = 23047336, upload-time = "2026-06-29T17:03:33.458Z" },
+    { url = "https://files.pythonhosted.org/packages/68/12/5bdd3fd3b6ed06378934e5a2b6289884d09e7dfa91474925a3530cc7e1aa/zarrista-0.1.0b5-cp311-abi3-win_amd64.whl", hash = "sha256:7c76b9c58e8a74d91c02e101107af2da9f819f590de85fc25e5af4fcd3612d83", size = 15508447, upload-time = "2026-06-29T17:03:35.643Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/4d/aab18733d17b1650820ca698f7d3cd2242fbff94cc34f42a79dce1660487/zarrista-0.1.0b5-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:e0e3e10774f4f6679a7334c6b0242792a53f3db839de17b5e4b26b2ec2b1e12f", size = 16014661, upload-time = "2026-06-29T17:03:38.06Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/df/12a0a5284bb56b8d660795ec3cfe7a5db51b20651ce1b1cd850fa06f7eeb/zarrista-0.1.0b5-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:f4860cf2cb0e219c5fa02f8fd18e3c5687738af16b3aa6c166e92a16a8c6ca22", size = 14424353, upload-time = "2026-06-29T17:03:40.347Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/d8/2a3035e7f458f7be6ddc327d3875b813d8fb34df05816bd118ecc02519f1/zarrista-0.1.0b5-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:99c96ecff705b69a66c1f256203365ff5a96d67e02d22ace5a4ff5a9eee5383a", size = 15607992, upload-time = "2026-06-29T17:03:42.488Z" },
+    { url = "https://files.pythonhosted.org/packages/43/3a/648ef55c261c42931361920eca186dbae9dc6dc5e3112b3a399160dc2f7c/zarrista-0.1.0b5-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:57dceea7c50e4faaa1c9e18e089000c5f4c9f1a0608e5f776c77d6c5d246372c", size = 16363167, upload-time = "2026-06-29T17:03:44.897Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/28/729c4e9c81214b93e77058ba1f3881653694f2cc202f35ee0a5e369cf7b7/zarrista-0.1.0b5-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:0c94d58f23ee4de737767d778a7d8b26d33bb1fc97559f91a69cc7d022a5a5ec", size = 22100046, upload-time = "2026-06-29T17:03:47.568Z" },
+    { url = "https://files.pythonhosted.org/packages/26/75/f4a01cbd4a2ac516a43c3f6f1875312883246a538c9690780dabf1a20bc2/zarrista-0.1.0b5-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:49208732db1ddb55fc725b9bb4e4753daac43ef539534545f5157bdfb1dd82ed", size = 23031432, upload-time = "2026-06-29T17:03:49.973Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/21/ab175578994b5a51cad52ae8e0bc514999dd17e7002559770841849438d1/zarrista-0.1.0b5-cp314-cp314t-win_amd64.whl", hash = "sha256:ba63fa68921d40a93e8ba5f2c47778745889f3306dcb1682021634aa0b6188ca", size = 15460782, upload-time = "2026-06-29T17:03:52.536Z" },
 ]
 
 [[package]]

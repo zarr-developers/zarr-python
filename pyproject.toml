@@ -151,6 +151,10 @@ zarrs = [
     {include-group = "test"},
     "zarrs-bindings",
 ]
+zarrista = [
+    {include-group = "test"},
+    "zarrista>=0.1.0b5",
+]
 
 [tool.coverage.report]
 exclude_also = [
@@ -454,6 +458,7 @@ addopts = [
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
     "--ignore=src/zarr/zarrs",
+    "--ignore=src/zarr/zarrista",
 ]
 filterwarnings = [
     "error",
