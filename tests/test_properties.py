@@ -367,16 +367,24 @@ def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None
         zarray[zsel] = value
     elif mode == "oindex":
         zarray.oindex[zsel] = value
+    elif mode == "vindex":
+        zarray.vindex[zsel] = value
     elif mode == "mask":
         zarray.set_mask_selection(zsel, value)
     else:
-        raise AssertionError(f"writes are not exercised for mode {mode!r}")
+        raise AssertionError(mode)
 
 
 def _has_repeated_indices(npsel: Any) -> bool:
     """True if any integer-array component selects a coordinate more than once."""
     sel = npsel if isinstance(npsel, tuple) else (npsel,)
     return any(isinstance(i, np.ndarray) and i.size != np.unique(i).size for i in sel)
+
+
+def _n_array_axes(npsel: Any) -> int:
+    """Number of integer-array (fancy) axes in a selection."""
+    sel = npsel if isinstance(npsel, tuple) else (npsel,)
+    return sum(isinstance(s, np.ndarray) for s in sel)
 
 
 def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
@@ -409,58 +417,93 @@ def assert_read_matches_numpy(
         assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
 
 
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-async def test_indexing_parity(data: st.DataObject) -> None:
-    """Single eager-indexing oracle: every method matches NumPy.
-
-    Covers {basic, oindex, vindex, mask} against a NumPy reference: sync read,
-    read into an ``out=`` buffer, async read, and (where defined) write. Replaces
-    the per-mode test_basic/oindex/vindex/mask tests with one enumeration.
-    Deliberately independent of lazy indexing so it can guard the eager API on its
-    own; ``test_lazy_view_indexing_parity`` reuses the read half for lazy views.
-    """
-    zarray = data.draw(
+def _indexing_array(data: st.DataObject) -> zarr.Array:
+    """An eager array (regular or rectilinear) for the indexing-parity oracles."""
+    return data.draw(
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
         )
     )
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_indexing_read_parity(data: st.DataObject) -> None:
+    """Every indexing *read* on an eager array matches NumPy (all modes).
+
+    Covers {basic, oindex, vindex, mask}: sync read, read into an out= buffer, and
+    async read. No special-casing — reads are well-defined for every selection.
+    Consumer-agnostic via assert_read_matches_numpy, which test_lazy_view_indexing_parity
+    reuses for lazy views.
+    """
+    zarray = _indexing_array(data)
     nparray = zarray[:]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
-    if not _eligible(mode, nparray.shape):
-        return
+    assume(_eligible(mode, nparray.shape))
     zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
 
-    # read: sync + out= (shared with the lazy-view test) and async
     assert_read_matches_numpy(zarray, nparray, mode, zsel, npsel)
     expected = np.asarray(nparray[npsel])
     assert_array_equal(np.asarray(await _async_get(zarray._async_array, mode, zsel)), expected)
-
-    # a mask can also be spelled via vindex[...]; the two interfaces must agree
-    if mode == "mask":
+    if mode == "mask":  # a mask read may also be spelled vindex[mask]; they must agree
         assert_array_equal(np.asarray(zarray.vindex[zsel]), expected)
 
-    # write, mirroring the historical per-mode guards:
-    #   - vindex setitem is chunk-dependent for repeated coords (skipped)
-    #   - oindex/mask writes to sharded arrays are unsupported (GH2834)
-    #   - oindex writes with repeated indices are unspecified
-    if mode == "vindex":
-        return
-    if mode in ("oindex", "mask") and zarray.shards is not None:
-        return
-    if mode == "oindex" and _has_repeated_indices(npsel):
-        return
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_indexing_write_parity(data: st.DataObject) -> None:
+    """Every *supported, well-defined* indexing write on an eager array matches NumPy.
+
+    Two families of selections are filtered out with ``assume`` (they are not
+    failures to test here):
+
+    - **Repeated coordinates** (vindex/oindex selecting a cell more than once):
+      the write order, and thus the final value, is undefined — NumPy has the same
+      ambiguity. This is a fundamental limitation, not a zarr bug.
+    - **Sharded orthogonal writes across >= 2 array axes**: unsupported by the
+      sharding partial-write codec; pinned at the pytest level by
+      ``test_oindex_sharded_multiaxis_write_xfail`` rather than hidden here.
+    """
+    zarray = _indexing_array(data)
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    assume(_eligible(mode, nparray.shape))
+    zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
+    if mode in ("oindex", "vindex"):
+        assume(not _has_repeated_indices(npsel))
+    if mode == "oindex" and zarray.shards is not None:
+        assume(_n_array_axes(npsel) < 2)
+
+    expected = np.asarray(nparray[npsel])
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
     _setitem(zarray, mode, zsel, new_data)
     nparray[npsel] = new_data
     assert_array_equal(nparray, zarray[:])
-
-    # the vindex[mask] = ... spelling must agree with set_mask_selection
-    if mode == "mask":
+    if mode == "mask":  # the vindex[mask] = ... spelling must agree with set_mask_selection
         zarray.vindex[zsel] = new_data
         assert_array_equal(nparray, zarray[:])
+
+
+@pytest.mark.xfail(
+    reason="GH2834: the sharding partial-write codec does not support orthogonal "
+    "writes spanning two or more array axes",
+    strict=True,
+)
+def test_oindex_sharded_multiaxis_write_xfail() -> None:
+    """Pin the one known-unsupported write: oindex across >= 2 array axes on a shard.
+
+    Single-axis oindex, vindex, and mask writes to sharded arrays all work; only
+    the multi-array-axis orthogonal case is broken. Strict xfail so this flips to a
+    failure (prompting removal) if/when GH2834 is fixed.
+    """
+    a = zarr.create_array({}, shape=(12, 12), chunks=(3, 3), shards=(6, 6), dtype="i4")
+    a[...] = np.arange(144, dtype="i4").reshape(12, 12)
+    i0, i1 = np.array([0, 5, 9]), np.array([1, 6, 10])
+    a.set_orthogonal_selection((i0, i1), np.zeros((3, 3), dtype="i4"))
+    assert_array_equal(a.oindex[i0, i1], np.zeros((3, 3), dtype="i4"))
 
 
 @pytest.mark.skipif(
@@ -485,7 +528,6 @@ async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     view = zarray.lazy[window]
     vref = nparray[window]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
-    if not _eligible(mode, vref.shape):
-        return
+    assume(_eligible(mode, vref.shape))
     zsel, npsel = data.draw(indexers(mode=mode, shape=vref.shape))
     assert_read_matches_numpy(view, vref, mode, zsel, npsel)
