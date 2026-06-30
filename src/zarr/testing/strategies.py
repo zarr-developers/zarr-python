@@ -598,6 +598,66 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+IndexMode = Literal["basic", "oindex", "vindex", "mask"]
+
+
+@st.composite
+def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
+    """A non-negative, full-rank tuple of slice windows — one per axis.
+
+    A rank-preserving sub-region selection: each axis gets ``start:stop`` with
+    ``0 <= start < stop <= size`` (an empty ``0:0`` slice for a zero-length axis).
+    Bounds stay non-negative so the window is valid for any consumer, including
+    those that treat negative indices as literal coordinates rather than
+    from-the-end (e.g. building a sub-array view).
+    """
+    out: list[slice] = []
+    for size in shape:
+        if size == 0:
+            out.append(slice(0, 0))
+            continue
+        start = draw(st.integers(min_value=0, max_value=size - 1))
+        stop = draw(st.integers(min_value=start + 1, max_value=size))
+        out.append(slice(start, stop))
+    return tuple(out)
+
+
+@st.composite
+def indexers(draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]) -> tuple[Any, Any]:
+    """A ``(zarr_selection, numpy_selection)`` pair for ``mode`` on ``shape``.
+
+    One strategy covering every indexing mode, so a test can be written once and
+    parametrized over mode instead of re-deriving selection setup per test:
+
+    - ``"basic"``  — slices / ints / ellipsis (no newaxis, no negative slices)
+    - ``"oindex"`` — per-axis integer arrays or slices (orthogonal / outer product)
+    - ``"vindex"`` — broadcast integer coordinate arrays (vectorized)
+    - ``"mask"``   — a boolean array of ``shape``
+
+    The two returned selections differ only for ``oindex`` (zarr's per-axis
+    spelling vs the ``np.ix_``-style spelling numpy needs); for the other modes
+    the same object indexes both a zarr array and its numpy reference. The
+    array-based modes (``oindex``/``vindex``/``mask``) need ``shape`` to have no
+    zero-length axis; ``basic`` has no such requirement.
+    """
+    if mode == "basic":
+        sel = draw(basic_indices(shape=shape))
+        return sel, sel
+    if mode == "oindex":
+        return draw(orthogonal_indices(shape=shape))
+    if mode == "vindex":
+        idx = draw(
+            npst.integer_array_indices(
+                shape=shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            )
+        )
+        return idx, idx
+    if mode == "mask":
+        m = draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
+        return m, m
+    raise ValueError(f"unknown indexing mode: {mode!r}")
+
+
 @st.composite
 def block_indices(
     draw: st.DrawFn, *, chunk_sizes: tuple[tuple[int, ...], ...]

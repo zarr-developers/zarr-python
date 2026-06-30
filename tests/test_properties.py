@@ -28,11 +28,12 @@ from zarr.testing.strategies import (
     block_indices,
     block_test_arrays,
     complex_rectilinear_arrays,
+    indexers,
     numpy_arrays,
-    orthogonal_indices,
     rectilinear_arrays,
     simple_arrays,
     stores,
+    windows,
     zarr_formats,
 )
 
@@ -116,33 +117,10 @@ def test_array_creates_implicit_groups(array):
             )
 
 
-# this decorator removes timeout; not ideal but it should avoid intermittent CI failures
-
-
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
-    nparray = zarray[:]
-    indexer = data.draw(basic_indices(shape=nparray.shape))
-
-    # sync get
-    actual = zarray[indexer]
-    assert_array_equal(nparray[indexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.getitem(indexer)
-    assert_array_equal(nparray[indexer], actual)
-
-    # sync set
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
-    zarray[indexer] = new_data
-    nparray[indexer] = new_data
-    assert_array_equal(nparray, zarray[:])
-
-    # TODO test async setitem?
+# Eager basic/oindex/vindex/mask indexing is exercised comprehensively (read,
+# out=, async read, and write) by the single oracle ``test_indexing_parity``
+# defined below. Special array shapes that the oracle's strategies don't cover
+# keep dedicated tests (complex rectilinear arrays here; block indexing later).
 
 
 @settings(deadline=None)
@@ -152,105 +130,6 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     nparray, zarray = data.draw(complex_rectilinear_arrays())
     indexer = data.draw(basic_indices(shape=nparray.shape))
     assert_array_equal(nparray[indexer], zarray[indexer])
-
-
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_oindex(data: st.DataObject) -> None:
-    # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(
-        st.one_of(
-            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
-            rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
-        )
-    )
-    nparray = zarray[:]
-    zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
-
-    # sync get
-    actual = zarray.oindex[zindexer]
-    assert_array_equal(nparray[npindexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.oindex.getitem(zindexer)
-    assert_array_equal(nparray[npindexer], actual)
-
-    # sync get
-    assume(zarray.shards is None)  # GH2834
-    for idxr in npindexer:
-        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
-            # behaviour of setitem with repeated indices is not guaranteed in practice
-            assume(False)
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
-    nparray[npindexer] = new_data
-    zarray.oindex[zindexer] = new_data
-    assert_array_equal(nparray, zarray[:])
-
-    # note: async oindex setitem not yet implemented
-
-
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_vindex(data: st.DataObject) -> None:
-    # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(
-        st.one_of(
-            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
-            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
-        )
-    )
-    nparray = zarray[:]
-    indexer = data.draw(
-        npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
-        )
-    )
-
-    # sync get
-    actual = zarray.vindex[indexer]
-    assert_array_equal(nparray[indexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.vindex.getitem(indexer)
-    assert_array_equal(nparray[indexer], actual)
-
-    # sync set
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
-
-    # note: async vindex setitem not yet implemented
-
-
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-def test_mask_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
-    nparray = zarray[:]
-    mask = data.draw(npst.arrays(dtype=np.bool_, shape=st.just(nparray.shape)))
-
-    expected = nparray[mask]
-
-    # sync get, via both the dedicated method and the vindex interface
-    assert_array_equal(expected, zarray.get_mask_selection(mask))
-    assert_array_equal(expected, zarray.vindex[mask])
-
-    # sync set, via both interfaces
-    assume(zarray.shards is None)  # GH2834
-    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
-    nparray[mask] = new_data
-    zarray.set_mask_selection(mask, new_data)
-    assert_array_equal(nparray, zarray[:])
-
-    zarray.vindex[mask] = new_data
-    assert_array_equal(nparray, zarray[:])
 
 
 @settings(deadline=None)
@@ -448,3 +327,162 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+# The indexing modes and which Array method implements each. vindex/mask are
+# "vectorized" — they scatter through a single flat index, so an out= buffer must
+# be flat (number of selected points) rather than the multi-dimensional result.
+_INDEX_MODES = ("basic", "oindex", "vindex", "mask")
+_VECTORIZED_MODES = frozenset({"vindex", "mask"})
+
+
+def _get(target: zarr.Array, mode: str, zsel: Any, *, out: Any = None) -> Any:
+    """Read ``zsel`` from ``target`` via the get-method for ``mode``."""
+    if mode == "basic":
+        return target.get_basic_selection(zsel, out=out)
+    if mode == "oindex":
+        return target.get_orthogonal_selection(zsel, out=out)
+    if mode == "vindex":
+        return target.get_coordinate_selection(zsel, out=out)
+    if mode == "mask":
+        return target.get_mask_selection(zsel, out=out)
+    raise AssertionError(mode)
+
+
+def _async_get(async_array: Any, mode: str, zsel: Any) -> Any:
+    """The async read coroutine for ``mode`` (vindex/mask share the vectorized accessor)."""
+    if mode == "basic":
+        return async_array.getitem(zsel)
+    if mode == "oindex":
+        return async_array.oindex.getitem(zsel)
+    return async_array.vindex.getitem(zsel)
+
+
+def _setitem(zarray: zarr.Array, mode: str, zsel: Any, value: Any) -> None:
+    """Write ``value`` at ``zsel`` via the set-method for ``mode``."""
+    if mode == "basic":
+        zarray[zsel] = value
+    elif mode == "oindex":
+        zarray.oindex[zsel] = value
+    elif mode == "mask":
+        zarray.set_mask_selection(zsel, value)
+    else:
+        raise AssertionError(f"writes are not exercised for mode {mode!r}")
+
+
+def _has_repeated_indices(npsel: Any) -> bool:
+    """True if any integer-array component selects a coordinate more than once."""
+    sel = npsel if isinstance(npsel, tuple) else (npsel,)
+    return any(isinstance(i, np.ndarray) and i.size != np.unique(i).size for i in sel)
+
+
+def _eligible(mode: str, shape: tuple[int, ...]) -> bool:
+    """Whether ``mode`` can be exercised on ``shape``.
+
+    Rank-0 arrays have no interesting selections; the fancy modes
+    (oindex/vindex/mask via integer/boolean arrays) can't handle zero-size axes.
+    """
+    if len(shape) == 0:
+        return False
+    return mode == "basic" or all(s > 0 for s in shape)
+
+
+def assert_read_matches_numpy(
+    target: zarr.Array, ref: np.ndarray[Any, Any], mode: str, zsel: Any, npsel: Any
+) -> None:
+    """Assert ``target``'s read of ``zsel`` (mode) matches ``ref[npsel]``, with/without out=.
+
+    Consumer-agnostic: ``target`` is any ``zarr.Array`` (an eager array or a lazy
+    view) and ``ref`` is the NumPy array it must behave like. The ``out=`` buffer
+    is flat for the vectorized vindex/mask modes (which scatter through a flat
+    index) and full-shape otherwise.
+    """
+    expected = np.asarray(ref[npsel])
+    assert_array_equal(np.asarray(_get(target, mode, zsel)), expected)
+    if expected.ndim >= 1 and expected.size > 0:
+        buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
+        buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=expected.dtype)
+        _get(target, mode, zsel, out=buf)
+        assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_indexing_parity(data: st.DataObject) -> None:
+    """Single eager-indexing oracle: every method matches NumPy.
+
+    Covers {basic, oindex, vindex, mask} against a NumPy reference: sync read,
+    read into an ``out=`` buffer, async read, and (where defined) write. Replaces
+    the per-mode test_basic/oindex/vindex/mask tests with one enumeration.
+    Deliberately independent of lazy indexing so it can guard the eager API on its
+    own; ``test_lazy_view_indexing_parity`` reuses the read half for lazy views.
+    """
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+        )
+    )
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    if not _eligible(mode, nparray.shape):
+        return
+    zsel, npsel = data.draw(indexers(mode=mode, shape=nparray.shape))
+
+    # read: sync + out= (shared with the lazy-view test) and async
+    assert_read_matches_numpy(zarray, nparray, mode, zsel, npsel)
+    expected = np.asarray(nparray[npsel])
+    assert_array_equal(np.asarray(await _async_get(zarray._async_array, mode, zsel)), expected)
+
+    # a mask can also be spelled via vindex[...]; the two interfaces must agree
+    if mode == "mask":
+        assert_array_equal(np.asarray(zarray.vindex[zsel]), expected)
+
+    # write, mirroring the historical per-mode guards:
+    #   - vindex setitem is chunk-dependent for repeated coords (skipped)
+    #   - oindex/mask writes to sharded arrays are unsupported (GH2834)
+    #   - oindex writes with repeated indices are unspecified
+    if mode == "vindex":
+        return
+    if mode in ("oindex", "mask") and zarray.shards is not None:
+        return
+    if mode == "oindex" and _has_repeated_indices(npsel):
+        return
+    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
+    _setitem(zarray, mode, zsel, new_data)
+    nparray[npsel] = new_data
+    assert_array_equal(nparray, zarray[:])
+
+    # the vindex[mask] = ... spelling must agree with set_mask_selection
+    if mode == "mask":
+        zarray.vindex[zsel] = new_data
+        assert_array_equal(nparray, zarray[:])
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
+)
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
+    """The eager read oracle, applied to a lazy view (the lazy consumer).
+
+    A view (built from a non-negative window) is just another ``zarr.Array``, so
+    it flows through the same ``assert_read_matches_numpy`` harness. The lazy
+    indexing bugs found in review were all "the view path diverges from NumPy for
+    some (method, parameter) combination" — enumerating that surface here catches
+    the class. Skipped until ``Array.lazy`` exists, so the eager oracle can merge
+    ahead of the lazy feature.
+    """
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+    window = data.draw(windows(shape=nparray.shape))
+    view = zarray.lazy[window]
+    vref = nparray[window]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    if not _eligible(mode, vref.shape):
+        return
+    zsel, npsel = data.draw(indexers(mode=mode, shape=vref.shape))
+    assert_read_matches_numpy(view, vref, mode, zsel, npsel)
