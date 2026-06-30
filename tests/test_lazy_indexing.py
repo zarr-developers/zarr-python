@@ -134,6 +134,28 @@ def _oindex_one_axis(cfg: Config) -> tuple[Any, ...]:
     return (idx, *([slice(None)] * (len(cfg.shape) - 1)))
 
 
+def _rand_slice(rng: np.random.Generator, size: int) -> slice:
+    """A random non-empty positive-step slice within ``[0, size)``."""
+    start = int(rng.integers(0, size))
+    stop = int(rng.integers(start + 1, size + 1))
+    step = int(rng.integers(1, 4))
+    return slice(start, stop, step)
+
+
+def _unique_coords(
+    rng: np.random.Generator, shape: tuple[int, ...], n: int
+) -> tuple[npt.NDArray[np.intp], ...]:
+    """``n`` distinct coordinate tuples (no duplicate points → write order irrelevant)."""
+    total = int(np.prod(shape, dtype=int))
+    flat = rng.choice(total, size=min(n, total), replace=False)
+    return tuple(c.astype(np.intp) for c in np.unravel_index(flat, shape))
+
+
+# Multi-dim geometries used for the randomized model-based round-trips (the 0-D /
+# 1-D configs have too small a selection space to be interesting here).
+RANDOM_CASES = [pytest.param(cfg, id=cfg.id) for cfg in CONFIGS if len(cfg.shape) >= 2]
+
+
 class TestLazyBasicRead:
     @pytest.mark.parametrize(("cfg", "sel"), BASIC_CASES)
     def test_matches_numpy(self, cfg: Config, sel: Any) -> None:
@@ -248,3 +270,56 @@ class TestLazyErrors:
         a, _ = _make(CONFIGS[1])  # 1d-unsharded
         with pytest.raises(IndexError, match="step must be positive"):
             a.lazy[::-1]
+
+
+class TestLazyRandomizedRoundtrip:
+    """Model-based round-trips: apply random selections to both the zarr array and a
+    NumPy reference, then assert they stay equal. Parametrized over sharded and
+    unsharded grids with one body, so the same selections exercise chunk- and
+    shard-boundary read-modify-write (the pattern TensorStore's driver_testutil uses).
+    """
+
+    @pytest.mark.parametrize("cfg", RANDOM_CASES)
+    def test_basic_writes_track_numpy(self, cfg: Config) -> None:
+        """Random strided basic writes/reads match a NumPy model across boundaries."""
+        rng = np.random.default_rng(0)
+        a, ref = _make(cfg)
+        ref = ref.copy()
+        for _ in range(25):
+            sel = tuple(_rand_slice(rng, s) for s in cfg.shape)
+            val = rng.integers(-9999, 9999, size=ref[sel].shape, dtype="i4")
+            ref[sel] = val
+            a.lazy[sel] = val
+            np.testing.assert_array_equal(a.lazy[sel][...], ref[sel])
+        np.testing.assert_array_equal(a[...], ref)
+
+    @pytest.mark.parametrize("cfg", RANDOM_CASES)
+    def test_vindex_writes_track_numpy(self, cfg: Config) -> None:
+        """Random coordinate (vindex) writes/reads match a NumPy model across boundaries."""
+        rng = np.random.default_rng(1)
+        a, ref = _make(cfg)
+        ref = ref.copy()
+        for _ in range(25):
+            idx = _unique_coords(rng, cfg.shape, int(rng.integers(1, 7)))
+            val = rng.integers(-9999, 9999, size=idx[0].shape, dtype="i4")
+            ref[idx] = val
+            a.lazy.vindex[idx] = val
+            np.testing.assert_array_equal(a.lazy.vindex[idx][...], ref[idx])
+        np.testing.assert_array_equal(a[...], ref)
+
+    @pytest.mark.parametrize("cfg", RANDOM_CASES)
+    def test_oindex_single_axis_writes_track_numpy(self, cfg: Config) -> None:
+        """Random single-fancy-axis orthogonal writes/reads match a NumPy model."""
+        rng = np.random.default_rng(2)
+        a, ref = _make(cfg)
+        ref = ref.copy()
+        size0 = cfg.shape[0]
+        for _ in range(25):
+            k = int(rng.integers(1, size0 + 1))
+            idx0 = rng.choice(size0, size=k, replace=False).astype(np.intp)
+            sel: Any = (idx0, *(_rand_slice(rng, s) for s in cfg.shape[1:]))
+            val = rng.integers(-9999, 9999, size=ref[sel].shape, dtype="i4")
+            ref[sel] = val
+            a.lazy.oindex[sel] = val
+            np.testing.assert_array_equal(a.lazy.oindex[sel][...], ref[sel])
+        np.testing.assert_array_equal(a[...], ref)
