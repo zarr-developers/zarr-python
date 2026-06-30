@@ -624,13 +624,15 @@ def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
 
 
 @st.composite
-def indexers(
+def numpy_array_indexers(
     draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]
 ) -> tuple[Selection, Selection]:
     """A ``(zarr_selection, numpy_selection)`` pair for ``mode`` on ``shape``.
 
-    One strategy covering every indexing mode, so a test can be written once and
-    parametrized over mode instead of re-deriving selection setup per test:
+    Scope: the *element-space* indexing modes that have a direct NumPy-array
+    equivalent, so a NumPy array of ``shape`` can serve as the correctness oracle.
+    One strategy covers them all, so a test can be written once and parametrized
+    over mode instead of re-deriving selection setup per test:
 
     - ``"basic"``  — slices / ints / ellipsis (no newaxis, no negative slices)
     - ``"oindex"`` — per-axis integer arrays or slices (orthogonal / outer product)
@@ -642,6 +644,12 @@ def indexers(
     the same object indexes both a zarr array and its numpy reference. The
     array-based modes (``oindex``/``vindex``/``mask``) need ``shape`` to have no
     zero-length axis; ``basic`` has no such requirement.
+
+    Deliberately excluded is **block** indexing (``Array.blocks`` /
+    ``get_block_selection``): it addresses the *chunk grid*, not array elements,
+    so it is parametrized by the chunk grid rather than ``shape`` and has no
+    NumPy-array equivalent to compare against — its oracle is a coordinate
+    translation built by the separate `block_indices` strategy.
     """
     if mode == "basic":
         sel = draw(basic_indices(shape=shape))
