@@ -20,7 +20,6 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 

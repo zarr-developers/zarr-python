@@ -443,5 +443,3 @@ def test_config_read_missing_chunks_write_empty_chunks(store: Store) -> None:
         arr = zarr.open_array(store)
         arr[:] = 0
         assert np.array_equal(arr[:], [0, 0, 0, 0])
-
-
