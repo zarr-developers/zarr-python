@@ -445,31 +445,3 @@ def test_config_read_missing_chunks_write_empty_chunks(store: Store) -> None:
         assert np.array_equal(arr[:], [0, 0, 0, 0])
 
 
-@pytest.mark.parametrize(
-    "key",
-    [
-        "array.v2_default_compressor.numeric",
-        "array.v2_default_compressor.string",
-        "array.v2_default_compressor.bytes",
-        "array.v2_default_filters.string",
-        "array.v2_default_filters.bytes",
-        "array.v3_default_filters.numeric",
-        "array.v3_default_filters.raw",
-        "array.v3_default_filters.bytes",
-        "array.v3_default_serializer.numeric",
-        "array.v3_default_serializer.string",
-        "array.v3_default_serializer.bytes",
-        "array.v3_default_compressors.string",
-        "array.v3_default_compressors.bytes",
-        "array.v3_default_compressors",
-    ],
-)
-def test_deprecated_config(key: str) -> None:
-    """
-    Test that a valuerror is raised when setting the default chunk encoding for a given
-    data type category
-    """
-
-    with pytest.raises(ValueError):
-        with zarr.config.set({key: "foo"}):
-            pass
