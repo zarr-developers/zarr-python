@@ -16,6 +16,7 @@ pytest.importorskip("hypothesis")
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import assume, given, settings
+from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -435,7 +436,13 @@ def assert_read_matches_numpy(
     index) and full-shape otherwise.
     """
     expected = np.asarray(ref[npsel])
-    assert_array_equal(np.asarray(_get(target, mode, zsel)), expected)
+    actual = np.asarray(_get(target, mode, zsel))
+    # dtype must match, not just values (catches silent dtype coercion); ndindex's
+    # assert_equal does the same. Guarded to ndim>=1 to avoid python-vs-numpy
+    # scalar dtype noise on 0-d results.
+    if expected.ndim >= 1:
+        assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
+    assert_array_equal(actual, expected)
     if expected.ndim >= 1 and expected.size > 0:
         buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
         buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=expected.dtype)
@@ -530,6 +537,144 @@ def test_oindex_sharded_multiaxis_write_xfail() -> None:
     i0, i1 = np.array([0, 5, 9]), np.array([1, 6, 10])
     a.set_orthogonal_selection((i0, i1), np.zeros((3, 3), dtype="i4"))
     assert_array_equal(a.oindex[i0, i1], np.zeros((3, 3), dtype="i4"))
+
+
+@pytest.mark.parametrize(
+    ("mode", "npsel", "shape", "well_defined"),
+    [
+        pytest.param("vindex", (np.array([2, -2, 0, 1]),), (4,), False, id="vindex-neg-collision"),
+        pytest.param("vindex", (np.array([0, 1, 2]),), (4,), True, id="vindex-distinct"),
+        pytest.param("oindex", (np.array([1, -3]),), (4,), False, id="oindex-neg-collision"),
+        pytest.param(
+            "oindex", (np.array([0, 2]), np.array([1, 1])), (4, 4), False, id="oindex-repeat"
+        ),
+        pytest.param(
+            "oindex", (np.array([0, 2]), np.array([1, 3])), (4, 4), True, id="oindex-distinct"
+        ),
+        pytest.param("basic", (slice(None),), (4,), True, id="basic-always"),
+    ],
+)
+def test_write_is_unambiguous(
+    mode: IndexMode, npsel: Any, shape: tuple[int, ...], well_defined: bool
+) -> None:
+    """A write is well-defined iff each target cell is hit at most once *after*
+    negative indices are normalized.
+
+    Regression anchor for the CI fix: vindex ``[2, -2, 0, 1]`` on length 4 maps
+    ``-2 -> 2``, so cell 2 is written twice (order-dependent) and must be rejected,
+    even though the raw values are all distinct.
+    """
+    assert _write_is_unambiguous(mode, npsel, shape) is well_defined
+
+
+@st.composite
+def _bounds_selection(draw: st.DrawFn, mode: IndexMode, shape: tuple[int, ...]) -> Any:
+    """An integer selection whose components may fall outside ``[-size, size)``, to
+    probe out-of-bounds behavior. Returns ``(zarr_sel, numpy_sel)``."""
+    wide = {s: st.integers(-2 * s - 1, 2 * s) for s in set(shape)}
+    if mode == "basic":
+        sel = tuple(draw(wide[s]) for s in shape)
+        return sel, sel
+    n = draw(st.integers(1, 4))
+    arrs = tuple(
+        np.array(draw(st.lists(wide[s], min_size=n, max_size=n)), dtype=np.intp) for s in shape
+    )
+    if mode == "oindex":
+        return arrs, np.ix_(*arrs)  # numpy outer-product oracle
+    return arrs, arrs  # vindex: pointwise
+
+
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_indexing_bounds_error_parity(data: st.DataObject) -> None:
+    """Out-of-bounds integer indexing raises in zarr iff it raises in NumPy.
+
+    zarr's bounds errors (BoundsCheckError etc.) subclass IndexError, so the eager
+    methods must agree with NumPy on *whether* an index is in bounds. This is the
+    ndindex ``check_same`` error-parity idea, and it catches the silent-wrong-data
+    class — returning garbage where NumPy would raise.
+    """
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=6)))
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(("basic", "oindex", "vindex")))
+    zsel, npsel = data.draw(_bounds_selection(mode, nparray.shape))
+    try:
+        expected = np.asarray(nparray[npsel])
+    except IndexError:
+        with pytest.raises(IndexError):
+            _get(zarray, mode, zsel)
+        return
+    assert_array_equal(np.asarray(_get(zarray, mode, zsel)), expected)
+
+
+class _IndexingStateMachine(RuleBasedStateMachine):
+    """Apply many random indexing writes to one array while a NumPy model tracks it
+    in lockstep; the model must match after every step.
+
+    This is the TensorStore ``driver_testutil`` pattern with NumPy as the oracle:
+    a single array accumulates many writes, so it catches read-modify-write,
+    chunk-boundary, and shard-merge/persistence bugs that the single-shot
+    ``test_indexing_write_parity`` cannot see. Concrete geometries are defined by
+    subclasses; the rules are dtype-agnostic (fixed i4 — dtype breadth lives in the
+    property tests).
+    """
+
+    shape: tuple[int, ...] = ()
+    chunks: tuple[int, ...] = ()
+    shards: tuple[int, ...] | None = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        n = int(np.prod(self.shape, dtype=int))
+        self.model = np.arange(n, dtype="i4").reshape(self.shape)
+        self.zarray = zarr.create_array(
+            {}, shape=self.shape, chunks=self.chunks, shards=self.shards, dtype="i4"
+        )
+        self.zarray[...] = self.model
+
+    @rule(data=st.data(), mode=st.sampled_from(_INDEX_MODES))
+    def write(self, data: st.DataObject, mode: IndexMode) -> None:
+        if not _eligible(mode, self.shape):
+            return
+        zsel, npsel = data.draw(indexers(mode=mode, shape=self.shape))
+        if mode in ("oindex", "vindex") and not _write_is_unambiguous(mode, npsel, self.shape):
+            return
+        if mode == "oindex" and self.shards is not None and _n_array_axes(npsel) >= 2:
+            return  # GH2834, see test_oindex_sharded_multiaxis_write_xfail
+        expected = np.asarray(self.model[npsel])
+        value = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=self.model.dtype))
+        self.model[npsel] = value
+        _setitem(self.zarray, mode, zsel, value)
+
+    @rule(data=st.data(), mode=st.sampled_from(_INDEX_MODES))
+    def read(self, data: st.DataObject, mode: IndexMode) -> None:
+        if not _eligible(mode, self.shape):
+            return
+        zsel, npsel = data.draw(indexers(mode=mode, shape=self.shape))
+        assert_array_equal(np.asarray(_get(self.zarray, mode, zsel)), np.asarray(self.model[npsel]))
+
+    @invariant()
+    def matches_model(self) -> None:
+        assert_array_equal(self.zarray[:], self.model)
+
+
+class _RegularStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (12,), (3,), None
+
+
+class _Sharded2DStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (8, 9), (2, 3), (4, 9)
+
+
+class _ThreeDStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (4, 5, 6), (2, 3, 3), None
+
+
+# Run these under the slow-hypothesis CI job (like the store stateful tests): a
+# stateful run is a sequence of steps, so it is heavier than the single-shot tests.
+TestIndexingStateMachineRegular = pytest.mark.slow_hypothesis(_RegularStateMachine.TestCase)
+TestIndexingStateMachineSharded = pytest.mark.slow_hypothesis(_Sharded2DStateMachine.TestCase)
+TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.TestCase)
 
 
 @pytest.mark.skipif(
