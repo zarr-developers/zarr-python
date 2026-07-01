@@ -438,6 +438,12 @@ class _ConfigSet:
     new snapshot through a `ContextVar`, so the change is isolated to the calling
     context (thread / async task) and unwound on ``__exit__``.
 
+    A bare (permanent) ``set`` nested inside an active ``with`` block writes only
+    its own delta onto the global base, so it persists after the block exits and
+    does not leak the block's overlay into the base. The trade-off is that such a
+    nested permanent ``set`` is not visible *within* the block (the overlay keeps
+    shadowing the base until the block exits).
+
     Note: like donfig, config writes are not synchronized. The promotion restores
     the base snapshot captured at ``set`` time, so a ``with config.set(...)`` that
     overlaps a *concurrent* permanent ``set`` from another thread may drop that
@@ -620,18 +626,29 @@ class ZarrConfigManager:
             all_updates.update(updates)
         all_updates.update(kwargs)
         prev_base = self._base
-        new = self._current()
+        # Two snapshots so an override applies to the right layer:
+        # - `scoped` layers on the current view (any active `with` overlay), and
+        #   is what a `with config.set(...)` pins as its context-local scope;
+        # - `permanent` layers on the *global* base, and is what a bare `set`
+        #   writes. Basing the permanent write on `prev_base` rather than the
+        #   current view keeps a bare `set` nested inside a `with` block from
+        #   leaking that block's overlay into the global base.
+        # Outside any `with` block the two are identical (`_current()` is `_base`).
+        scoped = self._current()
+        permanent = prev_base
         for key, value in all_updates.items():
             resolved = self._apply_deprecation(key, raise_on_removed=True)
             try:
-                new = replace_path(new, resolved, value)
+                scoped = replace_path(scoped, resolved, value)
+                permanent = replace_path(permanent, resolved, value)
             except KeyError:
-                raise _unknown_key_error(key, new) from None
+                raise _unknown_key_error(key, permanent) from None
         # Apply immediately to the global base. A bare `set` stays here (permanent,
         # cross-thread); a `with config.set(...)` is promoted to a context-local
-        # overlay by `_ConfigSet.__enter__`, which undoes this global apply.
-        self._base = new
-        return _ConfigSet(self, prev_base, new)
+        # overlay by `_ConfigSet.__enter__`, which undoes this global apply and
+        # pins `scoped` instead.
+        self._base = permanent
+        return _ConfigSet(self, prev_base, scoped)
 
     # --- lifecycle --------------------------------------------------------
     def reset(self) -> None:

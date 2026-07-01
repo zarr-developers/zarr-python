@@ -442,6 +442,17 @@ def test_with_block_override_is_context_local() -> None:
     assert cfg.get("async.concurrency") == 5  # base unchanged after the block
 
 
+def test_permanent_set_inside_with_block_does_not_leak_overlay() -> None:
+    """A permanent `set` nested inside a `with config.set(...)` block writes only
+    its own delta to the global base: on block exit the overlay-only key reverts to
+    its default (no leak) while the nested permanent key persists."""
+    cfg = ZarrConfigManager()
+    with cfg.set({"array.order": "F"}):
+        cfg.set({"async.concurrency": 5})  # permanent, nested inside the overlay
+    assert cfg.get("array.order") == "C"  # overlay reverted — not leaked into base
+    assert cfg.get("async.concurrency") == 5  # nested permanent change persisted
+
+
 # ---------------------------------------------------------------------------
 # Subtree item access (donfig back-compat for `config.get("array")["order"]`)
 # ---------------------------------------------------------------------------
