@@ -38,7 +38,8 @@ Engines demonstrated here:
 - ``"reference"`` -- a pure-Python backend that routes through ``zarr.crud``;
   works on any store.
 - ``"zarrista"`` -- a Rust-backed backend (via the ``zarrista`` package) that
-  only ingests a ``LocalStore``. Guarded: skipped if the package is absent.
+  ingests a ``LocalStore`` or an obstore-backed ``ObjectStore``. Guarded:
+  skipped if the package is absent.
 
 We write one array once, then open and read it back through each engine and
 assert the results are byte-for-byte identical. We also show the two ways to
@@ -69,7 +70,8 @@ def main() -> None:
     # zarrs) that have not been imported yet.
     print("available engines:", zarr.list_engines())
 
-    # zarrista only ingests a LocalStore, so we use one on a temp directory. The
+    # zarrista ingests a LocalStore (used here, on a temp directory) or an
+    # obstore-backed ObjectStore. The
     # "reference" engine works on any store, but we keep a single store here so
     # every engine reads the exact same bytes off the same disk.
     with tempfile.TemporaryDirectory() as tmp:

@@ -10,7 +10,8 @@ Importing this module registers the `"zarrista"` backend. Requires the
 
 Unlike the in-tree zarrs bindings (`zarr.zarrs`), zarrista has no generic
 Python-store callback bridge, so this backend only operates on stores it can map
-to a zarrista store. It currently supports `LocalStore`; other stores raise
+to a zarrista store: `LocalStore` (via zarrista's sync API) and obstore-backed
+`ObjectStore` (via zarrista's async API). Other stores raise
 `UnsupportedStoreError`.
 """
 

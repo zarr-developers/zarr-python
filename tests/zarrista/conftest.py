@@ -35,6 +35,23 @@ async def memory_store() -> AsyncIterator[Store]:
         s.close()
 
 
+@pytest.fixture
+async def object_store(tmp_path: Path) -> AsyncIterator[Store]:
+    """A zarr ObjectStore wrapping an obstore LocalStore — ingested via
+    zarrista's async API."""
+    import obstore.store
+
+    from zarr.storage import ObjectStore
+
+    root = tmp_path / "obj"
+    root.mkdir()
+    s: Store = await ObjectStore.open(obstore.store.LocalStore(str(root)))
+    try:
+        yield s
+    finally:
+        s.close()
+
+
 def array_metadata(**kwargs: Any) -> dict[str, Any]:
     """An array metadata document built via zarr-python itself."""
     params: dict[str, Any] = {

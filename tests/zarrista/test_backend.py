@@ -88,6 +88,14 @@ def test_unsupported_store_error_is_type_error() -> None:
     assert issubclass(UnsupportedStoreError, TypeError)
 
 
+def test_backend_subclasses_protocol() -> None:
+    """ZarristaBackend explicitly subclasses CrudBackend so type checkers verify
+    conformance and readers see the intent."""
+    from zarr.crud import CrudBackend
+
+    assert CrudBackend in ZarristaBackend.__mro__
+
+
 async def test_local_store_is_ingestable(local_store: Store) -> None:
     """A LocalStore is accepted: a create + read round-trips without raising."""
     backend = ZarristaBackend()
@@ -192,6 +200,60 @@ async def test_v2_array_chunk_roundtrips(local_store: Store) -> None:
     np.testing.assert_array_equal(np.frombuffer(raw, dtype="uint16").reshape(4, 4), data[4:8, 4:8])
     # The bytes zarrista wrote are a standard v2 array zarr-python can read.
     np.testing.assert_array_equal(zarr.open_array(store=local_store, path="a", mode="r")[:], data)
+
+
+# --- obstore-backed ObjectStore (async zarrista path) ------------------------
+
+
+async def test_object_store_chunk_roundtrip(object_store: Store) -> None:
+    """Chunks written through zarrista on an obstore-backed ObjectStore read back
+    equal to the source, and match the reference backend byte-for-byte."""
+    backend = ZarristaBackend()
+    data = ramp((8, 8))
+    meta = await _create_filled(backend, object_store, data)
+
+    raw = await backend.read_chunk(object_store, "a", meta, (1, 1))
+    np.testing.assert_array_equal(np.frombuffer(raw, dtype="uint16").reshape(4, 4), data[4:8, 4:8])
+    reference = ReferenceBackend()
+    assert raw == await reference.read_chunk(object_store, "a", meta, (1, 1))
+
+
+async def test_object_store_read_subset(object_store: Store) -> None:
+    """A cross-chunk region read through zarrista on an ObjectStore matches numpy."""
+    backend = ZarristaBackend()
+    data = ramp((8, 8))
+    meta = await _create_filled(backend, object_store, data)
+
+    raw = await backend.read_subset(object_store, "a", meta, (2, 1), (4, 5))
+    np.testing.assert_array_equal(np.frombuffer(raw, dtype="uint16").reshape(4, 5), data[2:6, 1:6])
+
+
+async def test_memory_backed_object_store_raises() -> None:
+    """An ObjectStore wrapping an obstore MemoryStore is rejected at the gate:
+    zarrista cannot ingest memory-backed obstore stores."""
+    import obstore.store
+
+    from zarr.storage import ObjectStore
+
+    store: Store = await ObjectStore.open(obstore.store.MemoryStore())
+    backend = ZarristaBackend()
+    with pytest.raises(UnsupportedStoreError):
+        await backend.create_array(store, "a", array_metadata(), overwrite=False)
+
+
+async def test_write_chunk_read_only_store_raises(local_store: Store) -> None:
+    """Chunk writes and deletes on a read-only store raise like the native path
+    (zarrista would otherwise bypass the zarr-level read_only flag)."""
+    backend = ZarristaBackend()
+    data = ramp((8, 8)) + 1
+    meta = await _create_filled(backend, local_store, data)
+
+    ro = local_store.with_read_only(True)
+    chunk = np.ascontiguousarray(data[0:4, 0:4])
+    with pytest.raises(ValueError, match="read-only"):
+        await backend.write_chunk(ro, "a", meta, (0, 0), chunk.tobytes())
+    with pytest.raises(ValueError, match="read-only"):
+        await backend.delete_chunk(ro, "a", meta, (0, 0))
 
 
 # --- Registration via the crud registry -------------------------------------

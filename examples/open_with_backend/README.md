@@ -18,7 +18,8 @@ The example shows how to:
 - Select an engine **per call** via the `engine=` kwarg on `zarr.open_array`
   and `zarr.create_array`.
 - Use the `"reference"` (pure-Python) engine, which works on any store.
-- Use the `"zarrista"` (Rust-backed) engine, which only ingests a `LocalStore`
+- Use the `"zarrista"` (Rust-backed) engine, which ingests a `LocalStore` or an
+  obstore-backed `ObjectStore`
   (the example guards this so it still runs if the package is absent).
 - See the strict policy in action: advanced indexing (`.oindex`/`.vindex`) under
   a non-native engine raises `NotImplementedError` rather than silently falling
@@ -30,7 +31,7 @@ The example shows how to:
 | ------------- | ------------------ | --------------------- | ------------------------------ |
 | `"zarr"`      | native Python      | any                   | the default                    |
 | `"reference"` | pure Python (crud) | any                   | always available               |
-| `"zarrista"`  | Rust (`zarrista`)  | `LocalStore` only     | requires the `zarrista` package |
+| `"zarrista"`  | Rust (`zarrista`)  | `LocalStore`, obstore `ObjectStore` | requires the `zarrista` package |
 | `"zarrs"`     | Rust (in-repo)     | any                   | requires building the extension |
 
 ## Running the Example

@@ -154,6 +154,8 @@ zarrs = [
 zarrista = [
     {include-group = "test"},
     "zarrista>=0.1.0b5",
+    # for the obstore-backed ObjectStore mapping and its tests
+    "obstore>=0.5.1",
 ]
 
 [tool.coverage.report]
