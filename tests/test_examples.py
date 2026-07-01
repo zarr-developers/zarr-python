@@ -10,6 +10,8 @@ import pytest
 import tomlkit
 from packaging.requirements import Requirement
 
+from zarr._constants import IS_WASM
+
 examples_dir = "examples"
 script_paths = tuple(Path(examples_dir).rglob("*.py"))
 
@@ -72,6 +74,7 @@ def test_script_paths() -> None:
 @pytest.mark.skipif(
     sys.platform == "win32", reason="This test fails for unknown reasons on Windows in CI."
 )
+@pytest.mark.skipif(IS_WASM, reason="Pyodide/WASM does not support subprocesses.")
 @pytest.mark.parametrize("script_path", script_paths)
 def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:
     dest_path = tmp_path / script_path.name

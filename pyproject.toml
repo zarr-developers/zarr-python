@@ -101,11 +101,11 @@ test = [
     "pytest-accept==0.2.3",
     "numpydoc==1.10.0",
     "hypothesis==6.155.2",
-    "pytest-xdist==3.8.0",
+    "pytest-xdist==3.8.0; sys_platform != 'emscripten'",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.0",
-    "uv==0.11.20",
+    "uv==0.11.20 ; sys_platform != 'emscripten'",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -299,6 +299,21 @@ extra-dependencies = [
 
 [tool.hatch.envs.doctest.scripts]
 test = "pytest tests/test_docs.py -v"
+list-env = "pip list"
+
+[tool.hatch.envs.pyodide]
+description = "Test environment for Pyodide/WebAssembly (Emscripten)"
+python = "3.14"
+extra-dependencies = ["pyodide-build"]
+
+[tool.hatch.envs.pyodide.scripts]
+setup-xbuildenv = "pyodide xbuildenv install 314.0.0"
+run = [
+    "pyodide venv .venv-pyodide --clear",
+    ".venv-pyodide/bin/pip install dist/*.whl",
+    ".venv-pyodide/bin/pip install --group test",
+    ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks {args:tests}",
+]
 list-env = "pip list"
 
 [tool.ruff]

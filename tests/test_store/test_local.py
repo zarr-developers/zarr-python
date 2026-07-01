@@ -8,9 +8,15 @@ import pytest
 
 import zarr
 from zarr import create_array
+from zarr._constants import IS_WASM
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
-from zarr.storage._local import _atomic_write
+from zarr.storage._local import (
+    _atomic_write,
+    _safe_move_emscripten,
+    _safe_move_posix,
+    _safe_move_win32,
+)
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
 
@@ -150,3 +156,53 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+_skip_posix_on_wasm = pytest.mark.skipif(IS_WASM, reason="os.link is not supported on Emscripten")
+
+
+@pytest.mark.parametrize(
+    "safe_move",
+    [
+        _safe_move_win32,
+        _safe_move_emscripten,
+        pytest.param(_safe_move_posix, marks=_skip_posix_on_wasm),
+    ],
+)
+def test_safe_move_no_conflict(tmp_path: pathlib.Path, safe_move: object) -> None:
+    """All _safe_move variants move src to dst when dst does not exist."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"hello")
+    safe_move(src, dst)  # type: ignore[operator]
+    assert dst.read_bytes() == b"hello"
+    assert not src.exists()
+
+
+@pytest.mark.parametrize(
+    "safe_move",
+    [
+        _safe_move_emscripten,
+        pytest.param(_safe_move_posix, marks=_skip_posix_on_wasm),
+    ],
+)
+def test_safe_move_raises_if_dst_exists(tmp_path: pathlib.Path, safe_move: object) -> None:
+    """_safe_move_emscripten and _safe_move_posix raise FileExistsError when dst exists."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"new")
+    dst.write_bytes(b"existing")
+    with pytest.raises(FileExistsError):
+        safe_move(src, dst)  # type: ignore[operator]
+    assert dst.read_bytes() == b"existing"
+
+
+def test_safe_move_emscripten_cleans_up_src(tmp_path: pathlib.Path) -> None:
+    """_safe_move_emscripten removes src before raising FileExistsError."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"new")
+    dst.write_bytes(b"existing")
+    with pytest.raises(FileExistsError):
+        _safe_move_emscripten(src, dst)
+    assert not src.exists()
