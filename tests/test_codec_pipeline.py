@@ -19,9 +19,11 @@ from zarr.core.indexing import BasicIndexer
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable, Sequence
 
     from zarr.abc.codec import Codec
+    from zarr.abc.store import ByteRequest
+    from zarr.core.buffer import Buffer, BufferPrototype
 
 
 @pytest.mark.parametrize(
@@ -195,3 +197,48 @@ def test_codecs_from_list_outcome_matches_order_rules(labels: list[str]) -> None
         aa, _ab, bb = codecs_from_list(codecs)
         assert labels.count(_AA) == len(aa)
         assert labels.count(_BB) == len(bb)
+
+
+async def test_read_uses_bulk_get_many() -> None:
+    """The pipeline should fetch a whole multi-chunk read with a single
+    ``Store.get_many`` call (spanning the entire request, independent of
+    ``codec_pipeline.batch_size``), rather than one ``get`` per chunk."""
+    store = MemoryStore()
+    arr = zarr.create_array(store, shape=(20,), chunks=(5,), dtype="int64")  # 4 chunks
+    arr[:] = np.arange(20)
+
+    calls: dict[str, int] = {"get_many": 0, "requests": 0}
+    orig_get_many = store.get_many
+
+    # get_many is an async generator, so the spy is a sync function returning
+    # the underlying async iterator; count at call time.
+    def spy_get_many(
+        requests: Sequence[tuple[str, ByteRequest | None] | str],
+        *,
+        prototype: BufferPrototype,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        requests = list(requests)
+        calls["get_many"] += 1
+        calls["requests"] += len(requests)
+        return orig_get_many(requests, prototype=prototype)
+
+    store.get_many = spy_get_many  # type: ignore[method-assign]
+
+    result = arr[:]
+    np.testing.assert_array_equal(result, np.arange(20))
+    # one bulk call covering all four chunks
+    assert calls["get_many"] == 1
+    assert calls["requests"] == 4
+
+
+async def test_read_bulk_handles_missing_chunks() -> None:
+    """A bulk read where some chunks were never written must still fill those
+    positions with the fill value (get_many reports missing keys as None)."""
+    store = MemoryStore()
+    arr = zarr.open_array(store, mode="w", shape=(20,), chunks=(5,), dtype="int64", fill_value=-1)
+    arr[0:5] = 7  # write only the first chunk; the other three are missing
+
+    result = arr[:]
+    expected = np.full(20, -1, dtype="int64")
+    expected[0:5] = 7
+    np.testing.assert_array_equal(result, expected)

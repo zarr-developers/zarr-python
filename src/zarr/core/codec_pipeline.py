@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import batched, pairwise
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -23,14 +23,61 @@ from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
     from typing import Self
 
-    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.metadata.v3 import ChunkGridMetadata
+    from zarr.storage._common import StorePath
+
+
+def _bulk_store_keys(
+    batch_info_list: list[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+) -> tuple[Store, list[str], BufferPrototype] | None:
+    """Return ``(store, keys, prototype)`` when a whole-chunk read batch can be
+    served by a single :meth:`~zarr.abc.store.Store.get_many` call, else ``None``.
+
+    Eligible when the batch is non-empty and every chunk is backed by a
+    ``StorePath`` sharing one ``Store`` (compared by identity) and one buffer
+    prototype. When it is not eligible (e.g. a mix of stores, or virtual byte
+    getters used by the sharding codec) the caller should fall back to
+    per-chunk fetching.
+    """
+    # Local import to avoid a module-load import cycle (storage imports core).
+    from zarr.storage._common import StorePath
+
+    if not batch_info_list:
+        return None
+    byte_getters = [byte_getter for byte_getter, *_ in batch_info_list]
+    if not all(isinstance(bg, StorePath) for bg in byte_getters):
+        return None
+    store_paths = cast("list[StorePath]", byte_getters)
+    store = store_paths[0].store
+    prototype = batch_info_list[0][1].prototype
+    if not all(sp.store is store for sp in store_paths):
+        return None
+    if not all(array_spec.prototype is prototype for _, array_spec, *_ in batch_info_list):
+        return None
+    return store, [sp.path for sp in store_paths], prototype
+
+
+async def _collect_get_many(
+    store: Store, keys: Sequence[str], prototype: BufferPrototype
+) -> list[Buffer | None]:
+    """Drive ``Store.get_many`` for a set of whole-key reads and return the
+    results as a positional list aligned to ``keys`` (``None`` for absent keys).
+
+    ``get_many`` yields ``(request_index, Buffer | None)`` batches in completion
+    order, so we scatter each result back to its input position.
+    """
+    out: list[Buffer | None] = [None] * len(keys)
+    async for batch in store.get_many(keys, prototype=prototype):
+        for index, buffer in batch:
+            out[index] = buffer
+    return out
 
 
 def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
@@ -353,11 +400,47 @@ class BatchedCodecPipeline(CodecPipeline):
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
         await self.array_bytes_codec.encode_partial(batch_info)
 
+    async def _get_chunk_bytes_batch(
+        self,
+        batch_info_list: list[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        prefetched: Mapping[str, Buffer | None] | None = None,
+    ) -> list[Buffer | None]:
+        """Fetch the whole encoded bytes for each chunk in a batch.
+
+        If ``prefetched`` is supplied (a mapping of store key to already-read
+        ``Buffer``, as produced by :meth:`read`), the bytes are taken from it
+        directly. Otherwise, when every chunk is backed by a ``StorePath`` over
+        a single common ``Store`` and buffer prototype, the reads are handed to
+        the store as one :meth:`~zarr.abc.store.Store.get_many` call so a
+        backend that can batch or coalesce object reads gets the chance to do
+        so. Failing that, it falls back to fetching each chunk concurrently
+        with :meth:`~zarr.abc.store.ByteGetter.get`, matching prior behavior.
+        """
+        if prefetched is not None:
+            # read() already fetched these keys in one get_many call.
+            store_paths = cast("list[StorePath]", [bg for bg, *_ in batch_info_list])
+            return [prefetched.get(sp.path) for sp in store_paths]
+
+        plan = _bulk_store_keys(batch_info_list)
+        if plan is not None:
+            store, keys, prototype = plan
+            return await _collect_get_many(store, keys, prototype)
+
+        return await concurrent_map(
+            [
+                (byte_getter, array_spec.prototype)
+                for byte_getter, array_spec, *_ in batch_info_list
+            ],
+            lambda byte_getter, prototype: byte_getter.get(prototype),
+            config.get("async.concurrency"),
+        )
+
     async def read_batch(
         self,
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
+        prefetched: Mapping[str, Buffer | None] | None = None,
     ) -> tuple[GetResult, ...]:
         results: list[GetResult] = []
         if self.supports_partial_decode:
@@ -381,14 +464,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     results.append(GetResult(status="missing"))
         else:
             batch_info_list = list(batch_info)
-            chunk_bytes_batch = await concurrent_map(
-                [
-                    (byte_getter, array_spec.prototype)
-                    for byte_getter, array_spec, *_ in batch_info_list
-                ],
-                lambda byte_getter, prototype: byte_getter.get(prototype),
-                config.get("async.concurrency"),
-            )
+            chunk_bytes_batch = await self._get_chunk_bytes_batch(batch_info_list, prefetched)
             chunk_array_batch = await self.decode_batch(
                 [
                     (chunk_bytes, chunk_spec)
@@ -590,9 +666,24 @@ class BatchedCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> tuple[GetResult, ...]:
+        batch_info = list(batch_info)
+        # For whole-chunk reads (not partial/sharded decode), fetch the encoded
+        # bytes for the entire request in a single Store.get_many call. This
+        # lets the store batch or coalesce the reads regardless of
+        # codec_pipeline.batch_size (which only governs decode batching), and
+        # restores the bulk-fetch behavior of the v2 getitems Store API. The
+        # per-batch read_batch calls then read their bytes from this mapping.
+        prefetched: Mapping[str, Buffer | None] | None = None
+        if not self.supports_partial_decode:
+            plan = _bulk_store_keys(batch_info)
+            if plan is not None:
+                store, keys, prototype = plan
+                values = await _collect_get_many(store, keys, prototype)
+                prefetched = dict(zip(keys, values, strict=True))
+
         batch_results = await concurrent_map(
             [
-                (single_batch_info, out, drop_axes)
+                (single_batch_info, out, drop_axes, prefetched)
                 for single_batch_info in batched(batch_info, self.batch_size)
             ],
             self.read_batch,
