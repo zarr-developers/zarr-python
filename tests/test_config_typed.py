@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import os
-import sys
 import threading
 import typing
 from concurrent.futures import ThreadPoolExecutor
@@ -16,11 +15,8 @@ from zarr.core.config import (
     BadConfigError,
     ZarrConfig,
     ZarrConfigManager,
-    _config_search_paths,
     apply_overrides,
     build_config,
-    collect_env,
-    collect_yaml,
     get_path,
     make_default_config,
     replace_path,
@@ -36,6 +32,22 @@ if typing.TYPE_CHECKING:
 
 _REMOVED_KEY = "array.v2_default_compressor.numeric"
 _DEFAULT = make_default_config()
+
+
+def _build_config_with_env(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> ZarrConfig:
+    """Run `build_config` under a controlled ``ZARR_*`` environment.
+
+    `build_config` delegates env/YAML reading to donfig, which reads
+    ``os.environ``. This clears any ambient ``ZARR_*`` variables for determinism,
+    sets the requested ones, then builds.
+    """
+    for name in list(os.environ):
+        if name.startswith("ZARR_"):
+            monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    return build_config()
+
 
 # ---------------------------------------------------------------------------
 # 1. get_path — success cases
@@ -105,41 +117,7 @@ def test_replace_path_is_immutable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. collect_env
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        Expect(
-            input={
-                "ZARR_ARRAY__ORDER": "F",
-                "ZARR_ASYNC__CONCURRENCY": "32",
-                "ZARR_CODECS__MY_CODEC": "my.module.MyCodec",
-                "UNRELATED": "ignored",
-            },
-            output={
-                "array.order": "F",
-                "async.concurrency": 32,
-                "codecs.my_codec": "my.module.MyCodec",
-            },
-            id="nested-and-literal",
-        ),
-        Expect(
-            input={"ZARR_CONFIG": "/some/path.yaml", "ZARR_ARRAY__ORDER": "F"},
-            output={"array.order": "F"},
-            id="zarr-config-meta-var-skipped",
-        ),
-    ],
-    ids=lambda c: c.id,
-)
-def test_collect_env(case: Expect[dict[str, str], dict[str, object]]) -> None:
-    assert collect_env(case.input) == case.output
-
-
-# ---------------------------------------------------------------------------
-# 4. build_config
+# 3. build_config — env ingest (donfig reads ZARR_* from the environment)
 # ---------------------------------------------------------------------------
 
 
@@ -157,11 +135,34 @@ def test_collect_env(case: Expect[dict[str, str], dict[str, object]]) -> None:
             output=replace_path(_DEFAULT, "json_indent", 4),
             id="json-indent-env",
         ),
+        Expect(
+            input={
+                "ZARR_ARRAY__ORDER": "F",
+                "ZARR_ASYNC__CONCURRENCY": "32",
+                "ZARR_CODECS__MY_CODEC": "my.module.MyCodec",
+            },
+            output=replace_path(
+                replace_path(
+                    replace_path(_DEFAULT, "array.order", "F"),
+                    "async.concurrency",
+                    32,
+                ),
+                "codecs.my_codec",
+                "my.module.MyCodec",
+            ),
+            id="nested-literal-and-codecs",
+        ),
     ],
     ids=lambda c: c.id,
 )
-def test_build_config(case: Expect[dict[str, str], ZarrConfig]) -> None:
-    assert build_config(environ=case.input) == case.output
+def test_build_config_env(
+    case: Expect[dict[str, str], ZarrConfig], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ZARR_*` environment variables are read (via donfig) and applied onto the
+    typed defaults: dotted nesting (`ZARR_ARRAY__ORDER`), literal parsing
+    (`ZARR_ASYNC__CONCURRENCY=32` -> int), and the open `codecs` namespace all
+    work; a `ZARR_CONFIG` pointing nowhere is a no-op."""
+    assert _build_config_with_env(monkeypatch, case.input) == case.output
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +182,7 @@ def test_build_config(case: Expect[dict[str, str], ZarrConfig]) -> None:
     ids=lambda c: c.id,
 )
 def test_apply_overrides(case: Expect[dict[str, object], ZarrConfig]) -> None:
-    assert apply_overrides(build_config(environ={}), case.input) == case.output
+    assert apply_overrides(make_default_config(), case.input) == case.output
 
 
 # ---------------------------------------------------------------------------
@@ -480,30 +481,6 @@ def test_config_node_dotted_and_alias_item_access() -> None:
     assert cfg["codecs.bytes"] == DEFAULT_CODECS["bytes"]
 
 
-# ---------------------------------------------------------------------------
-# YAML config file locations (preserve donfig's search paths)
-# ---------------------------------------------------------------------------
-
-
-def test_config_search_paths_mirror_donfig() -> None:
-    """`_config_search_paths` reproduces donfig's locations — /etc, sys.prefix,
-    ~/.config/zarr — with `ZARR_CONFIG` appended last (highest precedence) and no
-    duplicates."""
-    paths = _config_search_paths({"ZARR_CONFIG": "/tmp/my.yaml"})
-    assert paths[-1] == "/tmp/my.yaml"  # ZARR_CONFIG overrides the standard dirs
-    assert os.path.join(os.path.expanduser("~"), ".config", "zarr") in paths
-    assert os.path.join(sys.prefix, "etc", "zarr") in paths
-    assert os.path.join("/etc", "zarr") in paths
-    assert len(paths) == len(set(paths))  # duplicates removed
-
-
-def test_config_search_paths_root_config_override() -> None:
-    """`ZARR_ROOT_CONFIG` replaces the default `/etc/zarr` system path."""
-    paths = _config_search_paths({"ZARR_ROOT_CONFIG": "/custom/zarr"})
-    assert "/custom/zarr" in paths
-    assert os.path.join("/etc", "zarr") not in paths
-
-
 def test_defaults_and_enable_gpu() -> None:
     cfg = ZarrConfigManager()
     assert cfg.defaults["array"]["order"] == "C"
@@ -536,10 +513,12 @@ def test_refresh_not_shadowed_by_prior_scope(monkeypatch: pytest.MonkeyPatch) ->
 # ---------------------------------------------------------------------------
 
 
-def test_build_config_unknown_env_key_warns_and_skips() -> None:
+def test_build_config_unknown_env_key_warns_and_skips(monkeypatch: pytest.MonkeyPatch) -> None:
     """build_config with an unrecognized env var warns and skips it; known keys still apply."""
     with pytest.warns(UserWarning, match="future.key"):
-        cfg = build_config(environ={"ZARR_FUTURE__KEY": "1", "ZARR_ARRAY__ORDER": "F"})
+        cfg = _build_config_with_env(
+            monkeypatch, {"ZARR_FUTURE__KEY": "1", "ZARR_ARRAY__ORDER": "F"}
+        )
     # Known key was applied
     assert cfg.array.order == "F"
     # All other fields are still at default
@@ -560,28 +539,32 @@ def test_apply_overrides_unknown_key_warns_and_returns_default() -> None:
 
 
 # ---------------------------------------------------------------------------
-# donfig not imported
+# donfig is used as the env/YAML reader
 # ---------------------------------------------------------------------------
 
 
-def test_donfig_not_imported() -> None:
-    import sys
+def test_donfig_is_used_for_ingest() -> None:
+    """donfig backs env/YAML ingest, so building a config imports it and its
+    reader produces a mapping we can consume."""
+    import donfig
 
-    import zarr  # noqa: F401
-
-    assert "donfig" not in sys.modules
+    assert isinstance(donfig.Config("zarr").config, dict)
+    # build_config runs donfig's reader and returns the typed representation
+    assert isinstance(build_config(), ZarrConfig)
 
 
 # ---------------------------------------------------------------------------
-# YAML codec block merging — regression for the "wipes all defaults" bug
+# YAML config files (read by donfig, applied onto the typed defaults)
 # ---------------------------------------------------------------------------
 
 
-def test_yaml_codecs_block_merges_not_replaces(tmp_path: pathlib.Path) -> None:
+def test_yaml_codecs_block_merges_not_replaces(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A YAML file with a codecs: block must MERGE into the defaults, not replace them."""
     yaml_file = tmp_path / "zarr.yaml"
     yaml_file.write_text("codecs:\n  bytes: my.custom.BytesCodec\n  mycodec: my.Mod.MyCodec\n")
-    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    cfg = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(yaml_file)})
     # overrides applied
     assert cfg.codecs["bytes"] == "my.custom.BytesCodec"
     assert cfg.codecs["mycodec"] == "my.Mod.MyCodec"
@@ -592,11 +575,13 @@ def test_yaml_codecs_block_merges_not_replaces(tmp_path: pathlib.Path) -> None:
     assert len(cfg.codecs) == len(DEFAULT_CODECS) + 1
 
 
-def test_yaml_dotted_codec_name_merges(tmp_path: pathlib.Path) -> None:
+def test_yaml_dotted_codec_name_merges(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Dotted codec keys like numcodecs.bz2 in YAML must merge, not replace the whole dict."""
     yaml_file = tmp_path / "zarr.yaml"
     yaml_file.write_text("codecs:\n  numcodecs.bz2: my.Override\n")
-    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    cfg = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(yaml_file)})
     # dotted key correctly round-tripped
     assert cfg.codecs["numcodecs.bz2"] == "my.Override"
     # all other defaults preserved
@@ -604,130 +589,74 @@ def test_yaml_dotted_codec_name_merges(tmp_path: pathlib.Path) -> None:
     assert len(cfg.codecs) == len(DEFAULT_CODECS)  # bz2 was already there; just overwritten
 
 
-def test_build_config_environ_yaml_path_is_read(tmp_path: pathlib.Path) -> None:
-    """ZARR_CONFIG supplied via build_config(environ=...) must actually be read."""
+def test_yaml_file_via_zarr_config_is_read(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A YAML file pointed to by ZARR_CONFIG is read; a non-existent path is a no-op."""
     yaml_file = tmp_path / "zarr.yaml"
     yaml_file.write_text("json_indent: 9\n")
-    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    cfg = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(yaml_file)})
     assert cfg.json_indent == 9
-    # Non-existent path must still not raise
-    cfg2 = build_config(environ={"ZARR_CONFIG": "/nonexistent/path.yaml"})
+    # Non-existent path must still not raise, and leaves defaults intact
+    cfg2 = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": "/nonexistent/path.yaml"})
     assert cfg2.json_indent == make_default_config().json_indent
 
 
-# ---------------------------------------------------------------------------
-# YAML config file loading — collect_yaml behavior
-# ---------------------------------------------------------------------------
-
-
-def test_collect_yaml_reads_yaml_and_yml_and_ignores_other_extensions(
-    tmp_path: pathlib.Path,
+def test_yaml_config_directory_is_scanned(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A directory's `.yaml` and `.yml` files are loaded and flattened to dotted
-    keys; files with other extensions are ignored."""
-    (tmp_path / "a.yaml").write_text("json_indent: 3\n")
-    (tmp_path / "b.yml").write_text("array:\n  order: F\n")
-    (tmp_path / "c.txt").write_text("json_indent: 999\n")  # not a yaml extension
-    assert collect_yaml([str(tmp_path)]) == {"json_indent": 3, "array.order": "F"}
-
-
-def test_collect_yaml_directory_sorted_later_file_wins(tmp_path: pathlib.Path) -> None:
-    """Within a directory, files are read in sorted filename order, so a later file
-    overrides an earlier one on conflicting keys."""
-    (tmp_path / "01-base.yaml").write_text("json_indent: 1\n")
-    (tmp_path / "02-override.yaml").write_text("json_indent: 2\n")
-    assert collect_yaml([str(tmp_path)])["json_indent"] == 2
-
-
-def test_collect_yaml_later_path_overrides_earlier(tmp_path: pathlib.Path) -> None:
-    """Across the path list, a later location overrides an earlier one, while keys
-    unique to the earlier location are preserved."""
-    low = tmp_path / "low"
-    high = tmp_path / "high"
-    low.mkdir()
-    high.mkdir()
-    (low / "zarr.yaml").write_text("json_indent: 1\narray:\n  order: F\n")
-    (high / "zarr.yaml").write_text("json_indent: 2\n")
-    merged = collect_yaml([str(low), str(high)])
-    assert merged["json_indent"] == 2  # overridden by the higher-precedence path
-    assert merged["array.order"] == "F"  # only set in the lower path, preserved
-
-
-def test_collect_yaml_accepts_single_file_path(tmp_path: pathlib.Path) -> None:
-    """A path that points directly at a file (not a directory) is read as-is."""
-    yaml_file = tmp_path / "my-config.yaml"
-    yaml_file.write_text("json_indent: 7\n")
-    assert collect_yaml([str(yaml_file)]) == {"json_indent": 7}
-
-
-def test_collect_yaml_ignores_missing_paths(tmp_path: pathlib.Path) -> None:
-    """Non-existent search paths are silently skipped, not fatal."""
-    assert collect_yaml([str(tmp_path / "nope"), "/definitely/missing"]) == {}
-
-
-def test_collect_yaml_ignores_non_mapping_documents(tmp_path: pathlib.Path) -> None:
-    """A YAML file whose top-level document is not a mapping (e.g. a list) is
-    ignored rather than crashing; mapping documents still load."""
-    (tmp_path / "list.yaml").write_text("- a\n- b\n")
-    (tmp_path / "ok.yaml").write_text("json_indent: 5\n")
-    assert collect_yaml([str(tmp_path)]) == {"json_indent": 5}
-
-
-# ---------------------------------------------------------------------------
-# YAML config file loading — end-to-end via build_config
-# ---------------------------------------------------------------------------
-
-
-def test_build_config_zarr_config_directory_is_scanned(tmp_path: pathlib.Path) -> None:
-    """ZARR_CONFIG may point at a directory; every YAML file in it is loaded."""
+    """ZARR_CONFIG may point at a directory; a zarr.yaml inside it is loaded."""
     (tmp_path / "zarr.yaml").write_text("array:\n  order: F\njson_indent: 8\n")
-    cfg = build_config(environ={"ZARR_CONFIG": str(tmp_path)})
+    cfg = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(tmp_path)})
     assert cfg.array.order == "F"
     assert cfg.json_indent == 8
 
 
-def test_build_config_env_overrides_yaml(tmp_path: pathlib.Path) -> None:
+def test_env_var_overrides_yaml(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Precedence is defaults < YAML < environment: an env var wins over a YAML file."""
     yaml_file = tmp_path / "zarr.yaml"
     yaml_file.write_text("json_indent: 3\n")
-    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file), "ZARR_JSON_INDENT": "9"})
+    cfg = _build_config_with_env(
+        monkeypatch, {"ZARR_CONFIG": str(yaml_file), "ZARR_JSON_INDENT": "9"}
+    )
     assert cfg.json_indent == 9
 
 
-def test_build_config_yaml_unknown_key_warns_and_skips(tmp_path: pathlib.Path) -> None:
+def test_yaml_unknown_key_warns_and_skips(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """An unrecognized key in a YAML file warns and is skipped; known keys still apply
     (so a version-skewed config file can't prevent `import zarr`)."""
     yaml_file = tmp_path / "zarr.yaml"
     yaml_file.write_text("future_key: 1\narray:\n  order: F\n")
     with pytest.warns(UserWarning, match="future_key"):
-        cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+        cfg = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(yaml_file)})
     assert cfg.array.order == "F"
 
 
-def test_build_config_discovers_home_config_dir(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_discovers_home_config_dir(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A `zarr.yaml` in `~/.config/zarr` is discovered (donfig's primary location),
     and `ZARR_CONFIG` takes precedence over it while home-only keys still apply.
 
-    Regression guard for the donfig removal silently dropping these locations.
+    Regression guard against silently dropping donfig's config-file locations.
     """
     home = tmp_path / "home"
     config_dir = home / ".config" / "zarr"
     config_dir.mkdir(parents=True)
     (config_dir / "zarr.yaml").write_text("json_indent: 1\narray:\n  order: F\n")
-    # Redirect `~` to the temporary home so the real user config is not consulted.
+    # Redirect `~` to the temporary home so the real user config is not consulted;
+    # donfig computes its `~/.config/zarr` path via os.path.expanduser.
     monkeypatch.setattr(os.path, "expanduser", lambda p: str(home) if p == "~" else p)
 
     # Without ZARR_CONFIG, the home config directory is picked up.
-    cfg = build_config(environ={})
+    cfg = _build_config_with_env(monkeypatch, {})
     assert cfg.json_indent == 1
     assert cfg.array.order == "F"
 
     # ZARR_CONFIG (highest precedence) overrides the home file's overlapping keys.
     override = tmp_path / "override.yaml"
     override.write_text("json_indent: 2\n")
-    cfg2 = build_config(environ={"ZARR_CONFIG": str(override)})
+    cfg2 = _build_config_with_env(monkeypatch, {"ZARR_CONFIG": str(override)})
     assert cfg2.json_indent == 2  # ZARR_CONFIG wins
     assert cfg2.array.order == "F"  # home-only key still applies
 

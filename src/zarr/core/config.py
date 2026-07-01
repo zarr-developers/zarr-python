@@ -34,12 +34,7 @@ register the implementation in the registry first, then set the path via `config
 
 from __future__ import annotations
 
-import ast
-import contextlib
 import difflib
-import os
-import site
-import sys
 import warnings
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
@@ -290,98 +285,6 @@ def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
     return convert(cfg)  # type: ignore[no-any-return]
 
 
-ENV_PREFIX = "ZARR_"
-
-# Meta-variables that control WHERE config is loaded from, not config values themselves.
-# These must be excluded from the env-override map to avoid spurious KeyErrors.
-_ENV_META_VARS: frozenset[str] = frozenset({"ZARR_CONFIG"})
-
-
-def _parse_env_value(raw: str) -> object:
-    """Parse an env value with ``ast.literal_eval``; fall back to the raw string."""
-    try:
-        return ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        return raw
-
-
-def collect_env(environ: Mapping[str, str]) -> dict[str, object]:
-    """Collect ``ZARR_*`` environment variables into a flat dotted-key map.
-
-    ``ZARR_FOO__BAR_BAZ=1`` becomes ``{"foo.bar_baz": 1}`` — the key is
-    lower-cased and ``__`` denotes nested access.
-
-    Variables listed in ``_ENV_META_VARS`` (e.g. ``ZARR_CONFIG``) are
-    directives about where config lives and are skipped.
-    """
-    out: dict[str, object] = {}
-    for name, raw in environ.items():
-        if not name.startswith(ENV_PREFIX):
-            continue
-        if name in _ENV_META_VARS:
-            continue
-        body = name[len(ENV_PREFIX) :]
-        dotted = body.lower().replace("__", ".")
-        out[dotted] = _parse_env_value(raw)
-    return out
-
-
-def _config_search_paths(environ: Mapping[str, str]) -> list[str]:
-    """Standard YAML config locations, mirroring donfig's search order.
-
-    Reproduces the locations donfig searched for a ``Config("zarr")`` instance
-    (https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files), so
-    existing ``zarr.yaml`` files keep being picked up after the donfig removal:
-
-    - ``ZARR_ROOT_CONFIG`` (default ``/etc/zarr``),
-    - ``<sys.prefix>/etc/zarr`` and ``<prefix>/etc/zarr`` for each
-      `site.PREFIXES` entry,
-    - ``~/.config/zarr``,
-    - ``ZARR_CONFIG`` (a single file or directory), appended last so it takes
-      precedence over the others.
-
-    Paths are ordered low-to-high precedence (later entries win when merged by
-    `collect_yaml`). Duplicates are removed while preserving the highest-priority
-    (last) occurrence of each path.
-    """
-    home = os.path.expanduser("~")
-    paths: list[str] = [
-        environ.get("ZARR_ROOT_CONFIG", os.path.join("/etc", "zarr")),
-        os.path.join(sys.prefix, "etc", "zarr"),
-        *(os.path.join(prefix, "etc", "zarr") for prefix in site.PREFIXES),
-        os.path.join(home, ".config", "zarr"),
-    ]
-    env_path = environ.get("ZARR_CONFIG")
-    if env_path:
-        paths.append(env_path)
-    # Drop duplicates, keeping each path's last (highest-precedence) position.
-    return list(reversed(list(dict.fromkeys(reversed(paths)))))
-
-
-def collect_yaml(paths: list[str]) -> dict[str, object]:
-    """Merge YAML config files found at ``paths`` into a flat dotted-key map."""
-    import yaml
-
-    merged: dict[str, object] = {}
-    for path in paths:
-        candidates: list[str] = []
-        if os.path.isdir(path):
-            candidates.extend(
-                os.path.join(path, fn)
-                for fn in sorted(os.listdir(path))
-                if fn.endswith((".yaml", ".yml"))
-            )
-        elif os.path.isfile(path):
-            candidates.append(path)
-        for candidate in candidates:
-            with contextlib.suppress(FileNotFoundError):
-                with open(candidate) as fh:
-                    data = yaml.safe_load(fh)
-                if isinstance(data, Mapping):
-                    merged.update(_flatten_mapping(data))
-    return merged
-
-
 def _flatten_mapping(data: Mapping[str, object], prefix: str = "") -> dict[str, object]:
     out: dict[str, object] = {}
     for k, v in data.items():
@@ -412,14 +315,33 @@ def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, object]) -> ZarrCon
     return cfg
 
 
-def build_config(environ: Mapping[str, str] | None = None) -> ZarrConfig:
-    """Build the base snapshot: defaults < YAML files < environment variables."""
-    if environ is None:
-        environ = os.environ
-    return apply_overrides(
-        apply_overrides(make_default_config(), collect_yaml(_config_search_paths(environ))),
-        collect_env(environ),
-    )
+# donfig's env collection also surfaces the `ZARR_CONFIG` / `ZARR_ROOT_CONFIG`
+# path directives as if they were config values (keys `config` / `root_config`);
+# drop them so they don't trip `apply_overrides`'s unknown-key warning.
+_DONFIG_META_KEYS: frozenset[str] = frozenset({"config", "root_config"})
+
+
+def build_config() -> ZarrConfig:
+    """Build the base snapshot: typed defaults overlaid with donfig's ingest.
+
+    `donfig` reads `ZARR_*` environment variables and YAML config files from its
+    standard locations
+    (https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files) and
+    merges them into a nested override mapping. That mapping is flattened to
+    dotted keys and applied on top of the typed defaults. `donfig` owns discovery,
+    parsing, and precedence; this module owns the typed representation. Unknown
+    keys are warned about and skipped by `apply_overrides`, so a stray variable or
+    a version-skewed config file never blocks `import zarr`.
+    """
+    import donfig
+
+    overrides = _flatten_mapping(donfig.Config("zarr").config)
+    overrides = {
+        key: value
+        for key, value in overrides.items()
+        if key.split(".", 1)[0] not in _DONFIG_META_KEYS
+    }
+    return apply_overrides(make_default_config(), overrides)
 
 
 _MISSING = object()

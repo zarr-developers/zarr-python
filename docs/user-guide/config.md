@@ -23,20 +23,23 @@ Alternatively, configuration values can be set using environment variables.
 The variable name uses a `ZARR_` prefix, with `__` to denote nesting, e.g.
 `ZARR_ARRAY__ORDER=F`.
 
-The configuration can also be read from YAML files.  These are searched for in
-the same locations that `donfig` used, in increasing order of precedence:
+The configuration can also be read from YAML files. Environment variables and
+YAML files are read by [`donfig`](https://donfig.readthedocs.io/), so zarr uses
+donfig's [standard search
+locations](https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files),
+in increasing order of precedence:
 
 - `/etc/zarr/` (override the `/etc` prefix with the `ZARR_ROOT_CONFIG`
   environment variable),
-- `<sys.prefix>/etc/zarr/` and `<prefix>/etc/zarr/` for each entry in
-  Python's `site.PREFIXES` (e.g. inside a virtual environment),
+- `<sys.prefix>/etc/zarr/` and each entry in Python's `site.PREFIXES` (e.g.
+  inside a virtual environment),
 - `~/.config/zarr/`,
 - the path in the `ZARR_CONFIG` environment variable, which may point at a
   single file or a directory and takes precedence over all of the above.
 
-For each directory, every `.yaml`/`.yml` file is loaded (in sorted order); a
-later location overrides an earlier one. Place a `zarr.yaml` in any of these
-directories, or point `ZARR_CONFIG` at a specific file.
+Place a `zarr.yaml` in any of these directories, or point `ZARR_CONFIG` at a
+specific file. Values read from these files are validated against zarr's typed
+configuration schema; unrecognized keys are ignored with a warning.
 
 Configuration options include the following:
 
