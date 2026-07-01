@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
+import os
+import sys
+import threading
 import typing
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,9 +16,11 @@ from zarr.core.config import (
     BadConfigError,
     ZarrConfig,
     ZarrConfigManager,
+    _config_search_paths,
     apply_overrides,
     build_config,
     collect_env,
+    collect_yaml,
     get_path,
     make_default_config,
     replace_path,
@@ -411,6 +416,83 @@ def test_permanent_set_visible_in_worker_thread() -> None:
         cfg.reset()
 
 
+def test_permanent_set_cross_thread_last_writer_wins() -> None:
+    """A permanent `set` from any thread updates the shared global base, so a later
+    permanent `set` in another thread is visible everywhere — even after the first
+    thread already did its own permanent `set`. (Regression: the first set used to
+    pin the setting thread's view, so it kept seeing its own stale value.)"""
+    cfg = ZarrConfigManager()
+    cfg.set({"async.concurrency": 1})
+    worker = threading.Thread(target=lambda: cfg.set({"async.concurrency": 999}))
+    worker.start()
+    worker.join()
+    assert cfg.get("async.concurrency") == 999
+
+
+def test_with_block_override_is_context_local() -> None:
+    """A `with config.set(...)` override is scoped to the calling context and must
+    not leak into a concurrent worker thread, which keeps seeing the global base."""
+    cfg = ZarrConfigManager()
+    cfg.set({"async.concurrency": 5})
+    with cfg.set({"async.concurrency": 999}):
+        assert cfg.get("async.concurrency") == 999  # visible in this context
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            seen = ex.submit(lambda: cfg.get("async.concurrency")).result()
+    assert seen == 5  # worker saw the global base, not the with-block overlay
+    assert cfg.get("async.concurrency") == 5  # base unchanged after the block
+
+
+# ---------------------------------------------------------------------------
+# Subtree item access (donfig back-compat for `config.get("array")["order"]`)
+# ---------------------------------------------------------------------------
+
+
+def test_subtree_get_item_access_matches_attribute() -> None:
+    """A subtree `get` returns a typed dataclass that also supports donfig-style
+    item access: `["order"]`, `.order`, and `get("array.order")` all agree, and
+    an unknown key raises `KeyError` like the old dicts did."""
+    cfg = ZarrConfigManager()
+    array = cfg.get("array")
+    assert array["order"] == array.order == cfg.get("array.order")
+    assert array["sharding_coalesce_max_bytes"] == array.sharding_coalesce_max_bytes
+    with pytest.raises(KeyError):
+        array["does_not_exist"]
+
+
+def test_config_node_dotted_and_alias_item_access() -> None:
+    """Item access on a config node resolves dotted keys, the `async` alias, and
+    the open `codecs` mapping, mirroring `get_path`."""
+    cfg = make_default_config()
+    assert cfg["array.order"] == "C"
+    assert cfg["async.concurrency"] == 10  # the `async` alias resolves
+    assert cfg.async_["concurrency"] == cfg.async_.concurrency  # node item access
+    assert cfg["codecs.bytes"] == DEFAULT_CODECS["bytes"]
+
+
+# ---------------------------------------------------------------------------
+# YAML config file locations (preserve donfig's search paths)
+# ---------------------------------------------------------------------------
+
+
+def test_config_search_paths_mirror_donfig() -> None:
+    """`_config_search_paths` reproduces donfig's locations — /etc, sys.prefix,
+    ~/.config/zarr — with `ZARR_CONFIG` appended last (highest precedence) and no
+    duplicates."""
+    paths = _config_search_paths({"ZARR_CONFIG": "/tmp/my.yaml"})
+    assert paths[-1] == "/tmp/my.yaml"  # ZARR_CONFIG overrides the standard dirs
+    assert os.path.join(os.path.expanduser("~"), ".config", "zarr") in paths
+    assert os.path.join(sys.prefix, "etc", "zarr") in paths
+    assert os.path.join("/etc", "zarr") in paths
+    assert len(paths) == len(set(paths))  # duplicates removed
+
+
+def test_config_search_paths_root_config_override() -> None:
+    """`ZARR_ROOT_CONFIG` replaces the default `/etc/zarr` system path."""
+    paths = _config_search_paths({"ZARR_ROOT_CONFIG": "/custom/zarr"})
+    assert "/custom/zarr" in paths
+    assert os.path.join("/etc", "zarr") not in paths
+
+
 def test_defaults_and_enable_gpu() -> None:
     cfg = ZarrConfigManager()
     assert cfg.defaults["array"]["order"] == "C"
@@ -427,13 +509,13 @@ def test_defaults_and_enable_gpu() -> None:
 def test_refresh_not_shadowed_by_prior_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     """refresh() must be visible in the calling context even after a prior set()/reset()."""
     mgr = ZarrConfigManager()
-    # plant a scope entry in this thread/context (as reset()/set() would)
+    # apply a permanent override in this context, then rebuild over a changed env
     mgr.set({"array.order": "F"})
     assert mgr.get("array.order") == "F"
     # change the environment so a rebuild differs, then refresh
     monkeypatch.setenv("ZARR_JSON_INDENT", "7")
     mgr.refresh()
-    # refresh must be visible in THIS context, not shadowed by the prior scope
+    # refresh rebuilds the global base and must be visible in THIS context
     assert mgr.get("json_indent") == 7
     assert mgr.get("array.order") == "C"  # the prior permanent set is gone after rebuild
 
@@ -520,6 +602,123 @@ def test_build_config_environ_yaml_path_is_read(tmp_path: pathlib.Path) -> None:
     # Non-existent path must still not raise
     cfg2 = build_config(environ={"ZARR_CONFIG": "/nonexistent/path.yaml"})
     assert cfg2.json_indent == make_default_config().json_indent
+
+
+# ---------------------------------------------------------------------------
+# YAML config file loading — collect_yaml behavior
+# ---------------------------------------------------------------------------
+
+
+def test_collect_yaml_reads_yaml_and_yml_and_ignores_other_extensions(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A directory's `.yaml` and `.yml` files are loaded and flattened to dotted
+    keys; files with other extensions are ignored."""
+    (tmp_path / "a.yaml").write_text("json_indent: 3\n")
+    (tmp_path / "b.yml").write_text("array:\n  order: F\n")
+    (tmp_path / "c.txt").write_text("json_indent: 999\n")  # not a yaml extension
+    assert collect_yaml([str(tmp_path)]) == {"json_indent": 3, "array.order": "F"}
+
+
+def test_collect_yaml_directory_sorted_later_file_wins(tmp_path: pathlib.Path) -> None:
+    """Within a directory, files are read in sorted filename order, so a later file
+    overrides an earlier one on conflicting keys."""
+    (tmp_path / "01-base.yaml").write_text("json_indent: 1\n")
+    (tmp_path / "02-override.yaml").write_text("json_indent: 2\n")
+    assert collect_yaml([str(tmp_path)])["json_indent"] == 2
+
+
+def test_collect_yaml_later_path_overrides_earlier(tmp_path: pathlib.Path) -> None:
+    """Across the path list, a later location overrides an earlier one, while keys
+    unique to the earlier location are preserved."""
+    low = tmp_path / "low"
+    high = tmp_path / "high"
+    low.mkdir()
+    high.mkdir()
+    (low / "zarr.yaml").write_text("json_indent: 1\narray:\n  order: F\n")
+    (high / "zarr.yaml").write_text("json_indent: 2\n")
+    merged = collect_yaml([str(low), str(high)])
+    assert merged["json_indent"] == 2  # overridden by the higher-precedence path
+    assert merged["array.order"] == "F"  # only set in the lower path, preserved
+
+
+def test_collect_yaml_accepts_single_file_path(tmp_path: pathlib.Path) -> None:
+    """A path that points directly at a file (not a directory) is read as-is."""
+    yaml_file = tmp_path / "my-config.yaml"
+    yaml_file.write_text("json_indent: 7\n")
+    assert collect_yaml([str(yaml_file)]) == {"json_indent": 7}
+
+
+def test_collect_yaml_ignores_missing_paths(tmp_path: pathlib.Path) -> None:
+    """Non-existent search paths are silently skipped, not fatal."""
+    assert collect_yaml([str(tmp_path / "nope"), "/definitely/missing"]) == {}
+
+
+def test_collect_yaml_ignores_non_mapping_documents(tmp_path: pathlib.Path) -> None:
+    """A YAML file whose top-level document is not a mapping (e.g. a list) is
+    ignored rather than crashing; mapping documents still load."""
+    (tmp_path / "list.yaml").write_text("- a\n- b\n")
+    (tmp_path / "ok.yaml").write_text("json_indent: 5\n")
+    assert collect_yaml([str(tmp_path)]) == {"json_indent": 5}
+
+
+# ---------------------------------------------------------------------------
+# YAML config file loading — end-to-end via build_config
+# ---------------------------------------------------------------------------
+
+
+def test_build_config_zarr_config_directory_is_scanned(tmp_path: pathlib.Path) -> None:
+    """ZARR_CONFIG may point at a directory; every YAML file in it is loaded."""
+    (tmp_path / "zarr.yaml").write_text("array:\n  order: F\njson_indent: 8\n")
+    cfg = build_config(environ={"ZARR_CONFIG": str(tmp_path)})
+    assert cfg.array.order == "F"
+    assert cfg.json_indent == 8
+
+
+def test_build_config_env_overrides_yaml(tmp_path: pathlib.Path) -> None:
+    """Precedence is defaults < YAML < environment: an env var wins over a YAML file."""
+    yaml_file = tmp_path / "zarr.yaml"
+    yaml_file.write_text("json_indent: 3\n")
+    cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file), "ZARR_JSON_INDENT": "9"})
+    assert cfg.json_indent == 9
+
+
+def test_build_config_yaml_unknown_key_warns_and_skips(tmp_path: pathlib.Path) -> None:
+    """An unrecognized key in a YAML file warns and is skipped; known keys still apply
+    (so a version-skewed config file can't prevent `import zarr`)."""
+    yaml_file = tmp_path / "zarr.yaml"
+    yaml_file.write_text("future_key: 1\narray:\n  order: F\n")
+    with pytest.warns(UserWarning, match="future_key"):
+        cfg = build_config(environ={"ZARR_CONFIG": str(yaml_file)})
+    assert cfg.array.order == "F"
+
+
+def test_build_config_discovers_home_config_dir(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `zarr.yaml` in `~/.config/zarr` is discovered (donfig's primary location),
+    and `ZARR_CONFIG` takes precedence over it while home-only keys still apply.
+
+    Regression guard for the donfig removal silently dropping these locations.
+    """
+    home = tmp_path / "home"
+    config_dir = home / ".config" / "zarr"
+    config_dir.mkdir(parents=True)
+    (config_dir / "zarr.yaml").write_text("json_indent: 1\narray:\n  order: F\n")
+    # Redirect `~` to the temporary home so the real user config is not consulted.
+    monkeypatch.setattr(os.path, "expanduser", lambda p: str(home) if p == "~" else p)
+
+    # Without ZARR_CONFIG, the home config directory is picked up.
+    cfg = build_config(environ={})
+    assert cfg.json_indent == 1
+    assert cfg.array.order == "F"
+
+    # ZARR_CONFIG (highest precedence) overrides the home file's overlapping keys.
+    override = tmp_path / "override.yaml"
+    override.write_text("json_indent: 2\n")
+    cfg2 = build_config(environ={"ZARR_CONFIG": str(override)})
+    assert cfg2.json_indent == 2  # ZARR_CONFIG wins
+    assert cfg2.array.order == "F"  # home-only key still applies
 
 
 # ---------------------------------------------------------------------------

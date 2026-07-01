@@ -38,6 +38,8 @@ import ast
 import contextlib
 import difflib
 import os
+import site
+import sys
 import warnings
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
@@ -86,8 +88,28 @@ _FIELD_ALIASES: dict[str, str] = {"async": "async_"}
 _SERIALIZED_NAMES: dict[str, str] = {v: k for k, v in _FIELD_ALIASES.items()}
 
 
+class _ConfigNode:
+    """Mixin giving the frozen config dataclasses donfig-style item access.
+
+    donfig returned configuration subtrees as plain `dict`s, so callers could
+    write `config.get("array")["order"]`.  The typed config returns dataclass
+    instances instead; this mixin restores subscripting (`node["order"]`, and
+    dotted `node["a.b"]`) alongside the typed attribute access (`node.order`),
+    raising `KeyError` for unknown keys just like the old dicts did.
+
+    `__slots__ = ()` keeps the subclasses fully slotted (no `__dict__`).
+    """
+
+    __slots__ = ()
+
+    def __getitem__(self, key: str) -> object:
+        # `self` is always a config node (a frozen dataclass); `get_path` walks
+        # such nodes structurally, so the cast is sound.
+        return get_path(cast("ZarrConfig", self), key)
+
+
 @dataclass(frozen=True, slots=True)
-class ArraySettings:
+class ArraySettings(_ConfigNode):
     order: Literal["C", "F"] = "C"
     write_empty_chunks: bool = False
     read_missing_chunks: bool = True
@@ -98,24 +120,24 @@ class ArraySettings:
 
 
 @dataclass(frozen=True, slots=True)
-class AsyncSettings:
+class AsyncSettings(_ConfigNode):
     concurrency: int = 10
     timeout: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class ThreadingSettings:
+class ThreadingSettings(_ConfigNode):
     max_workers: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class CodecPipelineSettings:
+class CodecPipelineSettings(_ConfigNode):
     path: str = "zarr.core.codec_pipeline.BatchedCodecPipeline"
     batch_size: int = 1
 
 
 @dataclass(frozen=True, slots=True)
-class ZarrConfig:
+class ZarrConfig(_ConfigNode):
     default_zarr_format: Literal[2, 3] = 3
     array: ArraySettings = field(default_factory=ArraySettings)
     async_: AsyncSettings = field(default_factory=AsyncSettings)
@@ -305,13 +327,35 @@ def collect_env(environ: Mapping[str, str]) -> dict[str, object]:
 
 
 def _config_search_paths(environ: Mapping[str, str]) -> list[str]:
-    """Standard YAML config locations, mirroring donfig's search order."""
-    paths: list[str] = []
+    """Standard YAML config locations, mirroring donfig's search order.
+
+    Reproduces the locations donfig searched for a ``Config("zarr")`` instance
+    (https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files), so
+    existing ``zarr.yaml`` files keep being picked up after the donfig removal:
+
+    - ``ZARR_ROOT_CONFIG`` (default ``/etc/zarr``),
+    - ``<sys.prefix>/etc/zarr`` and ``<prefix>/etc/zarr`` for each
+      `site.PREFIXES` entry,
+    - ``~/.config/zarr``,
+    - ``ZARR_CONFIG`` (a single file or directory), appended last so it takes
+      precedence over the others.
+
+    Paths are ordered low-to-high precedence (later entries win when merged by
+    `collect_yaml`). Duplicates are removed while preserving the highest-priority
+    (last) occurrence of each path.
+    """
+    home = os.path.expanduser("~")
+    paths: list[str] = [
+        environ.get("ZARR_ROOT_CONFIG", os.path.join("/etc", "zarr")),
+        os.path.join(sys.prefix, "etc", "zarr"),
+        *(os.path.join(prefix, "etc", "zarr") for prefix in site.PREFIXES),
+        os.path.join(home, ".config", "zarr"),
+    ]
     env_path = environ.get("ZARR_CONFIG")
     if env_path:
         paths.append(env_path)
-    paths.append(os.path.join(os.path.expanduser("~"), ".config", "zarr"))
-    return paths
+    # Drop duplicates, keeping each path's last (highest-precedence) position.
+    return list(reversed(list(dict.fromkeys(reversed(paths)))))
 
 
 def collect_yaml(paths: list[str]) -> dict[str, object]:
@@ -384,22 +428,38 @@ _MISSING = object()
 class _ConfigSet:
     """Context manager returned by ``ZarrConfigManager.set``.
 
-    The change is applied immediately (permanent by default); using the object
-    as a ``with`` block restores the prior state on exit.
+    ``set`` applies the override immediately to the process-global base, so a
+    bare ``config.set(...)`` is permanent and visible from every thread (matching
+    donfig's last-writer-wins semantics, including inside `ThreadPoolExecutor`
+    workers, which do not copy context variables).
+
+    Using the result as a ``with`` block *promotes* the override to a
+    context-local scope: ``__enter__`` undoes the global apply and re-applies the
+    new snapshot through a `ContextVar`, so the change is isolated to the calling
+    context (thread / async task) and unwound on ``__exit__``.
+
+    Note: like donfig, config writes are not synchronized. The promotion restores
+    the base snapshot captured at ``set`` time, so a ``with config.set(...)`` that
+    overlaps a *concurrent* permanent ``set`` from another thread may drop that
+    concurrent write for the duration of the block. Configuration is normally set
+    at startup, so this race does not arise in practice.
     """
 
-    def __init__(
-        self, manager: ZarrConfigManager, prev_base: ZarrConfig, token: Token[ZarrConfig]
-    ) -> None:
+    def __init__(self, manager: ZarrConfigManager, prev_base: ZarrConfig, new: ZarrConfig) -> None:
         self._manager = manager
         self._prev_base = prev_base
-        self._token = token
+        self._new = new
+        self._token: Token[ZarrConfig] | None = None
 
     def __enter__(self) -> Self:
+        self._token = self._manager._enter_scope(self._prev_base, self._new)
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self._manager._restore(self._prev_base, self._token)
+        # `__enter__` always runs first under `with`, so `_token` is set; guard
+        # only to satisfy the type checker and tolerate manual misuse.
+        if self._token is not None:
+            self._manager._exit_scope(self._token)
 
 
 class ZarrConfigManager:
@@ -411,10 +471,19 @@ class ZarrConfigManager:
 
     # --- state resolution -------------------------------------------------
     def _current(self) -> ZarrConfig:
+        # An active `with config.set(...)` overlay (context-local) shadows the
+        # global base; otherwise every context reads the shared `_base` live, so
+        # a permanent `set` in any thread is visible everywhere.
         return self._scope.get(self._base)
 
-    def _restore(self, prev_base: ZarrConfig, token: Token[ZarrConfig]) -> None:
+    def _enter_scope(self, prev_base: ZarrConfig, new: ZarrConfig) -> Token[ZarrConfig]:
+        # Promote a `with config.set(...)` to a context-local override: undo the
+        # immediate global apply performed by `set`, then pin `new` to this
+        # context only. Concurrent threads/tasks keep seeing the global base.
         self._base = prev_base
+        return self._scope.set(new)
+
+    def _exit_scope(self, token: Token[ZarrConfig]) -> None:
         self._scope.reset(token)
 
     # --- typed attribute access ------------------------------------------
@@ -558,21 +627,21 @@ class ZarrConfigManager:
                 new = replace_path(new, resolved, value)
             except KeyError:
                 raise _unknown_key_error(key, new) from None
+        # Apply immediately to the global base. A bare `set` stays here (permanent,
+        # cross-thread); a `with config.set(...)` is promoted to a context-local
+        # overlay by `_ConfigSet.__enter__`, which undoes this global apply.
         self._base = new
-        token = self._scope.set(new)
-        return _ConfigSet(self, prev_base, token)
+        return _ConfigSet(self, prev_base, new)
 
     # --- lifecycle --------------------------------------------------------
     def reset(self) -> None:
+        # Rebuild the global base. A bare `set` no longer pins a context-local
+        # scope, so the rebuilt base is visible in every context that is not
+        # inside an active `with config.set(...)` block.
         self._base = build_config()
-        # Sync the scope so _current() returns the new base in this context.
-        self._scope.set(self._base)
 
     def refresh(self) -> None:
         self._base = build_config()
-        # Sync the scope so the rebuilt base is visible in the calling context.
-        # Without this, any prior reset()/set() scope entry would shadow the refresh.
-        self._scope.set(self._base)
 
     def enable_gpu(self) -> _ConfigSet:
         return self.set(
