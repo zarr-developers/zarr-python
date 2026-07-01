@@ -41,6 +41,9 @@ htmlcov/
 .cache
 coverage.xml
 *,cover
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 # Translations
 *.mo
@@ -94,3 +97,38 @@ zarr.egg-info/
 
 # zarr-metadata package lockfile (a library, not an app)
 packages/zarr-metadata/uv.lock
+
+# ─── Agentic coding: local/personal state (provider-agnostic) ───
+# Commit shared instruction files (AGENTS.md, CLAUDE.md, .cursor/rules/) intentionally;
+# ignore only per-user/local state, session data, and caches below.
+
+# Local overrides & personal instruction variants
+CLAUDE.local.md
+AGENTS.local.md
+AGENTS.override.md
+*.local.md
+
+# Agent tool state directories
+.claude/
+.windsurf/
+.aider*
+.continue/
+.codeium/
+
+# Agent session transcripts, logs, scratch
+.agent/
+.agent-workspace/
+.agent-scratch/
+agent-logs/
+*.session.json
+*.transcript.*
+
+# MCP configs (frequently contain tokens/credentials)
+.mcp.local.json
+*.mcp.local.json
+
+# Agent caches / embeddings / vector stores
+.agent-cache/
+.context-cache/
+.embeddings/
+.vectorstore/
