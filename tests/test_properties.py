@@ -377,8 +377,13 @@ def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None
         raise AssertionError(mode)
 
 
-def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -> bool:
-    """Whether a write to `npsel` targets each cell at most once.
+def _write_is_unambiguous(mode: IndexMode, zsel: Any, shape: tuple[int, ...]) -> bool:
+    """Whether a write to `zsel` targets each cell at most once.
+
+    `zsel` must be the *raw zarr selection* (per-axis arrays/slices), NOT the
+    broadcast np.ix_-style form NumPy needs: for oindex the broadcast form tiles
+    each component across every axis, so the per-axis uniqueness check below would
+    trip on tiling instead of genuine duplicates and reject well-defined writes.
 
     Negative indices are normalized first (`[2, -2]` on length 4 both target cell
     2), then duplicate targets are detected. A repeated target makes the surviving
@@ -389,7 +394,7 @@ def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -
     be expected to match NumPy's choice. There is therefore no well-defined oracle
     for such a write, and we reject it (a fundamental limitation, not a bug).
     """
-    sel = npsel if isinstance(npsel, tuple) else (npsel,)
+    sel = zsel if isinstance(zsel, tuple) else (zsel,)
     if mode == "oindex":
         # Independent axes: each fancy axis must select each index at most once.
         for axis, s in enumerate(sel):
@@ -413,9 +418,13 @@ def _write_is_unambiguous(mode: IndexMode, npsel: Any, shape: tuple[int, ...]) -
     return True  # basic / mask never target a cell twice
 
 
-def _n_array_axes(npsel: Any) -> int:
-    """Number of integer-array (fancy) axes in a selection."""
-    sel = npsel if isinstance(npsel, tuple) else (npsel,)
+def _n_array_axes(zsel: Any) -> int:
+    """Number of integer-array (fancy) axes in a *raw* zarr selection (slices excluded).
+
+    Must be the raw per-axis selection, not the broadcast numpy form: the latter
+    turns every axis into an array, so this would always return ``ndim``.
+    """
+    sel = zsel if isinstance(zsel, tuple) else (zsel,)
     return sum(isinstance(s, np.ndarray) for s in sel)
 
 
@@ -511,9 +520,9 @@ async def test_indexing_write_parity(data: st.DataObject) -> None:
     assume(_eligible(mode, nparray.shape))
     zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=nparray.shape))
     if mode in ("oindex", "vindex"):
-        assume(_write_is_unambiguous(mode, npsel, nparray.shape))
+        assume(_write_is_unambiguous(mode, zsel, nparray.shape))
     if mode == "oindex" and zarray.shards is not None:
-        assume(_n_array_axes(npsel) < 2)
+        assume(_n_array_axes(zsel) < 2)
 
     expected = np.asarray(nparray[npsel])
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
@@ -576,12 +585,34 @@ def test_write_is_unambiguous(
     """A write is well-defined iff each target cell is hit at most once *after*
     negative indices are normalized.
 
-    Regression anchor for the CI fix: vindex `[2, -2, 0, 1]` on length 4 maps
-    `-2 -> 2`, so cell 2 is written twice (order-dependent) and must be rejected,
+    Cases use the *raw zarr selection* (per-axis arrays) — the form real callers
+    pass — so `oindex-distinct` ([0,2] x [1,3]) is well-defined. See
+    `test_write_filter_rejects_broadcast_oindex` for why the broadcast form must not
+    be passed. Regression anchor for the CI fix: vindex `[2, -2, 0, 1]` on length 4
+    maps `-2 -> 2`, so cell 2 is written twice (order-dependent) and must be rejected
     even though the raw values are all distinct.
     """
-    mode, npsel, shape = case.input
-    assert _write_is_unambiguous(mode, npsel, shape) is case.output
+    mode, zsel, shape = case.input
+    assert _write_is_unambiguous(mode, zsel, shape) is case.output
+
+
+def test_write_filter_rejects_broadcast_oindex() -> None:
+    """The write filter must be fed the raw per-axis selection, not the broadcast form.
+
+    `numpy_array_indexers(mode="oindex")` returns a raw per-axis `zsel` and a broadcast
+    np.ix_-style `npsel`. A well-defined multi-axis write ([0,2] x [1,3]) is admitted
+    on the raw form but — because the broadcast form tiles each component across all
+    axes — is wrongly rejected on `npsel`. This pins the review finding that passing
+    `npsel` silently skipped essentially every multi-axis orthogonal write.
+    """
+    zsel = (np.array([0, 2]), np.array([1, 3]))  # raw per-axis, distinct -> well-defined
+    assert _write_is_unambiguous("oindex", zsel, (4, 4)) is True
+    # the fully-tiled form orthogonal_indices produces (np.broadcast_arrays over np.ix_)
+    broadcast = tuple(np.broadcast_arrays(*np.ix_(*zsel)))
+    assert _write_is_unambiguous("oindex", broadcast, (4, 4)) is False  # tiling; do not pass
+    # _n_array_axes counts only genuine fancy axes on the raw form (slices excluded),
+    # so a single-fancy-axis oindex is correctly allowed on a sharded array.
+    assert _n_array_axes((slice(None), np.array([1, 3]))) == 1
 
 
 @st.composite
@@ -654,9 +685,9 @@ class _IndexingStateMachine(RuleBasedStateMachine):
         if not _eligible(mode, self.shape):
             return
         zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=self.shape))
-        if mode in ("oindex", "vindex") and not _write_is_unambiguous(mode, npsel, self.shape):
+        if mode in ("oindex", "vindex") and not _write_is_unambiguous(mode, zsel, self.shape):
             return
-        if mode == "oindex" and self.shards is not None and _n_array_axes(npsel) >= 2:
+        if mode == "oindex" and self.shards is not None and _n_array_axes(zsel) >= 2:
             return  # GH2834, see test_oindex_sharded_multiaxis_write_xfail
         expected = np.asarray(self.model[npsel])
         value = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=self.model.dtype))
