@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import _zarrs_bindings as _zb
 
-from zarr.crud import NodeExistsError
+from zarr.crud import CrudBackend, NodeExistsError
 from zarr.errors import NodeNotFoundError
 from zarr.zarrs._bridge import resolve_store
 
@@ -34,7 +34,7 @@ def _translate_errors() -> Iterator[None]:
         raise NodeExistsError(str(err)) from err
 
 
-class ZarrsBackend:
+class ZarrsBackend(CrudBackend):
     """CRUD backend backed by the Rust `zarrs` crate via `_zarrs_bindings`.
 
     Owns the zarrs-specific plumbing: JSON-serializing the metadata document,

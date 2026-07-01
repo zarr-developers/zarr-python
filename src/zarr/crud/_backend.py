@@ -28,7 +28,9 @@ class CrudBackend(Protocol):
 
     Note: because this protocol is `runtime_checkable`, `isinstance` checks only
     verify that the method names exist, not their signatures or that they are
-    async. Static type checking (mypy) is the authoritative conformance check.
+    async. Static type checking (mypy) is the authoritative conformance check;
+    the in-tree backends subclass this protocol explicitly so type checkers
+    verify their conformance at the definition site.
 
     `read_chunk` and `read_subset` must return immutable `bytes` (not
     `bytearray`): the facade wraps them with `numpy.frombuffer`, which yields a

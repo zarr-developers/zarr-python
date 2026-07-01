@@ -46,3 +46,11 @@ def test_register_and_resolve_instance() -> None:
 def test_protocol_is_runtime_checkable() -> None:
     # ReferenceBackend (registered as "reference") structurally satisfies the protocol
     assert isinstance(get_backend("reference"), CrudBackend)
+
+
+def test_reference_backend_subclasses_protocol() -> None:
+    """ReferenceBackend explicitly subclasses CrudBackend (not just structurally),
+    so type checkers verify its conformance and readers see the intent."""
+    from zarr.crud import ReferenceBackend
+
+    assert CrudBackend in ReferenceBackend.__mro__

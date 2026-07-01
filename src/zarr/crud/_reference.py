@@ -12,7 +12,7 @@ from zarr.core.group import GroupMetadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
-from zarr.crud._backend import NodeExistsError
+from zarr.crud._backend import CrudBackend, NodeExistsError
 from zarr.crud._common import parse_array_metadata
 from zarr.errors import NodeNotFoundError
 from zarr.storage._common import StorePath
@@ -67,7 +67,7 @@ def _is_all_fill_value(
     return bool(np.all(arr == fill))
 
 
-class ReferenceBackend:
+class ReferenceBackend(CrudBackend):
     """Pure-Python CRUD backend wrapping zarr-python's own machinery.
 
     Constructs no high-level `Array` for chunk operations (it drives the codec

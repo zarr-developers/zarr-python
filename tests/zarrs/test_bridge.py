@@ -51,3 +51,12 @@ def test_resolve_store(tmp_path: Path) -> None:
     # read-only LocalStore must go through the shim so writes are rejected in Python
     assert isinstance(resolve_store(LocalStore(tmp_path, read_only=True)), StoreShim)
     assert isinstance(resolve_store(MemoryStore()), StoreShim)
+
+
+def test_backend_subclasses_protocol() -> None:
+    """ZarrsBackend explicitly subclasses CrudBackend so type checkers verify
+    conformance and readers see the intent."""
+    from zarr.crud import CrudBackend
+    from zarr.zarrs import ZarrsBackend
+
+    assert CrudBackend in ZarrsBackend.__mro__
