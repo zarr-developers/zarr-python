@@ -530,3 +530,67 @@ class TestLazyViewGridGuards:
         assert view.shape == (8,)
         assert view.size == 8
         assert view.nbytes == 8 * 4
+
+
+class TestChunkProjections:
+    """`chunk_projections` enumerates the stored chunks an (identity or view) array
+    projects onto, giving each one's stored region, the region of this array it maps
+    to, and whether it is partially covered."""
+
+    @staticmethod
+    def _array(shape: tuple[int, ...], chunks: tuple[int, ...]) -> zarr.Array[Any]:
+        a = zarr.create_array({}, shape=shape, chunks=chunks, dtype="i4")
+        a[...] = np.arange(int(np.prod(shape)), dtype="i4").reshape(shape)
+        return a
+
+    def test_identity_tiles_the_whole_domain(self) -> None:
+        """On a full (identity) array, projections tile the domain exactly: one per chunk, none partial."""
+        a = self._array((10,), (3,))  # chunks (3,3,3,1)
+        projs = list(a.chunk_projections())
+        assert len(projs) == 4
+        assert all(not p.is_partial for p in projs)
+        covered = np.zeros(10, dtype=bool)
+        for p in projs:
+            arr_sel: Any = p.array_selection
+            covered[arr_sel] = True
+        assert covered.all()  # complete, and (bool assignment) each cell once
+
+    def test_view_round_trip(self) -> None:
+        """Placing each projection's stored-chunk slice at its array_selection reconstructs the view."""
+        a = self._array((10,), (3,))
+        backing = np.asarray(a[...])
+        view = a.lazy[2:9]  # (7,)
+        out = np.empty(view.shape, dtype="i4")
+        for p in view.chunk_projections():
+            offset = p.coord[0] * 3  # regular grid: chunk c starts at c*chunk_size
+            stored_chunk = backing[offset : offset + p.shape[0]]
+            arr_sel: Any = p.array_selection
+            chunk_sel: Any = p.chunk_selection
+            out[arr_sel] = stored_chunk[chunk_sel]
+        np.testing.assert_array_equal(out, backing[2:9])
+
+    def test_partial_flag_and_alignment(self) -> None:
+        """Boundary chunks a view only partially covers are flagged; a chunk-aligned view is not."""
+        a = self._array((12,), (4,))  # chunks at [0,4) [4,8) [8,12)
+        partial = a.lazy[2:12]  # first chunk partially covered
+        assert any(p.is_partial for p in partial.chunk_projections())
+        assert not partial.is_chunk_aligned()
+        aligned = a.lazy[4:12]  # exactly chunks 1 and 2
+        assert all(not p.is_partial for p in aligned.chunk_projections())
+        assert aligned.is_chunk_aligned()
+
+    def test_sharded_write_unit(self) -> None:
+        """For a sharded array, unit='write' enumerates shards; unit='read' (inner chunks) is deferred."""
+        a = zarr.create_array({}, shape=(12,), chunks=(2,), shards=(6,), dtype="i4")
+        a[...] = np.arange(12, dtype="i4")
+        shards = list(a.chunk_projections(unit="write"))
+        assert len(shards) == 2  # two shards of size 6
+        assert all(p.shape == (6,) and not p.is_partial for p in shards)
+        with pytest.raises(NotImplementedError):
+            a.chunk_projections(unit="read")
+
+    def test_invalid_unit_rejected(self) -> None:
+        """An unknown granularity is rejected eagerly."""
+        a = self._array((6,), (2,))
+        with pytest.raises(ValueError, match="unit"):
+            a.chunk_projections(unit="bogus")  # type: ignore[arg-type]

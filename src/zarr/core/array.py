@@ -56,6 +56,7 @@ from zarr.core.chunk_key_encodings import (
     V2ChunkKeyEncoding,
     parse_chunk_key_encoding,
 )
+from zarr.core.chunk_partition import ChunkProjection, iter_chunk_projections
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -864,6 +865,54 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 f"does not fill its chunk grid). Use `chunk_layout` for the backing array's "
                 f"structure, or `chunk_projections` for this view's chunk granularity."
             )
+
+    @property
+    def _is_sharded(self) -> bool:
+        """Whether the array stores inner chunks inside shards (a sharding codec)."""
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        return len(codecs) == 1 and isinstance(codecs[0], ShardingCodec)
+
+    def chunk_projections(
+        self, *, unit: Literal["read", "write"] = "read"
+    ) -> Iterator[ChunkProjection]:
+        """Enumerate the stored chunks this array (or lazy view) projects onto.
+
+        Yields a `ChunkProjection` per stored chunk: its coordinate, store key, and
+        (extent-clipped) shape; the region of the chunk this array covers; the region
+        of this array it maps to; and whether the coverage is partial (a partial
+        write is a read-modify-write). For an identity array every chunk is fully
+        covered and the projections tile the whole domain; for a view only the touched
+        chunks appear.
+
+        `unit` selects the granularity: `"write"` is the store-object grid (the shard
+        when sharded, else the chunk); `"read"` is the chunk grid. They coincide
+        unless the array is sharded. Read-unit (inner-chunk) partitioning of a sharded
+        array is not yet implemented; use `unit="write"` there.
+
+        To partition an arbitrary selection, compose through the lazy accessor:
+        `array.lazy[sel].chunk_projections()`.
+        """
+        if unit not in ("read", "write"):
+            raise ValueError(f"unit must be 'read' or 'write', got {unit!r}")
+        if unit == "read" and self._is_sharded:
+            raise NotImplementedError(
+                "read-unit (inner-chunk) `chunk_projections` for sharded arrays is not yet "
+                "implemented; use `unit='write'` for shard-granularity projections."
+            )
+        return iter_chunk_projections(
+            self._transform, self._chunk_grid, self.metadata.encode_chunk_key
+        )
+
+    def is_chunk_aligned(self) -> bool:
+        """Whether this array/view aligns to write-unit (store-object) boundaries.
+
+        True iff no stored write unit is only partially covered — i.e. every unit can
+        be written without a read-modify-write. A cheap wrapper over
+        `chunk_projections`.
+        """
+        return all(not p.is_partial for p in self.chunk_projections(unit="write"))
 
     @property
     def storage_shape(self) -> tuple[int, ...]:
@@ -2358,6 +2407,27 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         from the shape and dtype alone.
         """
         return self.async_array.nbytes
+
+    def chunk_projections(
+        self, *, unit: Literal["read", "write"] = "read"
+    ) -> Iterator[ChunkProjection]:
+        """Enumerate the stored chunks this array (or lazy view) projects onto.
+
+        See [zarr.AsyncArray.chunk_projections][] for the full description. Each
+        `ChunkProjection` reports a stored chunk's coordinate/key/shape, the region of
+        it this array covers, the region of this array it maps to, and whether the
+        coverage is partial. Compose through `lazy` to partition an arbitrary
+        selection: `array.lazy[sel].chunk_projections()`.
+        """
+        return self.async_array.chunk_projections(unit=unit)
+
+    def is_chunk_aligned(self) -> bool:
+        """Whether this array/view aligns to write-unit (store-object) boundaries.
+
+        True iff no stored write unit is only partially covered. See
+        [zarr.AsyncArray.is_chunk_aligned][].
+        """
+        return self.async_array.is_chunk_aligned()
 
     @property
     def nchunks_initialized(self) -> int:
