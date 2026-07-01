@@ -147,6 +147,7 @@ from zarr.core.transforms.transform import (
 from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
+    LazyViewError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -850,6 +851,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return _transform_is_identity(self._transform, self.metadata.shape)
 
+    def _require_identity(self, name: str) -> None:
+        """Raise `LazyViewError` if this array is a non-identity lazy view.
+
+        Grid-describing/mutating members assume the array fills its chunk grid,
+        which a view (a sliced/indexed array) generally does not. See
+        `LazyViewError`; `name` is the member being guarded, for the message.
+        """
+        if not self._is_identity:
+            raise LazyViewError(
+                f"`{name}` is not defined for a lazy view (a sliced or indexed array that "
+                f"does not fill its chunk grid). Use `chunk_layout` for the backing array's "
+                f"structure, or `chunk_projections` for this view's chunk granularity."
+            )
+
     @property
     def storage_shape(self) -> tuple[int, ...]:
         """The shape of the underlying storage array (ignoring any view transform)."""
@@ -868,6 +883,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]:
             The chunk shape of the Array.
         """
+        self._require_identity("chunks")
         # TODO: move sharding awareness out of metadata
         return self.metadata.chunks
 
@@ -894,6 +910,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
+        self._require_identity("read_chunk_sizes")
 
         from zarr.codecs.sharding import ShardingCodec
 
@@ -925,7 +942,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
-
+        self._require_identity("write_chunk_sizes")
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -941,6 +958,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]:
             The shard shape of the Array.
         """
+        self._require_identity("shards")
         return self.metadata.shards
 
     @property
@@ -952,7 +970,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return math.prod(self.metadata.shape)
+        # `self.shape` is the view's logical shape (== metadata.shape for a
+        # non-view); using it keeps `size`/`nbytes` correct for lazy views.
+        return math.prod(self.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -1118,6 +1138,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
+        self._require_identity("cdata_shape")
         return self._chunk_grid_shape
 
     @property
@@ -1174,6 +1195,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The total number of chunks in the array.
         """
+        self._require_identity("nchunks")
         return product(self._chunk_grid_shape)
 
     @property
@@ -1258,6 +1280,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         result = asyncio.run(example())
         ```
         """
+        self._require_identity("nchunks_initialized")
         return await _nchunks_initialized(self)
 
     async def _nshards_initialized(self) -> int:
@@ -1299,6 +1322,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return await _nshards_initialized(self)
 
     async def nbytes_stored(self) -> int:
+        self._require_identity("nbytes_stored")
         return await _nbytes_stored(self.store_path)
 
     def _iter_chunk_coords(
@@ -1740,6 +1764,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -----
         - This method is asynchronous and should be awaited.
         """
+        self._require_identity("resize")
         return await _resize(self, new_shape, delete_outside_chunks)
 
     async def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
@@ -1761,6 +1786,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         The size of all dimensions other than `axis` must match between this
         array and `data`.
         """
+        self._require_identity("append")
         return await _append(self, data, axis)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
@@ -1832,6 +1858,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 480
         """
+        self._require_identity("info")
         return self._info()
 
     async def info_complete(self) -> Any:
@@ -1851,6 +1878,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
+        self._require_identity("info_complete")
         return await _info_complete(self)
 
     def _info(
@@ -2253,7 +2281,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         When sharding is used, this counts inner chunks (not shards) per dimension.
         """
-        return self.async_array._chunk_grid_shape
+        return self.async_array.cdata_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:

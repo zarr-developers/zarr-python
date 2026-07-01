@@ -23,6 +23,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import default_buffer_prototype
+from zarr.errors import LazyViewError
 from zarr.storage import MemoryStore
 
 
@@ -474,3 +475,58 @@ class TestLazyRandomizedRoundtrip:
             a.lazy.oindex[sel] = val
             np.testing.assert_array_equal(a.lazy.oindex[sel][...], ref[sel])
         np.testing.assert_array_equal(a[...], ref)
+
+
+_VIEW_GUARDED_PROPERTIES = (
+    "chunks",
+    "shards",
+    "read_chunk_sizes",
+    "write_chunk_sizes",
+    "cdata_shape",
+    "nchunks",
+    "nchunks_initialized",
+    "info",
+)
+
+# method name -> call arguments
+_VIEW_GUARDED_METHODS: dict[str, tuple[Any, ...]] = {
+    "nbytes_stored": (),
+    "info_complete": (),
+    "resize": ((24,),),
+    "append": (np.zeros((3,), dtype="i4"),),
+}
+
+
+class TestLazyViewGridGuards:
+    """Grid-describing members assume the array fills its chunk grid, so on a
+    non-identity lazy view they must raise instead of silently describing the
+    backing grid (a footgun for consumers that size reads off ``.chunks``)."""
+
+    @staticmethod
+    def _array() -> zarr.Array[Any]:
+        a = zarr.create_array({}, shape=(12,), chunks=(3,), dtype="i4")
+        a[...] = np.arange(12, dtype="i4")
+        return a
+
+    @pytest.mark.parametrize("name", _VIEW_GUARDED_PROPERTIES)
+    def test_property_raises_on_view(self, name: str) -> None:
+        """A grid-describing property works on the backing array but raises LazyViewError on a view."""
+        a = self._array()
+        getattr(a, name)  # backing (identity) array: no raise
+        with pytest.raises(LazyViewError):
+            getattr(a.lazy[2:10], name)
+
+    @pytest.mark.parametrize("name", list(_VIEW_GUARDED_METHODS))
+    def test_method_raises_on_view(self, name: str) -> None:
+        """A grid-describing/mutating method raises LazyViewError on a view."""
+        a = self._array()
+        with pytest.raises(LazyViewError):
+            getattr(a.lazy[2:10], name)(*_VIEW_GUARDED_METHODS[name])
+
+    def test_size_and_nbytes_reflect_the_view(self) -> None:
+        """size / nbytes are logical members: they describe the view's extent, not the backing array."""
+        a = self._array()  # shape (12,), i4 (4 bytes)
+        view = a.lazy[2:10]  # logical shape (8,)
+        assert view.shape == (8,)
+        assert view.size == 8
+        assert view.nbytes == 8 * 4
