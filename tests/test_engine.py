@@ -162,6 +162,33 @@ def test_open_array_carries_engine(local: LocalStore) -> None:
     assert arr._async_array.config.engine == "reference"
 
 
+def test_open_array_create_fallback_honors_engine(local: LocalStore) -> None:
+    """open_array(mode='a', engine=...) on a missing path creates the array and
+    the returned array still carries the engine (not silently downgraded)."""
+    arr = zarr.open_array(
+        store=local,
+        path="new",
+        mode="a",
+        shape=(4, 4),
+        chunks=(2, 2),
+        dtype="uint8",
+        engine="reference",
+    )
+    assert arr.engine == "reference"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_read_missing_chunks_false_raises_under_engine(local: LocalStore, engine: str) -> None:
+    """read_missing_chunks=False cannot be honored by the crud engines (their
+    reads always fill), so engine reads raise instead of silently diverging."""
+    native = zarr.create_array(store=local, name="a", shape=(4, 4), chunks=(2, 2), dtype="uint8")
+    native[:] = 1
+    with zarr.config.set({"array.read_missing_chunks": False}):
+        arr = zarr.open_array(store=local, path="a", engine=engine)
+        with pytest.raises(NotImplementedError, match="read_missing_chunks"):
+            arr[:]
+
+
 @pytest.mark.skipif(not _zarrista_available(), reason="zarrista not installed")
 def test_engine_unsupported_store_raises_on_create() -> None:
     """Creating under zarrista on a MemoryStore (un-ingestable) raises UnsupportedStoreError."""

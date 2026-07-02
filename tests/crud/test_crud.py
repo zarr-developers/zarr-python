@@ -133,6 +133,17 @@ async def test_list_children(backend: str, store: Store) -> None:
     assert not any(p.startswith("/") for p in by_path)
 
 
+async def test_list_children_nested_group(backend: str, store: Store) -> None:
+    """Children of a *nested* group are identified by their store-relative path
+    (`"g/bar"`), not the bare leaf name — the same form from every backend."""
+    root = zarr.create_group(store=store)
+    g = root.create_group("g")
+    g.create_array("bar", shape=(4,), chunks=(2,), dtype="uint8")
+    by_path = dict(await list_children(store, "g", engine=backend))
+    assert set(by_path) == {"g/bar"}
+    assert by_path["g/bar"]["node_type"] == "array"
+
+
 async def test_create_read_delete_v2_group(backend: str, store: Store) -> None:
     await create_new_group(GROUP_META_V2, store, "g2", engine=backend)
     meta = await read_metadata(store, "g2", engine=backend)

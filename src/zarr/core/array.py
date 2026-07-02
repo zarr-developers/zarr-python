@@ -5453,6 +5453,12 @@ async def _engine_get_selection(
         raise NotImplementedError(
             f"the {config.engine!r} engine does not support the 'out' or 'fields' arguments"
         )
+    if config.read_missing_chunks is False:
+        # Engine reads always fill missing chunks; honoring False would require
+        # threading the setting through the CrudBackend contract.
+        raise NotImplementedError(
+            f"the {config.engine!r} engine does not support read_missing_chunks=False"
+        )
     selection = _engine_basic_selection(indexer, config.engine)
     from zarr.crud import read_region
 

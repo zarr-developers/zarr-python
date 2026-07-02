@@ -212,5 +212,7 @@ class ReferenceBackend(CrudBackend):
         async for name in store.list_dir(prefix):
             child_path = f"{p}/{name}" if p else name
             if await self._node_exists(store, child_path):
-                children.append((name, await self.read_metadata(store, child_path)))
+                # The contract identifies children by store-relative path
+                # ("g/bar"), not the bare leaf name — matching the zarrs backend.
+                children.append((child_path, await self.read_metadata(store, child_path)))
         return children

@@ -1243,6 +1243,13 @@ async def open_array(
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_format()
+            if engine is not None:
+                # `create` has no `engine` parameter; fold it into the array
+                # config so the created array carries (and routes through) the
+                # requested engine instead of silently downgrading to native.
+                kwargs["config"] = dataclasses.replace(
+                    parse_array_config(kwargs.get("config")), engine=engine
+                )
             return await create(
                 store=store_path,
                 zarr_format=_zarr_format,
