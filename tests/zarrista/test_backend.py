@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
+pytest.importorskip("zarrista", reason="zarrista is not installed", exc_type=ImportError)
+
 from zarr.crud import ReferenceBackend
 from zarr.zarrista import UnsupportedStoreError, ZarristaBackend
 
@@ -231,11 +233,11 @@ async def test_object_store_read_subset(object_store: Store) -> None:
 async def test_memory_backed_object_store_raises() -> None:
     """An ObjectStore wrapping an obstore MemoryStore is rejected at the gate:
     zarrista cannot ingest memory-backed obstore stores."""
-    import obstore.store
+    obstore_store = pytest.importorskip("obstore.store", reason="obstore is not installed")
 
     from zarr.storage import ObjectStore
 
-    store: Store = await ObjectStore.open(obstore.store.MemoryStore())
+    store: Store = await ObjectStore.open(obstore_store.MemoryStore())
     backend = ZarristaBackend()
     with pytest.raises(UnsupportedStoreError):
         await backend.create_array(store, "a", array_metadata(), overwrite=False)

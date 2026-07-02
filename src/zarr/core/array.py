@@ -5471,7 +5471,9 @@ async def _engine_get_selection(
     )
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return cast("NDArrayLikeOrScalar", result[()])
-    return result
+    # `read_region` returns a read-only view over the backend's immutable bytes;
+    # the native path returns a writable buffer, so copy for parity.
+    return result.copy()
 
 
 async def _get_selection(

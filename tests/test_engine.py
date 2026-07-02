@@ -112,6 +112,19 @@ def test_getitem_via_engine_matches_native(local: LocalStore, engine: str) -> No
 
 
 @pytest.mark.parametrize("engine", ENGINES)
+def test_getitem_result_is_writable_under_engine(local: LocalStore, engine: str) -> None:
+    """Engine reads return a writable array, matching the native path (the crud
+    facade's read-only view must not leak through `arr[...]`)."""
+    native = zarr.create_array(store=local, name="a", shape=(8, 8), chunks=(4, 4), dtype="uint16")
+    native[:] = _ramp()
+
+    arr = zarr.open_array(store=local, path="a", engine=engine)
+    result = np.asarray(arr[2:6, 1:5])
+    assert result.flags.writeable
+    result[0, 0] = 42  # must not raise
+
+
+@pytest.mark.parametrize("engine", ENGINES)
 def test_scalar_getitem_via_engine(local: LocalStore, engine: str) -> None:
     """A full-integer selection returns a scalar, matching native semantics."""
     data = _ramp()
