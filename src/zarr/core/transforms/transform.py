@@ -114,7 +114,7 @@ class IndexTransform:
                     parts.append(f"[{start}, {stop}) step {m.stride}")
             elif isinstance(m, ArrayMap):
                 storage = m.offset + m.stride * m.index_array
-                n = len(storage)
+                n = int(storage.size)  # .size, not len(): index_array may be 0-d
                 if n <= 5:
                     vals = ", ".join(str(int(v)) for v in storage.ravel())
                     parts.append("{" + vals + "}")
@@ -520,8 +520,10 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             hi = transform.domain.exclusive_max[old_dim]
             idx = sel
             if idx < lo or idx >= hi:
-                raise IndexError(
-                    f"index {sel} is out of bounds for dimension {old_dim} with domain [{lo}, {hi})"
+                hint = _LITERAL_HINT if sel < 0 else ""
+                raise BoundsCheckError(
+                    f"index {sel} is out of bounds for dimension {old_dim} "
+                    f"(valid indices [{lo}, {hi})){hint}"
                 )
             dropped_dims.add(old_dim)
             dim_int_val[old_dim] = idx
@@ -531,6 +533,9 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
 
+            # Literal coordinates: negative bounds are out of the domain, not
+            # from-the-end (the eager dialect wraps them before reaching here).
+            _check_slice_bounds(sel, old_dim, lo, hi)
             # Resolve slice relative to the current domain (origin-based)
             start, stop, step = sel.indices(dim_size)
             # start, stop, step are now relative to a 0-based range of size dim_size
@@ -675,6 +680,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
+            _check_slice_bounds(sel, old_dim, lo, hi)
             start, stop, step = sel.indices(dim_size)
             if step <= 0:
                 raise IndexError("slice step must be positive")
@@ -843,6 +849,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         lo = transform.domain.inclusive_min[old_dim]
         hi = transform.domain.exclusive_max[old_dim]
         dim_size = hi - lo
+        _check_slice_bounds(sel, old_dim, lo, hi)
         start, stop, step = sel.indices(dim_size)
         if step <= 0:
             raise IndexError("slice step must be positive")
@@ -950,8 +957,22 @@ def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
                 arr = np.where(arr < 0, arr + shape[dim], arr)
             result.append(arr)
             dim += 1
+        elif isinstance(sel, slice):
+            # Wrap negative slice bounds NumPy-style here (the eager dialect);
+            # the transform layer treats every coordinate literally and rejects
+            # negatives, so the wrap must happen before lowering. Negative steps
+            # are left untouched (rejected later with their own error); a
+            # wrapped bound still below 0 clamps to 0, matching NumPy.
+            if (sel.step is None or sel.step > 0) and dim < len(shape):
+                n = shape[dim]
+                start = sel.start if sel.start is None or sel.start >= 0 else max(0, sel.start + n)
+                stop = sel.stop if sel.stop is None or sel.stop >= 0 else max(0, sel.stop + n)
+                result.append(slice(start, stop, sel.step))
+            else:
+                result.append(sel)
+            dim += 1
         else:
-            # slice, bool array, or anything else: pass through
+            # bool array, or anything else: pass through
             result.append(sel)
             if sel is not None and sel is not Ellipsis:
                 dim += 1
@@ -959,6 +980,30 @@ def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
     if not isinstance(selection, tuple) and len(result) == 1:
         return result[0]
     return tuple(result)
+
+
+_LITERAL_HINT = (
+    "; negative indices are literal coordinates in lazy indexing, not from-the-end "
+    "(use `shape[dim] - k`, or the eager methods, for NumPy semantics)"
+)
+
+
+def _check_slice_bounds(sel: slice, dim: int, lo: int, hi: int) -> None:
+    """Reject negative slice bounds: lazy-path coordinates are literal.
+
+    Consistent with integer and index-array selections — a lazy selection is a
+    declaration in literal coordinates, and domains start at 0, so a negative
+    bound is never in the domain regardless of syntactic form. Positive
+    out-of-range bounds are NOT rejected: a slice denotes a range, and ranges
+    intersect the domain (Python/NumPy clamping), which can only shorten the
+    result, never silently select different data the way wraparound would.
+    """
+    for name, bound in (("start", sel.start), ("stop", sel.stop)):
+        if bound is not None and bound < 0:
+            raise BoundsCheckError(
+                f"slice {name} {bound} is out of bounds for dimension {dim} "
+                f"(valid indices [{lo}, {hi})){_LITERAL_HINT}"
+            )
 
 
 def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], dim_size: int) -> None:
@@ -969,8 +1014,18 @@ def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], dim_size: in
     NumPy-style negatives before building the transform. Matches the eager
     bounds-check error so out-of-range values raise instead of silently wrapping.
     """
-    if arr.size and (int(arr.min()) < 0 or int(arr.max()) >= dim_size):
-        raise BoundsCheckError(f"index out of bounds for dimension with length {dim_size}")
+    if arr.size == 0:
+        return
+    lo_val, hi_val = int(arr.min()), int(arr.max())
+    if lo_val < 0:
+        raise BoundsCheckError(
+            f"index {lo_val} is out of bounds for dimension with length {dim_size}{_LITERAL_HINT}"
+        )
+    if hi_val >= dim_size:
+        raise BoundsCheckError(
+            f"index {hi_val} is out of bounds for dimension with length {dim_size} "
+            f"(valid indices [0, {dim_size}))"
+        )
 
 
 def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str) -> None:

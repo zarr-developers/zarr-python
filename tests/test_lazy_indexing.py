@@ -23,7 +23,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import default_buffer_prototype
-from zarr.errors import LazyViewError
+from zarr.errors import BoundsCheckError, LazyViewError
 from zarr.storage import MemoryStore
 
 
@@ -281,10 +281,16 @@ class TestLazyVIndex:
 class TestLazyComposition:
     @pytest.mark.parametrize("cfg", ND_CASES)
     def test_chained_views_compose(self, cfg: Config) -> None:
-        """Composing two lazy slices equals applying them in sequence on NumPy."""
+        """Composing two lazy slices equals applying them in sequence on NumPy.
+
+        Bounds are spelled literally: lazy coordinates are literal, so the
+        from-the-end `1:-1` spelling is rejected on the lazy path (see
+        TestLazyErrors.test_negative_slice_bounds_are_literal).
+        """
         a, ref = _make(cfg)
-        view = a.lazy[1:-1].lazy[1:-1]
-        expected = ref[1:-1][1:-1]
+        n = cfg.shape[0]
+        view = a.lazy[1 : n - 1].lazy[1 : n - 3]
+        expected = ref[1 : n - 1][1 : n - 3]
         assert tuple(view.shape) == expected.shape
         np.testing.assert_array_equal(view[...], expected)
 
@@ -398,6 +404,104 @@ class TestLazyErrors:
                 _ = a.lazy.oindex[(sel,)][...]
             with pytest.raises(IndexError, match="out of bounds"):
                 _ = a.lazy.vindex[(sel,)][...]
+
+    def test_negative_slice_bounds_are_literal(self) -> None:
+        """Negative slice bounds are literal coordinates on the lazy path, like
+        every other index form — never from-the-end — so they raise.
+
+        Consistency rule: a lazy selection is a declaration in literal
+        coordinates, and view domains start at 0, so a negative value is never
+        in bounds regardless of syntactic form (integer, slice bound, or index
+        array).
+        """
+        a, _ = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
+        for sel in (slice(-3, None), slice(None, -1), slice(1, -1), slice(-24, None)):
+            with pytest.raises(BoundsCheckError, match="out of bounds"):
+                a.lazy[sel]
+            with pytest.raises(BoundsCheckError, match="out of bounds"):
+                a.lazy.oindex[(sel,)]
+        # ... on views too
+        v = a.lazy[2:10]
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
+            v.lazy[-2:]
+        # ... and for writes
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
+            a.lazy[-3:] = 0
+
+    def test_positive_slice_overflow_still_clamps(self) -> None:
+        """Positive out-of-range slice bounds intersect the domain (Python range
+        semantics): a long stop shortens the range, it cannot select wrong data."""
+        a, ref = _make(CONFIGS[1])  # shape (24,)
+        np.testing.assert_array_equal(a.lazy[5:100].result(), ref[5:100])
+        assert a.lazy[100:200].shape == (0,)
+
+    def test_eager_view_methods_keep_numpy_negative_slices(self) -> None:
+        """The eager dialect on a view still wraps negative slice bounds like NumPy."""
+        a, ref = _make(CONFIGS[1])
+        v = a.lazy[2:10]
+        np.testing.assert_array_equal(v[-3:], ref[2:10][-3:])
+        np.testing.assert_array_equal(v[1:-1], ref[2:10][1:-1])
+
+    def test_lazy_bounds_errors_share_one_type(self) -> None:
+        """All three literal-coordinate rejections raise BoundsCheckError (an
+        IndexError), with one message shape naming the valid range."""
+        a, _ = _make(CONFIGS[1])
+        for trigger in (
+            lambda: a.lazy[-1],
+            lambda: a.lazy[-3:],
+            lambda: a.lazy.oindex[(np.array([-1], dtype=np.intp),)],
+        ):
+            with pytest.raises(BoundsCheckError, match="out of bounds"):
+                trigger()
+
+    def test_guard_message_names_real_apis(self) -> None:
+        """LazyViewError points at APIs that exist (chunk_projections/metadata),
+        not the not-yet-added chunk_layout."""
+        a, _ = _make(CONFIGS[1])
+        with pytest.raises(LazyViewError) as ei:
+            _ = a.lazy[2:10].chunks
+        assert "chunk_projections" in str(ei.value)
+        assert "chunk_layout" not in str(ei.value)
+
+    def test_fancy_view_repr_does_not_crash(self) -> None:
+        """repr of an integer-indexed fancy view must not raise (0-d index array
+        in selection_repr)."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        b[...] = np.arange(48, dtype="i4").reshape(6, 8)
+        ov = b.lazy.oindex[np.array([1, 3]), slice(None)]
+        assert isinstance(repr(ov.lazy[0]), str)
+
+
+class TestKnownFancyIntBugs:
+    """Strict-xfail pins for the int-on-fancy-picked-dim defect (see review notes):
+    integer indexing a dimension that an oindex/vindex selection created is
+    mis-lowered, crashing reads or mis-shaping results. These flip to failures
+    when the bug is fixed, forcing the pins to be removed."""
+
+    @pytest.mark.xfail(
+        reason="integer indexing on an oindex-picked dimension crashes in the "
+        "codec pipeline (ArrayMap not collapsed to ConstantMap)",
+        strict=True,
+    )
+    def test_int_read_on_oindex_view(self) -> None:
+        """`rows[0]` on an oindex-created view must equal the picked row."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        ref = np.arange(48, dtype="i4").reshape(6, 8)
+        b[...] = ref
+        rows = b.lazy.oindex[np.array([1, 3]), slice(None)]
+        np.testing.assert_array_equal(rows[0], ref[[1, 3]][0])
+
+    @pytest.mark.xfail(
+        reason="vindex-created views return shape-(1,) data for integer reads "
+        "where NumPy returns a scalar",
+        strict=True,
+    )
+    def test_int_read_on_vindex_view_is_scalar(self) -> None:
+        """`pts[0]` on a vindex-created view must be a scalar, as in NumPy."""
+        a = zarr.create_array({}, shape=(12,), chunks=(3,), dtype="i4")
+        a[...] = np.arange(12, dtype="i4")
+        pts = a.lazy.vindex[np.array([1, 3, 5])]
+        assert np.shape(pts[0]) == ()
 
     def test_block_selection_on_view_rejected(self) -> None:
         """Block selection is ill-defined on a lazy view and must raise, not corrupt."""

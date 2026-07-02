@@ -862,8 +862,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if not self._is_identity:
             raise LazyViewError(
                 f"`{name}` is not defined for a lazy view (a sliced or indexed array that "
-                f"does not fill its chunk grid). Use `chunk_layout` for the backing array's "
-                f"structure, or `chunk_projections` for this view's chunk granularity."
+                f"does not fill its chunk grid). Use `chunk_projections` for this view's "
+                f"chunk granularity; the backing array's stored structure is available via "
+                f"`metadata` / `chunk_grid`."
             )
 
     @property
