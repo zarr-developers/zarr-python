@@ -303,7 +303,9 @@ async def load(
 
     Unlike [`open`][zarr.open], which returns a lazy [`Array`][zarr.Array] or
     [`Group`][zarr.Group] backed by the store, `load` eagerly reads the data and
-    returns it as an in-memory NumPy array (or a dict of NumPy arrays for a group).
+    returns it as an in-memory array (or a dict of arrays for a group).
+    The array type is NumPy by default, but follows the configured
+    buffer prototype (for example, CuPy for GPU use cases).
     Use `open` when you want to read or write data incrementally without loading it
     all into memory.
     """
@@ -362,7 +364,8 @@ async def open(
     -----
     `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
     the store, so data is read and written incrementally. Use [`load`][zarr.load]
-    instead when you want the data eagerly read into an in-memory NumPy array.
+    instead when you want the data eagerly read into an in-memory array (a
+    NumPy array by default).
     """
 
     if mode is None:
