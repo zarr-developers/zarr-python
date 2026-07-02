@@ -9,6 +9,7 @@ __all__ = [
     "ContainsGroupError",
     "DataTypeValidationError",
     "GroupNotFoundError",
+    "LazyViewError",
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
@@ -149,6 +150,19 @@ class BoundsCheckError(IndexError): ...
 
 
 class ArrayIndexError(IndexError): ...
+
+
+class LazyViewError(NotImplementedError):
+    """Raised when an operation that assumes an array fills its chunk grid is used
+    on a non-identity lazy view (created via ``Array.lazy[...]``).
+
+    Grid-describing members (``chunks``, ``shards``, ``nchunks``, ``read_chunk_sizes``,
+    ...) and grid-mutating ones (``resize``, ``append``) have no well-defined answer
+    for a view onto a subset of the backing grid. Use `chunk_projections` for the
+    view's granularity; the backing array's stored structure is available via
+    `metadata` / `chunk_grid`. Subclasses
+    ``NotImplementedError`` so existing consumers that catch it keep working.
+    """
 
 
 class ChunkNotFoundError(BaseZarrError):

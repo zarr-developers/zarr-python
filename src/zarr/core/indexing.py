@@ -1442,8 +1442,16 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         return None, cast("Selection", selection)
     else:
         # multiple items, split fields from selection items
-        fields: Fields = [f for f in selection if isinstance(f, str)]
-        fields = fields[0] if len(fields) == 1 else fields
+        field_names = [f for f in selection if isinstance(f, str)]
+        # No fields -> None (consistent with the non-tuple branch above), so callers
+        # can use `fields is not None` to mean "a field was requested".
+        fields: Fields | None
+        if len(field_names) == 0:
+            fields = None
+        elif len(field_names) == 1:
+            fields = field_names[0]
+        else:
+            fields = field_names
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
             "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
