@@ -186,6 +186,46 @@ class IndexTransform:
     def __getitem__(self, selection: Any) -> IndexTransform:
         return _apply_basic_indexing(self, selection)
 
+    def translate_domain_by(self, shift: tuple[int, ...]) -> IndexTransform:
+        """Shift the *input* domain by ``shift``, preserving which cells are addressed.
+
+        TensorStore's ``translate_by``: the domain moves, and every output map is
+        re-offset so that new coordinate ``c`` addresses the cell that ``c - shift``
+        addressed before. ArrayMaps are indexed positionally over the domain, so
+        their index arrays are unchanged.
+        """
+        if len(shift) != self.input_rank:
+            raise ValueError(f"shift must have length {self.input_rank}, got {len(shift)}")
+        new_domain = self.domain.translate(shift)
+        new_output: list[OutputIndexMap] = []
+        for m in self.output:
+            if isinstance(m, DimensionMap):
+                s = shift[m.input_dimension]
+                new_output.append(
+                    DimensionMap(
+                        input_dimension=m.input_dimension,
+                        offset=m.offset - m.stride * s,
+                        stride=m.stride,
+                    )
+                )
+            else:
+                # ConstantMap: no input dependence. ArrayMap: positional over
+                # the domain, invariant under domain translation.
+                new_output.append(m)
+        return IndexTransform(domain=new_domain, output=tuple(new_output))
+
+    def translate_domain_to(self, origins: tuple[int, ...]) -> IndexTransform:
+        """Move the input domain so its per-dimension origins equal ``origins``.
+
+        TensorStore's ``translate_to``; ``translate_domain_to((0,) * rank)``
+        re-zeros a view's coordinate system without changing which cells it
+        addresses.
+        """
+        if len(origins) != self.input_rank:
+            raise ValueError(f"origins must have length {self.input_rank}, got {len(origins)}")
+        shift = tuple(o - m for o, m in zip(origins, self.domain.inclusive_min, strict=True))
+        return self.translate_domain_by(shift)
+
     @property
     def oindex(self) -> _OIndexHelper:
         return _OIndexHelper(self)
@@ -449,10 +489,13 @@ def _reindex_array(
             old_dim += 1
         elif isinstance(sel, slice):
             if old_dim < arr.ndim:
-                dim_size = domain.shape[old_dim]
-                # sel.indices gives 0-based start/stop/step for the array axis
-                start, stop, step = sel.indices(dim_size)
-                idx.append(slice(start, stop, step))
+                lo = domain.inclusive_min[old_dim]
+                hi = domain.exclusive_max[old_dim]
+                # Bounds are literal domain coordinates; the stored array is
+                # indexed positionally, so shift by the domain origin.
+                start, step, _origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+                pos = start - lo
+                idx.append(slice(pos, pos + size * step, step))
             old_dim += 1
             result_axis += 1
 
@@ -478,12 +521,16 @@ def _reindex_array_oindex(
     for old_dim, sel in enumerate(normalized):
         if old_dim >= arr.ndim:
             break
+        lo = domain.inclusive_min[old_dim]
         if isinstance(sel, np.ndarray):
-            idx.append(sel)
+            # Values are literal domain coordinates; the stored array is
+            # indexed positionally, so shift by the domain origin.
+            idx.append(sel - lo)
         elif isinstance(sel, slice):
-            dim_size = domain.shape[old_dim]
-            start, stop, step = sel.indices(dim_size)
-            idx.append(slice(start, stop, step))
+            hi = domain.exclusive_max[old_dim]
+            start, step, _origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+            pos = start - lo
+            idx.append(slice(pos, pos + size * step, step))
         else:
             idx.append(slice(None))
 
@@ -531,24 +578,14 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
         elif isinstance(sel, slice):
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
-            dim_size = hi - lo
 
-            # Literal coordinates: bounds below the origin are out of the
-            # domain, not from-the-end (the eager dialect wraps them first).
-            _check_slice_bounds(sel, old_dim, lo, hi)
-            start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
-            # start, stop, step are now relative to a 0-based range of size dim_size
-
-            if step <= 0:
-                raise IndexError("slice step must be positive")
-
-            new_size = max(0, math.ceil((stop - start) / step))
-            new_inclusive_min.append(0)
-            new_exclusive_max.append(new_size)
-
-            # Absolute start in the original domain coordinates
-            abs_start = lo + start
-            dim_slice_params[old_dim] = (abs_start, stop, step)
+            # TensorStore semantics: bounds are literal coordinates; a step-1
+            # slice keeps them as the new domain, a strided slice's domain is
+            # [trunc(start/step), trunc(start/step) + size).
+            start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+            new_inclusive_min.append(origin)
+            new_exclusive_max.append(origin + size)
+            dim_slice_params[old_dim] = (start, step, origin)
             old_to_new_dim[old_dim] = new_dim_idx
             new_dim_idx += 1
             old_dim += 1
@@ -570,9 +607,10 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                 new_offset = m.offset + m.stride * dim_int_val[d]
                 new_output.append(ConstantMap(offset=new_offset))
             elif d in old_to_new_dim:
-                # Slice: update offset and stride
-                abs_start, _, step = dim_slice_params[d]
-                new_offset = m.offset + m.stride * abs_start
+                # Slice: new coordinate `origin + k` maps to old coordinate
+                # `start + k*step`, i.e. old = start - step*origin + step*new.
+                start, step, origin = dim_slice_params[d]
+                new_offset = m.offset + m.stride * (start - step * origin)
                 new_stride = m.stride * step
                 new_input_dim = old_to_new_dim[d]
                 new_output.append(
@@ -669,7 +707,9 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         if isinstance(sel, np.ndarray):
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
-            _check_array_in_bounds(sel, hi - lo)
+            # Index-array values are literal domain coordinates; the fancy dim
+            # they create gets a fresh zero-origin [0, n) domain (TensorStore).
+            _check_array_in_bounds(sel, lo, hi)
             dim_array[old_dim] = sel
             new_inclusive_min.append(0)
             new_exclusive_max.append(len(sel))
@@ -678,16 +718,10 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(sel, slice):
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
-            dim_size = hi - lo
-            _check_slice_bounds(sel, old_dim, lo, hi)
-            start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
-            if step <= 0:
-                raise IndexError("slice step must be positive")
-            new_size = max(0, math.ceil((stop - start) / step))
-            new_inclusive_min.append(0)
-            new_exclusive_max.append(new_size)
-            abs_start = lo + start
-            dim_slice_params[old_dim] = (abs_start, stop, step)
+            start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+            new_inclusive_min.append(origin)
+            new_exclusive_max.append(origin + size)
+            dim_slice_params[old_dim] = (start, step, origin)
             old_to_new_dim[old_dim] = new_dim_idx
             new_dim_idx += 1
 
@@ -715,8 +749,8 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
             elif d in dim_slice_params:
-                abs_start, _, step = dim_slice_params[d]
-                new_offset = m.offset + m.stride * abs_start
+                start, step, origin = dim_slice_params[d]
+                new_offset = m.offset + m.stride * (start - step * origin)
                 new_stride = m.stride * step
                 new_input_dim = old_to_new_dim[d]
                 new_output.append(
@@ -816,7 +850,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         if isinstance(sel, np.ndarray):
             lo = transform.domain.inclusive_min[i]
             hi = transform.domain.exclusive_max[i]
-            _check_array_in_bounds(sel, hi - lo)
+            _check_array_in_bounds(sel, lo, hi)
             array_dims.append(i)
             arrays.append(sel)
         else:
@@ -840,23 +874,17 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         new_inclusive_min.append(0)
         new_exclusive_max.append(s)
 
-    # Slice dimensions
+    # Slice dimensions (preserved-domain literal semantics, like basic indexing)
     slice_dim_params: dict[int, tuple[int, int, int]] = {}
     for old_dim in slice_dims:
         sel = processed[old_dim]
         assert isinstance(sel, slice)
         lo = transform.domain.inclusive_min[old_dim]
         hi = transform.domain.exclusive_max[old_dim]
-        dim_size = hi - lo
-        _check_slice_bounds(sel, old_dim, lo, hi)
-        start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
-        if step <= 0:
-            raise IndexError("slice step must be positive")
-        new_size = max(0, math.ceil((stop - start) / step))
-        new_inclusive_min.append(0)
-        new_exclusive_max.append(new_size)
-        abs_start = lo + start
-        slice_dim_params[old_dim] = (abs_start, stop, step)
+        start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+        new_inclusive_min.append(origin)
+        new_exclusive_max.append(origin + size)
+        slice_dim_params[old_dim] = (start, step, origin)
 
     new_domain = IndexDomain(
         inclusive_min=tuple(new_inclusive_min),
@@ -886,9 +914,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
             else:
-                # Slice dim
-                abs_start, _, step = slice_dim_params[d]
-                new_offset = m.offset + m.stride * abs_start
+                # Slice dim: new coord `origin + k` maps to old `start + k*step`
+                start, step, origin = slice_dim_params[d]
+                new_offset = m.offset + m.stride * (start - step * origin)
                 new_stride = m.stride * step
                 new_input_dim = n_broadcast_dims + slice_dims.index(d)
                 new_output.append(
@@ -910,140 +938,80 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
 
-def _normalize_negative_indices(selection: Any, shape: tuple[int, ...]) -> Any:
-    """Convert negative indices to positive ones using the array shape.
-
-    Only normalizes integer and array-like index components; leaves
-    slices, Ellipsis, None, etc. untouched.
-    """
-    if not isinstance(selection, tuple):
-        selection_tuple: tuple[Any, ...] = (selection,)
-    else:
-        selection_tuple = selection
-
-    # Count real dimensions (non-None, non-Ellipsis) to map each entry to a shape
-    # dim. The ellipsis covers the dims not consumed by those entries; since
-    # n_non_newaxis already excludes the ellipsis itself, that count is exactly
-    # len(shape) - n_non_newaxis (no +1).
-    n_non_newaxis = sum(1 for s in selection_tuple if s is not None and s is not Ellipsis)
-    n_ellipsis_dims = len(shape) - n_non_newaxis
-
-    result: list[Any] = []
-    dim = 0
-
-    for sel in selection_tuple:
-        if sel is Ellipsis:
-            result.append(sel)
-            dim += max(0, n_ellipsis_dims)
-        elif sel is None:
-            result.append(sel)
-        elif isinstance(sel, (int, np.integer)) and not isinstance(sel, bool):
-            idx = int(sel)
-            if idx < 0 and dim < len(shape):
-                idx = idx + shape[dim]
-            result.append(idx)
-            dim += 1
-        elif isinstance(sel, np.ndarray) and sel.dtype != np.bool_:
-            arr = sel.copy()
-            if dim < len(shape):
-                arr = np.where(arr < 0, arr + shape[dim], arr)
-            result.append(arr)
-            dim += 1
-        elif isinstance(sel, list):
-            # Convert lists to arrays with negative index normalization
-            arr = np.asarray(sel, dtype=np.intp)
-            if dim < len(shape):
-                arr = np.where(arr < 0, arr + shape[dim], arr)
-            result.append(arr)
-            dim += 1
-        elif isinstance(sel, slice):
-            # Wrap negative slice bounds NumPy-style here (the eager dialect);
-            # the transform layer treats every coordinate literally and rejects
-            # negatives, so the wrap must happen before lowering. Negative steps
-            # are left untouched (rejected later with their own error); a
-            # wrapped bound still below 0 clamps to 0, matching NumPy.
-            if (sel.step is None or sel.step > 0) and dim < len(shape):
-                n = shape[dim]
-                start = sel.start if sel.start is None or sel.start >= 0 else max(0, sel.start + n)
-                stop = sel.stop if sel.stop is None or sel.stop >= 0 else max(0, sel.stop + n)
-                result.append(slice(start, stop, sel.step))
-            else:
-                result.append(sel)
-            dim += 1
-        else:
-            # bool array, or anything else: pass through
-            result.append(sel)
-            if sel is not None and sel is not Ellipsis:
-                dim += 1
-
-    if not isinstance(selection, tuple) and len(result) == 1:
-        return result[0]
-    return tuple(result)
-
-
 _LITERAL_HINT = (
     "; negative indices are literal coordinates in lazy indexing, not from-the-end "
-    "(use `shape[dim] - k`, or the eager methods, for NumPy semantics)"
+    "(use `shape[dim] - k`, or materialize with `result()`, for NumPy semantics)"
 )
 
 
-def _check_slice_bounds(sel: slice, dim: int, lo: int, hi: int) -> None:
-    """Reject slice bounds below the domain origin: coordinates are literal.
+def _trunc_div(a: int, b: int) -> int:
+    """Integer division rounded toward zero (C semantics), as TensorStore uses
+    for strided-slice domain origins — distinct from Python's floor division
+    for negative operands (``trunc(-9/2) == -4`` where ``-9 // 2 == -5``)."""
+    q = a // b
+    if q < 0 and q * b != a:
+        q += 1
+    return q
 
-    Consistent with integer and index-array selections — a lazy selection is a
-    declaration in literal coordinates, so a bound below ``inclusive_min`` is
-    never in the domain regardless of syntactic form. For the zero-origin
-    domains all public views have, this is exactly "negative bounds raise".
-    Bounds past ``exclusive_max`` are NOT rejected: a slice denotes a range,
-    and ranges intersect the domain (Python/NumPy clamping), which can only
-    shorten the result, never silently select different data the way
-    wraparound would.
+
+def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int, int, int]:
+    """Resolve a slice against domain ``[lo, hi)`` with TensorStore semantics.
+
+    Slice bounds are **literal domain coordinates** — never from-the-end, never
+    clamped. Rules (each verified against tensorstore 0.1.84):
+
+    - defaults: ``start = lo``, ``stop = hi``;
+    - a non-empty interval must be contained in the domain (no clamping — a
+      NumPy-style out-of-range or negative bound is an error, not a shorter or
+      wrapped result);
+    - an **empty** interval (``start == stop``) is valid anywhere;
+    - reversed bounds (``start > stop`` with positive step) are an error, not
+      an empty result;
+    - the result's domain origin is ``trunc(start/step)`` (rounded toward
+      zero) and coordinate ``origin + k`` maps to input ``start + k*step``.
+
+    Returns ``(start, step, origin, size)`` in domain coordinates.
     """
-    for name, bound in (("start", sel.start), ("stop", sel.stop)):
-        if bound is not None and bound < lo:
-            raise BoundsCheckError(
-                f"slice {name} {bound} is out of bounds for dimension {dim} "
-                f"(valid indices [{lo}, {hi})){_LITERAL_HINT}"
-            )
+    step = 1 if sel.step is None else sel.step
+    if step <= 0:
+        # Negative steps are valid in TensorStore but not yet supported here;
+        # step 0 is invalid everywhere.
+        raise IndexError("slice step must be positive")
+    start = lo if sel.start is None else sel.start
+    stop = hi if sel.stop is None else sel.stop
+    if stop < start:
+        raise IndexError(
+            f"slice interval [{start}, {stop}) with step {step} does not specify "
+            f"a valid interval for dimension {dim} (start > stop)"
+        )
+    size = -(-(stop - start) // step)  # ceil((stop - start) / step)
+    if size > 0 and (start < lo or stop > hi):
+        hint = _LITERAL_HINT if (start < 0 or stop < 0) and lo >= 0 else ""
+        raise BoundsCheckError(
+            f"slice interval [{start}, {stop}) is not contained within domain "
+            f"[{lo}, {hi}) for dimension {dim}{hint}"
+        )
+    origin = _trunc_div(start, step)
+    return start, step, origin, size
 
 
-def _resolve_slice_literal(sel: slice, lo: int, dim_size: int) -> tuple[int, int, int]:
-    """Resolve slice bounds as literal domain coordinates.
+def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], lo: int, hi: int) -> None:
+    """Reject index-array values outside the domain ``[lo, hi)``.
 
-    Bounds name coordinates, not positions: they are shifted into the domain's
-    0-based range (an identity when ``lo == 0``, i.e. for every public view)
-    and then clamped by ``slice.indices`` — safe from wraparound because
-    ``_check_slice_bounds`` has already rejected anything below ``lo``.
-    Returns 0-based ``(start, stop, step)`` relative to the domain origin.
-    """
-    rel = slice(
-        None if sel.start is None else sel.start - lo,
-        None if sel.stop is None else sel.stop - lo,
-        sel.step,
-    )
-    return rel.indices(dim_size)
-
-
-def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], dim_size: int) -> None:
-    """Reject index-array values outside ``[0, dim_size)``.
-
-    Index-array values are literal coordinates (origin 0), so a negative value is
-    out of bounds rather than counting from the end — the Array layer normalizes
-    NumPy-style negatives before building the transform. Matches the eager
-    bounds-check error so out-of-range values raise instead of silently wrapping.
+    Index-array values are literal domain coordinates (TensorStore semantics):
+    a value below ``inclusive_min`` is out of bounds rather than counting from
+    the end. Out-of-range values raise instead of silently wrapping.
     """
     if arr.size == 0:
         return
     lo_val, hi_val = int(arr.min()), int(arr.max())
-    if lo_val < 0:
+    if lo_val < lo:
+        hint = _LITERAL_HINT if lo_val < 0 and lo >= 0 else ""
         raise BoundsCheckError(
-            f"index {lo_val} is out of bounds for dimension with length {dim_size}{_LITERAL_HINT}"
+            f"index {lo_val} is out of bounds (valid indices [{lo}, {hi})){hint}"
         )
-    if hi_val >= dim_size:
-        raise BoundsCheckError(
-            f"index {hi_val} is out of bounds for dimension with length {dim_size} "
-            f"(valid indices [0, {dim_size}))"
-        )
+    if hi_val >= hi:
+        raise BoundsCheckError(f"index {hi_val} is out of bounds (valid indices [{lo}, {hi}))")
 
 
 def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str) -> None:

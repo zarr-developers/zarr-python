@@ -104,7 +104,6 @@ from zarr.core.indexing import (
     VIndex,
     _iter_grid,
     _iter_regions,
-    boundscheck_indices,
     check_fields,
     check_no_multi_fields,
     ensure_tuple,
@@ -115,7 +114,6 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
     replace_lists,
-    wraparound_indices,
 )
 from zarr.core.metadata import (
     ArrayMetadata,
@@ -142,7 +140,6 @@ from zarr.core.transforms.chunk_resolution import iter_chunk_transforms, sub_tra
 from zarr.core.transforms.output_map import ArrayMap
 from zarr.core.transforms.transform import (
     IndexTransform,
-    _normalize_negative_indices,
     selection_to_transform,
 )
 from zarr.errors import (
@@ -806,6 +803,24 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         object.__setattr__(new, "codec_pipeline", self.codec_pipeline)
         object.__setattr__(new, "_transform", transform)
         return new
+
+    def translate_by(self, shift: tuple[int, ...]) -> AsyncArray[T_ArrayMetadata]:
+        """Shift this array's domain by `shift`, preserving which cells it addresses.
+
+        TensorStore's `translate_by`: the view's coordinate labels move; the data
+        does not. `a.translate_by((-10,))` gives a view whose domain starts at
+        -10, where coordinate -10 addresses the cell that 0 addressed before.
+        """
+        return self._with_transform(self._transform.translate_domain_by(tuple(shift)))
+
+    def translate_to(self, origins: tuple[int, ...]) -> AsyncArray[T_ArrayMetadata]:
+        """Move this array's domain so its per-dimension origins equal `origins`.
+
+        TensorStore's `translate_to`; `view.translate_to((0,) * view.ndim)`
+        re-zeros a view's coordinate system without changing which cells it
+        addresses.
+        """
+        return self._with_transform(self._transform.translate_domain_to(tuple(origins)))
 
     @property
     def store(self) -> Store:
@@ -1996,6 +2011,43 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         new_async = self._async_array._with_transform(transform)
         return type(self)(new_async)
 
+    def translate_by(self, shift: tuple[int, ...]) -> Array[T_ArrayMetadata]:
+        """Shift this array's domain by `shift`, preserving which cells it addresses.
+
+        TensorStore's `translate_by`: the view's coordinate labels move; the data
+        does not. `a.translate_by((-10,))` gives a view whose domain starts at
+        -10, where coordinate -10 addresses the cell that 0 addressed before.
+        """
+        return self._with_transform(self._async_array._transform.translate_domain_by(tuple(shift)))
+
+    def translate_to(self, origins: tuple[int, ...]) -> Array[T_ArrayMetadata]:
+        """Move this array's domain so its per-dimension origins equal `origins`.
+
+        TensorStore's `translate_to`; `view.translate_to((0,) * view.ndim)`
+        re-zeros a view's coordinate system without changing which cells it
+        addresses.
+        """
+        return self._with_transform(
+            self._async_array._transform.translate_domain_to(tuple(origins))
+        )
+
+    def __iter__(self) -> Any:
+        """Iterate over the first axis (identity arrays only).
+
+        Lazy views are not iterable, matching TensorStore: the Python iteration
+        protocol counts positions from 0, which are not valid coordinates in a
+        preserved (possibly non-zero-origin) domain — silently yielding nothing
+        or the wrong cells. Read the view first: `iter(view.result())`.
+        """
+        if not self._async_array._is_identity:
+            raise TypeError(
+                "lazy views are not iterable; materialize first, e.g. iterate `view.result()`"
+            )
+        if self.ndim == 0:
+            raise TypeError("iteration over a 0-d array")
+        for i in range(self.shape[0]):
+            yield self[i]
+
     @classmethod
     def _create(
         cls,
@@ -3024,7 +3076,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                     prototype=prototype,
                 )
             )
-        selection = _normalize_negative_indices(selection, self.shape)
         transform = selection_to_transform(selection, self._async_array._transform, "basic")
         return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
@@ -3136,7 +3187,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
             )
             return
-        selection = _normalize_negative_indices(selection, self.shape)
         transform = selection_to_transform(selection, self._async_array._transform, "basic")
         sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
@@ -3277,7 +3327,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # Lazy view (non-identity transform): route through the transform so the
         # view's offset/stride are honored. Use basic mode for plain int/slice
         # selections (so integer axes drop), orthogonal mode for fancy selections.
-        selection = _normalize_negative_indices(selection, self.shape)
         mode: Literal["basic", "orthogonal"] = (
             "basic" if is_basic_selection(selection) else "orthogonal"
         )
@@ -3406,7 +3455,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # Lazy view (non-identity transform): route through the transform so the
         # view's offset/stride are honored. Use basic mode for plain int/slice
         # selections (so integer axes drop), orthogonal mode for fancy selections.
-        selection = _normalize_negative_indices(selection, self.shape)
         mode: Literal["basic", "orthogonal"] = (
             "basic" if is_basic_selection(selection) else "orthogonal"
         )
@@ -3729,10 +3777,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-        # Handle wraparound and bounds checking
-        for dim_sel, dim_len in zip(sel_normalized, self.shape, strict=True):
-            wraparound_indices(dim_sel, dim_len)
-            boundscheck_indices(dim_sel, dim_len)
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -3864,9 +3908,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-        for dim_sel, dim_len in zip(sel_normalized, self.shape, strict=True):
-            wraparound_indices(dim_sel, dim_len)
-            boundscheck_indices(dim_sel, dim_len)
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -5856,6 +5897,10 @@ async def _get_selection_via_transform(
     chunk_grid: ChunkGrid | None = None,
 ) -> NDArrayLikeOrScalar:
     """Read data using an IndexTransform."""
+    # The user-facing transform may carry a preserved (possibly non-zero-origin)
+    # domain; the I/O layer addresses output buffers positionally, so normalize
+    # to a zero-origin domain here. Translation preserves the cell mapping.
+    transform = transform.translate_domain_to((0,) * transform.input_rank)
     if chunk_grid is None:
         chunk_grid = ChunkGrid.from_metadata(metadata)
 
@@ -5959,6 +6004,9 @@ async def _set_selection_via_transform(
     chunk_grid: ChunkGrid | None = None,
 ) -> None:
     """Write data using an IndexTransform."""
+    # See _get_selection_via_transform: normalize to a zero-origin domain
+    # so value/buffer placement is positional.
+    transform = transform.translate_domain_to((0,) * transform.input_rank)
     if chunk_grid is None:
         chunk_grid = ChunkGrid.from_metadata(metadata)
 

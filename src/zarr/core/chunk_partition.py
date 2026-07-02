@@ -79,7 +79,13 @@ def iter_chunk_projections(
     chunk_grid: ChunkGrid,
     encode_key: Callable[[tuple[int, ...]], str],
 ) -> Iterator[ChunkProjection]:
-    """Yield a `ChunkProjection` for each stored chunk ``transform`` projects onto."""
+    """Yield a `ChunkProjection` for each stored chunk ``transform`` projects onto.
+
+    `array_selection` is positional (0-based into the view's extent), so the
+    transform is normalized to a zero-origin domain first — translation
+    preserves which cells are addressed.
+    """
+    transform = transform.translate_domain_to((0,) * transform.input_rank)
     chunk_sizes = chunk_grid.chunk_sizes  # per-dimension, extent-clipped
     for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
         if chunk_grid[chunk_coords] is None:

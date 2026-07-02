@@ -13,9 +13,8 @@ them guards the transform read/write path where it is most likely to break.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 import numpy as np
@@ -26,6 +25,9 @@ import zarr
 from zarr.core.buffer import default_buffer_prototype
 from zarr.errors import BoundsCheckError, LazyViewError
 from zarr.storage import MemoryStore
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -290,10 +292,13 @@ class TestLazyComposition:
         """
         a, ref = _make(cfg)
         n = cfg.shape[0]
-        view = a.lazy[1 : n - 1].lazy[1 : n - 3]
-        expected = ref[1 : n - 1][1 : n - 3]
+        view = a.lazy[1 : n - 1].lazy[2 : n - 2]
+        expected = ref[2 : n - 2]  # literal coordinates: the inner slice re-selects
         assert tuple(view.shape) == expected.shape
         np.testing.assert_array_equal(view[...], expected)
+        # the composed view's domain is the literal interval it covers
+        t = view._async_array._transform
+        assert (t.domain.inclusive_min[0], t.domain.exclusive_max[0]) == (2, n - 2)
 
 
 class TestLazyViewMethods:
@@ -312,19 +317,20 @@ class TestLazyViewMethods:
         n0 = cfg.shape[0]
         cut = n0 // 2
         vslice = (slice(cut, n0), *([slice(None)] * (len(cfg.shape) - 1)))
-        vref = ref[vslice]
         v = a.lazy[vslice]
-        idx = np.array([0, vref.shape[0] - 1], dtype=np.intp)
+        idx = np.array([cut, cfg.shape[0] - 1], dtype=np.intp)  # domain coordinates
         osel: Any = (idx, *([slice(None)] * (len(cfg.shape) - 1)))
-        np.testing.assert_array_equal(v.oindex[osel], vref[osel])
+        np.testing.assert_array_equal(v.oindex[osel], ref[osel])
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
-    def test_view_negative_index_after_ellipsis(self, cfg: Config) -> None:
-        """``v[..., -1]`` on a view selects the last element of the last axis."""
+    def test_view_trailing_index_after_ellipsis(self, cfg: Config) -> None:
+        """``v[..., k]`` uses literal coordinates; ``-1`` is out of the domain."""
         a, ref = _make(cfg)
         v = a.lazy[1 : cfg.shape[0]]
-        vref = ref[1 : cfg.shape[0]]
-        np.testing.assert_array_equal(v[..., -1], vref[..., -1])
+        last = cfg.shape[-1] - 1
+        np.testing.assert_array_equal(v[..., last], ref[1:, ..., last])
+        with pytest.raises(BoundsCheckError):
+            v[..., -1]
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
     def test_view_basic_tuple_and_int(self, cfg: Config) -> None:
@@ -332,11 +338,10 @@ class TestLazyViewMethods:
         a, ref = _make(cfg)
         cut = cfg.shape[0] // 2
         v = a.lazy[cut:]
-        vref = ref[cut:]
-        full: Any = (slice(0, 2), *([slice(None)] * (len(cfg.shape) - 1)))
-        np.testing.assert_array_equal(v[full], vref[full])
-        intsel: Any = (1, *([slice(None)] * (len(cfg.shape) - 1)))
-        np.testing.assert_array_equal(v[intsel], vref[intsel])  # int axis drops
+        full: Any = (slice(cut, cut + 2), *([slice(None)] * (len(cfg.shape) - 1)))
+        np.testing.assert_array_equal(v[full], ref[full])
+        intsel: Any = (cut + 1, *([slice(None)] * (len(cfg.shape) - 1)))
+        np.testing.assert_array_equal(v[intsel], ref[intsel])  # int axis drops
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
     def test_view_vindex(self, cfg: Config) -> None:
@@ -344,9 +349,12 @@ class TestLazyViewMethods:
         a, ref = _make(cfg)
         cut = cfg.shape[0] // 2
         v = a.lazy[cut:]
-        vref = ref[cut:]
-        idx = tuple(np.array([0, 1, 2], dtype=np.intp) for _ in cfg.shape)
-        np.testing.assert_array_equal(v.vindex[idx], vref[idx])
+        # coordinates: axis 0 lives in [cut, n); the other axes are untouched
+        idx = (
+            np.array([cut, cut + 1, cut + 2], dtype=np.intp),
+            *(np.array([0, 1, 2], dtype=np.intp) for _ in cfg.shape[1:]),
+        )
+        np.testing.assert_array_equal(v.vindex[idx], ref[idx])
 
     def test_view_vindex_with_flat_out_buffer(self) -> None:
         """vindex with a multi-dim result and out= on a view uses a flat out buffer.
@@ -356,10 +364,9 @@ class TestLazyViewMethods:
         """
         a, ref = _make(CONFIGS[3])  # 2d-unsharded
         v = a.lazy[2:18]
-        vref = ref[2:18]
-        i0 = np.array([[0, 1], [2, 3]], dtype=np.intp)
+        i0 = np.array([[2, 3], [4, 5]], dtype=np.intp)  # coordinates within [2, 18)
         i1 = np.array([[0, 5], [10, 15]], dtype=np.intp)
-        expected = vref[i0, i1]
+        expected = ref[i0, i1]
         buf = default_buffer_prototype().nd_buffer.empty(
             shape=(expected.size,), dtype=np.dtype("i4")
         )
@@ -375,9 +382,9 @@ class TestLazyViewMethods:
         cut = cfg.shape[0] // 2
         v = a.lazy[cut:]
         expected = ref.copy()
-        wsel: Any = (slice(0, 2), *([slice(None)] * (len(cfg.shape) - 1)))
-        val = _value_like(ref[cut:][wsel])
-        expected[cut:][wsel] = val
+        wsel: Any = (slice(cut, cut + 2), *([slice(None)] * (len(cfg.shape) - 1)))
+        val = _value_like(ref[wsel])
+        expected[wsel] = val
         v[wsel] = val
         np.testing.assert_array_equal(a[...], expected)
 
@@ -416,32 +423,59 @@ class TestLazyErrors:
         array).
         """
         a, _ = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
-        for sel in (slice(-3, None), slice(None, -1), slice(1, -1), slice(-24, None)):
-            with pytest.raises(BoundsCheckError, match="out of bounds"):
+        for sel in (slice(-3, None), slice(-24, None)):
+            with pytest.raises(BoundsCheckError, match="not contained"):
                 a.lazy[sel]
-            with pytest.raises(BoundsCheckError, match="out of bounds"):
+            with pytest.raises(BoundsCheckError, match="not contained"):
                 a.lazy.oindex[(sel,)]
+        # bounds that RESOLVE reversed (stop < start), e.g. [1, -1) or [0, -1),
+        # are invalid intervals — TensorStore's a[5:2] case — not empties
+        for sel in (slice(None, -1), slice(1, -1)):
+            with pytest.raises(IndexError, match="interval"):
+                a.lazy[sel]
         # ... on views too
         v = a.lazy[2:10]
-        with pytest.raises(BoundsCheckError, match="out of bounds"):
+        with pytest.raises(BoundsCheckError, match="not contained"):
             v.lazy[-2:]
         # ... and for writes
-        with pytest.raises(BoundsCheckError, match="out of bounds"):
+        with pytest.raises(BoundsCheckError, match="not contained"):
             a.lazy[-3:] = 0
 
-    def test_positive_slice_overflow_still_clamps(self) -> None:
-        """Positive out-of-range slice bounds intersect the domain (Python range
-        semantics): a long stop shortens the range, it cannot select wrong data."""
-        a, ref = _make(CONFIGS[1])  # shape (24,)
-        np.testing.assert_array_equal(a.lazy[5:100].result(), ref[5:100])
-        assert a.lazy[100:200].shape == (0,)
+    def test_slice_bounds_strict_containment(self) -> None:
+        """Non-empty slice intervals must be contained in the domain — no
+        clamping (TensorStore semantics); empty intervals are valid anywhere;
+        reversed bounds are an error, not an empty result."""
+        a, _ = _make(CONFIGS[1])  # shape (24,)
+        for sel in (slice(5, 100), slice(100, 200), slice(0, 25)):
+            with pytest.raises(BoundsCheckError, match="not contained"):
+                a.lazy[sel]
+        assert a.lazy[5:5].shape == (0,)
+        assert a.lazy[30:30].shape == (0,)  # empty is valid even outside the domain
+        with pytest.raises(IndexError, match="interval"):
+            a.lazy[5:2]
 
-    def test_eager_view_methods_keep_numpy_negative_slices(self) -> None:
-        """The eager dialect on a view still wraps negative slice bounds like NumPy."""
+    def test_one_dialect_view_methods_use_domain_coordinates(self) -> None:
+        """A view has ONE coordinate system: its preserved domain. Eager methods
+        (`v[...]`, `v[k]`) use the same literal coordinates as `.lazy` —
+        matching TensorStore, where indexing a view of [2, 10) with 0 or -1 is
+        out of bounds. Zero-based NumPy-style access is spelled explicitly:
+        materialize (`result()` / `np.asarray`) or re-zero with `translate_to`.
+        """
         a, ref = _make(CONFIGS[1])
         v = a.lazy[2:10]
-        np.testing.assert_array_equal(v[-3:], ref[2:10][-3:])
-        np.testing.assert_array_equal(v[1:-1], ref[2:10][1:-1])
+        np.testing.assert_array_equal(v[2:5], ref[2:5])
+        np.testing.assert_array_equal(v[3], ref[3])
+        bad_reads: list[Callable[[], Any]] = [
+            lambda: v[-1],
+            lambda: v[0:3],
+            lambda: v[-3:],
+        ]
+        for bad in bad_reads:
+            with pytest.raises(BoundsCheckError):
+                bad()
+        np.testing.assert_array_equal(np.asarray(v), ref[2:10])
+        z = v.translate_to((0,))
+        np.testing.assert_array_equal(z[0:3], ref[2:5])
 
     def test_lazy_bounds_errors_share_one_type(self) -> None:
         """All three literal-coordinate rejections raise BoundsCheckError (an
@@ -453,7 +487,7 @@ class TestLazyErrors:
             lambda: a.lazy.oindex[(np.array([-1], dtype=np.intp),)],
         ]
         for trigger in triggers:
-            with pytest.raises(BoundsCheckError, match="out of bounds"):
+            with pytest.raises(BoundsCheckError, match="out of bounds|not contained"):
                 trigger()
 
     def test_guard_message_names_real_apis(self) -> None:

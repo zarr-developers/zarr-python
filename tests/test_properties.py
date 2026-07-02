@@ -725,6 +725,41 @@ TestIndexingStateMachineSharded = pytest.mark.slow_hypothesis(_Sharded2DStateMac
 TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.TestCase)
 
 
+def _canonical_nonneg(sel: Any, shape: tuple[int, ...]) -> Any:
+    """NumPy-normalize a selection to its non-negative canonical form.
+
+    Wraps negative integers and integer-array values, resolves slice bounds via
+    Python slice semantics, and expands ellipsis — producing the literal
+    spelling of the same NumPy selection, as the lazy path requires.
+    """
+    items = sel if isinstance(sel, tuple) else (sel,)
+    n_explicit = sum(1 for s in items if s is not Ellipsis)
+    out: list[Any] = []
+    dim = 0
+    for s in items:
+        if s is Ellipsis:
+            for _ in range(len(shape) - n_explicit):
+                out.append(slice(0, shape[dim], 1))
+                dim += 1
+        elif isinstance(s, (int, np.integer)) and not isinstance(s, (bool, np.bool_)):
+            v = int(s)
+            out.append(v + shape[dim] if v < 0 else v)
+            dim += 1
+        elif isinstance(s, slice):
+            start, stop, step = s.indices(shape[dim])
+            if stop < start:  # NumPy empty-by-reversal -> literal empty interval
+                stop = start
+            out.append(slice(start, stop, step))
+            dim += 1
+        elif isinstance(s, np.ndarray) and s.dtype != np.bool_:
+            out.append(np.where(s < 0, s + shape[dim], s))
+            dim += 1
+        else:  # boolean mask or anything already canonical
+            out.append(s)
+            dim += 1
+    return tuple(out) if isinstance(sel, tuple) else out[0]
+
+
 @pytest.mark.skipif(
     not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
 )
@@ -732,21 +767,26 @@ TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.Tes
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
-    """The eager read oracle, applied to a lazy view (the lazy consumer).
+    """The eager read oracle, applied to a re-zeroed lazy view (the lazy consumer).
 
-    A view (built from a non-negative window) is just another `zarr.Array`, so
-    it flows through the same `assert_read_matches_numpy` harness. The lazy
-    indexing bugs found in review were all "the view path diverges from NumPy for
-    some (method, parameter) combination" — enumerating that surface here catches
-    the class. Skipped until `Array.lazy` exists, so the eager oracle can merge
-    ahead of the lazy feature.
+    A view is just another `zarr.Array`, so it flows through the same
+    `assert_read_matches_numpy` harness. Views preserve their domain
+    (TensorStore semantics: coordinates are literal), so to compare against a
+    zero-based NumPy reference the view is explicitly re-zeroed with
+    `translate_to` — exercising domain translation on every example. Skipped
+    until `Array.lazy` exists, so the eager oracle can merge ahead of the lazy
+    feature.
     """
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
     window = data.draw(windows(shape=nparray.shape))
-    view = zarray.lazy[window]
+    view = zarray.lazy[window].translate_to((0,) * nparray.ndim)
     vref = nparray[window]
     mode = data.draw(st.sampled_from(_INDEX_MODES))
     assume(_eligible(mode, vref.shape))
     zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=vref.shape))
-    assert_read_matches_numpy(view, vref, mode, zsel, npsel)
+    # The strategies draw NumPy-dialect selections (negatives from-the-end);
+    # lazy-path coordinates are literal, so canonicalize to the equivalent
+    # non-negative form for the view. NumPy semantics are invariant under this,
+    # so the reference side (npsel) is unchanged.
+    assert_read_matches_numpy(view, vref, mode, _canonical_nonneg(zsel, vref.shape), npsel)

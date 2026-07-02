@@ -62,14 +62,16 @@ class TestIndexTransformBasicIndexing:
     def test_slice_narrows(self) -> None:
         t = IndexTransform.from_shape((10, 20))
         result = t[2:8, 5:15]
+        # Domains are preserved (TensorStore): the slice keeps its literal
+        # coordinates, so the map stays the identity (out = in).
         assert result.domain.shape == (6, 10)
-        assert result.domain.origin == (0, 0)
+        assert result.domain.origin == (2, 5)
         assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 2
+        assert result.output[0].offset == 0
         assert result.output[0].stride == 1
         assert result.output[0].input_dimension == 0
         assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].offset == 5
+        assert result.output[1].offset == 0
         assert result.output[1].input_dimension == 1
 
     def test_strided_slice(self) -> None:
@@ -149,12 +151,13 @@ class TestIndexTransformBasicIndexing:
         assert result.output[0].offset == -3
 
     def test_composition_of_slices(self) -> None:
-        """Slicing a sliced transform should compose offsets."""
+        """Slicing a sliced transform re-selects in literal domain coordinates."""
         t = IndexTransform.from_shape((100,))
-        result = t[10:50][5:20]
+        result = t[10:50][15:30]
         assert result.domain.shape == (15,)
+        assert result.domain.origin == (15,)
         assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 15
+        assert result.output[0].offset == 0
         assert result.output[0].stride == 1
 
     def test_composition_of_strides(self) -> None:
@@ -281,9 +284,11 @@ class TestIndexTransformOindex:
         result = t.oindex[idx, 5:15]
         assert result.input_rank == 2
         assert result.domain.shape == (2, 10)
+        # fancy dim: fresh zero-origin; slice dim: preserved literal coords
+        assert result.domain.origin == (0, 5)
         assert isinstance(result.output[0], ArrayMap)
         assert isinstance(result.output[1], DimensionMap)
-        assert result.output[1].offset == 5
+        assert result.output[1].offset == 0
 
     def test_oindex_multiple_arrays(self) -> None:
         t = IndexTransform.from_shape((10, 20, 30))
@@ -348,8 +353,9 @@ class TestSelectionToTransform:
         t = IndexTransform.from_shape((10, 20))
         result = selection_to_transform((slice(2, 8), slice(5, 15)), t, "basic")
         assert result.domain.shape == (6, 10)
+        assert result.domain.origin == (2, 5)  # preserved literal coordinates
         assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 2
+        assert result.output[0].offset == 0
 
     def test_basic_int(self) -> None:
         t = IndexTransform.from_shape((10, 20))
@@ -380,12 +386,18 @@ class TestSelectionToTransform:
         assert isinstance(result.output[1], ArrayMap)
 
     def test_composition_with_non_identity(self) -> None:
-        """Indexing a sliced transform composes offsets."""
+        """Indexing a sliced transform uses literal domain coordinates.
+
+        The slice [10:50] preserves its domain, so a follow-up [15:30]
+        re-selects coordinates 15..29 of the base (TensorStore semantics), and
+        the composed map stays the identity (out = in).
+        """
         t = IndexTransform.from_shape((100,))[10:50]
-        result = selection_to_transform(slice(5, 20), t, "basic")
-        assert result.domain.shape == (15,)
+        result = selection_to_transform(slice(15, 30), t, "basic")
+        assert (result.domain.inclusive_min, result.domain.exclusive_max) == ((15,), (30,))
         assert isinstance(result.output[0], DimensionMap)
-        assert result.output[0].offset == 15
+        assert result.output[0].offset == 0
+        assert result.output[0].stride == 1
 
 
 class TestIndexTransformIntersect:
@@ -514,78 +526,3 @@ class TestIndexTransformTranslate:
         assert result.output[0].offset == -5
         assert isinstance(result.output[1], DimensionMap)
         assert result.output[1].offset == -10
-
-
-class TestNegativeOriginDomains:
-    """Literal-coordinate semantics must hold at ANY domain origin, not just 0.
-
-    Public views always re-zero their domains, but the transform library admits
-    non-zero origins (`IndexDomain.translate`), and the literal rule — an index
-    names a coordinate, never a position or an offset from the end — must apply
-    uniformly to integers and slice bounds alike. On domain [-10, 2): coordinate
-    -5 is *in bounds*; slice bounds are coordinates (t[0:2] means storage
-    [0, 2), the last two cells, NOT the first two positions); bounds below
-    inclusive_min raise (the any-origin generalization of "negative raises at
-    origin 0"); bounds past exclusive_max clamp (range intersection).
-    """
-
-    def _t(self) -> IndexTransform:
-        return IndexTransform.identity(IndexDomain.from_shape((12,)).translate((-10,)))
-
-    def test_integer_literal_in_bounds(self) -> None:
-        """An in-domain negative coordinate is a valid literal integer index."""
-        t = self._t()[-5]
-        assert isinstance(t.output[0], ConstantMap)
-        assert t.output[0].offset == -5
-
-    def test_integer_below_origin_raises(self) -> None:
-        """A coordinate below inclusive_min is out of bounds."""
-        with pytest.raises(IndexError, match=r"valid indices \[-10, 2\)"):
-            self._t()[-11]
-
-    def test_slice_bounds_are_literal_coordinates(self) -> None:
-        """Slice bounds are coordinates, not positions: t[0:2] is storage [0, 2)."""
-        t = self._t()[0:2]
-        assert t.domain.shape == (2,)
-        assert isinstance(t.output[0], DimensionMap)
-        # first element of the result must map to storage coordinate 0, not -10
-        assert t.output[0].offset == 0
-
-    def test_slice_with_negative_literal_bound(self) -> None:
-        """t[-5:] on domain [-10, 2) is the literal interval [-5, 2)."""
-        t = self._t()[-5:]
-        assert t.domain.shape == (7,)
-        assert isinstance(t.output[0], DimensionMap)
-        assert t.output[0].offset == -5
-
-    def test_slice_bound_below_origin_raises(self) -> None:
-        """A slice bound below inclusive_min raises, mirroring the origin-0 rule."""
-        with pytest.raises(IndexError, match=r"valid indices \[-10, 2\)"):
-            self._t()[-12:]
-
-    def test_slice_overflow_clamps(self) -> None:
-        """Bounds past exclusive_max clamp: ranges intersect the domain."""
-        t = self._t()[-5:100]
-        assert t.domain.shape == (7,)
-
-
-def test_public_view_domains_are_zero_origin() -> None:
-    """Every view the public `.lazy` API can produce has a zero-origin domain.
-
-    The user-guide rule "a negative value is never in bounds" is the origin-0
-    corollary of literal coordinates; this pins the premise so a future
-    translate-style API cannot silently invalidate the documented behavior.
-    """
-    import zarr
-
-    a = zarr.create_array({}, shape=(12,), chunks=(3,), dtype="i4")
-    a[...] = np.arange(12, dtype="i4")
-    views = (
-        a.lazy[2:10],
-        a.lazy[2:10].lazy[1:5],
-        a.lazy[::2],
-        a.lazy.oindex[np.array([1, 5, 9], dtype=np.intp)],
-        a.lazy.vindex[np.array([1, 5], dtype=np.intp)],
-    )
-    for v in views:
-        assert all(m == 0 for m in v._async_array._transform.domain.inclusive_min)

@@ -50,7 +50,10 @@ class TestChunkResolutionIdentity:
 class TestChunkResolutionSliced:
     def test_slice_within_chunk(self) -> None:
         """Slice that falls within a single chunk."""
-        t = IndexTransform.from_shape((100,))[5:8]
+        # Chunk resolution consumes zero-origin transforms: the I/O layer
+        # normalizes preserved (user-facing) domains via translate_domain_to
+        # before resolving, so mirror that contract here.
+        t = IndexTransform.from_shape((100,))[5:8].translate_domain_to((0,))
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=100),))
         results = list(iter_chunk_transforms(t, grid))
         assert len(results) == 1
