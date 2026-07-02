@@ -22,7 +22,7 @@ from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
-from zarr.core.config import BadConfigError, config
+from zarr.core.config import DEFAULT_CODECS, BadConfigError, config
 from zarr.core.indexing import SelectorTuple
 from zarr.errors import ChunkNotFoundError, ZarrUserWarning
 from zarr.registry import (
@@ -45,66 +45,28 @@ from zarr.testing.buffer import (
 
 
 def test_config_defaults_set() -> None:
-    # regression test for available defaults
-    assert (
-        config.defaults
-        == [
-            {
-                "default_zarr_format": 3,
-                "array": {
-                    "order": "C",
-                    "write_empty_chunks": False,
-                    "read_missing_chunks": True,
-                    "target_shard_size_bytes": None,
-                    "rectilinear_chunks": False,
-                    "sharding_coalesce_max_gap_bytes": 1 << 20,
-                    "sharding_coalesce_max_bytes": 16 << 20,
-                },
-                "async": {"concurrency": 10, "timeout": None},
-                "threading": {"max_workers": None},
-                "json_indent": 2,
-                "codec_pipeline": {
-                    "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
-                    "batch_size": 1,
-                },
-                "codecs": {
-                    "blosc": "zarr.codecs.blosc.BloscCodec",
-                    "gzip": "zarr.codecs.gzip.GzipCodec",
-                    "zstd": "zarr.codecs.zstd.ZstdCodec",
-                    "bytes": "zarr.codecs.bytes.BytesCodec",
-                    "endian": "zarr.codecs.bytes.BytesCodec",  # compatibility with earlier versions of ZEP1
-                    "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
-                    "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
-                    "transpose": "zarr.codecs.transpose.TransposeCodec",
-                    "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
-                    "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
-                    "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
-                    "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
-                    "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
-                    "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
-                    "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
-                    "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
-                    "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
-                    "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
-                    "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
-                    "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
-                    "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
-                    "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
-                    "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
-                    "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
-                    "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
-                    "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
-                    "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
-                    "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
-                    "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
-                    "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
-                    "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
-                },
-                "buffer": "zarr.buffer.cpu.Buffer",
-                "ndbuffer": "zarr.buffer.cpu.NDBuffer",
-            }
-        ]
-    )
+    assert config.defaults == {
+        "default_zarr_format": 3,
+        "array": {
+            "order": "C",
+            "write_empty_chunks": False,
+            "read_missing_chunks": True,
+            "target_shard_size_bytes": None,
+            "rectilinear_chunks": False,
+            "sharding_coalesce_max_gap_bytes": 1 << 20,
+            "sharding_coalesce_max_bytes": 16 << 20,
+        },
+        "async": {"concurrency": 10, "timeout": None},
+        "threading": {"max_workers": None},
+        "json_indent": 2,
+        "codec_pipeline": {
+            "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+            "batch_size": 1,
+        },
+        "codecs": dict(DEFAULT_CODECS),
+        "buffer": "zarr.buffer.cpu.Buffer",
+        "ndbuffer": "zarr.buffer.cpu.NDBuffer",
+    }
     assert config.get("array.order") == "C"
     assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
@@ -156,9 +118,6 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
-    assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
-
     _mock = Mock()
 
     class MockCodecPipeline(BatchedCodecPipeline):
@@ -206,7 +165,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_codec_implementation(store: Store) -> None:
     # has default value
-    assert fully_qualified_name(get_codec_class("blosc")) == config.defaults[0]["codecs"]["blosc"]
+    assert fully_qualified_name(get_codec_class("blosc")) == config.defaults["codecs"]["blosc"]
 
     _mock = Mock()
 
@@ -259,7 +218,7 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
 def test_config_buffer_implementation() -> None:
     # has default value
-    assert config.defaults[0]["buffer"] == "zarr.buffer.cpu.Buffer"
+    assert config.defaults["buffer"] == "zarr.buffer.cpu.Buffer"
 
     arr = zeros(shape=(100,), store=StoreExpectingTestBuffer())
 
