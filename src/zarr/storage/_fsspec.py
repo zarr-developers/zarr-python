@@ -22,7 +22,7 @@ from zarr.storage._utils import _dereference_path
 logger = getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable
+    from collections.abc import AsyncIterator, Iterable, Sequence
 
     from fsspec import AbstractFileSystem
     from fsspec.asyn import AsyncFileSystem
@@ -458,6 +458,23 @@ class FsspecStore(Store):
                 raise r
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
+
+    async def get_many(
+        self,
+        requests: Sequence[tuple[str, ByteRequest | None] | str],
+        *,
+        prototype: BufferPrototype,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        # docstring inherited
+        # Hand the whole set of requests to fsspec in one call so it can
+        # coalesce nearby reads into fewer requests (via
+        # ``AbstractFileSystem._cat_ranges``), rather than issuing one request
+        # per key as the default Store.get_many does. get_partial_values
+        # returns results aligned to the input order, so we can index them
+        # directly and yield them as a single completed batch.
+        key_ranges = [(req, None) if isinstance(req, str) else req for req in requests]
+        values = await self.get_partial_values(prototype, key_ranges)
+        yield list(enumerate(values))
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
