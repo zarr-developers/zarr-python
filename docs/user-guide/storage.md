@@ -151,6 +151,43 @@ store = zarr.storage.FsspecStore(fs)
 print(store)
 ```
 
+#### Authentication
+
+The examples above use anonymous access (`anon=True`) to a public bucket. To read from or write
+to a **private** bucket — for example a private AWS S3 bucket or a self-hosted, S3-compatible
+service such as [MinIO](https://min.io/) — pass your credentials through `storage_options`. These
+options are forwarded to the underlying fsspec filesystem (for S3 that is
+[`s3fs`](https://s3fs.readthedocs.io/)), so the accepted keys are the ones that filesystem
+understands; for S3 the most common are `key`, `secret`, `token`, and `endpoint_url`:
+
+```python exec="false" reason="requires private S3 credentials not available in the docs build environment"
+import zarr
+
+store = zarr.storage.FsspecStore.from_url(
+    's3://my-private-bucket/path',
+    storage_options={
+        'key': '<ACCESS_KEY_ID>',
+        'secret': '<SECRET_ACCESS_KEY>',
+        # 'token': '<SESSION_TOKEN>',  # optional, for temporary credentials
+        # 'endpoint_url': 'https://my-minio.example.com',  # for S3-compatible services like MinIO
+    },
+)
+group = zarr.open_group(store=store, mode='r')
+```
+
+!!! note
+    Credentials are **top-level** keys in `storage_options`; they map directly to
+    [`s3fs.S3FileSystem`](https://s3fs.readthedocs.io/en/latest/api.html) arguments. Do not nest
+    them inside `client_kwargs` — that dictionary is forwarded to the underlying
+    `aiobotocore`/`aiohttp` client session, which does not accept `key`/`secret` and will raise an
+    error such as `TypeError: ClientSession._request() got an unexpected keyword argument 'secret'`.
+    Use `client_kwargs` only for additional client-session settings such as `region_name`.
+
+If you prefer not to pass credentials explicitly, `s3fs`/`botocore` will also automatically discover
+the standard AWS credential sources — environment variables (`AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`), the shared credentials file (`~/.aws/credentials`), or an instance/role
+profile — in which case the credential keys in `storage_options` can be omitted.
+
 
 ### Memory Store
 
