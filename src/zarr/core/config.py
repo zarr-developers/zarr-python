@@ -68,25 +68,6 @@ class Config(DConfig):  # type: ignore[misc]
         )
 
 
-# these keys were removed from the config as part of the 3.1.0 release.
-# these deprecations should be removed in 3.1.1 or thereabouts.
-deprecations = {
-    "array.v2_default_compressor.numeric": None,
-    "array.v2_default_compressor.string": None,
-    "array.v2_default_compressor.bytes": None,
-    "array.v2_default_filters.string": None,
-    "array.v2_default_filters.bytes": None,
-    "array.v3_default_filters.numeric": None,
-    "array.v3_default_filters.raw": None,
-    "array.v3_default_filters.bytes": None,
-    "array.v3_default_serializer.numeric": None,
-    "array.v3_default_serializer.string": None,
-    "array.v3_default_serializer.bytes": None,
-    "array.v3_default_compressors.string": None,
-    "array.v3_default_compressors.bytes": None,
-    "array.v3_default_compressors": None,
-}
-
 # The default configuration for zarr
 config = Config(
     "zarr",
@@ -146,7 +127,6 @@ config = Config(
             "ndbuffer": "zarr.buffer.cpu.NDBuffer",
         }
     ],
-    deprecations=deprecations,
 )
 
 
