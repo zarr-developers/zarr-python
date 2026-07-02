@@ -47,6 +47,12 @@ the following actions in order:
 
    - The `zarr.v3_api_available` feature flag is being removed. In Zarr-Python 3
      the v3 API is always available, so you shouldn't need to use this flag.
+   - `zarr.errors` has been consolidated. Several exception classes from
+     Zarr-Python 2 (such as `zarr.errors.PathNotFoundError`) have been removed
+     or replaced. For example, missing nodes now raise `zarr.errors.NodeNotFoundError`
+     (which subclasses both `BaseZarrError` and `FileNotFoundError`) instead of
+     `zarr.errors.PathNotFoundError`. Review any code that catches exceptions
+     from `zarr.errors` after migrating.
    - The following internal modules are being removed or significantly changed. If
      your application relies on imports from any of the below modules, you will need
      to either a) modify your application to no longer rely on these imports or b)
