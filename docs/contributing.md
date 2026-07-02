@@ -398,6 +398,51 @@ The Zarr library is an implementation of a file format standard defined external
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
+### Deprecation policy
+
+Our versioning policy (above) commits us to minimizing the effort users spend upgrading. A deprecation cycle is the main tool we use to honor that commitment: rather than removing or changing public behavior abruptly, we first ship a release that keeps the old behavior working while warning that it is going away, and only remove it in a later release. This section defines when a deprecation cycle is required, how to decide whether a removal is worth it, and the concrete steps a deprecation must follow.
+
+This policy governs the user-facing Python API of `zarr-python`: importable names, function and method signatures, and observable runtime behavior. It does not govern the Zarr data format, whose compatibility is described under [Data format compatibility](#data-format-compatibility) above, nor the `zarr.experimental` namespace, which is governed by the [Experimental API policy](#experimental-api-policy) below. Private API (names prefixed with `_`, and anything not documented as public) may change at any time without a deprecation cycle.
+
+Any backwards-incompatible change to public API -- removing a name, changing a signature in a non-additive way, or changing observable behavior -- requires a deprecation cycle unless it qualifies for one of the [exceptions](#exceptions) listed below.
+
+#### Deciding whether to deprecate
+
+A deprecation cycle has a real cost: every user of the affected API must eventually migrate, and we carry the deprecated code and its warning until removal. Before starting one, weigh the costs and benefits and record your reasoning in the pull request, so that proposals are evaluated on a shared scale. NumPy's [backwards compatibility policy (NEP 23)](https://numpy.org/neps/nep-0023-backwards-compatibility.html#general-principles) is a good guide to the trade-offs involved; the factors below follow the same principles.
+
+- **How many users are affected.** `zarr-python` is widely used, including by downstream libraries, so assume that any public API is used by someone unless there is concrete evidence otherwise. Most users do not follow our issue tracker and discover a removal only when their code breaks after upgrading, so absence of reported usage is not evidence of absence of usage. Base the estimate on usage data where possible -- code search across downstream projects, documented usage, or download statistics.
+- **The cost of migration to users.** Is there a drop-in replacement? Can the migration be performed mechanically, or does it require users to redesign their code? A change with a clear, easy migration path is much cheaper to justify than one without.
+- **The cost of keeping the API.** What do we pay by not removing it -- maintenance burden, bug surface, duplicated logic, or a worse design that we can't improve while the old API exists? A high carrying cost strengthens the case for removal.
+- **Who benefits.** Benefits can include improved functionality, usability, and performance for users, as well as lower maintenance cost and better future extensibility for developers. A change that gives users something they want is a stronger case than one that benefits only maintainers, since users pay the migration cost either way.
+- **Whether the goal can be met without removal.** Often a refactor, an alias, or an additive change achieves the same end without breaking anyone. Prefer those. Removing public API is never free; the deprecation cycle is the price, and it is mandatory.
+
+If, after weighing these factors, a removal is not clearly worthwhile, prefer to keep the API. A deprecation warning is a commitment to remove: if you only want to steer users away from an API without removing it, say so in its documentation rather than emitting a warning. Conversely, do not leave a decision to remove an API indefinitely deferred: a vague intention to "eventually" break something is itself a form of technical debt. Either commit to the deprecation and begin the cycle, or decide to keep the API and design around it.
+
+#### How to deprecate
+
+Once a deprecation is decided, it must follow these steps so that users get a consistent, actionable signal:
+
+1. **Emit a warning at runtime.** Raise `zarr.errors.ZarrDeprecationWarning` for an API that will be *removed*. Use `zarr.errors.ZarrFutureWarning` instead when behavior will *change* rather than disappear (for example, a default value that will change), since `FutureWarning` is shown to end users by default. The [`typing_extensions.deprecated`](https://typing-extensions.readthedocs.io/en/latest/#deprecated) decorator is the preferred way to deprecate whole functions, methods, and classes. When calling `warnings.warn` directly, set `stacklevel` so the warning points at the caller's code rather than zarr internals.
+2. **Write an actionable message.** The warning message must state the release the deprecation first appeared in, the planned removal (a specific version if known, otherwise "a future release"), and the migration path -- what the user should do instead. A deprecation warning with no replacement guidance is incomplete.
+3. **Document it.** Mark the deprecation in the docstring (via the `deprecated` decorator or a "Deprecated" admonition) so it appears in the rendered API documentation, and update any affected user-guide prose.
+4. **Add a changelog entry.** Add a `removal` changelog fragment in `changes/` (for example, `changes/1234.removal.md`) so the deprecation is announced under "Deprecations and Removals" in the release notes. When the API is finally removed, add a second `removal` fragment for that release.
+
+When an API is being replaced rather than simply dropped, deprecate the old name and introduce its replacement in a single step, rather than repeatedly adjusting the same signature across releases. Users should have to migrate only once.
+
+#### How long a deprecation lasts
+
+A deprecated API must remain available, emitting its warning, for **at least 6 months and at least one minor release** before it is removed. These are minimums, not targets: for widely-used API, prefer a longer cycle, and communicate the upcoming removal beyond the warning itself (for example, in release notes or a migration guide).
+
+The removal itself is a backwards-incompatible change, and is classified under our [versioning policy](#versioning) by the upgrade effort it imposes -- a `major` release for the removal of widely-used API, a `minor` release when the impact is genuinely small. The deprecation period, not the release type, is the guarantee users rely on: a removal is only permitted once the minimum period has elapsed, regardless of which release it lands in.
+
+#### Exceptions
+
+A full deprecation cycle may be shortened or skipped in these cases. When it is, explain why in the pull request and the changelog entry:
+
+- **Security fixes and data-corruption bugs**, where continuing the old behavior actively harms users.
+- **Changes forced by the Zarr format specification**, which are governed by [Data format compatibility](#data-format-compatibility) and may move faster during a format transition.
+- **Recently introduced API** that has not yet appeared in a stable release, which can still be changed freely, and **experimental API**, which is exempt and governed by the [Experimental API policy](#experimental-api-policy).
+
 
 ## Experimental API policy
 
