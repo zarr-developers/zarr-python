@@ -6,6 +6,11 @@ lightweight **view** — itself a `zarr.Array` — without touching storage. Vie
 compose, support orthogonal and coordinate selection, write through to the
 backing array, and materialize on demand.
 
+Zarr's lazy indexing follows [TensorStore's indexing
+model](https://google.github.io/tensorstore/python/indexing.html): a view has a
+**domain** — a box of coordinates — and every index is a **literal coordinate**
+in that domain.
+
 ```python exec="true" session="lazy"
 import numpy as np
 import zarr
@@ -33,36 +38,58 @@ action, zarr can:
 - **plan** with it (`chunk_projections` enumerates exactly the stored chunks
   the declaration touches).
 
-A view is a *window*: its shape is the selection's shape, and indexing a view is
-always relative to the view itself, starting at zero — exactly like indexing a
-NumPy view:
+### Domains are preserved: an index is a name, not a position
+
+A view keeps the coordinates of the cells it selects. Slicing `[2:10]` does not
+renumber anything — the view's domain *is* `[2, 10)`, and coordinate 3 still
+means what it meant on the parent:
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-v = a.lazy[2:10]           # window onto cells 2..9
-print(v.shape)             # the window's shape
-print(v.lazy[0].result())  # the window's first element -> base cell 2
-print(v.lazy[3:5].result())  # window cells 3,4 -> base cells 5,6
+v = a.lazy[2:10]
+print(v.shape)                 # (8,) — eight cells...
+print(v.lazy[3].result())      # ...and coordinate 3 is still base cell 3
+print(v.lazy[3:7].result())    # coordinates [3, 7) — literal, stable
 ```
 
-The `domain={ [2, 10) }` shown in a view's repr is **provenance** — the region
-of the backing store the view maps onto. It is *not* the coordinate system you
-index with; that is always `[0, shape)`.
+This is what makes composition safe: a coordinate means the same cell no matter
+how many views deep you are. `a.lazy[2:10].lazy[3:7]` and `a.lazy[3:7]` are the
+same selection.
 
-### Literal coordinates: `-1` is just another index
+The price of stable names: **positions are not valid indices.** The first
+element of `v` is coordinate 2, not 0 — and `v[0]` is an error, not the first
+element:
 
-A lazy selection is a declaration in **literal coordinates**. NumPy's negative
-indexing ("count from the end") is sugar applied at *evaluation* time; in a
-deferred, composable setting it would silently re-bind meaning as views compose.
-Zarr therefore treats every coordinate in a lazy selection literally, and since
-view domains start at 0, **a negative value is never in bounds — no matter the
-syntactic form** (integer, slice bound, or index array):
+```python exec="true" session="lazy" source="above" result="ansi"
+try:
+    v[0]
+except IndexError as e:
+    print(e)
+```
+
+To renumber a view explicitly, move its domain with `translate_to` (or shift it
+with `translate_by`) — the data does not move, only the labels:
+
+```python exec="true" session="lazy" source="above" result="ansi"
+z = v.translate_to((0,))       # same cells, coordinates now [0, 8)
+print(z.lazy[0].result())      # coordinate 0 -> base cell 2
+w = a.translate_by((-10,))     # a view of `a` labeled [-10, 2)
+print(w.lazy[-1].result())     # -1 is just another index: base cell 9
+```
+
+### `-1` is just another index
+
+Because indices are literal coordinates, a negative index is *not* "from the
+end" — it names the coordinate `-1`, which your domain may or may not contain.
+On the translated view above, `-1` was perfectly valid. On a fresh array (domain
+`[0, n)`), it is out of bounds — in **every** syntactic form: integers, slice
+bounds, and index arrays are treated identically.
 
 ```python exec="true" session="lazy" source="above" result="ansi"
 for make in (lambda: a.lazy[-1], lambda: a.lazy[-3:], lambda: a.lazy.oindex[[-1]]):
     try:
         make()
     except IndexError as e:
-        print(type(e).__name__, "-", e)
+        print(type(e).__name__, "-", str(e).split(";")[0])
 ```
 
 To select from the end, say what you mean literally:
@@ -72,29 +99,46 @@ n = a.shape[0]
 print(a.lazy[n - 3 :].result())   # the last three elements
 ```
 
-Positive out-of-range *slice* bounds are still fine — a slice denotes a range,
-and ranges intersect the domain (as in Python and NumPy). Clamping can only
-shorten a result; it can never silently select different data the way
-wraparound can:
+### No clamping: intervals must fit the domain
+
+A slice interval must be contained in the domain — an out-of-range bound is an
+error, not a silently shorter result. Empty intervals are the one exception:
+they are valid anywhere. Reversed bounds are an error, not an empty result.
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-print(a.lazy[5:100].result())     # clamps to [5, 12)
+for sel in (slice(5, 100), slice(5, 2)):
+    try:
+        a.lazy[sel]
+    except IndexError as e:
+        print(type(e).__name__, "-", str(e).split(";")[0])
+print(a.lazy[5:5].shape)          # empty is fine, anywhere
 ```
 
-### Two dialects on one object
+### Strided views renumber by division
 
-A view is an ordinary `zarr.Array`, so it also has the ordinary *eager* methods
-— and those keep full NumPy semantics, negatives included. The two dialects
-split cleanly by intent:
-
-| You are...  | Spelling                    | Negative indices        |
-| ----------- | --------------------------- | ----------------------- |
-| declaring   | `v.lazy[...]` (a new view)  | literal — raise         |
-| accessing   | `v[...]`, `v.oindex[...]`   | NumPy — from the end    |
+A strided slice produces a domain in *strided units*: for step `k`, the new
+origin is `start / k` rounded toward zero, and coordinate `origin + i` maps to
+base cell `start + i*k` (TensorStore's rule):
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-print(v[-1])                  # eager access: NumPy dialect -> base cell 9
-print(v.lazy[v.shape[0] - 1].result())  # lazy declaration: same cell, said literally
+s = a.lazy[1:10:3]              # base cells 1, 4, 7
+print(s)                        # domain [0, 3)
+print(s.lazy[1].result())       # coordinate 1 -> base cell 4
+```
+
+### One coordinate system per view
+
+Every way of indexing a view — `v[...]`, `v.lazy[...]`, `v.oindex`, `v.vindex`
+— uses the same domain coordinates. (The base array's ordinary `a[...]` API is
+unchanged: it keeps full NumPy semantics, negatives and all. The literal rules
+apply to *views* and to the `.lazy` accessor.) NumPy-style zero-based access to
+a view's data is spelled explicitly: materialize with `result()` /
+`np.asarray`, or renumber with `translate_to`.
+
+```python exec="true" session="lazy" source="above" result="ansi"
+print(v[3], v.lazy[3].result())     # same coordinate, same cell
+print(np.asarray(v)[0])             # materialized: NumPy rules apply
+print(a[-1])                        # base arrays keep NumPy semantics
 ```
 
 ## Common patterns
@@ -105,8 +149,8 @@ print(v.lazy[v.shape[0] - 1].result())  # lazy declaration: same cell, said lite
 img = zarr.create_array(store="memory://lazy-img", shape=(100, 100), chunks=(10, 10), dtype="float64")
 img[...] = np.arange(100 * 100).reshape(100, 100)
 
-crop = img.lazy[25:75, 25:75]          # 50x50 window, no I/O
-inner = crop.lazy[10:40, 10:40]        # 30x30 window of the window
+crop = img.lazy[25:75, 25:75]          # no I/O; domain [25,75) x [25,75)
+inner = crop.lazy[35:65, 35:65]        # coordinates are literal: this is img[35:65, 35:65]
 print(crop.shape, inner.shape)
 print(float(np.mean(inner)))           # I/O happens here, for the inner crop only
 ```
@@ -117,28 +161,31 @@ Assignment through the accessor, or through a view, routes values back to
 storage — including strided and composed selections:
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-img.lazy[30:50, 40:60] = 0.0           # region write, no read-back needed here
+img.lazy[30:50, 40:60] = 0.0           # region write
 tile = img.lazy[30:50, 40:60]
-tile[0:5, 0:5] = 7.0                   # eager write through the view
-img.lazy[::2, ::2] = -1.0              # strided write, NumPy-equivalent
+tile[30:35, 40:45] = 7.0               # write through the view, same coordinates
+img.lazy[::2, ::2] = -1.0              # strided write, NumPy-equivalent cells
 print(img[29:33, 39:43])
 ```
 
 ### Orthogonal and coordinate selection
 
 `lazy.oindex` selects an outer product per axis; `lazy.vindex` selects points.
-Both return views that compose:
+Index-array *values* are domain coordinates; the dimension a fancy selection
+*creates* gets a fresh `[0, n)` domain (there is no meaningful coordinate to
+preserve for "the i-th pick"):
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-rows = img.lazy.oindex[[3, 17, 42], :]     # three full rows -> shape (3, 100)
-sub = rows.lazy[:, 10:20]                  # then a column window of those rows
+rows = img.lazy.oindex[[3, 17, 42], :]     # picked dim: domain [0, 3); row dim preserved
+sub = rows.lazy[:, 10:20]                  # column window, literal coords
 print(rows.shape, sub.shape)
 
-pts = img.lazy.vindex[[3, 17], [5, 9]]     # two points -> shape (2,)
+pts = img.lazy.vindex[[3, 17], [5, 9]]     # two points -> fresh domain [0, 2)
 print(pts.result())
 ```
 
-Boolean masks are array selections, so they go through `oindex`/`vindex`:
+Boolean masks are array selections, so they go through `oindex`/`vindex`; the
+positions of `True` values become coordinates:
 
 ```python exec="true" session="lazy" source="above" result="ansi"
 mask = np.zeros(12, dtype=bool)
@@ -148,12 +195,17 @@ print(a.lazy.oindex[mask].result())
 
 ### Materializing
 
-`view.result()`, `view[...]`, and `np.asarray(view)` are equivalent reads of the
-whole view; views also work directly with NumPy reductions:
+`view.result()`, `view[...]`, and `np.asarray(view)` are equivalent whole-view
+reads; views also work directly with NumPy reductions. Views are **not**
+iterable (iterate the materialized result instead):
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-w = a.lazy[3:9]
-print(w.result(), np.asarray(w), float(np.mean(w)))
+w2 = a.lazy[3:9]
+print(w2.result(), float(np.mean(w2)))
+try:
+    iter(w2)
+except TypeError as e:
+    print(e)
 ```
 
 ### Chunk-aware processing
@@ -161,8 +213,9 @@ print(w.result(), np.asarray(w), float(np.mean(w)))
 `chunk_projections` enumerates the stored chunks a view touches: which store
 object (`coord`, `key`), its stored `shape`, the region *within the chunk* the
 view covers (`chunk_selection`), the region *of the view* it maps to
-(`array_selection`), and whether the chunk is only partially covered
-(`is_partial` — a partial write requires a read-modify-write):
+(`array_selection`, positional — 0-based into the view's extent), and whether
+the chunk is only partially covered (`is_partial` — a partial write requires a
+read-modify-write):
 
 ```python exec="true" session="lazy" source="above" result="ansi"
 for p in a.lazy[2:10].chunk_projections():
@@ -172,14 +225,16 @@ print(a.lazy[3:9].is_chunk_aligned())   # starts and ends on chunk boundaries
 ```
 
 This is the supported way to partition any selection for parallel or
-chunk-at-a-time work — compose the selection through `.lazy`, then project:
+chunk-at-a-time work — compose the selection through `.lazy`, then project.
+Since `array_selection` is positional, re-zero the view (or materialize) to use
+it:
 
 ```python exec="true" session="lazy" source="above" result="ansi"
+crop0 = img.lazy[25:75, 25:75].translate_to((0, 0))
 total = 0.0
-crop = img.lazy[25:75, 25:75]
-for p in crop.chunk_projections():
-    total += float(np.sum(crop[p.array_selection]))
-print(total == float(np.sum(crop)))
+for p in crop0.chunk_projections():
+    total += float(np.sum(crop0[tuple(slice(s.start, s.stop) for s in p.array_selection)]))
+print(total == float(np.sum(crop0)))
 ```
 
 For sharded arrays, pass `unit="write"` to enumerate at shard (write-unit)
@@ -204,21 +259,28 @@ array.
 
 ## Coming from NumPy
 
-- **Negative indices raise on the lazy path** — in every form (integer, slice
-  bound, index array). Use `shape[dim] - k`, or the eager methods, which keep
-  NumPy semantics.
-- **No negative steps**: `a.lazy[::-1]` raises; reversal is not supported by
-  zarr indexing generally.
+- **A view's indices are coordinates, not positions.** `a.lazy[2:10]` is
+  indexed with 2..9, not 0..7. Renumber explicitly with
+  `view.translate_to((0, ...))` if you want positions.
+- **Negative indices are not from-the-end** — in any form (integer, slice
+  bound, index array). They name literal coordinates, which fresh arrays'
+  domains (starting at 0) do not contain. Use `shape[dim] - k`, or translate
+  the domain so negative coordinates exist.
+- **No clamping**: out-of-range slice bounds raise; reversed bounds raise;
+  only empty intervals are allowed anywhere.
+- **No negative steps**: `a.lazy[::-1]` raises; reversal is not yet supported.
 - **No `newaxis`**: `a.lazy[None]` raises; insert axes on the materialized
   result instead.
 - **The basic accessor takes basic selections only** (integers, slices,
   ellipsis). Lists, arrays, and boolean masks go through `lazy.oindex` /
   `lazy.vindex`.
-- **Scalar reads return NumPy scalars**: `a.lazy[3].result()` is `np.int32(3)`,
-  matching `a[3]`'s value with scalar type.
+- **Views are not iterable**; iterate `view.result()`.
+- **Base arrays are unchanged**: `a[-1]`, `a[5:100]`, and friends keep full
+  NumPy semantics on non-view arrays.
 
 ## Current limitations
 
+- Negative slice steps (reversal) are not yet supported.
 - Integer indexing a dimension *created by* an `oindex`/`vindex` selection
   (e.g. `rows.lazy[0]` after `rows = a.lazy.oindex[[3, 17, 42], :]`) is not yet
   supported reliably; slice the view instead (`rows.lazy[0:1]`).

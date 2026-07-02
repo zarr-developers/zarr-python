@@ -499,6 +499,14 @@ class TestLazyErrors:
         assert "chunk_projections" in str(ei.value)
         assert "chunk_layout" not in str(ei.value)
 
+    def test_views_are_not_iterable(self) -> None:
+        """iter() on a view raises eagerly (TensorStore parity): the getitem
+        protocol counts positions from 0, which are not domain coordinates."""
+        a, ref = _make(CONFIGS[1])
+        with pytest.raises(TypeError, match="not iterable"):
+            iter(a.lazy[2:10])
+        assert [int(x) for x in a][:3] == [int(v) for v in ref[:3]]  # base unchanged
+
     def test_fancy_view_repr_does_not_crash(self) -> None:
         """repr of an integer-indexed fancy view must not raise (0-d index array
         in selection_repr)."""

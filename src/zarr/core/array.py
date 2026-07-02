@@ -2045,8 +2045,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             )
         if self.ndim == 0:
             raise TypeError("iteration over a 0-d array")
-        for i in range(self.shape[0]):
-            yield self[i]
+        # A plain generator function would defer these raises to the first
+        # next(); returning an inner generator keeps them eager at iter().
+        return (self[i] for i in range(self.shape[0]))
 
     @classmethod
     def _create(
