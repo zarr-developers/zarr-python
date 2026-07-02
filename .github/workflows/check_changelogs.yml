@@ -25,7 +25,7 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Check zarr-python changelog entries
-        run: uv run --no-sync python ci/check_changelog_entries.py
+        run: uvx --from rust-just just check-changelogs
 
       - name: Check zarr-metadata changelog entries
-        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-metadata/changes
+        run: uvx --from rust-just just check-changelogs packages/zarr-metadata/changes

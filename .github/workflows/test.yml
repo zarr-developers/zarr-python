@@ -13,11 +13,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # Use the uv from astral-sh/setup-uv; without an explicit path hatch
-  # bootstraps its own (pyapp) uv, which fails on non-3.12 runners.
-  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -60,27 +55,21 @@ jobs:
       with:
         fetch-depth: 0  # grab all branches and tags
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
     - name: Install uv
       uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-    - name: Install Hatch
-      run: python -m pip install hatch==1.16.5
-    - name: Set Up Hatch Env
-      env:
-        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-      run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+      with:
+        enable-cache: true
+        python-version: ${{ matrix.python-version }}
+    # The `just` recipe (see Justfile) runs `uv sync --locked`, so one universal
+    # uv.lock serves every os/python cell — and it fails if the lock is stale vs
+    # pyproject.toml (a cross-platform drift gate). setup-uv's python-version
+    # sets UV_PYTHON so uv picks the right interpreter. CI and local dev invoke
+    # the identical recipe; `uvx --from rust-just` provides `just` without a
+    # separate install.
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
-        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-      run: |
-        hatch env run --env "$HATCH_ENV" run-coverage
+      run: uvx --from rust-just just test-${{ matrix.dependency-set }}
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
@@ -109,26 +98,16 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
     - name: Install uv
       uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-    - name: Install Hatch
-      run: python -m pip install hatch==1.16.5
-    - name: Set Up Hatch Env
-      env:
-        HATCH_ENV: ${{ matrix.dependency-set }}
-      run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+      with:
+        enable-cache: true
+        python-version: ${{ matrix.python-version }}
+    # min_deps and upstream are intentionally unlocked (floor constraints from
+    # ci/min-deps-constraints.txt; nightly + git mains overlay). The recipe names
+    # match the matrix values — see the Justfile.
     - name: Run Tests
-      env:
-        HATCH_ENV: ${{ matrix.dependency-set }}
-      run: |
-        hatch env run --env "$HATCH_ENV" run-coverage
+      run: uvx --from rust-just just ${{ matrix.dependency-set }}
     - name: Upload coverage
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
@@ -144,21 +123,13 @@ jobs:
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-      with:
-        python-version: '3.13'
-        cache: 'pip'
     - name: Install uv
       uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-    - name: Install Hatch
-      run: python -m pip install hatch==1.16.5
-    - name: Set Up Hatch Env
-      run: |
-        hatch run doctest:pip list
-    - name: Run Tests
-      run: |
-        hatch run doctest:test
+      with:
+        enable-cache: true
+        python-version: '3.13'
+    - name: Run doctests
+      run: uvx --from rust-just just doctest
 
   benchmarks:
     name: Benchmark smoke test
@@ -168,18 +139,13 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-      with:
-        python-version: '3.13'
-        cache: 'pip'
     - name: Install uv
       uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-    - name: Install Hatch
-      run: python -m pip install hatch==1.16.5
+      with:
+        enable-cache: true
+        python-version: '3.13'
     - name: Run Benchmarks
-      run: |
-        hatch env run --env "test.py3.13-minimal" run-benchmark
+      run: uvx --from rust-just just benchmark
 
   test-complete:
     name: Test complete

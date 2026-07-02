@@ -30,10 +30,14 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
+# The `>=` lower bounds below (and in [project.optional-dependencies]) are the
+# minimum versions we support. The `min_deps` CI job tests them via the matching
+# pins in `ci/min-deps-constraints.txt` — keep the two in sync when you bump a
+# floor (per the SPEC 0 drop schedule: https://scientific-python.org/specs/spec-0000/).
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.14.1',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -70,7 +74,7 @@ gpu = [
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
-optional = ["universal-pathlib"]
+optional = ["universal-pathlib>=0.2.0"]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
@@ -83,15 +87,15 @@ Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 documentation = "https://zarr.readthedocs.io/"
 homepage = "https://github.com/zarr-developers/zarr-python"
 
-# Dev *tooling* is pinned to exact versions for reproducible CI: the hatch envs
-# (see `tool.hatch.envs.*`) and bare `uv run` resolve these groups fresh from
-# PyPI and do NOT consult uv.lock, so an unrelated tooling release can break CI
-# without any change on our side (e.g. the pytest 9.1.0 `duplicate
-# parametrization` regression). Runtime/integration deps (fsspec, obstore, s3fs,
-# botocore, numcodecs, universal-pathlib) are intentionally left floating so the
-# `optional` test matrix keeps exercising their latest releases; their floor and
-# bleeding edge are covered by the `min_deps` and `upstream` hatch envs. Bump the
-# pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
+# Dev *tooling* is pinned to exact versions for reproducible CI, and the full
+# transitive closure is locked in `uv.lock` (CI installs with `uv sync --locked`).
+# Runtime/integration deps (fsspec, obstore, s3fs, botocore, numcodecs,
+# universal-pathlib) instead carry floor (`>=`) constraints, so the `optional`
+# test matrix keeps exercising their latest releases; their floor is covered by
+# the `min_deps` CI job (hand-pinned in `ci/min-deps-constraints.txt`) and their
+# bleeding edge by the `upstream` job (the `just upstream` recipe). Bump the
+# floors/pins deliberately, e.g. via
+# dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
     "coverage==7.14.1",
@@ -169,137 +173,10 @@ version.raw-options = { git_describe_command = "git describe --dirty --tags --lo
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
 
-[tool.hatch.envs.dev]
-dependency-groups = ["dev"]
-
-[tool.hatch.envs.test]
-dependency-groups = ["test"]
-
-[tool.hatch.envs.test.env-vars]
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.12", "3.13", "3.14"]
-deps = ["minimal", "optional"]
-
-[tool.hatch.envs.test.overrides]
-matrix.deps.features = [
-  {value = "remote", if = ["optional"]},
-  {value = "optional", if = ["optional"]},
-  {value = "cli", if = ["optional"]},
-  {value = "cast-value-rs", if = ["optional"]},
-]
-matrix.deps.dependency-groups = [
-  {value = "remote-tests", if = ["optional"]},
-]
-
-[tool.hatch.envs.test.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
-    "coverage xml",
-]
-run-coverage-html = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
-    "coverage html",
-]
-run = "pytest --ignore tests/benchmarks"
-run-verbose = "run-coverage --verbose"
-run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
-    "coverage xml",
-]
-run-benchmark = "pytest --benchmark-enable tests/benchmarks"
-serve-coverage-html = "python -m http.server -d htmlcov 8000"
-list-env = "pip list"
-
-[tool.hatch.envs.gputest]
-template = "test"
-extra-dependencies = [
-    "universal_pathlib",
-    # Needed so tests/test_docs.py is collectable under `pytest -m gpu`; otherwise its
-    # module-level importorskip("pytest_examples") skips the whole module and the gpu
-    # docs example is never executed on GPU hardware.
-    "pytest-examples",
-]
-features = ["gpu"]
-
-[[tool.hatch.envs.gputest.matrix]]
-python = ["3.12", "3.13"]
-
-[tool.hatch.envs.gputest.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
-    "coverage xml",
-]
-run = "pytest -m gpu --ignore tests/benchmarks"
-
-[tool.hatch.envs.upstream]
-template = 'test'
-python = "3.14"
-extra-dependencies = [
-    'packaging @ git+https://github.com/pypa/packaging',
-    'numpy',  # from scientific-python-nightly-wheels
-    'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    's3fs @ git+https://github.com/fsspec/s3fs',
-    'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
-    'typing_extensions @ git+https://github.com/python/typing_extensions',
-    'donfig @ git+https://github.com/pytroll/donfig',
-    'obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore',
-]
-
-[tool.hatch.envs.upstream.env-vars]
-PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
-PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
-PIP_PRE = "1"
-
-[tool.hatch.envs.min_deps]
-description = """Test environment for minimum supported dependencies
-
-See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
-"""
-template = "test"
-python = "3.12"
-features = ["remote"]
-dependency-groups = ["remote-tests"]
-extra-dependencies = [
-    'packaging==22.*',
-    'numpy==2.0.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
-    'fsspec==2023.10.0',
-    's3fs==2023.10.0',
-    'universal_pathlib==0.2.0',
-    'typing_extensions==4.14.*',
-    'donfig==0.8.*',
-    'obstore==0.5.*',
-]
-
-[tool.hatch.envs.default]
-installer = "uv"
-
-[tool.hatch.envs.docs]
-features = ['remote']
-dependency-groups = ['docs']
-
-[tool.hatch.envs.docs.env-vars]
-DISABLE_MKDOCS_2_WARNING = "true"
-NO_MKDOCS_2_WARNING = "true"
-
-[tool.hatch.envs.docs.scripts]
-serve = "mkdocs serve --watch src"
-build = "mkdocs build"
-check = "mkdocs build --strict"
-readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
-
-[tool.hatch.envs.doctest]
-description = "Test environment for validating executable code blocks in documentation"
-features = ['remote']
-dependency-groups = ['remote-tests']
-extra-dependencies = [
-    "pytest-examples",
-]
-
-[tool.hatch.envs.doctest.scripts]
-test = "pytest tests/test_docs.py -v"
-list-env = "pip list"
+# NOTE: `tool.hatch.envs.*` used to define the test/docs/min_deps/upstream
+# environments and their run scripts. Those are gone: tasks are now `just`
+# recipes (see the Justfile) that wrap `uv sync --locked ...`; CI runs the same
+# recipes via `uvx --from rust-just just <recipe>`. See docs/contributing.md.
 
 [tool.ruff]
 line-length = 100
@@ -470,6 +347,7 @@ ignore = [
     "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
+	"PY007",  # task runner is a Justfile (just); not in PY007's nox/tox/hatch allowlist
 ]
 
 [tool.numpydoc_validation]

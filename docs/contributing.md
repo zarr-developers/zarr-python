@@ -80,17 +80,25 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 ### Creating a development environment
 
-To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
+To work with the Zarr source code, we recommend [uv](https://docs.astral.sh/uv/) to create and manage development environments. uv installs all Zarr dependencies pinned to the same versions used by continuous integration, via the committed `uv.lock`. Assuming you have [installed uv](https://docs.astral.sh/uv/getting-started/installation/), cloned the Zarr source code, and your current working directory is the root of the repository, run:
 
 ```bash
-pip install hatch
-hatch env show  # list all available environments
+uv sync --locked  # create .venv/ with Zarr and all development dependencies
 ```
 
-To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
+This creates a virtual environment in `.venv/`. Prefix commands with `uv run` to run them inside it, or activate it directly with `source .venv/bin/activate`. To use a specific Python version, pass `-p`, e.g. `uv sync --locked -p 3.13`.
+
+Common developer tasks (running the matrix test environments, building docs, etc.) are defined as [`just`](https://github.com/casey/just) recipes in the `Justfile`. Install `just` and list the available recipes with:
 
 ```bash
-hatch env run --env test.py3.12-optional run
+uv tool install rust-just  # or: brew install just
+just                       # list all recipes
+```
+
+To verify that your development environment is working, you can run the unit tests:
+
+```bash
+uv run pytest
 ```
 
 ### Creating a branch
@@ -125,15 +133,39 @@ Again, any conflicts need to be resolved before submitting a pull request.
 
 ### Running the test suite
 
-Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
+Zarr includes a suite of unit tests. The simplest way to run them is within your development environment (see [creating a development environment](#creating-a-development-environment) above):
 
 ```bash
-hatch env run --env test.py3.12-optional run
+uv run pytest
 ```
+
+To reproduce a CI test environment exactly — the same dependency set CI uses, with coverage — run the matching `just` recipe. These sync the locked environment and run the test suite the way CI does:
+
+```bash
+just test-minimal    # the minimal dependency set
+just test-optional   # the full optional/integration dependency set
+```
+
+Pass extra pytest arguments through, e.g. `just test-optional -k test_attributes`, and select a Python version with `UV_PYTHON`, e.g. `UV_PYTHON=3.13 just test-optional`.
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
 
 > **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
+
+#### Minimum supported dependencies
+
+Zarr follows [SPEC 0](https://scientific-python.org/specs/spec-0000/) for the minimum versions of its dependencies. CI exercises those minimums in a dedicated `min_deps` job, which you can reproduce locally with:
+
+```bash
+just min_deps
+```
+
+The supported floor for each runtime dependency is declared twice, and the two must be kept in sync:
+
+- the `>=` lower bound in `pyproject.toml` (`[project.dependencies]` and `[project.optional-dependencies]`) — what users actually get; and
+- an exact pin in `ci/min-deps-constraints.txt` — what the `min_deps` job installs.
+
+When you raise a floor, update **both**. The `min_deps` job builds an isolated environment with `uv pip install --constraint ci/min-deps-constraints.txt`, which pins the runtime dependencies to their floors while letting transitive packages (e.g. flask, werkzeug) resolve to their latest compatible release. We pin the floors by hand rather than deriving them with uv's `--resolution lowest-direct` on purpose: hand-pinning tests the *exact* version we advertise (auto-derivation resolves to the lowest mutually consistent set, which can sit above the declared floor and hide a broken minimum), and it avoids dragging the committed `uv.lock` down. See the comments in `ci/min-deps-constraints.txt` for details.
 
 ### Code standards - using prek
 
@@ -190,15 +222,15 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage
+just test-optional
 ```
 
-will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
+will run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
-You can also generate an HTML coverage report by running:
+You can also generate a browsable HTML coverage report by running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage-html
+just coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -212,15 +244,15 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-hatch --env docs run build
+just docs-build
 ```
 
-The resulting built documentation will be available in the `docs/_build/html` folder.
+The resulting built documentation will be available in the `site/` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
+You can also serve a continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/) by running:
 
 ```bash
-hatch --env docs run serve
+just docs-serve
 ```
 
 #### Adding executable code blocks in the documentation

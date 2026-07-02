@@ -58,7 +58,10 @@ def resave_script(source_path: Path, dest_path: Path) -> None:
     local Zarr project directory in the PEP-723 header.
     """
     source_text = source_path.read_text()
-    dest_text = set_dep(source_text, f"zarr @ file:///{ZARR_PROJECT_PATH}")
+    # Use as_uri() to build a well-formed file URL. Naive f"file:///{abs_path}"
+    # yields four slashes (the path already starts with "/"), which strict
+    # packaging versions (our floor, 22.0) reject as an invalid URL.
+    dest_text = set_dep(source_text, f"zarr @ {ZARR_PROJECT_PATH.as_uri()}")
     dest_path.write_text(dest_text)
 
 

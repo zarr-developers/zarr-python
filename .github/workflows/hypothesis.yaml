@@ -18,8 +18,6 @@ concurrency:
 
 env:
   FORCE_COLOR: 3
-  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
-  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 jobs:
 
@@ -51,23 +49,11 @@ jobs:
         else
           echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
         fi
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
     - name: Install uv
       uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-    - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
       with:
-        version: '1.16.5'
-    - name: Set Up Hatch Env
-      env:
-        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-      run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        enable-cache: true
+        python-version: ${{ matrix.python-version }}
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
@@ -81,11 +67,9 @@ jobs:
     - name: Run slow Hypothesis tests
       if: success()
       id: status
-      env:
-        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env "$HATCH_ENV" run-hypothesis
+        uvx --from rust-just just hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory
