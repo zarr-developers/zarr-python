@@ -13,6 +13,7 @@ them guards the transform read/write path where it is most likely to break.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from unittest import mock
@@ -446,11 +447,12 @@ class TestLazyErrors:
         """All three literal-coordinate rejections raise BoundsCheckError (an
         IndexError), with one message shape naming the valid range."""
         a, _ = _make(CONFIGS[1])
-        for trigger in (
+        triggers: list[Callable[[], Any]] = [
             lambda: a.lazy[-1],
             lambda: a.lazy[-3:],
             lambda: a.lazy.oindex[(np.array([-1], dtype=np.intp),)],
-        ):
+        ]
+        for trigger in triggers:
             with pytest.raises(BoundsCheckError, match="out of bounds"):
                 trigger()
 
