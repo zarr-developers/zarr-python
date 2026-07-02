@@ -499,6 +499,25 @@ class TestLazyErrors:
         assert "chunk_projections" in str(ei.value)
         assert "chunk_layout" not in str(ei.value)
 
+    def test_mask_positions_are_absolute_coordinates(self) -> None:
+        """Boolean-mask True-positions are absolute coordinates counted from 0,
+        NOT offsets from the view's origin (TensorStore semantics, verified
+        against tensorstore 0.1.84: on a domain-[2,10) view, a mask with True
+        at {3,5,7} addresses cells 3,5,7 — and a True below the origin is out
+        of the domain, rejected eagerly here where TensorStore defers to read).
+        """
+        a, ref = _make(CONFIGS[1])  # shape (24,)
+        v = a.lazy[2:10]  # domain [2, 10)
+        mask = np.zeros(8, dtype=bool)
+        mask[[3, 5, 7]] = True
+        np.testing.assert_array_equal(v.lazy.oindex[mask].result(), ref[[3, 5, 7]])
+        v.lazy.oindex[mask] = 99  # write path: same coordinates
+        assert list(np.flatnonzero(a[...] == 99)) == [3, 5, 7]
+        below_origin = np.zeros(8, dtype=bool)
+        below_origin[0] = True  # coordinate 0 is not in [2, 10)
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
+            v.lazy.oindex[below_origin]
+
     def test_views_are_not_iterable(self) -> None:
         """iter() on a view raises eagerly (TensorStore parity): the getitem
         protocol counts positions from 0, which are not domain coordinates."""

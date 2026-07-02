@@ -185,7 +185,11 @@ print(pts.result())
 ```
 
 Boolean masks are array selections, so they go through `oindex`/`vindex`; the
-positions of `True` values become coordinates:
+positions of `True` values become **coordinates, counted from 0** — not offsets
+from the view's origin. On a view whose domain starts at 2, a mask `True` at
+position 3 addresses coordinate 3, and a `True` at position 0 or 1 is out of
+the domain (matching TensorStore, where a mask is sugar for the coordinate
+array of its `True` positions):
 
 ```python exec="true" session="lazy" source="above" result="ansi"
 mask = np.zeros(12, dtype=bool)
