@@ -37,6 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'msgspec>=0.19',
 ]
 
 dynamic = [
@@ -270,6 +271,7 @@ extra-dependencies = [
     'typing_extensions==4.14.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
+    'msgspec==0.19.*',
 ]
 
 [tool.hatch.envs.default]
