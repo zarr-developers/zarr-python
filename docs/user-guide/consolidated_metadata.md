@@ -101,7 +101,6 @@ removed, or modified, consolidated metadata may not be desirable.
    of the metadata, at the time they read the root node with its consolidated
    metadata.
 
-
 ## Stores Without Support for Consolidated Metadata
 
 Some stores may want to opt out of the consolidated metadata mechanism. This

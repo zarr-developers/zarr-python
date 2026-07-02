@@ -40,8 +40,8 @@
 <tr>
   <td>Build Status</td>
   <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/python-package.yml">
-    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/python-package.yml/badge.svg" alt="build status" />
+    <a href="https://github.com/zarr-developers/zarr-python/actions/workflows/test.yml">
+    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/test.yml/badge.svg" alt="build status" />
     </a>
   </td>
 </tr>

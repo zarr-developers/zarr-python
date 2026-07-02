@@ -157,8 +157,6 @@ The following stores have been renamed or changed:
 | `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
 | `FSStore`          | [`zarr.storage.FsspecStore`][]         |
 | `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
-| `zarr.
-
 
 A number of deprecated stores were also removed.
 See issue #1274 for more details on the removal of these stores.
