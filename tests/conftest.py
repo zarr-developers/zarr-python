@@ -108,7 +108,7 @@ async def parse_store(
     if store == "zip":
         return await ZipStore.open(f"{path}/zarr.zip", mode="w")
     if store == "memory_get_latency":
-        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0)
+        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0.)
     raise AssertionError
 
 
