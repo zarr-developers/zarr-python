@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
@@ -546,8 +545,10 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
                 result = "array"
             elif extant_meta_json["node_type"] == "group":
                 result = "group"
-        except (KeyError, TypeError, json.JSONDecodeError):
-            # any of these errors is consistent with no array or group present.
+        except (KeyError, TypeError, ValueError):
+            # any of these errors is consistent with no array or group present. `ValueError`
+            # covers both malformed JSON (`json.JSONDecodeError`) and non-UTF-8 bytes
+            # (`UnicodeDecodeError`), each a `ValueError` subclass.
             pass
     return result
 
