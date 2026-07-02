@@ -514,3 +514,78 @@ class TestIndexTransformTranslate:
         assert result.output[0].offset == -5
         assert isinstance(result.output[1], DimensionMap)
         assert result.output[1].offset == -10
+
+
+class TestNegativeOriginDomains:
+    """Literal-coordinate semantics must hold at ANY domain origin, not just 0.
+
+    Public views always re-zero their domains, but the transform library admits
+    non-zero origins (`IndexDomain.translate`), and the literal rule — an index
+    names a coordinate, never a position or an offset from the end — must apply
+    uniformly to integers and slice bounds alike. On domain [-10, 2): coordinate
+    -5 is *in bounds*; slice bounds are coordinates (t[0:2] means storage
+    [0, 2), the last two cells, NOT the first two positions); bounds below
+    inclusive_min raise (the any-origin generalization of "negative raises at
+    origin 0"); bounds past exclusive_max clamp (range intersection).
+    """
+
+    def _t(self) -> IndexTransform:
+        return IndexTransform.identity(IndexDomain.from_shape((12,)).translate((-10,)))
+
+    def test_integer_literal_in_bounds(self) -> None:
+        """An in-domain negative coordinate is a valid literal integer index."""
+        t = self._t()[-5]
+        assert isinstance(t.output[0], ConstantMap)
+        assert t.output[0].offset == -5
+
+    def test_integer_below_origin_raises(self) -> None:
+        """A coordinate below inclusive_min is out of bounds."""
+        with pytest.raises(IndexError, match=r"valid indices \[-10, 2\)"):
+            self._t()[-11]
+
+    def test_slice_bounds_are_literal_coordinates(self) -> None:
+        """Slice bounds are coordinates, not positions: t[0:2] is storage [0, 2)."""
+        t = self._t()[0:2]
+        assert t.domain.shape == (2,)
+        assert isinstance(t.output[0], DimensionMap)
+        # first element of the result must map to storage coordinate 0, not -10
+        assert t.output[0].offset == 0
+
+    def test_slice_with_negative_literal_bound(self) -> None:
+        """t[-5:] on domain [-10, 2) is the literal interval [-5, 2)."""
+        t = self._t()[-5:]
+        assert t.domain.shape == (7,)
+        assert isinstance(t.output[0], DimensionMap)
+        assert t.output[0].offset == -5
+
+    def test_slice_bound_below_origin_raises(self) -> None:
+        """A slice bound below inclusive_min raises, mirroring the origin-0 rule."""
+        with pytest.raises(IndexError, match=r"valid indices \[-10, 2\)"):
+            self._t()[-12:]
+
+    def test_slice_overflow_clamps(self) -> None:
+        """Bounds past exclusive_max clamp: ranges intersect the domain."""
+        t = self._t()[-5:100]
+        assert t.domain.shape == (7,)
+
+
+def test_public_view_domains_are_zero_origin() -> None:
+    """Every view the public `.lazy` API can produce has a zero-origin domain.
+
+    The user-guide rule "a negative value is never in bounds" is the origin-0
+    corollary of literal coordinates; this pins the premise so a future
+    translate-style API cannot silently invalidate the documented behavior.
+    """
+    import zarr
+
+    a = zarr.create_array({}, shape=(12,), chunks=(3,), dtype="i4")
+    a[...] = np.arange(12, dtype="i4")
+    views = (
+        a.lazy[2:10],
+        a.lazy[2:10].lazy[1:5],
+        a.lazy[::2],
+        a.lazy.oindex[np.array([1, 5, 9], dtype=np.intp)],
+        a.lazy.vindex[np.array([1, 5], dtype=np.intp)],
+    )
+    for v in views:
+        assert all(m == 0 for m in v._async_array._transform.domain.inclusive_min)

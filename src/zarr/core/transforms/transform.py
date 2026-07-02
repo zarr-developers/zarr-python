@@ -533,11 +533,10 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
 
-            # Literal coordinates: negative bounds are out of the domain, not
-            # from-the-end (the eager dialect wraps them before reaching here).
+            # Literal coordinates: bounds below the origin are out of the
+            # domain, not from-the-end (the eager dialect wraps them first).
             _check_slice_bounds(sel, old_dim, lo, hi)
-            # Resolve slice relative to the current domain (origin-based)
-            start, stop, step = sel.indices(dim_size)
+            start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
             # start, stop, step are now relative to a 0-based range of size dim_size
 
             if step <= 0:
@@ -681,7 +680,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             hi = transform.domain.exclusive_max[old_dim]
             dim_size = hi - lo
             _check_slice_bounds(sel, old_dim, lo, hi)
-            start, stop, step = sel.indices(dim_size)
+            start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
             if step <= 0:
                 raise IndexError("slice step must be positive")
             new_size = max(0, math.ceil((stop - start) / step))
@@ -850,7 +849,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         hi = transform.domain.exclusive_max[old_dim]
         dim_size = hi - lo
         _check_slice_bounds(sel, old_dim, lo, hi)
-        start, stop, step = sel.indices(dim_size)
+        start, stop, step = _resolve_slice_literal(sel, lo, dim_size)
         if step <= 0:
             raise IndexError("slice step must be positive")
         new_size = max(0, math.ceil((stop - start) / step))
@@ -989,21 +988,40 @@ _LITERAL_HINT = (
 
 
 def _check_slice_bounds(sel: slice, dim: int, lo: int, hi: int) -> None:
-    """Reject negative slice bounds: lazy-path coordinates are literal.
+    """Reject slice bounds below the domain origin: coordinates are literal.
 
     Consistent with integer and index-array selections — a lazy selection is a
-    declaration in literal coordinates, and domains start at 0, so a negative
-    bound is never in the domain regardless of syntactic form. Positive
-    out-of-range bounds are NOT rejected: a slice denotes a range, and ranges
-    intersect the domain (Python/NumPy clamping), which can only shorten the
-    result, never silently select different data the way wraparound would.
+    declaration in literal coordinates, so a bound below ``inclusive_min`` is
+    never in the domain regardless of syntactic form. For the zero-origin
+    domains all public views have, this is exactly "negative bounds raise".
+    Bounds past ``exclusive_max`` are NOT rejected: a slice denotes a range,
+    and ranges intersect the domain (Python/NumPy clamping), which can only
+    shorten the result, never silently select different data the way
+    wraparound would.
     """
     for name, bound in (("start", sel.start), ("stop", sel.stop)):
-        if bound is not None and bound < 0:
+        if bound is not None and bound < lo:
             raise BoundsCheckError(
                 f"slice {name} {bound} is out of bounds for dimension {dim} "
                 f"(valid indices [{lo}, {hi})){_LITERAL_HINT}"
             )
+
+
+def _resolve_slice_literal(sel: slice, lo: int, dim_size: int) -> tuple[int, int, int]:
+    """Resolve slice bounds as literal domain coordinates.
+
+    Bounds name coordinates, not positions: they are shifted into the domain's
+    0-based range (an identity when ``lo == 0``, i.e. for every public view)
+    and then clamped by ``slice.indices`` — safe from wraparound because
+    ``_check_slice_bounds`` has already rejected anything below ``lo``.
+    Returns 0-based ``(start, stop, step)`` relative to the domain origin.
+    """
+    rel = slice(
+        None if sel.start is None else sel.start - lo,
+        None if sel.stop is None else sel.stop - lo,
+        sel.step,
+    )
+    return rel.indices(dim_size)
 
 
 def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], dim_size: int) -> None:
