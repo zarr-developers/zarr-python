@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 import threading
 import time
 import zipfile
@@ -18,7 +19,7 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable
+    from collections.abc import AsyncIterator, Callable, Iterable
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -55,7 +56,7 @@ class ZipStore(Store):
     """
 
     supports_writes: bool = True
-    supports_deletes: bool = False
+    supports_deletes: bool = True
     supports_listing: bool = True
 
     path: Path
@@ -229,21 +230,65 @@ class ZipStore(Store):
             if key not in members:
                 self._set(key, value)
 
+    def _rewrite_without(self, should_delete: Callable[[str], bool]) -> None:
+        # Rewrite the archive, dropping every member for which ``should_delete``
+        # returns True. ZIP files do not support in-place deletion, so the only
+        # way to remove an entry is to copy the surviving entries into a fresh
+        # archive (see issue #828). Duplicate members (created when a chunk is
+        # overwritten via ``writestr``) are compacted to their most recent value
+        # as a side effect, since that is what reads already return.
+        #
+        # This must be called while holding ``self._lock``.
+        members: dict[str, zipfile.ZipInfo] = {}
+        for info in self._zf.infolist():
+            members[info.filename] = info  # keep the last entry for each name
+
+        to_delete = [name for name in members if should_delete(name)]
+        if not to_delete:
+            # nothing matched; leave the archive untouched
+            return
+
+        fd, tmp_path = tempfile.mkstemp(dir=self.path.parent)
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(
+                tmp_path, mode="w", compression=self.compression, allowZip64=self.allowZip64
+            ) as new_zf:
+                for name, info in members.items():
+                    if should_delete(name):
+                        continue
+                    new_zf.writestr(info, self._zf.read(name))
+            self._zf.close()
+            os.replace(tmp_path, self.path)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+
+        # Reopen in append mode so subsequent writes preserve the archive
+        # (the original mode may be "w"/"x", which would truncate or fail).
+        self._zf = zipfile.ZipFile(
+            self.path, mode="a", compression=self.compression, allowZip64=self.allowZip64
+        )
+
     async def delete_dir(self, prefix: str) -> None:
-        # only raise NotImplementedError if any keys are found
+        # docstring inherited
         self._check_writable()
+        if not self._is_open:
+            self._sync_open()
         if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
-        async for _ in self.list_prefix(prefix):
-            raise NotImplementedError
+        with self._lock:
+            self._rewrite_without(lambda name: name.startswith(prefix))
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        # we choose to only raise NotImplementedError here if the key exists
-        # this allows the array/group APIs to avoid the overhead of existence checks
+        # deleting a missing key is a no-op, matching the other stores
         self._check_writable()
-        if await self.exists(key):
-            raise NotImplementedError
+        if not self._is_open:
+            self._sync_open()
+        with self._lock:
+            self._rewrite_without(lambda name: name == key)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
