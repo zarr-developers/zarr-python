@@ -244,7 +244,7 @@ class CastValue(ArrayArrayCodec):
             json_map: dict[str, list[tuple[object, object]]] = {}
             for direction in ("encode", "decode"):
                 if direction in self.scalar_map:
-                    json_map[direction] = [(k, v) for k, v in self.scalar_map[direction].items()]
+                    json_map[direction] = list(self.scalar_map[direction].items())
             config["scalar_map"] = cast("JSON", json_map)
         return {"name": "cast_value", "configuration": config}
 
