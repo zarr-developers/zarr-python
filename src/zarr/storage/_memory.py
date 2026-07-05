@@ -500,7 +500,7 @@ class ManagedMemoryStore(MemoryStore):
     ) -> ManagedMemoryStore:
         """Internal: create a store from an existing managed dict."""
         store = object.__new__(cls)
-        Store.__init__(store, read_only=read_only)
+        Store.__init__(store, read_only=read_only)  # pylint: disable=unnecessary-dunder-call
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)
