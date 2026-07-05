@@ -518,7 +518,9 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     problems.extend(_check_literal(doc, "node_type", "group"))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
-    if "consolidated_metadata" in doc:
+    if "consolidated_metadata" in doc and doc["consolidated_metadata"] is not None:
+        # consolidated_metadata: null is accepted: historical zarr-python
+        # versions wrote it for groups without consolidated metadata.
         problems.extend(
             _prefix(
                 "consolidated_metadata",
