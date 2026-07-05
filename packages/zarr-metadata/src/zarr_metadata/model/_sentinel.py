@@ -18,10 +18,12 @@ has not yet implemented PEP 661 — a sentinel in type position is a hard
 `[valid-type]` error, so downstream mypy users (zarr-python itself) would
 see these fields as `Any`. Pinning a working pyright in this package's CI
 would fix neither contributors' IDEs nor downstream checkers reading the
-py.typed annotations. The single-member enum gives the same identity
-semantics with exact `Literal` narrowing on every checker; switch to
-`Sentinel` once the pyright regression is fixed and mypy support lands —
-both expected, now that the PEP is Final.
+py.typed annotations. For calibration: ty (0.0.56)
+already types the Sentinel spelling perfectly — exact unions and
+`is`/`is not` narrowing in dataclass fields — so the standard is landing;
+pyright and mypy are the laggards. The single-member enum gives the same
+identity semantics with exact `Literal` narrowing on every checker; switch
+to `Sentinel` once the pyright regression is fixed and mypy support lands.
 """
 
 from __future__ import annotations
