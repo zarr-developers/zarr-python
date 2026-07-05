@@ -169,16 +169,22 @@ def test_zarr_metadata_v3_from_json(case: Expect[object, NamedConfigModelV3]) ->
 
 
 def test_v3_to_json_includes_required_fields() -> None:
-    """V3 to_json emits all required fields with the expected values."""
+    """V3 to_json emits every spec-required key (per the typed constant),
+    and the whole document matches the model's values."""
     out = ArrayMetadataModelV3.create_default(
         shape=(10,), data_type=NamedConfigModelV3(name="int32", configuration={})
     ).to_json()
-    assert out["zarr_format"] == 3
-    assert out["node_type"] == "array"
-    assert out["shape"] == (10,)
-    assert out["fill_value"] == 0
-    assert out["data_type"] == {"name": "int32", "configuration": {}}
-    assert out["codecs"] == ({"name": "bytes", "configuration": {}},)
+    assert out.keys() >= ARRAY_METADATA_REQUIRED_KEYS_V3
+    assert out == {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (10,),
+        "fill_value": 0,
+        "data_type": {"name": "int32", "configuration": {}},
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": ()}},
+        "codecs": ({"name": "bytes", "configuration": {}},),
+        "chunk_key_encoding": {"name": "default", "configuration": {}},
+    }
 
 
 def test_v3_dimension_names_included_when_present() -> None:
