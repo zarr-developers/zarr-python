@@ -168,8 +168,14 @@ class ArrayMetadataModelV3:
 
         The default is a structurally-valid scalar `uint8` array — the array
         analog of `list()` returning `[]`. Any field can be overridden by keyword
-        (the same fields accepted by `update`).
+        (the same fields accepted by `update`). Overriding `shape` without
+        `chunk_grid` derives a consistent default grid: one regular chunk
+        covering the array (`chunk_shape` equal to `shape`).
         """
+        if "shape" in overrides and "chunk_grid" not in overrides:
+            overrides["chunk_grid"] = NamedConfigModelV3(
+                name="regular", configuration={"chunk_shape": tuple(overrides["shape"])}
+            )
         default = cls(
             shape=(),
             fill_value=0,
@@ -353,8 +359,12 @@ class ArrayMetadataModelV2:
 
         The default is a structurally-valid scalar `uint8` (`"|u1"`) array — the
         array analog of `list()` returning `[]`. Any field can be overridden by
-        keyword (the same fields accepted by `update`).
+        keyword (the same fields accepted by `update`). Overriding `shape`
+        without `chunks` derives `chunks` equal to `shape` (one chunk covering
+        the array).
         """
+        if "shape" in overrides and "chunks" not in overrides:
+            overrides["chunks"] = tuple(overrides["shape"])
         default = cls(
             shape=(),
             dtype="|u1",

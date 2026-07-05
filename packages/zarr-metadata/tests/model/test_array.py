@@ -180,7 +180,7 @@ def test_v3_to_json_emits_canonical_document() -> None:
         "shape": (10,),
         "fill_value": 0,
         "data_type": {"name": "int32", "configuration": {}},
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": ()}},
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (10,)}},
         "codecs": ({"name": "bytes", "configuration": {}},),
         "chunk_key_encoding": {"name": "default", "configuration": {}},
     }
@@ -1258,3 +1258,35 @@ def test_dimension_names_null_field_rejected() -> None:
     assert (
         "dimension_names" not in ArrayMetadataModelV3.create_default(dimension_names=None).to_json()
     )
+
+
+# --- create_default derives the chunk grid from shape ------------------------
+
+
+def test_v3_create_default_chunk_grid_follows_shape() -> None:
+    """Overriding shape without chunk_grid derives a consistent default grid:
+    one chunk covering the array (chunk_shape == shape), instead of silently
+    keeping the scalar default's 0-d grid."""
+    model = ArrayMetadataModelV3.create_default(shape=(100, 100))
+    assert model.chunk_grid == NamedConfigModelV3(
+        name="regular", configuration={"chunk_shape": (100, 100)}
+    )
+
+
+def test_v3_create_default_explicit_chunk_grid_respected() -> None:
+    """An explicit chunk_grid override wins over the shape-derived default."""
+    grid = NamedConfigModelV3(name="regular", configuration={"chunk_shape": (10, 10)})
+    model = ArrayMetadataModelV3.create_default(shape=(100, 100), chunk_grid=grid)
+    assert model.chunk_grid == grid
+
+
+def test_v2_create_default_chunks_follow_shape() -> None:
+    """Overriding shape without chunks derives chunks == shape."""
+    model = ArrayMetadataModelV2.create_default(shape=(100, 100))
+    assert model.chunks == (100, 100)
+
+
+def test_v2_create_default_explicit_chunks_respected() -> None:
+    """An explicit chunks override wins over the shape-derived default."""
+    model = ArrayMetadataModelV2.create_default(shape=(100, 100), chunks=(10, 10))
+    assert model.chunks == (10, 10)
