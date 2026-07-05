@@ -1299,3 +1299,17 @@ def test_v3_create_default_zero_length_dimensions() -> None:
     zero chunk length is permitted exactly where the dimension is empty."""
     model = ArrayMetadataModelV3.create_default(shape=(0, 3))
     assert model.chunk_grid.configuration["chunk_shape"] == (0, 3)
+
+
+def test_create_default_derivation_is_one_way() -> None:
+    """Overriding the chunk grid (v3) or chunks (v2) without shape leaves the
+    scalar default shape=() untouched: a user-supplied chunk_grid is an
+    extension point taken verbatim, and deriving shape from it would require
+    interpreting grid configurations, which the model layer never does."""
+    grid = NamedConfigModelV3(name="regular", configuration={"chunk_shape": (10, 10)})
+    v3 = ArrayMetadataModelV3.create_default(chunk_grid=grid)
+    assert v3.shape == ()
+    assert v3.chunk_grid == grid
+    v2 = ArrayMetadataModelV2.create_default(chunks=(10, 10))
+    assert v2.shape == ()
+    assert v2.chunks == (10, 10)

@@ -171,6 +171,14 @@ class ArrayMetadataModelV3:
         (the same fields accepted by `update`). Overriding `shape` without
         `chunk_grid` derives a consistent default grid: one regular chunk
         covering the array (`chunk_shape` equal to `shape`).
+
+        The derivation is deliberately one-way. A user-supplied `chunk_grid`
+        is an extension point and is taken verbatim — deriving `shape` from
+        it would require interpreting the grid's configuration, which this
+        layer never does (and cannot do for unrecognized grid names). So
+        overriding `chunk_grid` without `shape` keeps the scalar default
+        `shape=()`, and consistency between the two is the caller's
+        responsibility.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
             overrides["chunk_grid"] = NamedConfigModelV3(
@@ -362,6 +370,11 @@ class ArrayMetadataModelV2:
         keyword (the same fields accepted by `update`). Overriding `shape`
         without `chunks` derives `chunks` equal to `shape` (one chunk covering
         the array).
+
+        The derivation is deliberately one-way, matching the v3 model:
+        overriding `chunks` without `shape` keeps the scalar default
+        `shape=()`, and consistency between the two is the caller's
+        responsibility.
         """
         if "shape" in overrides and "chunks" not in overrides:
             overrides["chunks"] = tuple(overrides["shape"])
