@@ -1290,3 +1290,12 @@ def test_v2_create_default_explicit_chunks_respected() -> None:
     """An explicit chunks override wins over the shape-derived default."""
     model = ArrayMetadataModelV2.create_default(shape=(100, 100), chunks=(10, 10))
     assert model.chunks == (10, 10)
+
+
+def test_v3_create_default_zero_length_dimensions() -> None:
+    """chunk_shape == shape is spec-sound even with zero-length dimensions:
+    'The chunk shape elements are non-zero when the corresponding dimensions
+    of the arrays have non-zero length' — the constraint is conditional, so a
+    zero chunk length is permitted exactly where the dimension is empty."""
+    model = ArrayMetadataModelV3.create_default(shape=(0, 3))
+    assert model.chunk_grid.configuration["chunk_shape"] == (0, 3)
