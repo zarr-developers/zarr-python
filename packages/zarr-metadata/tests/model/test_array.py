@@ -168,13 +168,12 @@ def test_zarr_metadata_v3_from_json(case: Expect[object, NamedConfigModelV3]) ->
 # --- V3 baseline -----------------------------------------------------------
 
 
-def test_v3_to_json_includes_required_fields() -> None:
-    """V3 to_json emits every spec-required key (per the typed constant),
-    and the whole document matches the model's values."""
+def test_v3_to_json_emits_canonical_document() -> None:
+    """V3 to_json emits exactly the expected document (which covers every
+    spec-required key by construction)."""
     out = ArrayMetadataModelV3.create_default(
         shape=(10,), data_type=NamedConfigModelV3(name="int32", configuration={})
     ).to_json()
-    assert out.keys() >= ARRAY_METADATA_REQUIRED_KEYS_V3
     assert out == {
         "zarr_format": 3,
         "node_type": "array",
