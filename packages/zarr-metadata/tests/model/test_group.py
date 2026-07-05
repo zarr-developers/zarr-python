@@ -116,10 +116,19 @@ def test_group_v2_key_value_split() -> None:
     assert GroupMetadataModelV2.from_key_value(kv) == model
 
 
-def test_group_v2_from_key_value_without_zattrs() -> None:
-    """A v2 group with no .zattrs file parses with empty attributes."""
-    model = GroupMetadataModelV2.from_key_value({".zgroup": b'{"zarr_format": 2}'})
-    assert model.attributes == {}
+def test_group_v2_zattrs_presence_round_trips() -> None:
+    """A v2 group with no .zattrs file parses with UNSET attributes and emits
+    no .zattrs; an explicit empty .zattrs stays a file — the stores remain
+    distinct through a round-trip."""
+    absent = GroupMetadataModelV2.from_key_value({".zgroup": b'{"zarr_format": 2}'})
+    assert absent.attributes is UNSET
+    assert ".zattrs" not in absent.to_key_value()
+    explicit = GroupMetadataModelV2.from_key_value(
+        {".zgroup": b'{"zarr_format": 2}', ".zattrs": b"{}"}
+    )
+    assert explicit.attributes == {}
+    assert ".zattrs" in explicit.to_key_value()
+    assert absent != explicit
 
 
 def test_group_v2_json_roundtrip() -> None:

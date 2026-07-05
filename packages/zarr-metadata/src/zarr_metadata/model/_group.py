@@ -260,7 +260,7 @@ class GroupMetadataModelV2Partial(TypedDict, total=False):
     `tests/model/test_group.py::test_group_partial_keys_match_settable_model_fields`.
     """
 
-    attributes: dict[str, JSONValue]
+    attributes: dict[str, JSONValue] | UNSET
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -269,11 +269,14 @@ class GroupMetadataModelV2:
 
     A canonical, lossless representation of the `.zgroup` content plus the
     sibling `.zattrs` attributes, folded into a single in-memory value
-    (mirroring the merged `GroupMetadataV2` document form).
+    (mirroring the merged `GroupMetadataV2` document form). `attributes` is
+    `UNSET` when no `.zattrs` file (or merged `attributes` key) exists —
+    distinct from an explicit empty `.zattrs`, which is `{}` and round-trips
+    as a file.
     """
 
     zarr_format: Literal[2] = field(default=2, init=False)
-    attributes: dict[str, JSONValue]
+    attributes: dict[str, JSONValue] | UNSET
 
     @classmethod
     def create_default(
@@ -286,7 +289,7 @@ class GroupMetadataModelV2:
         analog of `list()` returning `[]`. Any field can be overridden by keyword
         (the same fields accepted by `update`).
         """
-        default = cls(attributes={})
+        default = cls(attributes=UNSET)
         return default.update(**overrides)
 
     def update(self, **kwargs: Unpack[GroupMetadataModelV2Partial]) -> GroupMetadataModelV2:
@@ -301,40 +304,42 @@ class GroupMetadataModelV2:
         return dataclasses.replace(self, **kwargs)
 
     def to_json(self) -> GroupMetadataV2:
-        """Return the merged in-memory document form, INCLUDING `attributes`.
+        """Return the merged in-memory document form.
 
-        This is not the on-disk `.zgroup` content: a conforming `.zgroup` must
-        exclude `attributes` (they live in the sibling `.zattrs` file). Use
+        `attributes` is included when set (even empty). This is not the
+        on-disk `.zgroup` content: a conforming `.zgroup` must exclude
+        `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
         out: GroupMetadataV2 = {"zarr_format": self.zarr_format}
-        if len(self.attributes) > 0:
+        if self.attributes is not UNSET:
             out["attributes"] = self.attributes
         return out
 
     @classmethod
     def from_json(cls, data: object) -> GroupMetadataModelV2:
         parsed = parse_group_metadata_v2(arrays_to_tuples(data))
-        return cls(attributes=dict(parsed.get("attributes", {})))
+        return cls(attributes=(dict(parsed["attributes"]) if "attributes" in parsed else UNSET))
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV2:
         zgroup = load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2)
-        zattrs: dict[str, JSONValue] = (
-            load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
-            if ATTRIBUTES_STORE_KEY_V2 in mapping
-            else {}
-        )
-        return cls.from_json({**zgroup, "attributes": zattrs})
+        if ATTRIBUTES_STORE_KEY_V2 in mapping:
+            zattrs = load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
+            return cls.from_json({**zgroup, "attributes": zattrs})
+        return cls.from_json(dict(zgroup))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zgroup`
-        # document must exclude them.
+        # document must exclude them. The `.zattrs` key is present exactly
+        # when attributes are set (even empty) — UNSET emits no file.
         zgroup = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        return {
-            GROUP_METADATA_STORE_KEY_V2: json.dumps(zgroup, indent=indent).encode("utf-8"),
-            ATTRIBUTES_STORE_KEY_V2: json.dumps(self.attributes, indent=indent).encode("utf-8"),
-        }
+        out = {GROUP_METADATA_STORE_KEY_V2: json.dumps(zgroup, indent=indent).encode("utf-8")}
+        if self.attributes is not UNSET:
+            out[ATTRIBUTES_STORE_KEY_V2] = json.dumps(self.attributes, indent=indent).encode(
+                "utf-8"
+            )
+        return out
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

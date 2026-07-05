@@ -326,7 +326,7 @@ def test_v2_create_default_is_valid_empty_array() -> None:
     assert m.fill_value == 0
     assert m.compressor is None
     assert m.filters is None
-    assert m.attributes == {}
+    assert m.attributes is UNSET
     assert validate_array_metadata_v2(m.to_json()) == []
     assert ArrayMetadataModelV2.from_json(m.to_json()) == m
 
@@ -671,12 +671,16 @@ def test_v2_from_json_reconstructs_fields() -> None:
     assert model.attributes == {"a": 1}
 
 
-def test_v2_from_json_defaults_when_attributes_absent() -> None:
-    """V2 from_json defaults attributes to empty when the key is absent."""
-    doc = ArrayMetadataModelV2.create_default().to_json()
-    del doc["attributes"]
-    model = ArrayMetadataModelV2.from_json(doc)
-    assert model.attributes == {}
+def test_v2_from_json_attributes_absent_is_unset() -> None:
+    """V2 from_json reads an absent attributes key as UNSET, distinct from an
+    explicit empty mapping."""
+    absent = ArrayMetadataModelV2.from_json(ArrayMetadataModelV2.create_default().to_json())
+    explicit = ArrayMetadataModelV2.from_json(
+        ArrayMetadataModelV2.create_default(attributes={}).to_json()
+    )
+    assert absent.attributes is UNSET
+    assert explicit.attributes == {}
+    assert absent != explicit
 
 
 # --- ArrayMetadataModelV2.from_key_value --------------------------------
@@ -690,12 +694,21 @@ def test_v2_from_key_value_remerges_zattrs() -> None:
     assert model.shape == (10,)
 
 
-def test_v2_from_key_value_absent_zattrs_gives_empty_attributes() -> None:
-    """V2 from_key_value yields empty attributes when .zattrs is absent."""
-    kv: dict[str, bytes] = dict(ArrayMetadataModelV2.create_default(attributes={}).to_key_value())
-    del kv[".zattrs"]
-    model = ArrayMetadataModelV2.from_key_value(kv)
-    assert model.attributes == {}
+def test_v2_zattrs_presence_round_trips() -> None:
+    """The .zattrs file's presence is part of the store: an absent file reads
+    as UNSET and emits no .zattrs; an explicit empty file reads as {} and
+    emits .zattrs — the two stores stay distinct through a round-trip."""
+    explicit_kv = dict(ArrayMetadataModelV2.create_default(attributes={}).to_key_value())
+    assert ".zattrs" in explicit_kv
+    absent_kv = dict(explicit_kv)
+    del absent_kv[".zattrs"]
+
+    absent = ArrayMetadataModelV2.from_key_value(absent_kv)
+    explicit = ArrayMetadataModelV2.from_key_value(explicit_kv)
+    assert absent.attributes is UNSET
+    assert explicit.attributes == {}
+    assert ".zattrs" not in absent.to_key_value()
+    assert ".zattrs" in explicit.to_key_value()
 
 
 def test_v2_from_json_nested_arrays_in_attributes_become_tuples() -> None:

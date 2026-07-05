@@ -331,7 +331,7 @@ class ArrayMetadataModelV2Partial(TypedDict, total=False):
     compressor: CodecMetadataV2 | None
     filters: tuple[CodecMetadataV2, ...] | None
     dimension_separator: ArrayDimensionSeparatorV2
-    attributes: dict[str, JSONValue]
+    attributes: dict[str, JSONValue] | UNSET
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -341,9 +341,12 @@ class ArrayMetadataModelV2:
     A canonical, lossless representation of the `.zarray` content plus the
     sibling `.zattrs` attributes. `dtype`, `compressor`, and `filters` are
     held in their raw JSON forms and are never interpreted; `fill_value` is
-    held verbatim in its JSON form. One spelling normalization: a `.zarray`
-    that omits `dimension_separator` means `"."` by the v2 convention, and
-    the model holds and re-emits that value explicitly.
+    held verbatim in its JSON form. `attributes` is `UNSET` when no
+    `.zattrs` file (or merged `attributes` key) exists — distinct from an
+    explicit empty `.zattrs`, which is `{}` and round-trips as a file. One
+    spelling normalization: a `.zarray` that omits `dimension_separator`
+    means `"."` by the v2 convention, and the model holds and re-emits that
+    value explicitly.
     """
 
     zarr_format: Literal[2] = field(default=2, init=False)
@@ -359,7 +362,7 @@ class ArrayMetadataModelV2:
     # normalization, like the v3 bare-string metadata-field form). The value
     # is never None: the document grammar has no null spelling for this field.
     dimension_separator: ArrayDimensionSeparatorV2 = field(default=".")
-    attributes: dict[str, JSONValue]
+    attributes: dict[str, JSONValue] | UNSET
 
     def update(self, **kwargs: Unpack[ArrayMetadataModelV2Partial]) -> ArrayMetadataModelV2:
         """
@@ -400,15 +403,16 @@ class ArrayMetadataModelV2:
             order="C",
             compressor=None,
             filters=None,
-            attributes={},
+            attributes=UNSET,
         )
         return default.update(**overrides)
 
     def to_json(self) -> ArrayMetadataV2:
-        """Return the merged in-memory document form, INCLUDING `attributes`.
+        """Return the merged in-memory document form.
 
-        This is not the on-disk `.zarray` content: a conforming `.zarray` must
-        exclude `attributes` (they live in the sibling `.zattrs` file). Use
+        `attributes` is included when set (even empty). This is not the
+        on-disk `.zarray` content: a conforming `.zarray` must exclude
+        `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
         out: ArrayMetadataV2 = {
@@ -419,10 +423,11 @@ class ArrayMetadataModelV2:
             "chunks": self.chunks,
             "fill_value": self.fill_value,
             "dimension_separator": self.dimension_separator,
-            "attributes": self.attributes,
             "compressor": self.compressor,
             "filters": self.filters,
         }
+        if self.attributes is not UNSET:
+            out["attributes"] = self.attributes
         return out
 
     @classmethod
@@ -437,24 +442,25 @@ class ArrayMetadataModelV2:
             compressor=parsed["compressor"],
             filters=parsed["filters"],
             dimension_separator=parsed.get("dimension_separator", "."),
-            attributes=dict(parsed.get("attributes", {})),
+            attributes=(dict(parsed["attributes"]) if "attributes" in parsed else UNSET),
         )
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ArrayMetadataModelV2:
         zarray = load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V2)
-        zattrs: dict[str, JSONValue] = (
-            load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
-            if ATTRIBUTES_STORE_KEY_V2 in mapping
-            else {}
-        )
-        return cls.from_json({**zarray, "attributes": zattrs})
+        if ATTRIBUTES_STORE_KEY_V2 in mapping:
+            zattrs = load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
+            return cls.from_json({**zarray, "attributes": zattrs})
+        return cls.from_json(dict(zarray))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
-        # document must exclude them.
+        # document must exclude them. The `.zattrs` key is present exactly
+        # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        return {
-            ARRAY_METADATA_STORE_KEY_V2: json.dumps(zarray, indent=indent).encode("utf-8"),
-            ATTRIBUTES_STORE_KEY_V2: json.dumps(self.attributes, indent=indent).encode("utf-8"),
-        }
+        out = {ARRAY_METADATA_STORE_KEY_V2: json.dumps(zarray, indent=indent).encode("utf-8")}
+        if self.attributes is not UNSET:
+            out[ATTRIBUTES_STORE_KEY_V2] = json.dumps(self.attributes, indent=indent).encode(
+                "utf-8"
+            )
+        return out
