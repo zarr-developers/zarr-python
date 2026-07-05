@@ -17,8 +17,8 @@ from zarr_metadata.model import (
     ArrayMetadataModelV3,
     ArrayMetadataModelV3Partial,
     MetadataValidationError,
+    NamedConfigModelV3,
     ValidationProblem,
-    ZarrMetadataV3,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_json,
@@ -119,16 +119,16 @@ def test_string_nan_fill_value_roundtrips() -> None:
     assert ArrayMetadataModelV3.from_json(m.to_json()).fill_value == "NaN"
 
 
-# --- ZarrMetadataV3.to_json ------------------------------------------------
+# --- NamedConfigModelV3.to_json ------------------------------------------------
 
 ZARR_TO_JSON_CASES = [
     Expect(
-        ZarrMetadataV3(name="regular", configuration={"chunk_shape": [1]}),
+        NamedConfigModelV3(name="regular", configuration={"chunk_shape": [1]}),
         {"name": "regular", "configuration": {"chunk_shape": [1]}},
         id="with-configuration",
     ),
     Expect(
-        ZarrMetadataV3(name="bytes", configuration={}),
+        NamedConfigModelV3(name="bytes", configuration={}),
         {"name": "bytes", "configuration": {}},
         id="without-configuration",
     ),
@@ -136,32 +136,32 @@ ZARR_TO_JSON_CASES = [
 
 
 @pytest.mark.parametrize("case", ZARR_TO_JSON_CASES, ids=lambda c: c.id)
-def test_zarr_metadata_v3_to_json(case: Expect[ZarrMetadataV3, dict[str, object]]) -> None:
-    """ZarrMetadataV3.to_json emits the canonical object form."""
+def test_zarr_metadata_v3_to_json(case: Expect[NamedConfigModelV3, dict[str, object]]) -> None:
+    """NamedConfigModelV3.to_json emits the canonical object form."""
     assert case.input.to_json() == case.output
 
 
-# --- ZarrMetadataV3.from_json -----------------------------------------------
+# --- NamedConfigModelV3.from_json -----------------------------------------------
 
 ZARR_FROM_JSON_CASES = [
-    Expect("bytes", ZarrMetadataV3(name="bytes", configuration={}), id="bare-string"),
+    Expect("bytes", NamedConfigModelV3(name="bytes", configuration={}), id="bare-string"),
     Expect(
         {"name": "regular", "configuration": {"chunk_shape": [1]}},
-        ZarrMetadataV3(name="regular", configuration={"chunk_shape": (1,)}),
+        NamedConfigModelV3(name="regular", configuration={"chunk_shape": (1,)}),
         id="object-with-config",
     ),
     Expect(
         {"name": "bytes"},
-        ZarrMetadataV3(name="bytes", configuration={}),
+        NamedConfigModelV3(name="bytes", configuration={}),
         id="object-without-config",
     ),
 ]
 
 
 @pytest.mark.parametrize("case", ZARR_FROM_JSON_CASES, ids=lambda c: c.id)
-def test_zarr_metadata_v3_from_json(case: Expect[object, ZarrMetadataV3]) -> None:
-    """ZarrMetadataV3.from_json parses both the bare-string and object forms."""
-    assert ZarrMetadataV3.from_json(case.input) == case.output
+def test_zarr_metadata_v3_from_json(case: Expect[object, NamedConfigModelV3]) -> None:
+    """NamedConfigModelV3.from_json parses both the bare-string and object forms."""
+    assert NamedConfigModelV3.from_json(case.input) == case.output
 
 
 # --- V3 baseline -----------------------------------------------------------
@@ -170,7 +170,7 @@ def test_zarr_metadata_v3_from_json(case: Expect[object, ZarrMetadataV3]) -> Non
 def test_v3_to_json_includes_required_fields() -> None:
     """V3 to_json emits all required fields with the expected values."""
     out = ArrayMetadataModelV3.create_default(
-        shape=(10,), data_type=ZarrMetadataV3(name="int32", configuration={})
+        shape=(10,), data_type=NamedConfigModelV3(name="int32", configuration={})
     ).to_json()
     assert out["zarr_format"] == 3
     assert out["node_type"] == "array"
@@ -221,7 +221,7 @@ def test_v3_single_storage_transformer_included() -> None:
     Regression: the guard used ``> 1`` instead of ``> 0``, dropping a
     lone storage transformer.
     """
-    st = ZarrMetadataV3(name="some_transformer", configuration={})
+    st = NamedConfigModelV3(name="some_transformer", configuration={})
     out: dict[str, object] = dict(
         ArrayMetadataModelV3.create_default(storage_transformers=(st,)).to_json()
     )
@@ -292,7 +292,7 @@ def test_v3_create_default_is_valid_empty_array() -> None:
     """V3 create_default builds a structurally valid empty array that round-trips."""
     m = ArrayMetadataModelV3.create_default()
     assert m.shape == ()
-    assert m.data_type == ZarrMetadataV3(name="uint8", configuration={})
+    assert m.data_type == NamedConfigModelV3(name="uint8", configuration={})
     assert m.fill_value == 0
     assert m.attributes == {}
     assert m.extra_fields == {}
@@ -307,7 +307,7 @@ def test_v3_create_default_applies_overrides() -> None:
     assert m.shape == (4, 4)
     assert m.attributes == {"a": 1}
     # un-overridden fields keep their defaults
-    assert m.data_type == ZarrMetadataV3(name="uint8", configuration={})
+    assert m.data_type == NamedConfigModelV3(name="uint8", configuration={})
 
 
 def test_v2_create_default_is_valid_empty_array() -> None:
@@ -464,11 +464,11 @@ def test_v3_from_json_reconstructs_required_fields() -> None:
     doc = ArrayMetadataModelV3.create_default(
         shape=(7,),
         attributes={"a": 1},
-        data_type=ZarrMetadataV3(name="int32", configuration={}),
+        data_type=NamedConfigModelV3(name="int32", configuration={}),
     ).to_json()
     model = ArrayMetadataModelV3.from_json(doc)
     assert model.shape == (7,)
-    assert model.data_type == ZarrMetadataV3(name="int32", configuration={})
+    assert model.data_type == NamedConfigModelV3(name="int32", configuration={})
     assert model.attributes == {"a": 1}
 
 
@@ -522,12 +522,12 @@ def test_v3_from_key_value_parses_zarr_json() -> None:
 FROM_KEY_VALUE_MISSING_PARAMS = [
     pytest.param(
         ArrayMetadataModelV3,
-        ExpectFail({}, KeyError, id="v3-missing-zarr-json"),
+        ExpectFail({}, MetadataValidationError, id="v3-missing-zarr-json", msg="missing store key"),
         id="v3-missing-zarr-json",
     ),
     pytest.param(
         ArrayMetadataModelV2,
-        ExpectFail({}, KeyError, id="v2-missing-zarray"),
+        ExpectFail({}, MetadataValidationError, id="v2-missing-zarray", msg="missing store key"),
         id="v2-missing-zarray",
     ),
 ]
@@ -538,7 +538,7 @@ def test_from_key_value_missing_key_raises(
     model_cls: type[ArrayMetadataModelV3 | ArrayMetadataModelV2],
     case: ExpectFail[dict[str, bytes]],
 ) -> None:
-    """from_key_value raises KeyError when the required store key is absent."""
+    """from_key_value raises MetadataValidationError when the required store key is absent."""
     with case.raises():
         model_cls.from_key_value(case.input)
 
@@ -551,7 +551,7 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
         ArrayMetadataModelV3.create_default(
             attributes={"a": 1},
             dimension_names=("x",),
-            storage_transformers=(ZarrMetadataV3(name="t", configuration={}),),
+            storage_transformers=(NamedConfigModelV3(name="t", configuration={}),),
             extra_fields={"ext": {"must_understand": False}},
         ),
         id="v3-full",
@@ -629,7 +629,7 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
     doc["data_type"] = "int32"  # bare-string form, not canonical object form
     model = ArrayMetadataModelV3.from_json(doc)
     # parses correctly, re-serializes to canonical object form
-    assert model.data_type == ZarrMetadataV3(name="int32", configuration={})
+    assert model.data_type == NamedConfigModelV3(name="int32", configuration={})
     assert model.to_json()["data_type"] == {"name": "int32", "configuration": {}}
 
 
@@ -960,7 +960,7 @@ FROM_JSON_REJECT_PARAMS = [
         id="v2-missing-required",
     ),
     pytest.param(
-        ZarrMetadataV3,
+        NamedConfigModelV3,
         ExpectFail(lambda: 5, MetadataValidationError, id="x"),
         id="zarr-metadata-bad-input",
     ),
@@ -969,7 +969,7 @@ FROM_JSON_REJECT_PARAMS = [
 
 @pytest.mark.parametrize(("model", "case"), FROM_JSON_REJECT_PARAMS)
 def test_from_json_rejects_malformed(
-    model: type[ArrayMetadataModelV3 | ArrayMetadataModelV2 | ZarrMetadataV3],
+    model: type[ArrayMetadataModelV3 | ArrayMetadataModelV2 | NamedConfigModelV3],
     case: ExpectFail[Callable[[], object]],
 ) -> None:
     """from_json raises MetadataValidationError on a malformed document."""
@@ -983,19 +983,19 @@ def test_from_json_rejects_malformed(
 
 def test_validation_problem_str_with_loc() -> None:
     """ValidationProblem.__str__ renders a non-empty loc as a dotted path."""
-    p = ValidationProblem(loc=("codecs", 0, "name"), message="expected str")
+    p = ValidationProblem(loc=("codecs", 0, "name"), message="expected str", kind="invalid_type")
     assert str(p) == "codecs.0.name: expected str"
 
 
 def test_validation_problem_str_empty_loc() -> None:
     """ValidationProblem.__str__ renders an empty loc as <root>."""
-    p = ValidationProblem(loc=(), message="not a mapping")
+    p = ValidationProblem(loc=(), message="not a mapping", kind="invalid_type")
     assert str(p) == "<root>: not a mapping"
 
 
 def test_validation_problem_is_frozen() -> None:
     """ValidationProblem is immutable (frozen dataclass)."""
-    p = ValidationProblem(loc=("shape",), message="x")
+    p = ValidationProblem(loc=("shape",), message="x", kind="invalid_type")
     with pytest.raises(dataclasses.FrozenInstanceError):
         p.message = "y"  # type: ignore[misc]
 
@@ -1003,8 +1003,10 @@ def test_validation_problem_is_frozen() -> None:
 def test_metadata_validation_error_holds_problems() -> None:
     """MetadataValidationError carries its problem list and renders them in its message."""
     problems = [
-        ValidationProblem(loc=("shape",), message="missing required key"),
-        ValidationProblem(loc=("data_type",), message="expected a metadata field"),
+        ValidationProblem(loc=("shape",), message="missing required key", kind="missing_key"),
+        ValidationProblem(
+            loc=("data_type",), message="expected a metadata field", kind="invalid_type"
+        ),
     ]
     err = MetadataValidationError(problems)
     assert err.problems == problems
@@ -1014,6 +1016,125 @@ def test_metadata_validation_error_holds_problems() -> None:
 
 def test_prefix_prepends_loc_head() -> None:
     """_prefix prepends a loc head to each problem's loc."""
-    problems = [ValidationProblem(loc=("name",), message="expected str")]
+    problems = [ValidationProblem(loc=("name",), message="expected str", kind="invalid_type")]
     prefixed = _prefix(0, problems)
-    assert prefixed == [ValidationProblem(loc=(0, "name"), message="expected str")]
+    assert prefixed == [
+        ValidationProblem(loc=(0, "name"), message="expected str", kind="invalid_type")
+    ]
+
+
+# --- Stricter v2/v3 field validation and error kinds -------------------------
+
+
+def test_v2_dtype_must_be_string_or_records() -> None:
+    """A non-string, non-records v2 dtype is rejected with an invalid_type problem."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dtype": 42}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("dtype",), "invalid_type")]
+
+
+def test_v2_structured_dtype_records_accepted() -> None:
+    """A structured v2 dtype (field records, optionally nested/shaped) validates."""
+    dtype = (("a", "<i4"), ("b", (("c", "|u1"),)), ("d", "<f8", (2, 2)))
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dtype": dtype}
+    assert validate_array_metadata_v2(doc) == []
+
+
+def test_v2_structured_dtype_malformed_record_rejected() -> None:
+    """A field record with the wrong arity is rejected."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dtype": (("a",),)}
+    problems = validate_array_metadata_v2(doc)
+    assert [p.loc for p in problems] == [("dtype",)]
+
+
+def test_v2_order_literal_enforced() -> None:
+    """An order other than 'C' or 'F' is rejected with an invalid_value problem."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"order": "Q"}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("order",), "invalid_value")]
+
+
+def test_v2_compressor_must_be_codec_or_none() -> None:
+    """A compressor that is not null or a codec config mapping is rejected."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"compressor": "zlib"}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("compressor",), "invalid_type")]
+
+
+def test_v2_compressor_requires_string_id() -> None:
+    """A compressor mapping without a string id is rejected."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"compressor": {"level": 3}}
+    problems = validate_array_metadata_v2(doc)
+    assert [p.loc for p in problems] == [("compressor",)]
+
+
+def test_v2_filters_must_be_codec_sequence_or_none() -> None:
+    """Filters that are not null or a sequence of codec configs are rejected."""
+    for bad in (7, (5,), "gzip"):
+        doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"filters": bad}
+        problems = validate_array_metadata_v2(doc)
+        assert [(p.loc, p.kind) for p in problems] == [(("filters",), "invalid_type")], bad
+
+
+def test_v2_dimension_separator_literal_enforced() -> None:
+    """A dimension_separator other than '.' or '/' is rejected."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dimension_separator": "-"}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("dimension_separator",), "invalid_value")]
+
+
+def test_v2_zarr_format_literal_enforced() -> None:
+    """A v2 document claiming zarr_format 3 is rejected with an invalid_value problem."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"zarr_format": 3}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+
+
+def test_v3_zarr_format_literal_enforced() -> None:
+    """A v3 document claiming zarr_format 2 is rejected with an invalid_value problem."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json()) | {"zarr_format": 2}
+    problems = validate_array_metadata_v3(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+
+
+def test_v3_node_type_literal_enforced() -> None:
+    """A v3 array document claiming node_type 'group' is rejected."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json()) | {"node_type": "group"}
+    problems = validate_array_metadata_v3(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("node_type",), "invalid_value")]
+
+
+def test_missing_key_kind_is_machine_readable() -> None:
+    """A missing required key is distinguishable by kind, without message matching."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    del doc["chunk_key_encoding"]
+    problems = validate_array_metadata_v3(doc)
+    assert problems == [
+        ValidationProblem(("chunk_key_encoding",), "missing required key", "missing_key")
+    ]
+
+
+# --- Unified error channels ---------------------------------------------------
+
+
+def test_from_key_value_invalid_json_raises_metadata_error() -> None:
+    """Undecodable store bytes raise MetadataValidationError (kind invalid_json), not JSONDecodeError."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ArrayMetadataModelV3.from_key_value({"zarr.json": b"{not json"})
+    assert [p.kind for p in exc_info.value.problems] == ["invalid_json"]
+
+
+def test_from_key_value_missing_key_kind() -> None:
+    """A missing store key surfaces as a missing_key problem at the store-key loc."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ArrayMetadataModelV2.from_key_value({})
+    assert exc_info.value.problems == [
+        ValidationProblem((".zarray",), "missing store key", "missing_key")
+    ]
+
+
+def test_extra_fields_overlap_raises_metadata_error() -> None:
+    """The extra-fields overlap invariant raises MetadataValidationError (a ValueError)."""
+    with pytest.raises(MetadataValidationError, match="Extra fields") as exc_info:
+        ArrayMetadataModelV3.create_default(extra_fields={"shape": {"must_understand": False}})
+    assert [p.kind for p in exc_info.value.problems] == ["invalid_value"]

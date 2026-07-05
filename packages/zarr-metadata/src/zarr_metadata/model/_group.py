@@ -19,6 +19,7 @@ from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    load_store_json,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
 )
@@ -83,7 +84,15 @@ class GroupMetadataModelV3:
     def __post_init__(self) -> None:
         reserved = GROUP_METADATA_STANDARD_KEYS_V3 | {CONSOLIDATED_METADATA_KEY_V3}
         if set(self.extra_fields.keys()).intersection(reserved):
-            raise ValueError("Extra fields cannot overlap with standard GroupMetadataV3 fields")
+            raise MetadataValidationError(
+                [
+                    ValidationProblem(
+                        ("extra_fields",),
+                        "Extra fields cannot overlap with standard GroupMetadataV3 fields",
+                        "invalid_value",
+                    )
+                ]
+            )
 
     @classmethod
     def create_default(
@@ -151,7 +160,7 @@ class GroupMetadataModelV3:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV3:
-        return cls.from_json(json.loads(mapping[GROUP_METADATA_STORE_KEY_V3]))
+        return cls.from_json(load_store_json(mapping, GROUP_METADATA_STORE_KEY_V3))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         return {
@@ -176,9 +185,15 @@ class ConsolidatedMetadataModelV3:
 
     def __post_init__(self) -> None:
         if self.must_understand is not False:
-            raise ValueError(
-                f"Invalid value for 'must_understand'. Expected False. "
-                f"Got {self.must_understand!r}."
+            raise MetadataValidationError(
+                [
+                    ValidationProblem(
+                        ("must_understand",),
+                        f"Invalid value for 'must_understand'. Expected False. "
+                        f"Got {self.must_understand!r}.",
+                        "invalid_value",
+                    )
+                ]
             )
 
     def to_json(self) -> ConsolidatedMetadataV3:
@@ -193,16 +208,22 @@ class ConsolidatedMetadataModelV3:
     @classmethod
     def from_json(cls, data: object) -> ConsolidatedMetadataModelV3:
         if not isinstance(data, Mapping):
-            raise MetadataValidationError([ValidationProblem((), "expected a mapping")])
+            raise MetadataValidationError(
+                [ValidationProblem((), "expected a mapping", "invalid_type")]
+            )
         doc = cast("Mapping[str, object]", data)
         entries_raw = doc.get("metadata")
         if not isinstance(entries_raw, Mapping):
-            raise MetadataValidationError([ValidationProblem(("metadata",), "expected a mapping")])
+            raise MetadataValidationError(
+                [ValidationProblem(("metadata",), "expected a mapping", "invalid_type")]
+            )
         entries: dict[str, ArrayMetadataModelV3 | GroupMetadataModelV3] = {}
         problems: list[ValidationProblem] = []
         for key, entry in cast("Mapping[object, object]", entries_raw).items():
             if not isinstance(key, str):
-                problems.append(ValidationProblem(("metadata",), f"non-string key {key!r}"))
+                problems.append(
+                    ValidationProblem(("metadata",), f"non-string key {key!r}", "invalid_type")
+                )
                 continue
             entry_obj: object = entry
             node_type: object = None
@@ -214,14 +235,18 @@ class ConsolidatedMetadataModelV3:
                 entries[key] = GroupMetadataModelV3.from_json(entry_obj)
             else:
                 problems.append(
-                    ValidationProblem(("metadata", key, "node_type"), "expected 'array' or 'group'")
+                    ValidationProblem(
+                        ("metadata", key, "node_type"),
+                        "expected 'array' or 'group'",
+                        "invalid_value",
+                    )
                 )
         if problems:
             raise MetadataValidationError(problems)
         must_understand = doc.get("must_understand", False)
         if must_understand is not False:
             raise MetadataValidationError(
-                [ValidationProblem(("must_understand",), "expected False")]
+                [ValidationProblem(("must_understand",), "expected False", "invalid_value")]
             )
         return cls(must_understand=must_understand, metadata=entries)
 
@@ -280,6 +305,12 @@ class GroupMetadataModelV2:
         return dataclasses.replace(self, **kwargs)
 
     def to_json(self) -> GroupMetadataV2:
+        """Return the merged in-memory document form, INCLUDING `attributes`.
+
+        This is not the on-disk `.zgroup` content: a conforming `.zgroup` must
+        exclude `attributes` (they live in the sibling `.zattrs` file). Use
+        `to_key_value` to produce the spec-conforming split for storage.
+        """
         out: GroupMetadataV2 = {"zarr_format": self.zarr_format}
         if len(self.attributes) > 0:
             out["attributes"] = self.attributes
@@ -292,9 +323,9 @@ class GroupMetadataModelV2:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV2:
-        zgroup = json.loads(mapping[GROUP_METADATA_STORE_KEY_V2])
+        zgroup = load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2)
         zattrs: dict[str, JSONValue] = (
-            json.loads(mapping[ATTRIBUTES_STORE_KEY_V2])
+            load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
             if ATTRIBUTES_STORE_KEY_V2 in mapping
             else {}
         )
@@ -333,10 +364,12 @@ class ConsolidatedMetadataModelV2:
     @classmethod
     def from_json(cls, data: object) -> ConsolidatedMetadataModelV2:
         if not isinstance(data, Mapping):
-            raise MetadataValidationError([ValidationProblem((), "expected a mapping")])
+            raise MetadataValidationError(
+                [ValidationProblem((), "expected a mapping", "invalid_type")]
+            )
         doc = cast("Mapping[str, object]", data)
         problems: list[ValidationProblem] = [
-            ValidationProblem((key,), "missing required key")
+            ValidationProblem((key,), "missing required key", "missing_key")
             for key in ("zarr_consolidated_format", "metadata")
             if key not in doc
         ]
@@ -346,7 +379,9 @@ class ConsolidatedMetadataModelV2:
                 isinstance(k, str) for k in cast("Mapping[object, object]", entries)
             ):
                 problems.append(
-                    ValidationProblem(("metadata",), "expected a mapping with string keys")
+                    ValidationProblem(
+                        ("metadata",), "expected a mapping with string keys", "invalid_type"
+                    )
                 )
         if problems:
             raise MetadataValidationError(problems)
@@ -358,7 +393,7 @@ class ConsolidatedMetadataModelV2:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ConsolidatedMetadataModelV2:
-        return cls.from_json(json.loads(mapping[CONSOLIDATED_METADATA_STORE_KEY_V2]))
+        return cls.from_json(load_store_json(mapping, CONSOLIDATED_METADATA_STORE_KEY_V2))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         return {

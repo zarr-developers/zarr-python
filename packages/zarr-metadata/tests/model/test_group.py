@@ -18,6 +18,8 @@ from zarr_metadata.model._validation import (
     MetadataValidationError,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
+    validate_group_metadata_v2,
+    validate_group_metadata_v3,
 )
 
 # --- GroupMetadataModelV3 ---------------------------------------------------
@@ -265,3 +267,20 @@ def test_consolidated_v2_not_a_mapping() -> None:
     """from_json rejects a non-mapping .zmetadata document."""
     with pytest.raises(MetadataValidationError, match="expected a mapping"):
         ConsolidatedMetadataModelV2.from_json([1])
+
+
+# --- Literal-value enforcement -----------------------------------------------
+
+
+def test_group_v3_literals_enforced() -> None:
+    """A v3 group doc with wrong zarr_format or node_type is rejected with invalid_value."""
+    base = GroupMetadataModelV3.create_default().to_json()
+    for key, bad in (("zarr_format", 2), ("node_type", "array")):
+        problems = validate_group_metadata_v3(dict(base) | {key: bad})
+        assert [(p.loc, p.kind) for p in problems] == [((key,), "invalid_value")], key
+
+
+def test_group_v2_zarr_format_literal_enforced() -> None:
+    """A v2 group doc claiming zarr_format 3 is rejected with invalid_value."""
+    problems = validate_group_metadata_v2({"zarr_format": 3})
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]

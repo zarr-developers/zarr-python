@@ -1,16 +1,22 @@
 """Structural validation for Zarr metadata documents.
 
-Validators check JSON structure (shapes, key presence, primitive kinds),
-not domain validity. Each concept gets a `validate_*` function returning
-every problem found, an `is_*` type guard, and a `parse_*` function that
-narrows or raises `MetadataValidationError`.
+Validators check JSON structure (key presence, value shapes, and fixed
+literals like `zarr_format`), not domain validity. Each concept gets a
+`validate_*` function returning every problem found, an `is_*` type guard,
+and a `parse_*` function that narrows or raises `MetadataValidationError`.
+
+Every `ValidationProblem` carries a machine-readable `kind` alongside its
+human-readable `message`, so consumers can dispatch on the failure mode
+(`missing_key`, `invalid_type`, `invalid_value`, `invalid_json`) without
+string-matching messages.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import Any, Final, Literal, cast
 
 from typing_extensions import TypeIs
 
@@ -21,6 +27,17 @@ from zarr_metadata.v3._common import MetadataV3
 from zarr_metadata.v3.array import ArrayMetadataV3
 from zarr_metadata.v3.group import GroupMetadataV3
 
+ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json"]
+"""Machine-readable classification of a `ValidationProblem`.
+
+- `missing_key`: a required key (document key or store key) is absent.
+- `invalid_type`: a value has the wrong structural type (e.g. a string where
+  a mapping is required, a non-JSON-serializable object).
+- `invalid_value`: a value has an acceptable type but an invalid content
+  (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
+- `invalid_json`: bytes that do not decode as JSON.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class ValidationProblem:
@@ -28,10 +45,13 @@ class ValidationProblem:
 
     `loc` is the path from the document root to the offending value, e.g.
     `("codecs", 0, "name")`. An empty `loc` refers to the document as a whole.
+    `kind` classifies the failure mode for programmatic dispatch; `message`
+    is the human-readable description.
     """
 
     loc: tuple[str | int, ...]
     message: str
+    kind: ProblemKind
 
     def __str__(self) -> str:
         location = ".".join(str(part) for part in self.loc) if self.loc else "<root>"
@@ -51,7 +71,7 @@ class MetadataValidationError(ValueError):
 
 def _prefix(loc_head: str | int, problems: list[ValidationProblem]) -> list[ValidationProblem]:
     """Prepend `loc_head` to the `loc` of every problem (for nested validators)."""
-    return [ValidationProblem((loc_head, *p.loc), p.message) for p in problems]
+    return [ValidationProblem((loc_head, *p.loc), p.message, p.kind) for p in problems]
 
 
 def validate_json(value: object) -> list[ValidationProblem]:
@@ -62,7 +82,9 @@ def validate_json(value: object) -> list[ValidationProblem]:
     if isinstance(value, Mapping):
         for key, item in cast("Mapping[object, object]", value).items():
             if not isinstance(key, str):
-                problems.append(ValidationProblem((), f"non-string key {key!r} in JSON object"))
+                problems.append(
+                    ValidationProblem((), f"non-string key {key!r} in JSON object", "invalid_type")
+                )
                 continue
             problems.extend(_prefix(key, validate_json(item)))
         return problems
@@ -70,7 +92,7 @@ def validate_json(value: object) -> list[ValidationProblem]:
         for index, item in enumerate(cast("Sequence[object]", value)):
             problems.extend(_prefix(index, validate_json(item)))
         return problems
-    return [ValidationProblem((), f"not a JSON-serializable value: {value!r}")]
+    return [ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type")]
 
 
 def is_json(value: object) -> TypeIs[JSONValue]:
@@ -120,6 +142,25 @@ GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
 )
 
 
+def _missing_keys(required: frozenset[str], doc: Mapping[str, object]) -> list[ValidationProblem]:
+    """One `missing_key` problem per required key absent from `doc`."""
+    return [
+        ValidationProblem((key,), "missing required key", "missing_key")
+        for key in sorted(required - doc.keys())
+    ]
+
+
+def _check_literal(
+    doc: Mapping[str, object], key: str, expected: object
+) -> list[ValidationProblem]:
+    """One `invalid_value` problem if `doc[key]` is present but not `expected`."""
+    if key in doc and doc[key] != expected:
+        return [
+            ValidationProblem((key,), f"expected {expected!r}, got {doc[key]!r}", "invalid_value")
+        ]
+    return []
+
+
 def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
     """Return every reason `value` is not a v3 metadata field.
 
@@ -129,18 +170,26 @@ def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
         return []
     if not isinstance(value, Mapping):
         return [
-            ValidationProblem((), "expected a metadata field (string or {name, configuration})")
+            ValidationProblem(
+                (),
+                "expected a metadata field (string or {name, configuration})",
+                "invalid_type",
+            )
         ]
     field = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = []
     if not isinstance(field.get("name"), str):
-        problems.append(ValidationProblem(("name",), "expected a string name"))
+        problems.append(ValidationProblem(("name",), "expected a string name", "invalid_type"))
     if "configuration" in field:
         configuration = field["configuration"]
         if not isinstance(configuration, Mapping):
-            problems.append(ValidationProblem(("configuration",), "expected a mapping"))
+            problems.append(
+                ValidationProblem(("configuration",), "expected a mapping", "invalid_type")
+            )
         elif not all(isinstance(k, str) for k in cast("Mapping[object, object]", configuration)):
-            problems.append(ValidationProblem(("configuration",), "expected string keys"))
+            problems.append(
+                ValidationProblem(("configuration",), "expected string keys", "invalid_type")
+            )
     return problems
 
 
@@ -166,6 +215,40 @@ def _is_int_sequence(value: object) -> bool:
     )
 
 
+def _is_dtype_v2(value: object) -> bool:
+    """Whether `value` is shaped like a v2 dtype: a string or field records.
+
+    A field record is a `(name, dtype)` or `(name, dtype, shape)` sequence,
+    where `dtype` is itself a string or nested field records and `shape` is a
+    sequence of int. The string content is NOT interpreted — whether the
+    string names a real dtype is domain validity, not structure.
+    """
+    if isinstance(value, str):
+        return True
+    if not isinstance(value, Sequence):
+        return False
+    for record in cast("Sequence[object]", value):
+        if isinstance(record, str) or not isinstance(record, Sequence):
+            return False
+        fields = cast("Sequence[object]", record)
+        if len(fields) not in (2, 3):
+            return False
+        if not isinstance(fields[0], str):
+            return False
+        if not _is_dtype_v2(fields[1]):
+            return False
+        if len(fields) == 3 and not _is_int_sequence(fields[2]):
+            return False
+    return True
+
+
+def _is_codec_v2(value: object) -> bool:
+    """Whether `value` is shaped like a v2 codec config: a mapping with a string `id`."""
+    return isinstance(value, Mapping) and isinstance(
+        cast("Mapping[object, object]", value).get("id"), str
+    )
+
+
 def _validate_attributes(value: object) -> list[ValidationProblem]:
     """Validate an `attributes` value: a mapping with string keys.
 
@@ -178,7 +261,11 @@ def _validate_attributes(value: object) -> list[ValidationProblem]:
     if not isinstance(value, Mapping) or not all(
         isinstance(k, str) for k in cast("Mapping[object, object]", value)
     ):
-        return [ValidationProblem(("attributes",), "expected a mapping with string keys")]
+        return [
+            ValidationProblem(
+                ("attributes",), "expected a mapping with string keys", "invalid_type"
+            )
+        ]
     return []
 
 
@@ -189,14 +276,13 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
     (they map to `extra_fields`).
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping")]
+        return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = [
-        ValidationProblem((key,), "missing required key")
-        for key in sorted(ARRAY_METADATA_REQUIRED_KEYS_V3 - doc.keys())
-    ]
+    problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc)
+    problems.extend(_check_literal(doc, "zarr_format", 3))
+    problems.extend(_check_literal(doc, "node_type", "array"))
     if "shape" in doc and not _is_int_sequence(doc["shape"]):
-        problems.append(ValidationProblem(("shape",), "expected a sequence of int"))
+        problems.append(ValidationProblem(("shape",), "expected a sequence of int", "invalid_type"))
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
@@ -206,7 +292,7 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
         if key in doc:
             entries = doc[key]
             if isinstance(entries, str) or not isinstance(entries, Sequence):
-                problems.append(ValidationProblem((key,), "expected a sequence"))
+                problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
                 for index, entry in enumerate(cast("Sequence[object]", entries)):
                     problems.extend(_prefix(key, _prefix(index, validate_metadata_field_v3(entry))))
@@ -218,12 +304,16 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
         # the metadata-field lists (codecs, storage_transformers).
         names = doc["dimension_names"]
         if isinstance(names, str) or not isinstance(names, Sequence):
-            problems.append(ValidationProblem(("dimension_names",), "expected a sequence"))
+            problems.append(
+                ValidationProblem(("dimension_names",), "expected a sequence", "invalid_type")
+            )
         elif not all(
             item is None or isinstance(item, str) for item in cast("Sequence[object]", names)
         ):
             problems.append(
-                ValidationProblem(("dimension_names",), "expected items of str or None")
+                ValidationProblem(
+                    ("dimension_names",), "expected items of str or None", "invalid_type"
+                )
             )
     return problems
 
@@ -244,21 +334,67 @@ def parse_array_metadata_v3(value: object) -> ArrayMetadataV3:
 def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
     """Return every reason `value` is not a structurally-valid v2 array doc.
 
-    Checks structure, not domain validity. `compressor`/`filters` are required
-    keys but may be `None`.
+    Checks structure, not domain validity: `dtype` must be a string or field
+    records, but the string content is not interpreted; `compressor` and
+    `filters` are required keys that may be `None`, and otherwise must be
+    codec configurations (mappings with a string `id`).
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping")]
+        return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = [
-        ValidationProblem((key,), "missing required key")
-        for key in sorted(ARRAY_METADATA_REQUIRED_KEYS_V2 - doc.keys())
-    ]
+    problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc)
+    problems.extend(_check_literal(doc, "zarr_format", 2))
     problems.extend(
-        ValidationProblem((key,), "expected a sequence of int")
+        ValidationProblem((key,), "expected a sequence of int", "invalid_type")
         for key in ("shape", "chunks")
         if key in doc and not _is_int_sequence(doc[key])
     )
+    if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
+        problems.append(
+            ValidationProblem(
+                ("dtype",),
+                "expected a v2 dtype string or a sequence of field records",
+                "invalid_type",
+            )
+        )
+    if "order" in doc and doc["order"] not in ("C", "F"):
+        problems.append(
+            ValidationProblem(
+                ("order",), f"expected 'C' or 'F', got {doc['order']!r}", "invalid_value"
+            )
+        )
+    if "compressor" in doc:
+        compressor = doc["compressor"]
+        if compressor is not None and not _is_codec_v2(compressor):
+            problems.append(
+                ValidationProblem(
+                    ("compressor",),
+                    "expected null or a codec configuration with a string 'id'",
+                    "invalid_type",
+                )
+            )
+    if "filters" in doc:
+        filters = doc["filters"]
+        if filters is not None and (
+            isinstance(filters, str)
+            or not isinstance(filters, Sequence)
+            or not all(_is_codec_v2(item) for item in cast("Sequence[object]", filters))
+        ):
+            problems.append(
+                ValidationProblem(
+                    ("filters",),
+                    "expected null or a sequence of codec configurations with string 'id's",
+                    "invalid_type",
+                )
+            )
+    if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
+        problems.append(
+            ValidationProblem(
+                ("dimension_separator",),
+                f"expected '.' or '/', got {doc['dimension_separator']!r}",
+                "invalid_value",
+            )
+        )
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     if "attributes" in doc:
@@ -287,16 +423,17 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     must be a mapping (its entries are validated by the consolidated model).
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping")]
+        return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = [
-        ValidationProblem((key,), "missing required key")
-        for key in sorted(GROUP_METADATA_REQUIRED_KEYS_V3 - doc.keys())
-    ]
+    problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc)
+    problems.extend(_check_literal(doc, "zarr_format", 3))
+    problems.extend(_check_literal(doc, "node_type", "group"))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "consolidated_metadata" in doc and not isinstance(doc["consolidated_metadata"], Mapping):
-        problems.append(ValidationProblem(("consolidated_metadata",), "expected a mapping"))
+        problems.append(
+            ValidationProblem(("consolidated_metadata",), "expected a mapping", "invalid_type")
+        )
     return problems
 
 
@@ -320,12 +457,10 @@ def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
     optional `attributes` mapping folded in from `.zattrs`.
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping")]
+        return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = [
-        ValidationProblem((key,), "missing required key")
-        for key in sorted(GROUP_METADATA_REQUIRED_KEYS_V2 - doc.keys())
-    ]
+    problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc)
+    problems.extend(_check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     return problems
@@ -342,6 +477,26 @@ def parse_group_metadata_v2(value: object) -> GroupMetadataV2:
     if problems:
         raise MetadataValidationError(problems)
     return cast(GroupMetadataV2, value)
+
+
+def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:
+    """Decode the JSON document stored at `key` in `mapping`.
+
+    Every ingestion failure surfaces as `MetadataValidationError`: a missing
+    store key is a `missing_key` problem and undecodable bytes are an
+    `invalid_json` problem, rather than leaking `KeyError` /
+    `json.JSONDecodeError` to callers.
+    """
+    if key not in mapping:
+        raise MetadataValidationError(
+            [ValidationProblem((key,), "missing store key", "missing_key")]
+        )
+    try:
+        return json.loads(mapping[key])
+    except json.JSONDecodeError as exc:
+        raise MetadataValidationError(
+            [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]
+        ) from exc
 
 
 def arrays_to_tuples(obj: object) -> object:

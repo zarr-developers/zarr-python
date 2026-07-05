@@ -50,9 +50,10 @@ EXPECTED = [
     "GroupMetadataModelV3Partial",
     "ConsolidatedMetadataModelV2",
     "ConsolidatedMetadataModelV3",
-    "ZarrMetadataV3",
+    "NamedConfigModelV3",
     "ValidationProblem",
     "MetadataValidationError",
+    "ProblemKind",
     # v2 data-type encoding union
     "DataTypeMetadataV2",
     # Category B — codec canonical unions

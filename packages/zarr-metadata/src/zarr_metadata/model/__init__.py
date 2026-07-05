@@ -1,4 +1,15 @@
-"""In-memory models for Zarr metadata documents."""
+"""In-memory models for Zarr metadata documents.
+
+Models are frozen dataclasses that hold a canonical, lossless representation
+of the JSON documents; they never interpret extension points (codecs, chunk
+grids, data types). Validators check JSON structure, not domain validity.
+Each document concept gets a `validate_*` function returning every problem
+found (a `list[ValidationProblem]`, each with a machine-readable `kind`), an
+`is_*` type guard, and a `parse_*` function that narrows or raises
+`MetadataValidationError`. Model `from_json` / `from_key_value` constructors
+raise `MetadataValidationError` for every ingestion failure, including
+missing store keys and undecodable bytes.
+"""
 
 from zarr_metadata.model._array import (
     ARRAY_METADATA_STORE_KEY_V2,
@@ -8,7 +19,7 @@ from zarr_metadata.model._array import (
     ArrayMetadataModelV2Partial,
     ArrayMetadataModelV3,
     ArrayMetadataModelV3Partial,
-    ZarrMetadataV3,
+    NamedConfigModelV3,
 )
 from zarr_metadata.model._group import (
     CONSOLIDATED_METADATA_KEY_V3,
@@ -32,6 +43,7 @@ from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
+    ProblemKind,
     ValidationProblem,
     is_array_metadata_v2,
     is_array_metadata_v3,
@@ -80,8 +92,9 @@ __all__ = [
     "GroupMetadataModelV3",
     "GroupMetadataModelV3Partial",
     "MetadataValidationError",
+    "NamedConfigModelV3",
+    "ProblemKind",
     "ValidationProblem",
-    "ZarrMetadataV3",
     "is_array_metadata_v2",
     "is_array_metadata_v3",
     "is_group_metadata_v2",
