@@ -284,3 +284,54 @@ def test_group_v2_zarr_format_literal_enforced() -> None:
     """A v2 group doc claiming zarr_format 3 is rejected with invalid_value."""
     problems = validate_group_metadata_v2({"zarr_format": 3})
     assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+
+
+# --- Consolidated envelope validated by the group validator ------------------
+
+
+def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
+    """The group validator validates the consolidated envelope and entries, so
+    is_group_metadata_v3 never vouches for a document from_json would reject."""
+    bad_docs = (
+        # empty envelope: missing kind/must_understand/metadata
+        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": {}},
+        # entry without a recognizable node_type
+        {
+            "zarr_format": 3,
+            "node_type": "group",
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": {"zarr_format": 3}},
+            },
+        },
+        # must_understand: true
+        {
+            "zarr_format": 3,
+            "node_type": "group",
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": True,
+                "metadata": {},
+            },
+        },
+    )
+    for doc in bad_docs:
+        assert validate_group_metadata_v3(doc) != [], doc
+        with pytest.raises(MetadataValidationError):
+            GroupMetadataModelV3.from_json(doc)
+
+
+def test_group_v3_valid_consolidated_passes_validator() -> None:
+    """A well-formed consolidated group validates cleanly (control case)."""
+    child = ArrayMetadataModelV3.create_default(shape=(2,)).to_json()
+    doc = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {"a": child, "g": {"zarr_format": 3, "node_type": "group"}},
+        },
+    }
+    assert validate_group_metadata_v3(doc) == []

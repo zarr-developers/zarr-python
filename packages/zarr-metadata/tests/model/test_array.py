@@ -501,7 +501,9 @@ def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
 
 def test_v3_from_json_standard_keys_not_in_extra_fields() -> None:
     """V3 from_json keeps standard keys out of extra_fields."""
-    doc = ArrayMetadataModelV3.create_default(attributes={"a": 1}, dimension_names=("x",)).to_json()
+    doc = ArrayMetadataModelV3.create_default(
+        shape=(10,), attributes={"a": 1}, dimension_names=("x",)
+    ).to_json()
     model = ArrayMetadataModelV3.from_json(doc)
     assert model.extra_fields == {}
 
@@ -555,6 +557,7 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
     pytest.param(
         ArrayMetadataModelV3,
         ArrayMetadataModelV3.create_default(
+            shape=(10,),
             attributes={"a": 1},
             dimension_names=("x",),
             storage_transformers=(NamedConfigModelV3(name="t", configuration={}),),
@@ -619,7 +622,9 @@ def test_roundtrip_via_key_value(
 
 def test_v3_roundtrip_json_model_json() -> None:
     """A v3 document round-trips through from_json/to_json back to an equal document."""
-    doc = ArrayMetadataModelV3.create_default(attributes={"a": 1}, dimension_names=("x",)).to_json()
+    doc = ArrayMetadataModelV3.create_default(
+        shape=(10,), attributes={"a": 1}, dimension_names=("x",)
+    ).to_json()
     assert ArrayMetadataModelV3.from_json(doc).to_json() == doc
 
 
@@ -837,7 +842,7 @@ def _set(key: str, value: object) -> Callable[[dict], object]:
 V3_DOC_CASES: list[Expect[Callable[[], object], frozenset[tuple[str | int, ...]]]] = [
     Expect(_build_v3, frozenset(), id="valid"),
     Expect(
-        lambda: _build_v3(attributes={"a": 1}, dimension_names=("x",)),
+        lambda: _build_v3(shape=(10,), attributes={"a": 1}, dimension_names=("x",)),
         frozenset(),
         id="valid-with-attributes-and-dim-names",
     ),
@@ -1156,3 +1161,57 @@ def test_extension_point_fields_annotated_with_role_alias() -> None:
         assert annotations[field_name] == "MetadataFieldModelV3"
     for field_name in ("codecs", "storage_transformers"):
         assert annotations[field_name] == "tuple[MetadataFieldModelV3, ...]"
+
+
+# --- Adversarial-probe fixes: documents that used to pass validation ---------
+
+
+def test_shape_rejects_json_booleans() -> None:
+    """JSON booleans are not integers: shape/chunks containing true/false are
+    rejected (bool is an int subclass in Python, so isinstance alone passes)."""
+    v3 = dict(ArrayMetadataModelV3.create_default().to_json()) | {"shape": (True, True)}
+    assert [p.loc for p in validate_array_metadata_v3(v3)] == [("shape",)]
+    v2 = dict(ArrayMetadataModelV2.create_default().to_json()) | {"chunks": (True,)}
+    assert [p.loc for p in validate_array_metadata_v2(v2)] == [("chunks",)]
+
+
+def test_shape_rejects_negative_dimensions() -> None:
+    """Dimension lengths must be non-negative; a negative entry is invalid_value."""
+    v3 = dict(ArrayMetadataModelV3.create_default().to_json()) | {"shape": (-1,)}
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(v3)] == [
+        (("shape",), "invalid_value")
+    ]
+    v2 = dict(ArrayMetadataModelV2.create_default().to_json()) | {"chunks": (-5,)}
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(v2)] == [
+        (("chunks",), "invalid_value")
+    ]
+
+
+def test_dimension_names_length_must_match_shape() -> None:
+    """dimension_names must have one entry per dimension of shape."""
+    doc = dict(ArrayMetadataModelV3.create_default(shape=(10,)).to_json()) | {
+        "dimension_names": ("x", "y", "z")
+    }
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(doc)] == [
+        (("dimension_names",), "invalid_value")
+    ]
+
+
+def test_attributes_values_must_be_json() -> None:
+    """Attribute values are JSON-checked recursively (like fill_value), so a
+    non-serializable value is a validation problem, not a later TypeError."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json()) | {"attributes": {"a": {1, 2}}}
+    problems = validate_array_metadata_v3(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("attributes", "a"), "invalid_type")]
+
+
+def test_configuration_values_must_be_json() -> None:
+    """Configuration values are JSON-checked recursively, so an int-keyed dict
+    cannot pass validation and be silently rewritten by json.dumps."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json()) | {
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": {1: 2}}}
+    }
+    problems = validate_array_metadata_v3(doc)
+    assert [(p.loc, p.kind) for p in problems] == [
+        (("chunk_grid", "configuration", "chunk_shape"), "invalid_type")
+    ]

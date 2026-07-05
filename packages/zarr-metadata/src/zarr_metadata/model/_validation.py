@@ -190,6 +190,9 @@ def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
             problems.append(
                 ValidationProblem(("configuration",), "expected string keys", "invalid_type")
             )
+        else:
+            for key, item in cast("Mapping[str, object]", configuration).items():
+                problems.extend(_prefix("configuration", _prefix(key, validate_json(item))))
     return problems
 
 
@@ -207,12 +210,34 @@ def parse_metadata_field_v3(value: object) -> MetadataV3:
 
 
 def _is_int_sequence(value: object) -> bool:
-    """Whether `value` is a non-string sequence of integers."""
+    """Whether `value` is a non-string sequence of integers.
+
+    JSON booleans decode to `bool`, which is an `int` subclass in Python but
+    is not an integer in a metadata document, so booleans are excluded.
+    """
     return (
         not isinstance(value, str)
         and isinstance(value, Sequence)
-        and all(isinstance(item, int) for item in cast("Sequence[object]", value))
+        and all(
+            isinstance(item, int) and not isinstance(item, bool)
+            for item in cast("Sequence[object]", value)
+        )
     )
+
+
+def _validate_dim_sequence(doc: Mapping[str, object], key: str) -> list[ValidationProblem]:
+    """Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
+
+    Dimension lengths are non-negative integers.
+    """
+    if key not in doc:
+        return []
+    value = doc[key]
+    if not _is_int_sequence(value):
+        return [ValidationProblem((key,), "expected a sequence of int", "invalid_type")]
+    if any(item < 0 for item in cast("Sequence[int]", value)):
+        return [ValidationProblem((key,), "expected non-negative integers", "invalid_value")]
+    return []
 
 
 def _is_dtype_v2(value: object) -> bool:
@@ -266,7 +291,10 @@ def _validate_attributes(value: object) -> list[ValidationProblem]:
                 ("attributes",), "expected a mapping with string keys", "invalid_type"
             )
         ]
-    return []
+    problems: list[ValidationProblem] = []
+    for key, item in cast("Mapping[str, object]", value).items():
+        problems.extend(_prefix("attributes", _prefix(key, validate_json(item))))
+    return problems
 
 
 def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
@@ -281,8 +309,7 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
     problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc)
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
-    if "shape" in doc and not _is_int_sequence(doc["shape"]):
-        problems.append(ValidationProblem(("shape",), "expected a sequence of int", "invalid_type"))
+    problems.extend(_validate_dim_sequence(doc, "shape"))
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
@@ -315,6 +342,16 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
                     ("dimension_names",), "expected items of str or None", "invalid_type"
                 )
             )
+        elif _is_int_sequence(doc.get("shape")) and len(cast("Sequence[object]", names)) != len(
+            cast("Sequence[int]", doc["shape"])
+        ):
+            problems.append(
+                ValidationProblem(
+                    ("dimension_names",),
+                    "expected one name per dimension of shape",
+                    "invalid_value",
+                )
+            )
     return problems
 
 
@@ -344,11 +381,8 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
     doc = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc)
     problems.extend(_check_literal(doc, "zarr_format", 2))
-    problems.extend(
-        ValidationProblem((key,), "expected a sequence of int", "invalid_type")
-        for key in ("shape", "chunks")
-        if key in doc and not _is_int_sequence(doc[key])
-    )
+    problems.extend(_validate_dim_sequence(doc, "shape"))
+    problems.extend(_validate_dim_sequence(doc, "chunks"))
     if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
         problems.append(
             ValidationProblem(
@@ -415,12 +449,66 @@ def parse_array_metadata_v2(value: object) -> ArrayMetadataV2:
     return cast(ArrayMetadataV2, value)
 
 
+def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
+    """Return every reason `value` is not a valid inline consolidated envelope.
+
+    Locs are value-relative (the caller prefixes with `consolidated_metadata`
+    where appropriate). Entries recurse into the array and group document
+    validators, so a validator verdict always agrees with what
+    `ConsolidatedMetadataModelV3.from_json` accepts.
+    """
+    if not isinstance(value, Mapping):
+        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+    env = cast("Mapping[str, object]", value)
+    problems: list[ValidationProblem] = [
+        ValidationProblem((key,), "missing required key", "missing_key")
+        for key in ("kind", "must_understand", "metadata")
+        if key not in env
+    ]
+    problems.extend(_check_literal(env, "kind", "inline"))
+    if "must_understand" in env and env["must_understand"] is not False:
+        problems.append(ValidationProblem(("must_understand",), "expected False", "invalid_value"))
+    if "metadata" in env:
+        entries = env["metadata"]
+        if not isinstance(entries, Mapping):
+            problems.append(ValidationProblem(("metadata",), "expected a mapping", "invalid_type"))
+        else:
+            for key, entry in cast("Mapping[object, object]", entries).items():
+                if not isinstance(key, str):
+                    problems.append(
+                        ValidationProblem(("metadata",), f"non-string key {key!r}", "invalid_type")
+                    )
+                    continue
+                entry_obj: object = entry
+                node_type: object = None
+                if isinstance(entry, Mapping):
+                    node_type = cast("Mapping[str, object]", entry).get("node_type")
+                if node_type == "array":
+                    problems.extend(
+                        _prefix("metadata", _prefix(key, validate_array_metadata_v3(entry_obj)))
+                    )
+                elif node_type == "group":
+                    problems.extend(
+                        _prefix("metadata", _prefix(key, validate_group_metadata_v3(entry_obj)))
+                    )
+                else:
+                    problems.append(
+                        ValidationProblem(
+                            ("metadata", key, "node_type"),
+                            "expected 'array' or 'group'",
+                            "invalid_value",
+                        )
+                    )
+    return problems
+
+
 def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     """Return every reason `value` is not a structurally-valid v3 group doc.
 
     Checks structure, not domain validity. Unknown top-level keys are allowed
     (they map to `extra_fields`); a `consolidated_metadata` key, if present,
-    must be a mapping (its entries are validated by the consolidated model).
+    is deep-validated (envelope and entries) via
+    `validate_consolidated_metadata_v3`.
     """
     if not isinstance(value, Mapping):
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
@@ -430,9 +518,12 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     problems.extend(_check_literal(doc, "node_type", "group"))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
-    if "consolidated_metadata" in doc and not isinstance(doc["consolidated_metadata"], Mapping):
-        problems.append(
-            ValidationProblem(("consolidated_metadata",), "expected a mapping", "invalid_type")
+    if "consolidated_metadata" in doc:
+        problems.extend(
+            _prefix(
+                "consolidated_metadata",
+                validate_consolidated_metadata_v3(doc["consolidated_metadata"]),
+            )
         )
     return problems
 

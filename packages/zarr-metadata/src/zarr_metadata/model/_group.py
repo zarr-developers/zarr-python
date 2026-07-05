@@ -22,6 +22,7 @@ from zarr_metadata.model._validation import (
     load_store_json,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
+    validate_consolidated_metadata_v3,
 )
 
 if TYPE_CHECKING:
@@ -207,48 +208,18 @@ class ConsolidatedMetadataModelV3:
 
     @classmethod
     def from_json(cls, data: object) -> ConsolidatedMetadataModelV3:
-        if not isinstance(data, Mapping):
-            raise MetadataValidationError(
-                [ValidationProblem((), "expected a mapping", "invalid_type")]
-            )
-        doc = cast("Mapping[str, object]", data)
-        entries_raw = doc.get("metadata")
-        if not isinstance(entries_raw, Mapping):
-            raise MetadataValidationError(
-                [ValidationProblem(("metadata",), "expected a mapping", "invalid_type")]
-            )
-        entries: dict[str, ArrayMetadataModelV3 | GroupMetadataModelV3] = {}
-        problems: list[ValidationProblem] = []
-        for key, entry in cast("Mapping[object, object]", entries_raw).items():
-            if not isinstance(key, str):
-                problems.append(
-                    ValidationProblem(("metadata",), f"non-string key {key!r}", "invalid_type")
-                )
-                continue
-            entry_obj: object = entry
-            node_type: object = None
-            if isinstance(entry, Mapping):
-                node_type = cast("Mapping[str, object]", entry).get("node_type")
-            if node_type == "array":
-                entries[key] = ArrayMetadataModelV3.from_json(entry_obj)
-            elif node_type == "group":
-                entries[key] = GroupMetadataModelV3.from_json(entry_obj)
-            else:
-                problems.append(
-                    ValidationProblem(
-                        ("metadata", key, "node_type"),
-                        "expected 'array' or 'group'",
-                        "invalid_value",
-                    )
-                )
+        problems = validate_consolidated_metadata_v3(data)
         if problems:
             raise MetadataValidationError(problems)
-        must_understand = doc.get("must_understand", False)
-        if must_understand is not False:
-            raise MetadataValidationError(
-                [ValidationProblem(("must_understand",), "expected False", "invalid_value")]
-            )
-        return cls(must_understand=must_understand, metadata=entries)
+        env = cast("Mapping[str, object]", data)
+        entries: dict[str, ArrayMetadataModelV3 | GroupMetadataModelV3] = {}
+        for key, entry in cast("Mapping[str, object]", env["metadata"]).items():
+            node_type = cast("Mapping[str, object]", entry).get("node_type")
+            if node_type == "array":
+                entries[key] = ArrayMetadataModelV3.from_json(entry)
+            else:
+                entries[key] = GroupMetadataModelV3.from_json(entry)
+        return cls(metadata=entries)
 
 
 class GroupMetadataModelV2Partial(TypedDict, total=False):
