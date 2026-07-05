@@ -34,7 +34,7 @@ from zarr_metadata.model._group import (
     GroupMetadataModelV3,
     GroupMetadataModelV3Partial,
 )
-from zarr_metadata.model._sentinel import UNSET, UnsetType
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V2,
@@ -98,7 +98,6 @@ __all__ = [
     "MetadataValidationError",
     "NamedConfigModelV3",
     "ProblemKind",
-    "UnsetType",
     "ValidationProblem",
     "is_array_metadata_v2",
     "is_array_metadata_v3",

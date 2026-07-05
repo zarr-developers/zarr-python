@@ -56,7 +56,6 @@ EXPECTED = [
     "MetadataValidationError",
     "ProblemKind",
     "UNSET",
-    "UnsetType",
     # v2 data-type encoding union
     "DataTypeMetadataV2",
     # Category B — codec canonical unions

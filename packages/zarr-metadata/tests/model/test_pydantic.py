@@ -34,6 +34,8 @@ from pydantic import (
     ConfigDict,
     InstanceOf,
     PlainSerializer,
+    PydanticSchemaGenerationError,
+    PydanticUserError,
     TypeAdapter,
     ValidationError,
     model_validator,
@@ -142,59 +144,40 @@ def test_type_adapter_standalone() -> None:
 # --- the road not taken: native dataclass introspection ----------------------
 
 
-def test_native_dataclass_introspection_is_possible_but_diverges() -> None:
-    """Pydantic CAN introspect the model dataclass after a namespace rebuild,
-    but that path validates the model shape, not the document: it rejects the
-    document form, coerces booleans into dimensions, and skips the library's
-    cross-field checks. This test documents why the delegation pattern above
-    is the recommended integration."""
+def test_native_dataclass_introspection_is_not_supported() -> None:
+    """Pydantic cannot field-introspect the model dataclasses: the UNSET
+    sentinel (PEP 661, typing_extensions.Sentinel) in the optional-field
+    annotations has no pydantic schema (as of pydantic 2.13), so even the
+    rebuild-with-namespace recipe fails. Introspection was already the wrong
+    tool before the sentinel existed — it validated the model shape rather
+    than the document, and its lax coercion re-opened validator holes (e.g.
+    shape=[True, -5] coerced to (1, -5)) — so the delegation patterns above
+    are the only supported integrations. If this test ever fails because
+    pydantic learned to handle sentinels, revisit whether the introspection
+    path needs its divergences documented again."""
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.model import UNSET, UnsetType
+    from zarr_metadata.model import UNSET
     from zarr_metadata.v3._common import MetadataV3
     from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 
-    adapter = TypeAdapter(ArrayMetadataModelV3)
-    adapter.rebuild(
-        force=True,
-        _types_namespace={
-            "JSONValue": JSONValue,
-            "ExtensionFieldV3": ExtensionFieldV3,
-            "MetadataV3": MetadataV3,
-            "ArrayMetadataV3": ArrayMetadataV3,
-            "NamedConfigModelV3": NamedConfigModelV3,
-            "MetadataFieldModelV3": NamedConfigModelV3,
-            "UnsetType": UnsetType,
-        },
-    )
-    model_shaped = {
-        "shape": [10],
-        "fill_value": 0,
-        "data_type": {"name": "uint8", "configuration": {}},
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [5]}},
-        "codecs": [{"name": "bytes", "configuration": {}}],
-        "chunk_key_encoding": {"name": "default", "configuration": {}},
-        "dimension_names": UNSET,
-        "attributes": {},
-        "storage_transformers": [],
-        "extra_fields": {},
-    }
-    # model-shaped data validates, nested named configs and all
-    model = adapter.validate_python(model_shaped)
-    assert isinstance(model.data_type, NamedConfigModelV3)
-
-    # divergence 1: the DOCUMENT form is rejected — no from_json normalization
-    with pytest.raises(ValidationError):
-        adapter.validate_python(model_shaped | {"data_type": "uint8"})
-
-    # divergence 2: lax coercion re-opens holes the library validators close
-    coerced = adapter.validate_python(model_shaped | {"shape": [True, -5]})
-    assert coerced.shape == (1, -5)  # from_json would reject both entries
-
-    # __post_init__ invariants DO still run under pydantic construction
-    with pytest.raises(ValidationError, match="Extra fields"):
-        adapter.validate_python(
-            model_shaped | {"extra_fields": {"shape": {"must_understand": False}}}
+    def build_and_use() -> None:
+        adapter = TypeAdapter(ArrayMetadataModelV3)
+        adapter.rebuild(
+            force=True,
+            _types_namespace={
+                "JSONValue": JSONValue,
+                "ExtensionFieldV3": ExtensionFieldV3,
+                "MetadataV3": MetadataV3,
+                "ArrayMetadataV3": ArrayMetadataV3,
+                "NamedConfigModelV3": NamedConfigModelV3,
+                "MetadataFieldModelV3": NamedConfigModelV3,
+                "UNSET": UNSET,
+            },
         )
+        adapter.validate_python({})
+
+    with pytest.raises((AttributeError, PydanticSchemaGenerationError, PydanticUserError)):
+        build_and_use()
 
 
 # --- a first-class pydantic model, engine-backed (the pydantic-zarr pattern) --

@@ -15,7 +15,7 @@ from zarr_metadata.model._array import (
     ArrayMetadataModelV3,
     must_understand_subset,
 )
-from zarr_metadata.model._sentinel import UNSET, UnsetType
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     GROUP_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
@@ -64,7 +64,7 @@ class GroupMetadataModelV3Partial(TypedDict, total=False):
     """
 
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UNSET
     extra_fields: dict[str, ExtensionFieldV3]
 
 
@@ -81,7 +81,7 @@ class GroupMetadataModelV3:
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["group"] = field(default="group", init=False)
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UNSET
     extra_fields: dict[str, ExtensionFieldV3]
 
     def __post_init__(self) -> None:
@@ -147,7 +147,7 @@ class GroupMetadataModelV3:
         # Cast to object: the TypedDict's extra_items type does not admit null,
         # but wild documents (historical zarr-python) contain it.
         consolidated_raw = cast("object", parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET))
-        consolidated: ConsolidatedMetadataModelV3 | UnsetType
+        consolidated: ConsolidatedMetadataModelV3 | UNSET
         if consolidated_raw is UNSET or consolidated_raw is None:
             # consolidated_metadata: null was written by a historical
             # zarr-python bug; it gets no model representation. It is read as

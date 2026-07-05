@@ -32,7 +32,7 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
-    "typing_extensions>=4.13",
+    "typing_extensions>=4.14",
 ]
 
 [project.urls]
@@ -82,6 +82,9 @@ checks = [
     "PR06",
 ]
 
+# CI pins pyright==1.1.404: later versions regress PEP 661 sentinel typing in
+# class attributes (microsoft/pyright#11115), which zarr_metadata.model._sentinel
+# relies on. Use the same pin locally; unpin when the fix lands.
 [tool.pyright]
 include = ["src"]
 enableExperimentalFeatures = true

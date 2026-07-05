@@ -82,7 +82,10 @@ jobs:
       - name: Sync test dependency group
         run: uv sync --group test --python 3.11
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        # Pinned to the last version that types PEP 661 sentinels in class
+        # attributes correctly; 1.1.405+ regressed (microsoft/pyright#11115).
+        # Unpin when the fix lands.
+        run: uv run --group test --with 'pyright==1.1.404' pyright src
 
   zarr-metadata-complete:
     name: zarr-metadata complete

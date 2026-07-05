@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast
 
 from typing_extensions import TypedDict, Unpack
 
-from zarr_metadata.model._sentinel import UNSET, UnsetType
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
@@ -134,7 +134,7 @@ class ArrayMetadataModelV3Partial(TypedDict, total=False):
     chunk_grid: MetadataFieldModelV3
     codecs: tuple[MetadataFieldModelV3, ...]
     chunk_key_encoding: MetadataFieldModelV3
-    dimension_names: tuple[str | None, ...] | UnsetType
+    dimension_names: tuple[str | None, ...] | UNSET
     attributes: dict[str, JSONValue]
     storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]
@@ -160,7 +160,7 @@ class ArrayMetadataModelV3:
     chunk_grid: MetadataFieldModelV3
     codecs: tuple[MetadataFieldModelV3, ...]
     chunk_key_encoding: MetadataFieldModelV3
-    dimension_names: tuple[str | None, ...] | UnsetType
+    dimension_names: tuple[str | None, ...] | UNSET
     attributes: dict[str, JSONValue]
     storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]

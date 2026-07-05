@@ -17,7 +17,6 @@ from zarr_metadata.model import (
     MetadataValidationError,
     NamedConfigModelV3,
     ProblemKind,
-    UnsetType,
     ValidationProblem,
 )
 from zarr_metadata.v2.array import (
@@ -356,7 +355,6 @@ __all__ = [
     "Uint32FillValue",
     "Uint64DataTypeName",
     "Uint64FillValue",
-    "UnsetType",
     "V2ChunkKeyEncodingMetadata",
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingSeparator",
