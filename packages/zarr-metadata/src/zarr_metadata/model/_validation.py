@@ -259,13 +259,12 @@ def parse_array_metadata_v2(value: object) -> ArrayMetadataV2:
     return cast(ArrayMetadataV2, value)
 
 
-def _arrays_to_tuples(obj: object) -> object:
+def arrays_to_tuples(obj: object) -> object:
     """Recursively convert every list in a JSON-decoded structure to a tuple."""
     if isinstance(obj, list):
-        return tuple(_arrays_to_tuples(item) for item in cast("list[object]", obj))
+        return tuple(arrays_to_tuples(item) for item in cast("list[object]", obj))
     if isinstance(obj, dict):
         return {
-            key: _arrays_to_tuples(value)
-            for key, value in cast("dict[object, object]", obj).items()
+            key: arrays_to_tuples(value) for key, value in cast("dict[object, object]", obj).items()
         }
     return obj
