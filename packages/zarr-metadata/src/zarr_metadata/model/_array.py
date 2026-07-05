@@ -340,7 +340,9 @@ class ArrayMetadataModelV2:
     A canonical, lossless representation of the `.zarray` content plus the
     sibling `.zattrs` attributes. `dtype`, `compressor`, and `filters` are
     held in their raw JSON forms and are never interpreted; `fill_value` is
-    held verbatim in its JSON form.
+    held verbatim in its JSON form. One spelling normalization: a `.zarray`
+    that omits `dimension_separator` means `"."` by the v2 convention, and
+    the model holds and re-emits that value explicitly.
     """
 
     zarr_format: Literal[2] = field(default=2, init=False)
@@ -351,7 +353,11 @@ class ArrayMetadataModelV2:
     order: ArrayOrderV2
     compressor: CodecMetadataV2 | None
     filters: tuple[CodecMetadataV2, ...] | None
-    dimension_separator: ArrayDimensionSeparatorV2 = field(default="/")
+    # "." is the v2 convention's default for an ABSENT dimension_separator key;
+    # from_json normalizes absence to it (a semantics-preserving spelling
+    # normalization, like the v3 bare-string metadata-field form). The value
+    # is never None: the document grammar has no null spelling for this field.
+    dimension_separator: ArrayDimensionSeparatorV2 = field(default=".")
     attributes: dict[str, JSONValue]
 
     def update(self, **kwargs: Unpack[ArrayMetadataModelV2Partial]) -> ArrayMetadataModelV2:
@@ -429,7 +435,7 @@ class ArrayMetadataModelV2:
             order=parsed["order"],
             compressor=parsed["compressor"],
             filters=parsed["filters"],
-            dimension_separator=parsed.get("dimension_separator", "/"),
+            dimension_separator=parsed.get("dimension_separator", "."),
             attributes=dict(parsed.get("attributes", {})),
         )
 

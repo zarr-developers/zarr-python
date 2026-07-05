@@ -1316,3 +1316,40 @@ def test_create_default_derivation_is_one_way() -> None:
     v2 = ArrayMetadataModelV2.create_default(chunks=(10, 10))
     assert v2.shape == ()
     assert v2.chunks == (10, 10)
+
+
+# --- v2 dimension_separator default (roborev job 426) -------------------------
+
+
+def test_v2_absent_dimension_separator_means_dot() -> None:
+    """A .zarray that omits dimension_separator uses the v2 convention default
+    '.', not '/': chunk keys of real-world default-separator v2 arrays look
+    like '0.0'. The model normalizes the absent key to an explicit '.' — a
+    semantics-preserving spelling normalization."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json())
+    del doc["dimension_separator"]
+    model = ArrayMetadataModelV2.from_json(doc)
+    assert model.dimension_separator == "."
+    assert model.to_json()["dimension_separator"] == "."
+
+
+def test_v2_from_key_value_without_separator_means_dot() -> None:
+    """The .zarray store-file path applies the same '.' default for an absent
+    dimension_separator key."""
+    doc = {
+        k: v
+        for k, v in ArrayMetadataModelV2.create_default().to_json().items()
+        if k not in ("dimension_separator", "attributes")
+    }
+    import json as _json
+
+    model = ArrayMetadataModelV2.from_key_value({".zarray": _json.dumps(doc).encode()})
+    assert model.dimension_separator == "."
+
+
+def test_v2_null_dimension_separator_rejected() -> None:
+    """dimension_separator may be absent, '.', or '/' — never null: the
+    document grammar has no null spelling for this field."""
+    doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dimension_separator": None}
+    problems = validate_array_metadata_v2(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("dimension_separator",), "invalid_value")]
