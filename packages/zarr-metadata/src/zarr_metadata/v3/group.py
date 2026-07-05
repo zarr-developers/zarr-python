@@ -12,7 +12,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.v3.array import ExtensionFieldV3
 
 
-class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 
@@ -26,7 +26,7 @@ class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):
     """
     Partial form of `GroupMetadataV3`: every field is `NotRequired`.
 

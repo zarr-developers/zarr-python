@@ -10,7 +10,7 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 
 
-class CodecMetadataV2(TypedDict, extra_items=JSONValue):  # type: ignore[call-arg]
+class CodecMetadataV2(TypedDict, extra_items=JSONValue):
     """
     A numcodecs configuration dict, used as a v2 compressor or filter.
 

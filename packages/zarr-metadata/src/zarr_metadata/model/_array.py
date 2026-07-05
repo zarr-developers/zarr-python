@@ -63,8 +63,13 @@ class NamedConfigModelV3:
         field = parse_metadata_field_v3(data)
         if isinstance(field, str):
             return cls(name=field, configuration={})
-        configuration = arrays_to_tuples(dict(field.get("configuration", {})))
-        return cls(name=field["name"], configuration=configuration)  # type: ignore[arg-type]
+        # Sound cast: parse_metadata_field_v3 checked the configuration is a
+        # string-keyed mapping of JSON values; arrays_to_tuples only converts
+        # lists to tuples within that shape.
+        configuration = cast(
+            "dict[str, JSONValue]", arrays_to_tuples(dict(field.get("configuration", {})))
+        )
+        return cls(name=field["name"], configuration=configuration)
 
 
 MetadataFieldModelV3: TypeAlias = NamedConfigModelV3
@@ -260,14 +265,16 @@ class ArrayMetadataModelV3:
     @classmethod
     def from_json(cls, data: object) -> ArrayMetadataModelV3:
         parsed = parse_array_metadata_v3(arrays_to_tuples(data))
-        extra_fields: dict[str, ExtensionFieldV3] = {
-            k: v  # type: ignore[misc]
-            for k, v in parsed.items()
-            if k not in ARRAY_METADATA_STANDARD_KEYS_V3
-        }
+        # Sound cast: the TypedDict types all non-standard keys as its
+        # `extra_items` (`ExtensionFieldV3`); the comprehension's inferred value
+        # type is the union over ALL keys because the key filter cannot narrow it.
+        extra_fields = cast(
+            "dict[str, ExtensionFieldV3]",
+            {k: v for k, v in parsed.items() if k not in ARRAY_METADATA_STANDARD_KEYS_V3},
+        )
         return cls(
             shape=parsed["shape"],
-            fill_value=parsed["fill_value"],  # type: ignore[arg-type]  # fill_value: object in upstream TypedDict
+            fill_value=parsed["fill_value"],
             data_type=NamedConfigModelV3.from_json(parsed["data_type"]),
             chunk_grid=NamedConfigModelV3.from_json(parsed["chunk_grid"]),
             codecs=tuple(NamedConfigModelV3.from_json(c) for c in parsed["codecs"]),
@@ -418,7 +425,7 @@ class ArrayMetadataModelV2:
             shape=parsed["shape"],
             dtype=parsed["dtype"],
             chunks=parsed["chunks"],
-            fill_value=parsed["fill_value"],  # type: ignore[arg-type]  # fill_value: object in upstream TypedDict
+            fill_value=parsed["fill_value"],
             order=parsed["order"],
             compressor=parsed["compressor"],
             filters=parsed["filters"],

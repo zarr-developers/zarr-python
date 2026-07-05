@@ -48,13 +48,13 @@ if TYPE_CHECKING:
 _M = TypeVar("_M")
 
 
-def _coerce_to(cls: type[_M]) -> Callable[[object], _M]:
-    """A validator that passes instances through and parses anything else."""
+def _coerce_to(cls: type[_M], parse: Callable[[object], _M]) -> Callable[[object], _M]:
+    """A validator that passes instances of `cls` through and parses anything else."""
 
     def coerce(value: object) -> _M:
         if isinstance(value, cls):
             return value
-        return cls.from_json(value)  # type: ignore[attr-defined, no-any-return]
+        return parse(value)
 
     return coerce
 
@@ -66,7 +66,7 @@ _FIELD_SCHEMA = {"anyOf": [{"type": "string"}, {"type": "object"}]}
 
 ArrayMetadataV3 = Annotated[
     InstanceOf[ArrayMetadataModelV3],
-    BeforeValidator(_coerce_to(ArrayMetadataModelV3)),
+    BeforeValidator(_coerce_to(ArrayMetadataModelV3, ArrayMetadataModelV3.from_json)),
     PlainSerializer(ArrayMetadataModelV3.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ArrayMetadataV3"}),
 ]
@@ -74,7 +74,7 @@ ArrayMetadataV3 = Annotated[
 
 ArrayMetadataV2 = Annotated[
     InstanceOf[ArrayMetadataModelV2],
-    BeforeValidator(_coerce_to(ArrayMetadataModelV2)),
+    BeforeValidator(_coerce_to(ArrayMetadataModelV2, ArrayMetadataModelV2.from_json)),
     PlainSerializer(ArrayMetadataModelV2.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ArrayMetadataV2"}),
 ]
@@ -82,7 +82,7 @@ ArrayMetadataV2 = Annotated[
 
 GroupMetadataV3 = Annotated[
     InstanceOf[GroupMetadataModelV3],
-    BeforeValidator(_coerce_to(GroupMetadataModelV3)),
+    BeforeValidator(_coerce_to(GroupMetadataModelV3, GroupMetadataModelV3.from_json)),
     PlainSerializer(GroupMetadataModelV3.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "GroupMetadataV3"}),
 ]
@@ -90,7 +90,7 @@ GroupMetadataV3 = Annotated[
 
 GroupMetadataV2 = Annotated[
     InstanceOf[GroupMetadataModelV2],
-    BeforeValidator(_coerce_to(GroupMetadataModelV2)),
+    BeforeValidator(_coerce_to(GroupMetadataModelV2, GroupMetadataModelV2.from_json)),
     PlainSerializer(GroupMetadataModelV2.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "GroupMetadataV2"}),
 ]
@@ -98,7 +98,7 @@ GroupMetadataV2 = Annotated[
 
 ConsolidatedMetadataV3 = Annotated[
     InstanceOf[ConsolidatedMetadataModelV3],
-    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV3)),
+    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV3, ConsolidatedMetadataModelV3.from_json)),
     PlainSerializer(ConsolidatedMetadataModelV3.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ConsolidatedMetadataV3"}),
 ]
@@ -106,7 +106,7 @@ ConsolidatedMetadataV3 = Annotated[
 
 ConsolidatedMetadataV2 = Annotated[
     InstanceOf[ConsolidatedMetadataModelV2],
-    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV2)),
+    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV2, ConsolidatedMetadataModelV2.from_json)),
     PlainSerializer(ConsolidatedMetadataModelV2.to_json, return_type=dict),
     WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ConsolidatedMetadataV2"}),
 ]
@@ -114,7 +114,7 @@ ConsolidatedMetadataV2 = Annotated[
 
 MetadataFieldV3 = Annotated[
     InstanceOf[NamedConfigModelV3],
-    BeforeValidator(_coerce_to(NamedConfigModelV3)),
+    BeforeValidator(_coerce_to(NamedConfigModelV3, NamedConfigModelV3.from_json)),
     PlainSerializer(NamedConfigModelV3.to_json, return_type=dict),
     WithJsonSchema(_FIELD_SCHEMA | {"title": "MetadataFieldV3"}),
 ]

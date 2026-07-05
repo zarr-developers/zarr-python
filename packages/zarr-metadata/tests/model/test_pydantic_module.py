@@ -90,7 +90,7 @@ def test_validation_error_carries_problems() -> None:
     doc = dict(V3_ARRAY_DOC)
     del doc["chunk_key_encoding"]
     with pytest.raises(ValidationError, match="chunk_key_encoding: missing required key"):
-        Manifest(metadata=doc)  # type: ignore[arg-type]
+        Manifest.model_validate({"metadata": doc})
 
 
 def test_json_schema_generation() -> None:
@@ -111,7 +111,7 @@ def test_json_roundtrip() -> None:
     class Manifest(BaseModel):
         metadata: zmp.ArrayMetadataV3
 
-    manifest = Manifest(metadata=V3_ARRAY_DOC)  # type: ignore[arg-type]
+    manifest = Manifest.model_validate({"metadata": V3_ARRAY_DOC})
     assert Manifest.model_validate_json(manifest.model_dump_json()) == manifest
 
 

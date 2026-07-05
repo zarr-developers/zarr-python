@@ -90,7 +90,7 @@ VALID_DOC = {
 def test_raw_document_is_validated_into_a_model() -> None:
     """A raw metadata document on a pydantic field is parsed by from_json,
     with the library's normalization applied (tuples, canonical field form)."""
-    manifest = ArrayManifest(path="a/b", metadata=VALID_DOC)  # type: ignore[arg-type]
+    manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     assert isinstance(manifest.metadata, ArrayMetadataModelV3)
     assert manifest.metadata.shape == (10,)
     assert manifest.metadata.data_type.name == "uint8"
@@ -109,14 +109,14 @@ def test_invalid_document_surfaces_problems_in_validation_error() -> None:
     doc = dict(VALID_DOC)
     del doc["chunk_key_encoding"]
     with pytest.raises(ValidationError) as exc_info:
-        ArrayManifest(path="a/b", metadata=doc)  # type: ignore[arg-type]
+        ArrayManifest.model_validate({"path": "a/b", "metadata": doc})
     assert "chunk_key_encoding: missing required key" in str(exc_info.value)
 
 
 def test_dump_emits_canonical_document() -> None:
     """model_dump serializes the field via to_json — the canonical document,
     not pydantic's field-by-field view of the dataclass."""
-    manifest = ArrayManifest(path="a/b", metadata=VALID_DOC)  # type: ignore[arg-type]
+    manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     dumped = manifest.model_dump()
     assert dumped["metadata"] == manifest.metadata.to_json()
     # the bare-string data_type was normalized to the canonical object form
@@ -126,7 +126,7 @@ def test_dump_emits_canonical_document() -> None:
 def test_json_roundtrip_through_pydantic() -> None:
     """model_dump_json output re-validates to an equal manifest (JSON emits
     tuples as arrays; from_json converts them back)."""
-    manifest = ArrayManifest(path="a/b", metadata=VALID_DOC)  # type: ignore[arg-type]
+    manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     revived = ArrayManifest.model_validate_json(manifest.model_dump_json())
     assert revived == manifest
 

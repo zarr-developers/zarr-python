@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import pytest
+from typing_extensions import Unpack
 
 from tests.model._cases import Expect, ExpectFail
 from zarr_metadata.model import (
@@ -814,12 +815,12 @@ def test_parse_metadata_field_v3(
 # invalid cases (a subset check, so accumulation of OTHER problems is allowed).
 
 
-def _build_v3(**overrides: object) -> dict[str, object]:
-    return dict(ArrayMetadataModelV3.create_default(**overrides).to_json())  # type: ignore[arg-type]
+def _build_v3(**overrides: Unpack[ArrayMetadataModelV3Partial]) -> dict[str, object]:
+    return dict(ArrayMetadataModelV3.create_default(**overrides).to_json())
 
 
-def _build_v2(**overrides: object) -> dict[str, object]:
-    return dict(ArrayMetadataModelV2.create_default(**overrides).to_json())  # type: ignore[arg-type]
+def _build_v2(**overrides: Unpack[ArrayMetadataModelV2Partial]) -> dict[str, object]:
+    return dict(ArrayMetadataModelV2.create_default(**overrides).to_json())
 
 
 def _mutate(build: Callable[[], dict], mutate: Callable[[dict], object]) -> Callable[[], dict]:
@@ -1008,7 +1009,9 @@ def test_validation_problem_is_frozen() -> None:
     """ValidationProblem is immutable (frozen dataclass)."""
     p = ValidationProblem(loc=("shape",), message="x", kind="invalid_type")
     with pytest.raises(dataclasses.FrozenInstanceError):
-        p.message = "y"  # type: ignore[misc]
+        # setattr: assigning to a frozen field is an intentional runtime error,
+        # spelled dynamically so it is not also a static type error.
+        setattr(p, "message", "y")  # noqa: B010
 
 
 def test_metadata_validation_error_holds_problems() -> None:

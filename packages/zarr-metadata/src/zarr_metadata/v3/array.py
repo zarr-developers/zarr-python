@@ -9,7 +9,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import MetadataV3
 
 
-class ExtensionFieldV3(TypedDict, extra_items=JSONValue):  # type: ignore[call-arg]
+class ExtensionFieldV3(TypedDict, extra_items=JSONValue):
     """
     Required shape of any extension field on a v3 metadata document.
 
@@ -41,7 +41,7 @@ class ExtensionFieldV3(TypedDict, extra_items=JSONValue):  # type: ignore[call-a
     must_understand: bool
 
 
-class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):
     """
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
@@ -63,7 +63,7 @@ class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
-class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):
     """
     Partial form of `ArrayMetadataV3`: every field is `NotRequired`.
 

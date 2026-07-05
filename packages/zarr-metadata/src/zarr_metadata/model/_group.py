@@ -149,11 +149,17 @@ class GroupMetadataModelV3:
             if consolidated_raw is None
             else ConsolidatedMetadataModelV3.from_json(consolidated_raw)
         )
-        extra_fields: dict[str, ExtensionFieldV3] = {
-            k: v  # type: ignore[misc]
-            for k, v in parsed.items()
-            if k not in GROUP_METADATA_STANDARD_KEYS_V3 and k != CONSOLIDATED_METADATA_KEY_V3
-        }
+        # Sound cast: the TypedDict types all non-standard keys as its
+        # `extra_items` (`ExtensionFieldV3`); the comprehension's inferred value
+        # type is the union over ALL keys because the key filter cannot narrow it.
+        extra_fields = cast(
+            "dict[str, ExtensionFieldV3]",
+            {
+                k: v
+                for k, v in parsed.items()
+                if k not in GROUP_METADATA_STANDARD_KEYS_V3 and k != CONSOLIDATED_METADATA_KEY_V3
+            },
+        )
         return cls(
             attributes=dict(parsed.get("attributes", {})),
             consolidated_metadata=consolidated,
