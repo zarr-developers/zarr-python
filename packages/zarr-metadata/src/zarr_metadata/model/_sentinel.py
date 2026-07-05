@@ -8,18 +8,20 @@ into a document as a spelling the writer did not intend.
 
 Check with identity: `if model.dimension_names is UNSET: ...`.
 
-Implementation note: `typing_extensions.Sentinel` (PEP 661) is the intended
-spelling, but two independent checker gaps block it. Pyright: a confirmed
-regression (1.1.405 through at least 1.1.411; worked in <= 1.1.404,
+Implementation note: `typing_extensions.Sentinel` (PEP 661, Final as of
+2026-04-23, stdlib in Python 3.15) is the intended spelling, but two
+independent checker gaps block it for now. Pyright: a confirmed regression
+(1.1.405 through at least 1.1.411; worked in <= 1.1.404,
 https://github.com/microsoft/pyright/issues/11115) degrades a Sentinel to
 `Unknown` when read from any class-body attribute annotation. Mypy (2.1.0):
-no PEP 661 support at all — a sentinel in type position is a hard
+has not yet implemented PEP 661 — a sentinel in type position is a hard
 `[valid-type]` error, so downstream mypy users (zarr-python itself) would
 see these fields as `Any`. Pinning a working pyright in this package's CI
 would fix neither contributors' IDEs nor downstream checkers reading the
 py.typed annotations. The single-member enum gives the same identity
 semantics with exact `Literal` narrowing on every checker; switch to
-`Sentinel` once the pyright regression is fixed AND mypy implements PEP 661.
+`Sentinel` once the pyright regression is fixed and mypy support lands —
+both expected, now that the PEP is Final.
 """
 
 from __future__ import annotations
