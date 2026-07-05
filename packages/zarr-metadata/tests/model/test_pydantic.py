@@ -1,11 +1,16 @@
 """Executable example: integrating the metadata models with pydantic (v2).
 
-Do NOT hand the dataclass to pydantic for field-by-field validation: the
-models keep their annotation-only imports behind `TYPE_CHECKING` (so the
-string annotations are unresolvable at runtime, and pydantic raises
-`class-not-fully-defined`), and even if they resolved, pydantic's coercion
-rules would diverge from the library's structural validation. Delegate
-wholesale instead — treat the model as an opaque value:
+Pydantic's native dataclass introspection CAN be made to work (see
+`test_native_dataclass_introspection_is_possible_but_diverges`): the models
+keep their annotation-only imports behind `TYPE_CHECKING`, so a bare
+`TypeAdapter(ArrayMetadataModelV3)` raises `class-not-fully-defined`, but
+`rebuild(_types_namespace=...)` with the names supplied resolves the schema.
+It is still the wrong tool: it validates the MODEL SHAPE, not the DOCUMENT —
+no `from_json` normalization (a bare-string `data_type` is rejected), and
+pydantic's lax coercion silently re-opens holes the library's validators
+close (`shape=[True, -5]` coerces to `(1, -5)`; a wrong `dimension_names`
+count passes). The recommended integration delegates wholesale — treat the
+model as an opaque value:
 
 - `InstanceOf` makes pydantic's core schema an is-instance check (no field
   introspection),
@@ -128,3 +133,60 @@ def test_type_adapter_standalone() -> None:
     model = adapter.validate_python(VALID_DOC)
     assert isinstance(model, ArrayMetadataModelV3)
     assert adapter.dump_python(model) == model.to_json()
+
+
+# --- the road not taken: native dataclass introspection ----------------------
+
+
+def test_native_dataclass_introspection_is_possible_but_diverges() -> None:
+    """Pydantic CAN introspect the model dataclass after a namespace rebuild,
+    but that path validates the model shape, not the document: it rejects the
+    document form, coerces booleans into dimensions, and skips the library's
+    cross-field checks. This test documents why the delegation pattern above
+    is the recommended integration."""
+    from zarr_metadata._common import JSONValue
+    from zarr_metadata.model import NamedConfigModelV3
+    from zarr_metadata.v3._common import MetadataV3
+    from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
+
+    adapter = TypeAdapter(ArrayMetadataModelV3)
+    adapter.rebuild(
+        force=True,
+        _types_namespace={
+            "JSONValue": JSONValue,
+            "ExtensionFieldV3": ExtensionFieldV3,
+            "MetadataV3": MetadataV3,
+            "ArrayMetadataV3": ArrayMetadataV3,
+            "NamedConfigModelV3": NamedConfigModelV3,
+            "MetadataFieldModelV3": NamedConfigModelV3,
+        },
+    )
+    model_shaped = {
+        "shape": [10],
+        "fill_value": 0,
+        "data_type": {"name": "uint8", "configuration": {}},
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [5]}},
+        "codecs": [{"name": "bytes", "configuration": {}}],
+        "chunk_key_encoding": {"name": "default", "configuration": {}},
+        "dimension_names": None,
+        "attributes": {},
+        "storage_transformers": [],
+        "extra_fields": {},
+    }
+    # model-shaped data validates, nested named configs and all
+    model = adapter.validate_python(model_shaped)
+    assert isinstance(model.data_type, NamedConfigModelV3)
+
+    # divergence 1: the DOCUMENT form is rejected — no from_json normalization
+    with pytest.raises(ValidationError):
+        adapter.validate_python(model_shaped | {"data_type": "uint8"})
+
+    # divergence 2: lax coercion re-opens holes the library validators close
+    coerced = adapter.validate_python(model_shaped | {"shape": [True, -5]})
+    assert coerced.shape == (1, -5)  # from_json would reject both entries
+
+    # __post_init__ invariants DO still run under pydantic construction
+    with pytest.raises(ValidationError, match="Extra fields"):
+        adapter.validate_python(
+            model_shaped | {"extra_fields": {"shape": {"must_understand": False}}}
+        )
