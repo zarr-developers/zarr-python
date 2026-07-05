@@ -1215,3 +1215,32 @@ def test_configuration_values_must_be_json() -> None:
     assert [(p.loc, p.kind) for p in problems] == [
         (("chunk_grid", "configuration", "chunk_shape"), "invalid_type")
     ]
+
+
+# --- must_understand partition (spec: MUST fail to open unrecognized fields) --
+
+
+def test_must_understand_fields_partition() -> None:
+    """must_understand_fields contains every extra field not explicitly waived
+    with must_understand: false, including implicitly-true and non-mapping
+    fields, so a reader can discharge the spec's fail-to-open duty by
+    subtracting the extensions it recognizes."""
+    model = ArrayMetadataModelV3.create_default(
+        extra_fields={
+            "ext_a": {"name": "a", "must_understand": False},
+            "ext_b": {"name": "b"},
+            "ext_c": {"name": "c", "must_understand": True},
+            "ext_d": 123,
+        }
+    )
+    assert set(model.must_understand_fields) == {"ext_b", "ext_c", "ext_d"}
+    recognized = {"ext_b"}
+    assert model.must_understand_fields.keys() - recognized == {"ext_c", "ext_d"}
+
+
+def test_must_understand_fields_empty_when_all_waived() -> None:
+    """must_understand_fields is empty when every extra field is explicitly waived."""
+    model = ArrayMetadataModelV3.create_default(
+        extra_fields={"ext_a": {"name": "a", "must_understand": False}}
+    )
+    assert model.must_understand_fields == {}

@@ -13,6 +13,7 @@ from typing_extensions import TypedDict, Unpack
 from zarr_metadata.model._array import (
     ATTRIBUTES_STORE_KEY_V2,
     ArrayMetadataModelV3,
+    must_understand_subset,
 )
 from zarr_metadata.model._validation import (
     GROUP_METADATA_STANDARD_KEYS_V3,
@@ -158,6 +159,18 @@ class GroupMetadataModelV3:
             consolidated_metadata=consolidated,
             extra_fields=extra_fields,
         )
+
+    @property
+    def must_understand_fields(self) -> dict[str, ExtensionFieldV3]:
+        """Extra fields the reader is obligated to understand.
+
+        Everything in `extra_fields` not explicitly waived with
+        `must_understand: false` (the spec's implicit-true rule). A compliant
+        reader MUST fail to open the group if this contains any field it does
+        not recognize; the model layer only partitions by obligation, since
+        recognition is reader-specific.
+        """
+        return must_understand_subset(self.extra_fields)
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV3:

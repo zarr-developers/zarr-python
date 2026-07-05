@@ -335,3 +335,18 @@ def test_group_v3_valid_consolidated_passes_validator() -> None:
         },
     }
     assert validate_group_metadata_v3(doc) == []
+
+
+# --- must_understand partition ------------------------------------------------
+
+
+def test_group_must_understand_fields_partition() -> None:
+    """The group model partitions extra fields by the spec's implicit-true rule,
+    like the array model."""
+    model = GroupMetadataModelV3.create_default(
+        extra_fields={
+            "waived": {"name": "w", "must_understand": False},
+            "implicit": {"name": "i"},
+        }
+    )
+    assert set(model.must_understand_fields) == {"implicit"}

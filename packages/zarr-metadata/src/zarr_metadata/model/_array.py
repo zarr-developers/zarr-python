@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal, TypeAlias
+from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -21,8 +22,6 @@ from zarr_metadata.model._validation import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v2.array import (
         ArrayDimensionSeparatorV2,
@@ -80,6 +79,33 @@ field form that cannot be normalized to name + configuration, this alias
 widens to a union and annotation sites do not change. Mirrors the raw-layer
 split between `NamedConfigV3` (shape) and `MetadataV3` (field union).
 """
+
+
+def must_understand_subset(
+    extra_fields: Mapping[str, ExtensionFieldV3],
+) -> dict[str, ExtensionFieldV3]:
+    """The subset of `extra_fields` the reader is obligated to understand.
+
+    Per the v3 spec, an extension field is implicitly `must_understand: True`
+    unless it explicitly says otherwise, and an implementation MUST fail to
+    open a group or array carrying fields it does not recognize that are not
+    explicitly `must_understand: false`. A non-mapping field value cannot
+    carry the explicit waiver, so it always requires understanding (the
+    runtime isinstance check defends against values looser than the declared
+    `ExtensionFieldV3`).
+    """
+    fields = cast("Mapping[str, object]", extra_fields)
+    return cast(
+        "dict[str, ExtensionFieldV3]",
+        {
+            name: value
+            for name, value in fields.items()
+            if not (
+                isinstance(value, Mapping)
+                and cast("Mapping[str, object]", value).get("must_understand") is False
+            )
+        },
+    )
 
 
 class ArrayMetadataModelV3Partial(TypedDict, total=False):
@@ -239,6 +265,18 @@ class ArrayMetadataModelV3:
             ),
             extra_fields=extra_fields,
         )
+
+    @property
+    def must_understand_fields(self) -> dict[str, ExtensionFieldV3]:
+        """Extra fields the reader is obligated to understand.
+
+        Everything in `extra_fields` not explicitly waived with
+        `must_understand: false` (the spec's implicit-true rule). A compliant
+        reader MUST fail to open the array if this contains any field it does
+        not recognize; the model layer only partitions by obligation, since
+        recognition is reader-specific.
+        """
+        return must_understand_subset(self.extra_fields)
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ArrayMetadataModelV3:
