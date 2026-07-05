@@ -51,6 +51,7 @@ EXPECTED = [
     "ConsolidatedMetadataModelV2",
     "ConsolidatedMetadataModelV3",
     "NamedConfigModelV3",
+    "MetadataFieldModelV3",
     "ValidationProblem",
     "MetadataValidationError",
     "ProblemKind",

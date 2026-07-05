@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, TypeAlias
 
 from typing_extensions import TypedDict, Unpack
 
@@ -68,6 +68,20 @@ class NamedConfigModelV3:
         return cls(name=field["name"], configuration=configuration)  # type: ignore[arg-type]
 
 
+MetadataFieldModelV3: TypeAlias = NamedConfigModelV3
+"""The in-memory model of one field of a v3 metadata document.
+
+This is the role-named alias for annotation positions: model fields and
+consumer signatures should say `MetadataFieldModelV3` (the logical meaning)
+rather than `NamedConfigModelV3` (the serialized form the field currently
+takes). Today every metadata field normalizes to a named configuration, so
+the alias is exactly `NamedConfigModelV3`; if a future spec revision adds a
+field form that cannot be normalized to name + configuration, this alias
+widens to a union and annotation sites do not change. Mirrors the raw-layer
+split between `NamedConfigV3` (shape) and `MetadataV3` (field union).
+"""
+
+
 class ArrayMetadataModelV3Partial(TypedDict, total=False):
     """
     Partial form of the constructor-settable fields of `ArrayMetadataModelV3`.
@@ -84,13 +98,13 @@ class ArrayMetadataModelV3Partial(TypedDict, total=False):
 
     shape: tuple[int, ...]
     fill_value: JSONValue
-    data_type: NamedConfigModelV3
-    chunk_grid: NamedConfigModelV3
-    codecs: tuple[NamedConfigModelV3, ...]
-    chunk_key_encoding: NamedConfigModelV3
+    data_type: MetadataFieldModelV3
+    chunk_grid: MetadataFieldModelV3
+    codecs: tuple[MetadataFieldModelV3, ...]
+    chunk_key_encoding: MetadataFieldModelV3
     dimension_names: tuple[str | None, ...] | None
     attributes: dict[str, JSONValue]
-    storage_transformers: tuple[NamedConfigModelV3, ...]
+    storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]
 
 
@@ -100,8 +114,9 @@ class ArrayMetadataModelV3:
 
     A canonical, lossless representation of the `zarr.json` content for an
     array. Extension points (`data_type`, `chunk_grid`, `chunk_key_encoding`,
-    `codecs`, `storage_transformers`) are held as `NamedConfigModelV3` name +
-    configuration pairs and are never interpreted; `fill_value` is held
+    `codecs`, `storage_transformers`) are held as `MetadataFieldModelV3`
+    values (currently always `NamedConfigModelV3` name + configuration pairs)
+    and are never interpreted; `fill_value` is held
     verbatim in its JSON form.
     """
 
@@ -109,13 +124,13 @@ class ArrayMetadataModelV3:
     node_type: Literal["array"] = field(default="array", init=False)
     shape: tuple[int, ...]
     fill_value: JSONValue
-    data_type: NamedConfigModelV3
-    chunk_grid: NamedConfigModelV3
-    codecs: tuple[NamedConfigModelV3, ...]
-    chunk_key_encoding: NamedConfigModelV3
+    data_type: MetadataFieldModelV3
+    chunk_grid: MetadataFieldModelV3
+    codecs: tuple[MetadataFieldModelV3, ...]
+    chunk_key_encoding: MetadataFieldModelV3
     dimension_names: tuple[str | None, ...] | None
     attributes: dict[str, JSONValue]
-    storage_transformers: tuple[NamedConfigModelV3, ...]
+    storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]
 
     @classmethod

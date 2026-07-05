@@ -19,6 +19,7 @@ from zarr_metadata.model._array import (
     ArrayMetadataModelV2Partial,
     ArrayMetadataModelV3,
     ArrayMetadataModelV3Partial,
+    MetadataFieldModelV3,
     NamedConfigModelV3,
 )
 from zarr_metadata.model._group import (
@@ -91,6 +92,7 @@ __all__ = [
     "GroupMetadataModelV2Partial",
     "GroupMetadataModelV3",
     "GroupMetadataModelV3Partial",
+    "MetadataFieldModelV3",
     "MetadataValidationError",
     "NamedConfigModelV3",
     "ProblemKind",

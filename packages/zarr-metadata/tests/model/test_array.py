@@ -16,6 +16,7 @@ from zarr_metadata.model import (
     ArrayMetadataModelV2Partial,
     ArrayMetadataModelV3,
     ArrayMetadataModelV3Partial,
+    MetadataFieldModelV3,
     MetadataValidationError,
     NamedConfigModelV3,
     ValidationProblem,
@@ -1138,3 +1139,15 @@ def test_extra_fields_overlap_raises_metadata_error() -> None:
     with pytest.raises(MetadataValidationError, match="Extra fields") as exc_info:
         ArrayMetadataModelV3.create_default(extra_fields={"shape": {"must_understand": False}})
     assert [p.kind for p in exc_info.value.problems] == ["invalid_value"]
+
+
+def test_extension_point_fields_annotated_with_role_alias() -> None:
+    """Extension-point fields are annotated with MetadataFieldModelV3 (the
+    logical role), not NamedConfigModelV3 (the current serialized form), so a
+    future widening of the field union does not move annotation sites."""
+    assert MetadataFieldModelV3 is NamedConfigModelV3
+    annotations = ArrayMetadataModelV3.__annotations__
+    for field_name in ("data_type", "chunk_grid", "chunk_key_encoding"):
+        assert annotations[field_name] == "MetadataFieldModelV3"
+    for field_name in ("codecs", "storage_transformers"):
+        assert annotations[field_name] == "tuple[MetadataFieldModelV3, ...]"
