@@ -1244,3 +1244,17 @@ def test_must_understand_fields_empty_when_all_waived() -> None:
         extra_fields={"ext_a": {"name": "a", "must_understand": False}}
     )
     assert model.must_understand_fields == {}
+
+
+def test_dimension_names_null_field_rejected() -> None:
+    """A dimension_names field whose VALUE is null is invalid: the spec permits
+    null as an element (an unnamed dimension), never as the field value — "not
+    specified" is spelled by omitting the key. Consumers bridging from an
+    in-memory None sentinel must drop the key, not write null."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json()) | {"dimension_names": None}
+    problems = validate_array_metadata_v3(doc)
+    assert [(p.loc, p.kind) for p in problems] == [(("dimension_names",), "invalid_type")]
+    # and the model's own None spelling correctly maps to key absence
+    assert (
+        "dimension_names" not in ArrayMetadataModelV3.create_default(dimension_names=None).to_json()
+    )
