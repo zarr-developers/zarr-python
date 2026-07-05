@@ -14,7 +14,13 @@ from typing import Final, cast
 
 from typing_extensions import TypeIs
 
-from zarr_metadata import ArrayMetadataV2, ArrayMetadataV3, MetadataV3
+from zarr_metadata import (
+    ArrayMetadataV2,
+    ArrayMetadataV3,
+    GroupMetadataV2,
+    GroupMetadataV3,
+    MetadataV3,
+)
 from zarr_metadata._common import JSONValue
 
 
@@ -97,6 +103,22 @@ ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
 
 ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
     ArrayMetadataV2.__required_keys__
+)
+
+# The standard top-level keys of a v3 group metadata document. Anything outside
+# this set is an extension field.
+GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
+    GroupMetadataV3.__required_keys__
+)
+GROUP_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
+    GroupMetadataV3.__optional_keys__
+)
+GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
+    GROUP_METADATA_REQUIRED_KEYS_V3 | GROUP_METADATA_OPTIONAL_KEYS_V3
+)
+
+GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
+    GroupMetadataV2.__required_keys__
 )
 
 
@@ -257,6 +279,71 @@ def parse_array_metadata_v2(value: object) -> ArrayMetadataV2:
     if problems:
         raise MetadataValidationError(problems)
     return cast(ArrayMetadataV2, value)
+
+
+def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
+    """Return every reason `value` is not a structurally-valid v3 group doc.
+
+    Checks structure, not domain validity. Unknown top-level keys are allowed
+    (they map to `extra_fields`); a `consolidated_metadata` key, if present,
+    must be a mapping (its entries are validated by the consolidated model).
+    """
+    if not isinstance(value, Mapping):
+        return [ValidationProblem((), "expected a mapping")]
+    doc = cast("Mapping[str, object]", value)
+    problems: list[ValidationProblem] = [
+        ValidationProblem((key,), "missing required key")
+        for key in sorted(GROUP_METADATA_REQUIRED_KEYS_V3 - doc.keys())
+    ]
+    if "attributes" in doc:
+        problems.extend(_validate_attributes(doc["attributes"]))
+    if "consolidated_metadata" in doc and not isinstance(doc["consolidated_metadata"], Mapping):
+        problems.append(ValidationProblem(("consolidated_metadata",), "expected a mapping"))
+    return problems
+
+
+def is_group_metadata_v3(value: object) -> TypeIs[GroupMetadataV3]:
+    """Whether `value` is a structurally-valid v3 group metadata document."""
+    return not validate_group_metadata_v3(value)
+
+
+def parse_group_metadata_v3(value: object) -> GroupMetadataV3:
+    """Return `value` narrowed to `GroupMetadataV3`, or raise `MetadataValidationError`."""
+    problems = validate_group_metadata_v3(value)
+    if problems:
+        raise MetadataValidationError(problems)
+    return cast(GroupMetadataV3, value)
+
+
+def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
+    """Return every reason `value` is not a structurally-valid v2 group doc.
+
+    Validates the in-memory merged form: the `.zgroup` fields plus an
+    optional `attributes` mapping folded in from `.zattrs`.
+    """
+    if not isinstance(value, Mapping):
+        return [ValidationProblem((), "expected a mapping")]
+    doc = cast("Mapping[str, object]", value)
+    problems: list[ValidationProblem] = [
+        ValidationProblem((key,), "missing required key")
+        for key in sorted(GROUP_METADATA_REQUIRED_KEYS_V2 - doc.keys())
+    ]
+    if "attributes" in doc:
+        problems.extend(_validate_attributes(doc["attributes"]))
+    return problems
+
+
+def is_group_metadata_v2(value: object) -> TypeIs[GroupMetadataV2]:
+    """Whether `value` is a structurally-valid v2 group metadata document."""
+    return not validate_group_metadata_v2(value)
+
+
+def parse_group_metadata_v2(value: object) -> GroupMetadataV2:
+    """Return `value` narrowed to `GroupMetadataV2`, or raise `MetadataValidationError`."""
+    problems = validate_group_metadata_v2(value)
+    if problems:
+        raise MetadataValidationError(problems)
+    return cast(GroupMetadataV2, value)
 
 
 def arrays_to_tuples(obj: object) -> object:
