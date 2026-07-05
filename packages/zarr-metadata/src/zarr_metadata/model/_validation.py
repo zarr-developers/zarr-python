@@ -519,8 +519,9 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "consolidated_metadata" in doc and doc["consolidated_metadata"] is not None:
-        # consolidated_metadata: null is accepted: historical zarr-python
-        # versions wrote it for groups without consolidated metadata.
+        # consolidated_metadata: null (a historical zarr-python bug) is
+        # structurally accepted so those stores remain readable, but the model
+        # repairs it to absence on read and never writes it back.
         problems.extend(
             _prefix(
                 "consolidated_metadata",

@@ -64,7 +64,7 @@ class GroupMetadataModelV3Partial(TypedDict, total=False):
     """
 
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | None | UnsetType
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
     extra_fields: dict[str, ExtensionFieldV3]
 
 
@@ -81,7 +81,7 @@ class GroupMetadataModelV3:
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["group"] = field(default="group", init=False)
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | None | UnsetType
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
     extra_fields: dict[str, ExtensionFieldV3]
 
     def __post_init__(self) -> None:
@@ -133,14 +133,9 @@ class GroupMetadataModelV3:
             # The consolidated-metadata shape ({kind, must_understand, metadata},
             # no `name`) predates the strict v3.1 extension-field rules, so it is
             # not assignable to `ExtensionFieldV3`; see the discussion on
-            # `zarr_metadata.v3.consolidated`. A model None is the document's
-            # literal null spelling (written by historical zarr-python versions)
-            # and round-trips as such.
+            # `zarr_metadata.v3.consolidated`.
             out[CONSOLIDATED_METADATA_KEY_V3] = cast(
-                "ExtensionFieldV3",
-                None
-                if self.consolidated_metadata is None
-                else self.consolidated_metadata.to_json(),
+                "ExtensionFieldV3", self.consolidated_metadata.to_json()
             )
         for key, value in self.extra_fields.items():
             out[key] = value
@@ -152,14 +147,12 @@ class GroupMetadataModelV3:
         # Cast to object: the TypedDict's extra_items type does not admit null,
         # but wild documents (historical zarr-python) contain it.
         consolidated_raw = cast("object", parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET))
-        consolidated: ConsolidatedMetadataModelV3 | None | UnsetType
-        if consolidated_raw is UNSET:
+        consolidated: ConsolidatedMetadataModelV3 | UnsetType
+        if consolidated_raw is UNSET or consolidated_raw is None:
+            # consolidated_metadata: null was written by a historical
+            # zarr-python bug; it gets no model representation. It is read as
+            # absence and never written back — repaired, not preserved.
             consolidated = UNSET
-        elif consolidated_raw is None:
-            # Historical zarr-python versions wrote consolidated_metadata: null
-            # for groups without consolidated metadata; the spelling is
-            # preserved (interpreting it as absence is the consumer's call).
-            consolidated = None
         else:
             consolidated = ConsolidatedMetadataModelV3.from_json(consolidated_raw)
         # Sound cast: the TypedDict types all non-standard keys as its

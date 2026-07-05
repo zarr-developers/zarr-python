@@ -353,19 +353,14 @@ def test_group_must_understand_fields_partition() -> None:
     assert set(model.must_understand_fields) == {"implicit"}
 
 
-def test_group_v3_null_consolidated_metadata_preserved() -> None:
-    """Historical zarr-python versions wrote consolidated_metadata: null for
-    groups without consolidated metadata, so null is a real wild spelling:
-    it is accepted and preserved on round-trip (model None = document null),
-    distinct from key absence (UNSET). Interpreting null as "no consolidated
-    metadata" is the consumer's call, not a document rewrite."""
+def test_group_v3_null_consolidated_metadata_repaired_to_absence() -> None:
+    """consolidated_metadata: null was written by a historical zarr-python bug.
+    Those stores must remain readable, but the bug spelling is not honored:
+    it is read as absence (UNSET) and never written back — the round-trip
+    deliberately repairs the document rather than preserving the bug."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
-    absent_doc = {"zarr_format": 3, "node_type": "group"}
     assert validate_group_metadata_v3(null_doc) == []
-    null_model = GroupMetadataModelV3.from_json(null_doc)
-    absent_model = GroupMetadataModelV3.from_json(absent_doc)
-    assert null_model.consolidated_metadata is None
-    assert absent_model.consolidated_metadata is UNSET
-    assert null_model != absent_model
-    assert null_model.to_json() == null_doc
-    assert absent_model.to_json() == absent_doc
+    model = GroupMetadataModelV3.from_json(null_doc)
+    assert model.consolidated_metadata is UNSET
+    assert "consolidated_metadata" not in model.to_json()
+    assert model == GroupMetadataModelV3.from_json({"zarr_format": 3, "node_type": "group"})
