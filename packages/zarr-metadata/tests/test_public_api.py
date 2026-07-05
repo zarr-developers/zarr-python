@@ -39,6 +39,20 @@ EXPECTED = [
     "NamedConfigV3",
     "MetadataV3",
     "JSONValue",
+    # Category A' — metadata models (in-memory dataclasses over the documents)
+    "ArrayMetadataModelV2",
+    "ArrayMetadataModelV2Partial",
+    "ArrayMetadataModelV3",
+    "ArrayMetadataModelV3Partial",
+    "GroupMetadataModelV2",
+    "GroupMetadataModelV2Partial",
+    "GroupMetadataModelV3",
+    "GroupMetadataModelV3Partial",
+    "ConsolidatedMetadataModelV2",
+    "ConsolidatedMetadataModelV3",
+    "ZarrMetadataV3",
+    "ValidationProblem",
+    "MetadataValidationError",
     # v2 data-type encoding union
     "DataTypeMetadataV2",
     # Category B — codec canonical unions

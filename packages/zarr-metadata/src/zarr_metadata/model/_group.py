@@ -24,13 +24,11 @@ from zarr_metadata.model._validation import (
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata import (
-        ConsolidatedMetadataV3,
-        ExtensionFieldV3,
-        GroupMetadataV2,
-        GroupMetadataV3,
-    )
     from zarr_metadata._common import JSONValue
+    from zarr_metadata.v2.group import GroupMetadataV2
+    from zarr_metadata.v3.array import ExtensionFieldV3
+    from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
+    from zarr_metadata.v3.group import GroupMetadataV3
 
 GroupMetadataStoreKeyV3 = Literal["zarr.json"]
 GROUP_METADATA_STORE_KEY_V3: Final[GroupMetadataStoreKeyV3] = "zarr.json"

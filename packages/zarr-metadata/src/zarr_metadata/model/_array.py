@@ -20,16 +20,16 @@ from zarr_metadata.model._validation import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata import (
+    from zarr_metadata._common import JSONValue
+    from zarr_metadata.v2.array import (
         ArrayDimensionSeparatorV2,
         ArrayMetadataV2,
-        ArrayMetadataV3,
         ArrayOrderV2,
-        ExtensionFieldV3,
-        MetadataV3,
+        DataTypeMetadataV2,
     )
-    from zarr_metadata._common import JSONValue
-    from zarr_metadata.v2 import CodecMetadataV2, DataTypeMetadataV2
+    from zarr_metadata.v2.codec import CodecMetadataV2
+    from zarr_metadata.v3._common import MetadataV3
+    from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 
 ArrayMetadataStoreKeyV3 = Literal["zarr.json"]
 ARRAY_METADATA_STORE_KEY_V3: Final[ArrayMetadataStoreKeyV3] = "zarr.json"
