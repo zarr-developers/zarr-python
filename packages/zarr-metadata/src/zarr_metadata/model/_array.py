@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast
 
 from typing_extensions import TypedDict, Unpack
 
+from zarr_metadata.model._sentinel import UNSET, UnsetType
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
@@ -133,7 +134,7 @@ class ArrayMetadataModelV3Partial(TypedDict, total=False):
     chunk_grid: MetadataFieldModelV3
     codecs: tuple[MetadataFieldModelV3, ...]
     chunk_key_encoding: MetadataFieldModelV3
-    dimension_names: tuple[str | None, ...] | None
+    dimension_names: tuple[str | None, ...] | UnsetType
     attributes: dict[str, JSONValue]
     storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]
@@ -159,7 +160,7 @@ class ArrayMetadataModelV3:
     chunk_grid: MetadataFieldModelV3
     codecs: tuple[MetadataFieldModelV3, ...]
     chunk_key_encoding: MetadataFieldModelV3
-    dimension_names: tuple[str | None, ...] | None
+    dimension_names: tuple[str | None, ...] | UnsetType
     attributes: dict[str, JSONValue]
     storage_transformers: tuple[MetadataFieldModelV3, ...]
     extra_fields: dict[str, ExtensionFieldV3]
@@ -196,7 +197,7 @@ class ArrayMetadataModelV3:
             chunk_grid=NamedConfigModelV3(name="regular", configuration={"chunk_shape": ()}),
             codecs=(NamedConfigModelV3(name="bytes", configuration={}),),
             chunk_key_encoding=NamedConfigModelV3(name="default", configuration={}),
-            dimension_names=None,
+            dimension_names=UNSET,
             attributes={},
             storage_transformers=(),
             extra_fields={},
@@ -246,7 +247,7 @@ class ArrayMetadataModelV3:
             "codecs": tuple(codec.to_json() for codec in self.codecs),
             "chunk_key_encoding": self.chunk_key_encoding.to_json(),
         }
-        if self.dimension_names is not None:
+        if self.dimension_names is not UNSET:
             out["dimension_names"] = self.dimension_names
         if len(self.attributes) > 0:
             out["attributes"] = self.attributes
@@ -279,7 +280,7 @@ class ArrayMetadataModelV3:
             chunk_grid=NamedConfigModelV3.from_json(parsed["chunk_grid"]),
             codecs=tuple(NamedConfigModelV3.from_json(c) for c in parsed["codecs"]),
             chunk_key_encoding=NamedConfigModelV3.from_json(parsed["chunk_key_encoding"]),
-            dimension_names=parsed.get("dimension_names"),
+            dimension_names=parsed.get("dimension_names", UNSET),
             attributes=dict(parsed.get("attributes", {})),
             storage_transformers=tuple(
                 NamedConfigModelV3.from_json(t) for t in parsed.get("storage_transformers", ())

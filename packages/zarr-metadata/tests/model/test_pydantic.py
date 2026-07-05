@@ -149,6 +149,7 @@ def test_native_dataclass_introspection_is_possible_but_diverges() -> None:
     cross-field checks. This test documents why the delegation pattern above
     is the recommended integration."""
     from zarr_metadata._common import JSONValue
+    from zarr_metadata.model import UnsetType
     from zarr_metadata.v3._common import MetadataV3
     from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
 
@@ -162,6 +163,7 @@ def test_native_dataclass_introspection_is_possible_but_diverges() -> None:
             "ArrayMetadataV3": ArrayMetadataV3,
             "NamedConfigModelV3": NamedConfigModelV3,
             "MetadataFieldModelV3": NamedConfigModelV3,
+            "UnsetType": UnsetType,
         },
     )
     model_shaped = {
@@ -171,7 +173,7 @@ def test_native_dataclass_introspection_is_possible_but_diverges() -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [5]}},
         "codecs": [{"name": "bytes", "configuration": {}}],
         "chunk_key_encoding": {"name": "default", "configuration": {}},
-        "dimension_names": None,
+        "dimension_names": UnsetType.UNSET,
         "attributes": {},
         "storage_transformers": [],
         "extra_fields": {},

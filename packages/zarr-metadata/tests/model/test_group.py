@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from zarr_metadata.model import UNSET
 from zarr_metadata.model._array import ArrayMetadataModelV3
 from zarr_metadata.model._group import (
     ConsolidatedMetadataModelV2,
@@ -62,7 +63,7 @@ def test_group_v3_extra_fields_overlap_rejected() -> None:
     with pytest.raises(ValueError, match="Extra fields"):
         GroupMetadataModelV3(
             attributes={},
-            consolidated_metadata=None,
+            consolidated_metadata=UNSET,
             extra_fields={"node_type": {"name": "x", "must_understand": False}},
         )
 
@@ -72,7 +73,7 @@ def test_group_v3_consolidated_extra_field_rejected() -> None:
     with pytest.raises(ValueError, match="Extra fields"):
         GroupMetadataModelV3(
             attributes={},
-            consolidated_metadata=None,
+            consolidated_metadata=UNSET,
             extra_fields={"consolidated_metadata": {"name": "x", "must_understand": False}},
         )
 

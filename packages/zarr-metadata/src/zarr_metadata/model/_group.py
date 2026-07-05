@@ -15,6 +15,7 @@ from zarr_metadata.model._array import (
     ArrayMetadataModelV3,
     must_understand_subset,
 )
+from zarr_metadata.model._sentinel import UNSET, UnsetType
 from zarr_metadata.model._validation import (
     GROUP_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
@@ -63,7 +64,7 @@ class GroupMetadataModelV3Partial(TypedDict, total=False):
     """
 
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | None
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
     extra_fields: dict[str, ExtensionFieldV3]
 
 
@@ -80,7 +81,7 @@ class GroupMetadataModelV3:
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["group"] = field(default="group", init=False)
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | None
+    consolidated_metadata: ConsolidatedMetadataModelV3 | UnsetType
     extra_fields: dict[str, ExtensionFieldV3]
 
     def __post_init__(self) -> None:
@@ -107,7 +108,7 @@ class GroupMetadataModelV3:
         analog of `list()` returning `[]`. Any field can be overridden by keyword
         (the same fields accepted by `update`).
         """
-        default = cls(attributes={}, consolidated_metadata=None, extra_fields={})
+        default = cls(attributes={}, consolidated_metadata=UNSET, extra_fields={})
         return default.update(**overrides)
 
     def update(self, **kwargs: Unpack[GroupMetadataModelV3Partial]) -> GroupMetadataModelV3:
@@ -128,7 +129,7 @@ class GroupMetadataModelV3:
         }
         if len(self.attributes) > 0:
             out["attributes"] = self.attributes
-        if self.consolidated_metadata is not None:
+        if self.consolidated_metadata is not UNSET:
             # The consolidated-metadata shape ({kind, must_understand, metadata},
             # no `name`) predates the strict v3.1 extension-field rules, so it is
             # not assignable to `ExtensionFieldV3`; see the discussion on
@@ -143,10 +144,10 @@ class GroupMetadataModelV3:
     @classmethod
     def from_json(cls, data: object) -> GroupMetadataModelV3:
         parsed = parse_group_metadata_v3(arrays_to_tuples(data))
-        consolidated_raw = parsed.get(CONSOLIDATED_METADATA_KEY_V3)
+        consolidated_raw: object = parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET)
         consolidated = (
-            None
-            if consolidated_raw is None
+            UNSET
+            if consolidated_raw is UNSET
             else ConsolidatedMetadataModelV3.from_json(consolidated_raw)
         )
         # Sound cast: the TypedDict types all non-standard keys as its

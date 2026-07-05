@@ -2,6 +2,7 @@ from importlib.metadata import version
 
 from zarr_metadata._common import JSONValue, NamedConfigV3
 from zarr_metadata.model import (
+    UNSET,
     ArrayMetadataModelV2,
     ArrayMetadataModelV2Partial,
     ArrayMetadataModelV3,
@@ -16,6 +17,7 @@ from zarr_metadata.model import (
     MetadataValidationError,
     NamedConfigModelV3,
     ProblemKind,
+    UnsetType,
     ValidationProblem,
 )
 from zarr_metadata.v2.array import (
@@ -248,6 +250,7 @@ __all__ = [
     "UINT16_DATA_TYPE_NAME",
     "UINT32_DATA_TYPE_NAME",
     "UINT64_DATA_TYPE_NAME",
+    "UNSET",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "ZSTD_CODEC_NAME",
@@ -353,6 +356,7 @@ __all__ = [
     "Uint32FillValue",
     "Uint64DataTypeName",
     "Uint64FillValue",
+    "UnsetType",
     "V2ChunkKeyEncodingMetadata",
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingSeparator",

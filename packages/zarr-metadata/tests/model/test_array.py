@@ -13,6 +13,7 @@ from zarr_metadata.model import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
     ARRAY_METADATA_STANDARD_KEYS_V3,
+    UNSET,
     ArrayMetadataModelV2,
     ArrayMetadataModelV2Partial,
     ArrayMetadataModelV3,
@@ -196,8 +197,8 @@ def test_v3_dimension_names_included_when_present() -> None:
 
 
 def test_v3_dimension_names_omitted_when_none() -> None:
-    """V3 to_json omits dimension_names when they are None."""
-    out = ArrayMetadataModelV3.create_default(dimension_names=None).to_json()
+    """V3 to_json omits dimension_names when they are UNSET."""
+    out = ArrayMetadataModelV3.create_default(dimension_names=UNSET).to_json()
     assert "dimension_names" not in out
 
 
@@ -213,7 +214,7 @@ def test_v3_attributes_included_when_dimension_names_is_none() -> None:
     """
     out: dict[str, object] = dict(
         ArrayMetadataModelV3.create_default(
-            dimension_names=None, attributes={"foo": "bar"}
+            dimension_names=UNSET, attributes={"foo": "bar"}
         ).to_json()
     )
     assert out["attributes"] == {"foo": "bar"}
@@ -482,13 +483,13 @@ def test_v3_from_json_reconstructs_required_fields() -> None:
 def test_v3_from_json_defaults_for_omitted_optionals() -> None:
     """V3 from_json supplies defaults for omitted optional fields."""
     doc = ArrayMetadataModelV3.create_default(
-        attributes={}, storage_transformers=(), dimension_names=None
+        attributes={}, storage_transformers=(), dimension_names=UNSET
     ).to_json()
     # to_json omits these entirely; from_json must restore defaults
     model = ArrayMetadataModelV3.from_json(doc)
     assert model.attributes == {}
     assert model.storage_transformers == ()
-    assert model.dimension_names is None
+    assert model.dimension_names is UNSET
 
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
@@ -570,7 +571,7 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
         ArrayMetadataModelV3,
         ArrayMetadataModelV3.create_default(
             attributes={},
-            dimension_names=None,
+            dimension_names=UNSET,
             storage_transformers=(),
             extra_fields={},
         ),
@@ -1259,7 +1260,8 @@ def test_dimension_names_null_field_rejected() -> None:
     assert [(p.loc, p.kind) for p in problems] == [(("dimension_names",), "invalid_type")]
     # and the model's own None spelling correctly maps to key absence
     assert (
-        "dimension_names" not in ArrayMetadataModelV3.create_default(dimension_names=None).to_json()
+        "dimension_names"
+        not in ArrayMetadataModelV3.create_default(dimension_names=UNSET).to_json()
     )
 
 
@@ -1353,3 +1355,23 @@ def test_v2_null_dimension_separator_rejected() -> None:
     doc = dict(ArrayMetadataModelV2.create_default().to_json()) | {"dimension_separator": None}
     problems = validate_array_metadata_v2(doc)
     assert [(p.loc, p.kind) for p in problems] == [(("dimension_separator",), "invalid_value")]
+
+
+def test_dimension_names_absent_and_all_null_are_distinct() -> None:
+    """An absent dimension_names field and an explicit all-null one are
+    semantically different documents: the explicit form says every dimension
+    has a name, which is null; absence says there are no dimension names.
+    The model preserves the distinction (UNSET vs a tuple of Nones), and both
+    spellings round-trip faithfully."""
+    absent_doc = dict(ArrayMetadataModelV3.create_default(shape=(2, 3)).to_json())
+    explicit_doc = absent_doc | {"dimension_names": (None, None)}
+
+    absent = ArrayMetadataModelV3.from_json(absent_doc)
+    explicit = ArrayMetadataModelV3.from_json(explicit_doc)
+
+    assert absent.dimension_names is UNSET
+    assert explicit.dimension_names == (None, None)
+    assert absent != explicit
+    assert "dimension_names" not in absent.to_json()
+    assert absent.to_json() == absent_doc
+    assert explicit.to_json() == explicit_doc
