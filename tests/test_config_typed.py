@@ -752,6 +752,104 @@ def test_get_overload_return_types_match_fields() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Regression tests for the #4101 review
+# ---------------------------------------------------------------------------
+
+
+def test_env_codec_override_canonicalizes_hyphenated_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`ZARR_CODECS__VLEN_UTF8` must override the hyphenated default `vlen-utf8`.
+
+    Environment variables can't contain hyphens, so the flattened key is
+    `codecs.vlen_utf8`; without canonicalization it lands under a dead key while
+    the registry keeps reading the untouched `vlen-utf8` default.
+    """
+    cfg = _build_config_with_env(monkeypatch, {"ZARR_CODECS__VLEN_UTF8": "my.Override"})
+    assert cfg.codecs["vlen-utf8"] == "my.Override"
+    assert "vlen_utf8" not in cfg.codecs  # no dead underscore key
+    # underscore-named defaults (e.g. sharding_indexed) are untouched
+    cfg2 = _build_config_with_env(monkeypatch, {"ZARR_CODECS__SHARDING_INDEXED": "my.Shard"})
+    assert cfg2.codecs["sharding_indexed"] == "my.Shard"
+    # a brand-new codec name with underscores stays as written
+    cfg3 = _build_config_with_env(monkeypatch, {"ZARR_CODECS__MY_NEW": "my.New"})
+    assert cfg3.codecs["my_new"] == "my.New"
+
+
+@pytest.mark.parametrize("key", ["array.order.upper", "default_zarr_format.numerator"])
+def test_get_does_not_descend_into_scalar_attributes(key: str) -> None:
+    """A dotted key that walks past a scalar leaf must raise, not resolve a stray
+    Python attribute (e.g. `str.upper` / `int.numerator`)."""
+    with pytest.raises(KeyError):
+        ZarrConfigManager().get(key)
+
+
+def test_set_rejects_descending_into_scalar() -> None:
+    with pytest.raises(KeyError):
+        ZarrConfigManager().set({"array.order.upper": "X"})
+
+
+def test_codecs_mapping_is_immutable() -> None:
+    """The `codecs` subtree is a read-only mapping, so a snapshot can't be mutated
+    in place (nor leak across `replace`-shared snapshots)."""
+    cfg = ZarrConfigManager()
+    with pytest.raises(TypeError):
+        cfg.codecs["blosc"] = "x"  # type: ignore[index]
+    snap = replace_path(make_default_config(), "codecs.newcodec", "pkg.New")
+    with pytest.raises(TypeError):
+        snap.codecs["another"] = "y"  # type: ignore[index]
+
+
+def test_subtree_node_supports_mapping_style_reads() -> None:
+    """A subtree returned by `get` supports donfig-style `in`, iteration, `keys`,
+    and `dict()` alongside attribute and item access."""
+    array = ZarrConfigManager().get("array")
+    assert "order" in array
+    assert "bogus" not in array
+    assert "order" in list(array)
+    assert "order" in set(array.keys())
+    assert dict(array)["order"] == array.order == "C"
+    assert len(array) == len(dataclasses.fields(array))
+
+
+def test_manager_item_and_membership_access() -> None:
+    """donfig-style `config["k"]` and `"k" in config` mirror `get`."""
+    cfg = ZarrConfigManager()
+    assert cfg["array.order"] == cfg.get("array.order")
+    assert "array.order" in cfg
+    assert "bogus.key" not in cfg
+    assert 123 not in cfg  # non-string key is absent, not an error
+
+
+def test_config_alias_preserved() -> None:
+    """`Config` remains importable as an alias of `ZarrConfigManager` (pre-typed
+    imports and `isinstance` checks keep working)."""
+    from zarr.core.config import Config
+
+    assert Config is ZarrConfigManager
+    assert isinstance(ZarrConfigManager(), Config)
+
+
+def test_concurrent_permanent_sets_to_distinct_keys_all_survive() -> None:
+    """A permanent `set` rebuilds the whole snapshot from `_base`; the manager
+    locks that read-modify-write so concurrent sets to distinct keys don't lose
+    updates."""
+    cfg = ZarrConfigManager()
+    n = 64
+    barrier = threading.Barrier(n)
+
+    def worker(i: int) -> None:
+        barrier.wait()
+        cfg.set({f"codecs.k{i}": f"v{i}"})
+
+    with ThreadPoolExecutor(max_workers=n) as ex:
+        list(ex.map(worker, range(n)))
+
+    codecs = cfg.get("codecs")
+    assert all(codecs.get(f"k{i}") == f"v{i}" for i in range(n))
+
+
+# ---------------------------------------------------------------------------
 # Static-typing smoke test (only checked by mypy, not executed at runtime)
 # ---------------------------------------------------------------------------
 

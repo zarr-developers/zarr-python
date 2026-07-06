@@ -35,10 +35,12 @@ register the implementation in the registry first, then set the path via `config
 from __future__ import annotations
 
 import difflib
+import threading
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, fields, is_dataclass, replace
+from types import MappingProxyType
 from typing import Any, Literal, Self, cast, overload
 
 from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
@@ -102,6 +104,31 @@ class _ConfigNode:
         # such nodes structurally, so the cast is sound.
         return get_path(cast("ZarrConfig", self), key)
 
+    def __contains__(self, key: object) -> bool:
+        # Mirror donfig's `"array" in config.get(...)` support. Only string keys
+        # can resolve; a non-string (or unknown key) is simply not contained.
+        if not isinstance(key, str):
+            return False
+        try:
+            get_path(cast("ZarrConfig", self), key)
+        except KeyError:
+            return False
+        return True
+
+    def __iter__(self) -> Iterator[str]:
+        # Yield immediate child key names (serialized), so iteration, `keys()`,
+        # and `dict(node)` behave like the plain dicts donfig returned. Note this
+        # deliberately does NOT make the node a `collections.abc.Mapping`: the
+        # internal `isinstance(obj, Mapping)` checks must stay false for config
+        # nodes so they are distinguished from the open `codecs` mapping.
+        return iter(_children(self))
+
+    def keys(self) -> list[str]:
+        return _children(self)
+
+    def __len__(self) -> int:
+        return len(_children(self))
+
 
 @dataclass(frozen=True, slots=True)
 class ArraySettings(_ConfigNode):
@@ -139,7 +166,9 @@ class ZarrConfig(_ConfigNode):
     threading: ThreadingSettings = field(default_factory=ThreadingSettings)
     json_indent: int = 2
     codec_pipeline: CodecPipelineSettings = field(default_factory=CodecPipelineSettings)
-    codecs: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_CODECS))
+    codecs: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType(dict(DEFAULT_CODECS))
+    )
     buffer: str = "zarr.buffer.cpu.Buffer"
     ndbuffer: str = "zarr.buffer.cpu.NDBuffer"
 
@@ -172,8 +201,15 @@ def get_path(cfg: ZarrConfig, key: str) -> object:
                 return obj[remainder]
             except KeyError:
                 raise KeyError(key) from None
+        # A prior segment resolved to a scalar leaf, but the key has more
+        # segments — descend no further. Without this guard, `hasattr` would
+        # match ordinary Python attributes/methods (e.g. `array.order.upper`
+        # returning `str.upper`, or `default_zarr_format.numerator` returning
+        # the int's numerator) instead of raising for the invalid key.
+        if not is_dataclass(obj):
+            raise KeyError(key)
         field_name = _resolve_field(obj, segment)
-        if not hasattr(obj, field_name):
+        if field_name not in {f.name for f in fields(obj)}:
             raise KeyError(key)
         obj = getattr(obj, field_name)
     return obj
@@ -192,15 +228,22 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     segment = segments[0]
     if isinstance(obj, Mapping):
         remainder = ".".join(segments)
-        return {**obj, remainder: value}
-    field_name = _resolve_field(obj, segment)
-    if not hasattr(obj, field_name):
+        # Keep the open mapping immutable, like every other snapshot value.
+        return MappingProxyType({**obj, remainder: value})
+    if not is_dataclass(obj):
+        # `key` tries to descend past a scalar leaf (e.g. `array.order.upper`).
         raise KeyError(key)
+    field_name = _resolve_field(obj, segment)
+    if field_name not in {f.name for f in fields(obj)}:
+        raise KeyError(key)
+    # `is_dataclass` narrows `obj` to `... | type[...]`, which `replace` rejects;
+    # at runtime `obj` is always a dataclass *instance* here, so re-widen to Any.
+    node: Any = obj
     if len(segments) == 1:
-        return replace(obj, **{field_name: value})
-    child = getattr(obj, field_name)
+        return replace(node, **{field_name: value})
+    child = getattr(node, field_name)
     new_child = _replace_recursive(child, segments[1:], value, key)
-    return replace(obj, **{field_name: new_child})
+    return replace(node, **{field_name: new_child})
 
 
 _ROSTER_LIMIT = 10
@@ -231,8 +274,11 @@ def _resolve_for_suggestion(cfg: ZarrConfig, key: str) -> tuple[str, list[str], 
         if isinstance(obj, Mapping):
             # the remainder indexes into an open mapping as a single key
             return prefix, _children(obj), ".".join(segments[i:])
+        if not is_dataclass(obj):
+            # a prior segment resolved to a scalar leaf; nothing deeper is valid
+            return prefix, _children(obj), segment
         field_name = _resolve_field(obj, segment)
-        if not hasattr(obj, field_name):
+        if field_name not in {f.name for f in fields(obj)}:
             return prefix, _children(obj), segment
         obj = getattr(obj, field_name)
         prefix = f"{prefix}.{segment}" if prefix else segment
@@ -321,6 +367,28 @@ def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, object]) -> ZarrCon
 _DONFIG_META_KEYS: frozenset[str] = frozenset({"config", "root_config"})
 
 
+def _canonicalize_override_keys(overrides: Mapping[str, object]) -> dict[str, object]:
+    """Map underscore codec names onto their hyphenated built-in defaults.
+
+    Environment variables cannot contain hyphens, so ``ZARR_CODECS__VLEN_UTF8``
+    flattens to the key ``codecs.vlen_utf8``. The built-in codec is registered
+    under the hyphenated name ``vlen-utf8`` (likewise ``vlen-bytes``), so without
+    this remapping the override would land under a dead ``vlen_utf8`` key and be
+    silently ignored while the registry keeps reading the untouched default.
+    When a ``codecs.<name>`` key does not match a default but its hyphenated
+    variant does, rewrite it to the hyphenated form. New (non-default) codec
+    names and underscore-named defaults (e.g. ``sharding_indexed``) are untouched.
+    """
+    out: dict[str, object] = {}
+    for key, value in overrides.items():
+        if key.startswith("codecs."):
+            name = key[len("codecs.") :]
+            if name not in DEFAULT_CODECS and name.replace("_", "-") in DEFAULT_CODECS:
+                key = f"codecs.{name.replace('_', '-')}"
+        out[key] = value
+    return out
+
+
 def build_config() -> ZarrConfig:
     """Build the base snapshot: typed defaults overlaid with donfig's ingest.
 
@@ -341,6 +409,7 @@ def build_config() -> ZarrConfig:
         for key, value in overrides.items()
         if key.split(".", 1)[0] not in _DONFIG_META_KEYS
     }
+    overrides = _canonicalize_override_keys(overrides)
     return apply_overrides(make_default_config(), overrides)
 
 
@@ -396,6 +465,10 @@ class ZarrConfigManager:
     def __init__(self) -> None:
         self._base: ZarrConfig = build_config()
         self._scope: ContextVar[ZarrConfig] = ContextVar("zarr_config_scope")
+        # Serializes read-modify-write of the process-global `_base` so
+        # concurrent permanent `set`s to different keys don't lose updates
+        # (each `set` rebuilds a whole immutable snapshot from `_base`).
+        self._lock = threading.Lock()
 
     # --- state resolution -------------------------------------------------
     def _current(self) -> ZarrConfig:
@@ -408,7 +481,8 @@ class ZarrConfigManager:
         # Promote a `with config.set(...)` to a context-local override: undo the
         # immediate global apply performed by `set`, then pin `new` to this
         # context only. Concurrent threads/tasks keep seeing the global base.
-        self._base = prev_base
+        with self._lock:
+            self._base = prev_base
         return self._scope.set(new)
 
     def _exit_scope(self, token: Token[ZarrConfig]) -> None:
@@ -537,50 +611,60 @@ class ZarrConfigManager:
             config.set({"array.order": "F"})
             config.set(default_zarr_format=2)
 
-        Unlike `get`, `set` does not statically type-check values: an invalid
-        value such as `config.set({"array.order": "Q"})` is reported at runtime,
-        not by the type checker. See the implementation comment above for the
-        rationale (the open `codecs.*` namespace prevents a precise TypedDict
-        under current mypy).
+        `set` validates *keys* — an unknown key raises with a suggestion — but
+        does **not** validate *values*: `config.set({"array.order": "Q"})` is
+        accepted, and the invalid value surfaces later at its use site rather
+        than here. Static value typing is prevented by the open `codecs.*`
+        namespace (see the implementation comment above); runtime value
+        validation is planned via the unified `parse_json` checker (gh-3285).
         """
         all_updates: dict[str, object] = {}
         if updates:
             all_updates.update(updates)
         all_updates.update(kwargs)
-        prev_base = self._base
-        # Two snapshots so an override applies to the right layer:
-        # - `scoped` layers on the current view (any active `with` overlay), and
-        #   is what a `with config.set(...)` pins as its context-local scope;
-        # - `permanent` layers on the *global* base, and is what a bare `set`
-        #   writes. Basing the permanent write on `prev_base` rather than the
-        #   current view keeps a bare `set` nested inside a `with` block from
-        #   leaking that block's overlay into the global base.
-        # Outside any `with` block the two are identical (`_current()` is `_base`).
-        scoped = self._current()
-        permanent = prev_base
-        for key, value in all_updates.items():
-            resolved = self._apply_deprecation(key, raise_on_removed=True)
-            try:
-                scoped = replace_path(scoped, resolved, value)
-                permanent = replace_path(permanent, resolved, value)
-            except KeyError:
-                raise _unknown_key_error(key, permanent) from None
-        # Apply immediately to the global base. A bare `set` stays here (permanent,
-        # cross-thread); a `with config.set(...)` is promoted to a context-local
-        # overlay by `_ConfigSet.__enter__`, which undoes this global apply and
-        # pins `scoped` instead.
-        self._base = permanent
+        # Hold the lock across the whole read-modify-write of `_base` so two
+        # concurrent permanent `set`s to different keys can't clobber each other
+        # (each rebuilds a full snapshot from the base it read).
+        with self._lock:
+            prev_base = self._base
+            # Two snapshots so an override applies to the right layer:
+            # - `scoped` layers on the current view (any active `with` overlay),
+            #   and is what a `with config.set(...)` pins as its context-local
+            #   scope;
+            # - `permanent` layers on the *global* base, and is what a bare `set`
+            #   writes. Basing the permanent write on `prev_base` rather than the
+            #   current view keeps a bare `set` nested inside a `with` block from
+            #   leaking that block's overlay into the global base.
+            # Outside any `with` block the two are identical (`_current()` is
+            # `_base`).
+            scoped = self._current()
+            permanent = prev_base
+            for key, value in all_updates.items():
+                resolved = self._apply_deprecation(key, raise_on_removed=True)
+                try:
+                    scoped = replace_path(scoped, resolved, value)
+                    permanent = replace_path(permanent, resolved, value)
+                except KeyError:
+                    raise _unknown_key_error(key, permanent) from None
+            # Apply immediately to the global base. A bare `set` stays here
+            # (permanent, cross-thread); a `with config.set(...)` is promoted to a
+            # context-local overlay by `_ConfigSet.__enter__`, which undoes this
+            # global apply and pins `scoped` instead.
+            self._base = permanent
         return _ConfigSet(self, prev_base, scoped)
 
     # --- lifecycle --------------------------------------------------------
     def reset(self) -> None:
         # Rebuild the global base. A bare `set` no longer pins a context-local
         # scope, so the rebuilt base is visible in every context that is not
-        # inside an active `with config.set(...)` block.
-        self._base = build_config()
+        # inside an active `with config.set(...)` block. Build outside the lock
+        # (it reads env/YAML) and swap atomically under it.
+        new_base = build_config()
+        with self._lock:
+            self._base = new_base
 
     def refresh(self) -> None:
-        self._base = build_config()
+        self.reset()
 
     def enable_gpu(self) -> _ConfigSet:
         return self.set(
@@ -588,6 +672,20 @@ class ZarrConfigManager:
         )
 
     # --- compat / introspection ------------------------------------------
+    def __getitem__(self, key: str) -> Any:
+        # donfig-style item access: `config["array.order"]` mirrors `get`.
+        return self.get(key)
+
+    def __contains__(self, key: object) -> bool:
+        # donfig-style membership: `"array.order" in config`.
+        if not isinstance(key, str):
+            return False
+        try:
+            self.get(key)
+        except KeyError:
+            return False
+        return True
+
     @property
     def defaults(self) -> dict[str, Any]:
         return to_nested_dict(make_default_config())
@@ -666,6 +764,11 @@ deprecations: dict[str, str | None] = {
     "array.v3_default_compressors.bytes": None,
     "array.v3_default_compressors": None,
 }
+
+# Backwards-compatible alias: before the typed rewrite, this module exposed the
+# donfig subclass as `Config`. Keep the name so `from zarr.core.config import
+# Config` and `isinstance(x, Config)` continue to work for downstream code.
+Config = ZarrConfigManager
 
 config = ZarrConfigManager()
 
