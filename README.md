@@ -38,14 +38,6 @@
 </td>
 </tr>
 <tr>
-  <td>Build Status</td>
-  <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/main/.github/workflows/python-package.yml">
-    <img src="https://github.com/zarr-developers/zarr-python/actions/workflows/python-package.yml/badge.svg" alt="build status" />
-    </a>
-  </td>
-</tr>
-<tr>
   <td>Pre-commit Status</td>
   <td>
     <a href="https://github.com/zarr-developers/zarr-python/blob/main/.pre-commit-config.yaml">
