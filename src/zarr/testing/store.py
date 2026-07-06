@@ -633,22 +633,12 @@ class LatencyStore(WrapperStore[Store]):
         self,
         store: Store,
         *,
-        get_latency: float | tuple[float, float] = 0.,
-        set_latency: float | tuple[float, float] = 0.,
+        get_latency: float | tuple[float, float] = 0,
+        set_latency: float | tuple[float, float] = 0,
     ) -> None:
-        """
-        Parameters
-        ----------
-        store
-            The underlying store to which to apply latency
-        get_latency
-            The get latency, either a single  uniform value or loc/scale for a normal distribution to be sampled from, by default 0
-        set_latency
-            The set latency, either a single  uniform value or loc/scale for a normal distribution to be sampled from, by default 0
-        """
-        self._get_latency = get_latency
-        self._set_latency = set_latency
-        self._store = store
+        super().__init__(store)
+        self._get_latency = get_latency if isinstance(get_latency, tuple) else float(get_latency)
+        self._set_latency = set_latency if isinstance(set_latency, tuple) else float(set_latency)
 
     @property
     def get_latency(self) -> float:

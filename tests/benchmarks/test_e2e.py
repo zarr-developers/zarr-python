@@ -4,42 +4,40 @@ Benchmarks for end-to-end read/write performance of Zarr
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import lru_cache
-import os
-import numpy as np
-from typing import TYPE_CHECKING
-
-from tests.benchmarks.common import Layout
-
-
 import platform
 import subprocess
+from functools import lru_cache
+from operator import getitem, setitem
+from typing import TYPE_CHECKING, Any, Literal
 
-def clear_cache():
+import numpy as np
+import pytest
+
+import zarr
+from tests.benchmarks.common import Layout
+from zarr import create_array
+from zarr.core.config import config as zarr_config
+from zarr.testing.store import LatencyStore
+
+
+def clear_cache() -> None:
     if platform.system() == "Darwin":
-        subprocess.call(['sync', '&&', 'sudo', 'purge'])
+        subprocess.call(["sync", "&&", "sudo", "purge"])
     elif platform.system() == "Linux":
-        subprocess.call(['sudo', 'sh', '-c', "sync; echo 3 > /proc/sys/vm/drop_caches"])
+        subprocess.call(["sudo", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
     else:
-        raise Exception("Unsupported platform")
+        raise Exception("Unsupported platform")  # noqa: TRY002
+
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from types import EllipsisType
 
     from pytest_benchmark.fixture import BenchmarkFixture
 
     from zarr.abc.store import Store
     from zarr.core.common import NamedConfig
 
-from operator import getitem, setitem
-from typing import Any, Literal
-
-import pytest
-
-from zarr import create_array
-from zarr.core.config import config as zarr_config
-from zarr.testing.store import LatencyStore
 
 @lru_cache
 def _data(shape: tuple[int]) -> np.ndarray:
@@ -57,7 +55,7 @@ CompressorName = Literal["zstd"] | None
 compressors: dict[CompressorName, NamedConfig[Any, Any] | None] = {
     None: None,
     # Default v3
-    "zstd": {"name": "zstd", "configuration": {"level": 0, "checksum": False}}
+    "zstd": {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
 }
 
 
@@ -73,9 +71,15 @@ layouts: tuple[Layout, ...] = (
 )
 
 _PIPELINE_SETTINGS = {
-    "batched": {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline" },
-    "fused_full_threaded": {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline","codec_pipeline.max_workers": None},
-    "fused_single_threaded": {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline","codec_pipeline.max_workers": 1},
+    "batched": {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"},
+    "fused_full_threaded": {
+        "codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "codec_pipeline.max_workers": None,
+    },
+    "fused_single_threaded": {
+        "codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "codec_pipeline.max_workers": 1,
+    },
 }
 
 _LATENCY_VALUES = (0, 0.03)
@@ -118,7 +122,10 @@ def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
     with zarr_config.set(_PIPELINE_SETTINGS[name]):
         yield name
 
-@pytest.mark.parametrize("get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"])
+
+@pytest.mark.parametrize(
+    "get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"]
+)
 @pytest.mark.parametrize("compression_name", ["zstd"])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -128,7 +135,7 @@ def test_write_array(
     compression_name: CompressorName,
     pipeline: str,
     benchmark: BenchmarkFixture,
-    get_data: Callable[[tuple[int]], np.ndarray | int]
+    get_data: Callable[[tuple[int]], np.ndarray | int],
 ) -> None:
     """
     Test the time required to fill an array with a single value
@@ -142,12 +149,17 @@ def test_write_array(
         compressors=compressors[compression_name],  # type: ignore[arg-type]
         fill_value=0,
     )
-    def setup():
-        clear_cache()
-        return (arr, Ellipsis, get_data(layout.shape)), {}
-    benchmark.pedantic(setitem, setup=setup, rounds=3)
 
-@pytest.mark.parametrize("get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"])
+    def setup() -> tuple[tuple[zarr.Array, EllipsisType, int | np.ndarray], dict]:  # type: ignore[type-arg]
+        clear_cache()
+        return (arr, Ellipsis, get_data(layout.shape)), {}  # type: ignore[arg-type]
+
+    benchmark.pedantic(setitem, setup=setup, rounds=3)  # type: ignore[no-untyped-call]
+
+
+@pytest.mark.parametrize(
+    "get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"]
+)
 @pytest.mark.parametrize("compression_name", ["zstd"])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -157,7 +169,7 @@ def test_read_array(
     compression_name: CompressorName,
     pipeline: str,
     benchmark: BenchmarkFixture,
-    get_data: Callable[[tuple[int]], np.ndarray | int]
+    get_data: Callable[[tuple[int]], np.ndarray | int],
 ) -> None:
     """
     Test the time required to fill an array with a single value
@@ -171,8 +183,10 @@ def test_read_array(
         compressors=compressors[compression_name],  # type: ignore[arg-type]
         fill_value=0,
     )
-    arr[:] = get_data(layout.shape)
-    def setup():
+    arr[:] = get_data(layout.shape)  # type: ignore[arg-type]
+
+    def setup() -> tuple[tuple[zarr.Array, EllipsisType], dict]:  # type: ignore[type-arg]
         clear_cache()
         return (arr, Ellipsis), {}
-    benchmark.pedantic(getitem, setup=setup, rounds=3)
+
+    benchmark.pedantic(getitem, setup=setup, rounds=3)  # type: ignore[no-untyped-call]

@@ -164,11 +164,15 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
 
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
+        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
+
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
-
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
-        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
@@ -185,11 +189,15 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
         out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.buffer.from_bytes(out)
 
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
+        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+        return chunk_spec.prototype.buffer.from_bytes(out)
+
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
-
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
-        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 # bytes-to-bytes codecs
