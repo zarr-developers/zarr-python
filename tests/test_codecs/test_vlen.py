@@ -9,7 +9,7 @@ from zarr.abc.codec import Codec, SupportsSyncCodec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
-from zarr.core.dtype import VariableLengthBytes, get_data_type_from_native_dtype
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
@@ -67,30 +67,29 @@ def test_vlen_string(
     assert a.dtype == data.dtype
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
-@pytest.mark.parametrize("chunks", [(3, 3), (2, 2)])
-def test_vlen_string_f_contiguous(store: Store, chunks: tuple[int, int]) -> None:
-    # gh-3558: F-contiguous chunks were encoded in transposed element order
-    data = np.asarray(
-        np.array([f"S{i:05}" for i in range(9)], dtype=object).reshape(3, 3), order="F"
-    )
-    sp = StorePath(store, path="string-f-contiguous")
-    a = zarr.create_array(sp, shape=data.shape, chunks=chunks, dtype=str, fill_value="")
-    a[:, :] = data
-    assert np.array_equal(data, np.asarray(a[:, :], dtype=object))
-
-
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory"], indirect=["store"])
-@pytest.mark.parametrize("chunks", [(3, 3), (2, 2)])
-def test_vlen_bytes_f_contiguous(store: Store, chunks: tuple[int, int]) -> None:
-    # gh-3558: F-contiguous chunks were encoded in transposed element order
-    data = np.asarray(
-        np.array([b"%05d" % i for i in range(9)], dtype=object).reshape(3, 3), order="F"
-    )
-    sp = StorePath(store, path="bytes-f-contiguous")
+@pytest.mark.parametrize(
+    ("dtype", "fill_value", "elements"),
+    [
+        pytest.param("string", "", [f"S{i:05}" for i in range(9)], id="string"),
+        pytest.param("variable_length_bytes", b"", [b"%05d" % i for i in range(9)], id="bytes"),
+    ],
+)
+def test_vlen_f_contiguous(
+    store: Store, dtype: str, fill_value: str | bytes, elements: list[str] | list[bytes]
+) -> None:
+    """An F-contiguous chunk written through a vlen codec round-trips in the original
+    element order rather than the transposed memory order (gh-3558)."""
+    # reshape(order="F") gives an F-contiguous view directly, so the whole-array write
+    # below hands an F-contiguous chunk to the codec; assert it to guard the precondition.
+    data = np.array(elements, dtype=object).reshape((3, 3), order="F")
+    assert data.flags.f_contiguous
+    sp = StorePath(store, path="vlen-f-contiguous")
+    # chunks == shape so the write is a single complete chunk, which the codec pipeline
+    # forwards to the codec untouched; a partial-chunk layout would be recopied to C order.
     a = zarr.create_array(
-        sp, shape=data.shape, chunks=chunks, dtype=VariableLengthBytes(), fill_value=b""
+        sp, shape=data.shape, chunks=data.shape, dtype=dtype, fill_value=fill_value
     )
     a[:, :] = data
     assert np.array_equal(data, np.asarray(a[:, :], dtype=object))
