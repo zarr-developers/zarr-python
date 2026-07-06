@@ -38,7 +38,6 @@ import difflib
 import threading
 import warnings
 from collections.abc import Iterator, Mapping
-from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from types import MappingProxyType
 from typing import Any, Literal, Self, cast, overload
@@ -257,6 +256,34 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     return replace(node, **{field_name: new_child})
 
 
+def delete_path(cfg: ZarrConfig, key: str) -> ZarrConfig:
+    """Return a new `ZarrConfig` with ``key`` removed from an open mapping.
+
+    Only keys inside an open mapping (``codecs.*``) can be deleted; structured
+    fields always exist and cannot be removed. Used to undo a scoped ``set`` that
+    *added* a new codec key when its ``with`` block exits.
+    """
+    segments = key.split(".")
+    return cast("ZarrConfig", _delete_recursive(cfg, segments, key))
+
+
+def _delete_recursive(obj: Any, segments: list[str], key: str) -> object:
+    if isinstance(obj, Mapping):
+        remainder = ".".join(segments)
+        return {k: v for k, v in obj.items() if k != remainder}
+    if not is_dataclass(obj):
+        raise KeyError(key)
+    field_name = _resolve_field(obj, segments[0])
+    if field_name not in {f.name for f in fields(obj)}:
+        raise KeyError(key)
+    node: Any = obj
+    child = getattr(node, field_name)
+    if len(segments) == 1:
+        # a structured field can't be deleted; only open-mapping leaves can
+        raise KeyError(key)
+    return replace(node, **{field_name: _delete_recursive(child, segments[1:], key)})
+
+
 _ROSTER_LIMIT = 10
 
 
@@ -427,47 +454,37 @@ def build_config() -> ZarrConfig:
 _MISSING = object()
 
 
+# A per-key record of how to undo a scoped `set`: (resolved_key, existed_before,
+# previous_value). If the key did not exist before (a newly added `codecs.*`
+# entry), it is removed on exit instead of restored.
+_RestoreEntry = tuple[str, bool, object]
+
+
 class _ConfigSet:
     """Context manager returned by ``ZarrConfigManager.set``.
 
-    ``set`` applies the override immediately to the process-global base, so a
-    bare ``config.set(...)`` is permanent and visible from every thread (matching
-    donfig's last-writer-wins semantics, including inside `ThreadPoolExecutor`
-    workers, which do not copy context variables).
+    ``set`` applies its overrides immediately to the process-global config, so a
+    bare ``config.set(...)`` is permanent and visible from every thread (donfig's
+    last-writer-wins semantics). Used as a ``with`` block, the overrides are
+    reverted on ``__exit__``: each key it set is restored to its previous value
+    (or removed, if it was newly added), matching ``donfig``. Reverting only the
+    keys it touched leaves concurrent changes to *other* keys intact.
 
-    Using the result as a ``with`` block *promotes* the override to a
-    context-local scope: ``__enter__`` undoes the global apply and re-applies the
-    new snapshot through a `ContextVar`, so the change is isolated to the calling
-    context (thread / async task) and unwound on ``__exit__``.
-
-    A bare (permanent) ``set`` nested inside an active ``with`` block writes only
-    its own delta onto the global base, so it persists after the block exits and
-    does not leak the block's overlay into the base. The trade-off is that such a
-    nested permanent ``set`` is not visible *within* the block (the overlay keeps
-    shadowing the base until the block exits).
-
-    Note: like donfig, config writes are not synchronized. The promotion restores
-    the base snapshot captured at ``set`` time, so a ``with config.set(...)`` that
-    overlaps a *concurrent* permanent ``set`` from another thread may drop that
-    concurrent write for the duration of the block. Configuration is normally set
-    at startup, so this race does not arise in practice.
+    Note: like ``donfig``, a ``with config.set(...)`` is **not** isolated to the
+    calling thread / async task — during the block the change is globally visible.
+    Context-local isolation is a possible future enhancement (see gh-4101).
     """
 
-    def __init__(self, manager: ZarrConfigManager, prev_base: ZarrConfig, new: ZarrConfig) -> None:
+    def __init__(self, manager: ZarrConfigManager, restore: list[_RestoreEntry]) -> None:
         self._manager = manager
-        self._prev_base = prev_base
-        self._new = new
-        self._token: Token[ZarrConfig] | None = None
+        self._restore = restore
 
     def __enter__(self) -> Self:
-        self._token = self._manager._enter_scope(self._prev_base, self._new)
+        # The overrides were already applied globally by `set`; nothing to do.
         return self
 
     def __exit__(self, *exc: object) -> None:
-        # `__enter__` always runs first under `with`, so `_token` is set; guard
-        # only to satisfy the type checker and tolerate manual misuse.
-        if self._token is not None:
-            self._manager._exit_scope(self._token)
+        self._manager._revert(self._restore)
 
 
 class ZarrConfigManager:
@@ -475,29 +492,27 @@ class ZarrConfigManager:
 
     def __init__(self) -> None:
         self._base: ZarrConfig = build_config()
-        self._scope: ContextVar[ZarrConfig] = ContextVar("zarr_config_scope")
         # Serializes read-modify-write of the process-global `_base` so
-        # concurrent permanent `set`s to different keys don't lose updates
-        # (each `set` rebuilds a whole immutable snapshot from `_base`).
+        # concurrent `set`s / reverts to different keys don't lose updates
+        # (each rebuilds a whole immutable snapshot from `_base`).
         self._lock = threading.Lock()
 
     # --- state resolution -------------------------------------------------
     def _current(self) -> ZarrConfig:
-        # An active `with config.set(...)` overlay (context-local) shadows the
-        # global base; otherwise every context reads the shared `_base` live, so
-        # a permanent `set` in any thread is visible everywhere.
-        return self._scope.get(self._base)
+        # A single process-global snapshot: a `set` (bare or scoped) is globally
+        # visible, and a `with config.set(...)` reverts its keys on exit. This
+        # mirrors donfig; there is no per-thread/async overlay.
+        return self._base
 
-    def _enter_scope(self, prev_base: ZarrConfig, new: ZarrConfig) -> Token[ZarrConfig]:
-        # Promote a `with config.set(...)` to a context-local override: undo the
-        # immediate global apply performed by `set`, then pin `new` to this
-        # context only. Concurrent threads/tasks keep seeing the global base.
+    def _revert(self, restore: list[_RestoreEntry]) -> None:
+        # Undo a scoped `set` on `with`-block exit: restore each key it touched to
+        # its previous value (or remove a key it newly added), leaving concurrent
+        # changes to other keys intact.
         with self._lock:
-            self._base = prev_base
-        return self._scope.set(new)
-
-    def _exit_scope(self, token: Token[ZarrConfig]) -> None:
-        self._scope.reset(token)
+            cfg = self._base
+            for resolved, existed, old in reversed(restore):
+                cfg = replace_path(cfg, resolved, old) if existed else delete_path(cfg, resolved)
+            self._base = cfg
 
     # --- typed attribute access ------------------------------------------
     @property
@@ -635,42 +650,32 @@ class ZarrConfigManager:
         if updates:
             all_updates.update(updates)
         all_updates.update(kwargs)
-        # Hold the lock across the whole read-modify-write of `_base` so two
-        # concurrent permanent `set`s to different keys can't clobber each other
-        # (each rebuilds a full snapshot from the base it read).
+        # Apply immediately and globally (donfig semantics). Hold the lock across
+        # the read-modify-write of `_base` so concurrent `set`s to different keys
+        # don't clobber each other (each rebuilds a full snapshot). Record how to
+        # undo each key so a `with config.set(...)` can revert on exit.
+        restore: list[_RestoreEntry] = []
         with self._lock:
-            prev_base = self._base
-            # Two snapshots so an override applies to the right layer:
-            # - `scoped` layers on the current view (any active `with` overlay),
-            #   and is what a `with config.set(...)` pins as its context-local
-            #   scope;
-            # - `permanent` layers on the *global* base, and is what a bare `set`
-            #   writes. Basing the permanent write on `prev_base` rather than the
-            #   current view keeps a bare `set` nested inside a `with` block from
-            #   leaking that block's overlay into the global base.
-            # Outside any `with` block the two are identical (`_current()` is
-            # `_base`).
-            scoped = self._current()
-            permanent = prev_base
+            cfg = self._base
             for key, value in all_updates.items():
                 resolved = self._apply_deprecation(key, raise_on_removed=True)
                 try:
-                    scoped = replace_path(scoped, resolved, value)
-                    permanent = replace_path(permanent, resolved, value)
+                    old = get_path(cfg, resolved)
+                    existed = True
                 except KeyError:
-                    raise _unknown_key_error(key, permanent) from None
-            # Apply immediately to the global base. A bare `set` stays here
-            # (permanent, cross-thread); a `with config.set(...)` is promoted to a
-            # context-local overlay by `_ConfigSet.__enter__`, which undoes this
-            # global apply and pins `scoped` instead.
-            self._base = permanent
-        return _ConfigSet(self, prev_base, scoped)
+                    old = None
+                    existed = False
+                try:
+                    cfg = replace_path(cfg, resolved, value)
+                except KeyError:
+                    raise _unknown_key_error(key, cfg) from None
+                restore.append((resolved, existed, old))
+            self._base = cfg
+        return _ConfigSet(self, restore)
 
     # --- lifecycle --------------------------------------------------------
     def reset(self) -> None:
-        # Rebuild the global base. A bare `set` no longer pins a context-local
-        # scope, so the rebuilt base is visible in every context that is not
-        # inside an active `with config.set(...)` block. Build outside the lock
+        # Rebuild the global base from defaults + env/YAML. Build outside the lock
         # (it reads env/YAML) and swap atomically under it.
         new_base = build_config()
         with self._lock:

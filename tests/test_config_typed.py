@@ -414,7 +414,7 @@ def test_permanent_set_visible_in_worker_thread() -> None:
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             seen = ex.submit(lambda: cfg.get("async.concurrency")).result()
-        assert seen == 77  # ThreadPoolExecutor does not copy contextvars
+        assert seen == 77  # a permanent set is on the shared global base
     finally:
         cfg.reset()
 
@@ -432,28 +432,43 @@ def test_permanent_set_cross_thread_last_writer_wins() -> None:
     assert cfg.get("async.concurrency") == 999
 
 
-def test_with_block_override_is_context_local() -> None:
-    """A `with config.set(...)` override is scoped to the calling context and must
-    not leak into a concurrent worker thread, which keeps seeing the global base."""
+def test_with_block_is_global_and_reverts_only_its_keys() -> None:
+    """A `with config.set(...)` applies globally (donfig semantics: it is NOT
+    isolated to the calling thread) and, on exit, reverts only the keys it set —
+    leaving a concurrent permanent `set` to a *different* key intact."""
     cfg = ZarrConfigManager()
     cfg.set({"async.concurrency": 5})
     with cfg.set({"async.concurrency": 999}):
         assert cfg.get("async.concurrency") == 999  # visible in this context
         with ThreadPoolExecutor(max_workers=1) as ex:
             seen = ex.submit(lambda: cfg.get("async.concurrency")).result()
-    assert seen == 5  # worker saw the global base, not the with-block overlay
-    assert cfg.get("async.concurrency") == 5  # base unchanged after the block
+        assert seen == 999  # globally visible: the worker sees the override too
+        # a concurrent permanent set to a DIFFERENT key must survive block exit
+        cfg.set({"array.order": "F"})
+    assert cfg.get("async.concurrency") == 5  # the block's key reverted
+    assert cfg.get("array.order") == "F"  # the other key was not clobbered
 
 
-def test_permanent_set_inside_with_block_does_not_leak_overlay() -> None:
-    """A permanent `set` nested inside a `with config.set(...)` block writes only
-    its own delta to the global base: on block exit the overlay-only key reverts to
-    its default (no leak) while the nested permanent key persists."""
+def test_permanent_set_inside_with_block_persists() -> None:
+    """On `with config.set(...)` exit, only the block's own keys are reverted, so a
+    permanent `set` to a different key made inside the block persists."""
     cfg = ZarrConfigManager()
     with cfg.set({"array.order": "F"}):
-        cfg.set({"async.concurrency": 5})  # permanent, nested inside the overlay
-    assert cfg.get("array.order") == "C"  # overlay reverted — not leaked into base
-    assert cfg.get("async.concurrency") == 5  # nested permanent change persisted
+        cfg.set({"async.concurrency": 5})  # permanent set to a different key
+    assert cfg.get("array.order") == "C"  # the block's key reverted
+    assert cfg.get("async.concurrency") == 5  # the other key persisted
+
+
+def test_with_block_removes_newly_added_codec_key_on_exit() -> None:
+    """A scoped `set` that *adds* a new codec key removes it again on block exit,
+    while a pre-existing key it overrode is restored to its prior value."""
+    cfg = ZarrConfigManager()
+    assert "brand_new_codec" not in cfg.codecs
+    with cfg.set({"codecs.brand_new_codec": "pkg.New", "codecs.blosc": "pkg.OverrideBlosc"}):
+        assert cfg.codecs["brand_new_codec"] == "pkg.New"
+        assert cfg.codecs["blosc"] == "pkg.OverrideBlosc"
+    assert "brand_new_codec" not in cfg.codecs  # newly added key removed
+    assert cfg.codecs["blosc"] == DEFAULT_CODECS["blosc"]  # existing key restored
 
 
 # ---------------------------------------------------------------------------
