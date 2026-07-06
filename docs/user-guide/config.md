@@ -56,7 +56,7 @@ Configuration options include the following:
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
 For example, an implementation of the bytes codec in a class `'custompackage.NewBytesCodec'`,
-requires the value of `codecs.bytes.name` to be `'custompackage.NewBytesCodec'`.
+requires the value of `codecs.bytes` to be `'custompackage.NewBytesCodec'`.
 
 This is the current default configuration:
 

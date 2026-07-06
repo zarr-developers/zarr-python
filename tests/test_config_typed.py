@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 import dataclasses
 import os
+import pickle
 import threading
 import typing
 from concurrent.futures import ThreadPoolExecutor
@@ -789,15 +791,40 @@ def test_set_rejects_descending_into_scalar() -> None:
         ZarrConfigManager().set({"array.order.upper": "X"})
 
 
-def test_codecs_mapping_is_immutable() -> None:
-    """The `codecs` subtree is a read-only mapping, so a snapshot can't be mutated
-    in place (nor leak across `replace`-shared snapshots)."""
+def test_codecs_public_mapping_is_read_only() -> None:
+    """`config.codecs` exposes a read-only view, so a live snapshot can't be
+    mutated in place; a mutable copy is still available via `dict(...)`."""
     cfg = ZarrConfigManager()
     with pytest.raises(TypeError):
         cfg.codecs["blosc"] = "x"  # type: ignore[index]
-    snap = replace_path(make_default_config(), "codecs.newcodec", "pkg.New")
+    assert dict(cfg.codecs)["blosc"] == cfg.codecs["blosc"]
+
+
+def test_config_snapshot_is_picklable_and_deepcopyable() -> None:
+    """A `ZarrConfig` snapshot must stay picklable / deep-copyable: the `codecs`
+    field is a plain dict, and only the public view is a read-only proxy."""
+    cfg = replace_path(make_default_config(), "codecs.x", "pkg.X")
+    assert pickle.loads(pickle.dumps(cfg)) == cfg
+    assert copy.deepcopy(cfg) == cfg
+
+
+def test_set_structured_subtree_dict_is_rejected() -> None:
+    """Assigning a dict to a whole structured subtree is rejected (it would drop
+    sibling fields and break attribute access); leaf keys must be used instead."""
+    cfg = ZarrConfigManager()
     with pytest.raises(TypeError):
-        snap.codecs["another"] = "y"  # type: ignore[index]
+        cfg.set({"array": {"order": "F"}})
+    # the leaf-key form works and preserves siblings
+    cfg.set({"array.order": "F"})
+    assert cfg.get("array.order") == "F"
+    assert cfg.get("array.write_empty_chunks") is False
+
+
+def test_manager_is_not_iterable() -> None:
+    """Iterating the manager raises a clear TypeError rather than falling into the
+    legacy integer-index protocol (which gave a confusing error)."""
+    with pytest.raises(TypeError):
+        list(ZarrConfigManager())
 
 
 def test_subtree_node_supports_mapping_style_reads() -> None:

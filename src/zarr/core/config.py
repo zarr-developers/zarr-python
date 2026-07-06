@@ -166,9 +166,10 @@ class ZarrConfig(_ConfigNode):
     threading: ThreadingSettings = field(default_factory=ThreadingSettings)
     json_indent: int = 2
     codec_pipeline: CodecPipelineSettings = field(default_factory=CodecPipelineSettings)
-    codecs: Mapping[str, str] = field(
-        default_factory=lambda: MappingProxyType(dict(DEFAULT_CODECS))
-    )
+    # A plain dict (not MappingProxyType) so snapshots stay picklable /
+    # deep-copyable; public read access goes through the manager's `codecs`
+    # property, which wraps this in a read-only view.
+    codecs: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_CODECS))
     buffer: str = "zarr.buffer.cpu.Buffer"
     ndbuffer: str = "zarr.buffer.cpu.NDBuffer"
 
@@ -228,8 +229,9 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     segment = segments[0]
     if isinstance(obj, Mapping):
         remainder = ".".join(segments)
-        # Keep the open mapping immutable, like every other snapshot value.
-        return MappingProxyType({**obj, remainder: value})
+        # Plain dict (see the `codecs` field note); the manager property wraps
+        # it read-only for public access.
+        return {**obj, remainder: value}
     if not is_dataclass(obj):
         # `key` tries to descend past a scalar leaf (e.g. `array.order.upper`).
         raise KeyError(key)
@@ -239,9 +241,18 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
     # `is_dataclass` narrows `obj` to `... | type[...]`, which `replace` rejects;
     # at runtime `obj` is always a dataclass *instance* here, so re-widen to Any.
     node: Any = obj
-    if len(segments) == 1:
-        return replace(node, **{field_name: value})
     child = getattr(node, field_name)
+    if len(segments) == 1:
+        # Refuse to overwrite a structured subtree (a nested dataclass) wholesale
+        # — doing so would drop its sibling fields and break typed attribute
+        # access. Set leaf keys instead. The open `codecs` mapping is not a
+        # dataclass, so wholesale replacement there is still allowed.
+        if is_dataclass(child):
+            raise TypeError(
+                f"Cannot assign to the structured config subtree {key!r} directly; "
+                f"set leaf keys instead, e.g. config.set({{'{key}.<field>': ...}})."
+            )
+        return replace(node, **{field_name: value})
     new_child = _replace_recursive(child, segments[1:], value, key)
     return replace(node, **{field_name: new_child})
 
@@ -515,7 +526,9 @@ class ZarrConfigManager:
 
     @property
     def codecs(self) -> Mapping[str, str]:
-        return self._current().codecs
+        # Read-only view: the underlying snapshot field is a plain dict (kept
+        # picklable), but callers must not mutate a live snapshot in place.
+        return MappingProxyType(self._current().codecs)
 
     @property
     def buffer(self) -> str:
@@ -685,6 +698,16 @@ class ZarrConfigManager:
         except KeyError:
             return False
         return True
+
+    def __iter__(self) -> Iterator[str]:
+        # Defining `__getitem__` above would otherwise make Python fall back to
+        # the legacy integer-index iteration protocol (`config[0]` -> confusing
+        # `'int' object has no attribute 'split'`). The manager is a keyed config,
+        # not a sequence, so fail clearly instead.
+        raise TypeError(
+            "ZarrConfigManager is not iterable; use config.to_dict() to iterate "
+            "its contents, or config.get(<key>) for a single value."
+        )
 
     @property
     def defaults(self) -> dict[str, Any]:
