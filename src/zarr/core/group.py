@@ -842,12 +842,15 @@ class AsyncGroup:
         ContainsGroupError
             If the node at the given path is a group rather than an array.
         """
+        store_path = self.store_path / path
         try:
             node = await self.getitem(path)
         except KeyError as e:
-            raise ArrayNotFoundError(self.store_path.store, (self.store_path / path).path) from e
+            msg = f"No array found in store {store_path.store!r} at path {store_path.path!r}"
+            raise ArrayNotFoundError(msg) from e
         if isinstance(node, AsyncGroup):
-            raise ContainsGroupError(self.store_path.store, (self.store_path / path).path)
+            msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsGroupError(msg)
         return node
 
     async def get_group(self, path: str) -> AsyncGroup:
@@ -871,12 +874,15 @@ class AsyncGroup:
         ContainsArrayError
             If the node at the given path is an array rather than a group.
         """
+        store_path = self.store_path / path
         try:
             node = await self.getitem(path)
         except KeyError as e:
-            raise GroupNotFoundError(self.store_path.store, (self.store_path / path).path) from e
+            msg = f"No group found in store {store_path.store!r} at path {store_path.path!r}"
+            raise GroupNotFoundError(msg) from e
         if isinstance(node, AsyncArray):
-            raise ContainsArrayError(self.store_path.store, (self.store_path / path).path)
+            msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsArrayError(msg)
         return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
