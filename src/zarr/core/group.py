@@ -3198,7 +3198,7 @@ async def create_nodes(
     """
 
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
-    # then we should consider adding a keyword argument this this function
+    # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
     create_tasks: list[Coroutine[None, None, str]] = []
 
