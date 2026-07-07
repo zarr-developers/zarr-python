@@ -162,7 +162,9 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
     async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
-        chunk_ndarray = chunk_data.as_ndarray_like()
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
         out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
 
@@ -177,7 +179,9 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
     async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
-        chunk_ndarray = chunk_data.as_ndarray_like()
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
         out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
         return chunk_spec.prototype.buffer.from_bytes(out)
 
