@@ -43,6 +43,29 @@ print(root['foo/bar'])
 print(root['foo/bar/baz'])
 ```
 
+Accessing a member with `[]` returns either an [`zarr.Array`][] or a [`zarr.Group`][], depending on
+what is stored at the given path. When you expect a node of a particular kind, use
+[`zarr.Group.get_array`][] or [`zarr.Group.get_group`][] instead. These methods accept the same
+paths as `[]`, but they have precise return types and raise an error if no node exists at the
+given path, or if the node is not of the expected kind:
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(root.get_group('foo'))
+```
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(root.get_array('foo/bar/baz'))
+```
+
+```python exec="true" session="groups" source="above" result="ansi"
+from zarr.errors import ContainsGroupError
+
+try:
+    root.get_array('foo')
+except ContainsGroupError as e:
+    print(e)
+```
+
 The [`zarr.Group.tree`][] method can be used to print a tree
 representation of the hierarchy, e.g.:
 
