@@ -663,9 +663,9 @@ class LatencyStore(WrapperStore[Store]):
     set_latency: float
 
     def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+        super().__init__(store)
         self.get_latency = float(get_latency)
         self.set_latency = float(set_latency)
-        self._store = store
 
     def _with_store(self, store: Store) -> Self:
         return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)

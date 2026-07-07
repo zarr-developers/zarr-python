@@ -127,6 +127,16 @@ async def test_contains_missing_node_type_returns_false(
     assert await func(store_path, 3) is False
 
 
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_non_utf8_bytes_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is not valid UTF-8 reads as 'not present' (not an error)."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"\x80\x81\x82\x83")
+    assert await func(store_path, 3) is False
+
+
 async def test_contains_node_v3_malformed_json_returns_nothing(local_store: LocalStore) -> None:
     """`_contains_node_v3` returns 'nothing' when the document is not valid JSON."""
     store_path = StorePath(local_store, path="foo")
@@ -145,6 +155,13 @@ async def test_contains_node_v3_missing_node_type_returns_nothing(local_store: L
     """`_contains_node_v3` returns 'nothing' when the document lacks a 'node_type' key."""
     store_path = StorePath(local_store, path="foo")
     await _write_zarr_json(store_path, b'{"zarr_format": 3}')
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_non_utf8_bytes_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not valid UTF-8."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"\x80\x81\x82\x83")
     assert await _contains_node_v3(store_path) == "nothing"
 
 
