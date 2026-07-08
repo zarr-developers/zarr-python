@@ -49,6 +49,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.model import group_metadata_to_model
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
@@ -72,6 +73,8 @@ if TYPE_CHECKING:
         Mapping,
     )
     from typing import Any
+
+    from zarr_metadata.model import GroupMetadataModelV2, GroupMetadataModelV3
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -457,6 +460,34 @@ class AsyncGroup:
 
     # TODO: make this correct and work
     # TODO: ensure that this can be bound properly to subclass of AsyncGroup
+
+    @property
+    def _future_metadata(self) -> GroupMetadataModelV2 | GroupMetadataModelV3:
+        """
+        The metadata of this group as a ``zarr_metadata`` document model.
+
+        This is the planned future type of the public ``metadata`` attribute:
+        a canonical, lossless model of the stored metadata document, split
+        into per-format classes (``GroupMetadataModelV2`` /
+        ``GroupMetadataModelV3``) instead of the single format-spanning
+        ``GroupMetadata``.
+
+        The model is derived lazily from ``metadata`` and cached; the cache is
+        keyed on the identity of the ``metadata`` object, so every metadata
+        change must swap in a new metadata object rather than mutating the
+        current one in place.
+        """
+        cache = cast(
+            "tuple[object, GroupMetadataModelV2 | GroupMetadataModelV3] | None",
+            self.__dict__.get("_future_metadata_cache"),
+        )
+        if cache is not None and cache[0] is self.metadata:
+            return cache[1]
+        model = group_metadata_to_model(self.metadata)
+        # Direct __dict__ assignment: the dataclass is frozen, and the cache
+        # is derived state, not a field.
+        self.__dict__["_future_metadata_cache"] = (self.metadata, model)
+        return model
 
     @classmethod
     async def from_store(
@@ -1216,7 +1247,13 @@ class AsyncGroup:
         -------
         self : AsyncGroup
         """
-        self.metadata.attributes.update(new_attributes)
+        # Swap in a new metadata object rather than mutating the current one
+        # in place: derived state (e.g. the cached ``_future_metadata`` model)
+        # is invalidated by metadata object identity.
+        new_metadata = replace(
+            self.metadata, attributes={**self.metadata.attributes, **new_attributes}
+        )
+        object.__setattr__(self, "metadata", new_metadata)
 
         # Write new metadata
         await self._save_metadata()
@@ -1981,6 +2018,16 @@ class Group(SyncMixin):
     def metadata(self) -> GroupMetadata:
         """Group metadata."""
         return self._async_group.metadata
+
+    @property
+    def _future_metadata(self) -> GroupMetadataModelV2 | GroupMetadataModelV3:
+        """
+        The metadata of this group as a ``zarr_metadata`` document model.
+
+        See ``AsyncGroup._future_metadata``. This is the planned future type
+        of the public ``metadata`` attribute.
+        """
+        return self._async_group._future_metadata
 
     @property
     def path(self) -> str:

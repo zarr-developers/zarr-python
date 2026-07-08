@@ -118,6 +118,7 @@ from zarr.core.metadata import (
     ArrayV3Metadata,
 )
 from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.model import array_metadata_to_model
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -151,6 +152,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     import numpy.typing as npt
+    from zarr_metadata.model import ArrayMetadataModelV2, ArrayMetadataModelV3
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
@@ -381,6 +383,36 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+
+    @property
+    def _future_metadata(self) -> ArrayMetadataModelV2 | ArrayMetadataModelV3:
+        """
+        The metadata of this array as a ``zarr_metadata`` document model.
+
+        This is the planned future type of the public ``metadata`` attribute:
+        a canonical, lossless model of the stored metadata document, with
+        extension points (data type, codecs, chunk grid, chunk key encoding)
+        held as uninterpreted name + configuration pairs and the fill value
+        held in its JSON form. Interpreted runtime objects (``ZDType``, the
+        codec pipeline, the chunk grid) remain available as attributes of the
+        array itself.
+
+        The model is derived lazily from ``metadata`` and cached; the cache is
+        keyed on the identity of the ``metadata`` object, so every metadata
+        change must swap in a new metadata object rather than mutating the
+        current one in place.
+        """
+        cache = cast(
+            "tuple[object, ArrayMetadataModelV2 | ArrayMetadataModelV3] | None",
+            self.__dict__.get("_future_metadata_cache"),
+        )
+        if cache is not None and cache[0] is self.metadata:
+            return cache[1]
+        model = array_metadata_to_model(self.metadata)
+        # Direct __dict__ assignment: the dataclass is frozen, and the cache
+        # is derived state, not a field.
+        self.__dict__["_future_metadata_cache"] = (self.metadata, model)
+        return model
 
     @classmethod
     async def _create(
@@ -2124,6 +2156,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def metadata(self) -> ArrayMetadata:
         return self.async_array.metadata
+
+    @property
+    def _future_metadata(self) -> ArrayMetadataModelV2 | ArrayMetadataModelV3:
+        """
+        The metadata of this array as a ``zarr_metadata`` document model.
+
+        See ``AsyncArray._future_metadata``. This is the planned future type
+        of the public ``metadata`` attribute.
+        """
+        return self.async_array._future_metadata
 
     @property
     def store_path(self) -> StorePath:
@@ -5831,11 +5873,17 @@ async def _update_attributes(
     AsyncArray
         The array with the updated attributes.
     """
-    array.metadata.attributes.update(new_attributes)
+    # Swap in a new metadata object rather than mutating the current one in
+    # place: derived state (e.g. the cached ``_future_metadata`` model) is
+    # invalidated by metadata object identity.
+    new_metadata = array.metadata.update_attributes(
+        {**array.metadata.attributes, **new_attributes}
+    )
 
     # Write new metadata
-    await save_metadata(array.store_path, array.metadata)
+    await save_metadata(array.store_path, new_metadata)
 
+    object.__setattr__(array, "metadata", new_metadata)
     return array
 
 
