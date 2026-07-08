@@ -489,6 +489,15 @@ class AsyncGroup:
         self.__dict__["_future_metadata_cache"] = (self.metadata, model)
         return model
 
+    def __getstate__(self) -> dict[str, Any]:
+        # The cached _future_metadata model contains PEP 661 sentinels
+        # (zarr_metadata.model.UNSET), which are process-local and refuse to
+        # pickle. The cache is derived state, so drop it and let the receiving
+        # process re-derive it on demand.
+        state = self.__dict__.copy()
+        state.pop("_future_metadata_cache", None)
+        return state
+
     @classmethod
     async def from_store(
         cls,
@@ -734,7 +743,7 @@ class AsyncGroup:
         """
         path = self.store_path / key
         await async_api.save_array(
-            store=path, arr=value, zarr_format=self.metadata.zarr_format, overwrite=True
+            store=path, arr=value, zarr_format=self._future_metadata.zarr_format, overwrite=True
         )
 
     async def getitem(
@@ -761,7 +770,7 @@ class AsyncGroup:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
             return await get_node(
-                store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
+                store=store_path.store, path=store_path.path, zarr_format=self._future_metadata.zarr_format
             )
         except FileNotFoundError as e:
             raise KeyError(key) from e
@@ -942,7 +951,7 @@ class AsyncGroup:
             _name=self.store_path.path,
             _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
-            _zarr_format=self.metadata.zarr_format,
+            _zarr_format=self._future_metadata.zarr_format,
             # maybe do a typeddict
             **kwargs,  # type: ignore[arg-type]
         )
@@ -989,7 +998,7 @@ class AsyncGroup:
             self.store_path / name,
             attributes=attributes,
             overwrite=overwrite,
-            zarr_format=self.metadata.zarr_format,
+            zarr_format=self._future_metadata.zarr_format,
         )
 
     async def require_group(self, name: str, overwrite: bool = False) -> AsyncGroup:
@@ -1160,7 +1169,7 @@ class AsyncGroup:
 
         """
         compressors = _parse_deprecated_compressor(
-            compressor, compressors, zarr_format=self.metadata.zarr_format
+            compressor, compressors, zarr_format=self._future_metadata.zarr_format
         )
         return await create_array(
             store=self.store_path,
@@ -1175,7 +1184,7 @@ class AsyncGroup:
             serializer=serializer,
             fill_value=fill_value,
             order=order,
-            zarr_format=self.metadata.zarr_format,
+            zarr_format=self._future_metadata.zarr_format,
             attributes=attributes,
             chunk_key_encoding=chunk_key_encoding,
             dimension_names=dimension_names,
@@ -1375,12 +1384,10 @@ class AsyncGroup:
         self, max_depth: int | None, *, use_consolidated_for_children: bool = True
     ) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
         skip_keys: tuple[str, ...]
-        if self.metadata.zarr_format == 2:
+        if self._future_metadata.zarr_format == 2:
             skip_keys = (".zattrs", ".zgroup", ".zarray", ".zmetadata")
-        elif self.metadata.zarr_format == 3:
-            skip_keys = ("zarr.json",)
         else:
-            raise ValueError(f"Unknown Zarr format: {self.metadata.zarr_format}")
+            skip_keys = ("zarr.json",)
 
         if self.metadata.consolidated_metadata is not None:
             members = self._members_consolidated(max_depth=max_depth)
@@ -1455,11 +1462,11 @@ class AsyncGroup:
         prefix = self.path
         nodes_parsed = {}
         for key, value in nodes.items():
-            if value.zarr_format != self.metadata.zarr_format:
+            if value.zarr_format != self._future_metadata.zarr_format:
                 msg = (
                     "The zarr_format of the nodes must be the same as the parent group. "
                     f"The node at {key} has zarr_format {value.zarr_format}, but the parent group"
-                    f" has zarr_format {self.metadata.zarr_format}."
+                    f" has zarr_format {self._future_metadata.zarr_format}."
                 )
                 raise ValueError(msg)
             if normalize_path(key) == "":
@@ -2691,7 +2698,7 @@ class Group(SyncMixin):
         AsyncArray
         """
         compressors = _parse_deprecated_compressor(
-            compressor, compressors, zarr_format=self.metadata.zarr_format
+            compressor, compressors, zarr_format=self._future_metadata.zarr_format
         )
         return Array(
             self._sync(

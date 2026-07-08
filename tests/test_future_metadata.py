@@ -121,6 +121,30 @@ def test_array_future_metadata_updates_via_attrs_interface() -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
+def test_array_picklable_with_populated_cache(zarr_format: ZarrFormat) -> None:
+    """The cached model holds PEP 661 sentinels, which refuse to pickle; the
+    cache must be excluded from pickled state and re-derived on demand."""
+    import pickle
+
+    array = zarr.create_array(
+        MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8", zarr_format=zarr_format
+    )
+    model = array._future_metadata  # populate the cache
+    restored = pickle.loads(pickle.dumps(array))
+    assert restored._future_metadata == model
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_group_picklable_with_populated_cache(zarr_format: ZarrFormat) -> None:
+    import pickle
+
+    group = zarr.create_group(MemoryStore(), zarr_format=zarr_format)
+    model = group._future_metadata  # populate the cache
+    restored = pickle.loads(pickle.dumps(group))
+    assert restored._future_metadata == model
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_group_future_metadata_type(zarr_format: ZarrFormat) -> None:
     group = zarr.create_group(MemoryStore(), zarr_format=zarr_format, attributes={"g": True})
     model = group._future_metadata

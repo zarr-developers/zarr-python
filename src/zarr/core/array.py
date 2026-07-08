@@ -414,6 +414,15 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         self.__dict__["_future_metadata_cache"] = (self.metadata, model)
         return model
 
+    def __getstate__(self) -> dict[str, Any]:
+        # The cached _future_metadata model contains PEP 661 sentinels
+        # (zarr_metadata.model.UNSET), which are process-local and refuse to
+        # pickle. The cache is derived state, so drop it and let the receiving
+        # process re-derive it on demand.
+        state = self.__dict__.copy()
+        state.pop("_future_metadata_cache", None)
+        return state
+
     @classmethod
     async def _create(
         cls,
@@ -833,7 +842,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the Array.
         """
-        return len(self.metadata.shape)
+        return len(self._future_metadata.shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -844,7 +853,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             The shape of the Array.
         """
-        return self.metadata.shape
+        return self._future_metadata.shape
 
     @property
     def chunks(self) -> tuple[int, ...]:
@@ -943,7 +952,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return math.prod(self.metadata.shape)
+        return math.prod(self._future_metadata.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -1528,7 +1537,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
+        indexer = OrthogonalIndexer(selection, self._future_metadata.shape, self._chunk_grid)
         return await _get_selection(
             self.store_path,
             self.metadata,
@@ -1551,7 +1560,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
+        indexer = MaskIndexer(mask, self._future_metadata.shape, self._chunk_grid)
         return await _get_selection(
             self.store_path,
             self.metadata,
@@ -1574,7 +1583,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
+        indexer = CoordinateIndexer(selection, self._future_metadata.shape, self._chunk_grid)
         out_array = await _get_selection(
             self.store_path,
             self.metadata,
@@ -1825,7 +1834,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> Any:
         chunk_shape = self.chunks if self._chunk_grid.is_regular else None
         return ArrayInfo(
-            _zarr_format=self.metadata.zarr_format,
+            _zarr_format=self._future_metadata.zarr_format,
             _data_type=self._zdtype,
             _fill_value=self.metadata.fill_value,
             _shape=self.shape,
@@ -5750,13 +5759,15 @@ async def _resize(
         If False, the data in those chunks will be preserved.
     """
     new_shape = parse_shapelike(new_shape)
-    assert len(new_shape) == len(array.metadata.shape)
+    assert len(new_shape) == len(array._future_metadata.shape)
 
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
 
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
-    only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
+    only_growing = all(
+        new >= old for new, old in zip(new_shape, array._future_metadata.shape, strict=True)
+    )
 
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
