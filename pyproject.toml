@@ -37,6 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'zarr-metadata>=0.4.0',
 ]
 
 dynamic = [
@@ -146,6 +147,16 @@ dev = [
     "universal-pathlib",
     "mypy==2.1.0",
 ]
+
+# The repo is a uv workspace so that `zarr` can depend on the in-tree
+# `packages/zarr-metadata` during development and CI. Released wheels depend on
+# the published zarr-metadata distribution; the workspace source below only
+# affects resolution from a checkout (uv.lock, `uv run`, hatch envs using uv).
+[tool.uv.workspace]
+members = ["packages/zarr-metadata"]
+
+[tool.uv.sources]
+zarr-metadata = { workspace = true }
 
 [tool.coverage.report]
 exclude_also = [
