@@ -153,7 +153,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     import numpy.typing as npt
-    from zarr_metadata.model import ArrayMetadataModelV2, ArrayMetadataModelV3
+    from zarr_metadata.model import ZarrV2ArrayMetadata, ZarrV3ArrayMetadata
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
@@ -386,7 +386,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
     @property
-    def _future_metadata(self) -> ArrayMetadataModelV2 | ArrayMetadataModelV3:
+    def _future_metadata(self) -> ZarrV2ArrayMetadata | ZarrV3ArrayMetadata:
         """
         The metadata of this array as a ``zarr_metadata`` document model.
 
@@ -404,7 +404,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         current one in place.
         """
         cache = cast(
-            "tuple[object, ArrayMetadataModelV2 | ArrayMetadataModelV3] | None",
+            "tuple[object, ZarrV2ArrayMetadata | ZarrV3ArrayMetadata] | None",
             self.__dict__.get("_future_metadata_cache"),
         )
         if cache is not None and cache[0] is self.metadata:
@@ -2167,7 +2167,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         warnings.warn(
             "In a future release of Zarr Python, the type of the `metadata` attribute "
             "will change: it will return the metadata document model classes defined in "
-            "the `zarr-metadata` package (`ArrayMetadataModelV2` / `ArrayMetadataModelV3`) "
+            "the `zarr-metadata` package (`ZarrV2ArrayMetadata` / `ZarrV3ArrayMetadata`) "
             "instead of `ArrayV2Metadata` / `ArrayV3Metadata`. "
             "The `_future_metadata` attribute previews the new interface.",
             ZarrPendingDeprecationWarning,
@@ -2185,7 +2185,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.metadata
 
     @property
-    def _future_metadata(self) -> ArrayMetadataModelV2 | ArrayMetadataModelV3:
+    def _future_metadata(self) -> ZarrV2ArrayMetadata | ZarrV3ArrayMetadata:
         """
         The metadata of this array as a ``zarr_metadata`` document model.
 

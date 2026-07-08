@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr_metadata.model import GroupMetadataModelV2, GroupMetadataModelV3
+    from zarr_metadata.model import ZarrV2GroupMetadata, ZarrV3GroupMetadata
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -463,14 +463,14 @@ class AsyncGroup:
     # TODO: ensure that this can be bound properly to subclass of AsyncGroup
 
     @property
-    def _future_metadata(self) -> GroupMetadataModelV2 | GroupMetadataModelV3:
+    def _future_metadata(self) -> ZarrV2GroupMetadata | ZarrV3GroupMetadata:
         """
         The metadata of this group as a ``zarr_metadata`` document model.
 
         This is the planned future type of the public ``metadata`` attribute:
         a canonical, lossless model of the stored metadata document, split
-        into per-format classes (``GroupMetadataModelV2`` /
-        ``GroupMetadataModelV3``) instead of the single format-spanning
+        into per-format classes (``ZarrV2GroupMetadata`` /
+        ``ZarrV3GroupMetadata``) instead of the single format-spanning
         ``GroupMetadata``.
 
         The model is derived lazily from ``metadata`` and cached; the cache is
@@ -479,7 +479,7 @@ class AsyncGroup:
         current one in place.
         """
         cache = cast(
-            "tuple[object, GroupMetadataModelV2 | GroupMetadataModelV3] | None",
+            "tuple[object, ZarrV2GroupMetadata | ZarrV3GroupMetadata] | None",
             self.__dict__.get("_future_metadata_cache"),
         )
         if cache is not None and cache[0] is self.metadata:
@@ -2029,7 +2029,7 @@ class Group(SyncMixin):
         warnings.warn(
             "In a future release of Zarr Python, the type of the `metadata` attribute "
             "will change: it will return the metadata document model classes defined in "
-            "the `zarr-metadata` package (`GroupMetadataModelV2` / `GroupMetadataModelV3`) "
+            "the `zarr-metadata` package (`ZarrV2GroupMetadata` / `ZarrV3GroupMetadata`) "
             "instead of `GroupMetadata`. "
             "The `_future_metadata` attribute previews the new interface.",
             ZarrPendingDeprecationWarning,
@@ -2047,7 +2047,7 @@ class Group(SyncMixin):
         return self._async_group.metadata
 
     @property
-    def _future_metadata(self) -> GroupMetadataModelV2 | GroupMetadataModelV3:
+    def _future_metadata(self) -> ZarrV2GroupMetadata | ZarrV3GroupMetadata:
         """
         The metadata of this group as a ``zarr_metadata`` document model.
 

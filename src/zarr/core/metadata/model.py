@@ -25,7 +25,7 @@ Known representational gaps, resolved in favor of current runtime semantics:
   ``.zattrs`` (``{}``); the runtime classes collapse both to ``{}``.
 - A v2 ``GroupMetadata`` may carry ``consolidated_metadata``, which in the v2
   document world lives in a separate ``.zmetadata`` document and has no field
-  in ``GroupMetadataModelV2``; it is dropped by ``group_metadata_to_model``.
+  in ``ZarrV2GroupMetadata``; it is dropped by ``group_metadata_to_model``.
 """
 
 from __future__ import annotations
@@ -34,11 +34,11 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, overload
 
 from zarr_metadata.model import (
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV3,
-    ConsolidatedMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV3,
+    ZarrV2ArrayMetadata,
+    ZarrV2GroupMetadata,
+    ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
 )
 
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -72,14 +72,14 @@ def _arrays_to_lists(data: Any) -> Any:
 
 
 @overload
-def array_metadata_to_model(metadata: ArrayV2Metadata) -> ArrayMetadataModelV2: ...
+def array_metadata_to_model(metadata: ArrayV2Metadata) -> ZarrV2ArrayMetadata: ...
 @overload
-def array_metadata_to_model(metadata: ArrayV3Metadata) -> ArrayMetadataModelV3: ...
+def array_metadata_to_model(metadata: ArrayV3Metadata) -> ZarrV3ArrayMetadata: ...
 
 
 def array_metadata_to_model(
     metadata: ArrayV2Metadata | ArrayV3Metadata,
-) -> ArrayMetadataModelV2 | ArrayMetadataModelV3:
+) -> ZarrV2ArrayMetadata | ZarrV3ArrayMetadata:
     """Convert a runtime array metadata object to its document model.
 
     The conversion round-trips through the JSON document form, which is the
@@ -88,18 +88,18 @@ def array_metadata_to_model(
     spellings, and ``from_json`` validates and captures them losslessly.
     """
     if isinstance(metadata, ArrayV2Metadata):
-        return ArrayMetadataModelV2.from_json(metadata.to_dict())
-    return ArrayMetadataModelV3.from_json(metadata.to_dict())
+        return ZarrV2ArrayMetadata.from_json(metadata.to_dict())
+    return ZarrV3ArrayMetadata.from_json(metadata.to_dict())
 
 
 @overload
-def array_metadata_from_model(model: ArrayMetadataModelV2) -> ArrayV2Metadata: ...
+def array_metadata_from_model(model: ZarrV2ArrayMetadata) -> ArrayV2Metadata: ...
 @overload
-def array_metadata_from_model(model: ArrayMetadataModelV3) -> ArrayV3Metadata: ...
+def array_metadata_from_model(model: ZarrV3ArrayMetadata) -> ArrayV3Metadata: ...
 
 
 def array_metadata_from_model(
-    model: ArrayMetadataModelV2 | ArrayMetadataModelV3,
+    model: ZarrV2ArrayMetadata | ZarrV3ArrayMetadata,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     """Convert an array metadata document model to a runtime metadata object.
 
@@ -107,19 +107,19 @@ def array_metadata_from_model(
     unknown data types, codecs, or must-understand extension fields that this
     installation cannot interpret are rejected by the runtime ``from_dict``.
     """
-    if isinstance(model, ArrayMetadataModelV2):
+    if isinstance(model, ZarrV2ArrayMetadata):
         return ArrayV2Metadata.from_dict(_arrays_to_lists(model.to_json()))
     return ArrayV3Metadata.from_dict(_arrays_to_lists(model.to_json()))
 
 
 def group_metadata_to_model(
     metadata: GroupMetadata,
-) -> GroupMetadataModelV2 | GroupMetadataModelV3:
+) -> ZarrV2GroupMetadata | ZarrV3GroupMetadata:
     """Convert a runtime ``GroupMetadata`` to its document model.
 
     This is where the single runtime group class splits into per-format
     models: a ``GroupMetadata`` with ``zarr_format == 2`` becomes a
-    ``GroupMetadataModelV2``, otherwise a ``GroupMetadataModelV3``.
+    ``ZarrV2GroupMetadata``, otherwise a ``ZarrV3GroupMetadata``.
 
     For v2, ``consolidated_metadata`` is dropped: in the v2 document world it
     lives in a separate ``.zmetadata`` document, not in ``.zgroup``, so the
@@ -129,12 +129,12 @@ def group_metadata_to_model(
         # GroupMetadata.to_dict emits v3-only keys (node_type, and possibly
         # consolidated_metadata) even for v2, so build the v2 document
         # explicitly rather than passing to_dict output through.
-        return GroupMetadataModelV2.from_json({"zarr_format": 2, "attributes": metadata.attributes})
-    return GroupMetadataModelV3.from_json(metadata.to_dict())
+        return ZarrV2GroupMetadata.from_json({"zarr_format": 2, "attributes": metadata.attributes})
+    return ZarrV3GroupMetadata.from_json(metadata.to_dict())
 
 
 def group_metadata_from_model(
-    model: GroupMetadataModelV2 | GroupMetadataModelV3,
+    model: ZarrV2GroupMetadata | ZarrV3GroupMetadata,
 ) -> GroupMetadata:
     """Convert a group metadata document model to a runtime ``GroupMetadata``.
 
@@ -145,7 +145,7 @@ def group_metadata_from_model(
     # module-level import here would be circular.
     from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 
-    if isinstance(model, GroupMetadataModelV2):
+    if isinstance(model, ZarrV2GroupMetadata):
         # isinstance rather than `is UNSET`: PEP 661 sentinel narrowing is not
         # yet supported by mypy (https://github.com/python/mypy/pull/21647);
         # mypy also drops the UNSET arm of the field's union, hence the ignore.
@@ -162,7 +162,7 @@ def group_metadata_from_model(
             "which does not support extension fields."
         )
     consolidated = None
-    if isinstance(model.consolidated_metadata, ConsolidatedMetadataModelV3):
+    if isinstance(model.consolidated_metadata, ZarrV3ConsolidatedMetadata):
         consolidated = ConsolidatedMetadata.from_dict(
             _arrays_to_lists(model.consolidated_metadata.to_json())
         )

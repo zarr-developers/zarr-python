@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 from zarr_metadata.model import (
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV3,
-    ConsolidatedMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV3,
+    ZarrV2ArrayMetadata,
+    ZarrV2GroupMetadata,
+    ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
 )
 
 import zarr
@@ -45,11 +45,11 @@ def test_array_future_metadata_type(zarr_format: ZarrFormat) -> None:
     )
     model = array._future_metadata
     if zarr_format == 2:
-        assert isinstance(model, ArrayMetadataModelV2)
+        assert isinstance(model, ZarrV2ArrayMetadata)
         assert model.chunks == (5, 5)
         assert model.dtype == "<i4"
     else:
-        assert isinstance(model, ArrayMetadataModelV3)
+        assert isinstance(model, ZarrV3ArrayMetadata)
         assert model.data_type.name == "int32"
         assert model.chunk_grid.configuration == {"chunk_shape": (5, 5)}
     assert model.shape == (10, 10)
@@ -85,10 +85,10 @@ def test_array_future_metadata_matches_stored_document(zarr_format: ZarrFormat) 
             ".zarray": zarr.core.sync.sync(read(".zarray")),
             ".zattrs": zarr.core.sync.sync(read(".zattrs")),
         }
-        assert ArrayMetadataModelV2.from_key_value(key_value) == model
+        assert ZarrV2ArrayMetadata.from_key_value(key_value) == model
     else:
         stored_document = json.loads(zarr.core.sync.sync(read("zarr.json")))
-        assert ArrayMetadataModelV3.from_json(stored_document) == model
+        assert ZarrV3ArrayMetadata.from_json(stored_document) == model
 
 
 def test_array_future_metadata_cached() -> None:
@@ -203,9 +203,9 @@ def test_group_future_metadata_type(zarr_format: ZarrFormat) -> None:
     group = zarr.create_group(MemoryStore(), zarr_format=zarr_format, attributes={"g": True})
     model = group._future_metadata
     if zarr_format == 2:
-        assert isinstance(model, GroupMetadataModelV2)
+        assert isinstance(model, ZarrV2GroupMetadata)
     else:
-        assert isinstance(model, GroupMetadataModelV3)
+        assert isinstance(model, ZarrV3GroupMetadata)
     assert model.attributes == {"g": True}
     assert group._future_metadata is group._async_group._future_metadata
 
@@ -226,9 +226,9 @@ def test_group_future_metadata_consolidated() -> None:
     zarr.consolidate_metadata(store)
     reopened = zarr.open_group(store, mode="r")
     model = reopened._future_metadata
-    assert isinstance(model, GroupMetadataModelV3)
-    assert isinstance(model.consolidated_metadata, ConsolidatedMetadataModelV3)
+    assert isinstance(model, ZarrV3GroupMetadata)
+    assert isinstance(model.consolidated_metadata, ZarrV3ConsolidatedMetadata)
     assert set(model.consolidated_metadata.metadata) == {"child"}
     child_model = model.consolidated_metadata.metadata["child"]
-    assert isinstance(child_model, ArrayMetadataModelV3)
+    assert isinstance(child_model, ZarrV3ArrayMetadata)
     assert child_model.shape == (4,)

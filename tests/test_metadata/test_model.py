@@ -11,11 +11,11 @@ import pytest
 from hypothesis import given, settings
 from zarr_metadata.model import (
     UNSET,
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV3,
-    NamedConfigModelV3,
+    ZarrV2ArrayMetadata,
+    ZarrV2GroupMetadata,
+    ZarrV3ArrayMetadata,
+    ZarrV3GroupMetadata,
+    ZarrV3NamedConfig,
 )
 
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -41,9 +41,9 @@ def test_array_metadata_round_trip(metadata: ArrayV2Metadata | ArrayV3Metadata) 
     the JSON document form, so NaN fill values compare equal)."""
     model = array_metadata_to_model(metadata)
     if metadata.zarr_format == 2:
-        assert isinstance(model, ArrayMetadataModelV2)
+        assert isinstance(model, ZarrV2ArrayMetadata)
     else:
-        assert isinstance(model, ArrayMetadataModelV3)
+        assert isinstance(model, ZarrV3ArrayMetadata)
     assert array_metadata_from_model(model) == metadata
 
 
@@ -111,7 +111,7 @@ def test_v3_extra_fields_round_trip() -> None:
         }
     )
     model = array_metadata_to_model(metadata)
-    assert isinstance(model, ArrayMetadataModelV3)
+    assert isinstance(model, ZarrV3ArrayMetadata)
     assert model.extra_fields == {"my-extension": {"must_understand": False, "value": 10}}
     assert model.must_understand_fields == {}
     assert array_metadata_from_model(model) == metadata
@@ -120,9 +120,9 @@ def test_v3_extra_fields_round_trip() -> None:
 def test_model_with_unknown_codec_rejected_by_runtime() -> None:
     """model -> runtime raises exactly where opening the document would: on
     extension points this installation cannot interpret."""
-    model = ArrayMetadataModelV3.create_default(
+    model = ZarrV3ArrayMetadata.create_default(
         shape=(4,),
-        codecs=(NamedConfigModelV3(name="does-not-exist", configuration={}),),
+        codecs=(ZarrV3NamedConfig(name="does-not-exist", configuration={}),),
     )
     with pytest.raises(UnknownCodecError):
         array_metadata_from_model(model)
@@ -132,7 +132,7 @@ def test_model_with_unknown_codec_rejected_by_runtime() -> None:
 def test_group_metadata_v3_round_trip(attributes: dict[str, object]) -> None:
     metadata = GroupMetadata(attributes=attributes, zarr_format=3)
     model = group_metadata_to_model(metadata)
-    assert isinstance(model, GroupMetadataModelV3)
+    assert isinstance(model, ZarrV3GroupMetadata)
     assert model.consolidated_metadata is UNSET
     assert group_metadata_from_model(model) == metadata
 
@@ -141,7 +141,7 @@ def test_group_metadata_v3_round_trip(attributes: dict[str, object]) -> None:
 def test_group_metadata_v2_round_trip(attributes: dict[str, object]) -> None:
     metadata = GroupMetadata(attributes=attributes, zarr_format=2)
     model = group_metadata_to_model(metadata)
-    assert isinstance(model, GroupMetadataModelV2)
+    assert isinstance(model, ZarrV2GroupMetadata)
     assert model.attributes == attributes
     assert group_metadata_from_model(model) == metadata
 
@@ -174,7 +174,7 @@ def test_group_metadata_v3_consolidated_round_trip() -> None:
         ),
     )
     model = group_metadata_to_model(metadata)
-    assert isinstance(model, GroupMetadataModelV3)
+    assert isinstance(model, ZarrV3GroupMetadata)
     assert model.consolidated_metadata is not UNSET
     # The model holds consolidated entries flat, keyed by full path.
     assert set(model.consolidated_metadata.metadata) == {
@@ -201,13 +201,13 @@ def test_group_metadata_v2_consolidated_dropped() -> None:
         consolidated_metadata=ConsolidatedMetadata(metadata={}),
     )
     model = group_metadata_to_model(metadata)
-    assert isinstance(model, GroupMetadataModelV2)
+    assert isinstance(model, ZarrV2GroupMetadata)
     restored = group_metadata_from_model(model)
     assert restored.consolidated_metadata is None
 
 
 def test_group_model_with_extra_fields_rejected() -> None:
-    model = GroupMetadataModelV3.create_default(
+    model = ZarrV3GroupMetadata.create_default(
         extra_fields={"my-extension": {"must_understand": False}}
     )
     with pytest.raises(ValueError, match="extra fields"):
