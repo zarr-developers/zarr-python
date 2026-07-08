@@ -491,10 +491,9 @@ class AsyncGroup:
         return model
 
     def __getstate__(self) -> dict[str, Any]:
-        # The cached _future_metadata model contains PEP 661 sentinels
-        # (zarr_metadata.model.UNSET), which are process-local and refuse to
-        # pickle. The cache is derived state, so drop it and let the receiving
-        # process re-derive it on demand.
+        # The cached _future_metadata model is derived state: drop it from
+        # pickles so the serialized form stays lean and never couples to the
+        # cache layout, and let the receiving process re-derive it on demand.
         state = self.__dict__.copy()
         state.pop("_future_metadata_cache", None)
         return state

@@ -27,6 +27,9 @@ from zarr.errors import ZarrPendingDeprecationWarning
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from zarr import Array, Group
     from zarr.core.common import ZarrFormat
 
 
@@ -156,27 +159,42 @@ def test_attrs_interface_does_not_warn() -> None:
         assert dict(array.attrs) == {"a": 1, "b": 2}
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_picklable_with_populated_cache(zarr_format: ZarrFormat) -> None:
-    """The cached model holds PEP 661 sentinels, which refuse to pickle; the
-    cache must be excluded from pickled state and re-derived on demand."""
+# Node factories covering the model states we know are sensitive to
+# serialization: absent optional keys (v3 dimension_names, held as the UNSET
+# sentinel), the same keys present, and both zarr formats for arrays and
+# groups. The whole node is pickled and the whole model compared: model
+# equality compares every field, and UNSET compares by identity, so a
+# state-reconstructed impostor sentinel would fail the assertion.
+NODE_CASES = {
+    "array-v2": lambda: zarr.create_array(
+        MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8", zarr_format=2, attributes={"a": 1}
+    ),
+    "array-v3-dimension-names-unset": lambda: zarr.create_array(
+        MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8", zarr_format=3
+    ),
+    "array-v3-dimension-names-set": lambda: zarr.create_array(
+        MemoryStore(),
+        shape=(2, 2),
+        chunks=(1, 1),
+        dtype="uint8",
+        zarr_format=3,
+        dimension_names=["x", None],
+    ),
+    "group-v2": lambda: zarr.create_group(MemoryStore(), zarr_format=2),
+    "group-v3": lambda: zarr.create_group(MemoryStore(), zarr_format=3, attributes={"g": True}),
+}
+
+
+@pytest.mark.parametrize("node_factory", NODE_CASES.values(), ids=NODE_CASES.keys())
+def test_node_picklable_with_populated_cache(node_factory: Callable[[], Array | Group]) -> None:
+    """A node whose _future_metadata cache is populated pickles, and the
+    restored node re-derives an equal model. The cache itself is derived
+    state and is excluded from pickled state."""
     import pickle
 
-    array = zarr.create_array(
-        MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8", zarr_format=zarr_format
-    )
-    model = array._future_metadata  # populate the cache
-    restored = pickle.loads(pickle.dumps(array))
-    assert restored._future_metadata == model
-
-
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_group_picklable_with_populated_cache(zarr_format: ZarrFormat) -> None:
-    import pickle
-
-    group = zarr.create_group(MemoryStore(), zarr_format=zarr_format)
-    model = group._future_metadata  # populate the cache
-    restored = pickle.loads(pickle.dumps(group))
+    node = node_factory()
+    model = node._future_metadata  # populate the cache
+    restored = pickle.loads(pickle.dumps(node))
     assert restored._future_metadata == model
 
 
