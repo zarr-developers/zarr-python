@@ -73,9 +73,8 @@ zarr.config.set(
 
 ### Threading
 
-By default the synchronous pipeline runs sequentially (`codec_pipeline.max_workers` is `1`). For
-CPU-heavy decode/encode on large chunks you can opt into a thread pool by setting a larger worker
-count -- or `None` to use `os.cpu_count()`:
+By default the synchronous pipeline runs fully threaded i.e., `os.cpu_count()`.
+For memory-backed workflows, you may find that setting `max_workers` to 1 helps (since requests for data from the store are GIL-locked, unlike, say, file-backed i/o).
 
 ```python exec="true" session="experimental-fused" source="above"
 import zarr
@@ -87,10 +86,8 @@ zarr.config.set({"codec_pipeline.max_workers": 8})
 zarr.config.set({"codec_pipeline.max_workers": None})
 ```
 
-Threading is off by default because it is not universally a win: it slows small chunks (where the
-per-task overhead outweighs the work), and on many-core nodes a pool sized to `cpu_count` can
-oversubscribe workloads that already parallelize at a higher level (e.g. Dask). `max_workers` only
-affects `FusedCodecPipeline`; the default batched pipeline ignores it.
+On many-core nodes a pool sized to `cpu_count` can oversubscribe workloads that already parallelize at a higher level (e.g. Dask).
+`codec_pipeline.max_workers` only affects `FusedCodecPipeline`; the default `BatchedCodecPipeline` ignores it.
 
 ## `CacheStore`
 
