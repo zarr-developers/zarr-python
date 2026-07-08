@@ -536,18 +536,18 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Test `getsize()` and `getsize_prefix()` in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test that a `ValueError` is raised for invalid byte range syntax in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Separate instantiating and opening a store in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
-- Add a test for using Stores as a context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+- Add a test for using Stores as context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Implemented `LoggingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - `LoggingStore` is now a generic class. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Change StoreTest's `test_store_repr`, `test_store_supports_writes`,
   `test_store_supports_partial_writes`, and `test_store_supports_listing`
-  to to be implemented using `@abstractmethod`, rather raising `NotImplementedError`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+  to be implemented using `@abstractmethod`, rather than raising `NotImplementedError`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test the error raised for invalid buffer arguments in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test that data can be written to a store that's not yet open using the store.set method in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Adds a new function `init_array` for initializing an array in storage, and refactors `create_array`
   to use `init_array`. `create_array` takes two new parameters: `data`, an optional array-like object, and `write_data`, a bool which defaults to `True`.
   If `data` is given to `create_array`, then the `dtype` and `shape` attributes of `data` are used to define the
-  corresponding attributes of the resulting Zarr array. Additionally, if `data` given and `write_data` is `True`,
+  corresponding attributes of the resulting Zarr array. Additionally, if `data` is given and `write_data` is `True`,
   then the values in `data` will be written to the newly created array. ([#2761](https://github.com/zarr-developers/zarr-python/issues/2761))
 
 ### Bugfixes
@@ -559,7 +559,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Use stdout rather than stderr as the default stream for `LoggingStore`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Match the errors raised by read only stores in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Fixed `ZipStore` to make sure the correct attributes are saved when instances are pickled.
-  This fixes a previous bug that prevent using `ZipStore` with a `ProcessPoolExecutor`. ([#2762](https://github.com/zarr-developers/zarr-python/issues/2762))
+  This fixes a previous bug that prevented using `ZipStore` with a `ProcessPoolExecutor`. ([#2762](https://github.com/zarr-developers/zarr-python/issues/2762))
 - Updated the optional test dependencies to include `botocore` and `fsspec`. ([#2768](https://github.com/zarr-developers/zarr-python/issues/2768))
 - Fixed the fsspec tests to skip if `botocore` is not installed.
   Previously they would have failed with an import error. ([#2768](https://github.com/zarr-developers/zarr-python/issues/2768))
