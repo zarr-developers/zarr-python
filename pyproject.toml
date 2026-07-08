@@ -38,13 +38,16 @@ dependencies = [
     'typing_extensions>=4.14',
     'donfig>=0.8',
     # zarr needs the zarr-metadata model layer, which first ships in
-    # zarr-metadata 0.4.0 (not yet released). Until then the floor names the
-    # newest release on PyPI so plain-pip resolvers can proceed, and every
-    # dev/CI environment installs the in-tree package instead: uv flows via
-    # [tool.uv.sources], hatch envs via the `{root:uri}` direct reference in
-    # their extra-dependencies, readthedocs via an extra install step.
-    # TODO(release): bump to 'zarr-metadata>=0.4.0' once it is released.
-    'zarr-metadata>=0.3',
+    # zarr-metadata 0.4.0 (not yet released), so no released version satisfies
+    # zarr's real requirement and every dev/CI environment installs the
+    # in-tree package instead: uv flows via [tool.uv.sources], hatch envs via
+    # the `{root:uri}` direct reference in their extra-dependencies,
+    # readthedocs via an extra install step. The requirement is deliberately
+    # unversioned until then: any floor would have to be satisfied by in-tree
+    # builds too, and CI builds from shallow clones, where hatch-vcs cannot
+    # see the zarr_metadata-v* tags and derives a 0.1.devN version.
+    # TODO(release): change to 'zarr-metadata>=0.4.0' once it is released.
+    'zarr-metadata',
 ]
 
 dynamic = [
