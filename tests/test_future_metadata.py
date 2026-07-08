@@ -9,6 +9,7 @@ document, and its cache invalidation across metadata changes.
 from __future__ import annotations
 
 import json
+import warnings
 from typing import TYPE_CHECKING
 
 import pytest
@@ -22,6 +23,7 @@ from zarr_metadata.model import (
 
 import zarr
 from zarr.core.buffer import default_buffer_prototype
+from zarr.errors import ZarrPendingDeprecationWarning
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -66,6 +68,7 @@ def test_array_future_metadata_matches_stored_document(zarr_format: ZarrFormat) 
     array = zarr.create_array(
         store, shape=(6,), chunks=(2,), dtype="float64", zarr_format=zarr_format
     )
+
     async def read(key: str) -> bytes:
         buffer = await array.store_path.store.get(key, prototype=default_buffer_prototype())
         assert buffer is not None
@@ -118,6 +121,39 @@ def test_array_future_metadata_updates_via_attrs_interface() -> None:
     assert array._future_metadata.attributes == {"a": 1, "b": 2}
     array.attrs.put({"c": 3})
     assert array._future_metadata.attributes == {"c": 3}
+
+
+def test_sync_array_metadata_access_warns() -> None:
+    """Reading the sync ``Array.metadata`` property emits a (soft, off by
+    default) pending-type-change warning; ``_metadata`` does not."""
+    array = zarr.create_array(MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8")
+    with pytest.warns(ZarrPendingDeprecationWarning, match="type of the `metadata` attribute"):
+        _ = array.metadata
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert array._metadata is array.async_array.metadata
+
+
+def test_sync_group_metadata_access_warns() -> None:
+    group = zarr.create_group(MemoryStore())
+    with pytest.warns(ZarrPendingDeprecationWarning, match="type of the `metadata` attribute"):
+        _ = group.metadata
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert group._metadata is group._async_group.metadata
+
+
+def test_attrs_interface_does_not_warn() -> None:
+    """The Attributes wrapper goes through the internal accessor, so ordinary
+    attribute access never triggers the pending-type-change warning."""
+    array = zarr.create_array(
+        MemoryStore(), shape=(4,), chunks=(2,), dtype="uint8", attributes={"a": 1}
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert array.attrs["a"] == 1
+        array.attrs["b"] = 2
+        assert dict(array.attrs) == {"a": 1, "b": 2}
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])

@@ -4,6 +4,7 @@ and the ``zarr_metadata`` model layer."""
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import hypothesis.strategies as st
 import pytest
@@ -24,10 +25,12 @@ from zarr.core.metadata.model import (
     group_metadata_from_model,
     group_metadata_to_model,
 )
-from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import UnknownCodecError
 from zarr.testing.strategies import array_metadata
+
+if TYPE_CHECKING:
+    from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")

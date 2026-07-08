@@ -461,6 +461,12 @@ addopts = [
 ]
 filterwarnings = [
     "error",
+    # Transitional: the test suite still reads Array.metadata / Group.metadata in
+    # many places. The pending-type-change warning on those properties is asserted
+    # explicitly in tests/test_future_metadata.py; remove this filter once the
+    # test suite has migrated to _future_metadata (or the runtime classes, where
+    # interpretation is required).
+    "ignore::zarr.errors.ZarrPendingDeprecationWarning",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
     "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning",
     # s3fs finalizers can fail during session cleanup when aiobotocore sessions are garbage

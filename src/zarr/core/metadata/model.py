@@ -129,9 +129,7 @@ def group_metadata_to_model(
         # GroupMetadata.to_dict emits v3-only keys (node_type, and possibly
         # consolidated_metadata) even for v2, so build the v2 document
         # explicitly rather than passing to_dict output through.
-        return GroupMetadataModelV2.from_json(
-            {"zarr_format": 2, "attributes": metadata.attributes}
-        )
+        return GroupMetadataModelV2.from_json({"zarr_format": 2, "attributes": metadata.attributes})
     return GroupMetadataModelV3.from_json(metadata.to_dict())
 
 

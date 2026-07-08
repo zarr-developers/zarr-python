@@ -56,6 +56,7 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
+    ZarrPendingDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -770,7 +771,9 @@ class AsyncGroup:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
             return await get_node(
-                store=store_path.store, path=store_path.path, zarr_format=self._future_metadata.zarr_format
+                store=store_path.store,
+                path=store_path.path,
+                zarr_format=self._future_metadata.zarr_format,
             )
         except FileNotFoundError as e:
             raise KeyError(key) from e
@@ -2006,7 +2009,7 @@ class Group(SyncMixin):
         >>> asyncio.run(example())
         {'foo': 'bar'}
         """
-        new_metadata = replace(self.metadata, attributes=new_attributes)
+        new_metadata = replace(self._metadata, attributes=new_attributes)
 
         # Write new metadata
         to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
@@ -2024,6 +2027,24 @@ class Group(SyncMixin):
     @property
     def metadata(self) -> GroupMetadata:
         """Group metadata."""
+        warnings.warn(
+            "In a future release of Zarr Python, the type of the `metadata` attribute "
+            "will change: it will return the metadata document model classes defined in "
+            "the `zarr-metadata` package (`GroupMetadataModelV2` / `GroupMetadataModelV3`) "
+            "instead of `GroupMetadata`. "
+            "The `_future_metadata` attribute previews the new interface.",
+            ZarrPendingDeprecationWarning,
+            stacklevel=2,
+        )
+        return self._async_group.metadata
+
+    @property
+    def _metadata(self) -> GroupMetadata:
+        """The runtime metadata object, without the pending-type-change warning.
+
+        Internal accessor for code that still needs the interpreted metadata
+        classes during the migration to the ``zarr_metadata`` document models.
+        """
         return self._async_group.metadata
 
     @property

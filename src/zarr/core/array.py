@@ -136,6 +136,7 @@ from zarr.errors import (
     ChunkNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
+    ZarrPendingDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.registry import (
@@ -2164,6 +2165,24 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def metadata(self) -> ArrayMetadata:
+        warnings.warn(
+            "In a future release of Zarr Python, the type of the `metadata` attribute "
+            "will change: it will return the metadata document model classes defined in "
+            "the `zarr-metadata` package (`ArrayMetadataModelV2` / `ArrayMetadataModelV3`) "
+            "instead of `ArrayV2Metadata` / `ArrayV3Metadata`. "
+            "The `_future_metadata` attribute previews the new interface.",
+            ZarrPendingDeprecationWarning,
+            stacklevel=2,
+        )
+        return self.async_array.metadata
+
+    @property
+    def _metadata(self) -> ArrayMetadata:
+        """The runtime metadata object, without the pending-type-change warning.
+
+        Internal accessor for code that still needs the interpreted metadata
+        classes during the migration to the ``zarr_metadata`` document models.
+        """
         return self.async_array.metadata
 
     @property
@@ -2190,7 +2209,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def fill_value(self) -> Any:
-        return self.metadata.fill_value
+        return self._metadata.fill_value
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -5887,9 +5906,7 @@ async def _update_attributes(
     # Swap in a new metadata object rather than mutating the current one in
     # place: derived state (e.g. the cached ``_future_metadata`` model) is
     # invalidated by metadata object identity.
-    new_metadata = array.metadata.update_attributes(
-        {**array.metadata.attributes, **new_attributes}
-    )
+    new_metadata = array.metadata.update_attributes({**array.metadata.attributes, **new_attributes})
 
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
