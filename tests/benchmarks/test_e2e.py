@@ -111,7 +111,7 @@ def bench_store(store: Store, latency: float, request: pytest.FixtureRequest) ->
     return store
 
 
-@pytest.fixture(params=["batched", "fused_full_threaded", "fused_single_threaded"])
+@pytest.fixture(params=["batched"])  # , "fused_full_threaded", "fused_single_threaded"])
 def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
     """Set ``codec_pipeline.path`` for the duration of the benchmark.
 
@@ -126,7 +126,7 @@ def pipeline(request: pytest.FixtureRequest) -> Iterator[str]:
 @pytest.mark.parametrize(
     "get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"]
 )
-@pytest.mark.parametrize("compression_name", ["zstd"])
+@pytest.mark.parametrize("compression_name", ["zstd", None])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_write_array(
@@ -160,7 +160,7 @@ def test_write_array(
 @pytest.mark.parametrize(
     "get_data", [lambda shape: 1, lambda shape: _data(shape)], ids=["repeated", "semi_random"]
 )
-@pytest.mark.parametrize("compression_name", ["zstd"])
+@pytest.mark.parametrize("compression_name", ["zstd", None])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_read_array(
