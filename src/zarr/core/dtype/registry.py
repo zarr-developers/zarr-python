@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
@@ -207,4 +208,21 @@ class DataTypeRegistry:
                 return val.from_json(data, zarr_format=zarr_format)
             except DataTypeValidationError:
                 pass
+        if (
+            zarr_format == 3
+            and isinstance(data, Mapping)
+            and set(data) <= {"name", "configuration"}
+            and isinstance(data.get("name"), str)
+            and not data.get("configuration")
+        ):
+            # The v3 spec treats a bare name ("uint8") and a name with an
+            # empty or absent configuration ({"name": "uint8"}) as equivalent
+            # spellings of the same data type, but each ZDType's from_json
+            # typically only accepts the spelling its own to_json emits.
+            # Retry with the bare-name spelling so documents written by
+            # implementations that normalize to the object form still parse.
+            name = data["name"]
+            assert isinstance(name, str)
+            with contextlib.suppress(ValueError):
+                return self.match_json(name, zarr_format=zarr_format)
         raise ValueError(f"No Zarr data type found that matches {data!r}")
