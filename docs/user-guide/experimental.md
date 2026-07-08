@@ -1,6 +1,8 @@
 # Experimental features
 
-This section contains documentation for experimental Zarr Python features. The features described here are exciting and potentially useful, but also volatile -- we might change them at any time. Take this into account if you consider depending on these features.
+This section contains documentation for experimental Zarr Python features. The features described here are exciting and potentially useful, but also volatile -- we might change them at any time. Take this into account if you consider depending on these features. See the
+[experimental API policy](../contributing.md#experimental-api-policy) for the stability
+guarantees (or lack thereof) that apply to everything documented on this page.
 
 ## `CacheStore`
 
@@ -16,10 +18,11 @@ when the cache reaches its maximum size.
 
 Because the `CacheStore` uses an ordinary Zarr `Store` object as the caching layer, you can reuse the data stored in the cache later.
 
-> **Note:** The CacheStore is a wrapper store that maintains compatibility with the full
-> `zarr.abc.store.Store` API while adding transparent caching functionality.
+!!! note
+    The CacheStore is a wrapper store that maintains compatibility with the full
+    `zarr.abc.store.Store` API while adding transparent caching functionality.
 
-## Basic Usage
+### Basic Usage
 
 Creating a CacheStore requires both a source store and a cache store. The cache store
 can be any Store implementation, providing flexibility in cache persistence:
@@ -51,7 +54,7 @@ zarr_array[:] = np.random.random((100, 100))
 The dual-store architecture allows you to use different store types for source and cache,
 such as a remote store for source data and a local store for persistent caching.
 
-## Performance Benefits
+### Performance Benefits
 
 The CacheStore provides significant performance improvements for repeated data access:
 
@@ -79,20 +82,15 @@ print(f"Speedup is {speedup}")
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
 
 
-## Cache Configuration
+### Cache Configuration
 
 The CacheStore can be configured with several parameters:
 
-**max_size**: Controls the maximum size of cached data in bytes
+**max_size**: Controls the maximum size of cached data in bytes. The
+[Basic Usage](#basic-usage) example above sets a 256MB limit with
+`max_size=256*1024*1024`:
 
 ```python exec="true" session="experimental" source="above"
-# 256MB cache with size limit
-cache = CacheStore(
-    store=source_store,
-    cache_store=cache_store,
-    max_size=256*1024*1024
-)
-
 # Unlimited cache size (use with caution)
 cache = CacheStore(
     store=source_store,
@@ -137,14 +135,15 @@ cache = CacheStore(
 )
 ```
 
-## Cache Statistics
+### Cache Statistics
 
 The CacheStore provides statistics to monitor cache performance and state:
 
 ```python exec="true" session="experimental" source="above"
 # Access some data to generate cache activity
-data = zarr_array[0:50, 0:50]  # First access - cache miss
-data = zarr_array[0:50, 0:50]  # Second access - cache hit
+# (these chunks were already cached by the reads above, so both accesses are cache hits)
+data = zarr_array[0:50, 0:50]
+data = zarr_array[0:50, 0:50]
 
 # Get comprehensive cache information
 info = cached_store.cache_info()
@@ -159,7 +158,7 @@ print(info['cache_set_data'])
 
 The `cache_info()` method returns a dictionary with detailed information about the cache state.
 
-## Cache Management
+### Cache Management
 
 The CacheStore provides methods for manual cache management:
 
@@ -177,7 +176,7 @@ assert info['current_size'] == 0
 The `clear_cache()` method is an async method that clears both the cache store
 (if it supports the `clear` method) and all internal tracking data.
 
-## Best Practices
+### Best Practices
 
 1. **Choose appropriate cache store**: Use MemoryStore for fast temporary caching or LocalStore for persistent caching
 2. **Size the cache appropriately**: Set `max_size` based on available storage and expected data access patterns
@@ -186,12 +185,12 @@ The `clear_cache()` method is an async method that clears both the cache store
 5. **Consider data locality**: Group related data accesses together to improve cache efficiency
 6. **Set appropriate expiration**: Use `max_age_seconds` for time-sensitive data or "infinity" for static data
 
-## Working with Different Store Types
+### Working with Different Store Types
 
 The CacheStore can wrap any store that implements the `zarr.abc.store.Store` interface
 and use any store type for the cache backend:
 
-### Local Store with Memory Cache
+#### Local Store with Memory Cache
 
 ```python exec="true" session="experimental-memory-cache" source="above"
 from zarr.storage import LocalStore, MemoryStore
@@ -208,7 +207,7 @@ cached_store = CacheStore(
 )
 ```
 
-### Memory Store with Persistent Cache
+#### Memory Store with Persistent Cache
 
 ```python exec="true" session="experimental-local-cache" source="above"
 from tempfile import mkdtemp
@@ -228,7 +227,7 @@ cached_store = CacheStore(
 The dual-store architecture provides flexibility in choosing the best combination
 of source and cache stores for your specific use case.
 
-## Examples from Real Usage
+### Examples from Real Usage
 
 Here's a complete example demonstrating cache effectiveness:
 

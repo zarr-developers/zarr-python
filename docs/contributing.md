@@ -20,7 +20,7 @@ g = zarr.group()
 
 2. An explanation of why the current behaviour is wrong/not desired, and what you expect instead.
 
-3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` property. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
+3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` attribute. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
 ```console
 python
@@ -133,8 +133,6 @@ hatch env run --env test.py3.12-optional run
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
 
-> **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
-
 ### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
@@ -215,9 +213,9 @@ The documentation can be built locally by running:
 hatch --env docs run build
 ```
 
-The resulting built documentation will be available in the `docs/_build/html` folder.
+The resulting built documentation will be available in the `site` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
+Hatch can also be used to serve continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
 
 ```bash
 hatch --env docs run serve

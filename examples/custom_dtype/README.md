@@ -11,12 +11,17 @@ The example shows how to:
 
 ## Running the Example
 
-```bash
-python examples/custom_dtype/custom_dtype.py
-```
-
-Or run with uv:
+The script declares its dependencies inline
+([PEP 723](https://peps.python.org/pep-0723/)), so the easiest way to run it is
+with [uv](https://docs.astral.sh/uv/), which installs them automatically:
 
 ```bash
 uv run examples/custom_dtype/custom_dtype.py
+```
+
+Alternatively, run it with plain Python, in which case you must first install
+`zarr`, `ml_dtypes`, and `pytest` yourself:
+
+```bash
+python examples/custom_dtype/custom_dtype.py
 ```
