@@ -10,7 +10,7 @@ field) reflects the original Zarr v3.0 reading of the extension-field
 rules. Under the strict Zarr v3.1 reading, every extension field must
 also include a `name: str` key, which would make this shape — and every
 real-world consolidated metadata document in the wild — out of spec.
-See `ExtensionFieldV3` and
+See `ZarrV3ExtensionField` and
 https://github.com/zarr-developers/zarr-specs/issues/371 for the
 ongoing discussion.
 """
@@ -20,11 +20,11 @@ from typing import Literal
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3.array import ArrayMetadataV3
-from zarr_metadata.v3.group import GroupMetadataV3
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 
-class ConsolidatedMetadataV3(TypedDict):
+class ZarrV3ConsolidatedMetadataJSON(TypedDict):
     """
     Inline consolidated metadata embedded in a v3 group.
 
@@ -35,9 +35,9 @@ class ConsolidatedMetadataV3(TypedDict):
 
     kind: Literal["inline"]
     must_understand: Literal[False]
-    metadata: Mapping[str, ArrayMetadataV3 | GroupMetadataV3]
+    metadata: Mapping[str, ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON]
 
 
 __all__ = [
-    "ConsolidatedMetadataV3",
+    "ZarrV3ConsolidatedMetadataJSON",
 ]

@@ -21,11 +21,11 @@ from typing import Any, Final, Literal, cast
 from typing_extensions import TypeIs
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2.array import ArrayMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2
-from zarr_metadata.v3._common import MetadataV3
-from zarr_metadata.v3.array import ArrayMetadataV3
-from zarr_metadata.v3.group import GroupMetadataV3
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json"]
 """Machine-readable classification of a `ValidationProblem`.
@@ -112,33 +112,33 @@ def parse_json(value: object) -> JSONValue:
 # this set is an extension field. Built from the TypedDict's required/optional
 # key sets (which resolve inherited keys, unlike `__annotations__`).
 ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
-    ArrayMetadataV3.__required_keys__
+    ZarrV3ArrayMetadataJSON.__required_keys__
 )
 ARRAY_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
-    ArrayMetadataV3.__optional_keys__
+    ZarrV3ArrayMetadataJSON.__optional_keys__
 )
 ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
     ARRAY_METADATA_REQUIRED_KEYS_V3 | ARRAY_METADATA_OPTIONAL_KEYS_V3
 )
 
 ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
-    ArrayMetadataV2.__required_keys__
+    ZarrV2ArrayMetadataJSON.__required_keys__
 )
 
 # The standard top-level keys of a v3 group metadata document. Anything outside
 # this set is an extension field.
 GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
-    GroupMetadataV3.__required_keys__
+    ZarrV3GroupMetadataJSON.__required_keys__
 )
 GROUP_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
-    GroupMetadataV3.__optional_keys__
+    ZarrV3GroupMetadataJSON.__optional_keys__
 )
 GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
     GROUP_METADATA_REQUIRED_KEYS_V3 | GROUP_METADATA_OPTIONAL_KEYS_V3
 )
 
 GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
-    GroupMetadataV2.__required_keys__
+    ZarrV2GroupMetadataJSON.__required_keys__
 )
 
 
@@ -196,17 +196,17 @@ def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
     return problems
 
 
-def is_metadata_field_v3(value: object) -> TypeIs[MetadataV3]:
+def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
     """Whether `value` is a v3 metadata field: a bare name or a named config."""
     return not validate_metadata_field_v3(value)
 
 
-def parse_metadata_field_v3(value: object) -> MetadataV3:
-    """Return `value` narrowed to `MetadataV3`, or raise `MetadataValidationError`."""
+def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
+    """Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or raise `MetadataValidationError`."""
     problems = validate_metadata_field_v3(value)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(MetadataV3, value)
+    return cast(ZarrV3MetadataFieldJSON, value)
 
 
 def _is_int_sequence(value: object) -> bool:
@@ -355,17 +355,17 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
     return problems
 
 
-def is_array_metadata_v3(value: object) -> TypeIs[ArrayMetadataV3]:
+def is_array_metadata_v3(value: object) -> TypeIs[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v3 array metadata document."""
     return not validate_array_metadata_v3(value)
 
 
-def parse_array_metadata_v3(value: object) -> ArrayMetadataV3:
-    """Return `value` narrowed to `ArrayMetadataV3`, or raise `MetadataValidationError`."""
+def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
+    """Return `value` narrowed to `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
     problems = validate_array_metadata_v3(value)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ArrayMetadataV3, value)
+    return cast(ZarrV3ArrayMetadataJSON, value)
 
 
 def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
@@ -436,17 +436,17 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
     return problems
 
 
-def is_array_metadata_v2(value: object) -> TypeIs[ArrayMetadataV2]:
+def is_array_metadata_v2(value: object) -> TypeIs[ZarrV2ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v2 array metadata document."""
     return not validate_array_metadata_v2(value)
 
 
-def parse_array_metadata_v2(value: object) -> ArrayMetadataV2:
-    """Return `value` narrowed to `ArrayMetadataV2`, or raise `MetadataValidationError`."""
+def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
+    """Return `value` narrowed to `ZarrV2ArrayMetadataJSON`, or raise `MetadataValidationError`."""
     problems = validate_array_metadata_v2(value)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ArrayMetadataV2, value)
+    return cast(ZarrV2ArrayMetadataJSON, value)
 
 
 def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
@@ -455,7 +455,7 @@ def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
     Locs are value-relative (the caller prefixes with `consolidated_metadata`
     where appropriate). Entries recurse into the array and group document
     validators, so a validator verdict always agrees with what
-    `ConsolidatedMetadataModelV3.from_json` accepts.
+    `ZarrV3ConsolidatedMetadata.from_json` accepts.
     """
     if not isinstance(value, Mapping):
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
@@ -531,17 +531,17 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     return problems
 
 
-def is_group_metadata_v3(value: object) -> TypeIs[GroupMetadataV3]:
+def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v3 group metadata document."""
     return not validate_group_metadata_v3(value)
 
 
-def parse_group_metadata_v3(value: object) -> GroupMetadataV3:
-    """Return `value` narrowed to `GroupMetadataV3`, or raise `MetadataValidationError`."""
+def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
+    """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
     problems = validate_group_metadata_v3(value)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(GroupMetadataV3, value)
+    return cast(ZarrV3GroupMetadataJSON, value)
 
 
 def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
@@ -560,17 +560,17 @@ def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
     return problems
 
 
-def is_group_metadata_v2(value: object) -> TypeIs[GroupMetadataV2]:
+def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document."""
     return not validate_group_metadata_v2(value)
 
 
-def parse_group_metadata_v2(value: object) -> GroupMetadataV2:
-    """Return `value` narrowed to `GroupMetadataV2`, or raise `MetadataValidationError`."""
+def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
+    """Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or raise `MetadataValidationError`."""
     problems = validate_group_metadata_v2(value)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(GroupMetadataV2, value)
+    return cast(ZarrV2GroupMetadataJSON, value)
 
 
 def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:

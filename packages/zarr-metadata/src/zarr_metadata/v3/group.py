@@ -9,14 +9,14 @@ from typing import Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3.array import ExtensionFieldV3
+from zarr_metadata.v3.array import ZarrV3ExtensionField
 
 
-class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):
+class ZarrV3GroupMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 
-    Extra keys are permitted if they conform to `ExtensionFieldV3`.
+    Extra keys are permitted if they conform to `ZarrV3ExtensionField`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadata
     """
@@ -26,11 +26,11 @@ class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):
+class ZarrV3GroupMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3ExtensionField):
     """
-    Partial form of `GroupMetadataV3`: every field is `NotRequired`.
+    Partial form of `ZarrV3GroupMetadataJSON`: every field is `NotRequired`.
 
-    Field annotations and `extra_items=` mirror `GroupMetadataV3` exactly.
+    Field annotations and `extra_items=` mirror `ZarrV3GroupMetadataJSON` exactly.
     The only difference is `total=False`, which makes every key optional
     at the type level.
 
@@ -40,12 +40,12 @@ class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV
     into a complete document elsewhere.
 
     The `NotRequired[...]` wrapper on `attributes` is intentional: keeping it
-    preserves byte-identical `__annotations__` with `GroupMetadataV3` so the
+    preserves byte-identical `__annotations__` with `ZarrV3GroupMetadataJSON` so the
     `==` check in `tests/test_partial_equivalence.py` passes without
     special-casing that field (PEP 655 explicitly permits `NotRequired` inside
     `total=False`).
 
-    Drift between this type and `GroupMetadataV3` is prevented by
+    Drift between this type and `ZarrV3GroupMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.
     """
 
@@ -55,6 +55,6 @@ class GroupMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV
 
 
 __all__ = [
-    "GroupMetadataV3",
-    "GroupMetadataV3Partial",
+    "ZarrV3GroupMetadataJSON",
+    "ZarrV3GroupMetadataJSONPartial",
 ]

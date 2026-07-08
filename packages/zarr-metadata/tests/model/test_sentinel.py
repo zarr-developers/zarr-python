@@ -21,11 +21,11 @@ from typing_extensions import Sentinel
 
 from zarr_metadata.model import (
     UNSET,
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV3,
-    ConsolidatedMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV3,
+    ZarrV2ArrayMetadata,
+    ZarrV2GroupMetadata,
+    ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
 )
 
 # Whole-model cases covering the states we know are problematic for
@@ -33,20 +33,20 @@ from zarr_metadata.model import (
 # same fields in the present state (including present-but-empty, which must
 # stay distinct from absent), and UNSET nested inside consolidated metadata.
 MODEL_CASES = {
-    "array-v3-dimension-names-unset": ArrayMetadataModelV3.create_default(shape=(4,)),
-    "array-v3-dimension-names-set": ArrayMetadataModelV3.create_default(shape=(2, 2)).update(
+    "array-v3-dimension-names-unset": ZarrV3ArrayMetadata.create_default(shape=(4,)),
+    "array-v3-dimension-names-set": ZarrV3ArrayMetadata.create_default(shape=(2, 2)).update(
         dimension_names=("x", None)
     ),
-    "array-v2-attributes-unset": ArrayMetadataModelV2.create_default(shape=(4,)),
-    "array-v2-attributes-empty": ArrayMetadataModelV2.create_default(shape=(4,), attributes={}),
-    "group-v2-attributes-unset": GroupMetadataModelV2.create_default(),
-    "group-v2-attributes-set": GroupMetadataModelV2.create_default(attributes={"a": 1}),
-    "group-v3-consolidated-unset": GroupMetadataModelV3.create_default(),
-    "group-v3-consolidated-with-unset-inside": GroupMetadataModelV3.create_default(
-        consolidated_metadata=ConsolidatedMetadataModelV3(
+    "array-v2-attributes-unset": ZarrV2ArrayMetadata.create_default(shape=(4,)),
+    "array-v2-attributes-empty": ZarrV2ArrayMetadata.create_default(shape=(4,), attributes={}),
+    "group-v2-attributes-unset": ZarrV2GroupMetadata.create_default(),
+    "group-v2-attributes-set": ZarrV2GroupMetadata.create_default(attributes={"a": 1}),
+    "group-v3-consolidated-unset": ZarrV3GroupMetadata.create_default(),
+    "group-v3-consolidated-with-unset-inside": ZarrV3GroupMetadata.create_default(
+        consolidated_metadata=ZarrV3ConsolidatedMetadata(
             metadata={
-                "child": ArrayMetadataModelV3.create_default(shape=(4,)),
-                "subgroup": GroupMetadataModelV3.create_default(),
+                "child": ZarrV3ArrayMetadata.create_default(shape=(4,)),
+                "subgroup": ZarrV3GroupMetadata.create_default(),
             }
         )
     ),
@@ -65,10 +65,7 @@ def test_unset_copy_preserves_identity() -> None:
 
 @pytest.mark.parametrize("model", MODEL_CASES.values(), ids=MODEL_CASES.keys())
 def test_model_pickle_round_trip(
-    model: ArrayMetadataModelV2
-    | ArrayMetadataModelV3
-    | GroupMetadataModelV2
-    | GroupMetadataModelV3,
+    model: ZarrV2ArrayMetadata | ZarrV3ArrayMetadata | ZarrV2GroupMetadata | ZarrV3GroupMetadata,
 ) -> None:
     restored = pickle.loads(pickle.dumps(model))
     assert restored == model
@@ -76,10 +73,7 @@ def test_model_pickle_round_trip(
 
 @pytest.mark.parametrize("model", MODEL_CASES.values(), ids=MODEL_CASES.keys())
 def test_model_deepcopy(
-    model: ArrayMetadataModelV2
-    | ArrayMetadataModelV3
-    | GroupMetadataModelV2
-    | GroupMetadataModelV3,
+    model: ZarrV2ArrayMetadata | ZarrV3ArrayMetadata | ZarrV2GroupMetadata | ZarrV3GroupMetadata,
 ) -> None:
     assert copy.deepcopy(model) == model
 
