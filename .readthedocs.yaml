@@ -8,6 +8,11 @@ build:
     install:
       - pip install --upgrade pip
       - pip install .[remote] --group docs
+      # The in-tree zarr-metadata: zarr needs the unreleased model layer
+      # (ships in zarr-metadata 0.4.0); the project install above resolves
+      # the released 0.3.x from PyPI, which lacks it. Remove once the
+      # zarr-metadata floor in pyproject.toml is >=0.4.0.
+      - pip install ./packages/zarr-metadata
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];

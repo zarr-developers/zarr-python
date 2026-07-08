@@ -14,6 +14,7 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     ZarrV3NamedConfig,
 )
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(metadata=array_metadata())  # type: ignore[misc]
+@given(metadata=array_metadata())
 @settings(max_examples=100)
 def test_array_metadata_round_trip(metadata: ArrayV2Metadata | ArrayV3Metadata) -> None:
     """Runtime -> model -> runtime is the identity (runtime equality compares
@@ -48,7 +49,7 @@ def test_array_metadata_round_trip(metadata: ArrayV2Metadata | ArrayV3Metadata) 
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(metadata=array_metadata())  # type: ignore[misc]
+@given(metadata=array_metadata())
 @settings(max_examples=100)
 def test_array_metadata_model_stable(metadata: ArrayV2Metadata | ArrayV3Metadata) -> None:
     """The model's own document form re-parses to an equal model: conversion
@@ -133,7 +134,10 @@ def test_group_metadata_v3_round_trip(attributes: dict[str, object]) -> None:
     metadata = GroupMetadata(attributes=attributes, zarr_format=3)
     model = group_metadata_to_model(metadata)
     assert isinstance(model, ZarrV3GroupMetadata)
-    assert model.consolidated_metadata is UNSET
+    # Absence is asserted on the document form rather than via `is UNSET`:
+    # mypy lacks PEP 661 sentinel narrowing (python/mypy#21647) and marks
+    # statements after a sentinel check unreachable.
+    assert "consolidated_metadata" not in model.to_json()
     assert group_metadata_from_model(model) == metadata
 
 
@@ -175,7 +179,9 @@ def test_group_metadata_v3_consolidated_round_trip() -> None:
     )
     model = group_metadata_to_model(metadata)
     assert isinstance(model, ZarrV3GroupMetadata)
-    assert model.consolidated_metadata is not UNSET
+    # isinstance rather than `is not UNSET`: mypy lacks PEP 661 sentinel
+    # narrowing (python/mypy#21647).
+    assert isinstance(model.consolidated_metadata, ZarrV3ConsolidatedMetadata)
     # The model holds consolidated entries flat, keyed by full path.
     assert set(model.consolidated_metadata.metadata) == {
         "child-group",

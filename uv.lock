@@ -6,12 +6,6 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
-[manifest]
-members = [
-    "zarr",
-    "zarr-metadata",
-]
-
 [[package]]
 name = "aiobotocore"
 version = "3.7.0"
@@ -4190,12 +4184,6 @@ name = "zarr-metadata"
 source = { editable = "packages/zarr-metadata" }
 dependencies = [
     { name = "typing-extensions" },
-]
-
-[package.dev-dependencies]
-test = [
-    { name = "pydantic" },
-    { name = "pytest" },
 ]
 
 [package.metadata]

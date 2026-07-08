@@ -37,7 +37,14 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
-    'zarr-metadata>=0.4.0',
+    # zarr needs the zarr-metadata model layer, which first ships in
+    # zarr-metadata 0.4.0 (not yet released). Until then the floor names the
+    # newest release on PyPI so plain-pip resolvers can proceed, and every
+    # dev/CI environment installs the in-tree package instead: uv flows via
+    # [tool.uv.sources], hatch envs via the `{root:uri}` direct reference in
+    # their extra-dependencies, readthedocs via an extra install step.
+    # TODO(release): bump to 'zarr-metadata>=0.4.0' once it is released.
+    'zarr-metadata>=0.3',
 ]
 
 dynamic = [
@@ -148,15 +155,15 @@ dev = [
     "mypy==2.1.0",
 ]
 
-# The repo is a uv workspace so that `zarr` can depend on the in-tree
-# `packages/zarr-metadata` during development and CI. Released wheels depend on
-# the published zarr-metadata distribution; the workspace source below only
-# affects resolution from a checkout (uv.lock, `uv run`, hatch envs using uv).
-[tool.uv.workspace]
-members = ["packages/zarr-metadata"]
-
+# uv flows from a checkout (uv.lock, `uv sync`, `uv run`) resolve
+# zarr-metadata to the in-tree package. This is a path source, deliberately
+# NOT a uv workspace: workspace membership would make `uv sync` inside
+# packages/zarr-metadata resolve the whole workspace, dragging zarr's
+# requires-python (>=3.12) and dependency set into the subpackage's own CI
+# (which tests down to Python 3.11). Released wheels depend on the published
+# zarr-metadata distribution; this source only affects checkouts.
 [tool.uv.sources]
-zarr-metadata = { workspace = true }
+zarr-metadata = { path = "packages/zarr-metadata", editable = true }
 
 [tool.coverage.report]
 exclude_also = [
@@ -180,11 +187,22 @@ version.raw-options = { git_describe_command = "git describe --dirty --tags --lo
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
 
+# Hatch envs resolve project dependencies from PyPI and do not read
+# [tool.uv.sources], so each env that defines its own environment installs the
+# in-tree zarr-metadata via a direct reference. Hatch replaces (does not
+# merge) extra-dependencies on inheritance, so every env repeats the line.
+# Remove these once zarr-metadata 0.4.0 is on PyPI and the floor is bumped.
 [tool.hatch.envs.dev]
 dependency-groups = ["dev"]
+extra-dependencies = [
+    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
+]
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
+extra-dependencies = [
+    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
+]
 
 [tool.hatch.envs.test.env-vars]
 
@@ -225,6 +243,7 @@ list-env = "pip list"
 [tool.hatch.envs.gputest]
 template = "test"
 extra-dependencies = [
+    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
     "universal_pathlib",
     # Needed so tests/test_docs.py is collectable under `pytest -m gpu`; otherwise its
     # module-level importorskip("pytest_examples") skips the whole module and the gpu
@@ -247,6 +266,7 @@ run = "pytest -m gpu --ignore tests/benchmarks"
 template = 'test'
 python = "3.14"
 extra-dependencies = [
+    'zarr-metadata @ {root:uri}/packages/zarr-metadata',
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
@@ -272,13 +292,16 @@ python = "3.12"
 features = ["remote"]
 dependency-groups = ["remote-tests"]
 extra-dependencies = [
+    'zarr-metadata @ {root:uri}/packages/zarr-metadata',
     'packaging==22.*',
     'numpy==2.0.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
-    'typing_extensions==4.14.*',
+    # 4.16 is the effective minimum: zarr-metadata requires >=4.16 for
+    # reference-picklable PEP 661 sentinels.
+    'typing_extensions==4.16.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
 ]
@@ -289,6 +312,9 @@ installer = "uv"
 [tool.hatch.envs.docs]
 features = ['remote']
 dependency-groups = ['docs']
+extra-dependencies = [
+    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
+]
 
 [tool.hatch.envs.docs.env-vars]
 DISABLE_MKDOCS_2_WARNING = "true"
@@ -305,6 +331,7 @@ description = "Test environment for validating executable code blocks in documen
 features = ['remote']
 dependency-groups = ['remote-tests']
 extra-dependencies = [
+    "zarr-metadata @ {root:uri}/packages/zarr-metadata",
     "pytest-examples",
 ]
 

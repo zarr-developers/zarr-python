@@ -29,8 +29,9 @@ from zarr.storage import MemoryStore
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from zarr import Array, Group
+    from zarr import Group
     from zarr.core.common import ZarrFormat
+    from zarr.types import AnyArray
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -186,7 +187,7 @@ NODE_CASES = {
 
 
 @pytest.mark.parametrize("node_factory", NODE_CASES.values(), ids=NODE_CASES.keys())
-def test_node_picklable_with_populated_cache(node_factory: Callable[[], Array | Group]) -> None:
+def test_node_picklable_with_populated_cache(node_factory: Callable[[], AnyArray | Group]) -> None:
     """A node whose _future_metadata cache is populated pickles, and the
     restored node re-derives an equal model. The cache itself is derived
     state and is excluded from pickled state."""
