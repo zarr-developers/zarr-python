@@ -8,6 +8,14 @@ leak into a document as a spelling the writer did not intend.
 
 Check with identity: `if model.dimension_names is UNSET: ...`.
 
+Because the contract is identity, the sentinel must never be reconstructed
+from state: pickling and copying work by *reference* (typing_extensions >=
+4.16 implements `Sentinel.__reduce__` as a lookup of the sentinel's name on
+its defining module), so `pickle.loads(pickle.dumps(UNSET)) is UNSET` holds
+across process boundaries, and models holding `UNSET` pickle and deep-copy
+freely. Earlier typing_extensions releases refused to pickle sentinels
+outright — hence the `>=4.16` floor in this package's dependencies.
+
 Checker support (PEP 661 is Final; stdlib `sentinel` arrives in Python
 3.15): ty types this spelling exactly, including `is`/`is not` narrowing.
 Pyright supports it but a regression (1.1.405+, tracked as
