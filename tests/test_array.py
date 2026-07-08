@@ -2311,7 +2311,7 @@ def test_with_config(config: ArrayConfigParams) -> None:
     new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
     new_array_config_dict = source_array.with_config(config).config.to_dict()
 
-    for key in source_config:
+    for key in source_config:  # pylint: disable=consider-using-dict-items
         if key in config:
             assert new_async_array_config_dict[key] == config[key]  # type: ignore[literal-required]
             assert new_array_config_dict[key] == config[key]  # type: ignore[literal-required]

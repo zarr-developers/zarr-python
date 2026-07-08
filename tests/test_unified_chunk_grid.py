@@ -952,11 +952,7 @@ def test_e2e_chunk_grid_serializes(
     tmp_path: Path, shape: tuple[int, ...], chunks: Any, grid_type_name: str, grid_name: str
 ) -> None:
     """Array metadata serializes chunk_grid with the correct type and name"""
-    from zarr.core.metadata.v3 import (
-        ArrayV3Metadata,
-        RectilinearChunkGridMetadata,
-        RegularChunkGridMetadata,
-    )
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
     grid_type = (
         RegularChunkGridMetadata
@@ -979,7 +975,7 @@ def test_e2e_chunk_grid_serializes(
 
 def test_e2e_chunk_grid_name_roundtrip_preserves_rectilinear(tmp_path: Path) -> None:
     """A rectilinear grid with uniform edges stays 'rectilinear' through to_dict/from_dict."""
-    from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGridMetadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
     meta_dict: dict[str, Any] = {
         "zarr_format": 3,
@@ -1004,7 +1000,7 @@ def test_e2e_chunk_grid_name_roundtrip_preserves_rectilinear(tmp_path: Path) -> 
 
 def test_e2e_chunk_grid_name_regular_from_dict(tmp_path: Path) -> None:
     """A 'regular' chunk grid name is preserved through from_dict."""
-    from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
     meta_dict: dict[str, Any] = {
         "zarr_format": 3,
@@ -1036,7 +1032,6 @@ def test_sharding_accepts_rectilinear_outer_grid() -> None:
     """ShardingCodec.validate should not reject rectilinear outer grids."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
     grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 30), (50, 50)))
@@ -1052,7 +1047,6 @@ def test_sharding_rejects_non_divisible_rectilinear() -> None:
     """Rectilinear shard sizes not divisible by inner chunk_shape should raise."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
     grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 17), (50, 50)))
@@ -1069,7 +1063,6 @@ def test_sharding_accepts_divisible_rectilinear() -> None:
     """Rectilinear shard sizes all divisible by inner chunk_shape should pass."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     codec = ShardingCodec(chunk_shape=(5, 5))
     grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 30), (50, 50)))
@@ -1085,7 +1078,6 @@ def test_sharding_rejects_non_divisible_among_repeated_edges() -> None:
     """Shard validation catches a non-divisible edge even among many repeated valid ones."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     # edges (10, 10, 7) — 7 is not divisible by 5
     codec = ShardingCodec(chunk_shape=(5,))
@@ -1098,7 +1090,6 @@ def test_sharding_accepts_all_repeated_divisible_edges() -> None:
     """Shard validation passes when all distinct edges are divisible by inner chunk size."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
     # edges (10, 10, 20, 10) — unique values {10, 20}, both divisible by 5
     codec = ShardingCodec(chunk_shape=(5,))
@@ -2658,7 +2649,7 @@ def test_nchunks_rectilinear(
     shape: tuple[int, ...], chunks: list[list[int]], expected: int
 ) -> None:
     """Array.nchunks reports correct total chunk count for rectilinear arrays"""
-    store = MemoryStore()
+    store = zarr.storage.MemoryStore()
     a = zarr.create_array(store, shape=shape, chunks=chunks, dtype="int32")
     assert a.nchunks == expected
 
@@ -2672,7 +2663,7 @@ def test_iter_chunk_regions_rectilinear() -> None:
     """_iter_chunk_regions should work for rectilinear arrays."""
     from zarr.core.array import _iter_chunk_regions
 
-    store = MemoryStore()
+    store = zarr.storage.MemoryStore()
     a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
     regions = list(_iter_chunk_regions(a))
     assert len(regions) == 2
@@ -2818,15 +2809,13 @@ def rectilinear_chunks_st(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[li
 @st.composite
 def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
     """Generate a rectilinear zarr array with random data, shape, and chunks."""
-    from zarr.storage import MemoryStore
-
     ndim = draw(st.integers(min_value=1, max_value=3))
     shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
     chunk_shapes = draw(rectilinear_chunks_st(shape=shape))
     event(f"ndim={ndim}, shape={shape}")
 
     a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
-    store = MemoryStore()
+    store = zarr.storage.MemoryStore()
     z = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
     z[:] = a
     return z, a

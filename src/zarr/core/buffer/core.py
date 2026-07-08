@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -259,7 +258,6 @@ class Buffer(ABC):
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        ...
 
     def as_buffer_like(self) -> BytesLike:
         """Returns the buffer as an object that implements the Python buffer protocol.
@@ -302,7 +300,6 @@ class Buffer(ABC):
     @abstractmethod
     def combine(self, others: Iterable[Buffer]) -> Self:
         """Concatenate many buffers"""
-        ...
 
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
@@ -479,7 +476,6 @@ class NDBuffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        ...
 
     def as_scalar(self) -> ScalarType:
         """Returns the buffer as a scalar value"""

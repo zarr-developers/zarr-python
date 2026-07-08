@@ -459,6 +459,7 @@ class ManagedMemoryStore(MemoryStore):
     path: str
 
     def __init__(self, name: str | None = None, *, path: str = "", read_only: bool = False) -> None:
+        # pylint: disable=super-init-not-called
         # Skip MemoryStore.__init__ and call Store.__init__ directly
         # because we manage _store_dict via the registry, not via a user-supplied
         # MutableMapping.  If MemoryStore.__init__ ever adds logic beyond setting
@@ -499,7 +500,7 @@ class ManagedMemoryStore(MemoryStore):
     ) -> ManagedMemoryStore:
         """Internal: create a store from an existing managed dict."""
         store = object.__new__(cls)
-        Store.__init__(store, read_only=read_only)
+        Store.__init__(store, read_only=read_only)  # pylint: disable=unnecessary-dunder-call
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)

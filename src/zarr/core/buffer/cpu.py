@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Self
 
-    from zarr.core.buffer.core import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
 
 
@@ -37,15 +36,7 @@ class Buffer(core.Buffer):
     Notes
     -----
     This buffer is untyped, so all indexing and sizes are in bytes.
-
-    Parameters
-    ----------
-    array_like
-        array-like object that must be 1-dim, contiguous, and byte dtype.
     """
-
-    def __init__(self, array_like: ArrayLike) -> None:
-        super().__init__(array_like)
 
     @classmethod
     def create_zero_length(cls) -> Self:
@@ -134,15 +125,7 @@ class NDBuffer(core.NDBuffer):
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
-
-    Parameters
-    ----------
-    array
-        ndarray-like object that is convertible to a regular Numpy array.
     """
-
-    def __init__(self, array: NDArrayLike) -> None:
-        super().__init__(array)
 
     @classmethod
     def create(

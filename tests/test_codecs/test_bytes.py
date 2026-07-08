@@ -183,7 +183,7 @@ def test_endian_class_imports_silently() -> None:
     """
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        from zarr.codecs.bytes import Endian as _Endian  # noqa: F401
+        from zarr.codecs.bytes import Endian as _Endian  # noqa: F401  # pylint: disable=reimported
 
 
 def test_bytes_codec_init_with_enum_instance_warns() -> None:

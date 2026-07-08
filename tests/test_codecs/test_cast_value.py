@@ -235,8 +235,6 @@ def test_encode_decode_roundtrip(
     case: Expect[tuple[str, str], np.ndarray[Any, np.dtype[Any]]],
 ) -> None:
     """Small integer data survives encode → decode for each dtype pair."""
-    import zarr
-
     source_dtype, target_dtype = case.input
     arr = zarr.create_array(
         store={},
@@ -267,8 +265,6 @@ def test_float_to_int_rounding(
     case: Expect[np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]]],
 ) -> None:
     """Fractional float values are truncated towards zero when cast to int32."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=case.input.shape,
@@ -298,8 +294,6 @@ def test_out_of_range_clamp(
     case: Expect[np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]]],
 ) -> None:
     """Values outside the int8 range are clamped to [-128, 127]."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=case.input.shape,
@@ -334,8 +328,6 @@ def test_compute_encoded_size() -> None:
 @requires_cast_value_rs
 def test_scalar_map_encode_decode_roundtrip() -> None:
     """Scalar map entries are applied during encode and decode."""
-    import zarr
-
     data = np.array([1.0, float("nan"), 3.0], dtype="float64")
     arr = zarr.create_array(
         store={},
@@ -408,8 +400,6 @@ def test_scalar_map_encode_decode_roundtrip() -> None:
 )
 def test_scalar_map_validation_rejects_invalid(case: ExpectFail[dict[str, Any]]) -> None:
     """Invalid scalar_map entries are rejected at array creation."""
-    import zarr
-
     with case.raises():
         zarr.create_array(
             store={},
@@ -431,7 +421,6 @@ def test_scalar_map_validation_rejects_invalid(case: ExpectFail[dict[str, Any]])
 @requires_cast_value_rs
 def test_combined_with_scale_offset() -> None:
     """scale_offset followed by cast_value compresses float64 into int16 and round-trips."""
-    import zarr
     from zarr.codecs.scale_offset import ScaleOffset
 
     arr = zarr.create_array(

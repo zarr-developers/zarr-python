@@ -49,7 +49,7 @@ PRIMITIVE_DTYPES = [
 ]
 
 
-@pytest.mark.parametrize(("name", "literal_type"), PRIMITIVE_DTYPES, ids=lambda x: str(x))
+@pytest.mark.parametrize(("name", "literal_type"), PRIMITIVE_DTYPES, ids=str)
 def test_primitive_against_literal(name: str, literal_type: object) -> None:
     """The dtype name validates against its declared Literal type."""
     TypeAdapter(literal_type).validate_python(name)
