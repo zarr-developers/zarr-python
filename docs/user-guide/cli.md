@@ -96,7 +96,7 @@ zarr remove-metadata v3 path/to/input.zarr
 By default, this will only allow removal of metadata if a valid alternative exists. For example, you can't
 remove v2 metadata unless v3 metadata exists at that location.
 
-To override this behaviour use `--force`:
+To override this behavior use `--force`:
 
 ```bash
 zarr remove-metadata v3 path/to/input.zarr --force

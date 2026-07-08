@@ -18,7 +18,7 @@ g = zarr.group()
 # etc.
 ```
 
-2. An explanation of why the current behaviour is wrong/not desired, and what you expect instead.
+2. An explanation of why the current behavior is wrong/not desired, and what you expect instead.
 
 3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` attribute. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
@@ -380,7 +380,7 @@ Releases are classified by the library changes contained in that release. This c
 
   Minor releases are safe for most users and downstream projects to adopt.
 
-* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behaviour changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
+* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behavior changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
 
   Users should always feel safe upgrading to the latest patch release.
 

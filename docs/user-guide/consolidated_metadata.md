@@ -85,13 +85,13 @@ print(output.getvalue())
     The keys in the consolidated metadata are sorted prior to writing. Keys are
     sorted in ascending order by path depth, where a path is defined as a sequence
     of strings joined by `"/"`. For keys with the same path length, lexicographic
-    order is used to break the tie. This behaviour ensures deterministic metadata
+    order is used to break the tie. This behavior ensures deterministic metadata
     output for a given group.
 
 ### Controlling the use of consolidated metadata
 
 By default, [`zarr.open_group`][] uses consolidated metadata if it is present, and
-falls back to reading metadata from the store otherwise. This behaviour can be
+falls back to reading metadata from the store otherwise. This behavior can be
 controlled with the `use_consolidated` keyword. Pass `use_consolidated=False` to
 ignore consolidated metadata and always read the metadata of child nodes directly
 from the store:
