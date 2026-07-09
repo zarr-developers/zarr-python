@@ -4,6 +4,7 @@ import os
 import shutil
 import threading
 import time
+import warnings
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -25,7 +26,15 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 # Sentinel value written to a zip entry to mark it as soft-deleted.
 # The ZIP format does not support native deletion, so we overwrite the entry
 # with this value and treat it as absent in all read/list operations.
-_SOFT_DELETE_SENTINEL = b""
+#
+# NOTE: this was originally b"", but that collides with a legitimate
+# zero-length value a caller might legitimately store (Hypothesis's
+# stateful property tests caught this: setting a key value to b""
+# made it indistinguishable from a soft-deleted key, so list()/exists()/
+# get() incorrectly reported it as missing). A long, specific marker is
+# used instead so it cannot plausibly collide with real Zarr payload bytes
+# or a randomly generated test value.
+_SOFT_DELETE_SENTINEL = b"\x00__zarr_zipstore_soft_delete_tombstone_v1__\x00"
 
 
 class ZipStore(Store):
@@ -171,7 +180,7 @@ class ZipStore(Store):
         except KeyError:
             return None
 
-        # Treat soft-deleted entries (empty bytes) as missing
+        # Treat soft-deleted entries (matching the sentinel) as missing
         if data == _SOFT_DELETE_SENTINEL:
             return None
 
@@ -245,19 +254,27 @@ class ZipStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        # Soft-delete: overwrite the entry with an empty byte sentinel.
+        # Soft-delete: overwrite the entry with a sentinel value.
         # The ZIP format has no native delete API, so we mark the entry as
-        # deleted by writing b"" and filtering it out in all read/list paths.
-        # If the key does not exist in the archive, this is a no-op.
+        # deleted by writing the sentinel and filtering it out in all
+        # read/list paths. If the key does not exist in the archive, this
+        # is a no-op.
         self._check_writable()
         with self._lock:
             if key in self._zf.namelist():
-                keyinfo = zipfile.ZipInfo(
-                    filename=key, date_time=time.localtime(time.time())[:6]
-                )
+                keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
                 keyinfo.compress_type = self.compression
                 keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
-                self._zf.writestr(keyinfo, _SOFT_DELETE_SENTINEL)
+                # zipfile.writestr() warns "Duplicate name" whenever a name
+                # is written more than once, which is exactly what
+                # soft-delete does on purpose. That warning is expected and
+                # harmless here (unlike a real overwrite via set(), which
+                # intentionally keeps warning -- see test_api_integration),
+                # so it is suppressed rather than allowed to propagate under
+                # this project's filterwarnings = "error" pytest config.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    self._zf.writestr(keyinfo, _SOFT_DELETE_SENTINEL)
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
