@@ -13,9 +13,9 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3.2.0
+      uses: conda-incubator/setup-miniconda@v4.0.1
       with:
           channels: conda-forge
           environment-file: environment.yml
