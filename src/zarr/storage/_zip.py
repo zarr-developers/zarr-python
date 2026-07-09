@@ -23,18 +23,25 @@ if TYPE_CHECKING:
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
-# Sentinel value written to a zip entry to mark it as soft-deleted.
-# The ZIP format does not support native deletion, so we overwrite the entry
-# with this value and treat it as absent in all read/list operations.
+# Marker used to flag a zip entry as soft-deleted.
 #
-# NOTE: this was originally b"", but that collides with a legitimate
-# zero-length value a caller might legitimately store (Hypothesis's
-# stateful property tests caught this: setting a key value to b""
-# made it indistinguishable from a soft-deleted key, so list()/exists()/
-# get() incorrectly reported it as missing). A long, specific marker is
-# used instead so it cannot plausibly collide with real Zarr payload bytes
-# or a randomly generated test value.
-_SOFT_DELETE_SENTINEL = b"\x00__zarr_zipstore_soft_delete_tombstone_v1__\x00"
+# IMPORTANT: this is stored in the ZipInfo *comment* field (per-entry
+# central-directory metadata), not in the entry's actual data content.
+# An earlier version of this fix wrote a sentinel *value* as the entry's
+# data (first b"", later a long "unique" byte string). Both are unsafe:
+# Zarr payload bytes are arbitrary, so a legitimate value can always
+# equal whatever sentinel is chosen -- Hypothesis's stateful property
+# tests proved this by finding a falsifying example that set a key's
+# value to the literal sentinel bytes, which made list()/exists()/get()
+# incorrectly report a live key as deleted.
+#
+# Using ZipInfo.comment instead sidesteps the problem entirely: it is
+# metadata the store never exposes through set()/get(), so it cannot
+# collide with any byte string a caller stores as data, no matter what
+# that data is. It's also persisted to the zip's central directory, so
+# soft-deletes made in one process are still visible after the archive
+# is closed and reopened elsewhere.
+_SOFT_DELETE_MARKER = b"__zarr_zipstore_soft_delete__"
 
 
 class ZipStore(Store):
@@ -69,15 +76,19 @@ class ZipStore(Store):
 
     Notes
     -----
-    Deletion is implemented as a soft-delete: the zip entry is overwritten with
-    an empty byte string (b"").  All read, exists, and list operations
-    filter out soft-deleted entries so they appear absent to callers.  Because
-    the ZIP format does not allow removing entries, soft-deleted entries remain
-    on disk but are invisible through the store API.
+    Deletion is implemented as a soft-delete: since the ZIP format does not
+    support removing entries in place, `delete()` appends a new, empty entry
+    under the same name and flags it via the ZipInfo *comment* field (not its
+    data). All read, exists, and list operations check that flag and treat
+    matching entries as absent. Because deletions are recorded in the zip's
+    central directory rather than kept only in memory, they remain in effect
+    even if the store is closed and the same file reopened later. The
+    original, physical bytes for a soft-deleted entry stay on disk (the
+    archive is never rewritten), but are unreachable through the store API.
     """
 
     supports_writes: bool = True
-    supports_deletes: bool = True  # soft-delete via empty-byte overwrite
+    supports_deletes: bool = True  # soft-delete via a flagged empty entry
     supports_listing: bool = True
 
     path: Path
@@ -165,6 +176,14 @@ class ZipStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
 
+    def _is_soft_deleted(self, key: str) -> bool:
+        """Return True if `key`'s most recent entry is a soft-delete marker."""
+        try:
+            info = self._zf.getinfo(key)
+        except KeyError:
+            return False
+        return info.comment == _SOFT_DELETE_MARKER
+
     def _get(
         self,
         key: str,
@@ -174,14 +193,12 @@ class ZipStore(Store):
         if not self._is_open:
             self._sync_open()
         # docstring inherited
+        if self._is_soft_deleted(key):
+            return None
         try:
             with self._zf.open(key) as f:
                 data = f.read()
         except KeyError:
-            return None
-
-        # Treat soft-deleted entries (matching the sentinel) as missing
-        if data == _SOFT_DELETE_SENTINEL:
             return None
 
         if byte_range is None:
@@ -230,6 +247,8 @@ class ZipStore(Store):
             keyinfo.external_attr |= 0x10  # MS-DOS directory flag
         else:
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
+        # keyinfo.comment defaults to b"", so a fresh write is never
+        # mistaken for a soft-delete marker regardless of `value`.
         self._zf.writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
@@ -254,17 +273,18 @@ class ZipStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        # Soft-delete: overwrite the entry with a sentinel value.
-        # The ZIP format has no native delete API, so we mark the entry as
-        # deleted by writing the sentinel and filtering it out in all
-        # read/list paths. If the key does not exist in the archive, this
-        # is a no-op.
+        # Soft-delete: append an empty entry under this name, flagged via
+        # the ZipInfo comment field (see _SOFT_DELETE_MARKER above). The
+        # comment -- not the data -- is what read/list/exists check, so
+        # this can never be confused with a real value, including a real
+        # value that happens to be empty bytes.
         self._check_writable()
         with self._lock:
             if key in self._zf.namelist():
                 keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
                 keyinfo.compress_type = self.compression
                 keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
+                keyinfo.comment = _SOFT_DELETE_MARKER
                 # zipfile.writestr() warns "Duplicate name" whenever a name
                 # is written more than once, which is exactly what
                 # soft-delete does on purpose. That warning is expected and
@@ -274,7 +294,7 @@ class ZipStore(Store):
                 # this project's filterwarnings = "error" pytest config.
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", UserWarning)
-                    self._zf.writestr(keyinfo, _SOFT_DELETE_SENTINEL)
+                    self._zf.writestr(keyinfo, b"")
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
@@ -291,13 +311,7 @@ class ZipStore(Store):
         if not self._is_open:
             self._sync_open()
         with self._lock:
-            try:
-                self._zf.getinfo(key)
-            except KeyError:
-                return False
-            # Key physically exists — check it hasn't been soft-deleted
-            with self._zf.open(key) as f:
-                return f.read() != _SOFT_DELETE_SENTINEL
+            return not self._is_soft_deleted(key) and key in self._zf.namelist()
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
@@ -309,12 +323,8 @@ class ZipStore(Store):
                 if key in seen:
                     continue
                 seen.add(key)
-                try:
-                    with self._zf.open(key) as f:
-                        if f.read() != _SOFT_DELETE_SENTINEL:
-                            yield key
-                except KeyError:
-                    pass
+                if not self._is_soft_deleted(key):
+                    yield key
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
