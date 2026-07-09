@@ -3993,7 +3993,8 @@ async def _shards_initialized(
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
     store_contents_relative = [
-        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
+        _relativize_path(path=key, prefix=array.store_path.path)
+        for key in store_contents
         if not array.store_path.path or key != array.store_path.path
     ]
     return tuple(

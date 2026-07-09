@@ -96,6 +96,7 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         total_size = await store.getsize_prefix("c")
         assert total_size == len(buf) * 2
 
+
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy() -> None:
     sync_store = ObjectStore(MemoryStore())
