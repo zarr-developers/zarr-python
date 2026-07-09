@@ -72,6 +72,9 @@ nav:
         - api/zarr/testing/utils.md
   - release-notes.md
   - contributing.md
+hooks:
+  - mkdocs_hooks.py
+
 watch:
   - src/zarr
   - docs

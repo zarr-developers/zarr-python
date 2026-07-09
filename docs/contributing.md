@@ -290,6 +290,11 @@ that fits the block).
 `test="true"`, or `exec="false"` with a reason — so a block can never silently skip
 validation. A bare ` ```python ` fence, or a typo like `exec="on"`, fails that test.
 
+Markdown Exec only renders `exec="true"` fences; the `mkdocs_hooks.py` hook at the
+repository root makes `test="true"` and `exec="false"` fences render as ordinary
+highlighted code blocks. Without it, these fences would fail superfences parsing and
+their contents would spill into the page as raw markdown.
+
 ##### Marker-bound blocks (GPU, S3)
 
 A `test="true"` block that needs special infrastructure declares a pytest marker with
