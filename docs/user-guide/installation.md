@@ -10,7 +10,7 @@ Required dependencies include:
 - [numcodecs](https://numcodecs.readthedocs.io) (0.14 or later)
 - [google-crc32c](https://github.com/googleapis/python-crc32c) (1.5 or later)
 - [typing_extensions](https://typing-extensions.readthedocs.io) (4.9 or later)
-- [donfig](https://donfig.readthedocs.io) (0.8 or later)
+- [pyyaml](https://pyyaml.org) (6 or later)
 
 ## pip
 
