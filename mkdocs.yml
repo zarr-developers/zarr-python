@@ -33,46 +33,43 @@ nav:
       - user-guide/examples/rectilinear_chunks.md
   - API Reference:
       - api/zarr/index.md
-      - Classes:
-        - zarr.Array: api/zarr/array.md
-        - zarr.Group: api/zarr/group.md
-      - Functions:
-        - Creating: api/zarr/create.md
-        - Opening: api/zarr/open.md
-        - Saving: api/zarr/save.md
-        - Loading: api/zarr/load.md
-      - Modules:
-        - zarr.abc:
-          - api/zarr/abc/index.md
-          - zarr.abc.buffer: api/zarr/abc/buffer.md
-          - zarr.abc.codec: api/zarr/abc/codec.md
-          - zarr.abc.metadata: api/zarr/abc/metadata.md
-          - zarr.abc.numcodec: api/zarr/abc/numcodec.md
-          - zarr.abc.store: api/zarr/abc/store.md
-        - zarr.api:
-          - api/zarr/api/index.md
-          - zarr.api.asynchronous: api/zarr/api/asynchronous.md
-          - zarr.api.synchronous: api/zarr/api/synchronous.md
-        - zarr.buffer:
-          - api/zarr/buffer/index.md
-          - zarr.buffer.cpu: api/zarr/buffer/cpu.md
-          - zarr.buffer.gpu: api/zarr/buffer/gpu.md
-        - zarr.codecs: api/zarr/codecs.md
-        - zarr.codecs.numcodecs: api/zarr/codecs/numcodecs.md
-        - zarr.config: api/zarr/config.md
-        - zarr.dtype: api/zarr/dtype.md
-        - zarr.errors: api/zarr/errors.md
-        - zarr.experimental: api/zarr/experimental.md
-        - zarr.metadata: api/zarr/metadata.md
-        - zarr.registry: api/zarr/registry.md
-        - zarr.storage: api/zarr/storage.md
-        - zarr.testing:
-          - api/zarr/testing/index.md
-          - zarr.testing.buffer: api/zarr/testing/buffer.md
-          - zarr.testing.stateful: api/zarr/testing/stateful.md
-          - zarr.testing.store: api/zarr/testing/store.md
-          - zarr.testing.strategies: api/zarr/testing/strategies.md
-          - zarr.testing.utils: api/zarr/testing/utils.md
+      - zarr.Array (class): api/zarr/array.md
+      - zarr.Group (class): api/zarr/group.md
+      - Creating (functions): api/zarr/create.md
+      - Opening (functions): api/zarr/open.md
+      - Saving (functions): api/zarr/save.md
+      - Loading (functions): api/zarr/load.md
+      - zarr.abc (module):
+        - api/zarr/abc/index.md
+        - zarr.abc.buffer: api/zarr/abc/buffer.md
+        - zarr.abc.codec: api/zarr/abc/codec.md
+        - zarr.abc.metadata: api/zarr/abc/metadata.md
+        - zarr.abc.numcodec: api/zarr/abc/numcodec.md
+        - zarr.abc.store: api/zarr/abc/store.md
+      - zarr.api (module):
+        - api/zarr/api/index.md
+        - zarr.api.asynchronous: api/zarr/api/asynchronous.md
+        - zarr.api.synchronous: api/zarr/api/synchronous.md
+      - zarr.buffer (module):
+        - api/zarr/buffer/index.md
+        - zarr.buffer.cpu: api/zarr/buffer/cpu.md
+        - zarr.buffer.gpu: api/zarr/buffer/gpu.md
+      - zarr.codecs (module): api/zarr/codecs.md
+      - zarr.codecs.numcodecs (module): api/zarr/codecs/numcodecs.md
+      - zarr.config (module): api/zarr/config.md
+      - zarr.dtype (module): api/zarr/dtype.md
+      - zarr.errors (module): api/zarr/errors.md
+      - zarr.experimental (module): api/zarr/experimental.md
+      - zarr.metadata (module): api/zarr/metadata.md
+      - zarr.registry (module): api/zarr/registry.md
+      - zarr.storage (module): api/zarr/storage.md
+      - zarr.testing (module):
+        - api/zarr/testing/index.md
+        - zarr.testing.buffer: api/zarr/testing/buffer.md
+        - zarr.testing.stateful: api/zarr/testing/stateful.md
+        - zarr.testing.store: api/zarr/testing/store.md
+        - zarr.testing.strategies: api/zarr/testing/strategies.md
+        - zarr.testing.utils: api/zarr/testing/utils.md
   - release-notes.md
   - contributing.md
 hooks:
