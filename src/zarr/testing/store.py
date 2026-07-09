@@ -554,6 +554,21 @@ class StoreTests[S: Store, B: Buffer]:
             keys_observed = await _collect_aiterator(store.list_dir(f"{root}/"))
             assert sorted(keys_expected) == sorted(keys_observed)
 
+    async def test_list_dir_ignores_prefix_marker(self, store: S) -> None:
+        data = self.buffer_cls.from_bytes(b"")
+        root = "foo"
+        try:
+            await self.set(store, f"{root}/", data)
+            await self.set(store, f"{root}/child", data)
+        except OSError as exc:
+            pytest.skip(f"store cannot represent directory marker objects: {exc}")
+
+        keys_observed = await _collect_aiterator(store.list_dir(root))
+        assert keys_observed == ("child",)
+
+        keys_observed = await _collect_aiterator(store.list_dir(f"{root}/"))
+        assert keys_observed == ("child",)
+
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
         data_buf = self.buffer_cls.from_bytes(b"0000")

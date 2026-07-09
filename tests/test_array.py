@@ -45,7 +45,7 @@ from zarr.core.array import (
     default_serializer_v3,
 )
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
-from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, cpu, default_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     guess_chunks,
@@ -447,6 +447,8 @@ async def test_chunks_initialized(
     arr = zarr.create_array(
         store, name=path, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1"
     )
+    if path:
+        await store.set(path, cpu.Buffer.from_bytes(b""))
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_shard_keys()))

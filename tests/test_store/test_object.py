@@ -1,6 +1,6 @@
 # ruff: noqa: E402
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 import pytest
 
@@ -13,7 +13,6 @@ from obstore.store import LocalStore, MemoryStore
 
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import ObjectStore
-from zarr.storage._obstore import _transform_list_dir
 from zarr.testing.stateful import ZarrHierarchyStateMachine
 from zarr.testing.store import StoreTests
 
@@ -96,20 +95,6 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         assert size == len(buf)
         total_size = await store.getsize_prefix("c")
         assert total_size == len(buf) * 2
-
-
-@pytest.mark.parametrize("prefix", ["g", "g/"])
-async def test_transform_list_dir_skips_prefix_marker(prefix: str) -> None:
-    async def list_result() -> Any:
-        return {
-            "common_prefixes": ["g/child/"],
-            "objects": [{"path": "g"}, {"path": "g/"}, {"path": "g/item"}],
-        }
-
-    result = [path async for path in _transform_list_dir(list_result(), prefix)]
-
-    assert result == ["child/", "item"]
-
 
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy() -> None:
