@@ -1,4 +1,4 @@
-# Custom Data Type Example
+# Custom Data Type
 
 This example demonstrates how to extend Zarr Python by defining a new data type.
 
