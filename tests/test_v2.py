@@ -20,7 +20,6 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -225,9 +224,23 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
         assert (sub_arr).flags.c_contiguous
 
 
-def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
+def test_storage_module_is_picklable() -> None:
+    import cloudpickle
+
+    # regression test for gh-4029
+    # cloudpickle is used by dask.distributed and cannot serialize custom module
+    # classes like the old VerboseModule
+    assert cloudpickle.dumps(zarr.storage)
+
+
+def test_default_compressor_no_longer_warns() -> None:
+    import warnings
+
+    # VerboseModule removed in gh-4029 to make zarr.storage picklable
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
+    assert not any("default_compressor is deprecated" in str(w.message) for w in record)
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
