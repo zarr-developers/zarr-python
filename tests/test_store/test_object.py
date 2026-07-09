@@ -9,9 +9,10 @@ obstore = pytest.importorskip("obstore")
 from hypothesis.stateful import (
     run_state_machine_as_test,
 )
-from obstore.store import LocalStore, MemoryStore
+from obstore.store import LocalStore, MemoryStore, S3Store
 
 from zarr.core.buffer import Buffer, cpu
+from zarr.core.sync import _collect_aiterator
 from zarr.storage import ObjectStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine
 from zarr.testing.store import StoreTests
@@ -95,6 +96,35 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         assert size == len(buf)
         total_size = await store.getsize_prefix("c")
         assert total_size == len(buf) * 2
+
+
+async def test_list_dir_ignores_s3_prefix_marker(moto_server: str) -> None:
+    boto3 = pytest.importorskip("boto3")
+    bucket = "object-store-prefix-marker"
+    client = boto3.client(
+        "s3",
+        endpoint_url=moto_server,
+        region_name="us-east-1",
+        aws_access_key_id="x",
+        aws_secret_access_key="x",
+    )
+    client.create_bucket(Bucket=bucket)
+    client.put_object(Bucket=bucket, Key="g/", Body=b"")
+
+    store = ObjectStore(
+        S3Store(
+            bucket=bucket,
+            endpoint=moto_server,
+            region="us-east-1",
+            access_key_id="x",
+            secret_access_key="x",
+            client_options={"allow_http": True},
+            virtual_hosted_style_request=False,
+        )
+    )
+
+    assert await _collect_aiterator(store.list_dir("g")) == ()
+    assert await _collect_aiterator(store.list_dir("g/")) == ()
 
 
 @pytest.mark.slow_hypothesis
