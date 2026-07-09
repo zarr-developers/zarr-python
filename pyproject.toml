@@ -126,7 +126,6 @@ docs = [
     "mkdocstrings==1.0.4",
     "mkdocstrings-python==2.0.4",
     "mike==2.2.0",
-    "mkdocs-jupyter==0.26.3",
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.1",
     "griffe-inherited-docstrings==1.1.3",

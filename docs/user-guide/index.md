@@ -42,7 +42,7 @@ Take your skills to the next level:
 Worked, end-to-end examples:
 
 - **[Custom Data Type](examples/custom_dtype.md)** - Extend Zarr-Python with a user-defined data type
-- **[Rectilinear Chunk Grids](examples/rectilinear_chunks.ipynb)** - Use variable-sized chunks along each dimension
+- **[Rectilinear Chunk Grids](examples/rectilinear_chunks.md)** - Use variable-sized chunks along each dimension
 
 ## Reference
 
