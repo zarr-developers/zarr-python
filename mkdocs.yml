@@ -35,10 +35,10 @@ nav:
       - api/zarr/index.md
       - zarr.Array (class): api/zarr/array.md
       - zarr.Group (class): api/zarr/group.md
-      - Creating (functions): api/zarr/create.md
-      - Opening (functions): api/zarr/open.md
-      - Saving (functions): api/zarr/save.md
-      - Loading (functions): api/zarr/load.md
+      - create (functions): api/zarr/create.md
+      - open (functions): api/zarr/open.md
+      - save (functions): api/zarr/save.md
+      - load (functions): api/zarr/load.md
       - zarr.abc (module):
         - api/zarr/abc/index.md
         - zarr.abc.buffer: api/zarr/abc/buffer.md
