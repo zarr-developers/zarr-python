@@ -1,5 +1,5 @@
 ---
-title: load
+title: zarr.load
 ---
 
 ::: zarr.load

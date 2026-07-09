@@ -28,7 +28,7 @@ See [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr, and [Chunk size and shape](performance.md#chunk-size-and-shape) in the
 performance guide for guidance on choosing chunk shapes.
 
-See the [creation API documentation](../api/zarr/create.md) for more detailed information about
+See the [`zarr.create_array`][] API documentation for more detailed information about
 creating arrays.
 
 ## Reading and writing data
