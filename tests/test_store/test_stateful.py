@@ -8,7 +8,7 @@ from hypothesis.stateful import (
 
 import zarr
 from zarr.abc.store import Store
-from zarr.storage import LocalStore, ZipStore
+from zarr.storage import LocalStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
 pytestmark = [
@@ -26,6 +26,7 @@ def _enable_rectilinear_chunks() -> Generator[None, None, None]:
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.filterwarnings("ignore:Duplicate name:UserWarning")
 def test_zarr_hierarchy(sync_store: Store) -> None:
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
@@ -34,6 +35,7 @@ def test_zarr_hierarchy(sync_store: Store) -> None:
     run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
 
 
+@pytest.mark.filterwarnings("ignore:Duplicate name:UserWarning")
 def test_zarr_store(sync_store: Store) -> None:
     def mk_test_instance_sync() -> ZarrStoreStateMachine:
         return ZarrStoreStateMachine(sync_store)
