@@ -427,11 +427,15 @@ module = [
 ignore_errors = true
 
 [tool.pytest.ini_options]
-minversion = "7"
+minversion = "9"
 testpaths = ["src", "tests", "docs/user-guide"]
 log_cli_level = "INFO"
 log_level = "INFO"
-xfail_strict = true
+# Enables strict_config, strict_markers, strict_xfail, strict_parametrization_ids, and
+# any strictness options added in future pytest releases. Note that the equivalent
+# `--strict-config`/`--strict-markers` flags were silently ignored when passed via
+# addopts before pytest 9.1 (pytest#14442), so this option is the reliable spelling.
+strict = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
@@ -443,7 +447,7 @@ addopts = [
     "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
-    "-ra", "--strict-config", "--strict-markers",
+    "-ra",
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
