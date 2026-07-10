@@ -171,6 +171,8 @@ exclude_also = [
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
+    "src/zarr/codecs/gpu.py",  # requires GPU hardware not available in CI
+    "src/zarr/core/buffer/gpu.py",  # requires GPU hardware not available in CI
 ]
 
 [tool.hatch]
