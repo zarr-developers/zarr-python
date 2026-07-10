@@ -1,4 +1,5 @@
 # ruff: noqa: E402
+import re
 from pathlib import Path
 from typing import TypedDict
 
@@ -98,6 +99,9 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
         assert total_size == len(buf) * 2
 
 
+@pytest.mark.filterwarnings(
+    re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
+)
 async def test_list_dir_ignores_s3_prefix_marker(moto_server: str) -> None:
     boto3 = pytest.importorskip("boto3")
     bucket = "object-store-prefix-marker"
