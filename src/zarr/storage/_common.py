@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
@@ -546,8 +545,10 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
                 result = "array"
             elif extant_meta_json["node_type"] == "group":
                 result = "group"
-        except (KeyError, TypeError, json.JSONDecodeError):
-            # any of these errors is consistent with no array or group present.
+        except (KeyError, TypeError, ValueError):
+            # any of these errors is consistent with no array or group present. `ValueError`
+            # covers both malformed JSON (`json.JSONDecodeError`) and non-UTF-8 bytes
+            # (`UnicodeDecodeError`), each a `ValueError` subclass.
             pass
     return result
 
@@ -643,18 +644,7 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     """
     if zarr_format == 3:
-        extant_meta_bytes = await (store_path / ZARR_JSON).get()
-        if extant_meta_bytes is None:
-            return False
-        else:
-            try:
-                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
-                # we avoid constructing a full metadata document here in the name of speed.
-                result: bool = extant_meta_json["node_type"] == "group"
-            except (ValueError, KeyError, TypeError):
-                return False
-            else:
-                return result
+        return (await _contains_node_v3(store_path)) == "group"
     elif zarr_format == 2:
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]
