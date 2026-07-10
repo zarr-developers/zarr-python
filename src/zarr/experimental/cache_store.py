@@ -52,10 +52,11 @@ class CacheStore(WrapperStore[Store]):
     store : Store
         The underlying store to wrap with caching
     cache_store : Store
-        The store to use for caching (can be any Store implementation)
-    max_age_seconds : int | None, optional
-        Maximum age of cached entries in seconds. None means no expiration.
-        Default is None.
+        The store to use for caching (can be any Store implementation that
+        supports deletes)
+    max_age_seconds : int or "infinity", optional
+        Maximum age of cached entries in seconds. The string "infinity" means
+        entries never expire. Default is "infinity".
     max_size : int | None, optional
         Maximum size of the cache in bytes. When exceeded, least recently used
         items are evicted. None means unlimited size. Default is None.

@@ -1684,7 +1684,7 @@ class TestCreateArray:
         store: Store, zarr_format: ZarrFormat, endianness: EndiannessStr
     ) -> None:
         """
-        Test that that endianness is correctly set when creating an array when not specifying a serializer
+        Test that endianness is correctly set when creating an array when not specifying a serializer.
         """
         dtype = Int16(endianness=endianness)
         arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)

@@ -8,8 +8,6 @@ Zarr has several functions for creating arrays. For example:
 import shutil
 shutil.rmtree('data', ignore_errors=True)
 import numpy as np
-
-np.random.seed(0)
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -21,12 +19,16 @@ print(z)
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to an
-in-memory store (see [`zarr.storage.MemoryStore`][] for more details). See
-[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores,
-and see [Data types](data_types.md) for an in-depth look at the data types supported
-by Zarr.
+in-memory store: when `fsspec` is installed, a `memory://` URL resolves to a
+[`zarr.storage.FsspecStore`][] backed by fsspec's in-memory filesystem; otherwise a
+[`zarr.storage.ManagedMemoryStore`][] is used. See the [Storage guide](storage.md)
+for more details on stores, and
+[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores.
+See [Data types](data_types.md) for an in-depth look at the data types supported
+by Zarr, and [Chunk size and shape](performance.md#chunk-size-and-shape) in the
+performance guide for guidance on choosing chunk shapes.
 
-See the [creation API documentation](../api/zarr/create.md) for more detailed information about
+See the [`zarr.create_array`][] API documentation for more detailed information about
 creating arrays.
 
 ## Reading and writing data
@@ -128,7 +130,7 @@ A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32',chunks=(1000, 1000))
+z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32', chunks=(1000, 1000))
 z[:] = 42
 print(f"Original shape: {z.shape}")
 z.resize((20000, 10000))
@@ -157,13 +159,15 @@ print(f"Shape after second append: {z.shape}")
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
 
-We currently support three configuration options for arrays: `write_empty_chunks`, `read_missing_chunks`, and `order`.
+We currently support five configuration options for arrays: `order`, `write_empty_chunks`, `read_missing_chunks`, `sharding_coalesce_max_gap_bytes`, and `sharding_coalesce_max_bytes`.
 
 | field | type | default | description |
 | - |     - | - | - |
+| `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
 | `read_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
-| `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+| `sharding_coalesce_max_gap_bytes` | `int` | `1048576` (1 MiB) | When reading multiple chunks from the same shard, nearby byte ranges separated by no more than this many bytes are coalesced into a single request to the store.
+| `sharding_coalesce_max_bytes` | `int` | `16777216` (16 MiB) | Requests will not be coalesced if doing so would exceed this byte size.
 
 !!! info
     The Zarr V3 spec states that readers should interpret an uninitialized chunk as containing the
@@ -263,19 +267,6 @@ lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, p
 compressors = LZMA(filters=lzma_filters)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
-print(f"Compressors: {z.compressors}")
-```
-
-To disable compression, set `compressors=None` when creating an array, e.g.:
-
-```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(
-    store='data/example-8.zarr',
-    shape=(100000000,),
-    chunks=(1000000,),
-    dtype='int32',
-    compressors=None
-)
 print(f"Compressors: {z.compressors}")
 ```
 
@@ -461,11 +452,11 @@ print(z.get_orthogonal_selection(([0, 2], slice(None))))  # select first and thi
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.get_orthogonal_selection((slice(None), [1, 3])))  # select second and fourth columns)
+print(z.get_orthogonal_selection((slice(None), [1, 3])))  # select second and fourth columns
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.get_orthogonal_selection(([0, 2], [1, 3])))  # select rows [0, 2] and columns [1, 4]
+print(z.get_orthogonal_selection(([0, 2], [1, 3])))  # select rows [0, 2] and columns [1, 3]
 ```
 
 Data can also be modified, e.g.:
@@ -489,7 +480,7 @@ print(z.oindex[:, [1, 3]])  # select second and fourth columns
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.oindex[[0, 2], [1, 3]])  # select rows [0, 2] and columns [1, 4]
+print(z.oindex[[0, 2], [1, 3]])  # select rows [0, 2] and columns [1, 3]
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -510,7 +501,7 @@ z[:] = data
 print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 ```
 
-### Block Indexing
+### Block indexing
 
 Zarr also supports block indexing, which allows selections of whole chunks based on their
 logical indices along each dimension of an array. For example, this allows selecting
@@ -575,15 +566,6 @@ Any combination of integer and slice can be used for block indexing:
 print(z.blocks[2, 1:3])
 ```
 
-```python exec="true" session="arrays" source="above" result="ansi"
-root = zarr.create_group('data/example-19.zarr')
-foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
-bar = root.create_array(name='bar', shape=(100,), dtype='int32')
-foo[:, :] = np.random.random((1000, 100))
-bar[:] = np.arange(100)
-print(root.tree())
-```
-
 ## Sharding
 
 Using small chunk shapes in very large arrays can lead to a very large number of chunks.
@@ -596,7 +578,9 @@ This allows individual chunks to be read independently.
 However, when writing data, a full shard must be written in one go for optimal
 performance and to avoid concurrency issues.
 That means that shards are the units of writing and chunks are the units of reading.
-Users need to configure the chunk and shard shapes accordingly.
+Users need to configure the chunk and shard shapes accordingly. For guidance on
+choosing chunk and shard shapes, see [Sharding](performance.md#sharding) in the
+performance guide.
 
 Sharded arrays can be created by providing the `shards` parameter to [`zarr.create_array`][].
 
@@ -619,7 +603,7 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
     Because the feature is still stabilizing, it is disabled by default and
     must be explicitly enabled:
 
-    ```python exec="true" session="arrays-rectilinear"
+    ```python exec="true" session="arrays" source="above"
     import zarr
     zarr.config.set({"array.rectilinear_chunks": True})
     ```
@@ -641,7 +625,6 @@ To create an array with rectilinear chunks, pass a nested list to the `chunks`
 parameter where each inner list gives the chunk sizes along one dimension:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-zarr.config.set({"array.rectilinear_chunks": True})
 z = zarr.create_array(
     store=zarr.storage.MemoryStore(),
     shape=(60, 100),
@@ -775,9 +758,9 @@ pairs are accepted:
 
 When writing, Zarr automatically compresses repeated values into RLE format.
 
-## Missing features in 3.0
+## Features not yet ported to Zarr-Python 3
 
-The following features have not been ported to 3.0 yet.
+The following Zarr-Python 2 features are not yet available in Zarr-Python 3.
 
 ### Copying and migrating data
 
