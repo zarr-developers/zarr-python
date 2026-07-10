@@ -436,6 +436,12 @@ log_level = "INFO"
 # `--strict-config`/`--strict-markers` flags were silently ignored when passed via
 # addopts before pytest 9.1 (pytest#14442), so this option is the reliable spelling.
 strict = true
+# Turn deadlocks into loud failures: if a single test exceeds this many seconds, dump
+# every thread's traceback and kill the run (exit_on_timeout is new in pytest 9). Sized
+# far above the slowest legitimate test (~20s locally; slower under coverage/Windows/
+# nightly stateful-hypothesis runs) so only a genuine hang can trip it.
+faulthandler_timeout = 600
+faulthandler_exit_on_timeout = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
