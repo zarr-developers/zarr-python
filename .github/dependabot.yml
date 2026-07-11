@@ -12,13 +12,21 @@ updates:
           - "*"
     cooldown:
       default-days: 7
-  - package-ecosystem: "github-actions"
+  # Keep the pinned dev tooling in pyproject.toml's [dependency-groups] and the
+  # uv.lock current. Without this the exact pins (e.g. pytest) would never be
+  # bumped automatically and would silently rot.
+  #
+  # `allow: dependency-type: direct` restricts updates to dependencies declared
+  # in pyproject.toml. Transitive deps in uv.lock are then only updated as a
+  # side effect of a direct bump, never via a standalone PR.
+  - package-ecosystem: "uv"
     directory: "/"
-    target-branch: "support/v2"
+    allow:
+      - dependency-type: "direct"
     schedule:
       interval: "weekly"
     groups:
-      actions:
+      python-dependencies:
         patterns:
           - "*"
     cooldown:

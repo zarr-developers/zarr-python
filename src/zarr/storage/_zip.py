@@ -153,6 +153,8 @@ class ZipStore(Store):
 
     def close(self) -> None:
         # docstring inherited
+        if not self._is_open:
+            return
         super().close()
         with self._lock:
             self._zf.close()

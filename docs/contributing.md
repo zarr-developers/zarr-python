@@ -18,9 +18,9 @@ g = zarr.group()
 # etc.
 ```
 
-2. An explanation of why the current behaviour is wrong/not desired, and what you expect instead.
+2. An explanation of why the current behavior is wrong/not desired, and what you expect instead.
 
-3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` property. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
+3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` attribute. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
 ```console
 python
@@ -133,8 +133,6 @@ hatch env run --env test.py3.12-optional run
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
 
-> **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
-
 ### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
@@ -215,9 +213,9 @@ The documentation can be built locally by running:
 hatch --env docs run build
 ```
 
-The resulting built documentation will be available in the `docs/_build/html` folder.
+The resulting built documentation will be available in the `site` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
+Hatch can also be used to serve continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
 
 ```bash
 hatch --env docs run serve
@@ -292,6 +290,11 @@ that fits the block).
 `test="true"`, or `exec="false"` with a reason — so a block can never silently skip
 validation. A bare ` ```python ` fence, or a typo like `exec="on"`, fails that test.
 
+Markdown Exec only renders `exec="true"` fences; the `mkdocs_hooks.py` hook at the
+repository root makes `test="true"` and `exec="false"` fences render as ordinary
+highlighted code blocks. Without it, these fences would fail superfences parsing and
+their contents would spill into the page as raw markdown.
+
 ##### Marker-bound blocks (GPU, S3)
 
 A `test="true"` block that needs special infrastructure declares a pytest marker with
@@ -327,13 +330,42 @@ Alternatively, you can manually create the files in the `changes` directory usin
 
 See the [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) docs for more.
 
-## Merging pull requests
+## Project governance
+
+This section documents the processes that core developers follow to maintain the project. The current core developers are listed in [`TEAM.md`](https://github.com/zarr-developers/zarr-python/blob/main/TEAM.md).
+
+### Merging pull requests
 
 Pull requests submitted by an external contributor should be reviewed and approved by at least one core developer before being merged. Ideally, pull requests submitted by a core developer should be reviewed and approved by at least one other core developer before being merged.
 
 Pull requests should not be merged until all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest main merged in.
 
 Before merging, the milestone must be set to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
+
+### Self-merging pull requests
+
+The default is that a pull request opened by a core developer is reviewed and approved by at least one other core developer before it is merged. We trust core developers to use their judgment, though, and we would rather bias toward action than make routine changes wait on review they do not really need.
+
+So a core developer may merge their own pull request whenever they judge the change to be low-risk, provided the standard merge requirements are met — CI is green against code that has had the latest `main` merged in, a changelog fragment has been added, and the milestone is set — and other core developers have had a fair chance to weigh in. As a rule of thumb, leave the pull request open for a few days before self-merging, unless it is genuinely trivial or time-sensitive. If you are confident a change is fine, merge it; if you have real doubts, ask for a review. It is generally advisable to ping another developer in the PR description for awareness about the direction, even if you choose not to request a formal review.
+
+Some changes warrant more caution, and a second reviewer is usually worth seeking even when you could self-merge: changes to the public API, anything touching data-format or on-disk compatibility, and performance-sensitive code. These are the most expensive to get wrong and the hardest to reverse. Reverts, by contrast, are cheap — if a self-merged change turns out to be a mistake, reverting it is itself a low-risk change that any core developer can make, and the reworked version can go through normal review. When something recently merged is actively causing harm — a broken `main`, a release blocker, or data corruption — fix it fast and request review after the fact rather than waiting.
+
+This policy exists to lower the cost of routine work and to help newer core developers grow comfortable merging changes. It is not a license to merge past an unresolved objection: if another core developer asks to review a change, give them that chance.
+
+### Release procedure
+
+Open an issue on GitHub announcing the release using the release checklist template:
+[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+#### Preparing a release
+
+Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
+
+1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
+2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
+3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
+4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
+5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Compatibility and versioning policies
 
@@ -353,7 +385,7 @@ Releases are classified by the library changes contained in that release. This c
 
   Minor releases are safe for most users and downstream projects to adopt.
 
-* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behaviour changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
+* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behavior changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
 
   Users should always feel safe upgrading to the latest patch release.
 
@@ -367,7 +399,7 @@ Zarr developers should make changes as smooth as possible for users. This means 
 
 The Zarr library is an implementation of a file format standard defined externally -- see the [Zarr specifications website](https://zarr-specs.readthedocs.io) for the list of Zarr file format specifications.
 
-If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
+If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in a new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
 
 ## Experimental API policy
@@ -391,21 +423,6 @@ We aim to either **promote** or **remove** experimental features within **6 mont
 ### For users
 
 Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
-
-## Release procedure
-
-Open an issue on GitHub announcing the release using the release checklist template:
-[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
-
-### Preparing a release
-
-Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
-
-1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
-2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
-3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
-4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
-5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
 
 ## Benchmarks
 

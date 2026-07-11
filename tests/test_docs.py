@@ -12,7 +12,6 @@ with a reason, so a block can never silently skip validation.
 
 from __future__ import annotations
 
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -82,7 +81,9 @@ S3_BUCKET = "example-bucket"
 
 
 @pytest.fixture
-def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
+def docs_s3_backend(
+    moto_server: str, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
     """Point docs S3 examples at the shared moto server (tests/conftest.py) via a
     process-wide AWS_ENDPOINT_URL, so a block can use a bare s3:// URL with no
     storage_options (see spike in the design notes). The server lifecycle belongs to the
@@ -92,8 +93,7 @@ def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
     botocore = pytest.importorskip("botocore")
     requests = pytest.importorskip("requests")
 
-    prev_endpoint = os.environ.get("AWS_ENDPOINT_URL")
-    os.environ["AWS_ENDPOINT_URL"] = moto_server
+    monkeypatch.setenv("AWS_ENDPOINT_URL", moto_server)
 
     session = botocore.session.Session()
     client = session.create_client("s3", endpoint_url=moto_server, region_name="us-east-1")
@@ -103,15 +103,9 @@ def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
     try:
         yield
     finally:
-        # Reset moto state and restore AWS_ENDPOINT_URL; the shared server keeps running
-        # (the moto_server fixture stops it at session end).
-        try:
-            requests.post(f"{moto_server}moto-api/reset")
-        finally:
-            if prev_endpoint is None:
-                os.environ.pop("AWS_ENDPOINT_URL", None)
-            else:
-                os.environ["AWS_ENDPOINT_URL"] = prev_endpoint
+        # Reset moto state; AWS_ENDPOINT_URL is restored automatically by monkeypatch.
+        # The shared server keeps running (the moto_server fixture stops it at session end).
+        requests.post(f"{moto_server}moto-api/reset")
 
 
 def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
@@ -260,7 +254,7 @@ def test_documentation_examples(
         module_globals.update(result)
 
 
-@pytest.mark.parametrize("example", find_examples(str(SOURCES_ROOT)), ids=str)
+@pytest.mark.parametrize("example", list(find_examples(str(SOURCES_ROOT))), ids=str)
 def test_docstrings(example: CodeExample, eval_example: EvalExample) -> None:
     """Test our docstring examples."""
     if example.path.name == "config.py" and "your.module" in example.source:

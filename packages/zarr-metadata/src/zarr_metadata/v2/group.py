@@ -8,6 +8,8 @@ from typing import Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
+
 
 class ZGroupMetadata(TypedDict):
     """
@@ -39,7 +41,7 @@ class GroupMetadataV2(TypedDict):
     """
 
     zarr_format: Literal[2]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
 
 
 class GroupMetadataV2Partial(TypedDict, total=False):
@@ -69,7 +71,7 @@ class GroupMetadataV2Partial(TypedDict, total=False):
     """
 
     zarr_format: Literal[2]
-    attributes: NotRequired[Mapping[str, object]]
+    attributes: NotRequired[Mapping[str, JSONValue]]
 
 
 __all__ = [
