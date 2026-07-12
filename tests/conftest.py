@@ -590,24 +590,30 @@ def deep_nan_equal(a: object, b: object) -> bool:
 # instead of each module standing up its own. Consumers create their own buckets and choose
 # how the endpoint reaches the client (explicit storage_options vs. the AWS_ENDPOINT_URL
 # env var) on top of this fixture.
-MOTO_SERVER_PORT = 5555
-MOTO_ENDPOINT_URL = f"http://127.0.0.1:{MOTO_SERVER_PORT}/"
 
 
 @pytest.fixture(scope="session")
 def moto_server() -> Generator[str, None, None]:
     """Start a session-scoped moto S3 server and yield its endpoint URL.
 
+    The server binds an ephemeral port (port=0), so the endpoint is only known at
+    runtime; consumers must take it from this fixture rather than a constant. A fixed
+    port deadlocks under pytest-xdist: session-scoped fixtures run once per *worker*, so
+    concurrent workers race to bind the same port, and the losers block forever inside
+    ThreadedMotoServer.start(), whose server thread dies on "Address already in use"
+    before ever setting the ready event that start() waits on.
+
     importorskip lives inside the fixture so moto is only required when a test actually
     requests an S3 backend, not for the whole test session."""
     moto_server_mod = pytest.importorskip("moto.moto_server.threaded_moto_server")
 
-    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_SERVER_PORT)
+    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=0)
     server.start()
+    host, port = server.get_host_and_port()
     # moto needs *some* credentials present; use throwaway values if the environment has none.
     os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
     os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
     try:
-        yield MOTO_ENDPOINT_URL
+        yield f"http://{host}:{port}/"
     finally:
         server.stop()
