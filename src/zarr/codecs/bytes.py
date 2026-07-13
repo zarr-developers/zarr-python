@@ -118,6 +118,9 @@ class BytesCodec(ArrayBytesCodec):
             as_array_like.view(dtype=view_dtype)  # type: ignore[attr-defined]
         )
         if view_dtype != dtype:
+            # This byte-swapping conversion copies the chunk. The dtype inequality
+            # guard keeps the common case, where the stored and declared byte orders
+            # already match, on the zero-copy view path above.
             chunk_array = chunk_array.astype(dtype)
 
         # ensure correct chunk shape
