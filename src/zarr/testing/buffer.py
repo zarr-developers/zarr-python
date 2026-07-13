@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
+    from zarr.abc.store import ByteRequest
+
 
 __all__ = [
     "NDBufferUsingTestNDArrayLike",
@@ -72,6 +74,13 @@ class StoreExpectingTestBuffer(MemoryStore):
             assert isinstance(value, TestBuffer)
         await super().set(key, value, byte_range)
 
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # Synchronous counterpart of `set`, used by FusedCodecPipeline. Mirror the
+        # same buffer-type guard so the invariant holds whichever pipeline writes.
+        if "json" not in key:
+            assert isinstance(value, TestBuffer)
+        super().set_sync(key, value)
+
     async def get(
         self,
         key: str,
@@ -82,5 +91,20 @@ class StoreExpectingTestBuffer(MemoryStore):
             assert prototype.buffer is TestBuffer
         ret = await super().get(key=key, prototype=prototype, byte_range=byte_range)
         if ret is not None:
+            assert isinstance(ret, prototype.buffer)
+        return ret
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        # Synchronous counterpart of `get`, used by FusedCodecPipeline.
+        if "json" not in key and prototype is not None:
+            assert prototype.buffer is TestBuffer
+        ret = super().get_sync(key=key, prototype=prototype, byte_range=byte_range)
+        if ret is not None and prototype is not None:
             assert isinstance(ret, prototype.buffer)
         return ret

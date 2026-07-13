@@ -139,6 +139,19 @@ def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | 
 
 subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(SUBCHUNK_WRITE_ORDER)
 
+# Inner codec chains for a ShardingCodec. We MUST sample the uncompressed,
+# single-BytesCodec configuration (no Zstd) — that is the only configuration in
+# which the FusedCodecPipeline's vectorized whole-shard "bulk decode" fast path
+# engages, so it is the only one that can exercise (and regress-guard) that path
+# against arbitrary indexing. Freezing the inner codecs to [BytesCodec, ZstdCodec]
+# silently disables the fast path under every property test.
+sharding_inner_codecs: st.SearchStrategy[list[BytesCodec | ZstdCodec]] = st.sampled_from(
+    [
+        [BytesCodec()],
+        [BytesCodec(), ZstdCodec()],
+    ]
+)
+
 
 @st.composite
 def array_metadata(
@@ -322,9 +335,10 @@ def arrays(
                 )
                 if shard_shape is not None:
                     subchunk_write_order = draw(subchunk_write_orders)
+                    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
                     serializer = ShardingCodec(
                         subchunk_write_order=subchunk_write_order,
-                        codecs=[BytesCodec(), ZstdCodec()],
+                        codecs=inner_codecs,
                         index_codecs=[BytesCodec(), Crc32cCodec()],
                         chunk_shape=chunks_param,
                     )
