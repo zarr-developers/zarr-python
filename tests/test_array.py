@@ -1903,9 +1903,18 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
     [
         pytest.param(
             "fork",
-            marks=pytest.mark.skipif(
-                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
-            ),
+            marks=[
+                pytest.mark.skipif(
+                    sys.platform in ("win32", "darwin"),
+                    reason="fork not supported on Windows or OSX",
+                ),
+                # Python 3.15 deprecates fork() in multi-threaded processes, and zarr's
+                # sync event-loop thread is always running here. Fork-safety despite
+                # those threads is exactly what this test pins down, so keep running it.
+                pytest.mark.filterwarnings(
+                    r"ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning"
+                ),
+            ],
         ),
         "spawn",
         pytest.param(
