@@ -74,6 +74,56 @@ async def test_endian(
     assert np.array_equal(data, readback_data)
 
 
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("input_byteorder", [">", "<"])
+@pytest.mark.parametrize("store_endian", ["big", "little"])
+async def test_endian_structured(
+    store: Store,
+    input_byteorder: Literal[">", "<"],
+    store_endian: Literal["big", "little"],
+) -> None:
+    """
+    The `bytes` codec applies its configured byte order to every multi-byte
+    field of a structured dtype, per the `struct` data type spec: the stored
+    chunk is laid out with all fields in the codec's byte order regardless of
+    the input array's field byte order, and the data reads back to the
+    original values. This guards against the structured-dtype endianness bugs
+    from https://github.com/zarr-developers/zarr-python/issues/4141, where the
+    encode path never byte-swapped struct fields (numpy reports byteorder '|'
+    for void dtypes) and the decode path ignored the codec's endian entirely.
+    Compression is disabled so the stored chunk's byte layout can be asserted
+    directly.
+    """
+    input_dtype = np.dtype([("flux", f"{input_byteorder}f4"), ("mask", f"{input_byteorder}i4")])
+    data = np.array([(1.5, 2), (3.5, 4), (5.5, 6)], dtype=input_dtype)
+    path = "endian_structured"
+    spath = StorePath(store, path)
+    a = await zarr.api.asynchronous.create_array(
+        spath,
+        shape=data.shape,
+        chunks=data.shape,
+        dtype=input_dtype,
+        compressors=None,
+        serializer=BytesCodec(endian=store_endian),
+    )
+
+    await _AsyncArrayProxy(a)[:].set(data)
+
+    # The stored chunk has every multi-byte field in the codec's byte order.
+    stored = await store.get(f"{path}/c/0", prototype=default_buffer_prototype())
+    assert stored is not None
+    stored_byteorder = ">" if store_endian == "big" else "<"
+    expected_dtype = np.dtype(
+        [("flux", f"{stored_byteorder}f4"), ("mask", f"{stored_byteorder}i4")]
+    )
+    assert stored.to_bytes() == data.astype(expected_dtype).tobytes()
+
+    # ... and the data reads back to the original values.
+    readback_data = np.asarray(await _AsyncArrayProxy(a)[:].get())
+    for field in ("flux", "mask"):
+        assert np.array_equal(data[field], readback_data[field])
+
+
 def test_bytes_codec_supports_sync() -> None:
     assert isinstance(BytesCodec(), SupportsSyncCodec)
 
@@ -97,6 +147,47 @@ def test_bytes_codec_sync_roundtrip() -> None:
     assert encoded is not None
     decoded = codec._decode_sync(encoded, spec)
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
+
+
+@pytest.mark.parametrize("endian", ENDIAN)
+@pytest.mark.parametrize(
+    "native_dtype",
+    [np.dtype(">u2"), np.dtype("<u2"), np.dtype([("a", ">f4"), ("b", "<i4")])],
+    ids=["big-scalar", "little-scalar", "mixed-endian-struct"],
+)
+def test_bytes_codec_byte_orders_are_independent(
+    endian: EndianLiteral, native_dtype: np.dtype[Any]
+) -> None:
+    """
+    The codec's `endian` configuration governs only the stored byte layout;
+    the byte order of the decoded array is governed by the array's data type.
+    Encoding lays out every multi-byte value (including struct fields) in the
+    codec's byte order regardless of the input array's byte order, and decoding
+    returns a buffer in the data type's declared byte order regardless of the
+    codec's. The mixed-endian struct case pins that per-field byte order of the
+    in-memory dtype survives a roundtrip through a single stored byte order.
+    """
+    if native_dtype.fields is None:
+        data = np.arange(4, dtype=native_dtype)
+    else:
+        data = np.array([(1.5, 2), (3.5, 4), (5.5, 6), (7.5, 8)], dtype=native_dtype)
+    zdtype = get_data_type_from_native_dtype(native_dtype)
+    spec = ArraySpec(
+        shape=data.shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    codec = BytesCodec(endian=endian)
+
+    encoded = codec._encode_sync(default_buffer_prototype().nd_buffer.from_numpy_array(data), spec)
+    assert encoded is not None
+    assert encoded.to_bytes() == data.astype(native_dtype.newbyteorder(endian)).tobytes()
+
+    decoded = codec._decode_sync(encoded, spec)
+    assert decoded.dtype == zdtype.to_native_dtype()
+    np.testing.assert_array_equal(decoded.as_numpy_array(), data)
 
 
 @pytest.mark.parametrize("endian", ENDIAN)

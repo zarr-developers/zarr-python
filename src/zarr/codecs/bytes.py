@@ -100,14 +100,25 @@ class BytesCodec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
         endian_str = self.endian
+        dtype = chunk_spec.dtype.to_native_dtype()
+        # The byte order of the stored data is set by this codec's `endian`
+        # configuration; the byte order of the decoded array is set by the array's
+        # data type. The two are independent: the raw bytes are reinterpreted in
+        # the stored byte order, then converted to the declared dtype if needed.
         if isinstance(chunk_spec.dtype, HasEndianness):
-            dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
+            stored_dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
+        elif isinstance(chunk_spec.dtype, Struct) and endian_str is not None:
+            # Per the struct data type spec, all multi-byte fields are stored in the
+            # byte order configured on this codec.
+            stored_dtype = dtype.newbyteorder(endian_str)
         else:
-            dtype = chunk_spec.dtype.to_native_dtype()
+            stored_dtype = dtype
         as_array_like = chunk_bytes.as_array_like()
         chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
-            as_array_like.view(dtype=dtype)  # type: ignore[attr-defined]
+            as_array_like.view(dtype=stored_dtype)  # type: ignore[attr-defined]
         )
+        if stored_dtype != dtype:
+            chunk_array = chunk_array.astype(dtype)
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -129,13 +140,14 @@ class BytesCodec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
-        if (
-            chunk_array.dtype.itemsize > 1
-            and self.endian is not None
-            and self.endian != chunk_array.byteorder
-        ):
+        if chunk_array.dtype.itemsize > 1 and self.endian is not None:
+            # Compare full dtypes rather than the top-level byteorder: numpy reports
+            # byteorder '|' for structured dtypes even when their fields are
+            # byte-order-sensitive, so newbyteorder is the only reliable way to
+            # detect (and normalize) a byte-order mismatch.
             new_dtype = chunk_array.dtype.newbyteorder(self.endian)
-            chunk_array = chunk_array.astype(new_dtype)
+            if new_dtype != chunk_array.dtype:
+                chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()
         # Flatten the nd-array (only copy if needed) and reinterpret as bytes
