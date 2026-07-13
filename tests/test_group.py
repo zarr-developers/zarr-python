@@ -1786,6 +1786,9 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
         (zarr.core.group.get_node, zarr.core.sync_group.get_node),
     ],
+    # The default ids (from __name__) collide: the method pair and the module-level pair
+    # for create_hierarchy would both be id'd "create_hierarchy-create_hierarchy".
+    ids=lambda func: f"{func.__module__.rsplit('.', maxsplit=1)[-1]}.{func.__qualname__}",
 )
 def test_consistent_signatures(
     a_func: Callable[[object], object], b_func: Callable[[object], object]

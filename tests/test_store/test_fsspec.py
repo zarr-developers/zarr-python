@@ -9,7 +9,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
-from tests.conftest import MOTO_ENDPOINT_URL
 from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -60,18 +59,18 @@ botocore = pytest.importorskip("botocore")
 # ### amended from s3fs ### #
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
-# The moto server itself is the session-scoped `moto_server` fixture in tests/conftest.py;
-# this module reuses its endpoint rather than standing up its own server.
-endpoint_url = MOTO_ENDPOINT_URL
 
 
 @pytest.fixture
-def s3_base(moto_server: str) -> str:
-    """Reuse the shared session-scoped moto server (see tests/conftest.py)."""
+def endpoint_url(moto_server: str) -> str:
+    """Endpoint of the shared session-scoped moto server (see tests/conftest.py).
+
+    A fixture rather than a module-level constant because the server binds an ephemeral
+    port, so the endpoint is only known once the server is running."""
     return moto_server
 
 
-def get_boto3_client() -> botocore.client.BaseClient:
+def get_boto3_client(endpoint_url: str) -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = botocore.session.Session()
 
@@ -84,7 +83,7 @@ def get_boto3_client() -> botocore.client.BaseClient:
 
 
 @pytest.fixture(autouse=True)
-def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
+def s3(endpoint_url: str) -> Generator[s3fs.S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
@@ -97,7 +96,7 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
 
     https://github.com/zarr-developers/zarr-python/pull/1785#discussion_r1634856207
     """
-    client = get_boto3_client()
+    client = get_boto3_client(endpoint_url)
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
     s3 = s3fs.S3FileSystem(
@@ -119,7 +118,7 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
 # ### end from s3fs ### #
 
 
-async def test_basic() -> None:
+async def test_basic(endpoint_url: str) -> None:
     store = FsspecStore.from_url(
         f"s3://{test_bucket_name}/foo/spam/",
         storage_options={"endpoint_url": endpoint_url, "anon": False},
@@ -146,7 +145,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     @pytest.fixture
-    def store_kwargs(self) -> dict[str, str | bool]:
+    def store_kwargs(self, endpoint_url: str) -> dict[str, str | bool]:
         try:
             from fsspec import url_to_fs
         except ImportError:
@@ -184,7 +183,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: FsspecStore) -> None:
         assert store.supports_listing
 
-    async def test_fsspec_store_from_uri(self, store: FsspecStore) -> None:
+    async def test_fsspec_store_from_uri(self, store: FsspecStore, endpoint_url: str) -> None:
         storage_options = {
             "endpoint_url": endpoint_url,
             "anon": False,
@@ -237,7 +236,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         parse_version(fsspec.__version__) < parse_version("2024.03.01"),
         reason="Prior bug in from_upath",
     )
-    def test_from_upath(self) -> None:
+    def test_from_upath(self, endpoint_url: str) -> None:
         upath = pytest.importorskip("upath")
         path = upath.UPath(
             f"s3://{test_bucket_name}/foo/bar/",
@@ -250,7 +249,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
 
-    def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
+    def test_init_warns_if_fs_asynchronous_is_false(self, endpoint_url: str) -> None:
         try:
             from fsspec import url_to_fs
         except ImportError:
@@ -279,7 +278,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
 
     # ── Filesystem lifecycle (ownership) ──────────────────────────────────────
 
-    def test_from_url_owns_filesystem(self) -> None:
+    def test_from_url_owns_filesystem(self, endpoint_url: str) -> None:
         """FsspecStore.from_url() creates the async fs; it must own it."""
         store = FsspecStore.from_url(
             f"s3://{test_bucket_name}/lifecycle/",
@@ -288,7 +287,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert store._owns_fs
         store.close()
 
-    async def test_from_url_close_releases_store(self) -> None:
+    async def test_from_url_close_releases_store(self, endpoint_url: str) -> None:
         """
         close() on a from_url() store must succeed without error and mark the
         store as closed.  For the owned filesystem, _close_fs() is invoked to
@@ -305,7 +304,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
 
         assert not store._is_open
 
-    def test_direct_construction_does_not_own_filesystem(self) -> None:
+    def test_direct_construction_does_not_own_filesystem(self, endpoint_url: str) -> None:
         """Direct FsspecStore() must not claim ownership — the caller owns the fs."""
         try:
             from fsspec import url_to_fs
@@ -321,7 +320,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         parse_version(fsspec.__version__) < parse_version("2024.03.01"),
         reason="Prior bug in from_upath",
     )
-    def test_from_upath_does_not_own_filesystem(self) -> None:
+    def test_from_upath_does_not_own_filesystem(self, endpoint_url: str) -> None:
         """from_upath() uses the UPath's existing fs; the store must not own it."""
         upath = pytest.importorskip("upath")
         path = upath.UPath(
@@ -333,7 +332,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store = FsspecStore.from_upath(path)
         assert not store._owns_fs
 
-    def test_from_mapper_does_not_own_already_async_filesystem(self) -> None:
+    def test_from_mapper_does_not_own_already_async_filesystem(self, endpoint_url: str) -> None:
         """from_mapper() with an already-async fs must not claim ownership."""
         s3_filesystem = s3fs.S3FileSystem(
             asynchronous=True,
@@ -501,7 +500,7 @@ def test_wrap_sync_filesystem_raises(tmp_path: pathlib.Path) -> None:
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_no_wrap_async_filesystem() -> None:
+def test_no_wrap_async_filesystem(endpoint_url: str) -> None:
     """An async fs should not be wrapped automatically; fsspec's s3 filesystem is such an fs"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
@@ -551,7 +550,7 @@ def test_open_fsmap_file_raises(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.parametrize("asynchronous", [True, False])
-def test_open_fsmap_s3(asynchronous: bool) -> None:
+def test_open_fsmap_s3(asynchronous: bool, endpoint_url: str) -> None:
     s3_filesystem = s3fs.S3FileSystem(
         asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
     )
@@ -559,7 +558,7 @@ def test_open_fsmap_s3(asynchronous: bool) -> None:
     array_roundtrip(mapper)
 
 
-def test_open_s3map_raises() -> None:
+def test_open_s3map_raises(endpoint_url: str) -> None:
     with pytest.raises(TypeError, match="Unsupported type for store_like:.*"):
         zarr.open(store=0, mode="w", shape=(3, 3))
     s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
@@ -652,7 +651,7 @@ def test_with_read_only_transfers_filesystem_ownership(tmp_path: pathlib.Path) -
 
 
 @pytest.mark.parametrize("asynchronous", [True, False])
-def test_make_async(asynchronous: bool) -> None:
+def test_make_async(asynchronous: bool, endpoint_url: str) -> None:
     s3_filesystem = s3fs.S3FileSystem(
         asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
     )

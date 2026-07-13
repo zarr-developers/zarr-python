@@ -114,9 +114,9 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - [#3562](https://github.com/zarr-developers/zarr-python/issues/3562), [#3605](https://github.com/zarr-developers/zarr-python/issues/3605), [#3619](https://github.com/zarr-developers/zarr-python/issues/3619), [#3623](https://github.com/zarr-developers/zarr-python/issues/3623), [#3636](https://github.com/zarr-developers/zarr-python/issues/3636), [#3648](https://github.com/zarr-developers/zarr-python/issues/3648), [#3656](https://github.com/zarr-developers/zarr-python/issues/3656), [#3658](https://github.com/zarr-developers/zarr-python/issues/3658), [#3673](https://github.com/zarr-developers/zarr-python/issues/3673), [#3704](https://github.com/zarr-developers/zarr-python/issues/3704), [#3706](https://github.com/zarr-developers/zarr-python/issues/3706), [#3708](https://github.com/zarr-developers/zarr-python/issues/3708), [#3712](https://github.com/zarr-developers/zarr-python/issues/3712), [#3713](https://github.com/zarr-developers/zarr-python/issues/3713), [#3717](https://github.com/zarr-developers/zarr-python/issues/3717), [#3721](https://github.com/zarr-developers/zarr-python/issues/3721), [#3728](https://github.com/zarr-developers/zarr-python/issues/3728), [#3778](https://github.com/zarr-developers/zarr-python/issues/3778)
 
 
-## zarr 3.1.5 (2025-11-21)
+## 3.1.5 (2025-11-21)
 
-## Bugfixes
+### Bugfixes
 
 - Fix formatting errors in the release notes section of the docs. ([#3594](https://github.com/zarr-developers/zarr-python/issues/3594))
 
@@ -153,7 +153,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - [#3515](https://github.com/zarr-developers/zarr-python/issues/3515), [#3532](https://github.com/zarr-developers/zarr-python/issues/3532), [#3533](https://github.com/zarr-developers/zarr-python/issues/3533), [#3553](https://github.com/zarr-developers/zarr-python/issues/3553)
 
 
-## zarr 3.1.3 (2025-09-18)
+## 3.1.3 (2025-09-18)
 
 ### Features
 
@@ -576,7 +576,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
   parameters of those instances. `ChunkKeyEncodingLike` should be used by high-level functions to provide a convenient
   way for creating `ChunkKeyEncoding` objects. ([#2763](https://github.com/zarr-developers/zarr-python/issues/2763))
 
-## 3.0.1 (Jan. 17, 2025)
+## 3.0.1 (2025-01-17)
 
 * Implement `zarr.from_array` using concurrent streaming ([#2622](https://github.com/zarr-developers/zarr-python/issues/2622)).
 
@@ -604,7 +604,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 * Speed up hypothesis tests ([#2650](https://github.com/zarr-developers/zarr-python/issues/2650)).
 * Remove multiple imports for an import name ([#2723](https://github.com/zarr-developers/zarr-python/issues/2723)).
 
-## 3.0.0 (Jan. 9, 2025)
+## 3.0.0 (2025-01-09)
 
 3.0.0 is a new major release of Zarr-Python, with many breaking changes.
 See the [v3 migration guide](user-guide/v3_migration.md) for a listing of what's changed.
