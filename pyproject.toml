@@ -426,11 +426,21 @@ module = [
 ignore_errors = true
 
 [tool.pytest.ini_options]
-minversion = "7"
+minversion = "9"
 testpaths = ["src", "tests", "docs/user-guide"]
 log_cli_level = "INFO"
 log_level = "INFO"
-xfail_strict = true
+# Enables strict_config, strict_markers, strict_xfail, strict_parametrization_ids, and
+# any strictness options added in future pytest releases. Note that the equivalent
+# `--strict-config`/`--strict-markers` flags were silently ignored when passed via
+# addopts before pytest 9.1 (pytest#14442), so this option is the reliable spelling.
+strict = true
+# Turn deadlocks into loud failures: if a single test exceeds this many seconds, dump
+# every thread's traceback and kill the run (exit_on_timeout is new in pytest 9). Sized
+# far above the slowest legitimate test (~20s locally; slower under coverage/Windows/
+# nightly stateful-hypothesis runs) so only a genuine hang can trip it.
+faulthandler_timeout = 600
+faulthandler_exit_on_timeout = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
@@ -442,7 +452,7 @@ addopts = [
     "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
-    "-ra", "--strict-config", "--strict-markers",
+    "-ra",
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
@@ -455,6 +465,18 @@ filterwarnings = [
     # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
     # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
     "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
+    # pytest-asyncio implicitly creates an event loop in _get_event_loop_no_warn during
+    # fixture setup/teardown and never closes it (allocation site verified with
+    # PYTHONTRACEMALLOC: pytest_asyncio/plugin.py). When the garbage collector reclaims
+    # that loop (and its self-pipe socketpair: AF_UNIX family=1 on POSIX, emulated with
+    # AF_INET family=2 on Windows) mid-test, the unraisable hook fails whichever unrelated
+    # test happens to be running — the long-standing "random cross-file failure" in the
+    # pipeline suites. The message contains only the __del__ repr, so these patterns cannot
+    # scope to pytest-asyncio specifically: a loop/socketpair leak in zarr's own sync
+    # machinery would also be silenced. Accepted tradeoff — revisit if zarr.core.sync grows
+    # loop-lifecycle changes.
+    "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",

@@ -18,6 +18,7 @@ from zarr.abc.store import RangeByteRequest
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import MemoryStore
 from zarr.storage._wrapper import WrapperStore
+from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -56,6 +57,46 @@ async def test_memory_store_get_ranges_missing_key_raises() -> None:
     agen = store.get_ranges("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
     with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
         await anext(agen)
+
+
+def test_get_ranges_sync_reads_multiple_ranges() -> None:
+    """The synchronous `get_ranges_sync` on a sync-capable store returns each
+    requested range, mirroring the async `get_ranges` happy path."""
+    import asyncio
+
+    store = MemoryStore()
+    blob = bytes(i % 256 for i in range(512))
+    asyncio.run(_write(store, "blob", blob))
+
+    ranges = [RangeByteRequest(0, 10), RangeByteRequest(100, 110)]
+    proto = default_buffer_prototype()
+    flat: dict[int, bytes] = {}
+    for idx, buf in store.get_ranges_sync("blob", ranges, prototype=proto):
+        assert buf is not None
+        flat[idx] = buf.to_bytes()
+
+    assert flat[0] == blob[0:10]
+    assert flat[1] == blob[100:110]
+
+
+def test_get_ranges_sync_missing_key_raises() -> None:
+    """A missing key makes `get_ranges_sync` raise a BaseExceptionGroup
+    containing FileNotFoundError — the same contract as async `get_ranges`, so
+    callers handle a deleted shard uniformly across sync and async paths."""
+    store = MemoryStore()
+    proto = default_buffer_prototype()
+    with pytest.RaisesGroup(pytest.RaisesExc(FileNotFoundError)):
+        store.get_ranges_sync("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
+
+
+def test_get_ranges_sync_on_non_sync_store_raises_type_error() -> None:
+    """`get_ranges_sync` requires the store to support synchronous reads
+    (`SupportsGetSync`); a non-sync store raises TypeError rather than silently
+    falling back."""
+    store = LatencyStore(MemoryStore(), get_latency=0.0, set_latency=0.0)
+    proto = default_buffer_prototype()
+    with pytest.raises(TypeError, match="does not support synchronous reads"):
+        store.get_ranges_sync("k", [RangeByteRequest(0, 10)], prototype=proto)
 
 
 async def test_wrapper_store_delegates_get_ranges() -> None:
