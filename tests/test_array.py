@@ -1695,7 +1695,8 @@ class TestCreateArray:
         assert endianness_from_numpy_str(byte_order) == endianness  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+# The explicit id for b"a" avoids colliding with the auto-generated id for "a".
+@pytest.mark.parametrize("value", [1, 1.4, "a", pytest.param(b"a", id="a-bytes"), np.array(1)])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
