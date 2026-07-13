@@ -103,6 +103,7 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
     re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
 )
 async def test_list_dir_ignores_s3_prefix_marker(moto_server: str) -> None:
+    """Ensure obstore's exact-prefix S3 directory marker is not listed as a child."""
     boto3 = pytest.importorskip("boto3")
     bucket = "object-store-prefix-marker"
     client = boto3.client(
