@@ -228,10 +228,35 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_codecs(metadata.codecs)
+        pipeline = get_pipeline_class().from_codecs(metadata.codecs)
+        from zarr.core.metadata.v3 import RegularChunkGridMetadata
+
+        # Use the regular chunk shape if available, otherwise use a
+        # placeholder. The ChunkTransform is shape-agnostic — the actual
+        # chunk shape is passed per-call at decode/encode time.
+        if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
+            chunk_shape = metadata.chunk_grid.chunk_shape
+        else:
+            chunk_shape = (1,) * len(metadata.shape)
+        chunk_spec = ArraySpec(
+            shape=chunk_shape,
+            dtype=metadata.data_type,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
-        return get_pipeline_class().from_codecs([v2_codec])
+        pipeline = get_pipeline_class().from_codecs([v2_codec])
+        chunk_spec = ArraySpec(
+            shape=metadata.chunks,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({"order": metadata.order}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     raise TypeError  # pragma: no cover
 
 
