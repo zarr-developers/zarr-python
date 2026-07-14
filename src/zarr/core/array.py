@@ -4018,7 +4018,11 @@ async def _shards_initialized(
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
     store_contents_relative = [
-        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
+        _relativize_path(path=key, prefix=array.store_path.path)
+        for key in store_contents
+        # obstore can include a directory marker whose key matches the listed prefix;
+        # it is not an initialized shard and must be excluded before relativizing.
+        if array.store_path.path == "" or key != array.store_path.path
     ]
     return tuple(
         chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
