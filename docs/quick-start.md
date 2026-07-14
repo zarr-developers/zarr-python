@@ -152,11 +152,14 @@ z[:, :] = np.random.random((100, 100))
 store.close()
 ```
 
-To open an existing array from a ZIP file:
+To open an existing array from a ZIP file you can open it with the usual function or by explicitly opening the `ZipStore` first :
 
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
-# Open the ZipStore in read-only mode
+# Using the convenience functions, opening in read-only mode
+z = zarr.open_array("data/example-5.zip", mode='r')
+
+# Using a ZipStore in read-only mode
 store = zarr.storage.ZipStore("data/example-5.zip", read_only=True)
 
 z = zarr.open_array(store, mode='r')
