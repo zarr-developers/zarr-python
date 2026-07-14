@@ -550,6 +550,7 @@ def basic_indices(
     allow_ellipsis: TrueOrFalse = True,
 ) -> Any:
     """Basic indices without unsupported negative slices."""
+
     strategy = npst.basic_indices(
         shape=shape,
         min_dims=min_dims,
