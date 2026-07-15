@@ -95,6 +95,28 @@ Add focused regression tests before implementation and verify that each fails fo
 
 After focused tests pass, run the complete transform, lazy-indexing, indexing, and array test modules, followed by the repository's configured static checks for the modified files.
 
+### Stateful Indexing Properties
+
+Extend the property-based test architecture from single eager selections to indexing programs. A generated example consists of:
+
+1. A NumPy array and equivalent chunked Zarr array.
+2. A valid sequence of one or more indexing operations chosen from basic, orthogonal, and vectorized modes.
+3. An execution mode chosen from lazy materialization, eager access on a lazy view, caller-provided `out`, scalar assignment, and array assignment.
+
+Apply the same program to a NumPy reference and to Zarr. Each operation is relative to the visible domain produced by the preceding operations. The generator must preserve whether index arrays are independent (`oindex`) or correlated (`vindex`) and must deliberately cover unequal orthogonal index lengths, broadcast-compatible vectorized shapes, negative indices, zero-rank results, empty results, and selections spanning multiple chunks.
+
+Read properties compare all of the following where applicable:
+
+- result shape;
+- scalar versus array result kind;
+- dtype;
+- element values;
+- contents of a caller-provided `out` buffer.
+
+Write properties compare the entire NumPy and Zarr backing arrays after the operation, not merely the selected view. This detects writes that produce the expected selected values while mutating the wrong storage region.
+
+Keep focused example-based regressions for each reviewed bug. The stateful properties complement those tests by exploring compositions and shape interactions; they do not replace precise regression cases.
+
 ## Non-Goals
 
 - Negative slice steps.
