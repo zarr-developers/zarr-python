@@ -66,6 +66,7 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
+                    "max_workers": None,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -156,7 +157,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
     assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
@@ -211,7 +212,16 @@ def test_config_codec_implementation(store: Store) -> None:
     _mock = Mock()
 
     class MockBloscCodec(BloscCodec):
+        # Record a call from whichever encode entry point the active codec
+        # pipeline uses: the async `_encode_single` (BatchedCodecPipeline, the
+        # default) or the synchronous `_encode_sync` (FusedCodecPipeline).
+        # Overriding both keeps this test ("the configured codec is actually
+        # used") independent of which pipeline is the default.
         async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            _mock.call()
+            return None
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
             return None
 

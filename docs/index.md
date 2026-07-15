@@ -30,7 +30,7 @@ pip install zarr
 or `conda`:
 
 ```bash
-conda install --channel conda-forge zarr
+conda install -c conda-forge zarr
 ```
 
 ## Navigating the documentation
@@ -45,14 +45,14 @@ conda install --channel conda-forge zarr
     introduction to Zarr's main concepts and links to additional tutorials.
 
 
--   [:material-book-open:{ .lg .middle } __User guide__](user-guide/installation.md)
+-   [:material-book-open:{ .lg .middle } __User guide__](user-guide/index.md)
 
     ---
 
     A detailed guide for how to use Zarr-Python.
 
 
--   [:material-api:{ .lg .middle } __API Reference__](api/zarr/open.md)
+-   [:material-api:{ .lg .middle } __API Reference__](api/zarr/index.md)
 
     ---
 

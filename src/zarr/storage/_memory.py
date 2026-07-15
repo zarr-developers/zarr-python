@@ -219,7 +219,7 @@ class MemoryStore(Store):
             keys_unique = {
                 key.removeprefix(f"{prefix}/").split("/")[0]
                 for key in self._store_dict
-                if key.startswith(f"{prefix}/") and key != prefix
+                if key.startswith(f"{prefix}/") and key not in {prefix, f"{prefix}/"}
             }
 
         for key in keys_unique:

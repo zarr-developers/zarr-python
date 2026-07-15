@@ -114,9 +114,9 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - [#3562](https://github.com/zarr-developers/zarr-python/issues/3562), [#3605](https://github.com/zarr-developers/zarr-python/issues/3605), [#3619](https://github.com/zarr-developers/zarr-python/issues/3619), [#3623](https://github.com/zarr-developers/zarr-python/issues/3623), [#3636](https://github.com/zarr-developers/zarr-python/issues/3636), [#3648](https://github.com/zarr-developers/zarr-python/issues/3648), [#3656](https://github.com/zarr-developers/zarr-python/issues/3656), [#3658](https://github.com/zarr-developers/zarr-python/issues/3658), [#3673](https://github.com/zarr-developers/zarr-python/issues/3673), [#3704](https://github.com/zarr-developers/zarr-python/issues/3704), [#3706](https://github.com/zarr-developers/zarr-python/issues/3706), [#3708](https://github.com/zarr-developers/zarr-python/issues/3708), [#3712](https://github.com/zarr-developers/zarr-python/issues/3712), [#3713](https://github.com/zarr-developers/zarr-python/issues/3713), [#3717](https://github.com/zarr-developers/zarr-python/issues/3717), [#3721](https://github.com/zarr-developers/zarr-python/issues/3721), [#3728](https://github.com/zarr-developers/zarr-python/issues/3728), [#3778](https://github.com/zarr-developers/zarr-python/issues/3778)
 
 
-## zarr 3.1.5 (2025-11-21)
+## 3.1.5 (2025-11-21)
 
-## Bugfixes
+### Bugfixes
 
 - Fix formatting errors in the release notes section of the docs. ([#3594](https://github.com/zarr-developers/zarr-python/issues/3594))
 
@@ -153,7 +153,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - [#3515](https://github.com/zarr-developers/zarr-python/issues/3515), [#3532](https://github.com/zarr-developers/zarr-python/issues/3532), [#3533](https://github.com/zarr-developers/zarr-python/issues/3533), [#3553](https://github.com/zarr-developers/zarr-python/issues/3553)
 
 
-## zarr 3.1.3 (2025-09-18)
+## 3.1.3 (2025-09-18)
 
 ### Features
 
@@ -536,18 +536,18 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Test `getsize()` and `getsize_prefix()` in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test that a `ValueError` is raised for invalid byte range syntax in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Separate instantiating and opening a store in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
-- Add a test for using Stores as a context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+- Add a test for using Stores as context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Implemented `LoggingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - `LoggingStore` is now a generic class. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Change StoreTest's `test_store_repr`, `test_store_supports_writes`,
   `test_store_supports_partial_writes`, and `test_store_supports_listing`
-  to to be implemented using `@abstractmethod`, rather raising `NotImplementedError`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+  to be implemented using `@abstractmethod`, rather than raising `NotImplementedError`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test the error raised for invalid buffer arguments in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Test that data can be written to a store that's not yet open using the store.set method in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Adds a new function `init_array` for initializing an array in storage, and refactors `create_array`
   to use `init_array`. `create_array` takes two new parameters: `data`, an optional array-like object, and `write_data`, a bool which defaults to `True`.
   If `data` is given to `create_array`, then the `dtype` and `shape` attributes of `data` are used to define the
-  corresponding attributes of the resulting Zarr array. Additionally, if `data` given and `write_data` is `True`,
+  corresponding attributes of the resulting Zarr array. Additionally, if `data` is given and `write_data` is `True`,
   then the values in `data` will be written to the newly created array. ([#2761](https://github.com/zarr-developers/zarr-python/issues/2761))
 
 ### Bugfixes
@@ -559,7 +559,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Use stdout rather than stderr as the default stream for `LoggingStore`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Match the errors raised by read only stores in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Fixed `ZipStore` to make sure the correct attributes are saved when instances are pickled.
-  This fixes a previous bug that prevent using `ZipStore` with a `ProcessPoolExecutor`. ([#2762](https://github.com/zarr-developers/zarr-python/issues/2762))
+  This fixes a previous bug that prevented using `ZipStore` with a `ProcessPoolExecutor`. ([#2762](https://github.com/zarr-developers/zarr-python/issues/2762))
 - Updated the optional test dependencies to include `botocore` and `fsspec`. ([#2768](https://github.com/zarr-developers/zarr-python/issues/2768))
 - Fixed the fsspec tests to skip if `botocore` is not installed.
   Previously they would have failed with an import error. ([#2768](https://github.com/zarr-developers/zarr-python/issues/2768))
@@ -576,7 +576,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
   parameters of those instances. `ChunkKeyEncodingLike` should be used by high-level functions to provide a convenient
   way for creating `ChunkKeyEncoding` objects. ([#2763](https://github.com/zarr-developers/zarr-python/issues/2763))
 
-## 3.0.1 (Jan. 17, 2025)
+## 3.0.1 (2025-01-17)
 
 * Implement `zarr.from_array` using concurrent streaming ([#2622](https://github.com/zarr-developers/zarr-python/issues/2622)).
 
@@ -604,7 +604,7 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 * Speed up hypothesis tests ([#2650](https://github.com/zarr-developers/zarr-python/issues/2650)).
 * Remove multiple imports for an import name ([#2723](https://github.com/zarr-developers/zarr-python/issues/2723)).
 
-## 3.0.0 (Jan. 9, 2025)
+## 3.0.0 (2025-01-09)
 
 3.0.0 is a new major release of Zarr-Python, with many breaking changes.
 See the [v3 migration guide](user-guide/v3_migration.md) for a listing of what's changed.
