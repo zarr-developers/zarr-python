@@ -1300,6 +1300,8 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The opened array.
     """
     like_kwargs = _like_args(a) | kwargs
+    if like_kwargs.get("mode") is None:
+        like_kwargs["mode"] = "a"
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 

@@ -168,6 +168,33 @@ async def test_array_like_creation(
     assert np.all(Array(new_arr)[:] == expect_fill)
 
 
+@pytest.mark.parametrize("mode_kwargs", [{}, {"mode": None}])
+async def test_open_like_creates_array_by_default(
+    zarr_format: ZarrFormat, mode_kwargs: dict[str, None]
+) -> None:
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=100,
+    )
+
+    new_arr = await zarr.api.asynchronous.open_like(
+        ref_arr,
+        path="foo",
+        store={},
+        zarr_format=zarr_format,
+        **mode_kwargs,
+    )
+
+    assert new_arr.shape == ref_arr.shape
+    assert new_arr.chunks == ref_arr.chunks
+    assert new_arr.dtype == ref_arr.dtype
+    assert np.all(Array(new_arr)[:] == ref_arr.fill_value)
+
+
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
