@@ -116,6 +116,11 @@ remote-tests = [
     "moto[s3,server]==5.2.2",
     "requests==2.34.2",
 ]
+interop-tests = [
+    # Third-party array consumers whose duck-typing contract we test against;
+    # left floating so the `optional` matrix exercises their latest releases.
+    "dask[array]",
+]
 release = [
     "towncrier==25.8.0",
 ]
@@ -190,6 +195,7 @@ matrix.deps.features = [
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
+  {value = "interop-tests", if = ["optional"]},
 ]
 
 [tool.hatch.envs.test.scripts]

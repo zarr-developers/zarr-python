@@ -152,7 +152,7 @@ class BoundsCheckError(IndexError): ...
 class ArrayIndexError(IndexError): ...
 
 
-class LazyViewError(NotImplementedError):
+class LazyViewError(NotImplementedError, AttributeError):
     """Raised when an operation that assumes an array fills its chunk grid is used
     on a non-identity lazy view (created via ``Array.lazy[...]``).
 
@@ -161,7 +161,10 @@ class LazyViewError(NotImplementedError):
     for a view onto a subset of the backing grid. Use `chunk_projections` for the
     view's granularity; the backing array's stored structure is available via
     `metadata` / `chunk_grid`. Subclasses
-    ``NotImplementedError`` so existing consumers that catch it keep working.
+    ``NotImplementedError`` so existing consumers that catch it keep working, and
+    ``AttributeError`` so duck-typing probes (`hasattr(view, "chunks")`,
+    `getattr(x, "chunks", None)` — e.g. `dask.array.from_array`) treat guarded
+    members as absent instead of crashing.
     """
 
 

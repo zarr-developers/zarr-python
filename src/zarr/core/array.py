@@ -4454,6 +4454,11 @@ class _LazyIndexAccessor:
         self._array._with_transform(new_t)[...] = value
 
     @property
+    def shape(self) -> tuple[int, ...]:
+        """Shape of the array (or view) this accessor indexes into."""
+        return self._array.shape
+
+    @property
     def oindex(self) -> _LazyOIndex:
         return _LazyOIndex(self._array)
 

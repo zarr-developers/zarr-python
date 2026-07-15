@@ -411,6 +411,30 @@ class TestLazyViewMethods:
         np.testing.assert_array_equal(a[...], expected)
 
 
+class TestLazyAccessorSurface:
+    def test_shape(self) -> None:
+        """`.lazy.shape` mirrors the wrapped array's shape, including on views."""
+        a, _ = _make(CONFIGS[3])  # 2d-unsharded (20, 30)
+        assert a.lazy.shape == (20, 30)
+        v = a.lazy[2:8, 5:15]
+        assert v.lazy.shape == (6, 10)
+
+
+class TestDaskInterop:
+    def test_from_array_lazy_view(self) -> None:
+        """A zero-origin lazy view works as a `dask.array.from_array` source.
+
+        This is the dask-free-wrapper use case (napari): the view exposes
+        `shape`/`dtype`/`ndim` and eager `__getitem__`, which is all dask needs.
+        """
+        da = pytest.importorskip("dask.array")
+        a, ref = _make(CONFIGS[3])  # 2d-unsharded (20, 30)
+        v = a.lazy[2:18, 5:25].translate_to((0, 0))
+        d = da.from_array(v, chunks=(8, 10))
+        assert d.shape == (16, 20)
+        np.testing.assert_array_equal(d.compute(scheduler="synchronous"), ref[2:18, 5:25])
+
+
 class TestLazyErrors:
     def test_negative_step_raises(self) -> None:
         """A negative slice step is unsupported and raises on the lazy path."""
