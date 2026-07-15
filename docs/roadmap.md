@@ -154,9 +154,9 @@ before/after numbers.
 
 ### Lazy indexing
 
-`Array.__getitem__` performs IO eagerly and returns NumPy, which makes Zarr
-arrays the odd one out among modern array libraries and blocks participation in
-the [Python Array API](https://data-apis.org/array-api/) ecosystem. Add an
+`Array.__getitem__` performs IO eagerly and returns NumPy arrays, which makes Zarr
+arrays the odd one out among modern array libraries and blocks compliance with
+the [Python Array API](https://data-apis.org/array-api/) standard. Add an
 opt-in `array.lazy[...]` accessor backed by a stable coordinate-mapping algebra
 (the `IndexTransform` work in
 [#3906](https://github.com/zarr-developers/zarr-python/pull/3906)), plus a
@@ -204,13 +204,6 @@ deliberately, and named profiles replacing global mutators. This substrate is
 where the performance-lever defaults (concurrency, caching, engine selection)
 will live, so it lands early.
 
-### Consolidated metadata
-
-Consolidated metadata is essential for performance on high-latency storage and
-widely used downstream, but the current support has open design questions
-around codec/dtype/grid representations, write-time invalidation, and V2/V3
-migration. A stored V3 representation is a *format* decision, so the design
-pass routes through the Zarr spec process (ZEP), co-designed with Xarray.
 
 ### Coordinated and distributed writes
 
@@ -282,6 +275,7 @@ following:
 - **A deprecation window for every change.** Renames and removals land through
   deprecation cycles, and downstream libraries (Xarray, Dask, napari) get
   release windows to absorb each change before the next one lands.
+- **Generous legacy support** If necessary, we can keep old code around in a `legacy` module. Pydantic used a similar strategy to manage their 2.0 release: see https://pydantic.dev/docs/validation/dev/get-started/migration/#using-pydantic-v1-features-in-a-v1v2-environment.
 
 ### Decision points
 
@@ -293,18 +287,6 @@ hinges on whether Array API conformance at the bare-`__getitem__` surface turns
 out to be a hard requirement; if it does, the flip happens as a long-window
 deprecation with an explicit eager escape hatch and downstream coordination —
 never as a reason to adopt a major version.
-
-### Out of scope
-
-- **Persisted hierarchy links** (HDF5-style soft/hard/external links) — would
-  require defining a new on-disk format unilaterally; needs a Zarr Enhancement
-  Proposal first.
-- **Declarative hierarchy schema validation** as a shipped feature — likely a
-  separate package layered on `zarr-metadata`, deferred.
-- **Cross-process shared-memory caching** — the caching substrate is designed
-  not to foreclose it, but it does not ship now.
-- **Further V2→V3 migration tooling** — the 2.x → 3.x transition is
-  effectively resolved.
 
 ## How to get involved
 
@@ -319,6 +301,3 @@ never as a reason to adopt a major version.
   Zarr-Python would be affected by the codec API rewrite, the stores rewrite,
   or the lazy-indexing work, the planning phase is the time to surface
   workloads or patterns that don't fit.
-- **Participate in the spec process.** Several open questions (persisted
-  hierarchy links, ML dtype identifiers, consolidated metadata) ultimately need
-  [Zarr Enhancement Proposals](https://zarr.dev/zeps/).
