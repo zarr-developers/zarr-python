@@ -10,12 +10,12 @@ turns those stored bytes back into an array you can use**.
 
 This guide comes in three parts:
 
-- **[Part I: The core idea](data_model_core_idea.md).** The happy path, with
+- **[Part I: The core idea](from_zero_to_zarr_core_idea.md).** The happy path, with
   pictures and no code.
-- **[Part II: Under the hood](data_model_under_the_hood.md).** A few deeper
+- **[Part II: Under the hood](from_zero_to_zarr_under_the_hood.md).** A few deeper
   sections that go *off* the happy path. Each one is signposted, so you can read
   on or skip ahead.
-- **[Part III: Seeing it for real](data_model_in_action.md).** A short hands-on
+- **[Part III: Seeing it for real](from_zero_to_zarr_in_action.md).** A short hands-on
   section with runnable code that ties everything together.
 
 But before the *how*, a word on the *why*.
@@ -98,10 +98,10 @@ of numbers.
 
 Strip away the domain (mosquitoes, galaxies, hurricanes) and the object at the
 center is always the same: an **array**, a big grid of numbers. So that's where
-we'll begin. In [Part I](data_model_core_idea.md) we'll look at what an array is,
+we'll begin. In [Part I](from_zero_to_zarr_core_idea.md) we'll look at what an array is,
 then at what happens when one grows too big to fit in memory, and build up from
 there to how Zarr stores it.
 
 ---
 
-Continue to **[Part I: The core idea](data_model_core_idea.md)**.
+Continue to **[Part I: The core idea](from_zero_to_zarr_core_idea.md)**.

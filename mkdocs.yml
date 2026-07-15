@@ -13,11 +13,11 @@ nav:
   - "quick-start.md"
   - User Guide:
       - user-guide/index.md
-      - Understanding Zarr:
-          - user-guide/data_model.md
-          - "Part I: The core idea": user-guide/data_model_core_idea.md
-          - "Part II: Under the hood": user-guide/data_model_under_the_hood.md
-          - "Part III: Seeing it for real": user-guide/data_model_in_action.md
+      - From Zero to Zarr:
+          - user-guide/from_zero_to_zarr.md
+          - "Part I: The core idea": user-guide/from_zero_to_zarr_core_idea.md
+          - "Part II: Under the hood": user-guide/from_zero_to_zarr_under_the_hood.md
+          - "Part III: Seeing it for real": user-guide/from_zero_to_zarr_in_action.md
       - user-guide/installation.md
       - user-guide/arrays.md
       - user-guide/groups.md

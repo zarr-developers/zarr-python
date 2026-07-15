@@ -1,14 +1,14 @@
 # Part II: Under the hood
 
 *A few deeper sections that go off the happy path.* This is the second part of the
-[From Zero to Zarr](data_model.md) guide; it assumes you've read
-[Part I: The core idea](data_model_core_idea.md).
+[From Zero to Zarr](from_zero_to_zarr.md) guide; it assumes you've read
+[Part I: The core idea](from_zero_to_zarr_core_idea.md).
 
 You now have the core mental model: arrays become chunks, chunks become key/value
 entries, and metadata explains it all, exactly as the spec prescribes. The next
 few sections go a little deeper, off the happy path. None of it changes the big
 picture; it just explains the machinery. Read on if you're curious; skip to
-[Part III](data_model_in_action.md) if you'd rather see it in action.
+[Part III](from_zero_to_zarr_in_action.md) if you'd rather see it in action.
 
 ## Going deeper: how chunks meet memory
 
@@ -334,7 +334,7 @@ exactly the ones too big for memory, which brings us to the last piece.
 
 ## Going deeper: working with data bigger than memory
 
-Back to the question from [Part I](data_model_core_idea.md#when-an-array-outgrows-memory): how do you handle an array that's too big
+Back to the question from [Part I](from_zero_to_zarr_core_idea.md#when-an-array-outgrows-memory): how do you handle an array that's too big
 for RAM? The answer falls out of everything above. Creating a Zarr array doesn't
 allocate the whole thing; it just writes the metadata and prepares an (empty)
 store. You then fill the array **a region at a time**, and each write only needs
@@ -355,5 +355,5 @@ chunks in parallel. For the practical recipes, see
 ---
 
 That's the machinery. Continue to
-**[Part III: Seeing it for real](data_model_in_action.md)** to watch it all run
+**[Part III: Seeing it for real](from_zero_to_zarr_in_action.md)** to watch it all run
 on a real array.

@@ -1,7 +1,7 @@
 # Part I: The core idea
 
 *The happy path, with pictures and no code.* This is the first part of the
-[From Zero to Zarr](data_model.md) guide.
+[From Zero to Zarr](from_zero_to_zarr.md) guide.
 
 ## An overview of arrays
 
@@ -92,7 +92,7 @@ RAM**, need to **outlive the program that created them**, and must be **shared**
 others can read even a single corner without copying the whole thing.
 
 An array that large is never held in memory all at once; it's written out a piece
-at a time (more on that in [Part II](data_model_under_the_hood.md)). To make that possible, Zarr starts with
+at a time (more on that in [Part II](from_zero_to_zarr_under_the_hood.md)). To make that possible, Zarr starts with
 one simple idea: don't store the array as a single blob. Split it up.
 
 ## Chunking: splitting the grid into blocks
@@ -138,7 +138,7 @@ colleague wanted) without touching the rest.
     We deliberately chose a chunk shape that divides the array evenly. But if every
     chunk has a fixed shape, how can chunks represent an array whose size *isn't*
     evenly divisible by the chunk shape? We answer that in
-    [when chunks don't divide evenly](data_model_under_the_hood.md#going-deeper-when-chunks-dont-divide-evenly).
+    [when chunks don't divide evenly](from_zero_to_zarr_under_the_hood.md#going-deeper-when-chunks-dont-divide-evenly).
 
 ## A store is just keys and bytes
 
@@ -206,14 +206,14 @@ store under the key `zarr.json`, that describes the array. Among its
   described, including the separator).
 - [`fill_value`](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#fill-value): the value for parts of the array that were never written (the
   spec calls these "uninitialised portions"). More on this in
-  [Part II](data_model_under_the_hood.md#going-deeper-when-chunks-dont-divide-evenly).
+  [Part II](from_zero_to_zarr_under_the_hood.md#going-deeper-when-chunks-dont-divide-evenly).
 - [`codecs`](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata-codecs): the **codecs** (a *codec* is a coder/decoder: it encodes a chunk's
   values into stored bytes, and decodes them back) used to turn each chunk's values
   into the bytes saved in the store. More on this in
-  [Part II](data_model_under_the_hood.md#going-deeper-codecs-how-values-become-bytes).
+  [Part II](from_zero_to_zarr_under_the_hood.md#going-deeper-codecs-how-values-become-bytes).
 
 The metadata is the legend that turns anonymous bytes back into your array. We'll
-look at a *real* `zarr.json` in [Part III](data_model_in_action.md).
+look at a *real* `zarr.json` in [Part III](from_zero_to_zarr_in_action.md).
 
 ## The role of the specification
 
@@ -241,6 +241,6 @@ if you meet it.
 ---
 
 That's the whole happy path. Continue to
-**[Part II: Under the hood](data_model_under_the_hood.md)** for the machinery
+**[Part II: Under the hood](from_zero_to_zarr_under_the_hood.md)** for the machinery
 behind it, or skip straight to
-**[Part III: Seeing it for real](data_model_in_action.md)** to watch it run.
+**[Part III: Seeing it for real](from_zero_to_zarr_in_action.md)** to watch it run.

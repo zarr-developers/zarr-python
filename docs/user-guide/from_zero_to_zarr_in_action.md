@@ -1,12 +1,12 @@
 # Part III: Seeing it for real
 
 *A short hands-on section with runnable code.* This is the final part of the
-[From Zero to Zarr](data_model.md) guide, tying together
-[Part I: The core idea](data_model_core_idea.md) and
-[Part II: Under the hood](data_model_under_the_hood.md).
+[From Zero to Zarr](from_zero_to_zarr.md) guide, tying together
+[Part I: The core idea](from_zero_to_zarr_core_idea.md) and
+[Part II: Under the hood](from_zero_to_zarr_under_the_hood.md).
 
 Enough concepts: let's watch the machinery run. We'll create the exact `(4, 6)`
-array chunked at `(2, 3)` from [Part I](data_model_core_idea.md), then inspect
+array chunked at `(2, 3)` from [Part I](from_zero_to_zarr_core_idea.md), then inspect
 what Zarr actually wrote.
 
 First, create the array:
@@ -97,7 +97,7 @@ assignment.
 
 Finally, reading: again using ordinary Python indexing. When you ask for a slice,
 zarr-python does the reverse of everything in
-[Part II](data_model_under_the_hood.md):
+[Part II](from_zero_to_zarr_under_the_hood.md):
 
 <figure markdown="1" class="mermaid-figure">
 
