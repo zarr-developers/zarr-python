@@ -1,3 +1,13 @@
+"""Unit tests for ChunkTransform -- the per-chunk synchronous codec chain.
+
+ChunkTransform is the data structure FusedCodecPipeline uses to encode/decode a
+single chunk through a sequence of codecs synchronously. These tests exercise it
+directly (no pipeline, no store): construction and its rejection of codecs that
+lack a synchronous implementation, encode/decode roundtrips across codec chains,
+compute_encoded_size, and None short-circuiting when an array->array codec
+returns None. End-to-end pipeline behavior lives in the pipeline test modules.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,7 +23,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
-from zarr.core.codec_pipeline import ChunkTransform
+from zarr.core.chunk_utils import ChunkTransform
 from zarr.core.dtype import get_data_type_from_native_dtype
 
 
@@ -58,8 +68,8 @@ def _make_nd_buffer(arr: np.ndarray[Any, np.dtype[Any]]) -> NDBuffer:
 )
 def test_construction(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None:
     """Construction succeeds when all codecs implement SupportsSyncCodec."""
-    spec = _make_array_spec(shape, np.dtype("float64"))
-    ChunkTransform(codecs=codecs, array_spec=spec)
+    _ = _make_array_spec(shape, np.dtype("float64"))
+    ChunkTransform(codecs=codecs)
 
 
 @pytest.mark.parametrize(
@@ -72,9 +82,9 @@ def test_construction(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None
 )
 def test_construction_rejects_non_sync(shape: tuple[int, ...], codecs: tuple[Codec, ...]) -> None:
     """Construction raises TypeError when any codec lacks SupportsSyncCodec."""
-    spec = _make_array_spec(shape, np.dtype("float64"))
+    _ = _make_array_spec(shape, np.dtype("float64"))
     with pytest.raises(TypeError, match="AsyncOnlyCodec"):
-        ChunkTransform(codecs=codecs, array_spec=spec)
+        ChunkTransform(codecs=codecs)
 
 
 @pytest.mark.parametrize(
@@ -96,12 +106,12 @@ def test_encode_decode_roundtrip(
 ) -> None:
     """Data survives a full encode/decode cycle."""
     spec = _make_array_spec(arr.shape, arr.dtype)
-    chain = ChunkTransform(codecs=codecs, array_spec=spec)
+    chain = ChunkTransform(codecs=codecs)
     nd_buf = _make_nd_buffer(arr)
 
-    encoded = chain.encode(nd_buf)
+    encoded = chain.encode_chunk(nd_buf, spec)
     assert encoded is not None
-    decoded = chain.decode(encoded)
+    decoded = chain.decode_chunk(encoded, spec)
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
 
@@ -122,7 +132,7 @@ def test_compute_encoded_size(
 ) -> None:
     """compute_encoded_size returns the correct byte length."""
     spec = _make_array_spec(shape, np.dtype("float64"))
-    chain = ChunkTransform(codecs=codecs, array_spec=spec)
+    chain = ChunkTransform(codecs=codecs)
     assert chain.compute_encoded_size(input_size, spec) == expected_size
 
 
@@ -138,8 +148,7 @@ def test_encode_returns_none_propagation() -> None:
     spec = _make_array_spec((3, 4), np.dtype("float64"))
     chain = ChunkTransform(
         codecs=(NoneReturningAACodec(order=(1, 0)), BytesCodec()),
-        array_spec=spec,
     )
     arr = np.arange(12, dtype="float64").reshape(3, 4)
     nd_buf = _make_nd_buffer(arr)
-    assert chain.encode(nd_buf) is None
+    assert chain.encode_chunk(nd_buf, spec) is None
