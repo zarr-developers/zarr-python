@@ -78,8 +78,25 @@ it for now.
 Now let's actually store some data. zarr-python deliberately mirrors NumPy's
 **indexing and slicing syntax**: you write into the array by assigning to a slice,
 just as you would with NumPy. **That assignment is what triggers Zarr to encode
-chunks and write their bytes.** Creation set up the metadata, but only writing puts
-chunk data in the store:
+chunks and write their bytes**, following the write path from Part II:
+
+<figure markdown="1" class="mermaid-figure">
+
+```mermaid
+flowchart LR
+  s["slice assignment<br/>z[:] = source"] --> w["work out which<br/>chunks it covers"]
+  w --> g["gather values<br/>from the source"]
+  g --> e["encode each<br/>chunk's bytes"]
+  e --> t["write those keys<br/>to the store"]
+```
+
+<figcaption>Writing a slice: Zarr works out which chunks the assignment covers, gathers the values that belong in each one, encodes them, and writes each chunk to the store under its key.</figcaption>
+
+</figure>
+
+It works out which chunks the assignment overlaps, gathers the values destined for
+each one, encodes their bytes, and writes each chunk to the store under its key.
+Creation set up the metadata; only this assignment puts chunk data in the store:
 
 ```python exec="true" session="datamodel" source="above" result="code"
 # the same 4x6 grid of integers from Part I
