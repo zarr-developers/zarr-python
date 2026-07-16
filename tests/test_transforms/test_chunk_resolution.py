@@ -179,3 +179,63 @@ class TestSubTransformToSelections:
         assert chunk_sel[1] == slice(0, 10, 1)
         # drop_axes is empty — integer in chunk_sel naturally drops the dim via numpy
         assert drop_axes == ()
+
+
+class TestChunkResolutionArrayMapFlavours:
+    """Chunk resolution must yield outer-product (np.ix_) selectors for
+    orthogonal ArrayMaps and shared flat-scatter selectors for correlated ones,
+    and must return early for empty fancy selections."""
+
+    def test_empty_array_selection_yields_nothing(self) -> None:
+        """An empty ArrayMap selection produces no chunk transforms (no crash)."""
+        t = IndexTransform(
+            domain=IndexDomain.from_shape((0,)),
+            output=(ArrayMap(index_array=np.array([], dtype=np.intp)),),
+        )
+        grid = ChunkGrid(dimensions=(FixedDimension(size=3, extent=10),))
+        assert list(iter_chunk_transforms(t, grid)) == []
+
+    def test_orthogonal_outer_product_selectors(self) -> None:
+        """Two independent arrays produce np.ix_-style (mesh) chunk/out selectors."""
+        t = IndexTransform.from_shape((10, 10)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
+        grid = ChunkGrid(
+            dimensions=(FixedDimension(size=10, extent=10), FixedDimension(size=10, extent=10))
+        )
+        results = list(iter_chunk_transforms(t, grid))
+        assert len(results) == 1
+        _coords, sub_t, out_indices = results[0]
+        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(sub_t, out_indices)
+        # np.ix_ produces one 2-D open-mesh selector per axis, for both sides.
+        assert len(chunk_sel) == 2
+        assert len(out_sel) == 2
+        assert isinstance(chunk_sel[0], np.ndarray)
+        assert isinstance(chunk_sel[1], np.ndarray)
+        assert chunk_sel[0].shape == (2, 1)
+        assert chunk_sel[1].shape == (1, 3)
+        assert drop_axes == ()
+
+    def test_correlated_scatter_with_residual_slice(self) -> None:
+        """Correlated arrays + a residual slice dim scatter through a single flat
+        index whose shape matches the (points, slice) block read from the chunk."""
+        t = IndexTransform.from_shape((4, 3, 5)).vindex[np.array([1, 3]), np.array([2, 0])]
+        grid = ChunkGrid(
+            dimensions=(
+                FixedDimension(size=4, extent=4),
+                FixedDimension(size=3, extent=3),
+                FixedDimension(size=5, extent=5),
+            )
+        )
+        # One chunk holds everything: both points survive, slice dim spans [0,5).
+        results = list(iter_chunk_transforms(t, grid))
+        assert len(results) == 1
+        _coords, sub_t, out_indices = results[0]
+        chunk_sel, out_sel, _drop = sub_transform_to_selections(sub_t, out_indices)
+        # Chunk side: flat coordinate arrays for the two correlated dims plus a
+        # slice for the residual dim.
+        assert len(chunk_sel) == 3
+        np.testing.assert_array_equal(np.asarray(chunk_sel[0]), [1, 3])
+        np.testing.assert_array_equal(np.asarray(chunk_sel[1]), [2, 0])
+        assert chunk_sel[2] == slice(0, 5, 1)
+        # Output side: a single flat scatter index of shape (points, slice) = (2, 5).
+        assert len(out_sel) == 1
+        assert np.asarray(out_sel[0]).shape == (2, 5)

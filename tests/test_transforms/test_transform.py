@@ -576,3 +576,53 @@ class TestArrayMapDependencyAxes:
         from zarr.core.transforms.transform import _array_map_dependency_axes
 
         assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()
+
+
+class TestIntersectArrayMapClassification:
+    """`_intersect` must distinguish orthogonal (outer-product) ArrayMaps from
+    correlated (vectorized) ones by their dependency axes, keep surviving arrays
+    at full input rank, and preserve residual (slice) dimensions."""
+
+    def test_orthogonal_outer_product_keeps_full_rank(self) -> None:
+        """Two arrays on distinct axes narrow independently and stay full rank;
+        out_indices is a per-output-dim dict of surviving positions."""
+        t = IndexTransform.from_shape((10, 10)).oindex[np.array([1, 3, 8]), np.array([2, 6, 9])]
+        # Chunk covering storage [0,5) x [0,5): rows 1,3 survive (out pos 0,1),
+        # cols 2 survives (out pos 0).
+        chunk = IndexDomain(inclusive_min=(0, 0), exclusive_max=(5, 5))
+        result = t.intersect(chunk)
+        assert result is not None
+        restricted, out_indices = result
+        assert isinstance(restricted.output[0], ArrayMap)
+        assert isinstance(restricted.output[1], ArrayMap)
+        # Full input rank preserved (not raveled to 1-D).
+        assert restricted.output[0].index_array.ndim == 2
+        assert restricted.output[1].index_array.ndim == 2
+        assert restricted.domain.ndim == 2
+        assert isinstance(out_indices, dict)
+        np.testing.assert_array_equal(out_indices[0], np.array([0, 1]))
+        np.testing.assert_array_equal(out_indices[1], np.array([0]))
+
+    def test_correlated_with_residual_slice_preserves_slice_dim(self) -> None:
+        """A vindex transform with two correlated arrays plus a residual slice
+        dim intersects without a rank error and keeps the DimensionMap."""
+        t = IndexTransform.from_shape((4, 3, 5)).vindex[np.array([1, 3]), np.array([2, 0])]
+        # Chunk covering storage [0,2) x [2,3) x [0,5): only point (1,2,*) is in
+        # bounds on both array dims -> one surviving broadcast point.
+        chunk = IndexDomain(inclusive_min=(0, 2, 0), exclusive_max=(2, 3, 5))
+        result = t.intersect(chunk)
+        assert result is not None
+        restricted, out_indices = result
+        # A DimensionMap for the residual slice dim survives (no post-init error).
+        assert any(isinstance(m, DimensionMap) for m in restricted.output)
+        assert out_indices is not None
+
+    def test_length1_orthogonal_not_treated_as_correlated(self) -> None:
+        """A length-1 orthogonal array (all-singleton shape) is still an outer
+        product with the length-3 axis: out_indices is a dict, not a flat array."""
+        t = IndexTransform.from_shape((6, 6)).oindex[np.array([2]), np.array([1, 3, 5])]
+        chunk = IndexDomain(inclusive_min=(0, 0), exclusive_max=(6, 6))
+        result = t.intersect(chunk)
+        assert result is not None
+        _restricted, out_indices = result
+        assert isinstance(out_indices, dict)

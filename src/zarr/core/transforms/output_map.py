@@ -88,9 +88,12 @@ class ArrayMap:
 
     `input_dimension` records the single axis an orthogonal array varies over
     (`None` for vectorized), binding it the way `DimensionMap` is bound. It is
-    now redundant with the shape-derived classifier and is retained as a
-    compatibility shim for consumers not yet migrated to the shape-derived
-    dependency axes.
+    usually redundant with the shape-derived classifier, but stays authoritative
+    for the shapes the classifier cannot distinguish: a length-1 orthogonal
+    selection normalizes to an all-singleton array (no non-singleton axis), and
+    length-1 vectorized arrays are equally degenerate. `None` therefore marks a
+    map as correlated, and an integer pins the dependency axis of a degenerate
+    orthogonal map (see `transform._array_map_dependent_axis`).
     """
 
     index_array: npt.NDArray[np.intp]

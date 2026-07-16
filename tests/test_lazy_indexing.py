@@ -807,3 +807,110 @@ class TestChunkProjections:
         a = self._array((6,), (2,))
         with pytest.raises(ValueError, match="unit"):
             a.chunk_projections(unit="bogus")  # type: ignore[arg-type]
+
+
+class TestLazyArrayMapResolution:
+    """Chunk resolution of orthogonal (outer-product) and correlated (vectorized)
+    ArrayMaps: intersections and output selectors must preserve the distinct
+    semantics of the two flavours, across chunk boundaries, and for the
+    length-1 shapes that are degenerate under the shape-derived classifier.
+    """
+
+    def _make(self, shape: tuple[int, ...], chunks: tuple[int, ...]) -> tuple[Any, Any]:
+        a = zarr.create_array(store={}, shape=shape, chunks=chunks, dtype="i4")
+        data = np.arange(int(np.prod(shape)), dtype="i4").reshape(shape)
+        a[...] = data
+        return a, data
+
+    def test_oindex_multiple_arrays_outer_product(self) -> None:
+        """Orthogonal selection with unequal index lengths equals ``np.ix_`` (read)."""
+        a, data = self._make((20, 30), (5, 10))
+        rows = np.array([1, 11], dtype=np.intp)
+        cols = np.array([2, 12, 22], dtype=np.intp)
+        actual = a.lazy.oindex[rows, cols].result()
+        np.testing.assert_array_equal(actual, data[np.ix_(rows, cols)])
+
+    def test_oindex_multiple_arrays_outer_product_write(self) -> None:
+        """Orthogonal outer-product write spanning several chunks (unsharded)."""
+        a, data = self._make((20, 30), (5, 10))
+        rows = np.array([1, 11], dtype=np.intp)
+        cols = np.array([2, 12, 22], dtype=np.intp)
+        expected = data.copy()
+        val = (np.arange(6, dtype="i4").reshape(2, 3) + 1) * 100
+        expected[np.ix_(rows, cols)] = val
+        a.lazy.oindex[rows, cols] = val
+        np.testing.assert_array_equal(a[...], expected)
+
+    def test_oindex_length1_and_length3_axes(self) -> None:
+        """A length-1 orthogonal axis (all-singleton shape) must not be
+        misclassified as scalar/correlated: the outer product still holds."""
+        a, data = self._make((6, 6), (2, 2))
+        rows = np.array([2], dtype=np.intp)
+        cols = np.array([1, 3, 5], dtype=np.intp)
+        actual = a.lazy.oindex[rows, cols].result()
+        np.testing.assert_array_equal(actual, data[np.ix_(rows, cols)])
+        assert actual.shape == (1, 3)
+
+    def test_vindex_length1_pair(self) -> None:
+        """Two length-1 correlated arrays (degenerate (1,) shape) stay a single
+        pointwise scatter, not an outer product."""
+        a, data = self._make((6, 6), (2, 2))
+        actual = a.lazy.vindex[np.array([2]), np.array([3])].result()
+        np.testing.assert_array_equal(actual, data[np.array([2]), np.array([3])])
+
+    def test_vindex_two_arrays_with_residual_slice(self) -> None:
+        """Vectorized selection with two correlated arrays plus a residual slice
+        dim (partial indexing of a 3-D array) matches NumPy fancy indexing."""
+        a, data = self._make((4, 3, 5), (2, 2, 2))
+        rows = np.array([1, 3], dtype=np.intp)
+        cols = np.array([2, 0], dtype=np.intp)
+        actual = a.lazy.vindex[rows, cols].result()
+        np.testing.assert_array_equal(actual, data[rows, cols])
+        assert actual.shape == (2, 5)
+
+    def test_vindex_two_arrays_with_residual_slice_write(self) -> None:
+        """Write-through of the correlated + residual-slice case."""
+        a, data = self._make((4, 3, 5), (2, 2, 2))
+        rows = np.array([1, 3], dtype=np.intp)
+        cols = np.array([2, 0], dtype=np.intp)
+        expected = data.copy()
+        val = (np.arange(10, dtype="i4").reshape(2, 5) + 1) * 100
+        expected[rows, cols] = val
+        a.lazy.vindex[rows, cols] = val
+        np.testing.assert_array_equal(a[...], expected)
+
+    def test_vindex_partial_rank_bool_mask(self) -> None:
+        """A partial-rank boolean mask (rank < array ndim) leaves a residual slice
+        dim; the vectorized read matches NumPy."""
+        a, data = self._make((4, 3, 5), (2, 2, 2))
+        mask = np.zeros((4, 3), dtype=bool)
+        mask[1, 2] = mask[3, 0] = True
+        actual = a.lazy.vindex[mask].result()
+        np.testing.assert_array_equal(actual, data[mask])
+        assert actual.shape == (2, 5)
+
+    def test_basic_slice_after_oindex_independent_axis(self) -> None:
+        """Basic-slicing an axis the ArrayMap is independent of broadcasts the
+        map (does not slice its values); the slice narrows only that axis."""
+        a, data = self._make((6, 6), (2, 2))
+        cols = a.lazy.oindex[:, np.array([1, 3, 5], dtype=np.intp)]
+        ref = data[:, [1, 3, 5]]
+        np.testing.assert_array_equal(cols.lazy[2:4, :].result(), ref[2:4, :])
+
+    def test_basic_slice_after_oindex_fancy_axis(self) -> None:
+        """Basic-slicing the fancy axis of an ArrayMap slices the map's values."""
+        a, data = self._make((6, 6), (2, 2))
+        cols = a.lazy.oindex[:, np.array([1, 3, 5], dtype=np.intp)]
+        ref = data[:, [1, 3, 5]]
+        np.testing.assert_array_equal(cols.lazy[:, 0:2].result(), ref[:, 0:2])
+
+    def test_empty_oindex_chunk_projections(self) -> None:
+        """An empty fancy selection yields no chunk projections (no crash)."""
+        a = zarr.create_array(store={}, shape=(10,), chunks=(3,), dtype="i4")
+        assert list(a.lazy.oindex[np.array([], dtype=np.intp)].chunk_projections()) == []
+
+    def test_empty_oindex_read(self) -> None:
+        """An empty fancy selection reads back an empty array."""
+        a, _ = self._make((10,), (3,))
+        actual = a.lazy.oindex[np.array([], dtype=np.intp)].result()
+        assert actual.shape == (0,)

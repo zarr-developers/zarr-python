@@ -96,6 +96,9 @@ def iter_chunk_transforms(
         elif isinstance(m, ArrayMap):
             storage = m.offset + m.stride * m.index_array
             flat = storage.ravel().astype(np.intp)
+            if flat.size == 0:
+                # Empty fancy selection: no coordinates, so no chunks are touched.
+                return
             chunk_ids = dg.indices_to_chunks(flat)
             first = int(chunk_ids.min())
             last = int(chunk_ids.max())
@@ -187,13 +190,49 @@ def sub_transform_to_selections(
                 out_arrays.append(out_indices[out_dim])
         return np.ix_(*chunk_arrays), np.ix_(*out_arrays), tuple(drop_axes)
 
-    chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+    # Correlated (vindex) sub-transforms carry ArrayMaps with ``input_dimension``
+    # None. They scatter through a single flat index (``out_indices``) into the
+    # row-major-flattened output buffer; the chunk selection reads a
+    # (points, residual-slice) block via the raveled coordinate arrays and any
+    # residual DimensionMap slices.
+    correlated = any(
+        isinstance(m, ArrayMap) and m.input_dimension is None for m in sub_transform.output
+    )
+    if correlated:
+        chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+        for m in sub_transform.output:
+            if isinstance(m, ConstantMap):
+                chunk_sel.append(m.offset)
+            elif isinstance(m, DimensionMap):
+                d = m.input_dimension
+                start = m.offset + m.stride * inclusive_min[d]
+                stop = m.offset + m.stride * exclusive_max[d]
+                if m.stride < 0:
+                    start, stop = stop + 1, start + 1
+                chunk_sel.append(slice(start, stop, m.stride))
+            else:  # ArrayMap
+                idx = m.index_array.reshape(-1)
+                chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
+        # Chunk resolution always supplies the flat scatter index for a
+        # correlated transform. Absent one (a bare sub-transform), fall back to an
+        # identity scatter over the whole flattened output buffer.
+        # ``out_indices`` is narrowed to a flat scatter array or None here (the
+        # per-dimension dict is an orthogonal outer product, handled above).
+        out_scatter: slice | np.ndarray[Any, np.dtype[np.intp]]
+        if out_indices is None:
+            n = 1
+            for s in sub_transform.domain.shape:
+                n *= s
+            out_scatter = slice(0, n)
+        else:
+            out_scatter = out_indices
+        return tuple(chunk_sel), (out_scatter,), ()
+
+    chunk_sel = []  # annotated in the correlated branch above (same function scope)
     out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
 
-    # Single-pass build for the basic / single-array / vectorized cases.
+    # Single-pass build for the basic / single-orthogonal-array cases.
     # ConstantMap dims are dropped (no out_sel entry).
-    n_array_maps = 0
-
     for m in sub_transform.output:
         if isinstance(m, ConstantMap):
             chunk_sel.append(m.offset)
@@ -207,17 +246,13 @@ def sub_transform_to_selections(
                 start, stop = stop + 1, start + 1
             chunk_sel.append(slice(start, stop, m.stride))
             out_sel.append(slice(dim_lo, dim_hi))
-        else:  # ArrayMap
-            n_array_maps += 1
+        else:  # ArrayMap (orthogonal: full-rank, raveled to its 1-D fancy coords)
+            idx = m.index_array.reshape(-1)
             if m.offset == 0 and m.stride == 1:
-                chunk_sel.append(m.index_array)
+                chunk_sel.append(idx)
             else:
-                chunk_sel.append((m.offset + m.stride * m.index_array).astype(np.intp))
+                chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
             # Orthogonal ArrayMap: out_indices holds the surviving positions.
-            out_sel.append(out_indices if out_indices is not None else slice(0, len(m.index_array)))
-
-    # Vectorized: ≥2 correlated ArrayMaps scatter through a single shared index.
-    if out_indices is not None and n_array_maps >= 2:
-        out_sel = [out_indices]
+            out_sel.append(out_indices if out_indices is not None else slice(0, idx.size))
 
     return tuple(chunk_sel), tuple(out_sel), ()
