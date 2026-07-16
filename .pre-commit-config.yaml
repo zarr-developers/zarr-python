@@ -15,7 +15,7 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.15
+    rev: v0.15.20
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -51,11 +51,11 @@ repos:
         always_run: true
         types_or: [python, pyi]
   - repo: https://github.com/scientific-python/cookie
-    rev: 2026.04.04
+    rev: 2026.06.18
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/numpy/numpydoc
-    rev: v1.10.0
+    rev: v1.11.0rc0
     hooks:
       - id: numpydoc-validation
   - repo: local
@@ -68,7 +68,7 @@ repos:
         types: [python]
         files: ^(src|tests)/
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.25.2
+    rev: v1.26.1
     hooks:
       - id: zizmor
   - repo: https://github.com/twisted/towncrier

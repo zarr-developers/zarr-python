@@ -1,6 +1,6 @@
 # Array data types
 
-## Zarr's Data Type Model
+## Zarr's data type model
 
 Zarr is designed for interoperability with NumPy, so if you are familiar with NumPy or any other
 N-dimensional array library, Zarr's model for array data types should seem familiar. However, Zarr
@@ -14,7 +14,7 @@ which adds some unique aspects to the Zarr data type model.
 The following sections explain Zarr's data type model in greater detail and demonstrate the
 Zarr Python APIs for working with Zarr data types.
 
-### Array Data Types
+### Array data types
 
 Every Zarr array has a data type, which defines the meaning of the array's elements. An array's data
 type is encoded in the JSON metadata for the array. This means that the data type of an array must be
@@ -38,10 +38,10 @@ For the boolean data type, the scalar encoding is simple—booleans are natively
 JSON, so Zarr saves booleans as JSON booleans. Other scalars, like floats or raw bytes, have
 more elaborate encoding schemes, and in some cases, this scheme depends on the Zarr format version.
 
-## Data Types in Zarr Version 2
+## Data types in Zarr version 2
 
 Version 2 of the Zarr format defined its data types relative to
-[NumPy's data types](https://numpy.org/doc/2.1/reference/arrays.dtypes.html#data-type-objects-dtype),
+[NumPy's data types](https://numpy.org/doc/stable/reference/arrays.dtypes.html#data-type-objects-dtype),
 and added a few non-NumPy data types as well. With one exception ([structured data types](#structured-data-type)), the Zarr
 V2 JSON identifier for a data type is just the NumPy `str` attribute of that data type:
 
@@ -64,7 +64,7 @@ print(dtype_meta)
 !!! note
 
     The `<` character in the data type metadata encodes the
-    [endianness](https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html),
+    [endianness](https://numpy.org/doc/stable/reference/generated/numpy.dtype.byteorder.html),
     or "byte order," of the data type. As per the NumPy model,
     in Zarr version 2 each data type has an endianness where applicable.
     However, Zarr version 3 data types do not store endianness information.
@@ -72,7 +72,7 @@ print(dtype_meta)
 There are two special cases to consider: ["structured" data types](#structured-data-type), and
 ["object"](#object-data-type) data types.
 
-### Structured Data Type
+### Structured data type
 
 NumPy allows the construction of a so-called "structured" data types comprised of ordered collections
 of named fields, where each field is itself a distinct NumPy data type. See the NumPy documentation
@@ -101,7 +101,7 @@ dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
 print(dtype_meta)
 ```
 
-### Object Data Type
+### Object data type
 
 The NumPy "object" type is essentially an array of references to arbitrary Python objects.
 It can model arrays of variable-length UTF-8 strings, arrays of variable-length byte strings, or
@@ -129,7 +129,7 @@ Although this fact can be ignored for many simple numeric data types, any compre
 Zarr V2 data types must either reject the "object" data types or include the "object codec"
 identifier in the JSON form of the basic data type model.
 
-## Data Types in Zarr Version 3
+## Data types in Zarr version 3
 
 The NumPy-based Zarr V2 data type representation was effective for simple data types but struggled
 with more complex data types, like "object" and "structured" data types. To address these limitations,
@@ -159,7 +159,7 @@ Zarr V3 introduced several key changes to how data types are represented:
 For more about data types in Zarr V3, see the
 [V3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html).
 
-## Data Types in Zarr Python
+## Data types in Zarr Python
 
 The two Zarr formats that Zarr Python supports specify data types in different ways: data types in
 Zarr version 2 are encoded as NumPy-compatible strings (or lists, in the case of structured data
@@ -191,7 +191,7 @@ API for the following operations:
 
 The following section lists the data types built in to Zarr Python. With a few exceptions, Zarr
 Python supports nearly all of the data types in NumPy. If you need a data type that is not listed
-here, it's possible to create it yourself: see [Adding New Data Types](#adding-new-data-types).
+here, it's possible to create it yourself: see [Adding new data types](#adding-new-data-types).
 
 #### Boolean
 
@@ -267,14 +267,14 @@ here, it's possible to create it yourself: see [Adding New Data Types](#adding-n
     explicit `endian` parameter. If omitted, Zarr Python assumes little-endian for legacy
     compatibility but emits a warning.
 
-### Example Usage
+### Example usage
 
 This section will demonstrate the basic usage of Zarr data types.
 
 Create a `ZDType` from a native data type:
 
 ```python exec="true" session="data_types" source="above"
-from zarr.core.dtype import Int8
+from zarr.dtype import Int8
 import numpy as np
 int8 = Int8.from_native_dtype(np.dtype('int8'))
 ```
@@ -298,7 +298,6 @@ Serialize to JSON for Zarr V2:
 ```python exec="true" session="data_types" source="above" result="ansi"
 json_v2 = int8.to_json(zarr_format=2)
 print(json_v2)
-{'name': '|i1', 'object_codec_id': None}
 ```
 
 !!! note
@@ -331,7 +330,7 @@ scalar_value = int8.from_json_scalar(42, zarr_format=3)
 assert scalar_value == np.int8(42)
 ```
 
-### Adding New Data Types
+### Adding new data types
 
 Each Zarr data type is a separate Python class that inherits from
 [ZDType][zarr.dtype.ZDType]. You can define a custom data type by
@@ -339,7 +338,7 @@ writing your own subclass of [ZDType][zarr.dtype.ZDType] and adding
 your data type to the data type registry. To see an executable demonstration
 of this process, see the [`custom_dtype` example](../user-guide/examples/custom_dtype.md).
 
-### Data Type Resolution
+### Data type resolution
 
 Although Zarr Python uses a different data type model from NumPy, you can still define a Zarr array
 with a NumPy data type object:
@@ -382,16 +381,14 @@ For simple data types like `int`, the solution could be extremely simple: just
 maintain a lookup table that maps a NumPy data type to the Zarr data type equivalent. But not all
 data types are so simple. Consider this case:
 
-```python exec="true" session="data_types" source="above"
+```python exec="true" session="data_types" source="above" result="ansi"
 from zarr import create_array
-import warnings
 import numpy as np
-warnings.simplefilter("ignore", category=FutureWarning)
 a = create_array({}, shape=(10,), dtype=[('a', 'f8'), ('b', 'i8')])
 print(a.dtype) # this is the NumPy data type
 ```
 
-```python exec="true" session="data_types" source="above"
+```python exec="true" session="data_types" source="above" result="ansi"
 print(a.metadata.data_type) # this is the Zarr data type
 ```
 

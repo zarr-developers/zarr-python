@@ -33,5 +33,29 @@ print(z.attrs['baz'])
 print(z.attrs['qux'])
 ```
 
-Internally Zarr uses JSON to store array attributes, so attribute values must be
-JSON serializable.
+Attributes can be deleted with the `del` operator:
+
+```python exec="true" session="attributes" source="above" result="ansi"
+del z.attrs['baz']
+print(sorted(z.attrs))
+```
+
+Note that each attribute assignment or deletion writes the node's metadata
+document back to the store. To change several attributes in a single write,
+use [`zarr.Array.update_attributes`][] (or [`zarr.Group.update_attributes`][]
+for groups), which merges the given dict into the existing attributes and
+returns the updated array or group:
+
+```python exec="true" session="attributes" source="above" result="ansi"
+z = z.update_attributes({'baz': 43, 'quux': True})
+print(sorted(z.attrs))
+```
+
+Internally Zarr uses JSON to store array and group attributes, so attribute
+values must be JSON serializable.
+
+When working with hierarchies that contain many arrays and groups, reading the
+attributes of each node separately can be slow. See
+[Consolidated metadata](consolidated_metadata.md) for a way to store the
+metadata (including attributes) of all nodes in a hierarchy in a single
+document.

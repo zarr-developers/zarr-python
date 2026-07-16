@@ -51,8 +51,8 @@ Custom codecs should also implement the following methods:
 To use custom codecs in Zarr, they need to be registered using the
 [entrypoint mechanism](https://packaging.python.org/en/latest/specifications/entry-points/).
 Commonly, entrypoints are declared in the `pyproject.toml` of your package under the
-`[project.entry-points."zarr.codecs"]` section. Zarr will automatically discover and
-load all codecs registered with the entrypoint mechanism from imported modules.
+`[project.entry-points."zarr.codecs"]` section. Zarr will automatically discover
+all codecs registered via the entrypoint mechanism in installed packages.
 
 ```toml
 [project.entry-points."zarr.codecs"]
@@ -75,7 +75,8 @@ implementation.
 
 ## Custom stores
 
-Coming soon.
+Custom stores can be created by implementing the [`zarr.abc.store.Store`][] interface.
+See [developing custom stores](storage.md#developing-custom-stores) for more information.
 
 ## Custom array buffers
 
@@ -83,7 +84,16 @@ Zarr-python provides control over where and how arrays are stored in memory thro
 [`zarr.abc.buffer.Buffer`][]. Currently both CPU (the default) and GPU implementations are
 provided (see [Using GPUs with Zarr](gpu.md) for more information). You can implement your own buffer
 classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototype`][].
+Like codecs, custom buffer implementations can be registered via entrypoints, using the
+`zarr.buffer` and `zarr.ndbuffer` entrypoint groups.
+
+## Custom data types
+
+Zarr supports user-defined data types. See the
+[data types documentation](data_types.md) for an explanation of how Zarr Python
+models data types and how to write your own, and the
+[custom data type example](examples/custom_dtype.md) for a complete worked example.
 
 ## Other extensions
 
-In the future, Zarr will support writing custom data types and chunk grids.
+In the future, Zarr will support writing custom chunk grids.
