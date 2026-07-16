@@ -637,6 +637,33 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
 
+def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, ...]:
+    """Return the input axes on which a normalized index array varies.
+
+    Normalized `ArrayMap` index arrays carry the full input rank of their
+    enclosing transform: an axis the array varies over has its full size, while
+    an axis the array is independent of is a singleton (size 1). The dependency
+    axes are therefore exactly the non-singleton axes. An orthogonal (`oindex`)
+    array depends on a single axis; a vectorized (`vindex`) array depends on all
+    of the (shared) broadcast axes.
+    """
+    return tuple(axis for axis, size in enumerate(index_array.shape) if size != 1)
+
+
+def _reshape_to_axis(
+    values: np.ndarray[Any, np.dtype[np.intp]], axis: int, ndim: int
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Reshape a 1-D selection to full rank ``ndim`` varying only along ``axis``.
+
+    The result has ``values`` laid out along ``axis`` and singleton (size-1) axes
+    everywhere else, so its dependency axis is derivable from its shape.
+    """
+    flat = np.asarray(values, dtype=np.intp).ravel()
+    shape = [1] * ndim
+    shape[axis] = flat.shape[0]
+    return flat.reshape(shape)
+
+
 class _OIndexHelper:
     """Helper that provides orthogonal (outer) indexing via ``transform.oindex[...]``."""
 
@@ -737,15 +764,21 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             if d in dim_array:
+                new_axis = old_to_new_dim[d]
+                # Normalize to full input rank: the selection varies along its own
+                # new axis and is singleton on every other axis. The dependency
+                # axis is then derivable from the shape (a single non-singleton
+                # axis marks the selection orthogonal / outer-product rather than
+                # vectorized). `input_dimension` is kept populated as a
+                # compatibility shim for consumers not yet migrated to the
+                # shape-derived classifier.
+                full_arr = _reshape_to_axis(dim_array[d], new_axis, new_dim_idx)
                 new_output.append(
                     ArrayMap(
-                        index_array=dim_array[d],
+                        index_array=full_arr,
                         offset=m.offset,
                         stride=m.stride,
-                        # Each oindex array indexes its own input dimension; this
-                        # binding is what marks the selection orthogonal (outer
-                        # product) rather than vectorized.
-                        input_dimension=old_to_new_dim[d],
+                        input_dimension=new_axis,
                     )
                 )
             elif d in dim_slice_params:
@@ -906,9 +939,16 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             if d in array_dim_to_broadcast:
+                # Normalize to full input rank: the broadcast (correlated) axes
+                # come first, followed by a singleton axis per slice dimension.
+                # Every vectorized array shares the same broadcast axes, so the
+                # dependency axes derived from the shape coincide — the signature
+                # of a pointwise scatter rather than an outer product.
+                broadcast_arr = array_dim_to_broadcast[d]
+                full_arr = broadcast_arr.reshape(broadcast_shape + (1,) * len(slice_dims))
                 new_output.append(
                     ArrayMap(
-                        index_array=array_dim_to_broadcast[d],
+                        index_array=full_arr,
                         offset=m.offset,
                         stride=m.stride,
                     )

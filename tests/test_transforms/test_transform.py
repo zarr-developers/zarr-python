@@ -262,7 +262,9 @@ class TestIndexTransformOindex:
         assert result.input_rank == 2
         assert result.domain.shape == (3, 20)
         assert isinstance(result.output[0], ArrayMap)
-        np.testing.assert_array_equal(result.output[0].index_array, idx)
+        # Full input rank: the array varies along its own axis (0), singleton on 1.
+        assert result.output[0].index_array.shape == (3, 1)
+        np.testing.assert_array_equal(result.output[0].index_array, idx.reshape(3, 1))
         assert result.output[0].offset == 0
         assert result.output[0].stride == 1
         assert isinstance(result.output[1], DimensionMap)
@@ -300,6 +302,15 @@ class TestIndexTransformOindex:
         assert isinstance(result.output[0], ArrayMap)
         assert isinstance(result.output[1], DimensionMap)
         assert isinstance(result.output[2], ArrayMap)
+
+    def test_oindex_multiple_arrays_preserves_independent_axes(self) -> None:
+        t = IndexTransform.from_shape((10, 20))
+        result = t.oindex[np.array([1, 3]), np.array([2, 4, 6])]
+        assert result.domain.shape == (2, 3)
+        assert isinstance(result.output[0], ArrayMap)
+        assert isinstance(result.output[1], ArrayMap)
+        assert result.output[0].index_array.shape == (2, 1)
+        assert result.output[1].index_array.shape == (1, 3)
 
 
 class TestIndexTransformVindex:
@@ -346,6 +357,15 @@ class TestIndexTransformVindex:
         result = t.vindex[idx0, idx1]
         assert result.input_rank == 2
         assert result.domain.shape == (2, 3)
+
+    def test_vindex_multiple_arrays_preserves_shared_axes(self) -> None:
+        t = IndexTransform.from_shape((10, 20))
+        result = t.vindex[np.array([1, 3]), np.array([2, 4])]
+        assert result.domain.shape == (2,)
+        assert isinstance(result.output[0], ArrayMap)
+        assert isinstance(result.output[1], ArrayMap)
+        assert result.output[0].index_array.shape == (2,)
+        assert result.output[1].index_array.shape == (2,)
 
 
 class TestSelectionToTransform:
@@ -526,3 +546,33 @@ class TestIndexTransformTranslate:
         assert result.output[0].offset == -5
         assert isinstance(result.output[1], DimensionMap)
         assert result.output[1].offset == -10
+
+
+class TestArrayMapDependencyAxes:
+    """`_array_map_dependency_axes` derives the input axes an array varies on
+    from its (full-rank) shape: non-singleton axes vary, singleton axes do not."""
+
+    def test_orthogonal_single_axis(self) -> None:
+        from zarr.core.transforms.transform import _array_map_dependency_axes
+
+        t = IndexTransform.from_shape((10, 20)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
+        m0, m1 = t.output[0], t.output[1]
+        assert isinstance(m0, ArrayMap)
+        assert isinstance(m1, ArrayMap)
+        assert _array_map_dependency_axes(m0.index_array) == (0,)
+        assert _array_map_dependency_axes(m1.index_array) == (1,)
+
+    def test_vectorized_shares_axes(self) -> None:
+        from zarr.core.transforms.transform import _array_map_dependency_axes
+
+        t = IndexTransform.from_shape((10, 20)).vindex[np.array([1, 3]), np.array([2, 4])]
+        m0, m1 = t.output[0], t.output[1]
+        assert isinstance(m0, ArrayMap)
+        assert isinstance(m1, ArrayMap)
+        assert _array_map_dependency_axes(m0.index_array) == (0,)
+        assert _array_map_dependency_axes(m1.index_array) == (0,)
+
+    def test_scalar_array_has_no_dependency(self) -> None:
+        from zarr.core.transforms.transform import _array_map_dependency_axes
+
+        assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()

@@ -62,10 +62,14 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
         )
 
     if isinstance(outer_map, ArrayMap):
+        # Affine post-composition leaves the index array (and hence its full
+        # input rank and dependency axes) untouched; carry the orthogonal
+        # binding through unchanged.
         return ArrayMap(
             index_array=outer_map.index_array,
             offset=offset_i + stride_i * outer_map.offset,
             stride=stride_i * outer_map.stride,
+            input_dimension=outer_map.input_dimension,
         )
 
     raise TypeError(f"Unknown output map type: {type(outer_map)}")  # pragma: no cover

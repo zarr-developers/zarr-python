@@ -74,19 +74,23 @@ class ArrayMap:
     Represents ``{offset + stride * index_array[i] : i in input_range}``.
     Arises from fancy indexing (e.g., ``arr[[1, 5, 9]]`` or boolean masks).
 
-    ``input_dimension`` records which single input dimension indexes the array,
-    binding it the way :class:`DimensionMap` is bound. It distinguishes the two
-    flavours of multi-array fancy indexing:
+    Freshly constructed maps are normalized to the **full input rank** of their
+    enclosing transform: `index_array` has the enclosing domain's rank, sized
+    fully on the axes it varies over and singleton (size 1) elsewhere. The
+    dependency axes are therefore derivable from the shape (see
+    `transform._array_map_dependency_axes`), which distinguishes the two flavours
+    of multi-array fancy indexing:
 
-    - **orthogonal** (``oindex``): each array indexes a *distinct* input
-      dimension, so ``input_dimension`` is set; the result is their outer
-      product.
-    - **vectorized** (``vindex``): the arrays are correlated and jointly
-      indexed by the same (possibly multi-dimensional) input range, so
-      ``input_dimension`` is ``None``.
+    - **orthogonal** (`oindex`): each array varies along a single, *distinct*
+      axis (all others singleton); the result is their outer product.
+    - **vectorized** (`vindex`): the arrays are correlated and share the same
+      non-singleton (broadcast) axes; the result is a pointwise scatter.
 
-    This binding is what lets chunk resolution tell an outer product from a
-    pointwise scatter when more than one ``ArrayMap`` is present.
+    `input_dimension` records the single axis an orthogonal array varies over
+    (`None` for vectorized), binding it the way `DimensionMap` is bound. It is
+    now redundant with the shape-derived classifier and is retained as a
+    compatibility shim for consumers not yet migrated to the shape-derived
+    dependency axes.
     """
 
     index_array: npt.NDArray[np.intp]

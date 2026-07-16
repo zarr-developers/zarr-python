@@ -158,8 +158,26 @@ class TestIndexTransformJSON:
         json = index_transform_to_json(t)
         restored = index_transform_from_json(json)
         assert isinstance(restored.output[0], ArrayMap)
-        np.testing.assert_array_equal(restored.output[0].index_array, idx)
+        # Orthogonal arrays are normalized to full input rank with a singleton
+        # axis on the dimension they do not vary over.
+        assert restored.output[0].index_array.shape == (3, 1)
+        np.testing.assert_array_equal(restored.output[0].index_array, idx.reshape(3, 1))
         assert isinstance(restored.output[1], DimensionMap)
+
+    def test_roundtrip_preserves_singleton_axes(self) -> None:
+        """Full-rank orthogonal arrays keep their singleton axes across JSON."""
+        t = IndexTransform.from_shape((10, 20)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
+        restored = index_transform_from_json(index_transform_to_json(t))
+        orig0, orig1 = t.output[0], t.output[1]
+        rest0, rest1 = restored.output[0], restored.output[1]
+        assert isinstance(orig0, ArrayMap)
+        assert isinstance(orig1, ArrayMap)
+        assert isinstance(rest0, ArrayMap)
+        assert isinstance(rest1, ArrayMap)
+        assert rest0.index_array.shape == (2, 1)
+        assert rest1.index_array.shape == (1, 3)
+        np.testing.assert_array_equal(rest0.index_array, orig0.index_array)
+        np.testing.assert_array_equal(rest1.index_array, orig1.index_array)
 
     def test_with_labels(self) -> None:
         domain = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20), labels=("x", "y"))

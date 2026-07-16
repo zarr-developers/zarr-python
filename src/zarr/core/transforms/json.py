@@ -19,7 +19,7 @@ The JSON format follows TensorStore's conventions for interoperability::
 
 from __future__ import annotations
 
-from typing import Required, TypedDict
+from typing import Any, Required, TypedDict
 
 import numpy as np
 
@@ -30,6 +30,12 @@ from zarr.core.transforms.transform import IndexTransform
 # ---------------------------------------------------------------------------
 # TypedDict definitions (JSON shapes)
 # ---------------------------------------------------------------------------
+
+# An ``index_array`` serializes via ``ndarray.tolist()``, so it is a nested list
+# of ints whose nesting depth equals the array rank. Normalized arrays carry the
+# full input rank (with singleton axes), so the nesting can be arbitrarily deep —
+# ``list[int] | list[list[int]]`` would under-describe a 3-D+ orthogonal array.
+NestedIntList = list[Any]
 
 
 class IndexDomainJSON(TypedDict, total=False):
@@ -52,7 +58,7 @@ class OutputIndexMapJSON(TypedDict, total=False):
     offset: int
     stride: int
     input_dimension: int
-    index_array: list[int] | list[list[int]]
+    index_array: NestedIntList
 
 
 class IndexTransformJSON(TypedDict, total=False):
