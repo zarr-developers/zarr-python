@@ -51,32 +51,34 @@
   `ClientSession` was left open until garbage collection, producing
   `"Unclosed client session"` `ResourceWarning`s from aiohttp.
 
-  The fix introduces `FsspecStore._owns_fs`, a boolean that is ``True`` only when
-  `FsspecStore` itself created the filesystem (via `from_url` or `from_mapper`
-  when a sync→async conversion was performed). When `_owns_fs` is ``True``,
-  `store.close()` calls the new `_close_fs()` helper, which invokes
-  `fs.set_session()` and closes the returned client. Callers who supply their own
-  filesystem instance to `FsspecStore()` directly remain responsible for its
-  lifecycle; `_owns_fs` is ``False`` for those stores.
+    The fix introduces `FsspecStore._owns_fs`, a boolean that is ``True`` only when
+    `FsspecStore` itself created the filesystem (via `from_url` or `from_mapper`
+    when a sync→async conversion was performed). When `_owns_fs` is ``True``,
+    `store.close()` calls the new `_close_fs()` helper, which invokes
+    `fs.set_session()` and closes the returned client. Callers who supply their own
+    filesystem instance to `FsspecStore()` directly remain responsible for its
+    lifecycle; `_owns_fs` is ``False`` for those stores.
 
-  **Scope note**: This fix closes the S3 client session that is active at the time
-  `store.close()` is called. Some S3-backed filesystem implementations (e.g.
-  s3fs with ``cache_regions=True``) may internally refresh and replace their
-  client during I/O operations, abandoning prior sessions before ``store.close()``
-  is invoked. Those intermediate sessions are outside the scope of this fix and
-  are an issue in the upstream filesystem library. ([#4003](https://github.com/zarr-developers/zarr-python/issues/4003))
+    **Scope note**: This fix closes the S3 client session that is active at the time
+    `store.close()` is called. Some S3-backed filesystem implementations (e.g.
+    s3fs with ``cache_regions=True``) may internally refresh and replace their
+    client during I/O operations, abandoning prior sessions before ``store.close()``
+    is invoked. Those intermediate sessions are outside the scope of this fix and
+    are an issue in the upstream filesystem library. ([#4003](https://github.com/zarr-developers/zarr-python/issues/4003))
+
 - Fixed an invalid `zarr.create_array` example in the quick-start documentation (it passed an unsupported `mode` argument) and made the cloud-storage example execute against a mock S3 backend in CI. Added a test ensuring every Python code block in the documentation is either executed or explicitly opted out with a documented reason, so an invalid example can no longer go untested. ([#4016](https://github.com/zarr-developers/zarr-python/issues/4016))
 - Fixed `ObjectStore.list_dir` for object-store listings that include a directory-marker object matching the requested non-root prefix. ([#4032](https://github.com/zarr-developers/zarr-python/issues/4032))
 - Prevents mutation of the attributes dict provided by the user by copying them instead of keeping the reference ([#4059](https://github.com/zarr-developers/zarr-python/issues/4059))
 - Fixed several storage and codec bugs:
 
-  - Reading a value with a `SuffixByteRequest` larger than the value now correctly returns the whole value (matching HTTP `bytes=-N` suffix-range semantics), instead of silently returning incorrect data for `MemoryStore`.
-  - `LoggingStore.get_partial_values` and `FsspecStore.get_partial_values` no longer return empty results when `key_ranges` is passed as a one-shot iterable (e.g. a generator).
-  - `Store.getsize_prefix` no longer over-counts sibling keys that merely share a string prefix (e.g. `getsize_prefix("foo")` no longer includes keys under `foobar/`).
-  - `ZipStore.close()` no longer raises `AttributeError` when the store was created but never opened (including when used as a context manager without any I/O).
-  - `codecs_from_list` now raises a descriptive `TypeError` when a `BytesBytesCodec` immediately follows an `ArrayArrayCodec`, instead of a misleading "Required ArrayBytesCodec was not found" `ValueError`.
+    - Reading a value with a `SuffixByteRequest` larger than the value now correctly returns the whole value (matching HTTP `bytes=-N` suffix-range semantics), instead of silently returning incorrect data for `MemoryStore`.
+    - `LoggingStore.get_partial_values` and `FsspecStore.get_partial_values` no longer return empty results when `key_ranges` is passed as a one-shot iterable (e.g. a generator).
+    - `Store.getsize_prefix` no longer over-counts sibling keys that merely share a string prefix (e.g. `getsize_prefix("foo")` no longer includes keys under `foobar/`).
+    - `ZipStore.close()` no longer raises `AttributeError` when the store was created but never opened (including when used as a context manager without any I/O).
+    - `codecs_from_list` now raises a descriptive `TypeError` when a `BytesBytesCodec` immediately follows an `ArrayArrayCodec`, instead of a misleading "Required ArrayBytesCodec was not found" `ValueError`.
 
-  ([#4074](https://github.com/zarr-developers/zarr-python/issues/4074))
+    ([#4074](https://github.com/zarr-developers/zarr-python/issues/4074))
+
 - Fixed writing Fortran-ordered (F-contiguous) arrays through the variable-length string and bytes codecs and through numcodecs array-array filters such as `Delta`, `FixedScaleOffset` and `PackBits`. Chunks are now passed to numcodecs as C-contiguous arrays, so elements are no longer stored in transposed order. ([#4116](https://github.com/zarr-developers/zarr-python/issues/4116))
 - Fix silent byte-order corruption for structured dtypes with the `bytes` codec: multi-byte fields are now byte-swapped to the codec's configured `endian` on write and decoded honoring it on read, so non-native-endian structured data (e.g. big-endian fields, as produced by virtual references to external data) round-trips correctly. ([#4141](https://github.com/zarr-developers/zarr-python/issues/4141))
 
@@ -91,23 +93,24 @@
   use only the public API, eliminating all non-public imports, illustrating what
   users should do.
 
-  To better support this, the following types and functions were made available
-  from public modules:
+    To better support this, the following types and functions were made available
+    from public modules:
 
-  | Type/Function             | Non-public module        | Public module |
-  | ------------------------- | ------------------------ | ------------- |
-  | `DataTypeValidationError` | `zarr.core.dtype.common` | `zarr.errors` |
-  | `JSON`                    | `zarr.core.common`       | `zarr.types`  |
-  | `ZarrFormat`              | `zarr.core.common`       | `zarr.types`  |
-  | `DTypeConfig_V2`          | `zarr.core.dtype.common` | `zarr.types`  |
-  | `DTypeJSON`               | `zarr.core.dtype.common` | `zarr.types`  |
-  | `DTypeSpec_V2`            | `zarr.core.dtype.common` | `zarr.dtype`  |
-  | `check_dtype_spec_v2`     | `zarr.core.dtype.common` | `zarr.dtype`  |
+    | Type/Function             | Non-public module        | Public module |
+    | ------------------------- | ------------------------ | ------------- |
+    | `DataTypeValidationError` | `zarr.core.dtype.common` | `zarr.errors` |
+    | `JSON`                    | `zarr.core.common`       | `zarr.types`  |
+    | `ZarrFormat`              | `zarr.core.common`       | `zarr.types`  |
+    | `DTypeConfig_V2`          | `zarr.core.dtype.common` | `zarr.types`  |
+    | `DTypeJSON`               | `zarr.core.dtype.common` | `zarr.types`  |
+    | `DTypeSpec_V2`            | `zarr.core.dtype.common` | `zarr.dtype`  |
+    | `check_dtype_spec_v2`     | `zarr.core.dtype.common` | `zarr.dtype`  |
 
-  `DataTypeValidationError` was *moved* to `zarr.errors`. Importing it from
-  `zarr.core.dtype.common` (its original location), `zarr.core.dtype`, or
-  `zarr.dtype` still works but now raises a `ZarrDeprecationWarning`. The remaining
-  types and functions are simply re-exported from the listed public module. ([#4052](https://github.com/zarr-developers/zarr-python/issues/4052))
+    `DataTypeValidationError` was *moved* to `zarr.errors`. Importing it from
+    `zarr.core.dtype.common` (its original location), `zarr.core.dtype`, or
+    `zarr.dtype` still works but now raises a `ZarrDeprecationWarning`. The remaining
+    types and functions are simply re-exported from the listed public module. ([#4052](https://github.com/zarr-developers/zarr-python/issues/4052))
+
 - Document a self-merge policy in the contributor guide, describing when a core developer may merge their own pull request without a second reviewer and which changes warrant more caution. ([#4053](https://github.com/zarr-developers/zarr-python/issues/4053))
 - Fixed many documentation errors found in a full review of the user guide, including
   prose contradicted by rendered example output on the performance page, invisible
@@ -126,11 +129,12 @@
   access, and will be removed in a future release. ``BloscCodec.cname`` and
   ``BloscCodec.shuffle`` are now plain strings rather than enum members.
 
-  Additional renames in ``zarr.codecs.blosc`` from the same change: the type
-  aliases ``Shuffle`` and ``CName`` are now ``BloscShuffleLiteral`` and
-  ``BloscCnameLiteral``, the constant ``SHUFFLE`` is now ``BLOSC_SHUFFLE``
-  (with a new ``BLOSC_CNAME`` alongside it), and ``BloscShuffle.from_int``
-  now returns a literal string rather than an enum member. ([#3963](https://github.com/zarr-developers/zarr-python/issues/3963))
+    Additional renames in ``zarr.codecs.blosc`` from the same change: the type
+    aliases ``Shuffle`` and ``CName`` are now ``BloscShuffleLiteral`` and
+    ``BloscCnameLiteral``, the constant ``SHUFFLE`` is now ``BLOSC_SHUFFLE``
+    (with a new ``BLOSC_CNAME`` alongside it), and ``BloscShuffle.from_int``
+    now returns a literal string rather than an enum member. ([#3963](https://github.com/zarr-developers/zarr-python/issues/3963))
+
 - The ``Endian`` (``zarr.codecs.bytes.Endian``) and ``ShardingCodecIndexLocation``
   (``zarr.codecs.ShardingCodecIndexLocation``) enums are now deprecated. Pass the
   equivalent literal string instead (e.g. ``"little"`` / ``"big"``, ``"start"`` /
@@ -139,20 +143,21 @@
   and ``ShardingCodec.index_location`` are now plain strings rather than enum
   members.
 
-  Two follow-on changes from this deprecation:
+    Two follow-on changes from this deprecation:
 
-  - ``NDBuffer.byteorder`` now returns a literal string (``"little"`` or
-    ``"big"``) rather than an ``Endian`` member. Subclasses overriding this
-    property should update their return type.
-  - The module-level binding ``zarr.codecs.bytes.default_system_endian`` was
-    removed. ``BytesCodec()`` continues to default to ``sys.byteorder``;
-    external callers that imported ``default_system_endian`` should use
-    ``sys.byteorder`` directly.
+    - ``NDBuffer.byteorder`` now returns a literal string (``"little"`` or
+      ``"big"``) rather than an ``Endian`` member. Subclasses overriding this
+      property should update their return type.
+    - The module-level binding ``zarr.codecs.bytes.default_system_endian`` was
+      removed. ``BytesCodec()`` continues to default to ``sys.byteorder``;
+      external callers that imported ``default_system_endian`` should use
+      ``sys.byteorder`` directly.
 
-  Additionally, the module-level function ``zarr.codecs.sharding.parse_index_location``
-  was made private as part of this change.
+    Additionally, the module-level function ``zarr.codecs.sharding.parse_index_location``
+    was made private as part of this change.
 
-  ([#3968](https://github.com/zarr-developers/zarr-python/issues/3968))
+    ([#3968](https://github.com/zarr-developers/zarr-python/issues/3968))
+
 - Removed the NumPy 1.x implementation of the `VariableLengthUTF8` data type because NumPy 1.x is no longer supported under [SPEC0](https://scientific-python.org/specs/spec-0000/). ([#3973](https://github.com/zarr-developers/zarr-python/issues/3973))
 
 ### Misc
@@ -191,19 +196,19 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Add support for rectilinear (variable-sized) chunk grids. This feature is experimental and
   must be explicitly enabled via `zarr.config.set({'array.rectilinear_chunks': True})`.
 
-  Rectilinear chunks can be used through:
+    Rectilinear chunks can be used through:
 
-  - **Creating arrays**: Pass nested sequences (e.g., `[[10, 20, 30], [50, 50]]`) to `chunks`
-    in `zarr.create_array`, `zarr.from_array`, `zarr.zeros`, `zarr.ones`, `zarr.full`,
-    `zarr.open`, and related functions, or to `chunk_shape` in `zarr.create`.
-  - **Opening existing arrays**: Arrays stored with the `rectilinear` chunk grid are read
-    transparently via `zarr.open` and `zarr.open_array`.
-  - **Rectilinear sharding**: Shard boundaries can be rectilinear while inner chunks remain regular.
+    - **Creating arrays**: Pass nested sequences (e.g., `[[10, 20, 30], [50, 50]]`) to `chunks`
+      in `zarr.create_array`, `zarr.from_array`, `zarr.zeros`, `zarr.ones`, `zarr.full`,
+      `zarr.open`, and related functions, or to `chunk_shape` in `zarr.create`.
+    - **Opening existing arrays**: Arrays stored with the `rectilinear` chunk grid are read
+      transparently via `zarr.open` and `zarr.open_array`.
+    - **Rectilinear sharding**: Shard boundaries can be rectilinear while inner chunks remain regular.
 
-  **Breaking change**: The `validate` method on `BaseCodec` and `CodecPipeline` now receives
-  a `ChunkGridMetadata` instance instead of a `ChunkGrid` instance for the `chunk_grid`
-  parameter. Third-party codecs that override `validate` and inspect the chunk grid will need to
-  update their type annotations. No known downstream packages were using this parameter. ([#3802](https://github.com/zarr-developers/zarr-python/issues/3802))
+    **Breaking change**: The `validate` method on `BaseCodec` and `CodecPipeline` now receives
+    a `ChunkGridMetadata` instance instead of a `ChunkGrid` instance for the `chunk_grid`
+    parameter. Third-party codecs that override `validate` and inspect the chunk grid will need to
+    update their type annotations. No known downstream packages were using this parameter. ([#3802](https://github.com/zarr-developers/zarr-python/issues/3802))
 
 - Add `cast_value` and `scale_offset` codecs. ([#3874](https://github.com/zarr-developers/zarr-python/issues/3874))
 
@@ -394,52 +399,52 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 
 - Ensure that invocations of `create_array` use consistent keyword arguments, with consistent defaults.
 
-  [`zarr.api.synchronous.create_array`][] now takes a `write_data` keyword argument
-  The `Group.create_array` method takes `data` and `write_data` keyword arguments.
-  The functions [`zarr.api.asynchronous.create`][], [`zarr.api.asynchronous.create_array`]
-  and the methods `Group.create_array`, `Group.array`, had the default
-  `fill_value` changed from `0` to the `DEFAULT_FILL_VALUE` value, which instructs Zarr to
-  use the default scalar value associated with the array's data type as the fill value. These are
-  all functions or methods for array creation that mirror, wrap or are wrapped by, another function
-  that already has a default `fill_value` set to `DEFAULT_FILL_VALUE`. This change is necessary
-  to make these functions consistent across the entire codebase, but as this changes default values,
-  new data might have a different fill value than expected after this change.
+    [`zarr.api.synchronous.create_array`][] now takes a `write_data` keyword argument
+    The `Group.create_array` method takes `data` and `write_data` keyword arguments.
+    The functions [`zarr.api.asynchronous.create`][], [`zarr.api.asynchronous.create_array`]
+    and the methods `Group.create_array`, `Group.array`, had the default
+    `fill_value` changed from `0` to the `DEFAULT_FILL_VALUE` value, which instructs Zarr to
+    use the default scalar value associated with the array's data type as the fill value. These are
+    all functions or methods for array creation that mirror, wrap or are wrapped by, another function
+    that already has a default `fill_value` set to `DEFAULT_FILL_VALUE`. This change is necessary
+    to make these functions consistent across the entire codebase, but as this changes default values,
+    new data might have a different fill value than expected after this change.
 
-  For data types where 0 is meaningful, like integers or floats, the default scalar is 0, so this
-  change should not be noticeable. For data types where 0 is ambiguous, like fixed-length unicode
-  strings, the default fill value might be different after this change. Users who were relying on how
-  Zarr interpreted `0` as a non-numeric scalar value should set their desired fill value explicitly
-  after this change.
+    For data types where 0 is meaningful, like integers or floats, the default scalar is 0, so this
+    change should not be noticeable. For data types where 0 is ambiguous, like fixed-length unicode
+    strings, the default fill value might be different after this change. Users who were relying on how
+    Zarr interpreted `0` as a non-numeric scalar value should set their desired fill value explicitly
+    after this change.
 
 - Added public API for Buffer ABCs and implementations.
 
-  Use `zarr.buffer` to access buffer implementations, and
-  `zarr.abc.buffer` for the interface to implement new buffer types.
+    Use `zarr.buffer` to access buffer implementations, and
+    `zarr.abc.buffer` for the interface to implement new buffer types.
 
-  Users previously importing buffer from `zarr.core.buffer` should update their
-  imports to use `zarr.buffer`. As a reminder, all of `zarr.core` is
-  considered a private API that's not covered by zarr-python's versioning policy. ([#2871](https://github.com/zarr-developers/zarr-python/issues/2871))
+    Users previously importing buffer from `zarr.core.buffer` should update their
+    imports to use `zarr.buffer`. As a reminder, all of `zarr.core` is
+    considered a private API that's not covered by zarr-python's versioning policy. ([#2871](https://github.com/zarr-developers/zarr-python/issues/2871))
 
 - Adds zarr-specific data type classes.
 
-  This change adds a `ZDType` base class for Zarr V2 and Zarr V3 data types. Child classes are
-  defined for each NumPy data type. Each child class defines routines for `JSON` serialization.
-  New data types can be created and registered dynamically.
+    This change adds a `ZDType` base class for Zarr V2 and Zarr V3 data types. Child classes are
+    defined for each NumPy data type. Each child class defines routines for `JSON` serialization.
+    New data types can be created and registered dynamically.
 
-  Prior to this change, Zarr Python had two streams for handling data types. For Zarr V2 arrays,
-  we used NumPy data type identifiers. For Zarr V3 arrays, we used a fixed set of string enums. Both
-  of these systems proved hard to extend.
+    Prior to this change, Zarr Python had two streams for handling data types. For Zarr V2 arrays,
+    we used NumPy data type identifiers. For Zarr V3 arrays, we used a fixed set of string enums. Both
+    of these systems proved hard to extend.
 
-  This change is largely internal, but it does change the type of the `dtype` and `data_type`
-  fields on the `ArrayV2Metadata` and `ArrayV3Metadata` classes. Previously, `ArrayV2Metadata.dtype`
-  was a NumPy `dtype` object, and `ArrayV3Metadata.data_type` was an internally-defined `enum`.
-  After this change, both `ArrayV2Metadata.dtype` and `ArrayV3Metadata.data_type` are instances of
-  `ZDType`. A NumPy data type can be generated from a `ZDType` via the `ZDType.to_native_dtype()`
-  method. The internally-defined Zarr V3 `enum` class is gone entirely, but the `ZDType.to_json(zarr_format=3)`
-  method can be used to generate either a string, or dictionary that has a string `name` field, that
-  represents the string value previously associated with that `enum`.
+    This change is largely internal, but it does change the type of the `dtype` and `data_type`
+    fields on the `ArrayV2Metadata` and `ArrayV3Metadata` classes. Previously, `ArrayV2Metadata.dtype`
+    was a NumPy `dtype` object, and `ArrayV3Metadata.data_type` was an internally-defined `enum`.
+    After this change, both `ArrayV2Metadata.dtype` and `ArrayV3Metadata.data_type` are instances of
+    `ZDType`. A NumPy data type can be generated from a `ZDType` via the `ZDType.to_native_dtype()`
+    method. The internally-defined Zarr V3 `enum` class is gone entirely, but the `ZDType.to_json(zarr_format=3)`
+    method can be used to generate either a string, or dictionary that has a string `name` field, that
+    represents the string value previously associated with that `enum`.
 
-  For more on this new feature, see the [documentation](user-guide/data_types.md) ([#2874](https://github.com/zarr-developers/zarr-python/issues/2874))
+    For more on this new feature, see the [documentation](user-guide/data_types.md) ([#2874](https://github.com/zarr-developers/zarr-python/issues/2874))
 
 - Added `NDBuffer.empty` method for faster ndbuffer initialization. ([#3191](https://github.com/zarr-developers/zarr-python/issues/3191))
 
@@ -451,10 +456,10 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 
 - Fixes a variety of issues related to string data types.
 
-  - Brings the `VariableLengthUTF8` data type Zarr V3 identifier in alignment with Zarr Python 3.0.8
-  - Disallows creation of 0-length fixed-length data types
-  - Adds a regression test for the `VariableLengthUTF8` data type that checks against version 3.0.8
-  - Allows users to request the `VariableLengthUTF8` data type with `str`, `"str"`, or `"string"`. ([#3170](https://github.com/zarr-developers/zarr-python/issues/3170))
+    - Brings the `VariableLengthUTF8` data type Zarr V3 identifier in alignment with Zarr Python 3.0.8
+    - Disallows creation of 0-length fixed-length data types
+    - Adds a regression test for the `VariableLengthUTF8` data type that checks against version 3.0.8
+    - Allows users to request the `VariableLengthUTF8` data type with `str`, `"str"`, or `"string"`. ([#3170](https://github.com/zarr-developers/zarr-python/issues/3170))
 
 - Add human readable size for No. bytes stored to `info_complete` ([#3190](https://github.com/zarr-developers/zarr-python/issues/3190))
 
@@ -475,26 +480,26 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - Add a description on how to create a RemoteStore of a specific filesystem to the `Remote Store` section in `docs/user-guide/storage.md`.
   State in the docstring of `FsspecStore.from_url` that the filesystem type is inferred from the URL scheme.
 
-  It should help a user handling the case when the type of FsspecStore doesn't match the URL scheme. ([#3212](https://github.com/zarr-developers/zarr-python/issues/3212))
+    It should help a user handling the case when the type of FsspecStore doesn't match the URL scheme. ([#3212](https://github.com/zarr-developers/zarr-python/issues/3212))
 
 ### Deprecations and Removals
 
 - Removes default chunk encoding settings (filters, serializer, compressors) from the global
   configuration object.
 
-  This removal is justified on the basis that storing chunk encoding settings in the config required
-  a brittle, confusing, and inaccurate categorization of array data types, which was particularly
-  unsuitable after the recent addition of new data types that didn't fit naturally into the
-  pre-existing categories.
+    This removal is justified on the basis that storing chunk encoding settings in the config required
+    a brittle, confusing, and inaccurate categorization of array data types, which was particularly
+    unsuitable after the recent addition of new data types that didn't fit naturally into the
+    pre-existing categories.
 
-  The default chunk encoding is the same (Zstandard compression, and the required object codecs for
-  variable length data types), but the chunk encoding is now generated by functions that cannot be
-  reconfigured at runtime. Users who relied on setting the default chunk encoding via the global configuration object should
-  instead specify the desired chunk encoding explicitly when creating an array.
+    The default chunk encoding is the same (Zstandard compression, and the required object codecs for
+    variable length data types), but the chunk encoding is now generated by functions that cannot be
+    reconfigured at runtime. Users who relied on setting the default chunk encoding via the global configuration object should
+    instead specify the desired chunk encoding explicitly when creating an array.
 
-  This change also adds an extra validation step to the creation of Zarr V2 arrays, which ensures that
-  arrays with a `VariableLengthUTF8` or `VariableLengthBytes` data type cannot be created without the
-  correct "object codec". ([#3228](https://github.com/zarr-developers/zarr-python/issues/3228))
+    This change also adds an extra validation step to the creation of Zarr V2 arrays, which ensures that
+    arrays with a `VariableLengthUTF8` or `VariableLengthBytes` data type cannot be created without the
+    correct "object codec". ([#3228](https://github.com/zarr-developers/zarr-python/issues/3228))
 
 - Removes support for passing keyword-only arguments positionally to the following functions and methods:
   `save_array`, `open`, `group`, `open_group`, `create`, `get_basic_selection`, `set_basic_selection`,
@@ -546,8 +551,8 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
   For large arrays this will result in smaller default chunk sizes.
   To retain previous behaviour, explicitly set the chunk shape to the data shape.
 
-  This fix matches the existing chunking behaviour of
-  `zarr.save_array` and `zarr.api.asynchronous.AsyncArray.create`. ([#3103](https://github.com/zarr-developers/zarr-python/issues/3103))
+    This fix matches the existing chunking behaviour of
+    `zarr.save_array` and `zarr.api.asynchronous.AsyncArray.create`. ([#3103](https://github.com/zarr-developers/zarr-python/issues/3103))
 
 - When `zarr.save` has an argument `path=some/path/` and multiple arrays in `args`, the path resulted in `some/path/some/path` due to using the `path`
   argument twice while building the array path. This is now fixed. ([#3127](https://github.com/zarr-developers/zarr-python/issues/3127))
@@ -556,12 +561,12 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 
 - Suppress `FileNotFoundError` when deleting non-existent keys in the `obstore` adapter.
 
-  When writing empty chunks (i.e. chunks where all values are equal to the array's fill value) to a zarr array, zarr
-  will delete those chunks from the underlying store. For zarr arrays backed by the `obstore` adapter, this will potentially
-  raise a `FileNotFoundError` if the chunk doesn't already exist.
-  Since whether or not a delete of a non-existing object raises an error depends on the behavior of the underlying store,
-  suppressing the error in all cases results in consistent behavior across stores, and is also what `zarr` seems to expect
-  from the store. ([#3140](https://github.com/zarr-developers/zarr-python/issues/3140))
+    When writing empty chunks (i.e. chunks where all values are equal to the array's fill value) to a zarr array, zarr
+    will delete those chunks from the underlying store. For zarr arrays backed by the `obstore` adapter, this will potentially
+    raise a `FileNotFoundError` if the chunk doesn't already exist.
+    Since whether or not a delete of a non-existing object raises an error depends on the behavior of the underlying store,
+    suppressing the error in all cases results in consistent behavior across stores, and is also what `zarr` seems to expect
+    from the store. ([#3140](https://github.com/zarr-developers/zarr-python/issues/3140))
 
 - Trying to open a StorePath/Array with `mode='r'` when the store is not read-only creates a read-only copy of the store. ([#3156](https://github.com/zarr-developers/zarr-python/issues/3156))
 
@@ -583,8 +588,9 @@ a `ManagedMemoryStore` is used. ([#3944](https://github.com/zarr-developers/zarr
 - It is now possible to specify no compressor when creating a zarr format 2 array.
   This can be done by passing `compressor=None` to the various array creation routines.
 
-  The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
-  To reproduce the behaviour in previous zarr-python versions when `compressor=None` was passed, pass `compressor='auto'` instead. ([#3039](https://github.com/zarr-developers/zarr-python/issues/3039))
+    The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
+    To reproduce the behaviour in previous zarr-python versions when `compressor=None` was passed, pass `compressor='auto'` instead. ([#3039](https://github.com/zarr-developers/zarr-python/issues/3039))
+
 - Fixed the typing of `dimension_names` arguments throughout so that it now accepts iterables that contain `None` alongside `str`. ([#3045](https://github.com/zarr-developers/zarr-python/issues/3045))
 - Using various functions to open data with `mode='a'` no longer deletes existing data in the store. ([#3062](https://github.com/zarr-developers/zarr-python/issues/3062))
 - Internally use `typesize` constructor parameter for `numcodecs.blosc.Blosc` to improve compression ratios back to the v2-package levels. ([#2962](https://github.com/zarr-developers/zarr-python/issues/2962))

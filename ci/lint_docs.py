@@ -13,7 +13,7 @@ never attempted, so it leaves no unlinked-type span. This linter fills that gap 
 fast, source-level check that needs no docs build.
 
 Checks fall into two groups -- RST markup that silently fails under MkDocs/mkdocstrings,
-and a Markdown structural problem that renders as valid-but-wrong HTML (so `mkdocs build`
+and Markdown structural problems that render as valid-but-wrong HTML (so `mkdocs build`
 emits no warning):
 
   sphinx-role     :class:`X`, :func:`X`, :py:meth:`X`   -> [`X`][zarr.X]
@@ -21,6 +21,8 @@ emits no warning):
   rst-field       :param x:, :returns:, :rtype:          -> numpydoc Parameters/Returns/Raises
   rst-link        `text <https://example>`_              -> [text](https://example)
   list-break      unindented code fence between list items -> indent the fence under its item
+  list-indent     continuation block indented < 4 spaces -> indent it 4 spaces
+  list-blank      list item directly after indented block -> blank line before the item
 
 The ``list-break`` check catches a fenced code block at column 0 placed *between* two list
 items: because the fence is not indented into the preceding item, Markdown ends the list at
@@ -28,6 +30,15 @@ the fence and the following item starts a fresh list -- renumbering an ordered l
 instead of 1, 2, 3) or breaking the grouping/spacing of any list. markdownlint's MD029 only
 notices this for sequentially-numbered ordered lists; lazily-numbered (1., 1.) and unordered
 lists slip past it, so this structural check covers the gap.
+
+The ``list-indent`` and ``list-blank`` checks catch the two halves of Python-Markdown's
+strict list-continuation rules, which differ from CommonMark. A blank-line-separated
+block (paragraph, nested list, table) belongs to a list item only when indented at least
+4 spaces; at the 2-space indent other renderers accept, Python-Markdown ends the list and
+the block escapes to the top level (``list-indent``). And a new list item can not start
+directly after an indented continuation block: without a blank line first, the ``- `` line
+is lazily absorbed into the preceding paragraph as literal text (``list-blank``). Both
+produced silently-broken changelog rendering in ``docs/release-notes.md``.
 
 Usage:
     python ci/lint_docs.py [PATH ...]
@@ -87,14 +98,16 @@ class Check(NamedTuple):
     fix: str
 
 
-# ``list-break`` carries no pattern -- it is detected structurally in find_list_breaking_fences,
-# not by scanning a single line -- but it appears here so it shares the remediation help.
+# The ``list-*`` checks carry no pattern -- they are detected structurally, not by scanning
+# a single line -- but they appear here so they share the remediation help.
 CHECKS = (
     Check("sphinx-role", SPHINX_ROLE, ":class:`X`", "[`X`][zarr.X]"),
     Check("rst-directive", RST_DIRECTIVE, ".. note::", "MkDocs admonition (!!! note)"),
     Check("rst-field", RST_FIELD, ":param x:", "numpydoc Parameters/Returns/Raises section"),
     Check("rst-link", RST_LINK, "`text <url>`_", "[text](url)"),
     Check("list-break", None, "fence between items", "indent the fence 4 spaces to nest it"),
+    Check("list-indent", None, "2-space continuation", "indent the block 4 spaces under its item"),
+    Check("list-blank", None, "item after indented block", "add a blank line before the item"),
 )
 
 
@@ -211,9 +224,49 @@ def find_list_breaking_fences(lines: list[str], blocks: list[Fence]) -> list[tup
     ]
 
 
+def find_list_continuation_issues(
+    lines: list[str], in_code: set[int]
+) -> list[tuple[int, str, str]]:
+    """Return ``(lineno, category, snippet)`` for list continuations Python-Markdown will
+    mis-render (see the module docstring):
+
+    - ``list-indent``: a blank-line-separated block inside a list item indented 1-3
+      spaces. Python-Markdown requires 4; at less, the block escapes the list.
+    - ``list-blank``: a top-level list item directly after a line indented 4+ spaces.
+      Without a blank line in between, the item is absorbed into the preceding paragraph
+      as literal ``- `` text.
+
+    Lazy continuations (an indented line with no blank line before it) are valid at any
+    indent and are not flagged. Fenced-code lines are opaque: never flagged themselves,
+    but they keep the item scope open and their indent feeds the ``list-blank`` check so
+    an item directly after an indented fence is still caught."""
+    findings: list[tuple[int, str, str]] = []
+    in_item = False  # inside a top-level list item's scope
+    prev_blank = True
+    prev_indent = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            prev_blank = True
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if i not in in_code:
+            if indent == 0:
+                is_item = bool(LIST_ITEM.match(line))
+                if is_item and in_item and not prev_blank and prev_indent >= 4:
+                    findings.append((i + 1, "list-blank", line))
+                in_item = is_item
+            elif in_item and prev_blank and indent < 4:
+                findings.append((i + 1, "list-indent", line))
+        prev_blank = False
+        prev_indent = indent
+    return findings
+
+
 def lint_markdown(path: Path) -> list[Finding]:
     """Scan a Markdown file: RST residue in prose (skipping fenced code blocks), plus
-    fenced code blocks that break a list (see find_list_breaking_fences)."""
+    list-structure problems (see find_list_breaking_fences and
+    find_list_continuation_issues)."""
     lines = path.read_text(encoding="utf-8").splitlines()
     blocks = fenced_blocks(lines)
     in_code = {i for fence in blocks for i in range(fence.open, fence.close + 1)}
@@ -228,7 +281,11 @@ def lint_markdown(path: Path) -> list[Finding]:
         Finding(path, lineno, "list-break", snippet)
         for lineno, snippet in find_list_breaking_fences(lines, blocks)
     ]
-    return prose + breaks
+    continuations = [
+        Finding(path, lineno, category, snippet)
+        for lineno, category, snippet in find_list_continuation_issues(lines, in_code)
+    ]
+    return prose + breaks + continuations
 
 
 def iter_files(paths: tuple[Path, ...]) -> list[Path]:

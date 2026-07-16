@@ -354,18 +354,7 @@ This policy exists to lower the cost of routine work and to help newer core deve
 
 ### Release procedure
 
-Open an issue on GitHub announcing the release using the release checklist template:
-[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
-
-#### Preparing a release
-
-Releases are prepared using the ["Prepare release notes"](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) workflow. To run it:
-
-1. Go to the [workflow page](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) and click "Run workflow".
-2. Enter the release version (e.g. `3.2.0`) and the target branch (defaults to `main`).
-3. The workflow will run `towncrier build` to render the changelog, remove consumed fragments from `changes/`, and open a pull request on the `release/v<version>` branch.
-4. The release PR is automatically labeled `run-downstream`, which triggers the [downstream test workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) to run Xarray and numcodecs integration tests against the release branch.
-5. Review the rendered changelog in `docs/release-notes.md` and verify downstream tests pass before merging.
+To give the release visibility and a single place to track progress, open an issue on GitHub announcing the release using the [release checklist template](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
 
 ## Compatibility and versioning policies
 
@@ -377,17 +366,17 @@ Releases are classified by the library changes contained in that release. This c
 
 * **major** releases (for example, `2.18.0` -> `3.0.0`) are for changes that will require extensive adaptation efforts from many users and downstream projects. For example, breaking changes to widely-used user-facing APIs should only be applied in a major release.
 
-  Users and downstream projects should carefully consider the impact of a major release before adopting it. In advance of a major release, developers should communicate the scope of the upcoming changes, and help users prepare for them.
+    Users and downstream projects should carefully consider the impact of a major release before adopting it. In advance of a major release, developers should communicate the scope of the upcoming changes, and help users prepare for them.
 
 * **minor** releases (for example, `3.0.0` -> `3.1.0`) are for changes that do not require significant effort from most users or downstream projects to respond to. API changes are possible in minor releases if the burden on users imposed by those changes is sufficiently small.
 
-  For example, a recently released API may need fixes or refinements that are breaking, but low impact due to the recency of the feature. Such API changes are permitted in a minor release.
+    For example, a recently released API may need fixes or refinements that are breaking, but low impact due to the recency of the feature. Such API changes are permitted in a minor release.
 
-  Minor releases are safe for most users and downstream projects to adopt.
+    Minor releases are safe for most users and downstream projects to adopt.
 
 * **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behavior changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
 
-  Users should always feel safe upgrading to the latest patch release.
+    Users should always feel safe upgrading to the latest patch release.
 
 Note that this versioning scheme is not consistent with [Semantic Versioning](https://semver.org/). Contrary to SemVer, the Zarr library may release breaking changes in `minor` releases, or even `patch` releases under exceptional circumstances. But we should strive to avoid doing so.
 
