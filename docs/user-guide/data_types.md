@@ -194,9 +194,11 @@ Python supports nearly all of the data types in NumPy. If you need a data type t
 here, it's possible to create it yourself: see [Adding new data types](#adding-new-data-types).
 
 #### Boolean
+
 - [Boolean][zarr.dtype.Bool]
 
 #### Integral
+
 - [Signed 8-bit integer][zarr.dtype.Int8]
 - [Signed 16-bit integer][zarr.dtype.Int16]
 - [Signed 32-bit integer][zarr.dtype.Int32]
@@ -207,6 +209,7 @@ here, it's possible to create it yourself: see [Adding new data types](#adding-n
 - [Unsigned 64-bit integer][zarr.dtype.UInt64]
 
 #### Floating-point
+
 - [16-bit floating-point][zarr.dtype.Float16]
 - [32-bit floating-point][zarr.dtype.Float32]
 - [64-bit floating-point][zarr.dtype.Float64]
@@ -214,19 +217,23 @@ here, it's possible to create it yourself: see [Adding new data types](#adding-n
 - [128-bit complex floating-point][zarr.dtype.Complex128]
 
 #### String
+
 - [Fixed-length UTF-32 string][zarr.dtype.FixedLengthUTF32]
 - [Variable-length UTF-8 string][zarr.dtype.VariableLengthUTF8]
 
 #### Bytes
+
 - [Fixed-length null-terminated bytes][zarr.dtype.NullTerminatedBytes]
 - [Fixed-length raw bytes][zarr.dtype.RawBytes]
 - [Variable-length bytes][zarr.dtype.VariableLengthBytes]
 
 #### Temporal
+
 - [DateTime64][zarr.dtype.DateTime64]
 - [TimeDelta64][zarr.dtype.TimeDelta64]
 
 #### Struct-like
+
 - [Structured][zarr.dtype.Structured]
 
 !!! note "Zarr V3 Structured Data Types"

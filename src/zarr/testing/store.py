@@ -40,21 +40,21 @@ class StoreTests[S: Store, B: Buffer]:
 
     @staticmethod
     def _require_get_sync(store: S) -> SupportsGetSync:
-        """Skip unless *store* implements :class:`SupportsGetSync`."""
+        """Skip unless *store* implements [`SupportsGetSync`][zarr.abc.store.SupportsGetSync]."""
         if not isinstance(store, SupportsGetSync):
             pytest.skip("store does not implement SupportsGetSync")
         return store  # type: ignore[unreachable]
 
     @staticmethod
     def _require_set_sync(store: S) -> SupportsSetSync:
-        """Skip unless *store* implements :class:`SupportsSetSync`."""
+        """Skip unless *store* implements [`SupportsSetSync`][zarr.abc.store.SupportsSetSync]."""
         if not isinstance(store, SupportsSetSync):
             pytest.skip("store does not implement SupportsSetSync")
         return store  # type: ignore[unreachable]
 
     @staticmethod
     def _require_delete_sync(store: S) -> SupportsDeleteSync:
-        """Skip unless *store* implements :class:`SupportsDeleteSync`."""
+        """Skip unless *store* implements [`SupportsDeleteSync`][zarr.abc.store.SupportsDeleteSync]."""
         if not isinstance(store, SupportsDeleteSync):
             pytest.skip("store does not implement SupportsDeleteSync")
         return store  # type: ignore[unreachable]
