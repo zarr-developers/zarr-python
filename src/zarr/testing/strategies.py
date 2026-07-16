@@ -2,6 +2,7 @@ import itertools
 import math
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -667,6 +668,139 @@ def numpy_array_indexers(
         m = draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
         return m, m
     raise ValueError(f"unknown indexing mode: {mode!r}")
+
+
+# --- Composed indexing programs -------------------------------------------------
+#
+# A *program* is a short sequence of indexing operations composed on a single
+# array, plus an execution recipe describing how to realize the composed
+# selection (read whole, read a sub-selection eagerly, read into an ``out=``
+# buffer, or write). It exists to differentially test the index-transform layer:
+# every operation composes a real transform, and the runner (in
+# ``tests/test_properties.py``) checks the composed result against a NumPy oracle
+# that applies the equivalent selections in lockstep.
+#
+# The mode vocabulary here is the *public dialect* ("orthogonal"/"vectorized"),
+# not the internal accessor names ("oindex"/"vindex"); the runner maps between
+# them.
+ProgramMode = Literal["basic", "orthogonal", "vectorized"]
+ProgramExecution = Literal["materialize", "eager_on_lazy", "out", "set_scalar", "set_array"]
+
+
+@dataclass(frozen=True)
+class IndexOperation:
+    """One indexing step in an :class:`IndexingProgram`.
+
+    ``selection`` carries exactly what the runner needs to reproduce the step on
+    *both* a zarr array and its NumPy reference:
+
+    - ``"basic"`` — a single object used verbatim for both (slice / int /
+      ellipsis / tuple thereof).
+    - ``"orthogonal"`` — a ``(zarr_selection, numpy_selection)`` pair, where the
+      NumPy side is the ``np.ix_`` outer-product spelling of the per-axis
+      selection.
+    - ``"vectorized"`` — a single coordinate selection used verbatim for both
+      (plain NumPy fancy-indexing semantics).
+    """
+
+    mode: ProgramMode
+    selection: Any
+
+
+@dataclass(frozen=True)
+class IndexingProgram:
+    """A composed sequence of :class:`IndexOperation` plus an execution recipe."""
+
+    operations: tuple[IndexOperation, ...]
+    execution: ProgramExecution
+
+
+# Small arrays keep 300 Hypothesis examples cheap while still crossing chunk
+# boundaries (the runner chunks each axis into ~2 pieces). ``min_side=0`` lets a
+# program start from — or a basic step produce — a zero-extent axis, which is the
+# required "empty result" coverage class.
+program_shapes = npst.array_shapes(min_dims=1, max_dims=3, min_side=0, max_side=4)
+
+
+def _basic_result_shape(shape: tuple[int, ...], selection: Any) -> tuple[int, ...]:
+    """The NumPy result shape of applying a *basic* ``selection`` to ``shape``.
+
+    Used to carry the visible shape forward while generating a program, so each
+    step's selection is drawn against the shape the previous steps leave behind.
+    Uses a tiny placeholder array (program shapes are capped small).
+    """
+    result_shape: tuple[int, ...] = np.empty(shape, dtype=np.int8)[selection].shape
+    return result_shape
+
+
+@st.composite
+def indexing_programs(draw: st.DrawFn, *, shape: tuple[int, ...]) -> IndexingProgram:
+    """Generate a composable indexing program over an array of ``shape``.
+
+    Structure (one to three operations): a prefix of zero-to-two **basic** steps,
+    optionally followed by a single **fancy** (orthogonal/vectorized) step as the
+    *last* operation. The visible shape is carried forward so every step is valid
+    against what its predecessors produce.
+
+    **Why fancy is confined to the last position** — the exclusions here are
+    deliberate and documented so they can shrink as the underlying bugs are
+    fixed:
+
+    - *Fancy-after-fancy* composition is broken in ``_reindex_array_oindex``
+      (applying oindex/vindex to a view that already carries an ArrayMap axis), so
+      at most one fancy step is generated.
+    - *Basic-after-fancy* is excluded wholesale. Integer basic indexing on an
+      oindex-picked axis is a strict xfail
+      (``TestKnownFancyIntBugs::test_int_read_on_oindex_view``); rather than track
+      which composed axes became "fancy-picked" and admit only the working
+      basic-on-non-fancy-axis subset, we keep fancy last and let the basic prefix
+      cover multi-step basic composition. (When those bugs are fixed this
+      restriction can be relaxed to interleave basic and fancy freely.)
+
+    A fancy step is only emitted when the current shape has rank ``>= 1`` and no
+    zero-length axis (integer/orthogonal selections cannot address an empty axis);
+    otherwise the program stays basic-only. If nothing else was generated, a
+    single basic step is appended so a program always has at least one operation.
+    """
+    n_basic = draw(st.integers(min_value=0, max_value=2))
+    want_fancy = draw(st.booleans())
+
+    operations: list[IndexOperation] = []
+    cur = shape
+    for _ in range(n_basic):
+        if len(cur) == 0:
+            break  # a rank-0 (scalar) view has no further indexing to compose
+        sel = draw(basic_indices(shape=cur))
+        operations.append(IndexOperation("basic", sel))
+        cur = _basic_result_shape(cur, sel)
+
+    fancy_ok = len(cur) > 0 and all(s > 0 for s in cur)
+    if want_fancy and fancy_ok:
+        mode = draw(st.sampled_from(("orthogonal", "vectorized")))
+        if mode == "orthogonal":
+            zsel, npsel = draw(orthogonal_indices(shape=cur))
+            operations.append(IndexOperation("orthogonal", (zsel, npsel)))
+        else:
+            idx = draw(
+                npst.integer_array_indices(
+                    shape=cur,
+                    result_shape=npst.array_shapes(min_side=1, max_side=4, max_dims=2),
+                )
+            )
+            operations.append(IndexOperation("vectorized", idx))
+
+    if not operations:
+        operations.append(IndexOperation("basic", draw(basic_indices(shape=cur))))
+
+    executions: tuple[ProgramExecution, ...] = (
+        "materialize",
+        "eager_on_lazy",
+        "out",
+        "set_scalar",
+        "set_array",
+    )
+    execution = draw(st.sampled_from(executions))
+    return IndexingProgram(tuple(operations), execution)
 
 
 @st.composite

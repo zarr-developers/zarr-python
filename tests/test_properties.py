@@ -2,7 +2,7 @@ import itertools
 import json
 import numbers
 from collections.abc import Generator
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -15,7 +15,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from tests.conftest import Expect
@@ -24,15 +24,19 @@ from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.testing.strategies import (
+    IndexingProgram,
     IndexMode,
+    IndexOperation,
     array_metadata,
     arrays,
     basic_indices,
     block_indices,
     block_test_arrays,
     complex_rectilinear_arrays,
+    indexing_programs,
     numpy_array_indexers,
     numpy_arrays,
+    program_shapes,
     rectilinear_arrays,
     simple_arrays,
     stores,
@@ -431,23 +435,39 @@ def _n_array_axes(zsel: Any) -> int:
 def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
     """Whether `mode` can be exercised on `shape`.
 
-    Rank-0 arrays have no interesting selections; the fancy modes
-    (oindex/vindex/mask via integer/boolean arrays) can't handle zero-size axes.
+    Rank-0 arrays have no interesting selections. `basic` and `mask` handle
+    zero-length axes (a boolean mask of the array's shape simply selects nothing,
+    which zarr and NumPy agree on — verified against `set_mask_selection` too).
+    The integer-array fancy modes (`oindex`/`vindex`) cannot address an empty
+    axis, so they require every axis to be non-empty.
     """
     if len(shape) == 0:
         return False
-    return mode == "basic" or all(s > 0 for s in shape)
+    if mode in ("basic", "mask"):
+        return True
+    return all(s > 0 for s in shape)
 
 
 def assert_read_matches_numpy(
-    target: zarr.Array, ref: np.ndarray[Any, Any], mode: IndexMode, zsel: Any, npsel: Any
+    target: zarr.Array,
+    ref: np.ndarray[Any, Any],
+    mode: IndexMode,
+    zsel: Any,
+    npsel: Any,
+    *,
+    out_layout: Literal["eager", "transform"] = "eager",
 ) -> None:
     """Assert `target`'s read of `zsel` (mode) matches `ref[npsel]`, with/without out=.
 
     Consumer-agnostic: `target` is any `zarr.Array` (an eager array or a lazy
-    view) and `ref` is the NumPy array it must behave like. The `out=` buffer
-    is flat for the vectorized vindex/mask modes (which scatter through a flat
-    index) and full-shape otherwise.
+    view) and `ref` is the NumPy array it must behave like. The two consumers
+    disagree on the `out=` buffer shape for the vectorized vindex/mask modes, so
+    `out_layout` names which convention `target` implements:
+
+    - `"eager"` (legacy path): vindex/mask scatter through a flat index, so the
+      buffer is flat — `(number of selected points,)`.
+    - `"transform"` (lazy views, Task 4): `out=` takes the broadcast selection
+      shape for every mode, so the buffer always has the result shape.
     """
     expected = np.asarray(ref[npsel])
     actual = np.asarray(_get(target, mode, zsel))
@@ -458,7 +478,10 @@ def assert_read_matches_numpy(
         assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
     assert_array_equal(actual, expected)
     if expected.ndim >= 1 and expected.size > 0:
-        buf_shape = (expected.size,) if mode in _VECTORIZED_MODES else expected.shape
+        if out_layout == "eager" and mode in _VECTORIZED_MODES:
+            buf_shape: tuple[int, ...] = (expected.size,)
+        else:
+            buf_shape = expected.shape
         buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=expected.dtype)
         _get(target, mode, zsel, out=buf)
         assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
@@ -468,7 +491,9 @@ def _indexing_array(data: st.DataObject) -> zarr.Array:
     """An eager array (regular or rectilinear) for the indexing-parity oracles."""
     return data.draw(
         st.one_of(
-            simple_arrays(shapes=npst.array_shapes(max_dims=4)),
+            # min_side=0 restores zero-extent-array coverage: the `_eligible` helper
+            # routes zero-size shapes to the modes that tolerate them (basic/mask).
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=0)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
         )
     )
@@ -777,7 +802,9 @@ async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     until `Array.lazy` exists, so the eager oracle can merge ahead of the lazy
     feature.
     """
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    # min_side=0 exercises the `windows()` zero-extent branch and, via `_eligible`,
+    # zero-size lazy-view reads in the basic/mask modes that tolerate them.
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=0)))
     nparray = zarray[:]
     window = data.draw(windows(shape=nparray.shape))
     view = zarray.lazy[window].translate_to((0,) * nparray.ndim)
@@ -790,4 +817,251 @@ async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     # indices are literal domain coordinates; canonicalizing to the equivalent
     # non-negative form keeps the comparison valid for both rules. NumPy semantics
     # are invariant under this, so the reference side (npsel) is unchanged.
-    assert_read_matches_numpy(view, vref, mode, _canonical_nonneg(zsel, vref.shape), npsel)
+    # Lazy views take out= in the broadcast result shape for every mode (Task 4)
+    # — *except* when the composed transform is an identity, where the read
+    # methods fast-path to the legacy implementation and its flat-vindex out=
+    # convention applies. Mirror that dispatch here.
+    out_layout: Literal["eager", "transform"] = (
+        "eager" if view._async_array._is_identity else "transform"
+    )
+    assert_read_matches_numpy(
+        view, vref, mode, _canonical_nonneg(zsel, vref.shape), npsel, out_layout=out_layout
+    )
+
+
+# ---------------------------------------------------------------------------
+# Composed indexing programs (Task 5): a differential oracle over sequences of
+# composed indexing operations. Where the single-shot parity tests above check
+# one selection at a time, these compose one to three operations through the real
+# index-transform layer and check the composed result — and each of five
+# execution recipes — against a NumPy model applied in lockstep.
+# ---------------------------------------------------------------------------
+
+# Public program dialect -> the internal accessor mode used by _get/_setitem.
+_PROGRAM_INDEX_MODE: dict[str, IndexMode] = {
+    "basic": "basic",
+    "orthogonal": "oindex",
+    "vectorized": "vindex",
+}
+
+
+def _program_selections(op: IndexOperation) -> tuple[Any, Any]:
+    """The ``(zarr_selection, numpy_selection)`` pair for one program step.
+
+    Only ``orthogonal`` needs distinct spellings (per-axis vs the ``np.ix_``
+    outer-product form); ``basic`` and ``vectorized`` index both sides alike.
+    """
+    if op.mode == "orthogonal":
+        zsel, npsel = op.selection
+        return zsel, npsel
+    return op.selection, op.selection
+
+
+def _apply_lazy_step(view: zarr.Array, mode: str, zsel: Any) -> zarr.Array:
+    """Compose one lazy indexing step onto ``view`` and re-zero the result.
+
+    Re-zeroing (``translate_to``) keeps the next step's NumPy-dialect selection
+    valid against a zero-origin domain (positive coordinates stay literal, so they
+    match NumPy) while still exercising domain translation on every step.
+    """
+    if mode == "basic":
+        out = view.lazy[zsel]
+    elif mode == "orthogonal":
+        out = view.lazy.oindex[zsel]
+    elif mode == "vectorized":
+        out = view.lazy.vindex[zsel]
+    else:
+        raise AssertionError(mode)
+    if out.ndim:
+        out = out.translate_to((0,) * out.ndim)
+    return out
+
+
+def _compare_read(actual_raw: Any, expected: np.ndarray[Any, Any]) -> None:
+    """Assert a program read matches NumPy in scalar/array kind, shape, dtype, values."""
+    actual = np.asarray(actual_raw)
+    # Scalar-versus-array kind: a zero-rank read must come back as a scalar, a
+    # ranked read as an array. np.ndim reads 0 for python/numpy scalars.
+    assert np.ndim(actual_raw) == expected.ndim, ("kind", np.ndim(actual_raw), expected.ndim)
+    if expected.ndim >= 1:  # skip 0-d to avoid python-vs-numpy scalar dtype noise
+        assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
+    assert actual.shape == expected.shape, (actual.shape, expected.shape)
+    assert_array_equal(actual, expected)
+
+
+def _compose_base(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], operations: tuple[IndexOperation, ...]
+) -> tuple[zarr.Array, np.ndarray[Any, Any]]:
+    """Compose every operation *except the last* as lazy views, in lockstep with NumPy.
+
+    Returns the composed (zero-origin) lazy base view and the matching NumPy
+    array; their shapes are asserted equal at each step. The prefix operations are
+    always basic (fancy steps only ever occur last), so the NumPy side stays a
+    view — which matters for the write executions, where assignment through it must
+    reach the root array.
+    """
+    base = zarray
+    ref = nparray
+    for op in operations[:-1]:
+        zsel, npsel = _program_selections(op)
+        base = _apply_lazy_step(base, op.mode, _canonical_nonneg(zsel, base.shape))
+        ref = ref[npsel]
+        assert base.shape == ref.shape, (base.shape, ref.shape)
+    return base, ref
+
+
+def _run_program_read(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], program: IndexingProgram
+) -> None:
+    base, ref = _compose_base(zarray, nparray, program.operations)
+    last = program.operations[-1]
+    imode = _PROGRAM_INDEX_MODE[last.mode]
+    zsel, npsel = _program_selections(last)
+    czsel = _canonical_nonneg(zsel, base.shape)
+    expected = np.asarray(ref[npsel])
+
+    if program.execution == "eager_on_lazy":
+        # Apply the final step as an *eager* indexing read on the composed view.
+        _compare_read(_get(base, imode, czsel), expected)
+        return
+
+    # materialize / out: compose the final step lazily too, then read the whole view.
+    view = _apply_lazy_step(base, last.mode, czsel)
+    _compare_read(view[...], expected)
+    if program.execution == "out" and expected.ndim >= 1 and expected.size > 0:
+        # A whole-view basic read: the transform path takes the full result shape
+        # (Task 4), for every mode, so the buffer is never the flat vectorized form.
+        buf = default_buffer_prototype().nd_buffer.empty(shape=expected.shape, dtype=expected.dtype)
+        view.get_basic_selection(Ellipsis, out=buf)
+        assert_array_equal(np.asarray(buf.as_ndarray_like()), expected)
+
+
+def _run_program_write(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], program: IndexingProgram
+) -> None:
+    root = nparray.copy()  # the NumPy model we mutate and compare against
+    base, sub = _compose_base(zarray, root, program.operations)
+    last = program.operations[-1]
+    imode = _PROGRAM_INDEX_MODE[last.mode]
+    zsel, npsel = _program_selections(last)
+    czsel = _canonical_nonneg(zsel, base.shape)
+    if last.mode in ("orthogonal", "vectorized"):
+        # A fancy write hitting a cell twice is order-dependent and has no oracle
+        # (same limitation NumPy has); program arrays are unsharded so GH2834 (the
+        # only other write restriction) cannot arise.
+        assume(_write_is_unambiguous(imode, czsel, base.shape))
+
+    result_shape = sub[npsel].shape
+    value: Any
+    if program.execution == "set_scalar":
+        value = np.array(-7, dtype=root.dtype)
+    else:  # set_array: distinct (negative) values expose scatter/order bugs
+        value = (-(np.arange(int(np.prod(result_shape)), dtype="i8") + 1)).reshape(result_shape)
+        value = value.astype(root.dtype)
+
+    sub[npsel] = value  # writes through the basic-view chain into `root`
+    _setitem(base, imode, czsel, value)
+    assert_array_equal(zarray[:], root)
+
+
+def _build_program_array(shape: tuple[int, ...]) -> tuple[zarr.Array, np.ndarray[Any, Any]]:
+    """A deterministic i4 array filled with ``arange``, chunked ~2-per-axis.
+
+    Fixed dtype and a regular (unsharded) grid keep the program oracle focused on
+    composition and execution correctness — dtype breadth and rectilinear/sharded
+    grids are covered by the single-shot parity tests and the state machines. The
+    ~2-chunks-per-axis geometry makes composed selections routinely cross chunk
+    boundaries.
+    """
+    chunks = tuple(max(1, (s + 1) // 2) for s in shape)
+    nparray = np.arange(int(np.prod(shape, dtype=int)), dtype="i4").reshape(shape)
+    zarray = zarr.create_array({}, shape=shape, chunks=chunks, dtype="i4")
+    zarray[...] = nparray
+    return zarray, nparray
+
+
+@st.composite
+def _indexing_scenarios(draw: st.DrawFn) -> tuple[tuple[int, ...], IndexingProgram]:
+    """Draw a ``(shape, program)`` scenario. Kept together so `@example` can pin both."""
+    shape = draw(program_shapes)
+    program = draw(indexing_programs(shape=shape))
+    return shape, program
+
+
+def _orth(*axes: Any) -> tuple[tuple[np.ndarray[Any, Any], ...], Any]:
+    """Build an orthogonal selection ``(zarr_per_axis, numpy_ix_form)`` for `@example`."""
+    arrs = tuple(np.asarray(a) for a in axes)
+    return arrs, np.ix_(*arrs)
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
+)
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+# slice-then-oindex: the canonical composed-fancy regression. Reversing the Task 2
+# correlation predicate makes this example fail (mutation check).
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram(
+            (
+                IndexOperation("basic", (slice(1, 4), slice(None))),
+                IndexOperation("orthogonal", _orth([0, 2], [1, 3])),
+            ),
+            "materialize",
+        ),
+    )
+)
+# unequal orthogonal lengths: the outer product must not assume square selections.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram((IndexOperation("orthogonal", _orth([0, 1, 2], [0, 1])),), "materialize"),
+    )
+)
+# multidimensional vindex read into an out= buffer.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram(
+            (
+                IndexOperation(
+                    "vectorized", (np.array([[0, 1], [2, 3]]), np.array([[1, 0], [3, 2]]))
+                ),
+            ),
+            "out",
+        ),
+    )
+)
+# zero-rank result: a full integer selection collapses to a scalar.
+@example(
+    scenario=(
+        (3, 3),
+        IndexingProgram((IndexOperation("basic", (1, 2)),), "materialize"),
+    )
+)
+# empty result: a 0-length slice yields a zero-size read.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram((IndexOperation("basic", (slice(0, 0), slice(None))),), "materialize"),
+    )
+)
+@given(scenario=_indexing_scenarios())
+def test_indexing_program_parity(scenario: tuple[tuple[int, ...], IndexingProgram]) -> None:
+    """A composed indexing program matches NumPy under every execution recipe.
+
+    Reads (`materialize`, `eager_on_lazy`, `out`) check scalar/array kind, shape,
+    dtype and values; writes (`set_scalar`, `set_array`) apply the equivalent
+    assignment to a NumPy root and compare the whole zarr array afterwards. The
+    generator composes at most one fancy step and always keeps it last — see
+    `indexing_programs` for the documented exclusions (fancy-after-fancy and
+    basic-after-fancy are known-broken and deliberately not generated).
+    """
+    shape, program = scenario
+    zarray, nparray = _build_program_array(shape)
+    if program.execution in ("set_scalar", "set_array"):
+        _run_program_write(zarray, nparray, program)
+    else:
+        _run_program_read(zarray, nparray, program)
