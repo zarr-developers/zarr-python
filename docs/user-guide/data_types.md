@@ -139,17 +139,17 @@ Zarr V3 introduced several key changes to how data types are represented:
   The basic data types are identified by strings like `"int8"`, `"int16"`, etc., and data types
   that require a configuration can be identified by a JSON object.
 
-  For example, this JSON object declares a datetime data type:
+    For example, this JSON object declares a datetime data type:
 
-  ```json
-  {
-    "name": "numpy.datetime64",
-    "configuration": {
-      "unit": "s",
-      "scale_factor": 10
+    ```json
+    {
+      "name": "numpy.datetime64",
+      "configuration": {
+        "unit": "s",
+        "scale_factor": 10
+      }
     }
-  }
-  ```
+    ```
 
 - Zarr V3 data types do not have endianness. This is a departure from Zarr V2, where multi-byte
   data types are defined with endianness information. Instead, Zarr V3 requires that the endianness
