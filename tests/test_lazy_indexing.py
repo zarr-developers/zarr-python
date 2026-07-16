@@ -641,6 +641,60 @@ class TestLazyBoolScalar:
         np.testing.assert_array_equal(a.lazy.oindex[mask].result(), ref[[3, 5, 7]])
 
 
+class TestLazyMaskShape:
+    """A boolean mask must exactly match the view domain's shape on the
+    dimension(s) it consumes (NumPy parity: "boolean index did not match indexed
+    array"). Anything else raises IndexError at the boundary, before transform
+    construction — never a silent truncation."""
+
+    def test_correct_shape_masks_work(self) -> None:
+        """Exact-shape masks select as before, through oindex, vindex, and on a
+        non-zero-origin view (whose domain shape, not the base's, is the ruler)."""
+        a, ref = _make(CONFIGS[1])  # shape (24,)
+        mask = np.zeros(24, dtype=bool)
+        mask[[3, 5, 7]] = True
+        np.testing.assert_array_equal(a.lazy.oindex[mask].result(), ref[[3, 5, 7]])
+        np.testing.assert_array_equal(a.lazy.vindex[mask].result(), ref[[3, 5, 7]])
+        v = a.lazy[2:10]  # domain [2, 10) -> shape (8,)
+        vmask = np.zeros(8, dtype=bool)
+        vmask[[3, 5]] = True  # True positions are absolute coordinates
+        np.testing.assert_array_equal(v.lazy.oindex[vmask].result(), ref[[3, 5]])
+
+    @pytest.mark.parametrize("accessor", ["oindex", "vindex"])
+    def test_under_length_mask_raises(self, accessor: str) -> None:
+        a, _ = _make(CONFIGS[1])  # shape (24,)
+        acc: Any = getattr(a.lazy, accessor)
+        with pytest.raises(IndexError, match="boolean index did not match"):
+            _ = acc[np.zeros(5, dtype=bool)]
+
+    @pytest.mark.parametrize("accessor", ["oindex", "vindex"])
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_over_length_mask_raises(self, accessor: str, fill: bool) -> None:
+        """Over-length masks raise the shape-mismatch error regardless of where
+        their True values fall (not a bounds error on the True positions)."""
+        a, _ = _make(CONFIGS[1])
+        acc: Any = getattr(a.lazy, accessor)
+        with pytest.raises(IndexError, match="boolean index did not match"):
+            _ = acc[np.full(30, fill, dtype=bool)]
+
+    @pytest.mark.parametrize("accessor", ["oindex", "vindex"])
+    def test_wrong_ndim_mask_raises(self, accessor: str) -> None:
+        """A 2-D mask on a 1-D array is an IndexError (it consumes two
+        dimensions), not a ValueError from deeper in the transform layer."""
+        a, _ = _make(CONFIGS[1])
+        acc: Any = getattr(a.lazy, accessor)
+        with pytest.raises(IndexError, match="too many indices"):
+            _ = acc[np.zeros((4, 6), dtype=bool)]
+
+    def test_view_mask_checked_against_view_domain(self) -> None:
+        """On a view, the mask ruler is the view's domain shape: the base
+        array's shape is the wrong length there."""
+        a, _ = _make(CONFIGS[1])
+        v = a.lazy[2:10]  # domain shape (8,)
+        with pytest.raises(IndexError, match="boolean index did not match"):
+            _ = v.lazy.oindex[np.zeros(24, dtype=bool)]
+
+
 _GET_FIELD_METHODS = [
     "get_basic_selection",
     "get_orthogonal_selection",
@@ -724,6 +778,20 @@ class TestLazyFieldsOnView:
         a.set_basic_selection(Ellipsis, np.arange(10, dtype="i4") + 1, fields="f0")
         result: Any = np.asarray(a[...])
         np.testing.assert_array_equal(result["f0"], np.arange(10, dtype="i4") + 1)
+
+    @pytest.mark.xfail(
+        reason="the eager fields= write path corrupts sibling fields (pre-existing "
+        "upstream bug in the legacy identity path, not introduced or fixed by the "
+        "lazy-view guard); strict xfail flips when the eager path is fixed",
+        strict=True,
+    )
+    def test_fields_write_preserves_sibling_fields(self) -> None:
+        """A `fields='f0'` write must leave `f1` untouched. Documents the known
+        eager-path corruption (mirrors the TestKnownFancyIntBugs pinning style)."""
+        a, base = self._struct_array()
+        a.set_basic_selection(Ellipsis, np.arange(10, dtype="i4") + 1, fields="f0")
+        result: Any = np.asarray(a[...])
+        np.testing.assert_array_equal(result["f1"], base["f1"])
 
 
 class TestKnownFancyIntBugs:

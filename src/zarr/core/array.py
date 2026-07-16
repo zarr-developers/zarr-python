@@ -2957,16 +2957,20 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _normalize_public_selection(self, selection: Any) -> Any:
         """Normalize a user selection at the public Array boundary.
 
-        Rejects boolean *scalar* indices, and wraps negative integers, negative
-        index-array elements, and negative slice bounds to literal coordinates in
-        the current view's domain: an index `k` with `-size <= k < 0` on axis `d`
-        becomes `exclusive_max[d] + k` (from the end of the view's domain — exactly
-        NumPy for a zero-origin domain). Positive indices are left as literal domain
-        coordinates. The transform layer stays literal; it performs the final bounds
-        check, so an out-of-range value (a positive past the end, or `k < -size`) is
-        rejected there before any chunk access.
+        Rejects boolean *scalar* indices, validates boolean-mask shapes, and wraps
+        negative integers, negative index-array elements, and negative slice bounds
+        to literal coordinates in the current view's domain: an index `k` with
+        `-size <= k < 0` on axis `d` becomes `exclusive_max[d] + k` (from the end of
+        the view's domain — exactly NumPy for a zero-origin domain). Positive indices
+        are left as literal domain coordinates. A boolean mask consumes `mask.ndim`
+        dimensions and must exactly match the view domain's shape on them (NumPy
+        parity), else IndexError — never a silent truncation. The transform layer
+        stays literal; it performs the final bounds check, so an out-of-range value
+        (a positive past the end, or `k < -size`) is rejected there before any chunk
+        access.
         """
-        exclusive_max = self._async_array._transform.domain.exclusive_max
+        domain = self._async_array._transform.domain
+        exclusive_max = domain.exclusive_max
         ndim = len(exclusive_max)
 
         is_tuple = isinstance(selection, tuple)
@@ -2975,10 +2979,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         for item in items:
             self._reject_bool_scalar(item)
 
-        n_real = sum(1 for s in items if s is not Ellipsis and s is not None)
-        # Too many indices: leave the selection untouched and let the transform
-        # layer raise its canonical error with the correct message.
+        # A boolean mask consumes one dimension per mask axis; everything else
+        # consumes exactly one (newaxis/Ellipsis consume none).
+        n_real = 0
+        has_mask = False
+        for item in items:
+            if item is Ellipsis or item is None:
+                continue
+            mask = _as_bool_mask(item)
+            if mask is not None:
+                has_mask = True
+                n_real += mask.ndim
+            else:
+                n_real += 1
         if n_real > ndim:
+            if has_mask:
+                # The transform layer would raise an unhelpful ValueError for a
+                # too-high-rank mask; raise the canonical IndexError here.
+                raise IndexError(
+                    f"too many indices for array: array has {ndim} dimension(s), "
+                    f"but {n_real} were indexed"
+                )
+            # Otherwise leave the selection untouched and let the transform layer
+            # raise its canonical error with the correct message.
             return selection
 
         normalized: list[Any] = []
@@ -2990,8 +3013,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             elif item is None:
                 normalized.append(item)  # newaxis consumes no domain axis
             else:
-                normalized.append(_wrap_negative_index(item, exclusive_max[axis]))
-                axis += 1
+                mask = _as_bool_mask(item)
+                if mask is not None:
+                    expected = domain.shape[axis : axis + mask.ndim]
+                    for offset, (want, got) in enumerate(zip(expected, mask.shape, strict=True)):
+                        if want != got:
+                            raise IndexError(
+                                "boolean index did not match indexed array along "
+                                f"dimension {axis + offset}; dimension is {want} but "
+                                f"corresponding boolean dimension is {got}"
+                            )
+                    normalized.append(item)
+                    axis += mask.ndim
+                else:
+                    normalized.append(_wrap_negative_index(item, exclusive_max[axis]))
+                    axis += 1
         return tuple(normalized) if is_tuple else normalized[0]
 
     def _reject_fields_on_view(self, fields: Fields | None) -> None:
@@ -4469,6 +4505,16 @@ type CompressorsLike = (
     | None
 )
 type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+
+
+def _as_bool_mask(item: Any) -> np.ndarray[Any, np.dtype[np.bool_]] | None:
+    """Return `item` as a boolean ndarray if it is a boolean mask (ndarray or
+    list), else None. Boolean *scalars* are not masks (rejected separately)."""
+    if isinstance(item, (list, np.ndarray)):
+        arr = np.asarray(item)
+        if arr.dtype == np.bool_:
+            return arr
+    return None
 
 
 def _wrap_negative_index(item: Any, exclusive_max: int) -> Any:
