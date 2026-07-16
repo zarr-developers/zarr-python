@@ -3893,16 +3893,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
-        out_array = sync(
-            self._async_array._get_selection_t(transform, out=out, prototype=prototype)
-        )
-        # Reshape to the broadcast shape of the coordinate arrays
-        sel_tuple = sel_normalized
-        sel_arrays = [np.asarray(s) for s in sel_tuple]
-        sel_shape = np.broadcast_shapes(*(s.shape for s in sel_arrays))
-        if hasattr(out_array, "shape") and sel_shape != ():
-            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(sel_shape))
-        return out_array
+        # `_get_selection_via_transform` already returns the broadcast selection
+        # shape (transform.domain.shape == the broadcast shape of the coordinate
+        # arrays), so no further reshape/copy is needed here.
+        return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_coordinate_selection(
         self,
@@ -6083,26 +6077,34 @@ async def _get_selection_via_transform(
 
     out_shape = transform.domain.shape
 
-    # Vectorized indexing (any coordinate ArrayMap, input_dimension None — even a
+    # Vectorized indexing (any correlated ArrayMap, input_dimension None — even a
     # single one, e.g. vindex[idx_2d]) scatters through a single flat index, so
-    # the buffer must be 1D during the read and reshaped to out_shape afterwards.
-    # Orthogonal indexing — including the case where every output is an ArrayMap
-    # bound to a distinct input dimension (oindex[i0, i1]) — keeps a
-    # multi-dimensional buffer, one out_sel entry per dim.
+    # the working buffer must be 1D during the read and reshaped to out_shape
+    # afterwards. Orthogonal indexing — including the case where every output is
+    # an ArrayMap bound to a distinct input dimension (oindex[i0, i1]) — keeps a
+    # multi-dimensional buffer, one out_sel entry per dim. A zero-rank domain
+    # still needs a flat (1,) working buffer for the scatter, but its single cell
+    # maps to a scalar on return (see the out_shape == () branch below).
     needs_flat_buffer = _is_vectorized_transform(transform)
     buffer_shape = (product(out_shape),) if needs_flat_buffer else out_shape
 
-    # Setup output buffer. Vectorized reads scatter through a flat index, so the
-    # caller must supply a flat out buffer (matching the eager path); otherwise it
-    # is the full multi-dimensional out_shape.
+    # Setup output buffer. The caller-visible `out` contract is the broadcast
+    # selection shape (out_shape). Vectorized reads still scatter through a flat
+    # index internally, so when `out` is supplied for a vectorized selection we
+    # read into a flat temporary and copy the reshaped result into `out` below.
+    copy_into_out: NDBuffer | None = None
     if out is not None:
         if not isinstance(out, NDBuffer):
             raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
-        if out.shape != buffer_shape:
+        if out.shape != out_shape:
             raise ValueError(
-                f"shape of out argument doesn't match. Expected {buffer_shape}, got {out.shape}"
+                f"shape of out argument doesn't match. Expected {out_shape}, got {out.shape}"
             )
-        out_buffer = out
+        if needs_flat_buffer:
+            copy_into_out = out
+            out_buffer = prototype.nd_buffer.empty(shape=buffer_shape, dtype=dtype, order=order)
+        else:
+            out_buffer = out
     else:
         out_buffer = prototype.nd_buffer.empty(shape=buffer_shape, dtype=dtype, order=order)
 
@@ -6150,13 +6152,26 @@ async def _get_selection_via_transform(
                     f"Missing chunks:\n{chunks_str}"
                 )
 
-    # Return scalar for 0-d results
+    # Return scalar for 0-d results. A correlated read used a flat (1,) working
+    # buffer for the scatter, so collapse it to a 0-d value before extracting.
     if out_shape == ():
-        return out_buffer.as_scalar()
+        if copy_into_out is not None:
+            copy_into_out[...] = out_buffer.as_ndarray_like().reshape(())
+            return copy_into_out.as_scalar()
+        # Mirror NDBuffer.as_scalar (GPU-safe conversion), but collapse the flat
+        # (1,) correlated working buffer to 0-d first.
+        return cast("NDArrayLikeOrScalar", out_buffer.as_numpy_array().reshape(())[()])
     out_result = out_buffer.as_ndarray_like()
-    # Reshape if we flattened for array indexing
+    # Reshape the flat working buffer back to the broadcast selection shape. The
+    # buffer is freshly allocated and contiguous, so reshape returns a view — no
+    # copy — and preserves the backend array type.
     if needs_flat_buffer and hasattr(out_result, "reshape"):
-        out_result = np.array(out_result).reshape(out_shape)
+        out_result = out_result.reshape(out_shape)
+    # A vectorized read filled a flat temporary; copy the reshaped result into
+    # the caller-provided out buffer, whose shape is the broadcast selection shape.
+    if copy_into_out is not None:
+        copy_into_out[...] = out_result
+        return copy_into_out.as_ndarray_like()
     return out_result
 
 

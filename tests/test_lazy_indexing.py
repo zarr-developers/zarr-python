@@ -318,6 +318,15 @@ class TestLazyViewMethods:
     through ``Array``'s own dispatch, which had correctness gaps.
     """
 
+    def test_zero_rank_result_is_scalar(self) -> None:
+        """A zero-dimensional array reads back as a scalar (shape ``()``) eagerly and lazily."""
+        a = zarr.create_array({}, shape=(), chunks=(), dtype="i4")
+        a[...] = 5
+        assert np.shape(a[...]) == ()
+        assert np.shape(a[()]) == ()
+        assert np.shape(a.lazy[...].result()) == ()
+        assert a.lazy[...].result() == 5
+
     def test_coordinate_methods_wrap_negative_indices(self) -> None:
         a, ref = _make(CONFIGS[1])
         view = a.lazy[2:10]
@@ -377,24 +386,23 @@ class TestLazyViewMethods:
         )
         np.testing.assert_array_equal(v.vindex[idx], ref[idx])
 
-    def test_view_vindex_with_flat_out_buffer(self) -> None:
-        """vindex with a multi-dim result and out= on a view uses a flat out buffer.
+    def test_view_vindex_with_broadcast_out_buffer(self) -> None:
+        """vindex with a multi-dim result and out= on a view takes a broadcast-shaped buffer.
 
-        Vectorized indexing scatters through a single flat index, so (as in the
-        eager path) the out buffer must be flat (shape = number of points).
+        Vectorized indexing scatters through a single flat index internally, but
+        the caller-visible `out` contract is the broadcast selection shape: the
+        flat temporary is an implementation detail. The out buffer must therefore
+        match `expected.shape`, and the results must land in it.
         """
         a, ref = _make(CONFIGS[3])  # 2d-unsharded
         v = a.lazy[2:18]
         i0 = np.array([[2, 3], [4, 5]], dtype=np.intp)  # coordinates within [2, 18)
         i1 = np.array([[0, 5], [10, 15]], dtype=np.intp)
         expected = ref[i0, i1]
-        buf = default_buffer_prototype().nd_buffer.empty(
-            shape=(expected.size,), dtype=np.dtype("i4")
-        )
+        assert expected.shape == (2, 2)
+        buf = default_buffer_prototype().nd_buffer.empty(shape=expected.shape, dtype=np.dtype("i4"))
         v.get_coordinate_selection((i0, i1), out=buf)
-        np.testing.assert_array_equal(
-            np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected
-        )
+        np.testing.assert_array_equal(np.asarray(buf.as_ndarray_like()), expected)
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_UNSHARDED_CASES)
     def test_view_write_through_tuple(self, cfg: Config) -> None:
@@ -813,17 +821,14 @@ class TestKnownFancyIntBugs:
         rows = b.lazy.oindex[np.array([1, 3]), slice(None)]
         np.testing.assert_array_equal(rows[0], ref[[1, 3]][0])
 
-    @pytest.mark.xfail(
-        reason="vindex-created views return shape-(1,) data for integer reads "
-        "where NumPy returns a scalar",
-        strict=True,
-    )
     def test_int_read_on_vindex_view_is_scalar(self) -> None:
         """`pts[0]` on a vindex-created view must be a scalar, as in NumPy."""
         a = zarr.create_array({}, shape=(12,), chunks=(3,), dtype="i4")
         a[...] = np.arange(12, dtype="i4")
         pts = a.lazy.vindex[np.array([1, 3, 5])]
         assert np.shape(pts[0]) == ()
+        assert np.shape(pts.lazy[0].result()) == ()
+        assert pts[0] == a[1]
 
     def test_block_selection_on_view_rejected(self) -> None:
         """Block selection is ill-defined on a lazy view and must raise, not corrupt."""
