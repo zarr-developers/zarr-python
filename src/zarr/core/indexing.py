@@ -1029,6 +1029,7 @@ class AsyncOIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
+        self.array._require_identity_for_async("oindex.getitem")
         # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
             selection = _zarr_array_to_int_or_bool_array(selection)
@@ -1377,6 +1378,7 @@ class AsyncVIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448
         from zarr.core.array import Array
 
+        self.array._require_identity_for_async("vindex.getitem")
         # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
             selection = _zarr_array_to_int_or_bool_array(selection)

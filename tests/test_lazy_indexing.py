@@ -23,6 +23,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.errors import BoundsCheckError, LazyViewError
 from zarr.storage import MemoryStore
 
@@ -1132,3 +1133,105 @@ class TestLazyArrayMapResolution:
         a, _ = self._make((10,), (3,))
         actual = a.lazy.oindex[np.array([], dtype=np.intp)].result()
         assert actual.shape == (0,)
+
+
+# ---------------------------------------------------------------------------
+# Async-surface guards
+# ---------------------------------------------------------------------------
+#
+# The async surface (``AsyncArray.getitem`` / ``setitem`` / selection methods and
+# the ``AsyncOIndex`` / ``AsyncVIndex`` accessors) does not yet route selections
+# through a view's index transform: it builds a legacy indexer from
+# ``metadata.shape``, which for a lazy view silently reads or writes the *wrong*
+# region. Until async transform routing lands, every such entry point must raise
+# ``LazyViewError`` for a non-identity view, steering users to the synchronous
+# ``Array`` surface (or ``.result()``). Identity arrays must be unaffected.
+
+
+def _read_ops() -> list[Any]:
+    """Async read entry points that build a legacy indexer, keyed by name."""
+    coord = (np.array([0, 1], dtype=np.intp),)
+    mask = np.zeros((10,), dtype=bool)
+    mask[0] = mask[2] = True
+    return [
+        pytest.param(lambda av: av.getitem(slice(None)), id="getitem"),
+        pytest.param(
+            lambda av: av.get_orthogonal_selection((slice(0, 3),)), id="get_orthogonal_selection"
+        ),
+        pytest.param(lambda av: av.get_coordinate_selection(coord), id="get_coordinate_selection"),
+        pytest.param(lambda av: av.get_mask_selection(mask), id="get_mask_selection"),
+        pytest.param(lambda av: av.oindex.getitem((slice(0, 3),)), id="oindex.getitem"),
+        pytest.param(lambda av: av.vindex.getitem(coord), id="vindex.getitem"),
+    ]
+
+
+class TestAsyncSurfaceGuards:
+    def _view(self) -> tuple[zarr.Array[Any], npt.NDArray[Any]]:
+        """A base array and a non-identity async view ``arr.lazy[2:12]``'s async_array."""
+        a = zarr.create_array(MemoryStore(), shape=(24,), chunks=(4,), dtype="i4")
+        ref = np.arange(24, dtype="i4")
+        a[...] = ref
+        return a, ref
+
+    @pytest.mark.parametrize("op", _read_ops())
+    def test_read_entry_points_raise(self, op: Callable[[Any], Any]) -> None:
+        """Every async read entry point raises ``LazyViewError`` on a lazy view."""
+        a, _ = self._view()
+        av = a.lazy[2:12]._async_array
+        assert not av._is_identity
+        with pytest.raises(LazyViewError):
+            sync(op(av))
+
+    def test_setitem_raises_and_leaves_base_unchanged(self) -> None:
+        """``AsyncArray.setitem`` on a view raises and writes nothing to the base."""
+        a, ref = self._view()
+        av = a.lazy[5:10]._async_array
+        with pytest.raises(LazyViewError):
+            sync(av.setitem(slice(0, 5), 99))
+        np.testing.assert_array_equal(a[...], ref)
+
+    def test_from_array_view_explicit_kwargs_raises_and_writes_nothing(self) -> None:
+        """``from_array`` with a lazy-view source raises and leaves the target empty."""
+        a, _ = self._view()
+        view = a.lazy[5:10]
+        target = MemoryStore()
+        with pytest.raises(LazyViewError):
+            zarr.from_array(target, data=view, chunks=(5,), shards=None, overwrite=False)
+        assert target._store_dict == {}
+
+    def test_from_array_view_default_kwargs_raises_by_design(self) -> None:
+        """The default ('keep') kwarg path raises the same clear error, not by accident."""
+        a, _ = self._view()
+        view = a.lazy[5:10]
+        target = MemoryStore()
+        with pytest.raises(LazyViewError):
+            zarr.from_array(target, data=view)
+        assert target._store_dict == {}
+
+    def test_translate_by_async_view_getitem_raises(self) -> None:
+        """A view produced by ``AsyncArray.translate_by`` is guarded too."""
+        a, _ = self._view()
+        av = a._async_array.translate_by((3,))
+        assert not av._is_identity
+        with pytest.raises(LazyViewError):
+            sync(av.getitem(slice(None)))
+
+    # --- identity regression guards: none of the above may affect eager arrays ---
+
+    def test_identity_getitem_still_reads(self) -> None:
+        a, ref = self._view()
+        got = sync(a._async_array.getitem(slice(2, 12)))
+        np.testing.assert_array_equal(got, ref[2:12])
+
+    def test_identity_setitem_still_writes(self) -> None:
+        a, ref = self._view()
+        sync(a._async_array.setitem(slice(0, 5), 99))
+        expected = ref.copy()
+        expected[0:5] = 99
+        np.testing.assert_array_equal(a[...], expected)
+
+    def test_identity_from_array_still_copies(self) -> None:
+        a, ref = self._view()
+        target = MemoryStore()
+        out = zarr.from_array(target, data=a)
+        np.testing.assert_array_equal(out[...], ref)

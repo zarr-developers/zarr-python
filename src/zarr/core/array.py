@@ -882,6 +882,24 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 f"`metadata` / `chunk_grid`."
             )
 
+    def _require_identity_for_async(self, name: str) -> None:
+        """Raise `LazyViewError` if this async entry point is used on a lazy view.
+
+        The async surface does not yet route selections through a view's index
+        transform: it builds a legacy indexer from `metadata.shape`, which for a
+        non-identity view would silently read or write the *wrong* region. Until
+        async transform routing lands, guard these entry points and steer users
+        to the synchronous surface. `name` is the member being guarded.
+        """
+        if not self._is_identity:
+            raise LazyViewError(
+                f"`{name}` on the async surface does not yet support lazy views "
+                f"(sliced or indexed arrays with a non-identity transform); it would "
+                f"silently read or write the wrong region. Use the synchronous `Array` "
+                f"surface, or materialize the view first with `.result()` (for example, "
+                f"index `view.result()` instead of `await view.async_array...`)."
+            )
+
     @property
     def _is_sharded(self) -> bool:
         """Whether the array stores inner chunks inside shards (a sharding codec)."""
@@ -1606,7 +1624,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> asyncio.run(example())
         np.int32(0)
         """
-
+        self._require_identity_for_async("getitem")
         return await _getitem(
             self.store_path,
             self.metadata,
@@ -1625,6 +1643,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_orthogonal_selection")
         return await _get_orthogonal_selection(
             self.store_path,
             self.metadata,
@@ -1645,6 +1664,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_mask_selection")
         return await _get_mask_selection(
             self.store_path,
             self.metadata,
@@ -1665,6 +1685,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_coordinate_selection")
         return await _get_coordinate_selection(
             self.store_path,
             self.metadata,
@@ -1778,6 +1799,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
+        self._require_identity_for_async("setitem")
         return await _setitem(
             self.store_path,
             self.metadata,
@@ -4816,6 +4838,23 @@ async def from_array(
                [0, 0]])
     """
     mode: Literal["a"] = "a"
+    # Reject lazy-view sources up front, before touching the store or creating the
+    # target array. The copy loop reads via `data.async_array.getitem`, which does
+    # not yet route through a view's index transform (it would copy the wrong
+    # region); guard here so the user gets one clear error and no half-created
+    # target is left behind.
+    _source_async: AsyncArray[Any] | None = None
+    if isinstance(data, Array):
+        _source_async = data._async_array
+    elif isinstance(data, AsyncArray):
+        _source_async = data
+    if _source_async is not None and not _source_async._is_identity:
+        raise LazyViewError(
+            "Creating an array from a lazy view (a sliced or indexed array with a "
+            "non-identity transform) via `from_array` is not yet supported. "
+            "Materialize the view first, e.g. `zarr.from_array(store, data=view.result())`, "
+            "or use the synchronous copy idiom."
+        )
     config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
