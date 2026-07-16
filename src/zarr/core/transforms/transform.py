@@ -1135,8 +1135,8 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
 
 _LITERAL_HINT = (
-    "; negative indices are literal coordinates in lazy indexing, not from-the-end "
-    "(use `shape[dim] - k`, or materialize with `result()`, for NumPy semantics)"
+    "; within this transform layer, indices are literal domain coordinates (the "
+    "public Array boundary wraps NumPy-style negatives before they reach here)"
 )
 
 

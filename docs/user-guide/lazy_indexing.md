@@ -8,8 +8,9 @@ backing array, and materialize on demand.
 
 Zarr's lazy indexing follows [TensorStore's indexing
 model](https://google.github.io/tensorstore/python/indexing.html): a view has a
-**domain** — a box of coordinates — and every index is a **literal coordinate**
-in that domain.
+**domain** — a box of coordinates — and a positive index is a **literal
+coordinate** in that domain (a negative index counts from the domain's end, as
+in NumPy).
 
 ```python exec="true" session="lazy"
 import numpy as np
@@ -72,31 +73,36 @@ with `translate_by`) — the data does not move, only the labels:
 ```python exec="true" session="lazy" source="above" result="ansi"
 z = v.translate_to((0,))       # same cells, coordinates now [0, 8)
 print(z.lazy[0].result())      # coordinate 0 -> base cell 2
-w = a.translate_by((-10,))     # a view of `a` labeled [-10, 2)
-print(w.lazy[-1].result())     # -1 is just another index: base cell 9
 ```
 
-### `-1` is just another index
+### Negative indices count from the end
 
-Because indices are literal coordinates, a negative index is *not* "from the
-end" — it names the coordinate `-1`, which your domain may or may not contain.
-On the translated view above, `-1` was perfectly valid. On a fresh array (domain
-`[0, n)`), it is out of bounds — in **every** syntactic form: integers, slice
-bounds, and index arrays are treated identically.
+*Positive* indices are literal coordinates (so positions still are not indices —
+see above), but a **negative** index counts from the end of the current view's
+domain, exactly like NumPy: `k` maps to `exclusive_max + k`. This holds in every
+syntactic form — integers, slice bounds, and index arrays — at the public
+boundary (`a.lazy[...]`, `v.lazy[...]`, `v[...]`, `.oindex`, `.vindex`, and the
+`get_/set_*_selection` methods). For a fresh, zero-origin array both rules
+coincide with NumPy in full:
 
 ```python exec="true" session="lazy" source="above" result="ansi"
-for make in (lambda: a.lazy[-1], lambda: a.lazy[-3:], lambda: a.lazy.oindex[[-1]]):
+print(a.lazy[-1].result())               # last element, like NumPy
+print(a.lazy[-3:].result())              # the last three
+print(a.lazy.oindex[[-1, -2]].result())  # index arrays wrap too
+```
+
+On a view the wrap is relative to the *view's* end: on the domain-`[2, 10)`
+view `v`, `-1` names coordinate `9`, and `-8` names the first cell (coordinate
+`2`). Only an out-of-range index raises — a positive past the end, or a
+negative below `-size` (one that would wrap past the domain origin):
+
+```python exec="true" session="lazy" source="above" result="ansi"
+n = a.shape[0]
+for make in (lambda: a.lazy[n], lambda: a.lazy[-n - 1], lambda: a.lazy.oindex[[-n - 1]]):
     try:
         make()
     except IndexError as e:
         print(type(e).__name__, "-", str(e).split(";")[0])
-```
-
-To select from the end, say what you mean literally:
-
-```python exec="true" session="lazy" source="above" result="ansi"
-n = a.shape[0]
-print(a.lazy[n - 3 :].result())   # the last three elements
 ```
 
 ### No clamping: intervals must fit the domain
@@ -129,11 +135,11 @@ print(s.lazy[1].result())       # coordinate 1 -> base cell 4
 ### One coordinate system per view
 
 Every way of indexing a view — `v[...]`, `v.lazy[...]`, `v.oindex`, `v.vindex`
-— uses the same domain coordinates. (The base array's ordinary `a[...]` API is
-unchanged: it keeps full NumPy semantics, negatives and all. The literal rules
-apply to *views* and to the `.lazy` accessor.) NumPy-style zero-based access to
-a view's data is spelled explicitly: materialize with `result()` /
-`np.asarray`, or renumber with `translate_to`.
+— uses the same rule: positive indices are literal domain coordinates, and
+negative indices wrap from the domain's end. (The base array's ordinary `a[...]`
+API is unchanged: it keeps full NumPy semantics.) NumPy-style zero-based access
+to a view's *positive* range is spelled explicitly: materialize with `result()`
+/ `np.asarray`, or renumber with `translate_to`.
 
 ```python exec="true" session="lazy" source="above" result="ansi"
 print(v[3], v.lazy[3].result())     # same coordinate, same cell
@@ -263,15 +269,16 @@ array.
 
 ## Coming from NumPy
 
-- **A view's indices are coordinates, not positions.** `a.lazy[2:10]` is
-  indexed with 2..9, not 0..7. Renumber explicitly with
+- **A view's positive indices are coordinates, not positions.** `a.lazy[2:10]`
+  is indexed with 2..9, not 0..7. Renumber explicitly with
   `view.translate_to((0, ...))` if you want positions.
-- **Negative indices are not from-the-end** — in any form (integer, slice
-  bound, index array). They name literal coordinates, which fresh arrays'
-  domains (starting at 0) do not contain. Use `shape[dim] - k`, or translate
-  the domain so negative coordinates exist.
-- **No clamping**: out-of-range slice bounds raise; reversed bounds raise;
-  only empty intervals are allowed anywhere.
+- **Negative indices count from the end**, exactly like NumPy — in every form
+  (integer, slice bound, index array). `k` maps to `exclusive_max + k` in the
+  current view's domain; only a negative below `-size` (or a positive past the
+  end) is out of bounds.
+- **No clamping**: out-of-range slice bounds raise (including a negative that
+  would wrap past the domain origin); reversed bounds raise; only empty
+  intervals are allowed anywhere.
 - **No negative steps**: `a.lazy[::-1]` raises; reversal is not yet supported.
 - **No `newaxis`**: `a.lazy[None]` raises; insert axes on the materialized
   result instead.

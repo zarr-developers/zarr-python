@@ -295,9 +295,8 @@ class TestLazyComposition:
     def test_chained_views_compose(self, cfg: Config) -> None:
         """Composing two lazy slices equals applying them in sequence on NumPy.
 
-        Bounds are spelled literally: lazy coordinates are literal, so the
-        from-the-end `1:-1` spelling is rejected on the lazy path (see
-        TestLazyErrors.test_negative_slice_bounds_are_literal).
+        Positive bounds are literal domain coordinates, so the inner slice
+        re-selects in the outer view's preserved coordinate system.
         """
         a, ref = _make(cfg)
         n = cfg.shape[0]
@@ -346,13 +345,13 @@ class TestLazyViewMethods:
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
     def test_view_trailing_index_after_ellipsis(self, cfg: Config) -> None:
-        """``v[..., k]`` uses literal coordinates; ``-1`` is out of the domain."""
+        """``v[..., k]``: positive ``k`` is a literal domain coordinate; a negative
+        ``k`` wraps from the end of the view's domain (NumPy parity at the boundary)."""
         a, ref = _make(cfg)
         v = a.lazy[1 : cfg.shape[0]]
         last = cfg.shape[-1] - 1
         np.testing.assert_array_equal(v[..., last], ref[1:, ..., last])
-        with pytest.raises(BoundsCheckError):
-            v[..., -1]
+        np.testing.assert_array_equal(v[..., -1], ref[1:, ..., -1])
 
     @pytest.mark.parametrize("cfg", MULTI_AXIS_CASES)
     def test_view_basic_tuple_and_int(self, cfg: Config) -> None:
@@ -442,50 +441,50 @@ class TestLazyErrors:
         with pytest.raises(IndexError, match="step must be positive"):
             a.lazy[::-1]
 
-    def test_accessor_negative_index_is_literal(self) -> None:
-        """The lazy accessor copies TensorStore: indices are literal coordinates.
-
-        Negative indices are absolute (origin 0), not from-the-end, so they fall
-        outside the ``[0, N)`` domain and raise — unlike the NumPy-normalizing
-        eager/view-method paths. Out-of-bounds array values raise cleanly rather
-        than silently wrapping.
+    def test_accessor_negative_index_wraps(self) -> None:
+        """The public boundary wraps negative indices NumPy-style against the
+        current view's ``exclusive_max`` (positive indices stay literal domain
+        coordinates). Only out-of-range negatives (``k < -size``) or positive
+        indices past the end raise — before any chunk access.
         """
-        a, _ = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
-        with pytest.raises(IndexError):
-            _ = a.lazy[-1][...]
-        for sel in (np.array([-1], dtype=np.intp), np.array([24], dtype=np.intp)):
+        a, ref = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
+        np.testing.assert_array_equal(a.lazy[-1].result(), ref[-1])
+        np.testing.assert_array_equal(
+            a.lazy.oindex[(np.array([-1], dtype=np.intp),)].result(), ref[[-1]]
+        )
+        np.testing.assert_array_equal(
+            a.lazy.vindex[(np.array([-1], dtype=np.intp),)].result(), ref[[-1]]
+        )
+        # too-negative (< -size) and positive-past-the-end still raise
+        for sel in (np.array([-25], dtype=np.intp), np.array([24], dtype=np.intp)):
             with pytest.raises(IndexError, match="out of bounds"):
-                _ = a.lazy.oindex[(sel,)][...]
+                _ = a.lazy.oindex[(sel,)].result()
             with pytest.raises(IndexError, match="out of bounds"):
-                _ = a.lazy.vindex[(sel,)][...]
+                _ = a.lazy.vindex[(sel,)].result()
 
-    def test_negative_slice_bounds_are_literal(self) -> None:
-        """Negative slice bounds are literal coordinates on the lazy path, like
-        every other index form — never from-the-end — so they raise.
-
-        Consistency rule: a lazy selection is a declaration in literal
-        coordinates, and view domains start at 0, so a negative value is never
-        in bounds regardless of syntactic form (integer, slice bound, or index
-        array).
+    def test_negative_slice_bounds_wrap(self) -> None:
+        """Negative slice bounds wrap from the end of the current view's domain
+        (NumPy parity at the boundary). Bounds that wrap out of range still raise,
+        and bounds that resolve reversed are invalid intervals.
         """
-        a, _ = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
-        for sel in (slice(-3, None), slice(-24, None)):
-            with pytest.raises(BoundsCheckError, match="not contained"):
-                a.lazy[sel]
-            with pytest.raises(BoundsCheckError, match="not contained"):
-                a.lazy.oindex[(sel,)]
-        # bounds that RESOLVE reversed (stop < start), e.g. [1, -1) or [0, -1),
-        # are invalid intervals — TensorStore's a[5:2] case — not empties
-        for sel in (slice(None, -1), slice(1, -1)):
-            with pytest.raises(IndexError, match="interval"):
-                a.lazy[sel]
-        # ... on views too
-        v = a.lazy[2:10]
+        a, ref = _make(CONFIGS[1])  # 1d-unsharded, shape (24,)
+        for sel in (slice(-3, None), slice(-24, None), slice(None, -1), slice(1, -1)):
+            np.testing.assert_array_equal(a.lazy[sel].result(), ref[sel])
+            np.testing.assert_array_equal(a.lazy.oindex[(sel,)].result(), ref[sel])
+        # on a view: wraps against the view's exclusive_max, not the base's
+        v = a.lazy[2:10]  # domain [2, 10)
+        np.testing.assert_array_equal(v.lazy[-2:].result(), ref[8:10])
+        # writes wrap too
+        a.lazy[-3:] = 0
+        expected = ref.copy()
+        expected[-3:] = 0
+        np.testing.assert_array_equal(a[...], expected)
+        # out-of-range wrap (start < -size) still raises
         with pytest.raises(BoundsCheckError, match="not contained"):
-            v.lazy[-2:]
-        # ... and for writes
-        with pytest.raises(BoundsCheckError, match="not contained"):
-            a.lazy[-3:] = 0
+            a.lazy[-25:]
+        # bounds that RESOLVE reversed (stop < start after wrapping) are invalid
+        with pytest.raises(IndexError, match="interval"):
+            a.lazy[-1:1]
 
     def test_slice_bounds_strict_containment(self) -> None:
         """Non-empty slice intervals must be contained in the domain — no
@@ -500,23 +499,21 @@ class TestLazyErrors:
         with pytest.raises(IndexError, match="interval"):
             a.lazy[5:2]
 
-    def test_one_dialect_view_methods_use_domain_coordinates(self) -> None:
-        """A view has ONE coordinate system: its preserved domain. Eager methods
-        (`v[...]`, `v[k]`) use the same literal coordinates as `.lazy` —
-        matching TensorStore, where indexing a view of [2, 10) with 0 or -1 is
-        out of bounds. Zero-based NumPy-style access is spelled explicitly:
-        materialize (`result()` / `np.asarray`) or re-zero with `translate_to`.
+    def test_view_positive_literal_negative_wraps(self) -> None:
+        """A view's positive indices are literal domain coordinates; negative
+        indices wrap from the view's ``exclusive_max`` (NumPy parity at the
+        boundary). Positive coordinates below the domain origin remain out of
+        bounds — the view keeps its preserved coordinate system for positives.
         """
         a, ref = _make(CONFIGS[1])
-        v = a.lazy[2:10]
-        np.testing.assert_array_equal(v[2:5], ref[2:5])
-        np.testing.assert_array_equal(v[3], ref[3])
-        bad_reads: list[Callable[[], Any]] = [
-            lambda: v[-1],
-            lambda: v[0:3],
-            lambda: v[-3:],
-        ]
-        for bad in bad_reads:
+        v = a.lazy[2:10]  # domain [2, 10)
+        np.testing.assert_array_equal(v[2:5], ref[2:5])  # positive literal
+        np.testing.assert_array_equal(v[3], ref[3])  # positive literal
+        np.testing.assert_array_equal(v[-1], ref[9])  # wrap: exclusive_max 10 - 1
+        np.testing.assert_array_equal(v[-3:], ref[7:10])  # wrap
+        # positive coordinates below the origin are still out of bounds
+        below_origin: list[Callable[[], Any]] = [lambda: v[1], lambda: v[0:3]]
+        for bad in below_origin:
             with pytest.raises(BoundsCheckError):
                 bad()
         np.testing.assert_array_equal(np.asarray(v), ref[2:10])
@@ -524,13 +521,15 @@ class TestLazyErrors:
         np.testing.assert_array_equal(z[0:3], ref[2:5])
 
     def test_lazy_bounds_errors_share_one_type(self) -> None:
-        """All three literal-coordinate rejections raise BoundsCheckError (an
-        IndexError), with one message shape naming the valid range."""
-        a, _ = _make(CONFIGS[1])
+        """Out-of-range indices — positive past the end, or negative past
+        ``-size`` — all raise BoundsCheckError (an IndexError), with one message
+        shape naming the valid range."""
+        a, _ = _make(CONFIGS[1])  # shape (24,)
         triggers: list[Callable[[], Any]] = [
-            lambda: a.lazy[-1],
-            lambda: a.lazy[-3:],
-            lambda: a.lazy.oindex[(np.array([-1], dtype=np.intp),)],
+            lambda: a.lazy[24],
+            lambda: a.lazy[-25],
+            lambda: a.lazy[20:30],
+            lambda: a.lazy.oindex[(np.array([-25], dtype=np.intp),)],
         ]
         for trigger in triggers:
             with pytest.raises(BoundsCheckError, match="out of bounds|not contained"):
@@ -579,6 +578,152 @@ class TestLazyErrors:
         b[...] = np.arange(48, dtype="i4").reshape(6, 8)
         ov = b.lazy.oindex[np.array([1, 3]), slice(None)]
         assert isinstance(repr(ov.lazy[0]), str)
+
+
+class TestLazyComposedAdvanced:
+    """Basic-slice-then-fancy composition routes through the view's transform
+    (the view's domain origin is preserved), with negatives wrapped at the
+    boundary against the view's ``exclusive_max``."""
+
+    def test_slice_then_oindex_read(self) -> None:
+        """``v.oindex[idx]`` on a sliced view reads in the view's domain
+        coordinates; negatives wrap from the view's end."""
+        a, ref = _make(CONFIGS[1])  # shape (24,)
+        v = a.lazy[10:20]  # domain [10, 20)
+        np.testing.assert_array_equal(v.oindex[np.array([10, 15, 19])], ref[[10, 15, 19]])
+        np.testing.assert_array_equal(v.oindex[np.array([-1, -10])], ref[[19, 10]])
+
+    def test_slice_then_lazy_oindex_read(self) -> None:
+        """The lazy accessor chain ``v.lazy.oindex[idx]`` composes the same way."""
+        a, ref = _make(CONFIGS[1])
+        v = a.lazy[10:20]
+        np.testing.assert_array_equal(v.lazy.oindex[np.array([-1, -10])].result(), ref[[19, 10]])
+
+    def test_slice_then_oindex_write(self) -> None:
+        """Writes through the composed view land at the wrapped domain coordinates."""
+        a, ref = _make(CONFIGS[1])
+        v = a.lazy[10:20]
+        v.oindex[np.array([-1, -10])] = np.array([777, 888], dtype="i4")
+        expected = ref.copy()
+        expected[19] = 777
+        expected[10] = 888
+        np.testing.assert_array_equal(a[...], expected)
+
+    def test_slice_then_oindex_out_of_bounds(self) -> None:
+        """Coordinates outside the view's ``[10, 20)`` domain raise before I/O:
+        a positive below the origin, a negative wrapping below the origin, and a
+        positive past the end."""
+        a, _ = _make(CONFIGS[1])
+        v = a.lazy[10:20]
+        for sel in (np.array([0]), np.array([-11]), np.array([20])):
+            with pytest.raises(BoundsCheckError):
+                _ = v.oindex[sel]
+
+
+class TestLazyBoolScalar:
+    """`isinstance(True, int)` is True, so a bare boolean scalar would otherwise
+    pass the integer validators and silently read element 0/1. Reject it at the
+    boundary; boolean *arrays* (masks) stay valid."""
+
+    @pytest.mark.parametrize("accessor", ["basic", "oindex", "vindex"])
+    @pytest.mark.parametrize("val", [True, False, np.True_, np.False_])
+    def test_bool_scalar_rejected(self, accessor: str, val: Any) -> None:
+        a, _ = _make(CONFIGS[1])
+        acc: Any = {"basic": a.lazy, "oindex": a.lazy.oindex, "vindex": a.lazy.vindex}[accessor]
+        with pytest.raises(IndexError):
+            _ = acc[val]
+
+    def test_bool_array_still_valid(self) -> None:
+        """A boolean *array* is a mask, not a scalar, and remains a valid index."""
+        a, ref = _make(CONFIGS[1])
+        mask = np.zeros(24, dtype=bool)
+        mask[[3, 5, 7]] = True
+        np.testing.assert_array_equal(a.lazy.oindex[mask].result(), ref[[3, 5, 7]])
+
+
+_GET_FIELD_METHODS = [
+    "get_basic_selection",
+    "get_orthogonal_selection",
+    "get_mask_selection",
+    "get_coordinate_selection",
+]
+_SET_FIELD_METHODS = [
+    "set_basic_selection",
+    "set_orthogonal_selection",
+    "set_mask_selection",
+    "set_coordinate_selection",
+]
+
+
+class TestLazyFieldsOnView:
+    """`fields=` on a non-identity view routed through the legacy indexer, which
+    ignores the transform and reads/writes the wrong storage region. It must now
+    raise NotImplementedError before any storage access in all eight
+    get/set_*_selection methods (and the ``v['f0', :]`` sugar), leaving the base
+    array bit-identical."""
+
+    @staticmethod
+    def _struct_array() -> tuple[zarr.Array[Any], npt.NDArray[Any]]:
+        dt = np.dtype([("f0", "i4"), ("f1", "i4")])
+        a = zarr.create_array(MemoryStore(), shape=(10,), chunks=(10,), dtype=dt, zarr_format=2)
+        base = np.zeros(10, dtype=dt)
+        base["f0"] = np.arange(10, dtype="i4")
+        base["f1"] = np.arange(10, dtype="i4") + 100
+        a[...] = base
+        return a, base
+
+    @staticmethod
+    def _selection_for(method: str) -> Any:
+        if "mask" in method:
+            return np.zeros(5, dtype=bool)  # view shape is (5,)
+        if "coordinate" in method:
+            return (np.array([5, 6, 7], dtype=np.intp),)
+        return Ellipsis
+
+    @pytest.mark.parametrize("method", _GET_FIELD_METHODS)
+    def test_get_fields_on_view_raises(self, method: str) -> None:
+        a, base = self._struct_array()
+        v = a.lazy[5:10]
+        with pytest.raises(NotImplementedError, match="field"):
+            getattr(v, method)(self._selection_for(method), fields="f0")
+        np.testing.assert_array_equal(a[...], base)
+
+    @pytest.mark.parametrize("method", _SET_FIELD_METHODS)
+    def test_set_fields_on_view_raises(self, method: str) -> None:
+        a, _base = self._struct_array()
+        before = np.asarray(a[...]).copy()
+        v = a.lazy[5:10]
+        with pytest.raises(NotImplementedError, match="field"):
+            getattr(v, method)(self._selection_for(method), np.arange(3, dtype="i4"), fields="f0")
+        np.testing.assert_array_equal(a[...], before)
+
+    def test_getitem_field_sugar_on_view_raises(self) -> None:
+        a, base = self._struct_array()
+        v = a.lazy[5:10]
+        selections: list[Any] = [("f0", slice(None)), "f0"]
+        for sel in selections:
+            with pytest.raises(NotImplementedError, match="field"):
+                _ = v[sel]
+        np.testing.assert_array_equal(a[...], base)
+
+    def test_setitem_field_sugar_on_view_raises(self) -> None:
+        a, _base = self._struct_array()
+        before = np.asarray(a[...]).copy()
+        v = a.lazy[5:10]
+        field_sel: Any = ("f0", slice(None))
+        with pytest.raises(NotImplementedError, match="field"):
+            v[field_sel] = np.arange(5, dtype="i4")
+        np.testing.assert_array_equal(a[...], before)
+
+    def test_fields_on_identity_array_still_work(self) -> None:
+        """Field selection on the base (identity) array still routes to the legacy
+        path — the view guard must not block it. (Only the write path is checked
+        here; structured-dtype field *reads* are broken independently of this
+        change.)"""
+        a, _ = self._struct_array()
+        a.set_basic_selection(Ellipsis, np.arange(10, dtype="i4") + 1, fields="f0")
+        result: Any = np.asarray(a[...])
+        np.testing.assert_array_equal(result["f0"], np.arange(10, dtype="i4") + 1)
 
 
 class TestKnownFancyIntBugs:

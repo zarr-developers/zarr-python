@@ -785,8 +785,9 @@ async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
     mode = data.draw(st.sampled_from(_INDEX_MODES))
     assume(_eligible(mode, vref.shape))
     zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=vref.shape))
-    # The strategies draw NumPy-dialect selections (negatives from-the-end);
-    # lazy-path coordinates are literal, so canonicalize to the equivalent
-    # non-negative form for the view. NumPy semantics are invariant under this,
-    # so the reference side (npsel) is unchanged.
+    # The strategies draw NumPy-dialect selections. The lazy boundary wraps
+    # negatives against the (here zero-origin) view, matching NumPy, but positive
+    # indices are literal domain coordinates; canonicalizing to the equivalent
+    # non-negative form keeps the comparison valid for both rules. NumPy semantics
+    # are invariant under this, so the reference side (npsel) is unchanged.
     assert_read_matches_numpy(view, vref, mode, _canonical_nonneg(zsel, vref.shape), npsel)

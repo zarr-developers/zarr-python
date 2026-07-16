@@ -2944,6 +2944,68 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             self.set_basic_selection(cast("BasicSelection", pure_selection), value, fields=fields)
 
+    def _reject_bool_scalar(self, sel: Any) -> None:
+        # `isinstance(True, int)` is True, so a bare Python/NumPy bool scalar would
+        # otherwise pass the integer validators and silently read element 0/1 where
+        # eager NumPy indexing raises. Boolean *arrays* (masks) remain valid.
+        if isinstance(sel, (bool, np.bool_)):
+            raise IndexError(
+                "boolean scalar indices are not supported; use a boolean array "
+                "(mask) for boolean indexing"
+            )
+
+    def _normalize_public_selection(self, selection: Any) -> Any:
+        """Normalize a user selection at the public Array boundary.
+
+        Rejects boolean *scalar* indices, and wraps negative integers, negative
+        index-array elements, and negative slice bounds to literal coordinates in
+        the current view's domain: an index `k` with `-size <= k < 0` on axis `d`
+        becomes `exclusive_max[d] + k` (from the end of the view's domain — exactly
+        NumPy for a zero-origin domain). Positive indices are left as literal domain
+        coordinates. The transform layer stays literal; it performs the final bounds
+        check, so an out-of-range value (a positive past the end, or `k < -size`) is
+        rejected there before any chunk access.
+        """
+        exclusive_max = self._async_array._transform.domain.exclusive_max
+        ndim = len(exclusive_max)
+
+        is_tuple = isinstance(selection, tuple)
+        items = list(selection) if is_tuple else [selection]
+
+        for item in items:
+            self._reject_bool_scalar(item)
+
+        n_real = sum(1 for s in items if s is not Ellipsis and s is not None)
+        # Too many indices: leave the selection untouched and let the transform
+        # layer raise its canonical error with the correct message.
+        if n_real > ndim:
+            return selection
+
+        normalized: list[Any] = []
+        axis = 0
+        for item in items:
+            if item is Ellipsis:
+                axis += ndim - n_real  # ellipsis fills the unaddressed axes
+                normalized.append(item)
+            elif item is None:
+                normalized.append(item)  # newaxis consumes no domain axis
+            else:
+                normalized.append(_wrap_negative_index(item, exclusive_max[axis]))
+                axis += 1
+        return tuple(normalized) if is_tuple else normalized[0]
+
+    def _reject_fields_on_view(self, fields: Fields | None) -> None:
+        # Routing `fields=` on a non-identity view through the legacy indexer
+        # ignores the transform and reads/writes the wrong storage region. The
+        # transform layer cannot preserve field-aware semantics, so reject before
+        # any storage access rather than corrupt data.
+        if fields is not None and not self._async_array._is_identity:
+            raise NotImplementedError(
+                "field selection (`fields=`) is not supported on a lazy view "
+                "(non-identity transform); materialize the view first "
+                "(e.g. zarr.array(view[...]))"
+            )
+
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -3066,6 +3128,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             # Eager (identity-transform) arrays and structured-dtype field
             # selection use the original indexer path directly.
@@ -3077,6 +3140,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                     prototype=prototype,
                 )
             )
+        selection = self._normalize_public_selection(selection)
         transform = selection_to_transform(selection, self._async_array._transform, "basic")
         return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
@@ -3180,6 +3244,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             # Eager (identity-transform) arrays and structured-dtype field
             # selection use the original indexer path directly.
@@ -3188,6 +3253,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
             )
             return
+        selection = self._normalize_public_selection(selection)
         transform = selection_to_transform(selection, self._async_array._transform, "basic")
         sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
@@ -3316,6 +3382,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             # Eager (identity) arrays and structured-dtype field selection use the
             # original indexer path directly.
@@ -3328,6 +3395,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # Lazy view (non-identity transform): route through the transform so the
         # view's offset/stride are honored. Use basic mode for plain int/slice
         # selections (so integer axes drop), orthogonal mode for fancy selections.
+        selection = self._normalize_public_selection(selection)
         mode: Literal["basic", "orthogonal"] = (
             "basic" if is_basic_selection(selection) else "orthogonal"
         )
@@ -3445,6 +3513,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             # Eager (identity) arrays and structured-dtype field selection use the
             # original indexer path directly.
@@ -3456,6 +3525,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # Lazy view (non-identity transform): route through the transform so the
         # view's offset/stride are honored. Use basic mode for plain int/slice
         # selections (so integer axes drop), orthogonal mode for fancy selections.
+        selection = self._normalize_public_selection(selection)
         mode: Literal["basic", "orthogonal"] = (
             "basic" if is_basic_selection(selection) else "orthogonal"
         )
@@ -3545,6 +3615,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
             return sync(
@@ -3650,6 +3721,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
             sync(
@@ -3755,6 +3827,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
             out_array = sync(
@@ -3778,12 +3851,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-        sel_normalized = tuple(
-            np.where(np.asarray(s) < 0, np.asarray(s) + hi, s)
-            for s, hi in zip(
-                sel_normalized, self._async_array._transform.domain.exclusive_max, strict=True
-            )
-        )
+        # Wrap negative coordinates against the view's domain (see
+        # _normalize_public_selection); positive coordinates stay literal.
+        sel_normalized = self._normalize_public_selection(sel_normalized)
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -3881,6 +3951,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # no fields); keep the exact-emptiness check rather than a falsy one.
         if fields == [] or fields == ():
             fields = None
+        self._reject_fields_on_view(fields)
         if fields is not None or self._async_array._is_identity:
             indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
             if not is_scalar(value, self.dtype):
@@ -3915,12 +3986,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-        sel_normalized = tuple(
-            np.where(np.asarray(s) < 0, np.asarray(s) + hi, s)
-            for s, hi in zip(
-                sel_normalized, self._async_array._transform.domain.exclusive_max, strict=True
-            )
-        )
+        # Wrap negative coordinates against the view's domain (see
+        # _normalize_public_selection); positive coordinates stay literal.
+        sel_normalized = self._normalize_public_selection(sel_normalized)
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -4403,6 +4471,36 @@ type CompressorsLike = (
 type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
+def _wrap_negative_index(item: Any, exclusive_max: int) -> Any:
+    """Wrap negative values in a single per-axis selection element to literal
+    coordinates against `exclusive_max` (from-the-end within the axis's domain).
+
+    A negative integer `k` becomes `exclusive_max + k`; negative slice bounds and
+    negative integer-array elements are wrapped the same way. Positive values,
+    `None` slice bounds, boolean masks, and non-integer items pass through
+    unchanged. This performs no bounds checking — the transform layer rejects an
+    out-of-range value (a positive past the end, or one that wraps below the
+    domain origin) before any chunk access.
+    """
+    if isinstance(item, slice):
+        start = item.start
+        stop = item.stop
+        if start is not None and start < 0:
+            start += exclusive_max
+        if stop is not None and stop < 0:
+            stop += exclusive_max
+        return slice(start, stop, item.step)
+    if isinstance(item, (int, np.integer)):
+        k = int(item)
+        return k + exclusive_max if k < 0 else k
+    if isinstance(item, (list, np.ndarray)):
+        arr = np.asarray(item)
+        if arr.dtype == np.bool_ or not np.issubdtype(arr.dtype, np.integer):
+            return item  # boolean mask or non-integer array: no wrapping
+        return np.where(arr < 0, arr + exclusive_max, arr)
+    return item
+
+
 class _LazyOIndex:
     """Lazy orthogonal indexing via ``array.lazy.oindex[...]``."""
 
@@ -4412,10 +4510,12 @@ class _LazyOIndex:
         self._array = array
 
     def __getitem__(self, selection: Any) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "orthogonal")
         return self._array._with_transform(new_t)
 
     def __setitem__(self, selection: Any, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "orthogonal")
         self._array._with_transform(new_t)[...] = value
 
@@ -4429,10 +4529,12 @@ class _LazyVIndex:
         self._array = array
 
     def __getitem__(self, selection: Any) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "vectorized")
         return self._array._with_transform(new_t)
 
     def __setitem__(self, selection: Any, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "vectorized")
         self._array._with_transform(new_t)[...] = value
 
@@ -4446,10 +4548,12 @@ class _LazyIndexAccessor:
         self._array = array
 
     def __getitem__(self, selection: Selection) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "basic")
         return self._array._with_transform(new_t)
 
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
         new_t = selection_to_transform(selection, self._array._async_array._transform, "basic")
         self._array._with_transform(new_t)[...] = value
 
