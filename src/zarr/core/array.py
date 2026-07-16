@@ -3778,6 +3778,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
+        sel_normalized = tuple(
+            np.where(np.asarray(s) < 0, np.asarray(s) + hi, s)
+            for s, hi in zip(
+                sel_normalized, self._async_array._transform.domain.exclusive_max, strict=True
+            )
+        )
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -3909,6 +3915,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
+        sel_normalized = tuple(
+            np.where(np.asarray(s) < 0, np.asarray(s) + hi, s)
+            for s, hi in zip(
+                sel_normalized, self._async_array._transform.domain.exclusive_max, strict=True
+            )
+        )
         transform = selection_to_transform(
             sel_normalized, self._async_array._transform, "vectorized"
         )
@@ -6056,6 +6068,9 @@ async def _set_selection_via_transform(
                     f"Attempting to set a selection with a value of incompatible shape. "
                     f"The selection has shape {sel_shape}, but the value has shape {value.shape}."
                 ) from None
+
+    if product(sel_shape) == 0:
+        return
 
     # When the transform has ArrayMap outputs, chunk resolution produces
     # flat scatter indices (out_indices). The value buffer must be 1D

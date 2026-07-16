@@ -259,6 +259,15 @@ class TestLazyOIndex:
 
 
 class TestLazyVIndex:
+    def test_empty_writes_are_noops(self) -> None:
+        a, ref = _make(CONFIGS[1])
+        view = a.lazy[2:10]
+
+        view.lazy.vindex[(np.array([], dtype=np.intp),)] = np.array([], dtype="i4")
+        view.set_mask_selection(np.zeros(view.shape, dtype=bool), np.array([], dtype="i4"))
+
+        np.testing.assert_array_equal(a[...], ref)
+
     @pytest.mark.parametrize("cfg", ND_CASES)
     def test_read(self, cfg: Config) -> None:
         """Lazy vectorized indexing matches NumPy's point (coordinate) selection."""
@@ -309,6 +318,19 @@ class TestLazyViewMethods:
     on the *returned* non-identity Array (``v.oindex[...]``, ``v[..., -1]``) route
     through ``Array``'s own dispatch, which had correctness gaps.
     """
+
+    def test_coordinate_methods_wrap_negative_indices(self) -> None:
+        a, ref = _make(CONFIGS[1])
+        view = a.lazy[2:10]
+
+        np.testing.assert_array_equal(
+            view.get_coordinate_selection((np.array([-1], dtype=np.intp),)), ref[[9]]
+        )
+        view.set_coordinate_selection((np.array([-1], dtype=np.intp),), 999)
+
+        expected = ref.copy()
+        expected[9] = 999
+        np.testing.assert_array_equal(a[...], expected)
 
     @pytest.mark.parametrize("cfg", ND_CASES)
     def test_view_oindex_respects_transform(self, cfg: Config) -> None:
