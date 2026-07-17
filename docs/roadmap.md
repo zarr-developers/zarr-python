@@ -67,8 +67,8 @@ validator only needs to read metadata documents; a visualization tool may only
 need read-only array access; other tools need everything. We think of this as a
 "Zarr stack", from most abstract to most concrete:
 
-1. **Conventions** — domain-specific schemas built on top of Zarr (OME-NGFF,
-   GeoZarr, anndata-zarr).
+1. **Conventions** — application and/or domain-specific schemas built on top of Zarr (OME-NGFF,
+   GeoZarr, anndata-zarr, multiscales).
 2. **Groups** — Zarr hierarchies, traversal, group-level attributes.
 3. **Arrays** — the user-facing array object, plus indexing and slicing.
 4. **Chunk decoding** — the codec pipeline.
