@@ -4007,8 +4007,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        # Normalize an empty fields list/tuple to None (pop_fields yields [] for
-        # no fields); keep the exact-emptiness check rather than a falsy one.
+        # Normalize a caller-supplied empty fields list/tuple to None, so that
+        # `fields is not None` uniformly means "a field was requested" (matching
+        # pop_fields, which yields None for no fields); keep the exact-emptiness
+        # check rather than a falsy one.
         if fields == [] or fields == ():
             fields = None
         self._reject_fields_on_view(fields)

@@ -7,7 +7,7 @@ name = "zarr-transforms"
 dynamic = ["version"]
 description = "Composable, lazy coordinate transforms for Zarr array indexing."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 authors = [
@@ -22,7 +22,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -63,7 +62,7 @@ packages = ["src/zarr_transforms"]
 
 [tool.ruff]
 extend = "../../pyproject.toml"
-target-version = "py311"
+target-version = "py312"
 
 [tool.pytest.ini_options]
 minversion = "7"
@@ -78,7 +77,7 @@ filterwarnings = [
 include = ["src"]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 
 [tool.numpydoc_validation]
 checks = [

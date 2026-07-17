@@ -186,9 +186,10 @@ omit = [
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
 # this filter `git describe` matches the most recent tag of any shape,
-# including the `zarr_metadata-v*` tags used to release the zarr-metadata
-# subpackage — which would make a from-source build report a `0.2.x` version
-# instead of `3.x`.
+# including the `zarr_metadata-v*` and `zarr_transforms-v*` tags used to release
+# the in-tree subpackages — which would make a from-source build report a
+# `0.x` subpackage version instead of `3.x`. (`--match v*` excludes both, since
+# neither tag starts with a bare `v`.)
 version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
