@@ -37,7 +37,7 @@ call **"v4"** — is that overdue investment.
 
 If the 3.0 goals could be sloganized as "migrate to Zarr V3, and improve cloud
 storage support", the slogan for the v4 goals is:
-**"support a Zarr-based Python ecosystem for chunked arrays"**. Zarr-Python
+**"a frictionless Zarr-based Python ecosystem for chunked arrays"**. Zarr-Python
 should be *foundational* for the growing number of Python packages that work
 with data in the Zarr format. Concretely, that means pushing in these
 directions:
