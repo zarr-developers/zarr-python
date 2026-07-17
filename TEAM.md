@@ -11,6 +11,7 @@
 - @dcherian (Deepak Cherian)
 - @TomAugspurger (Tom Augspurger)
 - @maxrjones (Max Jones)
+- @ilan-gold (Ilan Gold)
 
 ## Emeritus core-developers
 - @alimanfoo (Alistair Miles)
