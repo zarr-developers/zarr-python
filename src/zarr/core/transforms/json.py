@@ -31,10 +31,10 @@ from zarr.core.transforms.transform import IndexTransform
 # TypedDict definitions (JSON shapes)
 # ---------------------------------------------------------------------------
 
-# An ``index_array`` serializes via ``ndarray.tolist()``, so it is a nested list
+# An `index_array` serializes via `ndarray.tolist()`, so it is a nested list
 # of ints whose nesting depth equals the array rank. Normalized arrays carry the
 # full input rank (with singleton axes), so the nesting can be arbitrarily deep —
-# ``list[int] | list[list[int]]`` would under-describe a 3-D+ orthogonal array.
+# `list[int] | list[list[int]]` would under-describe a 3-D+ orthogonal array.
 NestedIntList = list[Any]
 
 
@@ -50,9 +50,9 @@ class OutputIndexMapJSON(TypedDict, total=False):
     """JSON representation of a single output index map.
 
     Exactly one of three forms:
-    - ``{"offset": 5}`` — constant
-    - ``{"offset": 0, "stride": 1, "input_dimension": 0}`` — dimension
-    - ``{"offset": 0, "stride": 1, "index_array": [...]}`` — array
+    - `{"offset": 5}` — constant
+    - `{"offset": 0, "stride": 1, "input_dimension": 0}` — dimension
+    - `{"offset": 0, "stride": 1, "index_array": [...]}` — array
     """
 
     offset: int

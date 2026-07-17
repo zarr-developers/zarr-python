@@ -7,11 +7,11 @@ I/O until you explicitly read or write.
 
 Key types:
 
-- ``IndexDomain`` — a rectangular region of integer coordinates
-- ``IndexTransform`` — maps input coordinates to storage coordinates
-- ``ConstantMap``, ``DimensionMap``, ``ArrayMap`` — the three ways a single
-  output dimension can depend on the input (see ``output_map.py``)
-- ``compose`` — chain two transforms into one
+- `IndexDomain` — a rectangular region of integer coordinates
+- `IndexTransform` — maps input coordinates to storage coordinates
+- `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single
+  output dimension can depend on the input (see `output_map.py`)
+- `compose` — chain two transforms into one
 """
 
 from zarr.core.transforms.composition import compose

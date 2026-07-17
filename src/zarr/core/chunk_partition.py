@@ -1,10 +1,10 @@
 """View-aware chunk partitioning (Layer B of the lazy-view chunk-layout design).
 
-A lazy view is an ``IndexTransform`` applied to a backing array — i.e. a stored
-selection already resolved. ``chunk_projections`` enumerates the stored chunks that
+A lazy view is an `IndexTransform` applied to a backing array — i.e. a stored
+selection already resolved. `chunk_projections` enumerates the stored chunks that
 selection (or a whole identity array) projects onto, reusing the same resolution
-machinery the read/write I/O path uses (``iter_chunk_transforms`` +
-``sub_transform_to_selections``). Each projection reports the stored chunk, the
+machinery the read/write I/O path uses (`iter_chunk_transforms` +
+`sub_transform_to_selections`). Each projection reports the stored chunk, the
 region of it this array covers, the region of this array it maps to, and whether the
 coverage is partial (a partial write is a read-modify-write).
 """
@@ -58,7 +58,7 @@ class ChunkProjection:
 
 
 def _covers_full_chunk(chunk_selection: tuple[Any, ...], shape: tuple[int, ...]) -> bool:
-    """Whether ``chunk_selection`` selects every element of a chunk of ``shape``.
+    """Whether `chunk_selection` selects every element of a chunk of `shape`.
 
     A per-dimension full `0:size:1` slice is a full cover. An integer entry is
     also a full cover *iff* the chunk's extent along that dimension is 1 — fixing
@@ -91,7 +91,7 @@ def iter_chunk_projections(
     chunk_grid: ChunkGrid,
     encode_key: Callable[[tuple[int, ...]], str],
 ) -> Iterator[ChunkProjection]:
-    """Yield a `ChunkProjection` for each stored chunk ``transform`` projects onto.
+    """Yield a `ChunkProjection` for each stored chunk `transform` projects onto.
 
     `array_selection` is positional (0-based into the view's extent), so the
     transform is normalized to a zero-origin domain first — translation

@@ -1,7 +1,7 @@
 """Chunk resolution — mapping transforms to chunk-level I/O.
 
-Given an ``IndexTransform`` (which coordinates a user wants to access) and a
-``ChunkGrid`` (how storage is divided into chunks), chunk resolution answers:
+Given an `IndexTransform` (which coordinates a user wants to access) and a
+`ChunkGrid` (how storage is divided into chunks), chunk resolution answers:
 
     For each chunk, which storage coordinates does this transform touch,
     and where do those values land in the output buffer?
@@ -12,17 +12,17 @@ The algorithm is:
    be touched by the transform's output coordinate ranges.
 
 2. **Intersect** — for each candidate chunk, call
-   ``transform.intersect(chunk_domain)`` to restrict the transform to
+   `transform.intersect(chunk_domain)` to restrict the transform to
    coordinates within that chunk. If the intersection is empty, skip it.
 
 3. **Translate** — shift the restricted transform to chunk-local coordinates
-   via ``transform.translate(-chunk_origin)``.
+   via `transform.translate(-chunk_origin)`.
 
-4. **Yield** — produce ``(chunk_coords, local_transform, surviving_indices)``
+4. **Yield** — produce `(chunk_coords, local_transform, surviving_indices)`
    triples that the codec pipeline consumes.
 
-``sub_transform_to_selections`` bridges from the transform representation
-back to the raw ``(chunk_selection, out_selection, drop_axes)`` tuples that
+`sub_transform_to_selections` bridges from the transform representation
+back to the raw `(chunk_selection, out_selection, drop_axes)` tuples that
 the current codec pipeline expects. This bridge will go away when the codec
 pipeline accepts transforms natively.
 """
@@ -59,12 +59,12 @@ def iter_chunk_transforms(
 ) -> Iterator[ChunkTransformResult]:
     """Resolve a composed IndexTransform against a ChunkGrid.
 
-    Yields ``(chunk_coords, sub_transform, out_indices)`` triples:
+    Yields `(chunk_coords, sub_transform, out_indices)` triples:
 
-    - ``chunk_coords``: which chunk to access.
-    - ``sub_transform``: maps output buffer coords to chunk-local coords.
-    - ``out_indices``: for vectorized/array indexing, the output scatter
-      indices (integer array). ``None`` for basic/slice indexing.
+    - `chunk_coords`: which chunk to access.
+    - `sub_transform`: maps output buffer coords to chunk-local coords.
+    - `out_indices`: for vectorized/array indexing, the output scatter
+      indices (integer array). `None` for basic/slice indexing.
     """
     dim_grids = chunk_grid._dimensions
 
@@ -161,7 +161,7 @@ def sub_transform_to_selections(
     Returns
     -------
     tuple
-        ``(chunk_selection, out_selection, drop_axes)``
+        `(chunk_selection, out_selection, drop_axes)`
     """
     inclusive_min = sub_transform.domain.inclusive_min
     exclusive_max = sub_transform.domain.exclusive_max
@@ -190,8 +190,8 @@ def sub_transform_to_selections(
                 out_arrays.append(out_indices[out_dim])
         return np.ix_(*chunk_arrays), np.ix_(*out_arrays), tuple(drop_axes)
 
-    # Correlated (vindex) sub-transforms carry ArrayMaps with ``input_dimension``
-    # None. They scatter through a single flat index (``out_indices``) into the
+    # Correlated (vindex) sub-transforms carry ArrayMaps with `input_dimension`
+    # None. They scatter through a single flat index (`out_indices`) into the
     # row-major-flattened output buffer; the chunk selection reads a
     # (points, residual-slice) block via the raveled coordinate arrays and any
     # residual DimensionMap slices.
@@ -216,7 +216,7 @@ def sub_transform_to_selections(
         # Chunk resolution always supplies the flat scatter index for a
         # correlated transform. Absent one (a bare sub-transform), fall back to an
         # identity scatter over the whole flattened output buffer.
-        # ``out_indices`` is narrowed to a flat scatter array or None here (the
+        # `out_indices` is narrowed to a flat scatter array or None here (the
         # per-dimension dict is an orthogonal outer product, handled above).
         out_scatter: slice | np.ndarray[Any, np.dtype[np.intp]]
         if out_indices is None:

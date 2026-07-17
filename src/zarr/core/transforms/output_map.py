@@ -4,18 +4,18 @@ An output index map describes, for one dimension of storage, which coordinates
 an array access will touch. Conceptually it is a **set of integers**. Three
 representations cover the cases that arise in practice:
 
-- ``ConstantMap(offset=5)`` — a singleton set: ``{5}``
-- ``DimensionMap(input_dimension=0, offset=3, stride=2)`` over input ``[0, 5)``
-  — an arithmetic progression: ``{3, 5, 7, 9, 11}``
-- ``ArrayMap(index_array=[1, 5, 9])`` — an explicit enumeration: ``{1, 5, 9}``
+- `ConstantMap(offset=5)` — a singleton set: `{5}`
+- `DimensionMap(input_dimension=0, offset=3, stride=2)` over input `[0, 5)`
+  — an arithmetic progression: `{3, 5, 7, 9, 11}`
+- `ArrayMap(index_array=[1, 5, 9])` — an explicit enumeration: `{1, 5, 9}`
 
 Every output map supports two set-theoretic operations (defined on
-``IndexTransform``, which provides the input domain context these maps lack):
+`IndexTransform`, which provides the input domain context these maps lack):
 
 - **intersect** — restrict to coordinates within a range (e.g., a chunk).
-  ``{3, 5, 7, 9, 11} ∩ [4, 8) = {5, 7}``
+  `{3, 5, 7, 9, 11} ∩ [4, 8) = {5, 7}`
 - **translate** — shift every coordinate by a constant (e.g., make chunk-local).
-  ``{5, 7} - 4 = {1, 3}``
+  `{5, 7} - 4 = {1, 3}`
 
 These two operations are the foundation of chunk resolution: for each chunk,
 intersect the map with the chunk's range, then translate to chunk-local
@@ -23,13 +23,13 @@ coordinates.
 
 The three types exist because they trade off generality for efficiency:
 
-- ``ConstantMap``: O(1) storage, O(1) intersection
-- ``DimensionMap``: O(1) storage, O(1) intersection (analytical)
-- ``ArrayMap``: O(n) storage, O(n) intersection (must scan the array)
+- `ConstantMap`: O(1) storage, O(1) intersection
+- `DimensionMap`: O(1) storage, O(1) intersection (analytical)
+- `ArrayMap`: O(n) storage, O(n) intersection (must scan the array)
 
-Collapsing everything to ``ArrayMap`` would be correct but wasteful — a
+Collapsing everything to `ArrayMap` would be correct but wasteful — a
 billion-element slice would materialize a billion coordinates just to group
-them by chunk, when ``DimensionMap`` does it with three integers.
+them by chunk, when `DimensionMap` does it with three integers.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 class ConstantMap:
     """A singleton set: one storage coordinate.
 
-    Represents ``{offset}``. Arises from integer indexing (e.g., ``arr[5]``
+    Represents `{offset}`. Arises from integer indexing (e.g., `arr[5]`
     fixes one dimension to coordinate 5).
     """
 
@@ -57,9 +57,9 @@ class ConstantMap:
 class DimensionMap:
     """An arithmetic progression of storage coordinates.
 
-    Represents ``{offset + stride * i : i in input_range}``, where the input
-    range comes from the enclosing ``IndexTransform``'s domain. Arises from
-    slice indexing (e.g., ``arr[2:10:3]`` gives offset=2, stride=3).
+    Represents `{offset + stride * i : i in input_range}`, where the input
+    range comes from the enclosing `IndexTransform`'s domain. Arises from
+    slice indexing (e.g., `arr[2:10:3]` gives offset=2, stride=3).
     """
 
     input_dimension: int
@@ -71,8 +71,8 @@ class DimensionMap:
 class ArrayMap:
     """An explicit enumeration of storage coordinates.
 
-    Represents ``{offset + stride * index_array[i] : i in input_range}``.
-    Arises from fancy indexing (e.g., ``arr[[1, 5, 9]]`` or boolean masks).
+    Represents `{offset + stride * index_array[i] : i in input_range}`.
+    Arises from fancy indexing (e.g., `arr[[1, 5, 9]]` or boolean masks).
 
     Freshly constructed maps are normalized to the **full input rank** of their
     enclosing transform: `index_array` has the enclosing domain's rank, sized

@@ -1,13 +1,13 @@
 """Index transforms — composable, lazy coordinate mappings.
 
-An ``IndexTransform`` pairs an **input domain** (the coordinates a user sees)
+An `IndexTransform` pairs an **input domain** (the coordinates a user sees)
 with a tuple of **output maps** (the storage coordinates those inputs map to).
-One output map per storage dimension. See ``output_map.py`` for the three
+One output map per storage dimension. See `output_map.py` for the three
 output map types.
 
 Key operations:
 
-- **Indexing** (``transform[2:8]``, ``.oindex[idx]``, ``.vindex[idx]``) —
+- **Indexing** (`transform[2:8]`, `.oindex[idx]`, `.vindex[idx]`) —
   produces a new transform with a narrower input domain and adjusted output
   maps. No I/O occurs. This is how lazy slicing works.
 
@@ -18,11 +18,11 @@ Key operations:
 - **translate(shift)** — shift all output coordinates. This makes coordinates
   chunk-local: "express my coordinates relative to the chunk origin."
 
-- **compose(outer, inner)** — chain two transforms. See ``composition.py``.
+- **compose(outer, inner)** — chain two transforms. See `composition.py`.
 
 The transform is the atomic unit that connects user-facing indexing to
-chunk-level I/O. Every ``Array`` holds a transform (identity by default).
-``Array.lazy[...]`` composes a new transform lazily. Reading resolves the
+chunk-level I/O. Every `Array` holds a transform (identity by default).
+`Array.lazy[...]` composes a new transform lazily. Reading resolves the
 transform against the chunk grid via intersect + translate.
 """
 
@@ -43,15 +43,15 @@ from zarr.errors import BoundsCheckError, VindexInvalidSelectionError
 class IndexTransform:
     """A composable mapping from input coordinates to storage coordinates.
 
-    An ``IndexTransform`` has:
+    An `IndexTransform` has:
 
-    - ``domain``: an ``IndexDomain`` describing the valid input coordinates
+    - `domain`: an `IndexDomain` describing the valid input coordinates
       (the user-facing shape, possibly with non-zero origin).
-    - ``output``: a tuple of output maps (one per storage dimension), each
+    - `output`: a tuple of output maps (one per storage dimension), each
       describing which storage coordinates the inputs touch.
 
     For a freshly opened array, the transform is the identity: input
-    coordinate ``i`` maps to storage coordinate ``i``. Indexing operations
+    coordinate `i` maps to storage coordinate `i`. Indexing operations
     compose new transforms without I/O.
     """
 
@@ -99,10 +99,10 @@ class IndexTransform:
 
     @property
     def selection_repr(self) -> str:
-        """Compact domain string, e.g. ``'{ [2, 8), [0, 10) }'``.
+        """Compact domain string, e.g. `'{ [2, 8), [0, 10) }'`.
 
         Follows TensorStore's IndexDomain notation: each dimension shown
-        as ``[inclusive_min, exclusive_max)`` with stride annotation if not 1.
+        as `[inclusive_min, exclusive_max)` with stride annotation if not 1.
         Constant (integer-indexed) dimensions show as a single value.
         Array-indexed dimensions show the set of selected coordinates.
         """
@@ -155,9 +155,9 @@ class IndexTransform:
     ):
         """Restrict this transform to storage coordinates within output_domain.
 
-        Returns ``(restricted_transform, out_indices)`` or None if empty.
+        Returns `(restricted_transform, out_indices)` or None if empty.
 
-        ``out_indices`` carries the surviving output positions: ``None`` when all
+        `out_indices` carries the surviving output positions: `None` when all
         positions survive (ConstantMap/DimensionMap only), a single integer array
         for one ArrayMap (or correlated/vectorized ArrayMaps), or a dict keyed by
         output dimension for >= 2 orthogonal ArrayMaps (an outer product).
@@ -165,7 +165,7 @@ class IndexTransform:
         return _intersect(self, output_domain)
 
     def translate(self, shift: tuple[int, ...]) -> IndexTransform:
-        """Shift all output coordinates by ``shift``."""
+        """Shift all output coordinates by `shift`."""
         if len(shift) != self.output_rank:
             raise ValueError(f"shift must have length {self.output_rank}, got {len(shift)}")
         new_output: list[OutputIndexMap] = []
@@ -195,10 +195,10 @@ class IndexTransform:
         return _apply_basic_indexing(self, selection)
 
     def translate_domain_by(self, shift: tuple[int, ...]) -> IndexTransform:
-        """Shift the *input* domain by ``shift``, preserving which cells are addressed.
+        """Shift the *input* domain by `shift`, preserving which cells are addressed.
 
-        TensorStore's ``translate_by``: the domain moves, and every output map is
-        re-offset so that new coordinate ``c`` addresses the cell that ``c - shift``
+        TensorStore's `translate_by`: the domain moves, and every output map is
+        re-offset so that new coordinate `c` addresses the cell that `c - shift`
         addressed before. ArrayMaps are indexed positionally over the domain, so
         their index arrays are unchanged.
         """
@@ -223,9 +223,9 @@ class IndexTransform:
         return IndexTransform(domain=new_domain, output=tuple(new_output))
 
     def translate_domain_to(self, origins: tuple[int, ...]) -> IndexTransform:
-        """Move the input domain so its per-dimension origins equal ``origins``.
+        """Move the input domain so its per-dimension origins equal `origins`.
 
-        TensorStore's ``translate_to``; ``translate_domain_to((0,) * rank)``
+        TensorStore's `translate_to`; `translate_domain_to((0,) * rank)`
         re-zeros a view's coordinate system without changing which cells it
         addresses.
         """
@@ -255,7 +255,7 @@ def _intersect(
     """Intersect a transform with an output domain (e.g., a chunk's bounds).
 
     For each output dimension, restrict to storage coordinates within
-    ``[output_domain.inclusive_min[d], output_domain.exclusive_max[d])``.
+    `[output_domain.inclusive_min[d], output_domain.exclusive_max[d])`.
 
     Two flavours of fancy indexing require different treatment, distinguished by
     the ArrayMaps' dependency axes (see `_array_map_dependency_axes`):
@@ -271,7 +271,7 @@ def _intersect(
     A `None` `input_dimension` marks a correlated map, so any such map routes the
     whole transform through the correlated intersection.
 
-    Returns ``None`` if the intersection is empty.
+    Returns `None` if the intersection is empty.
     """
     if output_domain.ndim != transform.output_rank:
         raise ValueError(
@@ -284,7 +284,7 @@ def _intersect(
         for i, m in enumerate(transform.output)
         if isinstance(m, ArrayMap) and m.input_dimension is None
     ]
-    if correlated_dims:
+    if len(correlated_dims) > 0:
         return _intersect_correlated(transform, output_domain, correlated_dims)
     return _intersect_orthogonal(transform, output_domain)
 
@@ -292,10 +292,10 @@ def _intersect(
 def _intersect_dimension_map(
     m: DimensionMap, input_lo: int, input_hi: int, lo: int, hi: int
 ) -> tuple[int, int] | None:
-    """Narrow a DimensionMap's input range to storage coordinates in ``[lo, hi)``.
+    """Narrow a DimensionMap's input range to storage coordinates in `[lo, hi)`.
 
-    ``input_lo``/``input_hi`` are the current (possibly already narrowed) input
-    range for the map's axis. Returns the new ``(input_lo, input_hi)`` or ``None``
+    `input_lo`/`input_hi` are the current (possibly already narrowed) input
+    range for the map's axis. Returns the new `(input_lo, input_hi)` or `None`
     if no input produces an in-bounds storage coordinate.
     """
     if input_lo >= input_hi:
@@ -362,8 +362,8 @@ def _intersect_orthogonal(
             d = _array_map_dependent_axis(m)
             storage = m.offset + m.stride * m.index_array
             mask = (storage >= lo) & (storage < hi)
-            # The array is singleton on every axis but ``d``, so its mask reduces
-            # to a 1-D vector along ``d``.
+            # The array is singleton on every axis but `d`, so its mask reduces
+            # to a 1-D vector along `d`.
             survivors = np.nonzero(mask.reshape(-1))[0].astype(np.intp)
             if survivors.size == 0:
                 return None
@@ -414,8 +414,8 @@ def _intersect_correlated(
     arrays over a 3-D array, leaving one slice dimension — resolves correctly.
 
     The surviving broadcast axes collapse to a single axis; the returned
-    ``out_indices`` is the flat scatter index into the (row-major flattened)
-    output buffer, of shape ``(surviving_points,) + (residual slice sizes)``.
+    `out_indices` is the flat scatter index into the (row-major flattened)
+    output buffer, of shape `(surviving_points,) + (residual slice sizes)`.
     """
     corr_maps = [cast("ArrayMap", transform.output[i]) for i in correlated_dims]
 
@@ -426,7 +426,7 @@ def _intersect_correlated(
         for i, m in enumerate(transform.output)
         if isinstance(m, ArrayMap) and m.input_dimension is not None
     ]
-    if orthogonal_array_dims:
+    if len(orthogonal_array_dims) > 0:
         raise NotImplementedError(
             "intersecting a transform with both correlated and orthogonal "
             "ArrayMaps is not supported"
@@ -809,9 +809,9 @@ def _array_map_dependent_axis(m: ArrayMap) -> int:
 def _reshape_to_axis(
     values: np.ndarray[Any, np.dtype[np.intp]], axis: int, ndim: int
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
-    """Reshape a 1-D selection to full rank ``ndim`` varying only along ``axis``.
+    """Reshape a 1-D selection to full rank `ndim` varying only along `axis`.
 
-    The result has ``values`` laid out along ``axis`` and singleton (size-1) axes
+    The result has `values` laid out along `axis` and singleton (size-1) axes
     everywhere else, so its dependency axis is derivable from its shape.
     """
     flat = np.asarray(values, dtype=np.intp).ravel()
@@ -821,7 +821,7 @@ def _reshape_to_axis(
 
 
 class _OIndexHelper:
-    """Helper that provides orthogonal (outer) indexing via ``transform.oindex[...]``."""
+    """Helper that provides orthogonal (outer) indexing via `transform.oindex[...]`."""
 
     def __init__(self, transform: IndexTransform) -> None:
         self._transform = transform
@@ -967,7 +967,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
 
 class _VIndexHelper:
-    """Helper that provides vectorized (fancy) indexing via ``transform.vindex[...]``."""
+    """Helper that provides vectorized (fancy) indexing via `transform.vindex[...]`."""
 
     def __init__(self, transform: IndexTransform) -> None:
         self._transform = transform
@@ -1047,7 +1047,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     # Broadcast all arrays together
     broadcast_arrays: list[np.ndarray[Any, np.dtype[np.intp]]]
-    if arrays:
+    if len(arrays) > 0:
         broadcast_arrays = list(np.broadcast_arrays(*arrays))
         broadcast_shape = broadcast_arrays[0].shape
     else:
@@ -1143,7 +1143,7 @@ _LITERAL_HINT = (
 def _trunc_div(a: int, b: int) -> int:
     """Integer division rounded toward zero (C semantics), as TensorStore uses
     for strided-slice domain origins — distinct from Python's floor division
-    for negative operands (``trunc(-9/2) == -4`` where ``-9 // 2 == -5``)."""
+    for negative operands (`trunc(-9/2) == -4` where `-9 // 2 == -5`)."""
     q = a // b
     if q < 0 and q * b != a:
         q += 1
@@ -1151,22 +1151,22 @@ def _trunc_div(a: int, b: int) -> int:
 
 
 def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int, int, int]:
-    """Resolve a slice against domain ``[lo, hi)`` with TensorStore semantics.
+    """Resolve a slice against domain `[lo, hi)` with TensorStore semantics.
 
     Slice bounds are **literal domain coordinates** — never from-the-end, never
     clamped. Rules (each verified against tensorstore 0.1.84):
 
-    - defaults: ``start = lo``, ``stop = hi``;
+    - defaults: `start = lo`, `stop = hi`;
     - a non-empty interval must be contained in the domain (no clamping — a
       NumPy-style out-of-range or negative bound is an error, not a shorter or
       wrapped result);
-    - an **empty** interval (``start == stop``) is valid anywhere;
-    - reversed bounds (``start > stop`` with positive step) are an error, not
+    - an **empty** interval (`start == stop`) is valid anywhere;
+    - reversed bounds (`start > stop` with positive step) are an error, not
       an empty result;
-    - the result's domain origin is ``trunc(start/step)`` (rounded toward
-      zero) and coordinate ``origin + k`` maps to input ``start + k*step``.
+    - the result's domain origin is `trunc(start/step)` (rounded toward
+      zero) and coordinate `origin + k` maps to input `start + k*step`.
 
-    Returns ``(start, step, origin, size)`` in domain coordinates.
+    Returns `(start, step, origin, size)` in domain coordinates.
     """
     step = 1 if sel.step is None else sel.step
     if step <= 0:
@@ -1192,10 +1192,10 @@ def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int,
 
 
 def _check_array_in_bounds(arr: np.ndarray[Any, np.dtype[np.intp]], lo: int, hi: int) -> None:
-    """Reject index-array values outside the domain ``[lo, hi)``.
+    """Reject index-array values outside the domain `[lo, hi)`.
 
     Index-array values are literal domain coordinates (TensorStore semantics):
-    a value below ``inclusive_min`` is out of bounds rather than counting from
+    a value below `inclusive_min` is out of bounds rather than counting from
     the end. Out-of-range values raise instead of silently wrapping.
     """
     if arr.size == 0:

@@ -9,11 +9,11 @@ from zarr.core.transforms.transform import IndexTransform
 def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
     """Compose two IndexTransforms.
 
-    ``outer`` maps user coords (rank m) to intermediate coords (rank n).
-    ``inner`` maps intermediate coords (rank n) to storage coords (rank p).
+    `outer` maps user coords (rank m) to intermediate coords (rank n).
+    `inner` maps intermediate coords (rank n) to storage coords (rank p).
     The result maps user coords (rank m) to storage coords (rank p).
 
-    Precondition: ``outer.output_rank == inner.domain.ndim``.
+    Precondition: `outer.output_rank == inner.domain.ndim`.
     """
     if outer.output_rank != inner.domain.ndim:
         raise ValueError(

@@ -789,7 +789,7 @@ def indexing_programs(draw: st.DrawFn, *, shape: tuple[int, ...]) -> IndexingPro
             )
             operations.append(IndexOperation("vectorized", idx))
 
-    if not operations:
+    if len(operations) == 0:
         operations.append(IndexOperation("basic", draw(basic_indices(shape=cur))))
 
     executions: tuple[ProgramExecution, ...] = (

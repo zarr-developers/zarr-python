@@ -858,10 +858,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Whether this array's transform is the identity over the full storage domain.
 
         A freshly-opened or resized array has the identity transform: input coord
-        ``i`` maps to storage coord ``i`` over the whole storage shape. Eager
+        `i` maps to storage coord `i` over the whole storage shape. Eager
         indexing on such an array produces the same coordinates the legacy
         indexers compute, so it can take the legacy fast path and skip
-        transform resolution. Lazy views (created via :meth:`_with_transform`)
+        transform resolution. Lazy views (created via `_with_transform`)
         carry a non-identity transform and must go through the transform path.
         Cheap (O(ndim)); the domain's shape lookup it relies on is memoized.
         """
@@ -4306,8 +4306,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def result(self, prototype: BufferPrototype | None = None) -> NDArrayLikeOrScalar:
         """Read and return the data for this array view.
 
-        Equivalent to ``self[...]`` but more explicit for lazy views, and forwards
-        ``prototype``. Named after `tensorstore.Future.result`.
+        Equivalent to `self[...]` but more explicit for lazy views, and forwards
+        `prototype`. Named after `tensorstore.Future.result`.
         """
         return self.get_basic_selection(Ellipsis, prototype=prototype)
 
@@ -4572,7 +4572,7 @@ def _wrap_negative_index(item: Any, exclusive_max: int) -> Any:
 
 
 class _LazyOIndex:
-    """Lazy orthogonal indexing via ``array.lazy.oindex[...]``."""
+    """Lazy orthogonal indexing via `array.lazy.oindex[...]`."""
 
     __slots__ = ("_array",)
 
@@ -4591,7 +4591,7 @@ class _LazyOIndex:
 
 
 class _LazyVIndex:
-    """Lazy vectorized indexing via ``array.lazy.vindex[...]``."""
+    """Lazy vectorized indexing via `array.lazy.vindex[...]`."""
 
     __slots__ = ("_array",)
 
@@ -4610,7 +4610,7 @@ class _LazyVIndex:
 
 
 class _LazyIndexAccessor:
-    """Provides lazy indexing via ``array.lazy[...]``."""
+    """Provides lazy indexing via `array.lazy[...]`."""
 
     __slots__ = ("_array",)
 
@@ -5990,9 +5990,9 @@ def _array_spec_from_chunk_spec(
 ) -> ArraySpec:
     """Build an ArraySpec from an already-resolved ChunkSpec.
 
-    Split out from :func:`_get_chunk_spec` so the transform read/write path can
-    resolve ``chunk_grid[chunk_coords]`` once per chunk and feed the same
-    ``spec`` to both this and :func:`_is_complete_chunk`.
+    Split out from `_get_chunk_spec` so the transform read/write path can
+    resolve `chunk_grid[chunk_coords]` once per chunk and feed the same
+    `spec` to both this and `_is_complete_chunk`.
     """
     return ArraySpec(
         shape=spec.codec_shape,
@@ -6020,23 +6020,23 @@ def _get_chunk_spec(
 def _is_vectorized_transform(transform: IndexTransform) -> bool:
     """Return True for a vectorized (vindex/coordinate) transform.
 
-    Coordinate ArrayMaps (``input_dimension is None``) are jointly indexed over
+    Coordinate ArrayMaps (`input_dimension is None`) are jointly indexed over
     the broadcast input domain and scatter through a single flat index, so the
     output buffer is flattened during read/write and reshaped afterwards. This
     holds whenever *any* such map is present — including a single coordinate map
-    with a multi-dimensional index array (``vindex[idx_2d]`` on a 1-D array),
+    with a multi-dimensional index array (`vindex[idx_2d]` on a 1-D array),
     whose flat result still needs a flat buffer. Orthogonal ArrayMaps (oindex),
     each bound to a distinct input dimension, form an outer product and keep a
     multi-dimensional buffer — even when every output is an ArrayMap
-    (e.g. ``oindex[i0, i1]``).
+    (e.g. `oindex[i0, i1]`).
     """
     return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
 
 
 def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
-    """Return True if ``transform`` is the identity over the full storage domain.
+    """Return True if `transform` is the identity over the full storage domain.
 
-    An identity transform maps input coordinate ``i`` to storage coordinate ``i``
+    An identity transform maps input coordinate `i` to storage coordinate `i`
     across the array's whole storage shape (origin 0, unit stride, dimensions in
     order). Such an array is an ordinary eager array — indexing it produces the
     same coordinates the legacy indexers compute, so the legacy fast path is
@@ -6063,8 +6063,8 @@ def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, 
 def _is_complete_chunk(sub_transform: IndexTransform, spec: ChunkSpec) -> bool:
     """Check if a sub-transform covers an entire chunk.
 
-    ``spec`` is the chunk's already-resolved :class:`ChunkSpec` (the caller looks
-    it up once and shares it with :func:`_array_spec_from_chunk_spec`).
+    `spec` is the chunk's already-resolved `ChunkSpec` (the caller looks
+    it up once and shares it with `_array_spec_from_chunk_spec`).
     """
     from zarr.core.transforms.output_map import ConstantMap, DimensionMap
 
@@ -6190,7 +6190,7 @@ async def _get_selection_via_transform(
                 if result["status"] == "missing":
                     coords_path = batch_info[i][0]
                     missing_info.append(f"  chunk at '{coords_path}'")
-            if missing_info:
+            if len(missing_info) > 0:
                 chunks_str = "\n".join(missing_info)
                 raise ChunkNotFoundError(
                     f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
@@ -6448,7 +6448,7 @@ async def _get_selection(
                     coords = indexed_chunks[i][0]
                     key = metadata.encode_chunk_key(coords)
                     missing_info.append(f"  chunk '{key}' (grid position {coords})")
-            if missing_info:
+            if len(missing_info) > 0:
                 chunks_str = "\n".join(missing_info)
                 raise ChunkNotFoundError(
                     f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"

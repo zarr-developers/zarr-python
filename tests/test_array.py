@@ -1704,6 +1704,19 @@ def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
     assert isinstance(arr[()], NDArrayLikeOrScalar)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_iter_0d_array_raises(zarr_format: ZarrFormat) -> None:
+    """Iterating a 0-d array raises TypeError, matching NumPy.
+
+    This pins an intentional behavior change: previously `Array.__iter__` fell
+    through to the generic (length-based) sequence protocol and silently produced
+    an empty iterator for a 0-d array; it now raises eagerly, like `numpy.ndarray`.
+    """
+    arr = zarr.array(np.array(1), zarr_format=zarr_format)
+    with pytest.raises(TypeError, match="iteration over a 0-d array"):
+        iter(arr)
+
+
 @pytest.mark.parametrize("store", ["local"], indirect=True)
 @pytest.mark.parametrize("store2", ["local"], indirect=["store2"])
 @pytest.mark.parametrize("src_format", [2, 3])

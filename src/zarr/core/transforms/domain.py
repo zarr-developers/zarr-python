@@ -1,13 +1,13 @@
 """Index domains — rectangular regions in N-dimensional integer space.
 
-An ``IndexDomain`` represents the set of valid coordinates for an array or
+An `IndexDomain` represents the set of valid coordinates for an array or
 array view. It is the cartesian product of per-dimension integer ranges::
 
     IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
     # represents {(i, j) : 2 <= i < 10, 5 <= j < 20}
 
 Unlike NumPy, domains can have **non-zero origins**. After slicing
-``arr[5:10]``, the result has origin 5 and shape 5 — coordinates 5 through
+`arr[5:10]`, the result has origin 5 and shape 5 — coordinates 5 through
 9 are valid. This follows the TensorStore convention.
 """
 
@@ -22,7 +22,7 @@ class IndexDomain:
     """A rectangular region in N-dimensional index space.
 
     The valid coordinates are the integers in
-    ``[inclusive_min[d], exclusive_max[d])`` for each dimension ``d``.
+    `[inclusive_min[d], exclusive_max[d])` for each dimension `d`.
     """
 
     inclusive_min: tuple[int, ...]
@@ -30,8 +30,8 @@ class IndexDomain:
     labels: tuple[str, ...] | None = None
     # Lazily-memoized shape. Excluded from init/repr/eq/hash: it is derived
     # state, not part of the domain's identity. The domain is frozen, so the
-    # value is computed at most once (see ``shape``). ``None`` is the unset
-    # sentinel; an empty shape caches as ``()``.
+    # value is computed at most once (see `shape`). `None` is the unset
+    # sentinel; an empty shape caches as `()`.
     _shape: tuple[int, ...] | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:

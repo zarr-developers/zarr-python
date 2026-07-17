@@ -415,7 +415,7 @@ def _write_is_unambiguous(mode: IndexMode, zsel: Any, shape: tuple[int, ...]) ->
             for axis, s in enumerate(sel)
             if isinstance(s, np.ndarray)
         ]
-        if not norm:
+        if len(norm) == 0:
             return True
         coords = np.stack([a.ravel() for a in np.broadcast_arrays(*norm)], axis=-1)
         return len(coords) == len(np.unique(coords, axis=0))
