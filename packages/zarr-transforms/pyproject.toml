@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling>=1.29.0", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr-transforms"
+dynamic = ["version"]
+description = "Composable, lazy coordinate transforms for Zarr array indexing."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [
+    { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = ["zarr"]
+dependencies = [
+    "numpy>=2",
+]
+
+[project.urls]
+Homepage = "https://github.com/zarr-developers/zarr-python"
+Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-transforms"
+Issues = "https://github.com/zarr-developers/zarr-python/issues"
+Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-transforms/CHANGELOG.md"
+Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-transforms/README.md"
+
+[dependency-groups]
+# The transform tests exercise chunk resolution against zarr's ChunkGrid
+# (tests/test_chunk_resolution.py) and are collected by the parent zarr-python
+# test suite, which already has zarr installed. `zarr` is intentionally NOT
+# listed here to avoid a workspace dependency cycle; run these tests from the
+# repo root (`uv run pytest packages/zarr-transforms/tests`), not in isolation.
+test = ["pytest"]
+
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = '^zarr_transforms-v(?P<version>.+)$'
+# `git_describe_command` ensures we get the zarr_transforms tags instead of latest.
+# `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
+# test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
+raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_transforms-v*", local_scheme = "no-local-version" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zarr_transforms"]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py311"
+
+[tool.pytest.ini_options]
+minversion = "7"
+testpaths = ["tests"]
+xfail_strict = true
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+filterwarnings = [
+    "error",
+]
+
+[tool.pyright]
+include = ["src"]
+enableExperimentalFeatures = true
+typeCheckingMode = "strict"
+pythonVersion = "3.11"
+
+[tool.numpydoc_validation]
+checks = [
+    "GL10",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
+
+[tool.towncrier]
+# Fragments for this package live alongside the package source, separate
+# from the parent zarr-python `changes/` directory, so a PR touching only
+# `packages/zarr-transforms/` produces a release note for this package only.
+directory = "changes"
+filename = "CHANGELOG.md"
+package = "zarr_transforms"
+underlines = ["", "", ""]
+title_format = "## {version} ({project_date})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+start_string = "<!-- towncrier release notes start -->\n"

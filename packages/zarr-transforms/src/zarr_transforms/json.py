@@ -23,9 +23,9 @@ from typing import Any, Required, TypedDict
 
 import numpy as np
 
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr.core.transforms.transform import IndexTransform
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_transforms.transform import IndexTransform
 
 # ---------------------------------------------------------------------------
 # TypedDict definitions (JSON shapes)

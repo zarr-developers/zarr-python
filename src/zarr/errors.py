@@ -1,3 +1,8 @@
+# `BoundsCheckError` and `VindexInvalidSelectionError` are defined canonically in
+# `zarr_transforms.errors` (the transform algebra raises them) and re-exported here
+# as aliases so `zarr.errors.BoundsCheckError` stays the identical class object.
+from zarr_transforms.errors import BoundsCheckError, VindexInvalidSelectionError
+
 __all__ = [
     "ArrayIndexError",
     "ArrayNotFoundError",
@@ -140,13 +145,7 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
 
 
-class VindexInvalidSelectionError(IndexError): ...
-
-
 class NegativeStepError(IndexError): ...
-
-
-class BoundsCheckError(IndexError): ...
 
 
 class ArrayIndexError(IndexError): ...

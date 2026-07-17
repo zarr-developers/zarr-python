@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "zarr",
+    "zarr-transforms",
+]
+
 [[package]]
 name = "aiobotocore"
 version = "3.7.0"
@@ -4023,6 +4029,7 @@ dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "typing-extensions" },
+    { name = "zarr-transforms" },
 ]
 
 [package.optional-dependencies]
@@ -4151,6 +4158,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
+    { name = "zarr-transforms", editable = "packages/zarr-transforms" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 
@@ -4243,3 +4251,21 @@ test = [
     { name = "tomlkit", specifier = "==0.15.0" },
     { name = "uv", specifier = "==0.11.20" },
 ]
+
+[[package]]
+name = "zarr-transforms"
+source = { editable = "packages/zarr-transforms" }
+dependencies = [
+    { name = "numpy" },
+]
+
+[package.dev-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "numpy", specifier = ">=2" }]
+
+[package.metadata.requires-dev]
+test = [{ name = "pytest" }]

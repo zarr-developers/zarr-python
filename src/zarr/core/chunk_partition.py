@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from zarr.core.transforms.chunk_resolution import (
+from zarr_transforms.chunk_resolution import (
     iter_chunk_transforms,
     sub_transform_to_selections,
 )
@@ -22,8 +22,9 @@ from zarr.core.transforms.chunk_resolution import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from zarr_transforms.transform import IndexTransform
+
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.transforms.transform import IndexTransform
 
 __all__ = ["ChunkProjection", "iter_chunk_projections"]
 

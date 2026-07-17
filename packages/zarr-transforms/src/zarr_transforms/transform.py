@@ -34,9 +34,9 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr.errors import BoundsCheckError, VindexInvalidSelectionError
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.errors import BoundsCheckError, VindexInvalidSelectionError
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 
 
 @dataclass(frozen=True, slots=True)

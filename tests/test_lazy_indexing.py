@@ -20,6 +20,9 @@ from unittest import mock
 import numpy as np
 import numpy.typing as npt
 import pytest
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.output_map import ArrayMap
+from zarr_transforms.transform import IndexTransform
 
 import zarr
 from zarr.codecs.bytes import BytesCodec
@@ -27,9 +30,6 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.sharding import ShardingCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.sync import sync
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.output_map import ArrayMap
-from zarr.core.transforms.transform import IndexTransform
 from zarr.errors import BoundsCheckError, LazyViewError, ZarrUserWarning
 from zarr.storage import MemoryStore
 
@@ -1129,8 +1129,9 @@ class TestChunkCoverageParity:
         """For every stored chunk a selection touches, `is_partial` (computed via
         `chunk_projections`) must equal `not _is_complete_chunk(...)` computed
         directly from the same `iter_chunk_transforms` enumeration."""
+        from zarr_transforms.chunk_resolution import iter_chunk_transforms
+
         from zarr.core.array import _is_complete_chunk
-        from zarr.core.transforms.chunk_resolution import iter_chunk_transforms
 
         a = zarr.create_array({}, shape=(4, 4), chunks=(1, 4), dtype="i4")
         a[...] = np.arange(16, dtype="i4").reshape(4, 4)

@@ -37,6 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'zarr-transforms>=0.1.0',
 ]
 
 dynamic = [
@@ -151,6 +152,16 @@ dev = [
     "universal-pathlib",
     "mypy==2.1.0",
 ]
+
+# The repo is a uv workspace so that `zarr` can depend on the in-tree
+# `packages/zarr-transforms` during development and CI. Released wheels depend on
+# the published zarr-transforms distribution; the workspace source below only
+# affects resolution from a checkout (uv.lock, `uv run`, hatch envs using uv).
+[tool.uv.workspace]
+members = ["packages/zarr-transforms"]
+
+[tool.uv.sources]
+zarr-transforms = { workspace = true }
 
 [tool.coverage.report]
 exclude_also = [
@@ -434,7 +445,12 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["src", "tests", "docs/user-guide"]
+# `packages/zarr-transforms/tests` is collected here rather than run in an
+# isolated package env: those tests exercise chunk resolution against zarr's
+# concrete `ChunkGrid`, so they need `zarr` importable (which the root env
+# provides). Keeping them in testpaths means the main test suite / `run-coverage`
+# continues to exercise the transform algebra after the move to the subpackage.
+testpaths = ["src", "tests", "docs/user-guide", "packages/zarr-transforms/tests"]
 log_cli_level = "INFO"
 log_level = "INFO"
 xfail_strict = true

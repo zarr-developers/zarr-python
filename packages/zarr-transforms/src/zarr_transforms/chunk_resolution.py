@@ -33,14 +33,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr.core.transforms.transform import IndexTransform
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_transforms.transform import IndexTransform
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr.core.chunk_grids import ChunkGrid
+    from zarr_transforms.grid import ChunkGridLike
 
 OutIndices = (
     dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]] | None
@@ -55,7 +55,7 @@ ChunkTransformResult = tuple[
 
 def iter_chunk_transforms(
     transform: IndexTransform,
-    chunk_grid: ChunkGrid,
+    chunk_grid: ChunkGridLike,
 ) -> Iterator[ChunkTransformResult]:
     """Resolve a composed IndexTransform against a ChunkGrid.
 

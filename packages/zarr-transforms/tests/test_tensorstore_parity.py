@@ -27,10 +27,10 @@ from typing import ClassVar
 import numpy as np
 import pytest
 
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr.core.transforms.transform import IndexTransform
-from zarr.errors import BoundsCheckError
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.errors import BoundsCheckError
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_transforms.transform import IndexTransform
 
 
 def _identity(lo: int, hi: int) -> IndexTransform:

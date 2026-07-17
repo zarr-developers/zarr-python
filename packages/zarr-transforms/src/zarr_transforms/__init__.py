@@ -12,11 +12,22 @@ Key types:
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single
   output dimension can depend on the input (see `output_map.py`)
 - `compose` — chain two transforms into one
+
+The chunk-resolution helpers (`iter_chunk_transforms`,
+`sub_transform_to_selections`) and `selection_to_transform` are also exported
+here: they form the surface the zarr integration layer (array indexing) depends
+on. The `*Like` grid Protocols describe the chunk-grid surface chunk resolution
+consumes without importing zarr.
 """
 
-from zarr.core.transforms.composition import compose
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.json import (
+from zarr_transforms.chunk_resolution import (
+    iter_chunk_transforms,
+    sub_transform_to_selections,
+)
+from zarr_transforms.composition import compose
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.grid import ChunkGridLike, DimensionGridLike
+from zarr_transforms.json import (
     IndexDomainJSON,
     IndexTransformJSON,
     OutputIndexMapJSON,
@@ -25,12 +36,14 @@ from zarr.core.transforms.json import (
     index_transform_from_json,
     index_transform_to_json,
 )
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr.core.transforms.transform import IndexTransform
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_transforms.transform import IndexTransform, selection_to_transform
 
 __all__ = [
     "ArrayMap",
+    "ChunkGridLike",
     "ConstantMap",
+    "DimensionGridLike",
     "DimensionMap",
     "IndexDomain",
     "IndexDomainJSON",
@@ -43,4 +56,7 @@ __all__ = [
     "index_domain_to_json",
     "index_transform_from_json",
     "index_transform_to_json",
+    "iter_chunk_transforms",
+    "selection_to_transform",
+    "sub_transform_to_selections",
 ]

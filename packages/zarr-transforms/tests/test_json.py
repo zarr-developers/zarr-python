@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from zarr.core.transforms.domain import IndexDomain
-from zarr.core.transforms.json import (
+from zarr_transforms.domain import IndexDomain
+from zarr_transforms.json import (
     IndexTransformJSON,
     index_domain_from_json,
     index_domain_to_json,
@@ -12,8 +12,8 @@ from zarr.core.transforms.json import (
     output_index_map_from_json,
     output_index_map_to_json,
 )
-from zarr.core.transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr.core.transforms.transform import IndexTransform
+from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_transforms.transform import IndexTransform
 
 
 class TestIndexDomainJSON:
