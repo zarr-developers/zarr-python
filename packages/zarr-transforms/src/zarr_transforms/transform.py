@@ -644,6 +644,33 @@ def _reindex_array(
     return np.asarray(result, dtype=np.intp)
 
 
+_FANCY_AFTER_FANCY_MSG = (
+    "applying a fancy (orthogonal/vectorized) selection to a view that already "
+    "has a fancy-indexed axis is not supported (fancy-after-fancy composition): "
+    "the new coordinates would index a broadcast axis of the existing selection. "
+    "Materialize the view first with `.result()` and index the array, or reorder "
+    "the selections so the fancy step is applied last."
+)
+
+
+def _guard_fancy_after_fancy(m: ArrayMap, fancy_dims: set[int] | list[int]) -> None:
+    """Reject a fancy step that lands on a broadcast axis of an existing ArrayMap.
+
+    A new orthogonal/vectorized selection can only be absorbed into an existing
+    ArrayMap along the axes that map genuinely varies over (its dependency axes,
+    plus the recorded `input_dimension` for a degenerate length-1 orthogonal
+    selection). A fancy index targeting any other axis — a singleton axis the map
+    merely broadcasts over — cannot be reindexed and used to leak a raw NumPy
+    `IndexError` at resolve time. Raise a clear `NotImplementedError` instead.
+    """
+    dependent = set(_array_map_dependency_axes(m.index_array))
+    if m.input_dimension is not None:
+        dependent.add(m.input_dimension)
+    for d in fancy_dims:
+        if d < m.index_array.ndim and d not in dependent:
+            raise NotImplementedError(_FANCY_AFTER_FANCY_MSG)
+
+
 def _reindex_array_oindex(
     arr: np.ndarray[Any, np.dtype[np.intp]],
     normalized: tuple[Any, ...] | list[Any],
@@ -950,6 +977,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         elif isinstance(m, ArrayMap):
+            _guard_fancy_after_fancy(m, list(dim_array.keys()))
             new_arr = _reindex_array_oindex(m.index_array, normalized, transform.domain)
             array_input_dim: int | None = None
             if m.input_dimension is not None:
@@ -1121,6 +1149,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
         elif isinstance(m, ArrayMap):
+            _guard_fancy_after_fancy(m, array_dims)
             new_arr = _reindex_array_oindex(m.index_array, processed, transform.domain)
             new_output.append(
                 ArrayMap(

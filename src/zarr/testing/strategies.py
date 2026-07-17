@@ -746,8 +746,9 @@ def indexing_programs(draw: st.DrawFn, *, shape: tuple[int, ...]) -> IndexingPro
     deliberate and documented so they can shrink as the underlying bugs are
     fixed:
 
-    - *Fancy-after-fancy* composition is broken in ``_reindex_array_oindex``
-      (applying oindex/vindex to a view that already carries an ArrayMap axis), so
+    - *Fancy-after-fancy* composition (applying oindex/vindex to a view that
+      already carries an orthogonal ArrayMap axis) is unsupported: it raises a
+      clear ``NotImplementedError`` at composition time rather than resolving, so
       at most one fancy step is generated.
     - *Basic-after-fancy* is excluded wholesale. Integer basic indexing on an
       oindex-picked axis is a strict xfail

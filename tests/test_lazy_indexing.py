@@ -809,6 +809,61 @@ class TestLazyFieldsOnView:
         np.testing.assert_array_equal(result["f1"], base["f1"])
 
 
+class TestFancyAfterFancy:
+    """Composing a fancy (orthogonal/vectorized) selection onto a view that
+    already carries an orthogonal ArrayMap axis is not supported: the reindexing
+    machinery would try to index a broadcast (singleton) axis of the existing
+    ArrayMap with the new coordinates. This used to leak a raw NumPy
+    ``IndexError`` (``index N is out of bounds for axis ... with size 1``) at
+    resolve time, which read like a user error; it now raises
+    ``NotImplementedError`` naming the limitation and the workaround at
+    composition time. Compositions that keep the fancy step on the existing
+    dependency axis (or on a correlated vindex view) still work — see
+    ``test_fancy_on_same_axis_still_works``."""
+
+    def test_oindex_then_oindex_other_axis_raises(self) -> None:
+        """``v.lazy.oindex[:, [5]]`` after ``v = a.lazy.oindex[[0, 2, 5], :]``
+        raises at composition time, not a raw IndexError at resolve time."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        b[...] = np.arange(48, dtype="i4").reshape(6, 8)
+        v = b.lazy.oindex[[0, 2, 5], :]
+        with pytest.raises(NotImplementedError, match="fancy"):
+            _ = v.lazy.oindex[:, [5]]
+
+    def test_oindex_then_vindex_other_axis_raises(self) -> None:
+        """The vindex accessor closes the same gap: a coordinate selection over a
+        broadcast axis of an oindex view raises rather than crashing in numpy."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        b[...] = np.arange(48, dtype="i4").reshape(6, 8)
+        v = b.lazy.oindex[[0, 2, 5], :]
+        with pytest.raises(NotImplementedError, match="fancy"):
+            _ = v.lazy.vindex[[0, 1], [5, 6]]
+
+    def test_oindex_both_axes_then_oindex_raises(self) -> None:
+        """An outer-product view (two ArrayMaps) rejects any further fancy step:
+        the new axis is a broadcast axis of the *other* ArrayMap."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        b[...] = np.arange(48, dtype="i4").reshape(6, 8)
+        v = b.lazy.oindex[[0, 2, 5], [1, 3, 5]]
+        with pytest.raises(NotImplementedError, match="fancy"):
+            _ = v.lazy.oindex[[0, 1], :]
+
+    def test_fancy_on_same_axis_still_works(self) -> None:
+        """A fancy step on the existing dependency axis is absorbed correctly and
+        must keep working; likewise a fancy step on a correlated vindex view."""
+        b = zarr.create_array({}, shape=(6, 8), chunks=(2, 3), dtype="i4")
+        ref = np.arange(48, dtype="i4").reshape(6, 8)
+        b[...] = ref
+        rows = b.lazy.oindex[[0, 2, 5], :]
+        np.testing.assert_array_equal(
+            rows.lazy.oindex[[0, 1], :].result(), ref[[0, 2, 5], :][[0, 1], :]
+        )
+        pts = b.lazy.vindex[[0, 2, 5], [1, 2, 3]]
+        expected = ref[[0, 2, 5], [1, 2, 3]]
+        np.testing.assert_array_equal(pts.lazy.oindex[[0, 1]].result(), expected[[0, 1]])
+        np.testing.assert_array_equal(pts.lazy.vindex[[0, 1]].result(), expected[[0, 1]])
+
+
 class TestKnownFancyIntBugs:
     """Strict-xfail pins for the int-on-fancy-picked-dim defect (see review notes):
     integer indexing a dimension that an oindex/vindex selection created is

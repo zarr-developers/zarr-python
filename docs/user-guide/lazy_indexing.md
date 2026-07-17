@@ -295,6 +295,11 @@ array.
 - Integer indexing a dimension *created by* an `oindex`/`vindex` selection
   (e.g. `rows.lazy[0]` after `rows = a.lazy.oindex[[3, 17, 42], :]`) is not yet
   supported reliably; slice the view instead (`rows.lazy[0:1]`).
+- Composing a fancy (`oindex`/`vindex`) selection onto a view that already has a
+  fancy-indexed axis (fancy-after-fancy — e.g. `a.lazy.oindex[[0, 2, 5], :]`
+  then `.oindex[:, [5]]`) is not supported and raises `NotImplementedError`.
+  Materialize the view first with `.result()` and index the array, or reorder
+  the selections so the fancy step is applied last.
 - `chunk_projections(unit="read")` on sharded arrays (inner-chunk granularity)
   is not yet implemented; use `unit="write"`.
 - Views cannot be resized or appended to, and block selection is not defined

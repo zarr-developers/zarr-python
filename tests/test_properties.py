@@ -1056,8 +1056,9 @@ def test_indexing_program_parity(scenario: tuple[tuple[int, ...], IndexingProgra
     dtype and values; writes (`set_scalar`, `set_array`) apply the equivalent
     assignment to a NumPy root and compare the whole zarr array afterwards. The
     generator composes at most one fancy step and always keeps it last — see
-    `indexing_programs` for the documented exclusions (fancy-after-fancy and
-    basic-after-fancy are known-broken and deliberately not generated).
+    `indexing_programs` for the documented exclusions (fancy-after-fancy is
+    unsupported and raises `NotImplementedError`; basic-after-fancy is
+    known-broken; both are deliberately not generated).
     """
     shape, program = scenario
     zarray, nparray = _build_program_array(shape)
