@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, gpu
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype, gpu
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
@@ -75,6 +75,55 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
 
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
+
+    @pytest.mark.parametrize("method", ["set", "set_sync", "set_if_not_exists"])
+    async def test_set_does_not_retain_caller_buffer(self, store: MemoryStore, method: str) -> None:
+        """Writing a buffer must not alias the caller's memory.
+
+        MemoryStore keeps whatever it is handed alive in a dict, so retaining
+        the caller's buffer lets a later mutation of that buffer rewrite data
+        already committed to the store.
+        """
+        source = np.frombuffer(bytearray(b"\x01\x02\x03\x04"), dtype="B")
+        value = cpu.Buffer.from_array_like(source)
+
+        if method == "set_sync":
+            store.set_sync("k", value)
+        else:
+            await getattr(store, method)("k", value)
+
+        source[:] = 0xF  # mutate the caller's memory after the write
+        stored = await store.get("k", prototype=default_buffer_prototype())
+        assert stored is not None
+        assert stored.to_bytes() == b"\x01\x02\x03\x04"
+
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            "zarr.core.codec_pipeline.BatchedCodecPipeline",
+            "zarr.core.codec_pipeline.FusedCodecPipeline",
+        ],
+    )
+    @pytest.mark.parametrize(("shape", "chunks"), [((30,), (10,)), ((8,), (4,)), ((4,), (4,))])
+    def test_write_does_not_alias_source_array(
+        self, pipeline: str, shape: tuple[int], chunks: tuple[int]
+    ) -> None:
+        """Mutating the source array after a write must not corrupt stored chunks.
+
+        Without compression the encoded buffer is a zero-copy view of the
+        caller's array all the way down to the store, so this covers both the
+        single-chunk and multi-chunk write paths.
+        """
+        with zarr.config.set({"codec_pipeline.path": pipeline}):
+            array = zarr.create_array(
+                store=MemoryStore(), shape=shape, chunks=chunks, dtype="i4", compressors=None
+            )
+            source = np.arange(shape[0], dtype="i4")
+            expected = source.copy()
+            array[:] = source
+            source[:] = -1
+
+            np.testing.assert_array_equal(array[:], expected)
 
     # --- byte-range-write tests: disabled ---
     # Byte-range-write support (set_range / set_range_sync / SupportsSetRange)
