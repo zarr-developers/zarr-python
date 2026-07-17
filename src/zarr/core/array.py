@@ -902,11 +902,19 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def _is_sharded(self) -> bool:
-        """Whether the array stores inner chunks inside shards (a sharding codec)."""
+        """Whether the array stores inner chunks inside shards (a sharding codec).
+
+        A sharding codec is the array-bytes codec in the chain: array-array
+        filters may precede it and bytes-bytes codecs (e.g. an outer compressor)
+        may follow it, so its presence — not the chain's length — is what makes
+        an array sharded. `validate_codecs` permits such trailing codecs, and
+        they round-trip data correctly; keying off `len(codecs) == 1` would
+        misclassify them as unsharded.
+        """
         from zarr.codecs.sharding import ShardingCodec
 
         codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        return len(codecs) == 1 and isinstance(codecs[0], ShardingCodec)
+        return any(isinstance(codec, ShardingCodec) for codec in codecs)
 
     def chunk_projections(
         self, *, unit: Literal["read", "write"] = "read"
@@ -6160,7 +6168,7 @@ async def _get_selection_via_transform(
         ):
             chunk_spec = chunk_grid[chunk_coords]
             if chunk_spec is None:
-                continue
+                raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
             chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
             drop_axes = da  # same for all chunks
             batch_info.append(
@@ -6311,7 +6319,7 @@ async def _set_selection_via_transform(
     for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
         chunk_spec = chunk_grid[chunk_coords]
         if chunk_spec is None:
-            continue
+            raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
         chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
         drop_axes = da  # same for all chunks
         batch_info.append(

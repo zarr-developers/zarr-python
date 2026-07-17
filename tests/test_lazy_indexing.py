@@ -22,9 +22,15 @@ import numpy.typing as npt
 import pytest
 
 import zarr
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.sharding import ShardingCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.sync import sync
-from zarr.errors import BoundsCheckError, LazyViewError
+from zarr.core.transforms.domain import IndexDomain
+from zarr.core.transforms.output_map import ArrayMap
+from zarr.core.transforms.transform import IndexTransform
+from zarr.errors import BoundsCheckError, LazyViewError, ZarrUserWarning
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -1021,11 +1027,216 @@ class TestChunkProjections:
         with pytest.raises(NotImplementedError):
             a.chunk_projections(unit="read")
 
+    def test_multi_codec_sharded_read_unit_raises(self) -> None:
+        """A sharded array whose codec chain has more than one entry (a `ShardingCodec`
+        followed by a trailing bytes-bytes codec) is still sharded: `unit='read'` must
+        raise the same `NotImplementedError` as a plain single-codec sharded array."""
+        with pytest.warns(ZarrUserWarning, match="sharding_indexed"):
+            a = zarr.create(
+                store={},
+                shape=(12,),
+                chunks=(6,),
+                dtype="i4",
+                zarr_format=3,
+                codecs=[
+                    ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec()]),
+                    GzipCodec(),
+                ],
+            )
+        a[...] = np.arange(12, dtype="i4")
+        shards = list(a.chunk_projections(unit="write"))
+        assert len(shards) == 2  # two shards of size 6
+        assert all(p.shape == (6,) and not p.is_partial for p in shards)
+        with pytest.raises(NotImplementedError):
+            a.chunk_projections(unit="read")
+
     def test_invalid_unit_rejected(self) -> None:
         """An unknown granularity is rejected eagerly."""
         a = self._array((6,), (2,))
         with pytest.raises(ValueError, match="unit"):
             a.chunk_projections(unit="bogus")  # type: ignore[arg-type]
+
+
+class TestIsSharded:
+    """`_is_sharded` must key off the presence of a `ShardingCodec` in the codec
+    chain, not the chain's length: a valid sharded array may carry additional
+    codecs (e.g. a trailing bytes-bytes compressor after the sharding codec)."""
+
+    def test_true_for_multi_codec_sharded_chain(self) -> None:
+        with pytest.warns(ZarrUserWarning, match="sharding_indexed"):
+            a = zarr.create(
+                store={},
+                shape=(12,),
+                chunks=(6,),
+                dtype="i4",
+                zarr_format=3,
+                codecs=[
+                    ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec()]),
+                    GzipCodec(),
+                ],
+            )
+        assert a._async_array._is_sharded is True
+
+    def test_true_for_single_codec_sharded_chain(self) -> None:
+        a = zarr.create(
+            store={},
+            shape=(12,),
+            chunks=(6,),
+            dtype="i4",
+            zarr_format=3,
+            codecs=[ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec()])],
+        )
+        assert a._async_array._is_sharded is True
+
+    def test_false_for_plain_bytes_chain(self) -> None:
+        a = zarr.create(
+            store={}, shape=(12,), chunks=(6,), dtype="i4", zarr_format=3, codecs=[BytesCodec()]
+        )
+        assert a._async_array._is_sharded is False
+
+    def test_false_for_plain_compressed_chain(self) -> None:
+        a = zarr.create(
+            store={},
+            shape=(12,),
+            chunks=(6,),
+            dtype="i4",
+            zarr_format=3,
+            codecs=[BytesCodec(), GzipCodec()],
+        )
+        assert a._async_array._is_sharded is False
+
+
+class TestChunkCoverageParity:
+    """`chunk_projections`' `is_partial` (backed by `_covers_full_chunk`) must agree
+    with the write path's `_is_complete_chunk`: both derive coverage from the same
+    `iter_chunk_transforms` enumeration and must reach the same verdict — including
+    the case a naive selection-kind check misses: an integer index on a
+    chunk-extent-1 dimension covers that dimension exactly as its equivalent
+    length-1 slice does."""
+
+    @pytest.mark.parametrize(
+        "sel",
+        [
+            (slice(None), slice(None)),  # full slice, both dims -> aligned
+            (slice(1, 3), slice(None)),  # partial slice on dim 0 (chunk extent 1)
+            (2, slice(None)),  # int on a chunk-extent-1 dim -> aligned
+            (slice(2, 3), slice(None)),  # equivalent length-1 slice -> aligned
+            (slice(None), 2),  # int on a chunk-extent-4 dim -> partial
+            (slice(None), slice(2, 3)),  # length-1 slice on the same dim -> partial
+        ],
+    )
+    def test_is_partial_matches_is_complete_chunk(self, sel: tuple[Any, ...]) -> None:
+        """For every stored chunk a selection touches, `is_partial` (computed via
+        `chunk_projections`) must equal `not _is_complete_chunk(...)` computed
+        directly from the same `iter_chunk_transforms` enumeration."""
+        from zarr.core.array import _is_complete_chunk
+        from zarr.core.transforms.chunk_resolution import iter_chunk_transforms
+
+        a = zarr.create_array({}, shape=(4, 4), chunks=(1, 4), dtype="i4")
+        a[...] = np.arange(16, dtype="i4").reshape(4, 4)
+        view = a.lazy[sel]
+        async_view = view._async_array
+        transform = async_view._transform.translate_domain_to(
+            (0,) * async_view._transform.input_rank
+        )
+        chunk_grid = async_view._chunk_grid
+
+        projections = {p.coord: p for p in view.chunk_projections()}
+        assert len(projections) > 0
+
+        seen: set[tuple[int, ...]] = set()
+        for chunk_coords, sub_transform, _out_indices in iter_chunk_transforms(
+            transform, chunk_grid
+        ):
+            spec = chunk_grid[chunk_coords]
+            if spec is None:
+                continue
+            seen.add(chunk_coords)
+            expected_partial = not _is_complete_chunk(sub_transform, spec)
+            assert projections[chunk_coords].is_partial == expected_partial
+
+        assert seen == set(projections)
+
+    def test_int_and_length1_slice_report_identically(self) -> None:
+        """An integer selection and its equivalent length-1 slice, on a
+        chunk-extent-1 dimension, must report the same is_partial/aligned verdict —
+        both cover the same data, so a read-modify-write plan should not depend on
+        which selection spelling was used."""
+        a = zarr.create_array({}, shape=(4, 4), chunks=(1, 4), dtype="i4")
+        a[...] = np.arange(16, dtype="i4").reshape(4, 4)
+
+        int_view = a.lazy[2, :]
+        slice_view = a.lazy[2:3, :]
+
+        int_partial = [p.is_partial for p in int_view.chunk_projections()]
+        slice_partial = [p.is_partial for p in slice_view.chunk_projections()]
+        assert int_partial == slice_partial
+        assert int_view.is_chunk_aligned() == slice_view.is_chunk_aligned()
+        assert int_view.is_chunk_aligned() is True  # chunk extent along dim 0 is 1
+
+
+class TestOutOfGridGuardrail:
+    """The transform I/O loops must raise loudly on an out-of-grid chunk
+    coordinate rather than silently `continue`. A read buffer is allocated with
+    `nd_buffer.empty()` (uninitialized), so a bug anywhere in transform
+    composition that yields an out-of-grid storage coordinate would otherwise
+    return garbage memory on reads and silently drop data on writes.
+
+    The public indexing APIs already bounds-check selections before a transform
+    reaches chunk resolution, so an out-of-grid coordinate can only arise from a
+    transform built directly (simulating a composition bug upstream). Each test
+    hand-builds an `IndexTransform` whose `ArrayMap` storage coordinates
+    exceed the backing array's chunk grid.
+    """
+
+    @staticmethod
+    def _out_of_grid_transform() -> IndexTransform:
+        """For shape=(20,), chunks=(5,): storage coords 1 and 2 are in-grid (chunk
+        0), but 23 and 24 exceed the array's extent and fall in chunk id 4, which
+        does not exist (the grid only has chunks 0-3)."""
+        idx = np.array([1, 2, 23, 24], dtype=np.intp)
+        return IndexTransform(
+            domain=IndexDomain.from_shape((4,)), output=(ArrayMap(index_array=idx),)
+        )
+
+    def test_get_selection_via_transform_raises(self) -> None:
+        """The read pipeline (`_get_selection_via_transform`) must raise instead
+        of silently returning whatever was in the uninitialized output buffer."""
+        a = zarr.create_array({}, shape=(20,), chunks=(5,), dtype="i4")
+        a[...] = np.arange(20, dtype="i4")
+        transform = self._out_of_grid_transform()
+        with pytest.raises(IndexError, match="out of bounds"):
+            sync(a._async_array._get_selection_t(transform, prototype=default_buffer_prototype()))
+
+    def test_set_selection_via_transform_raises(self) -> None:
+        """The write pipeline (`_set_selection_via_transform`) must raise instead
+        of silently dropping the out-of-grid entries -- and must not apply a
+        partial write for the in-grid entries either."""
+        a = zarr.create_array({}, shape=(20,), chunks=(5,), dtype="i4")
+        original = np.arange(20, dtype="i4")
+        a[...] = original
+        transform = self._out_of_grid_transform()
+        value = np.array([100, 200, 300, 400], dtype="i4")
+        with pytest.raises(IndexError, match="out of bounds"):
+            sync(
+                a._async_array._set_selection_t(
+                    transform, value, prototype=default_buffer_prototype()
+                )
+            )
+        # The batch is built (and validated) before any write is issued, so a
+        # rejected batch must leave the array untouched -- not even the in-grid
+        # entries (indices 1, 2) should have been written.
+        np.testing.assert_array_equal(a[...], original)
+
+    def test_iter_chunk_projections_raises(self) -> None:
+        """`chunk_projections` (backed by `iter_chunk_projections`) must raise
+        instead of silently omitting the out-of-grid chunk from the enumeration."""
+        a = zarr.create_array({}, shape=(20,), chunks=(5,), dtype="i4")
+        a[...] = np.arange(20, dtype="i4")
+        transform = self._out_of_grid_transform()
+        view = a._with_transform(transform)
+        with pytest.raises(IndexError, match="out of bounds"):
+            list(view.chunk_projections())
 
 
 class TestLazyArrayMapResolution:

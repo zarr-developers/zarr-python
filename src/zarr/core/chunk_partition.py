@@ -60,16 +60,28 @@ class ChunkProjection:
 def _covers_full_chunk(chunk_selection: tuple[Any, ...], shape: tuple[int, ...]) -> bool:
     """Whether ``chunk_selection`` selects every element of a chunk of ``shape``.
 
-    Only a per-dimension full ``0:size:1`` slice is a full cover; an integer or
-    array selection touches a strict subset, so the chunk is partial.
+    A per-dimension full `0:size:1` slice is a full cover. An integer entry is
+    also a full cover *iff* the chunk's extent along that dimension is 1 — fixing
+    the only element of a length-1 dimension covers it exactly, the same as an
+    equivalent length-1 slice would. This mirrors the write path's
+    `_is_complete_chunk` (`ConstantMap` over a dimension of size 1 is complete);
+    keeping the two in sync matters because a divergence would make
+    `chunk_projections` plan needless read-modify-writes for coverage the write
+    path already treats as complete. An array selection always touches a subset
+    (or requires per-element comparison this cheap check does not attempt), so it
+    is never a full cover.
     """
     if len(chunk_selection) != len(shape):
         return False
     for sel, size in zip(chunk_selection, shape, strict=True):
-        if not isinstance(sel, slice):
-            return False
-        start, stop, step = sel.indices(size)
-        if not (start == 0 and stop == size and step == 1):
+        if isinstance(sel, slice):
+            start, stop, step = sel.indices(size)
+            if not (start == 0 and stop == size and step == 1):
+                return False
+        elif isinstance(sel, int):
+            if size > 1:
+                return False
+        else:
             return False
     return True
 
@@ -89,7 +101,7 @@ def iter_chunk_projections(
     chunk_sizes = chunk_grid.chunk_sizes  # per-dimension, extent-clipped
     for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
         if chunk_grid[chunk_coords] is None:
-            continue
+            raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
         chunk_selection, array_selection, _drop_axes = sub_transform_to_selections(
             sub_transform, out_indices
         )
