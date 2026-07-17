@@ -38,7 +38,7 @@ from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_transforms.transform import IndexTransform
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from zarr_transforms.grid import ChunkGridLike
 
@@ -68,16 +68,35 @@ def iter_chunk_transforms(
     """
     dim_grids = chunk_grid._dimensions
 
-    # Enumerate all possible chunks via cartesian product of per-dim chunk ranges
-    # For each candidate chunk, intersect the transform with the chunk domain.
-    # The transform.intersect method handles both orthogonal and vectorized cases.
-    chunk_ranges: list[range] = []
+    # Enumerate candidate chunks via the cartesian product of per-dimension
+    # candidate chunk ids, then for each candidate intersect the transform with
+    # the chunk domain (`transform.intersect` handles orthogonal and vectorized
+    # cases alike, filtering out combinations it does not actually touch).
+    #
+    # Each dimension contributes exactly the chunk ids it can touch:
+    #
+    # - `ConstantMap`/`DimensionMap` dims contribute a contiguous `range` — a
+    #   single chunk for a constant, and the span between the first and last
+    #   chunk for a slice. These are already tight (or nearly so).
+    # - `ArrayMap` (fancy) dims contribute only the *distinct* chunk ids the
+    #   index array actually lands in (`np.unique`), never the dense
+    #   `range(min_chunk, max_chunk + 1)` between them. A sparse fancy selection
+    #   (e.g. two far-apart coordinates) would otherwise enumerate every chunk
+    #   in the bounding box, making resolution scale with grid size instead of
+    #   with the number of selected coordinates.
+    #
+    # For >= 2 correlated (vindex) ArrayMaps the per-dimension distinct sets
+    # over-approximate the *joint* touched set (their cartesian product includes
+    # combinations no single point lands in), but `intersect` filters those out,
+    # so the yielded chunks are identical either way — and the work stays bounded
+    # by the per-dimension distinct chunk counts, not the grid size.
+    chunk_candidates: list[Sequence[int]] = []
     for out_dim, m in enumerate(transform.output):
         dg = dim_grids[out_dim]
         if isinstance(m, ConstantMap):
             # Single chunk
             c = dg.index_to_chunk(m.offset)
-            chunk_ranges.append(range(c, c + 1))
+            chunk_candidates.append((c,))
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             dim_lo = transform.domain.inclusive_min[d]
@@ -92,7 +111,7 @@ def iter_chunk_transforms(
                 s_max = m.offset + m.stride * dim_lo
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
-            chunk_ranges.append(range(first, last + 1))
+            chunk_candidates.append(range(first, last + 1))
         elif isinstance(m, ArrayMap):
             storage = m.offset + m.stride * m.index_array
             flat = storage.ravel().astype(np.intp)
@@ -100,13 +119,12 @@ def iter_chunk_transforms(
                 # Empty fancy selection: no coordinates, so no chunks are touched.
                 return
             chunk_ids = dg.indices_to_chunks(flat)
-            first = int(chunk_ids.min())
-            last = int(chunk_ids.max())
-            chunk_ranges.append(range(first, last + 1))
+            # Enumerate only the distinct chunks the coordinates land in.
+            chunk_candidates.append([int(c) for c in np.unique(chunk_ids)])
 
     import itertools
 
-    for chunk_coords_tuple in itertools.product(*chunk_ranges):
+    for chunk_coords_tuple in itertools.product(*chunk_candidates):
         chunk_coords = tuple(int(c) for c in chunk_coords_tuple)
 
         # Build the chunk domain in storage space

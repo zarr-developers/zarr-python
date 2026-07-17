@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from zarr.core.chunk_grids import ChunkGrid, FixedDimension
 
@@ -7,6 +9,9 @@ from zarr_transforms.chunk_resolution import iter_chunk_transforms, sub_transfor
 from zarr_transforms.domain import IndexDomain
 from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_transforms.transform import IndexTransform
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class TestChunkResolutionIdentity:
@@ -103,6 +108,110 @@ class TestChunkResolutionArray:
         assert (0,) in coords_list
         assert (1,) in coords_list
         assert (2,) in coords_list
+
+
+def _count_intersect_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Wrap `IndexTransform.intersect` with a call counter.
+
+    Returns a mutable dict whose `"n"` entry is the number of times
+    `intersect` is invoked. Used to assert that candidate-chunk enumeration is
+    proportional to the *touched* chunks, not the dense bounding box between the
+    min and max touched chunk.
+    """
+    calls = {"n": 0}
+    original = IndexTransform.intersect
+
+    def counting(self: IndexTransform, output_domain: IndexDomain) -> object:
+        calls["n"] += 1
+        return original(self, output_domain)
+
+    monkeypatch.setattr(IndexTransform, "intersect", counting)
+    return calls
+
+
+class TestChunkResolutionTouchedOnly:
+    """`iter_chunk_transforms` must enumerate only the chunks a fancy selection
+    actually touches — never the dense `range(min_chunk, max_chunk + 1)` bounding
+    box. These guard against a regression to bounding-box enumeration, whose cost
+    scales with grid size rather than with the number of selected coordinates.
+    """
+
+    def test_1d_sparse_vindex_enumerates_only_touched_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two far-apart coordinates on a 1000-chunk grid touch exactly 2 chunks.
+
+        A dense bounding-box enumeration would intersect ~1000 candidate chunks;
+        touched-only enumeration intersects exactly 2.
+        """
+        # 4000 elements, chunk size 4 -> 1000 chunks. coords 1 and 3997 land in
+        # chunk 0 and chunk 999 respectively (998 empty chunks between them).
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=4000),))
+        t = IndexTransform.from_shape((4000,)).vindex[np.array([1, 3997], dtype=np.intp)]
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        coords = sorted(r[0] for r in results)
+        assert coords == [(0,), (999,)]
+        # Exactly the touched chunks, independent of the 1000-chunk grid size.
+        assert calls["n"] == 2
+
+    def test_2d_orthogonal_enumerates_only_touched_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Orthogonal outer product of two 2-coordinate arrays touches 2x2 chunks.
+
+        Per-dimension distinct touched chunks: {0, 999} on each axis. The outer
+        product is 2*2 = 4 candidate chunks (all survive), versus ~1e6 for a
+        dense 1000x1000 bounding box.
+        """
+        grid = ChunkGrid(
+            dimensions=(
+                FixedDimension(size=4, extent=4000),
+                FixedDimension(size=4, extent=4000),
+            )
+        )
+        t = IndexTransform.from_shape((4000, 4000)).oindex[
+            np.array([1, 3997], dtype=np.intp), np.array([2, 3998], dtype=np.intp)
+        ]
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        coords = sorted(r[0] for r in results)
+        assert coords == [(0, 0), (0, 999), (999, 0), (999, 999)]
+        assert calls["n"] == 4
+
+    def test_2d_correlated_vindex_enumerates_per_dim_distinct_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two correlated (vindex) coordinate arrays scatter to 2 diagonal chunks.
+
+        The two points (1, 2) and (3997, 3998) touch chunks (0, 0) and
+        (999, 999). Per-dimension distinct touched chunks are {0, 999} on each
+        axis, so enumeration intersects the 2x2 = 4 combinations; the two
+        off-diagonal combinations are filtered out by `intersect`, leaving 2
+        surviving chunks. The key guarantee is that the work is bounded by the
+        per-dimension distinct touched chunks (4), not the dense 1e6 grid.
+        """
+        grid = ChunkGrid(
+            dimensions=(
+                FixedDimension(size=4, extent=4000),
+                FixedDimension(size=4, extent=4000),
+            )
+        )
+        t = IndexTransform.from_shape((4000, 4000)).vindex[
+            np.array([1, 3997], dtype=np.intp), np.array([2, 3998], dtype=np.intp)
+        ]
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        coords = sorted(r[0] for r in results)
+        assert coords == [(0, 0), (999, 999)]
+        # 2x2 per-dim-distinct combinations enumerated; 2 survive intersection.
+        assert calls["n"] == 4
 
 
 class TestSubTransformToSelections:
