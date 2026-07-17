@@ -169,6 +169,15 @@ exclude_also = [
 ]
 
 [tool.coverage.run]
+# Measured source lives in two trees: zarr's own `src` and the in-tree
+# `zarr-transforms` workspace package. Configured here (not via `--source=src`
+# on the CLI) so every `coverage run` invocation — the hatch run-coverage /
+# run-coverage-html / run-hypothesis scripts and ad-hoc local runs — measures
+# both consistently.
+source = [
+    "src",
+    "packages/zarr-transforms/src",
+]
 omit = [
     "bench/compress_normal.py",
 ]
@@ -211,17 +220,17 @@ matrix.deps.dependency-groups = [
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest --ignore tests/benchmarks {args:}",
     "coverage html",
 ]
 run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
 run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage run -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage xml",
 ]
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
@@ -244,7 +253,7 @@ python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
     "coverage xml",
 ]
 run = "pytest -m gpu --ignore tests/benchmarks"
