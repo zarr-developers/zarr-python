@@ -20,6 +20,8 @@ on. The `*Like` grid Protocols describe the chunk-grid surface chunk resolution
 consumes without importing zarr.
 """
 
+from importlib.metadata import version
+
 from zarr_transforms.chunk_resolution import (
     iter_chunk_transforms,
     sub_transform_to_selections,
@@ -39,6 +41,8 @@ from zarr_transforms.json import (
 from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_transforms.transform import IndexTransform, selection_to_transform
 
+__version__ = version("zarr-transforms")
+
 __all__ = [
     "ArrayMap",
     "ChunkGridLike",
@@ -51,6 +55,7 @@ __all__ = [
     "IndexTransformJSON",
     "OutputIndexMap",
     "OutputIndexMapJSON",
+    "__version__",
     "compose",
     "index_domain_from_json",
     "index_domain_to_json",
