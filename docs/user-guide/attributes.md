@@ -20,6 +20,7 @@ print('foo' in root.attrs)
 ```python exec="true" session="attributes" source="above" result="ansi"
 print(root.attrs['foo'])
 ```
+
 ```python exec="true" session="attributes" source="above" result="ansi"
 print(sorted(z.attrs))
 ```
