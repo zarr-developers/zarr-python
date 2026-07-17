@@ -46,7 +46,7 @@ directions:
 - Make Zarr-Python APIs ergonomic and useful for developers.
 - Expand our scope to cover vital quality-of-life routines like data copying,
   rechunking, and the like.
-- Support the growth of Python tools across all levels of the Zarr stack.
+- Ease the growth of Python tools across all levels of the Zarr stack.
 - Accelerate the implementation of new codecs, chunk grids, chunk key
   encodings, etc.
 
