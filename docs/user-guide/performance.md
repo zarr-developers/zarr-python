@@ -307,8 +307,12 @@ When writing to the same chunks from multiple processes, you should use external
 
 ## Pickle support
 
-Zarr arrays and groups can be pickled, as long as the underlying store object can be
-pickled. All of the storage classes provided in the `zarr.storage` module can be pickled.
+Zarr arrays and groups can be pickled as long as the underlying store object can be
+pickled. All storage classes provided in `zarr.storage` support pickling for read-only
+workloads. A `ZipStore` opened in an archive-writing mode is the exception: independent
+ZIP writers can corrupt the archive, so writable `ZipStore` objects reject pickling.
+Use a store that supports parallel writes, such as `LocalStore`, and create the ZIP
+archive only after writing is complete.
 
 If an array or group is backed by a persistent store such as a `zarr.storage.LocalStore`,
 `zarr.storage.ZipStore` or `zarr.storage.FsspecStore` then the store data

@@ -127,8 +127,8 @@ class StoreTests[S: Store, B: Buffer]:
         # quickly roundtrip data to a key to test that new store works
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         key = "foo"
-        await store.set(key, data_buf)
-        observed = await store.get(key, prototype=default_buffer_prototype())
+        await new_store.set(key, data_buf)
+        observed = await new_store.get(key, prototype=default_buffer_prototype())
         assert_bytes_equal(observed, data_buf)
 
     def test_store_read_only(self, store: S) -> None:

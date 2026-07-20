@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import pickle
 import shutil
 import tempfile
 import zipfile
@@ -83,6 +84,34 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
+
+    async def test_serializable_store(self, store: ZipStore) -> None:
+        data = cpu.Buffer.from_bytes(b"preserve me")
+        await store.set("sentinel", data)
+
+        with pytest.raises(TypeError, match="archive-writing mode cannot be pickled"):
+            pickle.dumps(store)
+
+        store.close()
+        with zipfile.ZipFile(store.path, mode="r") as archive:
+            assert archive.read("sentinel") == data.to_bytes()
+
+    async def test_read_only_store_is_serializable(self, tmp_path: Path) -> None:
+        path = tmp_path / "data.zip"
+        data = cpu.Buffer.from_bytes(b"preserve me")
+
+        writable = await ZipStore.open(path, mode="w")
+        await writable.set("sentinel", data)
+        writable.close()
+
+        read_only = await ZipStore.open(path, mode="r")
+        restored = pickle.loads(pickle.dumps(read_only))
+        observed = await restored.get("sentinel", prototype=default_buffer_prototype())
+
+        assert observed is not None
+        assert observed.to_bytes() == data.to_bytes()
+        read_only.close()
+        restored.close()
 
     # TODO: fix this warning
     @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
