@@ -569,6 +569,10 @@ def test_from_mapper_wraps_sync_filesystem(tmp_path: pathlib.Path) -> None:
     assert isinstance(store.fs, AsyncFileSystemWrapper)
 
 
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
 def test_with_read_only_shares_filesystem(tmp_path: pathlib.Path) -> None:
     """with_read_only() returns a store sharing the source's filesystem."""
     source = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
