@@ -1,0 +1,57 @@
+[
+  {
+    "name": "transform/omitted-output-identity",
+    "input": { "kind": "transform", "input_inclusive_min": [0, 0], "input_exclusive_max": [3, 4] },
+    "normalized": {
+      "input_rank": 2, "input_inclusive_min": [0, 0], "input_exclusive_max": [3, 4],
+      "input_labels": ["", ""],
+      "output": [
+        { "offset": 0, "stride": 1, "input_dimension": 0 },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
+  },
+  {
+    "name": "transform/implicit-bounds-and-labels",
+    "input": {
+      "kind": "transform",
+      "input_inclusive_min": [["-inf"], 7],
+      "input_exclusive_max": [["+inf"], 11],
+      "input_labels": ["x", "y"]
+    },
+    "normalized": {
+      "input_rank": 2,
+      "input_inclusive_min": [["-inf"], 7],
+      "input_exclusive_max": [["+inf"], 11],
+      "input_labels": ["x", "y"],
+      "output": [
+        { "offset": 0, "stride": 1, "input_dimension": 0 },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
+  },
+  {
+    "name": "transform/explicit-output-all-three-map-kinds",
+    "input": {
+      "kind": "transform",
+      "input_inclusive_min": [0],
+      "input_exclusive_max": [3],
+      "output": [
+        { "offset": 7 },
+        { "input_dimension": 0, "stride": 2 },
+        { "index_array": [1, 2, 3] }
+      ]
+    },
+    "normalized": {
+      "input_rank": 1,
+      "input_inclusive_min": [0],
+      "input_exclusive_max": [3],
+      "input_labels": [""],
+      "output": [
+        { "offset": 7 },
+        { "offset": 0, "stride": 2, "input_dimension": 0 },
+        { "offset": 0, "stride": 1, "index_array": [1, 2, 3], "index_array_bounds": ["-inf", "+inf"] }
+      ]
+    }
+  }
+]
