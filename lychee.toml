@@ -1,6 +1,9 @@
 # Configuration for the lychee link checker (https://lychee.cli.rs/).
 # Auto-discovered as ./lychee.toml by the lychee GitHub Action.
 
+# Treat redirect status codes as success rather than failures.
+accept = ["200..=299"]
+
 # Files lychee should not scan for links.
 exclude_path = [
   # mkdocs-material theme overrides: hrefs are Jinja expressions like
@@ -17,4 +20,6 @@ exclude = [
   # documentation of a command rather than a reachable link.
   '^https?://0\.0\.0\.0',
   '^https?://(localhost|127\.0\.0\.1)(:\d+)?',
+  # SPEC 0 page times out but is valid.
+  '^https://scientific-python\.org/specs/spec-0000',
 ]
