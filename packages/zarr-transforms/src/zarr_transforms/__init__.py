@@ -37,7 +37,10 @@ from zarr_transforms.json import (
     index_domain_to_json,
     index_transform_from_json,
     index_transform_to_json,
+    transform_from_canonical,
+    transform_to_canonical,
 )
+from zarr_transforms.messages import NdselError, normalize_ndsel, parse_ndsel
 from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_transforms.transform import IndexTransform, selection_to_transform
 
@@ -53,6 +56,7 @@ __all__ = [
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
+    "NdselError",
     "OutputIndexMap",
     "OutputIndexMapJSON",
     "__version__",
@@ -62,6 +66,10 @@ __all__ = [
     "index_transform_from_json",
     "index_transform_to_json",
     "iter_chunk_transforms",
+    "normalize_ndsel",
+    "parse_ndsel",
     "selection_to_transform",
     "sub_transform_to_selections",
+    "transform_from_canonical",
+    "transform_to_canonical",
 ]
