@@ -758,8 +758,12 @@ def create(
     codecs : Sequence of Codecs or dicts, optional
         An iterable of Codec or dict serializations of Codecs. Zarr V3 only.
 
-        The elements of `codecs` specify the transformation from array values to stored bytes.
-        Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
+        The elements of ``codecs`` specify the transformation from array values to stored bytes.
+        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+        In order, a Zarr format 3 pipeline contains zero or more
+        [`zarr.abc.codec.ArrayArrayCodec`][] filters, exactly one
+        [`zarr.abc.codec.ArrayBytesCodec`][] serializer, and zero or more
+        [`zarr.abc.codec.BytesBytesCodec`][] compressors.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;
@@ -892,9 +896,13 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no `compressors` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_compressors`
+        returns another bytestream. These values must be instances of
+        [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+        [`zarr.abc.codec.BytesBytesCodec`][]. Multiple compressors may be provided
+        for Zarr format 3. Codecs that take an array and return bytes are serializers
+        and must be supplied with ``serializer`` instead.
+        If no ``compressors`` are provided, a default set of compressors will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
         in [`zarr.config`][zarr.config].
         Use `None` to omit default compressors.
 
@@ -906,8 +914,10 @@ def create_array(
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no `serializer` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_serializer`
+        Codecs that are instances of [`zarr.abc.codec.ArrayBytesCodec`][] must be
+        supplied here, not with ``compressors``.
+        If no ``serializer`` is provided, a default serializer will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
         in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
