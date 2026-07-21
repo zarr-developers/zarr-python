@@ -1208,11 +1208,10 @@ class CoordinateIndexer(Indexer):
             )
 
         # Fast path: a single sorted, in-bounds, 1-D integer coordinate array over a regular
-        # (fixed-size) chunk grid -- the common "gather many disjoint ranges" case (e.g. CSR row
-        # gathers). The general path below does several full O(n_elements) numpy passes
-        # (wraparound, boundscheck, indices_to_chunks, broadcast, reshape, ravel_multi_index,
-        # bincount) over the flat selection; when the selection carries only O(#runs) of
-        # information that is wasteful. Here we locate chunk boundaries with a single searchsorted
+        # (fixed-size) chunk grid -- the common "gather many disjoint ranges" case.
+        # The path below does several full O(n_elements) numpy passes over the flat selection;
+        # when the selection carries only O(#runs) of information that is wasteful.
+        # Here we locate chunk boundaries with a single searchsorted
         # over the touched chunk edges -> O(#chunks_touched * log n_elements), skipping the passes.
         if len(selection_normalized) == 1:
             (coords,) = selection_normalized
