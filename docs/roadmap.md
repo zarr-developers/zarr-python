@@ -154,11 +154,16 @@ before/after numbers.
 
 ### Lazy indexing
 
-`Array.__getitem__` performs IO eagerly and returns NumPy arrays, which makes Zarr
-arrays the odd one out among modern array libraries and blocks compliance with
-the [Python Array API](https://data-apis.org/array-api/) standard. Add an
-opt-in `array.lazy[...]` accessor backed by a stable coordinate-mapping algebra
-(the `IndexTransform` work in
+The Zarr-Python Array API was initially designed to mirror NumPy, with eager
+syntax. `Array.__getitem__` performs IO eagerly and returns a NumPy arrays.
+That was helpful to the dominant use-case at the time of its creation, but it
+means deferred I/O and computation currently require an external library
+such as Dask. It means there is no build-in support for representing multi
+step reads as a single deferred plan. Further, it means that every chained
+selection round-trips to storage independently.
+
+To solve this limitation, Add an opt-in `array.lazy[...]` accessor backed by a
+stable coordinate-mapping algebra (the `IndexTransform` work in
 [#3906](https://github.com/zarr-developers/zarr-python/pull/3906)), plus a
 small query planner that turns chained selections into a single IO plan before
 any chunks are fetched. No new array type is introduced. Whether the *default*
