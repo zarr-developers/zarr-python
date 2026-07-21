@@ -120,7 +120,8 @@ class IndexTransform:
                     parts.append(f"[{start}, {stop})")
                 else:
                     parts.append(f"[{start}, {stop}) step {m.stride}")
-            elif isinstance(m, ArrayMap):
+            else:
+                # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
                 storage = m.offset + m.stride * m.index_array
                 n = int(storage.size)  # .size, not len(): index_array may be 0-d
                 if n <= 5:
@@ -137,7 +138,8 @@ class IndexTransform:
                 maps.append(f"out[{i}] = {m.offset}")
             elif isinstance(m, DimensionMap):
                 maps.append(f"out[{i}] = {m.offset} + {m.stride} * in[{m.input_dimension}]")
-            elif isinstance(m, ArrayMap):
+            else:
+                # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
                 maps.append(f"out[{i}] = {m.offset} + {m.stride} * arr{m.index_array.shape}[in]")
         maps_str = ", ".join(maps)
         return f"IndexTransform(domain={self.domain}, {maps_str})"
@@ -180,7 +182,8 @@ class IndexTransform:
                         stride=m.stride,
                     )
                 )
-            elif isinstance(m, ArrayMap):
+            else:
+                # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
                 new_output.append(
                     ArrayMap(
                         index_array=m.index_array,
@@ -354,7 +357,8 @@ def _intersect_orthogonal(
             new_min[d], new_max[d] = narrowed
             new_output.append(m)
 
-        elif isinstance(m, ArrayMap):
+        else:
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             # Orthogonal: the array varies over a single axis (its dependency
             # axis, or `input_dimension` for a degenerate length-1 array). Filter
             # along that axis and keep the array at full input rank so the
@@ -619,7 +623,8 @@ def _reindex_array(
                     # Broadcast axis: keep the single element and drop the axis.
                     idx.append(0)
             old_dim += 1
-        elif isinstance(sel, slice):
+        else:
+            # sel: slice (normalized: tuple[int | slice | None, ...])
             if old_dim < arr.ndim:
                 if old_dim in dependent:
                     lo = domain.inclusive_min[old_dim]
@@ -739,7 +744,8 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             dropped_dims.add(old_dim)
             dim_int_val[old_dim] = idx
             old_dim += 1
-        elif isinstance(sel, slice):
+        else:
+            # sel: slice (normalized: tuple[int | slice | None, ...])
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
 
@@ -784,7 +790,8 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                 )
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
-        elif isinstance(m, ArrayMap):
+        else:
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             new_arr = _reindex_array(m, normalized, transform.domain)
             array_input_dim: int | None = None
             if m.input_dimension is not None:
@@ -925,7 +932,9 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             new_exclusive_max.append(len(sel))
             old_to_new_dim[old_dim] = new_dim_idx
             new_dim_idx += 1
-        elif isinstance(sel, slice):
+        else:
+            # sel: slice (_normalize_oindex_selection returns
+            # tuple[np.ndarray | slice, ...])
             lo = transform.domain.inclusive_min[old_dim]
             hi = transform.domain.exclusive_max[old_dim]
             start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
@@ -976,7 +985,8 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 )
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
-        elif isinstance(m, ArrayMap):
+        else:
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, list(dim_array.keys()))
             new_arr = _reindex_array_oindex(m.index_array, normalized, transform.domain)
             array_input_dim: int | None = None
@@ -1148,7 +1158,8 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                         input_dimension=new_input_dim, offset=new_offset, stride=new_stride
                     )
                 )
-        elif isinstance(m, ArrayMap):
+        else:
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, array_dims)
             new_arr = _reindex_array_oindex(m.index_array, processed, transform.domain)
             new_output.append(

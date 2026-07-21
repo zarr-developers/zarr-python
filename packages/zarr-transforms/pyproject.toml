@@ -78,6 +78,17 @@ include = ["src"]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
+# This strict config was written for zarr-metadata's JSON/dataclass-shaped
+# code. zarr-transforms is numpy-heavy, and numpy's stubs return partially
+# unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
+# fully-typed call sites, so the reportUnknown* family below cannot reasonably
+# be satisfied here. Downgraded to warnings (not silenced) rather than
+# disabled outright, and CI (which only fails the pyright job on errors, not
+# warnings) still surfaces them for visibility.
+reportUnknownVariableType = "warning"
+reportUnknownArgumentType = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownParameterType = "warning"
 
 [tool.numpydoc_validation]
 checks = [

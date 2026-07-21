@@ -51,7 +51,19 @@ import numpy as np
 from zarr_transforms.domain import IndexDomain
 from zarr_transforms.messages import normalize_ndsel
 from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_transforms.transform import IndexTransform, _array_map_dependency_axes
+from zarr_transforms.transform import (
+    IndexTransform,
+    _array_map_dependency_axes,  # pyright: ignore[reportPrivateUsage]
+)
+
+# `_array_map_dependency_axes` is a leading-underscore helper in `transform.py`,
+# but it is deliberately shared with this module (the engine-level JSON <->
+# `IndexTransform` lowering below needs the same dependency-axis logic that
+# `transform.py`'s own array-reindexing helpers use). It is not part of the
+# package's public API; pyright's `reportPrivateUsage` flags the cross-module
+# import anyway. See `chunk_resolution.py`'s `_dimensions` suppression for the
+# analogous rationale — whether to promote either symbol out of "private" is
+# an open pre-publish API decision, not resolved here.
 
 # ---------------------------------------------------------------------------
 # TypedDict definitions (canonical JSON shapes)
@@ -176,18 +188,16 @@ def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
     if isinstance(m, DimensionMap):
         return {"offset": m.offset, "stride": m.stride, "input_dimension": m.input_dimension}
 
-    if isinstance(m, ArrayMap):
-        if m.index_array.size == 1:
-            value = int(m.index_array.reshape(-1)[0])
-            return {"offset": m.offset + m.stride * value}
-        return {
-            "offset": m.offset,
-            "stride": m.stride,
-            "index_array": m.index_array.tolist(),
-            "index_array_bounds": ["-inf", "+inf"],
-        }
-
-    raise TypeError(f"Unknown output map type: {type(m)}")
+    # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
+    if m.index_array.size == 1:
+        value = int(m.index_array.reshape(-1)[0])
+        return {"offset": m.offset + m.stride * value}
+    return {
+        "offset": m.offset,
+        "stride": m.stride,
+        "index_array": m.index_array.tolist(),
+        "index_array_bounds": ["-inf", "+inf"],
+    }
 
 
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:

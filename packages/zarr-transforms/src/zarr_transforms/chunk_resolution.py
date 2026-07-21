@@ -125,7 +125,13 @@ def iter_chunk_transforms(
     - `out_indices`: for vectorized/array indexing, the output scatter
       indices (integer array). `None` for basic/slice indexing.
     """
-    dim_grids = chunk_grid._dimensions
+    # `_dimensions` is declared on the `ChunkGridLike` Protocol in `grid.py` so
+    # that zarr's concrete `ChunkGrid` (whose own `_dimensions` is a private
+    # attribute) satisfies it structurally without a hard zarr import. Pyright's
+    # `reportPrivateUsage` still fires on the underscore name; renaming the
+    # Protocol member (or zarr's attribute) is an open pre-publish API
+    # decision, not made here.
+    dim_grids = chunk_grid._dimensions  # pyright: ignore[reportPrivateUsage]
 
     array_map_1d = _one_dimensional_correlated_array_map(transform)
     if array_map_1d is not None:
@@ -181,8 +187,9 @@ def iter_chunk_transforms(
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
             chunk_candidates.append(range(first, last + 1))
-        elif isinstance(m, ArrayMap):
-            # already computed these storage coordinates for a correlated 1-D map.
+        else:
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap).
+            # Storage coordinates were already computed for a correlated 1-D map.
             storage = (
                 array_map_1d[1] if array_map_1d is not None else m.offset + m.stride * m.index_array
             )

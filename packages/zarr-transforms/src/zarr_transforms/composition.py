@@ -34,10 +34,8 @@ def _compose_single(outer: IndexTransform, inner_map: OutputIndexMap) -> OutputI
     if isinstance(inner_map, DimensionMap):
         return _compose_dimension(outer, inner_map)
 
-    if isinstance(inner_map, ArrayMap):
-        return _compose_array(outer, inner_map)
-
-    raise TypeError(f"Unknown output map type: {type(inner_map)}")  # pragma: no cover
+    # inner_map: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
+    return _compose_array(outer, inner_map)
 
 
 def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> OutputIndexMap:
@@ -61,18 +59,16 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
             stride=stride_i * outer_map.stride,
         )
 
-    if isinstance(outer_map, ArrayMap):
-        # Affine post-composition leaves the index array (and hence its full
-        # input rank and dependency axes) untouched; carry the orthogonal
-        # binding through unchanged.
-        return ArrayMap(
-            index_array=outer_map.index_array,
-            offset=offset_i + stride_i * outer_map.offset,
-            stride=stride_i * outer_map.stride,
-            input_dimension=outer_map.input_dimension,
-        )
-
-    raise TypeError(f"Unknown output map type: {type(outer_map)}")  # pragma: no cover
+    # outer_map: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
+    # Affine post-composition leaves the index array (and hence its full
+    # input rank and dependency axes) untouched; carry the orthogonal
+    # binding through unchanged.
+    return ArrayMap(
+        index_array=outer_map.index_array,
+        offset=offset_i + stride_i * outer_map.offset,
+        stride=stride_i * outer_map.stride,
+        input_dimension=outer_map.input_dimension,
+    )
 
 
 def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap:
