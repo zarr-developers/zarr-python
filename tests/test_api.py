@@ -195,6 +195,26 @@ async def test_open_like_creates_array_by_default(
     assert np.all(Array(new_arr)[:] == ref_arr.fill_value)
 
 
+async def test_open_like_default_mode_rejects_read_only_store(
+    zarr_format: ZarrFormat,
+) -> None:
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+    )
+
+    with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
+        await zarr.api.asynchronous.open_like(
+            ref_arr,
+            path="foo",
+            store=MemoryStore(read_only=True),
+            zarr_format=zarr_format,
+        )
+
+
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
