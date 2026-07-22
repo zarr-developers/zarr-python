@@ -801,8 +801,8 @@ def normalize_chunks_nd(
     """
     if chunks is None or chunks is True:
         raise ValueError(
-            f'{chunks!r} is not a valid chunk input. Use chunks="auto" or omit the chunks '
-            "argument for automatic chunking, or pass an int / tuple of ints."
+            f"{chunks!r} is not a valid chunk input. "
+            "Expected an int, an iterable of ints, or False."
         )
 
     # handle no chunking
