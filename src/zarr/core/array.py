@@ -351,6 +351,13 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     # derived, per-array data path; excluded from equality/repr like other
     # engine instances lack value semantics (two default engines are never `==`)
     engine: AsyncArrayEngine = field(init=False, compare=False, repr=False)
+    # the ORIGINAL engine spec (name/instance/None) this array was built with,
+    # kept so `with_config` can re-resolve the same engine family against the new
+    # config instead of freezing the already-resolved engine (which would carry
+    # the old config); excluded from equality/repr for the same reason as `engine`
+    _engine_spec: AsyncArrayEngine | EngineName | None = field(
+        init=False, compare=False, repr=False
+    )
     _chunk_grid: ChunkGrid = field(init=False)
     config: ArrayConfig
 
@@ -391,6 +398,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+        object.__setattr__(self, "_engine_spec", engine)
         object.__setattr__(
             self,
             "engine",
@@ -1218,7 +1226,15 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             # Merge new config with existing config, so missing keys are inherited
             # from the current array rather than from global defaults
             new_config = ArrayConfig(**{**self.config.to_dict(), **config})  # type: ignore[arg-type]
-        return type(self)(metadata=self.metadata, store_path=self.store_path, config=new_config)
+        # re-resolve the ORIGINAL engine spec against the new config (a named
+        # engine gets rebuilt with `new_config`; an instance is returned as-is).
+        # Passing `self.engine` here would freeze the old config into the copy.
+        return type(self)(
+            metadata=self.metadata,
+            store_path=self.store_path,
+            config=new_config,
+            engine=self._engine_spec,
+        )
 
     async def nchunks_initialized(self) -> int:
         """
@@ -2306,7 +2322,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         A new Array
         """
-        return type(self)(self._async_array.with_config(config))
+        # preserve this array's original engine spec so the new copy re-resolves
+        # the same engine family (the async array carries its own spec too)
+        return type(self)(self._async_array.with_config(config), engine_spec=self._engine_spec)
 
     @property
     def nbytes(self) -> int:
@@ -4039,7 +4057,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
           overwritten by the new values.
         """
         new_array = sync(self.async_array.update_attributes(new_attributes))
-        return type(self)(new_array)
+        # carry the original engine spec so the new wrapper re-resolves the same
+        # engine family rather than silently falling back to the default engine
+        return type(self)(new_array, engine_spec=self._engine_spec)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
