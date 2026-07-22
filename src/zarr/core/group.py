@@ -1939,7 +1939,7 @@ class Group(SyncMixin):
         >>> group = zarr.group()
         >>> group["foo"] = np.array(zarr.zeros((10,)))
         >>> group["foo"]
-        <Array memory://.../foo shape=(10,) dtype=float64 domain={ [0, 10) }>
+        <Array memory://.../foo shape=(10,) dtype=float64>
         """
         self._sync(self._async_group.setitem(key, value))
 
@@ -2259,7 +2259,7 @@ class Group(SyncMixin):
         >>> group = zarr.group()
         >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
         >>> list(group.arrays())
-        [('subarray', <Array memory://.../subarray shape=(10,) dtype=int8 domain={ [0, 10) }>)]
+        [('subarray', <Array memory://.../subarray shape=(10,) dtype=int8>)]
         """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
             yield name, Array(async_array)
@@ -2288,7 +2288,7 @@ class Group(SyncMixin):
         >>> group = zarr.group()
         >>> subarray = group.create_array("subarray", dtype="i1", shape=(10,), chunks=(10,))
         >>> list(group.array_values())
-        [<Array memory://.../subarray shape=(10,) dtype=int8 domain={ [0, 10) }>]
+        [<Array memory://.../subarray shape=(10,) dtype=int8>]
         """
         for _, array in self.arrays():
             yield array

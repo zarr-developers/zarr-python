@@ -2002,8 +2002,29 @@ def test_array_repr(store: Store) -> None:
     shape = (2, 3, 4)
     dtype = "uint8"
     arr = zarr.create_array(store, shape=shape, dtype=dtype)
-    domain = "{ [0, 2), [0, 3), [0, 4) }"
-    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype} domain={domain}>"
+    # Identity (non-view) arrays use the legacy repr with no `domain=` suffix,
+    # byte-identical across `Array` and `AsyncArray`.
+    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
+    assert str(arr._async_array) == f"<AsyncArray {store} shape={shape} dtype={dtype}>"
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+def test_array_repr_lazy_view(store: Store) -> None:
+    """Non-identity lazy views carry a `domain={...}` suffix on both the sync
+    `Array` and the `AsyncArray` classes; identity arrays never do."""
+    shape = (2, 3, 4)
+    arr = zarr.create_array(store, shape=shape, dtype="uint8")
+    # Sync view.
+    view = arr.lazy[1:2]
+    assert "domain={ [1, 2)" in repr(view)
+    # Async view (reachable via the async translate_by surface). A pure domain
+    # translation leaves the addressed storage box unchanged, so the suffix
+    # shows the storage coordinates; what matters here is that the suffix appears.
+    async_view = arr._async_array.translate_by((1, 0, 0))
+    assert not async_view._is_identity
+    assert "domain={ [0, 2), [0, 3), [0, 4) }" in repr(async_view)
+    # And the identity async array still has no suffix.
+    assert "domain=" not in repr(arr._async_array)
 
 
 class UnknownObjectCodecDtype(VariableLengthUTF8):

@@ -1956,7 +1956,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self
 
     def __repr__(self) -> str:
-        return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
+        base = f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}"
+        # Identity (non-view) arrays keep the legacy repr; only lazy views carry
+        # a `domain={...}` suffix describing the view's coordinate box.
+        if self._is_identity:
+            return f"{base}>"
+        return f"{base} domain={self._transform.selection_repr}>"
 
     @property
     def info(self) -> Any:
@@ -4462,11 +4467,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return type(self)(new_array)
 
     def __repr__(self) -> str:
-        t = self._async_array._transform
-        return (
-            f"<Array {self.store_path} "
-            f"shape={self.shape} dtype={self.dtype} domain={t.selection_repr}>"
-        )
+        base = f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}"
+        # Identity (non-view) arrays keep the legacy repr; only lazy views carry
+        # a `domain={...}` suffix describing the view's coordinate box.
+        if self._async_array._is_identity:
+            return f"{base}>"
+        return f"{base} domain={self._async_array._transform.selection_repr}>"
 
     @property
     def info(self) -> Any:
