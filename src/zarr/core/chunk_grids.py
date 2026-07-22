@@ -754,12 +754,8 @@ def normalize_chunks_1d(chunks: object, span: int) -> np.ndarray[tuple[int], np.
             return np.array([chunks], dtype=np.int64)
         n = ceildiv(span, chunks)
         return np.full(n, chunks, dtype=np.int64)
-    if isinstance(chunks, (str, bytes)):
-        raise TypeError(
-            f"{chunks!r} is not a valid chunk size for a dimension. "
-            "Expected an int or an iterable of ints."
-        )
-    if not isinstance(chunks, Iterable):
+    # str/bytes are iterable but never a valid chunk specification
+    if isinstance(chunks, (str, bytes)) or not isinstance(chunks, Iterable):
         raise TypeError(
             f"{chunks!r} is not a valid chunk size for a dimension. "
             "Expected an int or an iterable of ints."
@@ -816,12 +812,9 @@ def normalize_chunks_nd(
     # handle 1D convenience form. bool is excluded above so this only catches actual ints.
     if isinstance(chunks, numbers.Integral):
         chunks_tuple: tuple[Any, ...] = tuple(int(chunks) for _ in shape)
-    elif isinstance(chunks, (str, bytes)):
-        raise TypeError(
-            f"{chunks!r} is not a valid chunk input. Expected an int or an iterable of ints."
-        )
-    elif isinstance(chunks, Iterable):
-        # materialize before use so generators are supported and len() is safe
+    elif isinstance(chunks, Iterable) and not isinstance(chunks, (str, bytes)):
+        # materialize before use so generators are supported and len() is safe;
+        # str/bytes are iterable but never a valid chunk specification
         chunks_tuple = tuple(chunks)
     else:
         raise TypeError(
