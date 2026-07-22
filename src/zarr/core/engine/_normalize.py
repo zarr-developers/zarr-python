@@ -211,22 +211,3 @@ def normalize_coordinate(
     ends = tuple(int(c.max()) + 1 if c.size else 0 for c in coords)
     post = tuple(c - s for c, s in zip(coords, starts, strict=True))
     return Region(start=starts, end_exclusive=ends), post
-
-
-def normalize_block(
-    block_coords: tuple[int, ...],
-    *,
-    chunk_grid_shape: tuple[int, ...],
-    chunk_shape: tuple[int, ...],
-    shape: tuple[int, ...],
-) -> Region:
-    """Normalize a block (chunk-grid) selection to its contiguous box."""
-    starts = []
-    ends = []
-    for dim, (b, nblocks, csize, size) in enumerate(
-        zip(block_coords, chunk_grid_shape, chunk_shape, shape, strict=True)
-    ):
-        idx = _normalize_int(b, nblocks, dim)
-        starts.append(idx * csize)
-        ends.append(min((idx + 1) * csize, size))
-    return Region(start=tuple(starts), end_exclusive=tuple(ends))

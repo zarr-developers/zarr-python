@@ -7,7 +7,6 @@ from zarr.core.engine._default import (
 from zarr.core.engine._normalize import (
     apply_post_index,
     normalize_basic,
-    normalize_block,
     normalize_coordinate,
     normalize_orthogonal,
     squeeze_axes,
@@ -30,7 +29,6 @@ __all__ = [
     "apply_post_index",
     "classify_engine_arg",
     "normalize_basic",
-    "normalize_block",
     "normalize_coordinate",
     "normalize_orthogonal",
     "resolve_async_engine",

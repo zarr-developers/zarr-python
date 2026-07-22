@@ -9,7 +9,6 @@ import pytest
 from zarr.core.engine import (
     apply_post_index,
     normalize_basic,
-    normalize_block,
     normalize_coordinate,
     normalize_orthogonal,
     strip_squeeze,
@@ -74,13 +73,6 @@ def test_normalize_coordinate_matches_numpy_vindex() -> None:
     coords = (np.array([9, 0, 3, 3]), np.array([8, 0, 2, 2]))
     region, post = normalize_coordinate(coords, SHAPE)
     np.testing.assert_array_equal(apply_post_index(_read_box(region), post), ARR[coords])
-
-
-def test_normalize_block_is_contiguous() -> None:
-    # chunk shape (3, 4) over SHAPE (10, 9): block (1, 2) spans rows 3:6, cols 8:9
-    region = normalize_block((1, 2), chunk_grid_shape=(4, 3), chunk_shape=(3, 4), shape=SHAPE)
-    assert region.start == (3, 8)
-    assert region.end_exclusive == (6, 9)
 
 
 def test_normalize_basic_rejects_fancy() -> None:
