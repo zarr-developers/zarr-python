@@ -113,6 +113,11 @@ group = zarr.open_group(store=store, mode='r')
 print(group)
 ```
 
+By default, `LocalStore` writes the temporary files used by atomic writes to the system temporary
+directory. Set a different location with the `tmp_dir` argument or globally via the
+`store.local.tmp_dir` config option (`ZARR_STORE__LOCAL__TMP_DIR`). The temporary directory
+should be on the same filesystem as the store, or writes may fail with a cross-device error.
+
 ### Zip Store
 
 The [`zarr.storage.ZipStore`][] stores the contents of a Zarr hierarchy in a single
