@@ -58,3 +58,19 @@ async def test_asyncarray_routes_io_through_engine() -> None:
 def test_asyncarray_default_engine_attribute() -> None:
     z = zarr.create_array(MemoryStore(), shape=(4,), chunks=(2,), dtype="int8")
     assert isinstance(z.async_array.engine, DefaultAsyncArrayEngine)
+
+
+def test_strided_read_preserves_fortran_order() -> None:
+    z = zarr.create_array(
+        MemoryStore(),
+        shape=(8, 8),
+        chunks=(4, 4),
+        dtype="float64",
+        config={"order": "F"},
+    )
+    z[:, :] = np.asfortranarray(np.arange(64, dtype="float64").reshape(8, 8))
+    full = np.asarray(z[:, :])
+    strided = np.asarray(z[::2, ::2])
+    assert full.flags.f_contiguous
+    assert strided.flags.f_contiguous
+    np.testing.assert_array_equal(strided, np.arange(64.0).reshape(8, 8)[::2, ::2])

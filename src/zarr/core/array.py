@@ -5459,6 +5459,7 @@ async def _get_selection(
     dtype = _native_dtype(metadata)
     out_dtype = check_fields(fields, dtype)
     result_shape = _selection_result_shape(region, post_index, out_dtype)
+    order = metadata.order if metadata.zarr_format == 2 else config.order
 
     if out is not None:
         if not isinstance(out, NDBuffer):
@@ -5484,6 +5485,7 @@ async def _get_selection(
         # (from `pop_fields` on a field-free selection) means "all fields"
         box = box[fields]  # type: ignore[index]
     result = apply_post_index(box, post_index)
+    result = np.asarray(result, order=order)
     return _finalize_result(result, out, scalarize=scalarize)
 
 
