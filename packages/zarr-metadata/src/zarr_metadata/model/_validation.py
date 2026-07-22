@@ -161,6 +161,27 @@ def _check_literal(
     return []
 
 
+def _validate_extension_fields_v3(
+    doc: Mapping[object, object],
+    standard_keys: frozenset[str],
+    *,
+    additional_reserved_keys: frozenset[str] = frozenset(),
+) -> list[ValidationProblem]:
+    """Validate v3 top-level key types and unknown-field JSON payloads."""
+    problems: list[ValidationProblem] = []
+    reserved_keys = standard_keys | additional_reserved_keys
+    for key, value in doc.items():
+        if not isinstance(key, str):
+            problems.append(
+                ValidationProblem((), f"non-string top-level key {key!r}", "invalid_type")
+            )
+            continue
+        if key in reserved_keys:
+            continue
+        problems.extend(_prefix(key, validate_json(value)))
+    return problems
+
+
 def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
     """Return every reason `value` is not a v3 metadata field.
 
@@ -216,7 +237,7 @@ def _is_int_sequence(value: object) -> bool:
     is not an integer in a metadata document, so booleans are excluded.
     """
     return (
-        not isinstance(value, str)
+        not isinstance(value, (str, bytes, bytearray))
         and isinstance(value, Sequence)
         and all(
             isinstance(item, int) and not isinstance(item, bool)
@@ -267,11 +288,94 @@ def _is_dtype_v2(value: object) -> bool:
     return True
 
 
+def _is_canonical_dtype_v2(value: object) -> bool:
+    """Whether a validated v2 dtype uses the tuple-backed public representation."""
+    if isinstance(value, str):
+        return True
+    if not isinstance(value, tuple):
+        return False
+    for record in cast("tuple[object, ...]", value):
+        if not isinstance(record, tuple):
+            return False
+        fields = cast("tuple[object, ...]", record)
+        if not _is_canonical_dtype_v2(fields[1]):
+            return False
+        if len(fields) == 3 and not isinstance(fields[2], tuple):
+            return False
+    return True
+
+
+def _is_canonical_metadata_field_v3(value: object) -> bool:
+    """Whether a validated v3 metadata field has its declared runtime container type."""
+    return isinstance(value, (str, dict))
+
+
+def _is_canonical_array_metadata_v3(value: object) -> bool:
+    """Whether a validated v3 array document matches `ArrayMetadataV3` at runtime."""
+    if not isinstance(value, dict):
+        return False
+    doc = cast("dict[str, object]", value)
+    if not isinstance(doc["shape"], tuple) or not isinstance(doc["codecs"], tuple):
+        return False
+    if "storage_transformers" in doc and not isinstance(doc["storage_transformers"], tuple):
+        return False
+    if "dimension_names" in doc and not isinstance(doc["dimension_names"], tuple):
+        return False
+    if not all(
+        _is_canonical_metadata_field_v3(doc[key])
+        for key in ("data_type", "chunk_grid", "chunk_key_encoding")
+    ):
+        return False
+    if not all(
+        _is_canonical_metadata_field_v3(item) for item in cast("tuple[object, ...]", doc["codecs"])
+    ):
+        return False
+    if "storage_transformers" in doc and not all(
+        _is_canonical_metadata_field_v3(item)
+        for item in cast("tuple[object, ...]", doc["storage_transformers"])
+    ):
+        return False
+    return all(
+        key in ARRAY_METADATA_STANDARD_KEYS_V3 or isinstance(item, dict)
+        for key, item in doc.items()
+    )
+
+
+def _is_canonical_array_metadata_v2(value: object) -> bool:
+    """Whether a validated v2 array document matches `ArrayMetadataV2` at runtime."""
+    if not isinstance(value, dict):
+        return False
+    doc = cast("dict[str, object]", value)
+    if not isinstance(doc["shape"], tuple) or not isinstance(doc["chunks"], tuple):
+        return False
+    if not _is_canonical_dtype_v2(doc["dtype"]):
+        return False
+    compressor = doc["compressor"]
+    if compressor is not None and not isinstance(compressor, dict):
+        return False
+    filters = doc["filters"]
+    return filters is None or (
+        isinstance(filters, tuple)
+        and all(isinstance(item, dict) for item in cast("tuple[object, ...]", filters))
+    )
+
+
 def _is_codec_v2(value: object) -> bool:
     """Whether `value` is shaped like a v2 codec config: a mapping with a string `id`."""
     return isinstance(value, Mapping) and isinstance(
         cast("Mapping[object, object]", value).get("id"), str
     )
+
+
+def _validate_codec_v2(value: object) -> list[ValidationProblem]:
+    """Validate a v2 codec's required shape and JSON-valued configuration."""
+    if not _is_codec_v2(value):
+        return [
+            ValidationProblem(
+                (), "expected a codec configuration with a string 'id'", "invalid_type"
+            )
+        ]
+    return validate_json(value)
 
 
 def _validate_attributes(value: object) -> list[ValidationProblem]:
@@ -307,6 +411,11 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc)
+    problems.extend(
+        _validate_extension_fields_v3(
+            cast("Mapping[object, object]", value), ARRAY_METADATA_STANDARD_KEYS_V3
+        )
+    )
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
     problems.extend(_validate_dim_sequence(doc, "shape"))
@@ -357,15 +466,16 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
 
 def is_array_metadata_v3(value: object) -> TypeIs[ArrayMetadataV3]:
     """Whether `value` is a structurally-valid v3 array metadata document."""
-    return not validate_array_metadata_v3(value)
+    return not validate_array_metadata_v3(value) and _is_canonical_array_metadata_v3(value)
 
 
 def parse_array_metadata_v3(value: object) -> ArrayMetadataV3:
     """Return `value` narrowed to `ArrayMetadataV3`, or raise `MetadataValidationError`."""
-    problems = validate_array_metadata_v3(value)
+    normalized = arrays_to_tuples(value)
+    problems = validate_array_metadata_v3(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ArrayMetadataV3, value)
+    return cast(ArrayMetadataV3, normalized)
 
 
 def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
@@ -399,14 +509,8 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
         )
     if "compressor" in doc:
         compressor = doc["compressor"]
-        if compressor is not None and not _is_codec_v2(compressor):
-            problems.append(
-                ValidationProblem(
-                    ("compressor",),
-                    "expected null or a codec configuration with a string 'id'",
-                    "invalid_type",
-                )
-            )
+        if compressor is not None:
+            problems.extend(_prefix("compressor", _validate_codec_v2(compressor)))
     if "filters" in doc:
         filters = doc["filters"]
         if filters is not None and (
@@ -421,6 +525,9 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
                     "invalid_type",
                 )
             )
+        elif filters is not None:
+            for index, item in enumerate(cast("Sequence[object]", filters)):
+                problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
         problems.append(
             ValidationProblem(
@@ -438,15 +545,16 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
 
 def is_array_metadata_v2(value: object) -> TypeIs[ArrayMetadataV2]:
     """Whether `value` is a structurally-valid v2 array metadata document."""
-    return not validate_array_metadata_v2(value)
+    return not validate_array_metadata_v2(value) and _is_canonical_array_metadata_v2(value)
 
 
 def parse_array_metadata_v2(value: object) -> ArrayMetadataV2:
     """Return `value` narrowed to `ArrayMetadataV2`, or raise `MetadataValidationError`."""
-    problems = validate_array_metadata_v2(value)
+    normalized = arrays_to_tuples(value)
+    problems = validate_array_metadata_v2(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ArrayMetadataV2, value)
+    return cast(ArrayMetadataV2, normalized)
 
 
 def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
@@ -514,6 +622,13 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc)
+    problems.extend(
+        _validate_extension_fields_v3(
+            cast("Mapping[object, object]", value),
+            GROUP_METADATA_STANDARD_KEYS_V3,
+            additional_reserved_keys=frozenset({"consolidated_metadata"}),
+        )
+    )
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "group"))
     if "attributes" in doc:
@@ -587,7 +702,7 @@ def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:
         )
     try:
         return json.loads(mapping[key])
-    except json.JSONDecodeError as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise MetadataValidationError(
             [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]
         ) from exc
@@ -598,7 +713,11 @@ def arrays_to_tuples(obj: object) -> object:
     if isinstance(obj, list):
         return tuple(arrays_to_tuples(item) for item in cast("list[object]", obj))
     if isinstance(obj, dict):
-        return {
-            key: arrays_to_tuples(value) for key, value in cast("dict[object, object]", obj).items()
+        mapping = cast("dict[object, object]", obj)
+        converted: dict[object, object] = {
+            key: arrays_to_tuples(value) for key, value in mapping.items()
         }
+        if all(converted[key] is value for key, value in mapping.items()):
+            return cast("object", obj)
+        return converted
     return obj

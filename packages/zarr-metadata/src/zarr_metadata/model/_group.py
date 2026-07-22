@@ -25,6 +25,7 @@ from zarr_metadata.model._validation import (
     parse_group_metadata_v2,
     parse_group_metadata_v3,
     validate_consolidated_metadata_v3,
+    validate_json,
 )
 
 if TYPE_CHECKING:
@@ -323,11 +324,14 @@ class GroupMetadataModelV2:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV2:
-        zgroup = load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2)
+        zgroup_raw = cast("object", load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2))
+        if not isinstance(zgroup_raw, Mapping):
+            return cls.from_json(zgroup_raw)
+        zgroup = cast("Mapping[str, object]", zgroup_raw)
         if ATTRIBUTES_STORE_KEY_V2 in mapping:
-            zattrs = load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
+            zattrs = cast("object", load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2))
             return cls.from_json({**zgroup, "attributes": zattrs})
-        return cls.from_json(dict(zgroup))
+        return cls.from_json(zgroup)
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zgroup`
@@ -374,6 +378,18 @@ class ConsolidatedMetadataModelV2:
             for key in ("zarr_consolidated_format", "metadata")
             if key not in doc
         ]
+        if "zarr_consolidated_format" in doc and (
+            not isinstance(doc["zarr_consolidated_format"], int)
+            or isinstance(doc["zarr_consolidated_format"], bool)
+            or doc["zarr_consolidated_format"] != 1
+        ):
+            problems.append(
+                ValidationProblem(
+                    ("zarr_consolidated_format",),
+                    f"expected 1, got {doc['zarr_consolidated_format']!r}",
+                    "invalid_value",
+                )
+            )
         if "metadata" in doc:
             entries = doc["metadata"]
             if not isinstance(entries, Mapping) or not all(
@@ -384,6 +400,14 @@ class ConsolidatedMetadataModelV2:
                         ("metadata",), "expected a mapping with string keys", "invalid_type"
                     )
                 )
+            else:
+                for key, value in cast("Mapping[str, object]", entries).items():
+                    problems.extend(
+                        ValidationProblem(
+                            ("metadata", key, *problem.loc), problem.message, problem.kind
+                        )
+                        for problem in validate_json(value)
+                    )
         if problems:
             raise MetadataValidationError(problems)
         entries_tupled = cast(

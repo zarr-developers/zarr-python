@@ -447,11 +447,14 @@ class ArrayMetadataModelV2:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ArrayMetadataModelV2:
-        zarray = load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V2)
+        zarray_raw = cast("object", load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V2))
+        if not isinstance(zarray_raw, Mapping):
+            return cls.from_json(zarray_raw)
+        zarray = cast("Mapping[str, object]", zarray_raw)
         if ATTRIBUTES_STORE_KEY_V2 in mapping:
-            zattrs = load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2)
+            zattrs = cast("object", load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2))
             return cls.from_json({**zarray, "attributes": zattrs})
-        return cls.from_json(dict(zarray))
+        return cls.from_json(zarray)
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`

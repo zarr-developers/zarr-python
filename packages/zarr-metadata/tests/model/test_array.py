@@ -1152,6 +1152,22 @@ def test_from_key_value_invalid_json_raises_metadata_error() -> None:
     assert [p.kind for p in exc_info.value.problems] == ["invalid_json"]
 
 
+def test_from_key_value_invalid_utf8_raises_metadata_error() -> None:
+    """Invalid UTF-8 store bytes use the same invalid_json error channel."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ArrayMetadataModelV3.from_key_value({"zarr.json": b"\x80"})
+    assert [p.kind for p in exc_info.value.problems] == ["invalid_json"]
+
+
+def test_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
+    """A scalar .zarray document fails through the unified metadata error channel."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ArrayMetadataModelV2.from_key_value({".zarray": b"null"})
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((), "invalid_type")
+    ]
+
+
 def test_from_key_value_missing_key_kind() -> None:
     """A missing store key surfaces as a missing_key problem at the store-key loc."""
     with pytest.raises(MetadataValidationError) as exc_info:
@@ -1232,6 +1248,76 @@ def test_configuration_values_must_be_json() -> None:
     assert [(p.loc, p.kind) for p in problems] == [
         (("chunk_grid", "configuration", "chunk_shape"), "invalid_type")
     ]
+
+
+def test_v3_extension_keys_must_be_strings() -> None:
+    """A non-string top-level key cannot be represented by a v3 document type."""
+    doc: dict[object, object] = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc[1] = {"must_understand": False}
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
+        ((), "invalid_type")
+    ]
+
+
+def test_v3_extension_values_must_be_json() -> None:
+    """Extension payloads are JSON-checked before a model is constructed."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc["ext"] = {"must_understand": False, "payload": object()}
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
+        (("ext", "payload"), "invalid_type")
+    ]
+
+
+def test_v3_json_extension_without_waiver_is_preserved_as_must_understand() -> None:
+    """A JSON extension without an explicit false waiver remains must-understand."""
+    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc["ext"] = 1
+    model = ArrayMetadataModelV3.from_json(doc)
+    assert model.extra_fields["ext"] == 1
+    assert model.must_understand_fields == {"ext": 1}
+
+
+def test_v2_codec_configuration_values_must_be_json() -> None:
+    """Non-JSON codec parameters are rejected for compressors and filters."""
+    for field, value, expected_loc in (
+        ("compressor", {"id": "x", "payload": object()}, ("compressor", "payload")),
+        ("filters", ({"id": "x", "payload": object()},), ("filters", 0, "payload")),
+    ):
+        doc = dict(ArrayMetadataModelV2.create_default().to_json())
+        doc[field] = value
+        assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v2(doc)] == [
+            (expected_loc, "invalid_type")
+        ]
+
+
+def test_dimension_sequences_reject_binary_values() -> None:
+    """Binary buffers are not JSON arrays even though they are integer sequences."""
+    v3 = dict(ArrayMetadataModelV3.create_default().to_json()) | {"shape": b"\x02"}
+    v2 = dict(ArrayMetadataModelV2.create_default().to_json()) | {"chunks": b"\x02"}
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(v3)] == [
+        (("shape",), "invalid_type")
+    ]
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v2(v2)] == [
+        (("chunks",), "invalid_type")
+    ]
+
+
+def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
+    """Parsers return tuple-backed document types while guards reject raw list forms."""
+    v3_raw = json.loads(json.dumps(ArrayMetadataModelV3.create_default(shape=(2,)).to_json()))
+    v2_raw = json.loads(json.dumps(ArrayMetadataModelV2.create_default(shape=(2,)).to_json()))
+
+    assert validate_array_metadata_v3(v3_raw) == []
+    assert validate_array_metadata_v2(v2_raw) == []
+    assert not is_array_metadata_v3(v3_raw)
+    assert not is_array_metadata_v2(v2_raw)
+
+    v3_parsed = parse_array_metadata_v3(v3_raw)
+    v2_parsed = parse_array_metadata_v2(v2_raw)
+    assert isinstance(v3_parsed["shape"], tuple)
+    assert isinstance(v3_parsed["codecs"], tuple)
+    assert isinstance(v2_parsed["shape"], tuple)
+    assert isinstance(v2_parsed["chunks"], tuple)
 
 
 # --- must_understand partition (spec: MUST fail to open unrecognized fields) --

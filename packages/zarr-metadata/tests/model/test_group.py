@@ -90,6 +90,18 @@ def test_group_v3_bad_attributes() -> None:
         parse_group_metadata_v3({"zarr_format": 3, "node_type": "group", "attributes": 5})
 
 
+def test_group_v3_extension_fields_are_validated() -> None:
+    """Group extension payloads must be JSON values with a must-understand flag."""
+    doc = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "ext": {"must_understand": False, "payload": object()},
+    }
+    assert [(problem.loc, problem.kind) for problem in validate_group_metadata_v3(doc)] == [
+        (("ext", "payload"), "invalid_type")
+    ]
+
+
 def test_group_v3_key_value_roundtrip() -> None:
     """from_key_value(to_key_value()) is the identity for v3 groups."""
     model = GroupMetadataModelV3.create_default(attributes={"a": 1})
@@ -277,6 +289,35 @@ def test_consolidated_v2_not_a_mapping() -> None:
     """from_json rejects a non-mapping .zmetadata document."""
     with pytest.raises(MetadataValidationError, match="expected a mapping"):
         ConsolidatedMetadataModelV2.from_json([1])
+
+
+def test_consolidated_v2_format_literal_enforced() -> None:
+    """A .zmetadata document must declare consolidated format 1."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ConsolidatedMetadataModelV2.from_json({"zarr_consolidated_format": 2, "metadata": {}})
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        (("zarr_consolidated_format",), "invalid_value")
+    ]
+
+
+def test_consolidated_v2_metadata_values_must_be_json() -> None:
+    """Non-JSON values in the flat metadata map are rejected during ingestion."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ConsolidatedMetadataModelV2.from_json(
+            {"zarr_consolidated_format": 1, "metadata": {".zgroup": object()}}
+        )
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        (("metadata", ".zgroup"), "invalid_type")
+    ]
+
+
+def test_group_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
+    """A scalar .zgroup document fails through the unified metadata error channel."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        GroupMetadataModelV2.from_key_value({".zgroup": b"null"})
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((), "invalid_type")
+    ]
 
 
 # --- Literal-value enforcement -----------------------------------------------
