@@ -4470,7 +4470,7 @@ async def init_array(
     if chunks_input is None or chunks_input is True:
         raise ValueError(
             f'{chunks!r} is not a valid chunk input. Use chunks="auto" or omit the chunks '
-            "argument for automatic chunking, or pass an int / tuple of ints."
+            "argument for automatic chunking, or pass an int / iterable of ints."
         )
 
     if chunks == "auto":
