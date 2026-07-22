@@ -21,6 +21,7 @@ from typing_extensions import Sentinel, deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.engine import Region
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
@@ -81,32 +82,47 @@ from zarr.core.dtype import (
     parse_dtype,
 )
 from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
+from zarr.core.engine import (
+    apply_post_index,
+    normalize_basic,
+    normalize_coordinate,
+    normalize_orthogonal,
+    resolve_async_engine,
+    squeeze_axes,
+    strip_squeeze,
+)
 from zarr.core.indexing import (
     AsyncOIndex,
     AsyncVIndex,
-    BasicIndexer,
     BasicSelection,
     BlockIndex,
     BlockIndexer,
-    CoordinateIndexer,
     CoordinateSelection,
     Fields,
-    Indexer,
-    MaskIndexer,
     MaskSelection,
     OIndex,
-    OrthogonalIndexer,
     OrthogonalSelection,
     Selection,
     VIndex,
     _iter_grid,
     _iter_regions,
+    boundscheck_indices,
     check_fields,
     check_no_multi_fields,
+    ensure_tuple,
+    is_bool_array,
+    is_coordinate_selection,
+    is_integer,
+    is_integer_array,
+    is_mask_selection,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
     is_scalar,
+    normalize_integer_selection,
     pop_fields,
+    replace_ellipsis,
+    replace_lists,
+    wraparound_indices,
 )
 from zarr.core.metadata import (
     ArrayMetadata,
@@ -131,8 +147,8 @@ from zarr.core.metadata.v3 import (
 from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
-    ChunkNotFoundError,
     MetadataValidationError,
+    NegativeStepError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -152,9 +168,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.abc.engine import AsyncArrayEngine
     from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.engine import EngineName
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
@@ -327,6 +345,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
+    # derived, per-array data path; excluded from equality/repr like other
+    # engine instances lack value semantics (two default engines are never `==`)
+    engine: AsyncArrayEngine = field(init=False, compare=False, repr=False)
     _chunk_grid: ChunkGrid = field(init=False)
     config: ArrayConfig
 
@@ -336,6 +357,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None: ...
 
     @overload
@@ -344,6 +366,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None: ...
 
     def __init__(
@@ -351,6 +374,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None:
         metadata_parsed = parse_array_metadata(metadata)
         config_parsed = parse_array_config(config)
@@ -363,6 +387,17 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             self,
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
+        )
+        object.__setattr__(
+            self,
+            "engine",
+            resolve_async_engine(
+                engine,
+                store=store_path.store,
+                path=store_path.path,
+                metadata=metadata_parsed,
+                config=config_parsed,
+            ),
         )
 
     @classmethod
@@ -1411,22 +1446,25 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _get_selection(
         self,
-        indexer: Indexer,
+        region: Region,
+        post_index: tuple[Any, ...],
         *,
         prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
+        scalarize: bool = False,
     ) -> NDArrayLikeOrScalar:
+        """Route a normalized `(region, post_index)` read through this array's engine."""
         return await _get_selection(
-            self.store_path,
+            self.engine,
             self.metadata,
-            self.codec_pipeline,
             self.config,
-            self._chunk_grid,
-            indexer,
+            region,
+            post_index,
             prototype=prototype,
             out=out,
             fields=fields,
+            scalarize=scalarize,
         )
 
     async def getitem(
@@ -1471,15 +1509,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         np.int32(0)
         """
 
-        return await _getitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        region, post = _basic_region_post(selection, self.metadata.shape)
+        return await self._get_selection(region, post, prototype=prototype, scalarize=True)
 
     async def get_orthogonal_selection(
         self,
@@ -1489,17 +1522,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_orthogonal_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            out=out,
-            fields=fields,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        region, post = _orthogonal_region_post(selection, self.metadata.shape)
+        return await self._get_selection(region, post, prototype=prototype, out=out, fields=fields)
 
     async def get_mask_selection(
         self,
@@ -1509,17 +1535,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_mask_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            mask,
-            out=out,
-            fields=fields,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        region, post = _mask_region_post(mask, self.metadata.shape)
+        return await self._get_selection(region, post, prototype=prototype, out=out, fields=fields)
 
     async def get_coordinate_selection(
         self,
@@ -1529,17 +1548,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_coordinate_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            out=out,
-            fields=fields,
-            prototype=prototype,
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        region, post, sel_shape = _coordinate_region_post(selection, self.metadata.shape)
+        out_array = await self._get_selection(
+            region, post, prototype=prototype, out=out, fields=fields
         )
+        if hasattr(out_array, "shape"):
+            # restore the (possibly multi-dimensional) selection shape
+            out_array = cast("NDArrayLikeOrScalar", np.asarray(out_array).reshape(sel_shape))
+        return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
@@ -1549,19 +1567,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _set_selection(
         self,
-        indexer: Indexer,
+        region: Region,
+        post_index: tuple[Any, ...],
         value: npt.ArrayLike,
         *,
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
+        """Route a normalized `(region, post_index)` write through this array's engine."""
         return await _set_selection(
-            self.store_path,
+            self.engine,
             self.metadata,
-            self.codec_pipeline,
             self.config,
-            self._chunk_grid,
-            indexer,
+            region,
+            post_index,
             value,
             prototype=prototype,
             fields=fields,
@@ -1606,16 +1625,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
-        return await _setitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            value,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        region, post = _basic_region_post(selection, self.metadata.shape)
+        return await self._set_selection(region, post, value, prototype=prototype)
 
     @property
     def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
@@ -2826,12 +2839,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
+        region, post = _basic_region_post(selection, self.shape)
         return sync(
             self.async_array._get_selection(
-                BasicIndexer(selection, self.shape, self._chunk_grid),
+                region,
+                post,
                 out=out,
                 fields=fields,
                 prototype=prototype,
+                scalarize=True,
             )
         )
 
@@ -2935,8 +2951,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        region, post = _basic_region_post(selection, self.shape)
+        sync(
+            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        )
 
     def get_orthogonal_selection(
         self,
@@ -3063,10 +3081,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        region, post = _orthogonal_region_post(selection, self.shape)
         return sync(
             self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+                region, post, out=out, fields=fields, prototype=prototype
             )
         )
 
@@ -3181,9 +3199,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+        region, post = _orthogonal_region_post(selection, self.shape)
         return sync(
-            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
         )
 
     def get_mask_selection(
@@ -3269,10 +3287,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+        region, post = _mask_region_post(mask, self.shape)
         return sync(
             self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+                region, post, out=out, fields=fields, prototype=prototype
             )
         )
 
@@ -3358,8 +3376,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        region, post = _mask_region_post(mask, self.shape)
+        sync(
+            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        )
 
     def get_coordinate_selection(
         self,
@@ -3446,16 +3466,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        region, post, sel_shape = _coordinate_region_post(selection, self.shape)
         out_array = sync(
             self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+                region, post, out=out, fields=fields, prototype=prototype
             )
         )
 
         if hasattr(out_array, "shape"):
             # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
+            out_array = np.asarray(out_array).reshape(sel_shape)
         return out_array
 
     def set_coordinate_selection(
@@ -3537,8 +3557,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        # normalize the coordinate selection to a contiguous box + pointwise index
+        region, post, sel_shape = _coordinate_region_post(selection, self.shape)
+        flat_shape = (int(product(sel_shape)),)
 
         # handle value - need ndarray-like flatten value
         if not is_scalar(value, self.dtype):
@@ -3553,14 +3574,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             value = np.array(value).reshape(-1)
 
         if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+            isinstance(value, NDArrayLike) and flat_shape != value.shape
         ):
             raise ValueError(
-                f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                f"Attempting to set a selection of {sel_shape[0]} "
                 f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(
+            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        )
 
     def get_block_selection(
         self,
@@ -3659,11 +3682,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
+        region = _block_region(selection, self.shape, self._chunk_grid)
         return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+            self.async_array._get_selection(region, (), out=out, fields=fields, prototype=prototype)
         )
 
     def set_block_selection(
@@ -3759,8 +3780,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        region = _block_region(selection, self.shape, self._chunk_grid)
+        sync(self.async_array._set_selection(region, (), value, fields=fields, prototype=prototype))
 
     @property
     def vindex(self) -> VIndex:
@@ -5350,520 +5371,395 @@ def _get_chunk_spec(
     )
 
 
-async def _get_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    indexer: Indexer,
-    *,
-    prototype: BufferPrototype,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
+def _native_dtype(metadata: ArrayMetadata) -> np.dtype[Any]:
+    """The array's native numpy dtype, for both Zarr v2 and v3 metadata."""
+    zdtype = metadata.dtype if metadata.zarr_format == 2 else metadata.data_type
+    return zdtype.to_native_dtype()
+
+
+def _selection_result_shape(
+    region: Region, post_index: tuple[Any, ...], out_dtype: np.dtype[Any]
+) -> tuple[int, ...]:
+    """Shape of the post-indexed result for an ndim-preserving box read."""
+    return apply_post_index(np.empty(region.shape, dtype=out_dtype), post_index).shape
+
+
+def _axis_covers_full_ordered(p: Any, n: int, axis: int, ndim: int) -> bool:
+    """Whether post entry `p` selects axis `axis` (length `n`) fully and in order.
+
+    True for a full-range step-1 slice, and for an `np.ix_` outer-product array
+    for this axis -- shape `n` at `axis` and 1 elsewhere, values `arange(n)`. A
+    pointwise (coordinate) array has a different shape (`(N,)` on every axis), so
+    it is correctly rejected: `box[([0,1,2],[0,1,2])]` is the diagonal, not the
+    whole box.
+    """
+    if isinstance(p, slice):
+        return p.start is None and p.stop is None and p.step in (None, 1)
+    if isinstance(p, np.ndarray):
+        expected_shape = tuple(n if j == axis else 1 for j in range(ndim))
+        return p.shape == expected_shape and np.array_equal(p.reshape(-1), np.arange(n))
+    return False
+
+
+def _is_identity_read(post_index: tuple[Any, ...], box_shape: tuple[int, ...]) -> bool:
+    """Whether the post index leaves the ndim-preserving box read unchanged.
+
+    True for an empty post (block selection), a per-axis tuple of full step-1
+    slices (contiguous basic selections), and full-axis orthogonal outer slices
+    (`np.ix_(arange(n))`). In those cases the box the engine returned already *is*
+    the result, so it is returned without numpy coercion, preserving a custom
+    `NDArrayLike` type. Integer axes and the `_Squeeze` marker drop dimensions, so
+    they make the length differ or fail the per-axis check and are excluded.
+    """
+    if post_index == ():
+        return True
+    if len(post_index) != len(box_shape):
+        return False
+    ndim = len(box_shape)
+    return all(
+        _axis_covers_full_ordered(p, n, i, ndim)
+        for i, (p, n) in enumerate(zip(post_index, box_shape, strict=True))
+    )
+
+
+def _finalize_result(
+    result: NDArrayLike, out: NDBuffer | None, *, scalarize: bool
 ) -> NDArrayLikeOrScalar:
-    """
-    Get a selection from an array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    indexer : Indexer
-        The indexer specifying the selection.
-    prototype : BufferPrototype
-        A buffer prototype to use for the retrieved data.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
-    dtype = zdtype.to_native_dtype()
-
-    # Determine memory order
-    if metadata.zarr_format == 2:
-        order = metadata.order
-    else:
-        order = config.order
-
-    # check fields are sensible
-    out_dtype = check_fields(fields, dtype)
-
-    # setup output buffer
+    """Apply the shared post-read finalization: `out` copy, or scalar extraction."""
     if out is not None:
-        if isinstance(out, NDBuffer):
-            out_buffer = out
-        else:
-            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
-        if out_buffer.shape != indexer.shape:
-            raise ValueError(
-                f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
-            )
-    else:
-        out_buffer = prototype.nd_buffer.empty(
-            shape=indexer.shape,
-            dtype=out_dtype,
-            order=order,
-        )
-    if product(indexer.shape) > 0:
-        # need to use the order from the metadata for v2
-        _config = config
-        if metadata.zarr_format == 2:
-            _config = replace(_config, order=order)
-
-        # reading chunks and decoding them
-        indexed_chunks = list(indexer)
-        # For regular grids, all chunks share the same ArraySpec, so build it once
-        # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
-        regular_grid = chunk_grid.is_regular
-        if regular_grid:
-            regular_chunk_spec = ArraySpec(
-                shape=chunk_grid.chunk_shape,
-                dtype=metadata.dtype,
-                fill_value=metadata.fill_value,
-                config=_config,
-                prototype=prototype,
-            )
-        results = await codec_pipeline.read(
-            [
-                (
-                    store_path / metadata.encode_chunk_key(chunk_coords),
-                    regular_chunk_spec
-                    if regular_grid
-                    else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
-                    chunk_selection,
-                    out_selection,
-                    is_complete_chunk,
-                )
-                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
-            ],
-            out_buffer,
-            drop_axes=indexer.drop_axes,
-        )
-        if _config.read_missing_chunks is False:
-            missing_info = []
-            for i, result in enumerate(results):
-                if result["status"] == "missing":
-                    coords = indexed_chunks[i][0]
-                    key = metadata.encode_chunk_key(coords)
-                    missing_info.append(f"  chunk '{key}' (grid position {coords})")
-            if missing_info:
-                chunks_str = "\n".join(missing_info)
-                raise ChunkNotFoundError(
-                    f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
-                    f"Set the 'array.read_missing_chunks' config to True to fill "
-                    f"missing chunks with the fill value.\n"
-                    f"Missing chunks:\n{chunks_str}"
-                )
-    if isinstance(indexer, BasicIndexer) and indexer.shape == ():
-        return out_buffer.as_scalar()
-    return out_buffer.as_ndarray_like()
+        out.as_ndarray_like()[...] = result  # type: ignore[index]
+        return out.as_ndarray_like()
+    if scalarize and result.shape == ():
+        # basic indexing collapses to a scalar (matches the historical
+        # `out_buffer.as_scalar()` return for all-integer basic selections)
+        return cast("NDArrayLikeOrScalar", np.asarray(result)[()])
+    return result
 
 
-async def _getitem(
-    store_path: StorePath,
+async def _get_selection(
+    engine: AsyncArrayEngine,
     metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
     config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: BasicSelection,
-    *,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Retrieve a subset of the array's data based on the provided selection.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : BasicSelection
-        A selection object specifying the subset of data to retrieve.
-    prototype : BufferPrototype, optional
-        A buffer prototype to use for the retrieved data (default is None).
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The retrieved subset of the array's data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = BasicIndexer(
-        selection,
-        shape=metadata.shape,
-        chunk_grid=chunk_grid,
-    )
-    return await _get_selection(
-        store_path, metadata, codec_pipeline, config, chunk_grid, indexer, prototype=prototype
-    )
-
-
-async def _get_orthogonal_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: OrthogonalSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get an orthogonal selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : OrthogonalSelection
-        The orthogonal selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = OrthogonalIndexer(selection, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_mask_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    mask: MaskSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a mask selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    mask : MaskSelection
-        The boolean mask specifying the selection.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = MaskIndexer(mask, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_coordinate_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: CoordinateSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a coordinate selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : CoordinateSelection
-        The coordinate selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = CoordinateIndexer(selection, metadata.shape, chunk_grid)
-    out_array = await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-    if hasattr(out_array, "shape"):
-        # restore shape
-        out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
-    return out_array
-
-
-async def _set_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    indexer: Indexer,
-    value: npt.ArrayLike,
+    region: Region,
+    post_index: tuple[Any, ...],
     *,
     prototype: BufferPrototype,
+    out: NDBuffer | None = None,
     fields: Fields | None = None,
-) -> None:
+    scalarize: bool = False,
+) -> NDArrayLikeOrScalar:
+    """Read a contiguous `region` via the engine and re-index it to a selection.
+
+    The engine only speaks contiguous boxes; `normalize_*` produced `region`
+    (the box to transfer) and `post_index` (the numpy index that turns the
+    ndim-preserving box read into the requested selection). This applies
+    `fields`, then `post_index`, and finally optional scalar extraction / `out`
+    handling.
     """
-    Set a selection in an array.
+    dtype = _native_dtype(metadata)
+    out_dtype = check_fields(fields, dtype)
+    result_shape = _selection_result_shape(region, post_index, out_dtype)
 
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    indexer : Indexer
-        The indexer specifying the selection.
-    value : npt.ArrayLike
-        The values to write.
-    prototype : BufferPrototype
-        A buffer prototype to use.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
+    if out is not None:
+        if not isinstance(out, NDBuffer):
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out.shape != result_shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {result_shape}, got {out.shape}"
+            )
+
+    if product(region.shape) == 0:
+        empty = np.empty(result_shape, dtype=out_dtype)
+        return _finalize_result(empty, out, scalarize=scalarize)
+
+    raw = await engine.read_selection(region, prototype=prototype)
+    if not fields and _is_identity_read(post_index, region.shape):
+        # a full-box, step-1 read is exactly the engine result; return it
+        # unchanged so a custom `NDArrayLike` type (e.g. GPU/torch buffers)
+        # survives instead of being coerced to numpy by `np.asarray`
+        return _finalize_result(raw, out, scalarize=scalarize)
+    box = np.asarray(raw)
+    if fields:
+        # non-empty `fields` selects structured sub-fields; an empty list/tuple
+        # (from `pop_fields` on a field-free selection) means "all fields"
+        box = box[fields]  # type: ignore[index]
+    result = apply_post_index(box, post_index)
+    return _finalize_result(result, out, scalarize=scalarize)
+
+
+def _coerce_write_value(
+    value: npt.ArrayLike, dtype: np.dtype[Any], prototype: BufferPrototype, fields: Fields | None
+) -> NDArrayLike:
+    """Coerce a user-supplied write `value` to an ndarray-like of the array dtype.
+
+    Ported from the historical `_set_selection`: scalars are materialized with
+    the prototype's buffer type (so GPU prototypes stay on-device), and
+    array-likes are cast to the array dtype. When `fields` is set the value
+    keeps its own (structured sub-field) dtype.
     """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
-    dtype = zdtype.to_native_dtype()
-
-    # check fields are sensible
-    check_fields(fields, dtype)
-    fields = check_no_multi_fields(fields)
-
-    # check value shape
+    # empty `fields` (list/tuple) means "no field selection"; treat it like None
+    target_dtype = None if fields else dtype
     if np.isscalar(value):
         array_like = prototype.buffer.create_zero_length().as_array_like()
+        # only NDArrayLike implements __array_function__ (e.g. numpy, cupy)
         if isinstance(array_like, np._typing._SupportsArrayFunc):
-            # TODO: need to handle array types that don't support __array_function__
-            # like PyTorch and JAX
             array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
-        value = np.asanyarray(value, dtype=dtype, like=array_like_)
+        value = np.asanyarray(value, dtype=target_dtype, like=array_like_)
     else:
         if not hasattr(value, "shape"):
-            value = np.asarray(value, dtype)
-        # assert (
-        #     value.shape == indexer.shape
-        # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
-        if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
+            value = np.asarray(value, dtype=target_dtype)
+        if target_dtype is not None and (
+            not hasattr(value, "dtype") or value.dtype.name != dtype.name
+        ):
             if hasattr(value, "astype"):
                 # Handle things that are already NDArrayLike more efficiently
                 value = value.astype(dtype=dtype, order="A")
             else:
                 value = np.array(value, dtype=dtype, order="A")
-    value = cast("NDArrayLike", value)
-
-    # We accept any ndarray like object from the user and convert it
-    # to an NDBuffer (or subclass). From this point onwards, we only pass
-    # Buffer and NDBuffer between components.
-    value_buffer = prototype.nd_buffer.from_ndarray_like(value)
-
-    # Determine memory order
-    if metadata.zarr_format == 2:
-        order = metadata.order
-    else:
-        order = config.order
-
-    # need to use the order from the metadata for v2
-    _config = config
-    if metadata.zarr_format == 2:
-        _config = replace(_config, order=order)
-
-    # merging with existing data and encoding chunks
-    # For regular grids, all chunks share the same ArraySpec, so build it once
-    # and reuse it to avoid per-chunk ChunkGrid lookups and ArraySpec construction.
-    regular_grid = chunk_grid.is_regular
-    if regular_grid:
-        regular_chunk_spec = ArraySpec(
-            shape=chunk_grid.chunk_shape,
-            dtype=metadata.dtype,
-            fill_value=metadata.fill_value,
-            config=_config,
-            prototype=prototype,
-        )
-    await codec_pipeline.write(
-        [
-            (
-                store_path / metadata.encode_chunk_key(chunk_coords),
-                regular_chunk_spec
-                if regular_grid
-                else _get_chunk_spec(metadata, chunk_grid, chunk_coords, _config, prototype),
-                chunk_selection,
-                out_selection,
-                is_complete_chunk,
-            )
-            for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
-        ],
-        value_buffer,
-        drop_axes=indexer.drop_axes,
-    )
+    return cast("NDArrayLike", value)
 
 
-async def _setitem(
-    store_path: StorePath,
+async def _set_selection(
+    engine: AsyncArrayEngine,
     metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
     config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: BasicSelection,
+    region: Region,
+    post_index: tuple[Any, ...],
     value: npt.ArrayLike,
-    prototype: BufferPrototype | None = None,
+    *,
+    prototype: BufferPrototype,
+    fields: Fields | None = None,
 ) -> None:
-    """
-    Set values in the array using basic indexing.
+    """Write a selection through the engine as a contiguous-box read-modify-write.
 
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : BasicSelection
-        The selection defining the region of the array to set.
-    value : npt.ArrayLike
-        The values to be written into the selected region of the array.
-    prototype : BufferPrototype or None, optional
-        A prototype buffer that defines the structure and properties of the array chunks being modified.
-        If None, the default buffer prototype is used.
+    An identity `post_index` (a full-box write with no `fields`) broadcasts the
+    value straight into the box and writes it. Any strided/fancy/orthogonal/
+    fields write instead reads the box, patches it with numpy using the same
+    `post_index` the read path uses (dropping the orthogonal `_Squeeze` marker
+    and widening the value at dropped integer axes, matching `oindex_set`), then
+    writes the whole box back.
     """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = BasicIndexer(
-        selection,
-        shape=metadata.shape,
-        chunk_grid=chunk_grid,
-    )
-    return await _set_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer,
-        value,
-        prototype=prototype,
-    )
+    dtype = _native_dtype(metadata)
+    check_fields(fields, dtype)
+    fields = check_no_multi_fields(fields)
+    if product(region.shape) == 0:
+        return
+
+    value_np = _coerce_write_value(value, dtype, prototype, fields)
+
+    stripped = strip_squeeze(post_index)
+    sq_axes = squeeze_axes(post_index)
+    # a "full box" write addresses every element of the box exactly once, in
+    # order, so the value can be broadcast straight in without a read. This
+    # covers contiguous basic slices (post `slice(None, None, 1)`), full-axis
+    # orthogonal slices (post `np.ix_(arange(n))`), integer axes (length-1
+    # boxes), and block selections (post `()`).
+    identity_post = not fields and _is_full_box_write(stripped, region.shape)
+
+    # orthogonal selections drop integer axes; widen the value with np.newaxis at
+    # those axes so it aligns with the (un-squeezed) box (matching `oindex_set`)
+    assign_value = _widen_value_for_squeeze(value_np, sq_axes, len(region.shape))
+
+    if identity_post:
+        # full-box write: broadcast the value into the box without a read
+        box = np.array(np.broadcast_to(np.asarray(assign_value), region.shape), dtype=dtype)
+    else:
+        # facade-level read-modify-write for strided/fancy/orthogonal/fields writes
+        box = np.array(np.asarray(await engine.read_selection(region, prototype=prototype)))
+        target = box[fields] if fields else box  # type: ignore[index]
+        if stripped == ():
+            target[...] = assign_value
+        else:
+            target[stripped] = assign_value
+
+    # `np.ascontiguousarray` would promote a 0-d box (scalar array) to shape (1,);
+    # a 0-d array is already contiguous, so pass it through unchanged.
+    contiguous_box = box if box.ndim == 0 else np.ascontiguousarray(box)
+    value_buffer = prototype.nd_buffer.from_ndarray_like(contiguous_box)
+    await engine.write_selection(region, value_buffer, prototype=prototype)
+
+
+def _basic_region_post(
+    selection: BasicSelection, shape: tuple[int, ...]
+) -> tuple[Region, tuple[slice | int, ...]]:
+    """Validate a basic selection with the historical rules, then normalize it.
+
+    `normalize_basic` (the engine helper) accepts negative-step slices and raises
+    `TypeError` for non-basic elements, but the public zarr basic-indexing API
+    has always rejected both with `IndexError` (via `BasicIndexer`). This
+    re-imposes those rules -- too-many-indices, negative steps, and unsupported
+    element types -- before delegating the box computation to `normalize_basic`.
+    """
+    sel = replace_ellipsis(selection, shape)
+    for dim_sel, dim_len in zip(sel, shape, strict=True):
+        if is_integer(dim_sel):
+            normalize_integer_selection(dim_sel, dim_len)
+        elif isinstance(dim_sel, slice):
+            if dim_sel.step is not None and dim_sel.step < 1:
+                raise NegativeStepError("only slices with step >= 1 are supported.")
+        else:
+            raise IndexError(
+                "unsupported selection item for basic indexing; "
+                f"expected integer or slice, got {type(dim_sel)!r}"
+            )
+    return normalize_basic(cast("BasicSelection", sel), shape)
+
+
+def _orthogonal_region_post(
+    selection: OrthogonalSelection, shape: tuple[int, ...]
+) -> tuple[Region, tuple[Any, ...]]:
+    """Validate an orthogonal selection with the historical rules, then normalize it.
+
+    Mirrors `OrthogonalIndexer`'s per-axis validation (and its exact error
+    messages) -- integer bounds, negative-step slices, 1-d integer/boolean
+    arrays of the right length, and unsupported element types -- before handing
+    the box computation to `normalize_orthogonal`.
+    """
+    sel = replace_lists(replace_ellipsis(selection, shape))
+    for dim_sel, dim_len in zip(sel, shape, strict=True):
+        if is_integer(dim_sel):
+            normalize_integer_selection(dim_sel, dim_len)
+        elif isinstance(dim_sel, slice):
+            if dim_sel.step is not None and dim_sel.step < 1:
+                raise NegativeStepError("only slices with step >= 1 are supported.")
+        elif is_integer_array(dim_sel):
+            if not is_integer_array(dim_sel, 1):
+                raise IndexError(
+                    "integer arrays in an orthogonal selection must be 1-dimensional only"
+                )
+            checked = np.asanyarray(dim_sel).copy()
+            wraparound_indices(checked, dim_len)
+            boundscheck_indices(checked, dim_len)
+        elif is_bool_array(dim_sel):
+            if not is_bool_array(dim_sel, 1):
+                raise IndexError(
+                    "Boolean arrays in an orthogonal selection must be 1-dimensional only"
+                )
+            if dim_sel.shape[0] != dim_len:
+                raise IndexError(
+                    f"Boolean array has the wrong length for dimension; expected {dim_len}, "
+                    f"got {dim_sel.shape[0]}"
+                )
+        else:
+            raise IndexError(
+                "unsupported selection item for orthogonal indexing; "
+                "expected integer, slice, integer array or Boolean "
+                f"array, got {type(dim_sel)!r}"
+            )
+    return normalize_orthogonal(sel, shape)
+
+
+def _widen_value_for_squeeze(
+    value: NDArrayLike, squeeze_axes_: tuple[int, ...], ndim: int
+) -> NDArrayLike:
+    """Insert `np.newaxis` at dropped integer axes so a value aligns with the box.
+
+    Orthogonal selections drop integer axes from the result, so a non-scalar
+    value has fewer dimensions than the ndim-preserving box. Re-inserting a
+    size-1 axis at each dropped position lets the value broadcast/assign against
+    the box, matching `zarr.core.indexing.oindex_set`. Scalars and 0-d values are
+    returned unchanged (they broadcast on their own).
+    """
+    if squeeze_axes_ and not np.isscalar(value) and np.asarray(value).ndim > 0:
+        value_selection: list[Any] = [slice(None)] * ndim
+        for ax in squeeze_axes_:
+            value_selection[ax] = np.newaxis
+        return cast("NDArrayLike", np.asarray(value)[tuple(value_selection)])
+    return value
+
+
+def _is_full_box_write(stripped: tuple[Any, ...], box_shape: tuple[int, ...]) -> bool:
+    """Whether a write's post index addresses every box element exactly once, in order.
+
+    When true, the value fills the whole box and the write needs no
+    read-modify-write. Handles the post-index forms the `normalize_*` helpers
+    emit: an empty tuple (block selection), step-1 basic slices, single integer
+    axes (length-1 boxes), and `np.ix_` arrays equal to `arange(n)` (full-axis
+    orthogonal slices). The trailing `_Squeeze` marker must already be removed.
+    """
+    if stripped == ():
+        return True
+    if len(stripped) != len(box_shape):
+        return False
+    ndim = len(box_shape)
+    for i, (p, n) in enumerate(zip(stripped, box_shape, strict=True)):
+        if isinstance(p, (int, np.integer)):
+            # an integer axis writes a length-1 box axis fully
+            if n != 1:
+                return False
+        elif not _axis_covers_full_ordered(p, n, i, ndim):
+            return False
+    return True
+
+
+def _block_region(
+    selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
+) -> Region:
+    """Map a block (chunk-grid) selection to its contiguous element-space box.
+
+    Block selections are always contiguous (a slice of whole chunks spans a
+    contiguous element range), so the post index is empty. `BlockIndexer` is
+    reused purely for its coordinate math, preserving every existing behavior:
+    integer and step-1 slice block indices, irregular (rectilinear) grids, and
+    bounds errors.
+    """
+    indexer = BlockIndexer(selection, shape, chunk_grid)
+    starts = tuple(di.start for di in indexer.dim_indexers)
+    ends = tuple(di.stop for di in indexer.dim_indexers)
+    return Region(start=starts, end_exclusive=ends)
+
+
+def _coordinate_region_post(
+    selection: CoordinateSelection, shape: tuple[int, ...]
+) -> tuple[Region, tuple[np.ndarray[Any, Any], ...], tuple[int, ...]]:
+    """Normalize a coordinate (vindex) selection to `(region, post, sel_shape)`.
+
+    Replicates `CoordinateIndexer`'s normalization and validation: integer axes
+    are widened to length-1 arrays, lists become arrays, the selection is checked
+    to be one integer array per dimension (raising the same `IndexError`), and
+    per-axis wraparound / bounds checks are applied (raising the same "dimension
+    with length" `IndexError`). The per-axis arrays are then broadcast to a common
+    shape (`sel_shape`) and flattened to the pointwise index the engine box read
+    is re-indexed with; the caller reshapes the flat result back to `sel_shape`.
+    """
+    sel = ensure_tuple(selection)
+    sel = tuple(np.asarray([i]) if is_integer(i) else i for i in sel)
+    sel = replace_lists(sel)
+    if not is_coordinate_selection(sel, shape):
+        raise IndexError(
+            "invalid coordinate selection; expected one integer "
+            "(coordinate) array per dimension of the target array, "
+            f"got {selection!r}"
+        )
+    for dim_sel, dim_len in zip(sel, shape, strict=True):
+        checked = np.asanyarray(dim_sel).copy()
+        wraparound_indices(checked, dim_len)
+        boundscheck_indices(checked, dim_len)
+    broadcast = np.broadcast_arrays(*(np.asarray(s) for s in sel))
+    sel_shape = broadcast[0].shape or (1,)
+    flat = tuple(np.reshape(b, -1) for b in broadcast)
+    region, post = normalize_coordinate(flat, shape)
+    return region, post, sel_shape
+
+
+def _mask_region_post(
+    mask: MaskSelection, shape: tuple[int, ...]
+) -> tuple[Region, tuple[np.ndarray[Any, Any], ...]]:
+    """Normalize a boolean-mask (vindex) selection to `(region, post)`.
+
+    Equivalent to coordinate indexing: the mask is converted to coordinate
+    arrays with `np.nonzero`, matching `MaskIndexer`. The result is 1-d in
+    row-major order, so no reshape is needed afterwards.
+    """
+    sel = ensure_tuple(mask)
+    sel = replace_lists(sel)
+    if not is_mask_selection(sel, shape):
+        raise IndexError(
+            "invalid mask selection; expected one Boolean (mask)"
+            f"array with the same shape as the target array, got {sel!r}"
+        )
+    coords = np.nonzero(sel[0])
+    return normalize_coordinate(coords, shape)
 
 
 async def _resize(
@@ -5913,9 +5809,10 @@ async def _resize(
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
 
-    # Update metadata and chunk_grid (in place)
+    # Update metadata, chunk_grid, and engine (in place)
     object.__setattr__(array, "metadata", new_metadata)
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+    object.__setattr__(array, "engine", array.engine.with_metadata(new_metadata))
 
 
 async def _append(
@@ -5976,14 +5873,15 @@ async def _append(
         slice(None) if i != axis else slice(old_shape[i], new_shape[i])
         for i in range(len(array.shape))
     )
-    await _setitem(
-        array.store_path,
+    region, post = _basic_region_post(append_selection, array.metadata.shape)
+    await _set_selection(
+        array.engine,
         array.metadata,
-        array.codec_pipeline,
         array.config,
-        array._chunk_grid,
-        append_selection,
+        region,
+        post,
         data,
+        prototype=default_buffer_prototype(),
     )
 
     return new_shape

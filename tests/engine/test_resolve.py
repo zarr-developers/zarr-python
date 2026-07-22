@@ -49,13 +49,18 @@ def test_resolution_combinations() -> None:
 
 def test_hierarchy_cache_evicts_when_store_and_engines_are_unreferenced() -> None:
     # A dedicated store (not shared with other tests) so the cache starts clean
-    # for this key.
+    # for this key. Measure the baseline *before* creating the array: creating it
+    # resolves the array's own engine, which already populates the (default,
+    # async, id(store)) cache entry that `e1`/`e2` then reuse.
     store = MemoryStore()
+    # Collect any hierarchies left unreferenced by earlier tests first, so the
+    # baseline reflects only entries kept alive by still-referenced arrays.
+    gc.collect()
+    before = len(_hierarchy_cache)
     z = zarr.create_array(store, shape=(4,), chunks=(2,), dtype="int8")
     path = z.path
     meta = z.async_array.metadata
 
-    before = len(_hierarchy_cache)
     e1 = resolve_async_engine(None, store=store, path=path, metadata=meta)
     e2 = resolve_async_engine(None, store=store, path="other", metadata=meta)
     assert len(_hierarchy_cache) == before + 1

@@ -70,7 +70,7 @@ from zarr.core.dtype import (
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
+from zarr.core.indexing import _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -1596,10 +1596,7 @@ class TestCreateArray:
             stored = arr[:]
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
-            stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr._chunk_grid),
-                prototype=default_buffer_prototype(),
-            )
+            stored = await arr.getitem(Ellipsis, prototype=default_buffer_prototype())
         else:
             raise ValueError(f"Invalid impl: {impl}")
 

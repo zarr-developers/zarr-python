@@ -1821,15 +1821,33 @@ async def test_accessed_chunks(
     z = zarr_array_from_numpy_array(StorePath(store), np.zeros(shape), chunk_shape=chunks)
 
     for ii, (optype, slices) in enumerate(ops):
-        # Resolve the slices into the accessed chunks for each dimension
-        chunks_per_dim = []
+        # The array engine interchanges selections as contiguous, step-1 `Region`
+        # boxes: a selection is served through its step-1 *bounding box*,
+        # deliberately replacing the old per-chunk gather/scatter (see
+        # docs/superpowers/specs/2026-07-22-array-engine-protocol-design.md,
+        # "Consequence, accepted for now").
+        #
+        # Reads fetch the whole bounding box, so a strided slice reads every chunk
+        # between its first and last selected index. A write is a bounding-box
+        # read-modify-write: it reads the box, patches the selected elements, and
+        # writes the box back -- but `write_empty_chunks=False` (the default)
+        # drops box chunks that stay all-fill, so only chunks that actually
+        # contain a selected element are written. Model the two sets separately.
+        box_chunks_per_dim = []  # every chunk the step-1 bounding box overlaps
+        selected_chunks_per_dim = []  # chunks containing an actually selected index
         for N, C, sl in zip(shape, chunks, slices, strict=True):
-            chunk_ind = np.arange(N, dtype=int)[sl] // C
-            chunks_per_dim.append(np.unique(chunk_ind))
+            selected = np.arange(N, dtype=int)[sl]
+            selected_chunks_per_dim.append(np.unique(selected // C))
+            if selected.size:
+                bounding_box = np.arange(selected.min(), selected.max() + 1)
+            else:
+                bounding_box = selected
+            box_chunks_per_dim.append(np.unique(bounding_box // C))
 
-        # Combine and generate the cartesian product to determine the chunks keys that
-        # will be accessed
-        chunks_accessed = [".".join(map(str, comb)) for comb in itertools.product(*chunks_per_dim)]
+        box_chunks = [".".join(map(str, comb)) for comb in itertools.product(*box_chunks_per_dim)]
+        selected_chunks = [
+            ".".join(map(str, comb)) for comb in itertools.product(*selected_chunks_per_dim)
+        ]
 
         counts_before = store.counter.copy()
 
@@ -1837,24 +1855,28 @@ async def test_accessed_chunks(
         if optype == "__getitem__":
             z[slices]
         else:
+            # a non-zero fill value keeps the selected chunks non-empty so they
+            # are written (ii == 0 only for the very first op, which is a read)
             z[slices] = ii
 
         # Get the change in counts
         delta_counts = store.counter - counts_before
 
-        # Check that the access counts for the operation have increased by one for all
-        # the chunks we expect to be included
-        for ci in chunks_accessed:
-            assert delta_counts.pop((optype, ci)) == 1
-
-            # If the chunk was partially written to it will also have been read once. We
-            # don't determine if the chunk was actually partial here, just that the
-            # counts are consistent that this might have happened
-            if optype == "__setitem__":
-                assert ("__getitem__", ci) not in delta_counts or delta_counts.pop(
-                    ("__getitem__", ci)
-                ) == 1
-        # Check that no other chunks were accessed
+        if optype == "__getitem__":
+            # a read fetches the whole bounding box, and nothing else
+            for ci in box_chunks:
+                assert delta_counts.pop(("__getitem__", ci)) == 1
+        else:
+            # the RMW reads bounding-box chunks (unless the write covers the whole
+            # box, in which case there is no facade read); an edge chunk only
+            # partially covered by the box is read again by the codec pipeline's
+            # partial-chunk merge, so tolerate more than one read per box chunk.
+            for ci in box_chunks:
+                delta_counts.pop(("__getitem__", ci), None)
+            # ...and writes back the chunks that end up non-empty
+            for ci in selected_chunks:
+                assert delta_counts.pop(("__setitem__", ci)) >= 1
+        # Check that no chunks outside the bounding box / selection were accessed
         assert len(delta_counts) == 0
 
 

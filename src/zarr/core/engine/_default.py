@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from zarr.core.array import _get_chunk_spec, create_codec_pipeline
 from zarr.core.array_spec import ArraySpec, parse_array_config
 from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import product
@@ -37,6 +36,11 @@ class DefaultAsyncArrayEngine:
     """Codec-pipeline-backed engine. Any store, Zarr v2 and v3."""
 
     def __init__(self, store_path: StorePath, metadata: ArrayMetadata, config: ArrayConfig) -> None:
+        # Imported lazily to avoid an import cycle: `zarr.core.array` imports the
+        # engine package (for engine resolution) while the default engine reuses
+        # `zarr.core.array`'s codec-pipeline machinery.
+        from zarr.core.array import create_codec_pipeline
+
         self.store_path = store_path
         self.metadata = metadata
         self.config = config
@@ -78,6 +82,8 @@ class DefaultAsyncArrayEngine:
         return self.config
 
     async def read_selection(self, selection: Region, *, prototype: BufferPrototype) -> NDArrayLike:
+        from zarr.core.array import _get_chunk_spec
+
         indexer = self._indexer(selection)
         if self.metadata.zarr_format == 2:
             dtype = self.metadata.dtype.to_native_dtype()
@@ -128,6 +134,8 @@ class DefaultAsyncArrayEngine:
     async def write_selection(
         self, selection: Region, value: NDBuffer, *, prototype: BufferPrototype
     ) -> None:
+        from zarr.core.array import _get_chunk_spec
+
         indexer = self._indexer(selection)
         _config = self._v2_order_config()
         regular_chunk_spec = self._regular_chunk_spec(_config, prototype)
