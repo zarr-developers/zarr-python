@@ -1047,8 +1047,15 @@ _COORD_1D_CASES: list[Expect[CoordinateSelection, None]] = [
     Expect(input=[3, 25, 8, 17], output=None, id="out-of-order"),
     Expect(input=[1, 8, 15, 29], output=None, id="sorted"),
     Expect(input=[29, 15, 8, 1], output=None, id="reversed"),
+    Expect(input=np.array([29, 15, 8, 1], dtype=np.uint32), output=None, id="reversed-uint"),
     Expect(input=[2, 2, 8, 8], output=None, id="duplicates"),
     Expect(input=np.array([[2, 4], [6, 8]]), output=None, id="multi-dim"),
+    # sorted-1D fast path (chunk_shape=(7,)): boundaries, contiguous runs, single chunk, full
+    Expect(input=[0, 6, 7, 13, 14, 28, 29], output=None, id="sorted-chunk-boundaries"),
+    Expect(input=[0, 1, 2, 8, 9, 10, 21, 22, 23], output=None, id="sorted-contiguous-runs"),
+    Expect(input=[1, 2, 3, 4, 5, 6], output=None, id="sorted-single-chunk"),
+    Expect(input=list(range(30)), output=None, id="sorted-full"),
+    Expect(input=[0, 0, 7, 7, 7, 29], output=None, id="sorted-duplicates-boundaries"),
 ]
 
 # get_coordinate_selection and vindex word their errors differently for these
@@ -1139,6 +1146,58 @@ def test_get_coordinate_selection_1d(
     a = np.arange(30, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
     _test_get_coordinate_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize(
+    ("chunks", "shards"),
+    [((7,), None), ((7,), (21,))],
+    ids=["chunked", "sharded"],
+)
+def test_get_coordinate_selection_1d_fast_path(
+    store: StorePath, chunks: tuple[int, ...], shards: tuple[int, ...] | None
+) -> None:
+    """The sorted-1D-runs fast path in CoordinateIndexer matches numpy on chunked and sharded arrays.
+
+    Exercises the boundary/run/single-chunk/full-array cases that the fast path optimizes, plus
+    the sharded case where the top-level (shard) grid drives chunk assignment.
+    """
+    a = np.arange(210, dtype=int)
+    z = zarr.create_array(
+        store=store / str(uuid4()),
+        shape=a.shape,
+        dtype=a.dtype,
+        chunks=chunks,
+        shards=shards,
+    )
+    z[:] = a
+    rng = np.random.default_rng(0)
+    selections = [
+        np.sort(rng.choice(210, 60, replace=False)),  # scattered sorted
+        np.array([0, 6, 7, 20, 21, 209]),  # chunk/shard boundaries
+        np.concatenate([np.arange(s, s + 5) for s in (0, 33, 100, 180)]),  # contiguous runs
+        np.array([0, 0, 7, 7, 209]),  # sorted with duplicates
+        np.arange(210),  # whole array
+        np.array([5]),  # single element
+    ]
+    for sel in selections:
+        assert_array_equal(a[sel], z.get_coordinate_selection(sel))
+        assert_array_equal(a[sel], z.vindex[sel])
+
+
+def test_get_coordinate_selection_1d_irregular_grid(store: StorePath) -> None:
+    """Coordinate selections on an irregular (rectilinear) chunk grid bypass the sorted-1D fast
+    path (which requires a regular grid) and still match numpy via the general path."""
+    a = np.arange(30, dtype=int)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        z = zarr.create_array(
+            store=store / str(uuid4()),
+            shape=a.shape,
+            dtype=a.dtype,
+            chunks=((3, 3, 4, 5, 5, 5, 5),),
+        )
+    z[:] = a
+    for sel in (np.array([1, 8, 15, 29]), np.array([0, 3, 3, 29]), np.arange(30)):
+        assert_array_equal(a[sel], z.get_coordinate_selection(sel))
 
 
 @pytest.mark.parametrize("case", _COORD_1D_BAD_CASES, ids=lambda c: c.id)
