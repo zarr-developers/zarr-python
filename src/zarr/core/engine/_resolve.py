@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import weakref
 from typing import TYPE_CHECKING, Literal
 
@@ -24,9 +25,70 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfig
     from zarr.core.metadata import ArrayMetadata
 
-__all__ = ["EngineName", "resolve_async_engine", "resolve_sync_engine"]
+__all__ = [
+    "EngineName",
+    "classify_engine_arg",
+    "resolve_async_engine",
+    "resolve_sync_engine",
+    "route_sync_engine_arg",
+]
 
 EngineName = Literal["default", "zarrista"]
+
+
+def classify_engine_arg(engine: object) -> Literal["name", "sync", "async"]:
+    """Classify an `engine=` argument as a name, a sync instance, or an async instance.
+
+    `None` and `str` values classify as `"name"` -- valid wherever an `engine=`
+    argument is accepted. Any other value must implement `read_selection`: a
+    coroutine function classifies as `"async"` (an `AsyncArrayEngine`), anything
+    else as `"sync"` (an `ArrayEngine`). Objects with no `read_selection` at all
+    raise `TypeError` naming the two protocols.
+    """
+    if engine is None or isinstance(engine, str):
+        return "name"
+    read_selection = getattr(engine, "read_selection", None)
+    if read_selection is None:
+        raise TypeError(
+            f"{engine!r} does not implement the ArrayEngine or AsyncArrayEngine protocol "
+            "(missing a `read_selection` method)"
+        )
+    return "async" if inspect.iscoroutinefunction(read_selection) else "sync"
+
+
+def route_sync_engine_arg(
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None,
+) -> tuple[AsyncArrayEngine | EngineName | None, ArrayEngine | EngineName | None]:
+    """Route a sync-entry-point `engine=` argument to its two consumers.
+
+    The public sync entry points (`zarr.create_array`, `zarr.open_array`, ...)
+    accept the same broad `engine` type as their async counterparts so their
+    signatures and docstrings match; this function is where the sync-specific
+    rules actually get enforced.
+
+    Returns `(engine_for_async_array, engine_for_array)`. A name (or `None`) is
+    valid for both layers and is returned unchanged in both slots, so sync and
+    async access to the same object use the same engine family. A sync
+    `ArrayEngine` instance is returned only in the second slot -- the wrapped
+    `AsyncArray` keeps its default engine. An `AsyncArrayEngine` instance cannot
+    serve a sync entry point and raises `TypeError`.
+    """
+    kind = classify_engine_arg(engine)
+    if kind == "async":
+        # Fail fast at the API boundary rather than lazily when `Array`
+        # resolves its engine; message kept identical to
+        # `resolve_sync_engine`'s so the error looks the same regardless of
+        # where the wrong-kind instance was actually caught.
+        raise TypeError(
+            "Array requires a synchronous engine (ArrayEngine); got an "
+            f"async engine of type `{type(engine).__name__}`"
+        )
+    if kind == "name":
+        return engine, engine  # type: ignore[return-value]
+    # kind == "sync": the instance only serves the sync Array; the inner
+    # AsyncArray keeps its default engine.
+    return None, engine  # type: ignore[return-value]
+
 
 # (name, kind, id(store)) -> hierarchy engine; entries evicted automatically once
 # nothing keeps the hierarchy engine itself alive (see `_keepalive` below).
@@ -114,6 +176,11 @@ def resolve_async_engine(
             engine, "async", store, factory
         )
         return _keepalive(hierarchy.array_engine(path, metadata, config), hierarchy)  # type: ignore[return-value]
+    if classify_engine_arg(engine) == "sync":
+        raise TypeError(
+            "AsyncArray requires an async engine (AsyncArrayEngine); got a "
+            f"synchronous engine of type `{type(engine).__name__}`"
+        )
     return engine
 
 
@@ -134,4 +201,9 @@ def resolve_sync_engine(
             engine, "sync", store, factory
         )
         return _keepalive(hierarchy.array_engine(path, metadata, config), hierarchy)  # type: ignore[return-value]
+    if classify_engine_arg(engine) == "async":
+        raise TypeError(
+            "Array requires a synchronous engine (ArrayEngine); got an "
+            f"async engine of type `{type(engine).__name__}`"
+        )
     return engine

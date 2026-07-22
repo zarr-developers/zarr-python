@@ -47,6 +47,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.engine import route_sync_engine_arg
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
@@ -73,11 +74,13 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
+    from zarr.abc.engine import ArrayEngine, AsyncArrayEngine
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
+    from zarr.core.engine import EngineName
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 logger = logging.getLogger("zarr.group")
@@ -1029,6 +1032,7 @@ class AsyncGroup:
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
+        engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """Create an array within this group.
 
@@ -1122,6 +1126,12 @@ class AsyncGroup:
             then ``write_data`` determines whether the values in that array-like object should be
             written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
             array will be left empty.
+        engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+            The data-path engine backing the created array: a name (`"default"`,
+            `"zarrista"`) or a pre-built engine instance. A synchronous
+            `ArrayEngine` instance only makes sense from the sync API; an
+            `AsyncArrayEngine` instance only from the async API; a name works
+            from either. When omitted, the `"default"` behavior is unchanged.
 
         Returns
         -------
@@ -1152,6 +1162,7 @@ class AsyncGroup:
             overwrite=overwrite,
             config=config,
             write_data=write_data,
+            engine=engine,
         )
 
     async def require_array(
@@ -2543,6 +2554,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
+        engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     ) -> AnyArray:
         """Create an array within this group.
 
@@ -2638,6 +2650,12 @@ class Group(SyncMixin):
             then ``write_data`` determines whether the values in that array-like object should be
             written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
             array will be left empty.
+        engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+            The data-path engine backing the created array: a name (`"default"`,
+            `"zarrista"`) or a pre-built engine instance. A synchronous
+            `ArrayEngine` instance only makes sense from the sync API; an
+            `AsyncArrayEngine` instance only from the async API; a name works
+            from either. When omitted, the `"default"` behavior is unchanged.
 
         Returns
         -------
@@ -2646,6 +2664,7 @@ class Group(SyncMixin):
         compressors = _parse_deprecated_compressor(
             compressor, compressors, zarr_format=self.metadata.zarr_format
         )
+        engine_for_async, engine_for_array = route_sync_engine_arg(engine)
         return Array(
             self._sync(
                 self._async_group.create_array(
@@ -2667,8 +2686,10 @@ class Group(SyncMixin):
                     storage_options=storage_options,
                     config=config,
                     write_data=write_data,
+                    engine=engine_for_async,
                 )
-            )
+            ),
+            engine_spec=engine_for_array,
         )
 
     def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:

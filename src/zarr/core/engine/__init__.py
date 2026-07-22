@@ -15,8 +15,10 @@ from zarr.core.engine._normalize import (
 )
 from zarr.core.engine._resolve import (
     EngineName,
+    classify_engine_arg,
     resolve_async_engine,
     resolve_sync_engine,
+    route_sync_engine_arg,
 )
 
 __all__ = [
@@ -26,12 +28,14 @@ __all__ = [
     "DefaultHierarchyEngine",
     "EngineName",
     "apply_post_index",
+    "classify_engine_arg",
     "normalize_basic",
     "normalize_block",
     "normalize_coordinate",
     "normalize_orthogonal",
     "resolve_async_engine",
     "resolve_sync_engine",
+    "route_sync_engine_arg",
     "squeeze_axes",
     "strip_squeeze",
 ]

@@ -90,6 +90,7 @@ from zarr.core.engine import (
     normalize_orthogonal,
     resolve_async_engine,
     resolve_sync_engine,
+    route_sync_engine_arg,
     squeeze_axes,
     strip_squeeze,
 )
@@ -433,6 +434,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
         Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
@@ -489,6 +491,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 overwrite=overwrite,
                 config=config_parsed,
                 chunk_grid=chunk_grid,
+                engine=engine,
             )
         elif zarr_format == 2:
             if codecs is not None:
@@ -533,6 +536,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 compressor=compressor,
                 attributes=attributes,
                 overwrite=overwrite,
+                engine=engine,
             )
         else:
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
@@ -612,6 +616,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AsyncArrayV3:
         if overwrite:
             if store_path.store.supports_deletes:
@@ -639,7 +644,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             attributes=attributes,
         )
 
-        array = cls(metadata=metadata, store_path=store_path, config=config)
+        array = cls(metadata=metadata, store_path=store_path, config=config, engine=engine)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -693,6 +698,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AsyncArrayV2:
         if overwrite:
             if store_path.store.supports_deletes:
@@ -728,7 +734,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             attributes=attributes,
         )
 
-        array = cls(metadata=metadata, store_path=store_path, config=config)
+        array = cls(metadata=metadata, store_path=store_path, config=config, engine=engine)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -769,6 +775,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -781,6 +788,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
+        engine : AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+            The data-path engine backing the opened array: a name (`"default"`,
+            `"zarrista"`) or a pre-built engine instance. When omitted, the
+            `"default"` engine is used.
 
         Returns
         -------
@@ -812,7 +823,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict, engine=engine)
 
     @property
     def store(self) -> Store:
@@ -1920,10 +1931,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
+        engine: ArrayEngine | EngineName | None = None,
     ) -> Self:
         """Creates a new Array instance from an initialized store.
         Deprecated in favor of [`zarr.create_array`][].
         """
+        engine_for_async, engine_for_array = route_sync_engine_arg(engine)
         async_array = sync(
             AsyncArray._create(
                 store=store,
@@ -1943,9 +1956,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 compressor=compressor,
                 overwrite=overwrite,
                 config=config,
+                engine=engine_for_async,
             ),
         )
-        return cls(async_array)
+        return cls(async_array, engine_spec=engine_for_array)
 
     @classmethod
     def from_dict(
@@ -1982,6 +1996,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
+        engine: ArrayEngine | EngineName | None = None,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -1991,14 +2006,19 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Store containing the Array. See the
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
+        engine : ArrayEngine | Literal["default", "zarrista"] | None, optional
+            The data-path engine backing the opened array: a name (`"default"`,
+            `"zarrista"`) or a pre-built engine instance. When omitted, the
+            `"default"` behavior is unchanged.
 
         Returns
         -------
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
+        engine_for_async, engine_for_array = route_sync_engine_arg(engine)
+        async_array = sync(AsyncArray.open(store, engine=engine_for_async))
+        return cls(async_array, engine_spec=engine_for_array)
 
     @property
     def store(self) -> Store:
@@ -4163,6 +4183,7 @@ async def from_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
+    engine: AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create an array from an existing array or array-like.
 
@@ -4387,6 +4408,7 @@ async def from_array(
         dimension_names=dimension_names,
         overwrite=overwrite,
         config=config_parsed,
+        engine=engine,
     )
 
     if write_data:
@@ -4436,6 +4458,7 @@ async def init_array(
     dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
+    engine: AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
@@ -4641,7 +4664,7 @@ async def init_array(
             attributes=attributes,
         )
 
-    arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
+    arr = AsyncArray(metadata=meta, store_path=store_path, config=config, engine=engine)
     await arr._save_metadata(meta, ensure_parents=True)
     return arr
 
@@ -4668,6 +4691,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create an array.
 
@@ -4772,6 +4796,12 @@ async def create_array(
         then ``write_data`` determines whether the values in that array-like object should be
         written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
         array will be left empty.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the created array: a name (`"default"`,
+        `"zarrista"`) or a pre-built engine instance. A synchronous
+        `ArrayEngine` instance only makes sense from the sync API; an
+        `AsyncArrayEngine` instance only from the async API; a name works
+        from either. When omitted, the `"default"` behavior is unchanged.
 
     Returns
     -------
@@ -4816,6 +4846,10 @@ async def create_array(
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
+            # `from_array` accepts only `AsyncArrayEngine`; a wrong-kind (sync)
+            # instance is rejected downstream, when `AsyncArray.__init__`
+            # resolves it via `resolve_async_engine`.
+            engine=cast("AsyncArrayEngine | EngineName | None", engine),
         )
     else:
         mode: Literal["a"] = "a"
@@ -4840,6 +4874,8 @@ async def create_array(
             dimension_names=dimension_names,
             overwrite=overwrite,
             config=config,
+            # see the comment above the analogous `from_array` call.
+            engine=cast("AsyncArrayEngine | EngineName | None", engine),
         )
 
 

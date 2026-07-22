@@ -7,6 +7,7 @@ from typing_extensions import deprecated
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
+from zarr.core.engine import route_sync_engine_arg
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
+    from zarr.abc.engine import ArrayEngine, AsyncArrayEngine
     from zarr.abc.numcodec import Numcodec
     from zarr.api.asynchronous import ArrayLike, PathLike
     from zarr.core.array import (
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
         ZarrFormat,
     )
     from zarr.core.dtype import ZDTypeLike
+    from zarr.core.engine import EngineName
     from zarr.storage import StoreLike
     from zarr.types import AnyArray
 
@@ -634,6 +637,7 @@ def create(
     dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Create an array.
@@ -754,12 +758,19 @@ def create(
     config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the created array: a name (`"default"`,
+        `"zarrista"`) or a pre-built engine instance. A synchronous
+        `ArrayEngine` instance only makes sense from the sync API; an
+        `AsyncArrayEngine` instance only from the async API; a name works
+        from either. When omitted, the `"default"` behavior is unchanged.
 
     Returns
     -------
     z : Array
         The array.
     """
+    engine_for_async, engine_for_array = route_sync_engine_arg(engine)
     return Array(
         sync(
             async_api.create(
@@ -790,9 +801,11 @@ def create(
                 dimension_names=dimension_names,
                 storage_options=storage_options,
                 config=config,
+                engine=engine_for_async,
                 **kwargs,
             )
-        )
+        ),
+        engine_spec=engine_for_array,
     )
 
 
@@ -818,6 +831,7 @@ def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
 ) -> AnyArray:
     """Create an array.
 
@@ -924,6 +938,12 @@ def create_array(
         then ``write_data`` determines whether the values in that array-like object should be
         written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
         array will be left empty.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the created array: a name (`"default"`,
+        `"zarrista"`) or a pre-built engine instance. A synchronous
+        `ArrayEngine` instance only makes sense from the sync API; an
+        `AsyncArrayEngine` instance only from the async API; a name works
+        from either. When omitted, the `"default"` behavior is unchanged.
 
     Returns
     -------
@@ -944,6 +964,7 @@ def create_array(
     # <Array memory://... shape=(100, 100) dtype=int32>
     ```
     """
+    engine_for_async, engine_for_array = route_sync_engine_arg(engine)
     return Array(
         sync(
             zarr.core.array.create_array(
@@ -967,8 +988,10 @@ def create_array(
                 overwrite=overwrite,
                 config=config,
                 write_data=write_data,
+                engine=engine_for_async,
             )
-        )
+        ),
+        engine_spec=engine_for_array,
     )
 
 
@@ -1330,6 +1353,7 @@ def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Open an array using file-mode-like semantics.
@@ -1347,6 +1371,13 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the opened (or, if missing, created)
+        array: a name (`"default"`, `"zarrista"`) or a pre-built engine
+        instance. A synchronous `ArrayEngine` instance only makes sense from
+        the sync API; an `AsyncArrayEngine` instance only from the async API;
+        a name works from either. When omitted, the `"default"` behavior is
+        unchanged.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1356,6 +1387,7 @@ def open_array(
     AsyncArray
         The opened array.
     """
+    engine_for_async, engine_for_array = route_sync_engine_arg(engine)
     return Array(
         sync(
             async_api.open_array(
@@ -1363,9 +1395,11 @@ def open_array(
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
+                engine=engine_for_async,
                 **kwargs,
             )
-        )
+        ),
+        engine_spec=engine_for_array,
     )
 
 

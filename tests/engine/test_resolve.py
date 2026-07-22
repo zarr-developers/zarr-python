@@ -99,3 +99,63 @@ def test_zarrista_missing_raises_import_error() -> None:
         resolve_async_engine(
             "zarrista", store=z.store, path=z.path, metadata=z.async_array.metadata
         )
+
+
+def test_resolve_async_engine_rejects_sync_engine_instance() -> None:
+    """`resolve_async_engine` must reject a synchronous `ArrayEngine` instance --
+    `AsyncArray` can only be backed by an `AsyncArrayEngine`."""
+    z = _array()
+    sync_engine = resolve_sync_engine(
+        None, store=z.store, path=z.path, metadata=z.async_array.metadata
+    )
+    with pytest.raises(TypeError, match="AsyncArray"):
+        resolve_async_engine(
+            sync_engine,  # type: ignore[arg-type]
+            store=z.store,
+            path=z.path,
+            metadata=z.async_array.metadata,
+        )
+
+
+def test_resolve_sync_engine_rejects_async_engine_instance() -> None:
+    """`resolve_sync_engine` must reject an asynchronous `AsyncArrayEngine`
+    instance -- `Array` can only be backed by a synchronous `ArrayEngine`."""
+    z = _array()
+    async_engine = resolve_async_engine(
+        None, store=z.store, path=z.path, metadata=z.async_array.metadata
+    )
+    with pytest.raises(TypeError, match="Array"):
+        resolve_sync_engine(
+            async_engine,  # type: ignore[arg-type]
+            store=z.store,
+            path=z.path,
+            metadata=z.async_array.metadata,
+        )
+
+
+def test_resolve_async_engine_rejects_object_missing_read_selection() -> None:
+    """An object implementing neither engine protocol (no `read_selection`) must
+    raise `TypeError` naming the protocols, not some other error, when handed to
+    `resolve_async_engine`."""
+    z = _array()
+    with pytest.raises(TypeError, match="read_selection"):
+        resolve_async_engine(
+            object(),  # type: ignore[arg-type]
+            store=z.store,
+            path=z.path,
+            metadata=z.async_array.metadata,
+        )
+
+
+def test_resolve_sync_engine_rejects_object_missing_read_selection() -> None:
+    """An object implementing neither engine protocol (no `read_selection`) must
+    raise `TypeError` naming the protocols, not some other error, when handed to
+    `resolve_sync_engine`."""
+    z = _array()
+    with pytest.raises(TypeError, match="read_selection"):
+        resolve_sync_engine(
+            object(),  # type: ignore[arg-type]
+            store=z.store,
+            path=z.path,
+            metadata=z.async_array.metadata,
+        )
