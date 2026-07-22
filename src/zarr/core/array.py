@@ -3,13 +3,14 @@ from __future__ import annotations
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import InitVar, dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    NamedTuple,
     TypedDict,
     cast,
     overload,
@@ -88,6 +89,7 @@ from zarr.core.engine import (
     normalize_coordinate,
     normalize_orthogonal,
     resolve_async_engine,
+    resolve_sync_engine,
     squeeze_axes,
     strip_squeeze,
 )
@@ -168,7 +170,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
-    from zarr.abc.engine import AsyncArrayEngine
+    from zarr.abc.engine import ArrayEngine, AsyncArrayEngine
     from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
@@ -1814,6 +1816,18 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
 
     _async_array: AsyncArray[T_ArrayMetadata]
+    # `engine_spec` seeds `_engine`'s lazy resolution (see the `engine` property
+    # below); it is not itself a stored attribute (`InitVar`), so it cannot
+    # share the `engine` property's name without the class-body assignment of
+    # one clobbering the other in `Array.__dict__`.
+    engine_spec: InitVar[ArrayEngine | EngineName | None] = None
+    # derived, per-array sync data path; lazily resolved on first `.engine`
+    # access (see the `engine` property) so wrapping an `AsyncArray` never
+    # eagerly binds a second engine that might go unused.
+    _engine: ArrayEngine | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self, engine_spec: ArrayEngine | EngineName | None) -> None:
+        self._engine_spec = engine_spec
 
     @property
     def async_array(self) -> AsyncArray[T_ArrayMetadata]:
@@ -1824,6 +1838,39 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             An asynchronous array whose metadata + store matches that of this synchronous array.
         """
         return self._async_array
+
+    @property
+    def engine(self) -> ArrayEngine:
+        """The synchronous array engine serving this array's data path.
+
+        Resolved lazily on first access and cached; every `get_*_selection`/
+        `set_*_selection` method (and `__getitem__`/`__setitem__`) calls the
+        engine directly, without wrapping the call in a coroutine, so this
+        array's data path never touches the event loop in the caller's thread
+        -- the default engine still uses `sync()` internally, but that runs on
+        zarr's dedicated loop thread, not the caller's.
+        """
+        if self._engine is None:
+            aa = self._async_array
+            self._engine = resolve_sync_engine(
+                self._engine_spec,
+                store=aa.store_path.store,
+                path=aa.store_path.path,
+                metadata=aa.metadata,
+                config=aa.config,
+            )
+        return self._engine
+
+    def _rebind_engine(self) -> None:
+        """Rebind the cached sync engine to this array's current metadata.
+
+        Called after `resize`/`append` mutate `self._async_array.metadata` in
+        place, so a subsequent read/write through `self.engine` sees the new
+        shape instead of a stale cached engine. A no-op if `.engine` was never
+        accessed (nothing cached to rebind).
+        """
+        if self._engine is not None:
+            self._engine = self._engine.with_metadata(self._async_array.metadata)
 
     @property
     def config(self) -> ArrayConfig:
@@ -2840,15 +2887,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _basic_region_post(selection, self.shape)
-        return sync(
-            self.async_array._get_selection(
-                region,
-                post,
-                out=out,
-                fields=fields,
-                prototype=prototype,
-                scalarize=True,
-            )
+        return _get_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            out=out,
+            fields=fields,
+            prototype=prototype,
+            scalarize=True,
         )
 
     def set_basic_selection(
@@ -2952,8 +3000,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _basic_region_post(selection, self.shape)
-        sync(
-            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        _set_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            value,
+            fields=fields,
+            prototype=prototype,
         )
 
     def get_orthogonal_selection(
@@ -3082,10 +3137,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _orthogonal_region_post(selection, self.shape)
-        return sync(
-            self.async_array._get_selection(
-                region, post, out=out, fields=fields, prototype=prototype
-            )
+        return _get_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
     def set_orthogonal_selection(
@@ -3200,8 +3260,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _orthogonal_region_post(selection, self.shape)
-        return sync(
-            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        _set_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            value,
+            fields=fields,
+            prototype=prototype,
         )
 
     def get_mask_selection(
@@ -3288,10 +3355,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _mask_region_post(mask, self.shape)
-        return sync(
-            self.async_array._get_selection(
-                region, post, out=out, fields=fields, prototype=prototype
-            )
+        return _get_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
     def set_mask_selection(
@@ -3377,8 +3449,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post = _mask_region_post(mask, self.shape)
-        sync(
-            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        _set_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            value,
+            fields=fields,
+            prototype=prototype,
         )
 
     def get_coordinate_selection(
@@ -3467,10 +3546,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post, sel_shape = _coordinate_region_post(selection, self.shape)
-        out_array = sync(
-            self.async_array._get_selection(
-                region, post, out=out, fields=fields, prototype=prototype
-            )
+        out_array = _get_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
         if hasattr(out_array, "shape"):
@@ -3581,8 +3665,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(
-            self.async_array._set_selection(region, post, value, fields=fields, prototype=prototype)
+        _set_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            post,
+            value,
+            fields=fields,
+            prototype=prototype,
         )
 
     def get_block_selection(
@@ -3683,8 +3774,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region = _block_region(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(region, (), out=out, fields=fields, prototype=prototype)
+        return _get_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            (),
+            out=out,
+            fields=fields,
+            prototype=prototype,
         )
 
     def set_block_selection(
@@ -3781,7 +3879,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region = _block_region(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(region, (), value, fields=fields, prototype=prototype))
+        _set_selection_sync(
+            self.engine,
+            self.metadata,
+            self.config,
+            region,
+            (),
+            value,
+            fields=fields,
+            prototype=prototype,
+        )
 
     @property
     def vindex(self) -> VIndex:
@@ -3846,6 +3953,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         sync(self.async_array.resize(new_shape))
+        self._rebind_engine()
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
@@ -3881,7 +3989,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self.async_array.append(data, axis=axis))
+        new_shape = sync(self.async_array.append(data, axis=axis))
+        self._rebind_engine()
+        return new_shape
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -5436,6 +5546,66 @@ def _finalize_result(
     return result
 
 
+def _get_selection_prepare(
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    region: Region,
+    post_index: tuple[Any, ...],
+    *,
+    out: NDBuffer | None,
+    fields: Fields | None,
+) -> tuple[np.dtype[Any], tuple[int, ...], MemoryOrder]:
+    """Shared preamble for `_get_selection`/`_get_selection_sync`: compute the
+    read's output dtype/shape/memory order and validate `out` against them.
+
+    Split out so the async and sync selection helpers share this pure logic
+    and differ only in whether `engine.read_selection` is awaited.
+    """
+    dtype = _native_dtype(metadata)
+    out_dtype = check_fields(fields, dtype)
+    result_shape = _selection_result_shape(region, post_index, out_dtype)
+    order = metadata.order if metadata.zarr_format == 2 else config.order
+
+    if out is not None:
+        if not isinstance(out, NDBuffer):
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out.shape != result_shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {result_shape}, got {out.shape}"
+            )
+    return out_dtype, result_shape, order
+
+
+def _finish_get_selection(
+    raw: NDArrayLike,
+    region: Region,
+    post_index: tuple[Any, ...],
+    *,
+    fields: Fields | None,
+    order: MemoryOrder,
+    out: NDBuffer | None,
+    scalarize: bool,
+) -> NDArrayLikeOrScalar:
+    """Shared postamble for `_get_selection`/`_get_selection_sync`: apply
+    `fields`/`post_index` to the engine's raw box read, then finalize into
+    `out`/scalar -- everything that happens after the (a)waited
+    `engine.read_selection` call.
+    """
+    if not fields and _is_identity_read(post_index, region.shape):
+        # a full-box, step-1 read is exactly the engine result; return it
+        # unchanged so a custom `NDArrayLike` type (e.g. GPU/torch buffers)
+        # survives instead of being coerced to numpy by `np.asarray`
+        return _finalize_result(raw, out, scalarize=scalarize)
+    box = np.asarray(raw)
+    if fields:
+        # non-empty `fields` selects structured sub-fields; an empty list/tuple
+        # (from `pop_fields` on a field-free selection) means "all fields"
+        box = box[fields]  # type: ignore[index]
+    result = apply_post_index(box, post_index)
+    result = np.asarray(result, order=order)
+    return _finalize_result(result, out, scalarize=scalarize)
+
+
 async def _get_selection(
     engine: AsyncArrayEngine,
     metadata: ArrayMetadata,
@@ -5456,37 +5626,46 @@ async def _get_selection(
     `fields`, then `post_index`, and finally optional scalar extraction / `out`
     handling.
     """
-    dtype = _native_dtype(metadata)
-    out_dtype = check_fields(fields, dtype)
-    result_shape = _selection_result_shape(region, post_index, out_dtype)
-    order = metadata.order if metadata.zarr_format == 2 else config.order
-
-    if out is not None:
-        if not isinstance(out, NDBuffer):
-            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
-        if out.shape != result_shape:
-            raise ValueError(
-                f"shape of out argument doesn't match. Expected {result_shape}, got {out.shape}"
-            )
-
+    out_dtype, result_shape, order = _get_selection_prepare(
+        metadata, config, region, post_index, out=out, fields=fields
+    )
     if product(region.shape) == 0:
         empty = np.empty(result_shape, dtype=out_dtype)
         return _finalize_result(empty, out, scalarize=scalarize)
 
     raw = await engine.read_selection(region, prototype=prototype)
-    if not fields and _is_identity_read(post_index, region.shape):
-        # a full-box, step-1 read is exactly the engine result; return it
-        # unchanged so a custom `NDArrayLike` type (e.g. GPU/torch buffers)
-        # survives instead of being coerced to numpy by `np.asarray`
-        return _finalize_result(raw, out, scalarize=scalarize)
-    box = np.asarray(raw)
-    if fields:
-        # non-empty `fields` selects structured sub-fields; an empty list/tuple
-        # (from `pop_fields` on a field-free selection) means "all fields"
-        box = box[fields]  # type: ignore[index]
-    result = apply_post_index(box, post_index)
-    result = np.asarray(result, order=order)
-    return _finalize_result(result, out, scalarize=scalarize)
+    return _finish_get_selection(
+        raw, region, post_index, fields=fields, order=order, out=out, scalarize=scalarize
+    )
+
+
+def _get_selection_sync(
+    engine: ArrayEngine,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    region: Region,
+    post_index: tuple[Any, ...],
+    *,
+    prototype: BufferPrototype,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+    scalarize: bool = False,
+) -> NDArrayLikeOrScalar:
+    """Synchronous mirror of `_get_selection`: same logic, calling
+    `engine.read_selection` directly instead of awaiting it, so `Array`'s data
+    path never runs a coroutine on the caller's thread.
+    """
+    out_dtype, result_shape, order = _get_selection_prepare(
+        metadata, config, region, post_index, out=out, fields=fields
+    )
+    if product(region.shape) == 0:
+        empty = np.empty(result_shape, dtype=out_dtype)
+        return _finalize_result(empty, out, scalarize=scalarize)
+
+    raw = engine.read_selection(region, prototype=prototype)
+    return _finish_get_selection(
+        raw, region, post_index, fields=fields, order=order, out=out, scalarize=scalarize
+    )
 
 
 def _coerce_write_value(
@@ -5521,31 +5700,42 @@ def _coerce_write_value(
     return cast("NDArrayLike", value)
 
 
-async def _set_selection(
-    engine: AsyncArrayEngine,
+class _SetSelectionPrep(NamedTuple):
+    """Engine-agnostic state prepared for a selection write, shared by
+    `_set_selection`/`_set_selection_sync`.
+
+    `identity_box`, when not `None`, is the fully-assembled box for a
+    full-box overwrite -- no read is needed, it is ready to write as-is. When
+    `None`, the write is a read-modify-write: `fields`/`stripped`/
+    `assign_value` are the arguments `_patch_selection_box` needs to patch the
+    box the engine reads back.
+    """
+
+    identity_box: NDArrayLike | None
+    fields: Fields | None
+    stripped: tuple[Any, ...]
+    assign_value: NDArrayLike
+
+
+def _prepare_set_selection(
     metadata: ArrayMetadata,
-    config: ArrayConfig,
     region: Region,
     post_index: tuple[Any, ...],
     value: npt.ArrayLike,
     *,
     prototype: BufferPrototype,
-    fields: Fields | None = None,
-) -> None:
-    """Write a selection through the engine as a contiguous-box read-modify-write.
-
-    An identity `post_index` (a full-box write with no `fields`) broadcasts the
-    value straight into the box and writes it. Any strided/fancy/orthogonal/
-    fields write instead reads the box, patches it with numpy using the same
-    `post_index` the read path uses (dropping the orthogonal `_Squeeze` marker
-    and widening the value at dropped integer axes, matching `oindex_set`), then
-    writes the whole box back.
+    fields: Fields | None,
+) -> _SetSelectionPrep | None:
+    """Shared preamble for `_set_selection`/`_set_selection_sync`: validate
+    `fields`, short-circuit an empty selection (returning `None`), coerce
+    `value`, and decide whether the write is a full-box overwrite or a
+    read-modify-write.
     """
     dtype = _native_dtype(metadata)
     check_fields(fields, dtype)
     fields = check_no_multi_fields(fields)
     if product(region.shape) == 0:
-        return
+        return None
 
     value_np = _coerce_write_value(value, dtype, prototype, fields)
 
@@ -5562,23 +5752,108 @@ async def _set_selection(
     # those axes so it aligns with the (un-squeezed) box (matching `oindex_set`)
     assign_value = _widen_value_for_squeeze(value_np, sq_axes, len(region.shape))
 
+    identity_box = None
     if identity_post:
         # full-box write: broadcast the value into the box without a read
-        box = np.array(np.broadcast_to(np.asarray(assign_value), region.shape), dtype=dtype)
+        identity_box = np.array(
+            np.broadcast_to(np.asarray(assign_value), region.shape), dtype=dtype
+        )
+    return _SetSelectionPrep(
+        identity_box=identity_box,
+        fields=fields,
+        stripped=stripped,
+        assign_value=assign_value,
+    )
+
+
+def _patch_selection_box(raw: NDArrayLike, prep: _SetSelectionPrep) -> NDArrayLike:
+    """Patch a box read back from the engine for the read-modify-write path
+    (`prep.identity_box is None`), using the same `post_index` the read path
+    uses (dropping the orthogonal `_Squeeze` marker and widening the value at
+    dropped integer axes, matching `oindex_set`)."""
+    box = np.array(np.asarray(raw))
+    target = box[prep.fields] if prep.fields else box  # type: ignore[index]
+    if prep.stripped == ():
+        target[...] = prep.assign_value
+    else:
+        target[prep.stripped] = prep.assign_value
+    return box
+
+
+def _finish_set_selection(box: NDArrayLike, prototype: BufferPrototype) -> NDBuffer:
+    """Shared postamble for `_set_selection`/`_set_selection_sync`: make the
+    box contiguous (0-d arrays pass through unchanged -- `np.ascontiguousarray`
+    would otherwise promote them to shape `(1,)`) and wrap it for
+    `engine.write_selection`."""
+    contiguous_box = box if box.ndim == 0 else np.ascontiguousarray(box)
+    return prototype.nd_buffer.from_ndarray_like(contiguous_box)
+
+
+async def _set_selection(
+    engine: AsyncArrayEngine,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    region: Region,
+    post_index: tuple[Any, ...],
+    value: npt.ArrayLike,
+    *,
+    prototype: BufferPrototype,
+    fields: Fields | None = None,
+) -> None:
+    """Write a selection through the engine as a contiguous-box read-modify-write.
+
+    An identity `post_index` (a full-box write with no `fields`) broadcasts the
+    value straight into the box and writes it. Any strided/fancy/orthogonal/
+    fields write instead reads the box, patches it with numpy using the same
+    `post_index` the read path uses, then writes the whole box back.
+    """
+    prep = _prepare_set_selection(
+        metadata, region, post_index, value, prototype=prototype, fields=fields
+    )
+    if prep is None:
+        return
+
+    if prep.identity_box is not None:
+        box = prep.identity_box
     else:
         # facade-level read-modify-write for strided/fancy/orthogonal/fields writes
-        box = np.array(np.asarray(await engine.read_selection(region, prototype=prototype)))
-        target = box[fields] if fields else box  # type: ignore[index]
-        if stripped == ():
-            target[...] = assign_value
-        else:
-            target[stripped] = assign_value
+        raw = await engine.read_selection(region, prototype=prototype)
+        box = _patch_selection_box(raw, prep)
 
-    # `np.ascontiguousarray` would promote a 0-d box (scalar array) to shape (1,);
-    # a 0-d array is already contiguous, so pass it through unchanged.
-    contiguous_box = box if box.ndim == 0 else np.ascontiguousarray(box)
-    value_buffer = prototype.nd_buffer.from_ndarray_like(contiguous_box)
+    value_buffer = _finish_set_selection(box, prototype)
     await engine.write_selection(region, value_buffer, prototype=prototype)
+
+
+def _set_selection_sync(
+    engine: ArrayEngine,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    region: Region,
+    post_index: tuple[Any, ...],
+    value: npt.ArrayLike,
+    *,
+    prototype: BufferPrototype,
+    fields: Fields | None = None,
+) -> None:
+    """Synchronous mirror of `_set_selection`: same logic, calling
+    `engine.read_selection`/`engine.write_selection` directly instead of
+    awaiting them, so `Array`'s data path never runs a coroutine on the
+    caller's thread.
+    """
+    prep = _prepare_set_selection(
+        metadata, region, post_index, value, prototype=prototype, fields=fields
+    )
+    if prep is None:
+        return
+
+    if prep.identity_box is not None:
+        box = prep.identity_box
+    else:
+        raw = engine.read_selection(region, prototype=prototype)
+        box = _patch_selection_box(raw, prep)
+
+    value_buffer = _finish_set_selection(box, prototype)
+    engine.write_selection(region, value_buffer, prototype=prototype)
 
 
 def _basic_region_post(

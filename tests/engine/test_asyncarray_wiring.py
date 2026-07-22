@@ -37,9 +37,10 @@ class _SpyEngine:
 
 
 async def test_asyncarray_routes_io_through_engine() -> None:
-    # NOTE: the async variant of the spy test. Task 6 gives the sync `Array` its
-    # own sync engine; until then the sync `z[...]` path shares this async engine,
-    # but this task exercises the async `AsyncArray` methods directly.
+    # NOTE: the async variant of the spy test. `Array` (the sync facade) now
+    # resolves and calls its own sync engine (see tests/engine/test_sync_path.py);
+    # this test exercises the async `AsyncArray` methods directly, via its
+    # separate async engine.
     z = zarr.create_array(MemoryStore(), shape=(10,), chunks=(3,), dtype="int16")
     aa = z.async_array
     spy = _SpyEngine(
