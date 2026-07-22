@@ -21,6 +21,10 @@ The algorithm is:
 4. **Yield** — produce `(chunk_coords, local_transform, surviving_indices)`
    triples that the codec pipeline consumes.
 
+Sorted one-dimensional correlated array maps can be partitioned directly
+because every touched chunk owns a contiguous slice of the index array. That
+case bypasses candidate enumeration and repeated intersection.
+
 `sub_transform_to_selections` bridges from the transform representation
 back to the raw `(chunk_selection, out_selection, drop_axes)` tuples that
 the current codec pipeline expects. This bridge will go away when the codec
@@ -40,7 +44,7 @@ from zarr_transforms.transform import IndexTransform
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from zarr_transforms.grid import ChunkGridLike
+    from zarr_transforms.grid import ChunkGridLike, DimensionGridLike
 
 OutIndices = (
     dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]] | None
@@ -51,6 +55,61 @@ ChunkTransformResult = tuple[
     IndexTransform,
     OutIndices,
 ]
+
+
+def _one_dimensional_correlated_array_map(
+    transform: IndexTransform,
+) -> tuple[ArrayMap, np.ndarray[Any, np.dtype[np.intp]]] | None:
+    """Return a nonempty correlated 1-D ArrayMap and its storage coordinates.
+
+    A one-dimensional array selection has no cross-dimensional correlation to
+    preserve. The computed storage coordinates are also reused by general
+    resolution when they are unsorted.
+    """
+    if transform.input_rank != 1 or transform.output_rank != 1:
+        return None
+
+    m = transform.output[0]
+    if (
+        not isinstance(m, ArrayMap)
+        or m.input_dimension is not None
+        or m.index_array.ndim != 1
+        or m.index_array.size == 0
+    ):
+        return None
+
+    return m, m.offset + m.stride * m.index_array
+
+
+def _iter_sorted_1d_array_map(
+    m: ArrayMap,
+    storage: np.ndarray[Any, np.dtype[np.intp]],
+    dim_grid: DimensionGridLike,
+) -> Iterator[ChunkTransformResult]:
+    """Resolve a sorted 1-D ArrayMap one touched chunk at a time."""
+    start = 0
+    while start < storage.size:
+        chunk = dim_grid.index_to_chunk(int(storage[start]))
+        chunk_start = dim_grid.chunk_offset(chunk)
+        chunk_stop = chunk_start + dim_grid.chunk_size(chunk)
+        stop = int(np.searchsorted(storage, chunk_stop, side="left"))
+
+        restricted = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(stop - start,)),
+            output=(
+                ArrayMap(
+                    index_array=m.index_array[start:stop],
+                    offset=m.offset,
+                    stride=m.stride,
+                    input_dimension=m.input_dimension,
+                ),
+            ),
+        )
+        local = restricted.translate((-chunk_start,))
+        surviving = np.arange(start, stop, dtype=np.intp)
+
+        yield (chunk,), local, surviving
+        start = stop
 
 
 def iter_chunk_transforms(
@@ -67,6 +126,16 @@ def iter_chunk_transforms(
       indices (integer array). `None` for basic/slice indexing.
     """
     dim_grids = chunk_grid._dimensions
+
+    array_map_1d = _one_dimensional_correlated_array_map(transform)
+    if array_map_1d is not None:
+        m, storage = array_map_1d
+        if storage[0] <= storage[-1] and bool(np.all(storage[1:] >= storage[:-1])):
+            dim_grid = dim_grids[0]
+            first_chunk = dim_grid.index_to_chunk(int(storage[0]))
+            if dim_grid.chunk_size(first_chunk) > 0:
+                yield from _iter_sorted_1d_array_map(m, storage, dim_grid)
+                return
 
     # Enumerate candidate chunks via the cartesian product of per-dimension
     # candidate chunk ids, then for each candidate intersect the transform with
@@ -113,7 +182,10 @@ def iter_chunk_transforms(
             last = dg.index_to_chunk(s_max)
             chunk_candidates.append(range(first, last + 1))
         elif isinstance(m, ArrayMap):
-            storage = m.offset + m.stride * m.index_array
+            # already computed these storage coordinates for a correlated 1-D map.
+            storage = (
+                array_map_1d[1] if array_map_1d is not None else m.offset + m.stride * m.index_array
+            )
             flat = storage.ravel().astype(np.intp)
             if flat.size == 0:
                 # Empty fancy selection: no coordinates, so no chunks are touched.

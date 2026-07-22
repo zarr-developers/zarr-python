@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from zarr.core.chunk_grids import ChunkGrid, FixedDimension
+from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
 
+import zarr_transforms.chunk_resolution as chunk_resolution
 from zarr_transforms.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
 from zarr_transforms.domain import IndexDomain
 from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
@@ -110,6 +111,150 @@ class TestChunkResolutionArray:
         assert (2,) in coords_list
 
 
+class TestChunkResolutionSorted1D:
+    def test_matches_general_resolution_for_randomized_sorted_selections(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Direct partitioning matches the original resolver across varied inputs."""
+        rng = np.random.default_rng(0)
+        grids = (
+            ChunkGrid(dimensions=(FixedDimension(size=7, extent=30),)),
+            ChunkGrid(dimensions=(VaryingDimension(edges=(3, 4, 8, 5, 10), extent=30),)),
+        )
+
+        for grid in grids:
+            for _ in range(50):
+                idx = np.sort(rng.integers(0, 30, size=int(rng.integers(1, 80)))).astype(np.intp)
+                transform = IndexTransform.from_shape((30,)).vindex[idx]
+                direct = list(iter_chunk_transforms(transform, grid))
+
+                with monkeypatch.context() as context:
+                    context.setattr(
+                        chunk_resolution,
+                        "_one_dimensional_correlated_array_map",
+                        lambda _transform: None,
+                    )
+                    general = list(iter_chunk_transforms(transform, grid))
+
+                assert [result[0] for result in direct] == [result[0] for result in general]
+                for direct_result, general_result in zip(direct, general, strict=True):
+                    _, direct_t, direct_out = direct_result
+                    _, general_t, general_out = general_result
+                    assert direct_t.domain == general_t.domain
+
+                    direct_chunk_sel, direct_out_sel, direct_drop = sub_transform_to_selections(
+                        direct_t, direct_out
+                    )
+                    general_chunk_sel, general_out_sel, general_drop = sub_transform_to_selections(
+                        general_t, general_out
+                    )
+                    assert direct_drop == general_drop
+                    np.testing.assert_array_equal(direct_chunk_sel[0], general_chunk_sel[0])
+                    np.testing.assert_array_equal(direct_out_sel[0], general_out_sel[0])
+
+    def test_sorted_vindex_partitions_chunks_without_intersection(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sorted vectorized coordinates are sliced directly per touched chunk."""
+        idx = np.array([0, 3, 4, 4, 9, 11], dtype=np.intp)
+        t = IndexTransform.from_shape((12,)).vindex[idx]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert [result[0] for result in results] == [(0,), (1,), (2,)]
+        assert calls["n"] == 0
+
+        expected_chunk_indices = ([0, 3], [0, 0], [1, 3])
+        expected_out_indices = ([0, 1], [2, 3], [4, 5])
+        for result, expected_chunk, expected_out in zip(
+            results, expected_chunk_indices, expected_out_indices, strict=True
+        ):
+            _, sub_t, out_indices = result
+            chunk_sel, out_sel, drop_axes = sub_transform_to_selections(sub_t, out_indices)
+            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
+            np.testing.assert_array_equal(out_sel[0], expected_out)
+            assert drop_axes == ()
+
+    def test_sorted_array_map_preserves_offset_and_stride(self) -> None:
+        """Storage partitioning retains the ArrayMap's offset and stride."""
+        t = IndexTransform(
+            domain=IndexDomain.from_shape((3,)),
+            output=(
+                ArrayMap(
+                    index_array=np.array([0, 1, 2], dtype=np.intp),
+                    offset=1,
+                    stride=3,
+                ),
+            ),
+        )
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=8),))
+
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert [result[0] for result in results] == [(0,), (1,)]
+        expected_chunk_indices = ([1], [0, 3])
+        expected_out_indices = ([0], [1, 2])
+        for result, expected_chunk, expected_out in zip(
+            results, expected_chunk_indices, expected_out_indices, strict=True
+        ):
+            _, sub_t, out_indices = result
+            chunk_sel, out_sel, _ = sub_transform_to_selections(sub_t, out_indices)
+            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
+            np.testing.assert_array_equal(out_sel[0], expected_out)
+
+    def test_sorted_vindex_with_varying_chunks(self) -> None:
+        """Touched-boundary searches also support a non-uniform 1-D grid."""
+        idx = np.array([0, 1, 2, 3, 5, 9], dtype=np.intp)
+        t = IndexTransform.from_shape((10,)).vindex[idx]
+        grid = ChunkGrid(dimensions=(VaryingDimension(edges=(2, 3, 5), extent=10),))
+
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert [result[0] for result in results] == [(0,), (1,), (2,)]
+        expected_chunk_indices = ([0, 1], [0, 1], [0, 4])
+        for result, expected_chunk in zip(results, expected_chunk_indices, strict=True):
+            _, sub_t, out_indices = result
+            chunk_sel, _, _ = sub_transform_to_selections(sub_t, out_indices)
+            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
+
+    def test_sorted_vindex_with_zero_sized_dimension_uses_general_resolution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A zero-sized grid cannot be partitioned by touched boundaries."""
+        t = IndexTransform.from_shape((10,)).vindex[np.array([1], dtype=np.intp)]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=0, extent=10),))
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert results == []
+        assert calls["n"] == 1
+
+    def test_unsorted_vindex_uses_general_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Unsorted coordinates continue through the general intersection logic."""
+        t = IndexTransform.from_shape((12,)).vindex[np.array([9, 0, 4], dtype=np.intp)]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert [result[0] for result in results] == [(0,), (1,), (2,)]
+        assert calls["n"] == 3
+
+    def test_sorted_oindex_uses_general_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Orthogonal ArrayMaps retain their existing domain-aware resolution."""
+        t = IndexTransform.from_shape((12,)).oindex[np.array([0, 4, 9], dtype=np.intp)]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid))
+
+        assert [result[0] for result in results] == [(0,), (1,), (2,)]
+        assert calls["n"] == 3
+
+
 def _count_intersect_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
     """Wrap `IndexTransform.intersect` with a call counter.
 
@@ -154,8 +299,9 @@ class TestChunkResolutionTouchedOnly:
 
         coords = sorted(r[0] for r in results)
         assert coords == [(0,), (999,)]
-        # Exactly the touched chunks, independent of the 1000-chunk grid size.
-        assert calls["n"] == 2
+        # Sorted 1-D coordinates are partitioned directly, without intersecting
+        # either the touched chunks or the 998 empty chunks between them.
+        assert calls["n"] == 0
 
     def test_2d_orthogonal_enumerates_only_touched_chunks(
         self, monkeypatch: pytest.MonkeyPatch
