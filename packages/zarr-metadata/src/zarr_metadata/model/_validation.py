@@ -100,9 +100,22 @@ def validate_json(value: object) -> list[ValidationProblem]:
     return [ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type")]
 
 
+def _is_canonical_json(value: object) -> TypeIs[JSONValue]:
+    """Whether `value` already uses the concrete containers in `JSONValue`."""
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, (str, int, bool)) or value is None:
+        return True
+    if isinstance(value, (list, tuple)):
+        return all(_is_canonical_json(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(key, str) and _is_canonical_json(item) for key, item in value.items())
+    return False
+
+
 def is_json(value: object) -> TypeIs[JSONValue]:
-    """Whether `value` is a JSON-serializable structure (recursively)."""
-    return not validate_json(value)
+    """Whether `value` is a canonical JSON structure (recursively)."""
+    return _is_canonical_json(value)
 
 
 def parse_json(value: object) -> JSONValue:
@@ -281,7 +294,11 @@ def validate_metadata_field_v3(
 
 def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
     """Whether `value` is a v3 metadata field: a bare name or a named config."""
-    return not validate_metadata_field_v3(value)
+    return isinstance(value, str) or (
+        isinstance(value, dict)
+        and _is_canonical_json(value)
+        and not validate_metadata_field_v3(value)
+    )
 
 
 def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:

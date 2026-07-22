@@ -3,18 +3,23 @@
 from collections.abc import Mapping
 from typing import Final, Literal, NotRequired
 
-from typing_extensions import TypedDict
+from typing_extensions import TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 
-ZarrV2DataTypeMetadata = str | tuple[tuple[str, str] | tuple[str, str, tuple[int, ...]], ...]
+ZarrV2DataTypeMetadata = TypeAliasType(
+    "ZarrV2DataTypeMetadata",
+    "str | tuple[tuple[str, ZarrV2DataTypeMetadata] | "
+    "tuple[str, ZarrV2DataTypeMetadata, tuple[int, ...]], ...]",
+)
 """The v2 dtype representation.
 
 Either a numpy-style dtype string (e.g. `"<f8"`, `"|S10"`) or a tuple of
 field records describing a structured dtype. Each field record is either
 a 2-tuple `(name, datatype)` or a 3-tuple `(name, datatype, shape)`
-(the 3-tuple form indicates a subarray field).
+(the 3-tuple form indicates a subarray field). A field datatype may itself
+be another structured dtype.
 
 Endianness is encoded in the prefix character of the dtype string;
 parsing it out is a caller concern, not part of this type.

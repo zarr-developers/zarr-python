@@ -5,7 +5,10 @@ works; this module ships it. Instances are the CORE model classes (no
 parallel hierarchy), so values interoperate freely with non-pydantic code.
 """
 
+import json
+
 import pytest
+from jsonschema import Draft202012Validator
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
@@ -122,6 +125,87 @@ def test_json_schema_generation() -> None:
         {"type": "string"},
         {"$ref": "#/$defs/ZarrV3NamedConfigJSON"},
     ]
+
+
+def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
+    """The schema accepts nested structured dtypes supported by the v2 specification."""
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    doc["dtype"] = [["outer", [["inner", "<i4"]]]]
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+
+    assert adapter.validate_python(doc).dtype == (("outer", (("inner", "<i4"),)),)
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
+
+
+def _assert_runtime_and_schema_reject(field_type: object, document: dict[str, object]) -> None:
+    adapter = TypeAdapter(field_type)
+    with pytest.raises(ValidationError):
+        adapter.validate_python(document)
+    assert list(Draft202012Validator(adapter.json_schema()).iter_errors(document))
+
+
+def test_v3_array_schema_rejects_empty_codecs() -> None:
+    """The generated schema mirrors the runtime non-empty codec pipeline rule."""
+    doc = json.loads(json.dumps(V3_ARRAY_DOC))
+    doc["codecs"] = []
+
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
+
+
+def test_array_schemas_reject_negative_dimensions() -> None:
+    """Both array schemas mirror the runtime non-negative dimension rule."""
+    for field_type, source in (
+        (zmp.ZarrV3ArrayMetadata, V3_ARRAY_DOC),
+        (zmp.ZarrV2ArrayMetadata, V2_ARRAY_DOC),
+    ):
+        doc = json.loads(json.dumps(source))
+        doc["shape"] = [-1]
+        _assert_runtime_and_schema_reject(field_type, doc)
+
+
+@pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
+def test_v3_array_schema_rejects_false_at_mandatory_extension_points(field: str) -> None:
+    """Mandatory v3 extension points cannot opt out of understanding."""
+    doc = json.loads(json.dumps(V3_ARRAY_DOC))
+    doc[field] = {"name": "example", "must_understand": False}
+
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
+
+
+def test_metadata_field_schema_rejects_unknown_members() -> None:
+    """Named-configuration envelopes are closed in both runtime and schema validation."""
+    _assert_runtime_and_schema_reject(
+        zmp.ZarrV3MetadataField,
+        {"name": "example", "unexpected": 1},
+    )
+
+
+@pytest.mark.parametrize(
+    ("field_type", "source"),
+    [
+        (zmp.ZarrV2ArrayMetadata, V2_ARRAY_DOC),
+        (zmp.ZarrV2GroupMetadata, V2_GROUP_DOC),
+        (zmp.ZarrV2ConsolidatedMetadata, V2_CONSOLIDATED_DOC),
+    ],
+)
+def test_v2_schema_rejects_unknown_document_members(
+    field_type: object, source: dict[str, object]
+) -> None:
+    """Closed v2 merged documents expose their runtime boundary in JSON Schema."""
+    doc = json.loads(json.dumps(source))
+    doc["unexpected"] = 1
+
+    _assert_runtime_and_schema_reject(field_type, doc)
+
+
+def test_v3_array_schema_allows_unknown_extension_fields() -> None:
+    """Schema constraints do not close the v3 top-level extension namespace."""
+    doc = json.loads(json.dumps(V3_ARRAY_DOC))
+    doc["vendor_extension"] = {"anything": [1, 2]}
+    adapter = TypeAdapter(zmp.ZarrV3ArrayMetadata)
+
+    assert adapter.validate_python(doc).extra_fields == {"vendor_extension": {"anything": (1, 2)}}
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
 def test_json_roundtrip() -> None:

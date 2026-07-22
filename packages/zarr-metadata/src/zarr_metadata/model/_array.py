@@ -460,6 +460,16 @@ class ZarrV2ArrayMetadata:
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
+        if "attributes" in zarray:
+            raise MetadataValidationError(
+                [
+                    ValidationProblem(
+                        ("attributes",),
+                        "unexpected document member",
+                        "invalid_value",
+                    )
+                ]
+            )
         if ATTRIBUTES_STORE_KEY_V2 in mapping:
             zattrs = cast("object", load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2))
             return cls.from_json({**zarray, "attributes": zattrs})

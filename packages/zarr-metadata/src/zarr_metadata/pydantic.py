@@ -33,13 +33,38 @@ from typing import TYPE_CHECKING, Annotated, TypeVar
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer
 
 from zarr_metadata import model as _model
-from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
-from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
-from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
-from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
-from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
+from zarr_metadata._pydantic_schema import (
+    ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV2ConsolidatedMetadataJSON as _ZarrV2ConsolidatedMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV2GroupMetadataJSON as _ZarrV2GroupMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV3ArrayMetadataJSON as _ZarrV3ArrayMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV3ConsolidatedMetadataJSON as _ZarrV3ConsolidatedMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV3GroupMetadataJSON as _ZarrV3GroupMetadataSchema,
+)
+from zarr_metadata._pydantic_schema import (
+    ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldSchema,
+)
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.consolidated import (
+    ZarrV2ConsolidatedMetadataJSON as _ZarrV2ConsolidatedMetadataJSON,
+)
+from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON as _ZarrV2GroupMetadataJSON
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldJSON
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON as _ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.consolidated import (
+    ZarrV3ConsolidatedMetadataJSON as _ZarrV3ConsolidatedMetadataJSON,
+)
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON as _ZarrV3GroupMetadataJSON
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -62,9 +87,9 @@ ZarrV3ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
         _coerce_to(_model.ZarrV3ArrayMetadata, _model.ZarrV3ArrayMetadata.from_json),
-        json_schema_input_type=ZarrV3ArrayMetadataJSON,
+        json_schema_input_type=_ZarrV3ArrayMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=ZarrV3ArrayMetadataJSON),
+    PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=_ZarrV3ArrayMetadataJSON),
 ]
 """Field type for a v3 array metadata document (`zarr.json` content)."""
 
@@ -72,9 +97,9 @@ ZarrV2ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
         _coerce_to(_model.ZarrV2ArrayMetadata, _model.ZarrV2ArrayMetadata.from_json),
-        json_schema_input_type=ZarrV2ArrayMetadataJSON,
+        json_schema_input_type=_ZarrV2ArrayMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=ZarrV2ArrayMetadataJSON),
+    PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=_ZarrV2ArrayMetadataJSON),
 ]
 """Field type for a v2 array metadata document (merged `.zarray` + `.zattrs` form)."""
 
@@ -82,9 +107,9 @@ ZarrV3GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
         _coerce_to(_model.ZarrV3GroupMetadata, _model.ZarrV3GroupMetadata.from_json),
-        json_schema_input_type=ZarrV3GroupMetadataJSON,
+        json_schema_input_type=_ZarrV3GroupMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=ZarrV3GroupMetadataJSON),
+    PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=_ZarrV3GroupMetadataJSON),
 ]
 """Field type for a v3 group metadata document (`zarr.json` content)."""
 
@@ -92,9 +117,9 @@ ZarrV2GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
         _coerce_to(_model.ZarrV2GroupMetadata, _model.ZarrV2GroupMetadata.from_json),
-        json_schema_input_type=ZarrV2GroupMetadataJSON,
+        json_schema_input_type=_ZarrV2GroupMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=ZarrV2GroupMetadataJSON),
+    PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=_ZarrV2GroupMetadataJSON),
 ]
 """Field type for a v2 group metadata document (merged `.zgroup` + `.zattrs` form)."""
 
@@ -105,11 +130,11 @@ ZarrV3ConsolidatedMetadata = Annotated[
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
         ),
-        json_schema_input_type=ZarrV3ConsolidatedMetadataJSON,
+        json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
     ),
     PlainSerializer(
         _model.ZarrV3ConsolidatedMetadata.to_json,
-        return_type=ZarrV3ConsolidatedMetadataJSON,
+        return_type=_ZarrV3ConsolidatedMetadataJSON,
     ),
 ]
 """Field type for v3 inline consolidated metadata."""
@@ -121,11 +146,11 @@ ZarrV2ConsolidatedMetadata = Annotated[
             _model.ZarrV2ConsolidatedMetadata,
             _model.ZarrV2ConsolidatedMetadata.from_json,
         ),
-        json_schema_input_type=ZarrV2ConsolidatedMetadataJSON,
+        json_schema_input_type=_ZarrV2ConsolidatedMetadataSchema,
     ),
     PlainSerializer(
         _model.ZarrV2ConsolidatedMetadata.to_json,
-        return_type=ZarrV2ConsolidatedMetadataJSON,
+        return_type=_ZarrV2ConsolidatedMetadataJSON,
     ),
 ]
 """Field type for a v2 `.zmetadata` document."""
@@ -134,9 +159,9 @@ ZarrV3MetadataField = Annotated[
     InstanceOf[_model.ZarrV3NamedConfig],
     BeforeValidator(
         _coerce_to(_model.ZarrV3NamedConfig, _model.ZarrV3NamedConfig.from_json),
-        json_schema_input_type=ZarrV3MetadataFieldJSON,
+        json_schema_input_type=_ZarrV3MetadataFieldSchema,
     ),
-    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=ZarrV3MetadataFieldJSON),
+    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=_ZarrV3MetadataFieldJSON),
 ]
 """Field type for one normalized v3 metadata extension envelope."""
 

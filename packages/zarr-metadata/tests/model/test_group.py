@@ -189,6 +189,19 @@ def test_group_v2_key_value_split() -> None:
     assert ZarrV2GroupMetadata.from_key_value(kv) == model
 
 
+@pytest.mark.parametrize("extra_key", ["attributes", "vendor_extension"])
+def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str) -> None:
+    """Raw `.zgroup` documents reject every non-spec member."""
+    doc: dict[str, object] = {"zarr_format": 2, extra_key: {}}
+
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ZarrV2GroupMetadata.from_key_value({".zgroup": json.dumps(doc).encode()})
+
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((extra_key,), "invalid_value")
+    ]
+
+
 def test_group_v2_zattrs_presence_round_trips() -> None:
     """A v2 group with no .zattrs file parses with UNSET attributes and emits
     no .zattrs; an explicit empty .zattrs stays a file — the stores remain

@@ -750,6 +750,21 @@ def test_v2_from_key_value_remerges_zattrs() -> None:
     assert model.shape == (10,)
 
 
+@pytest.mark.parametrize("extra_key", ["attributes", "vendor_extension"])
+def test_v2_from_key_value_rejects_zarray_extra_members(extra_key: str) -> None:
+    """Raw `.zarray` documents reject every non-spec member."""
+    doc: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    doc.pop("attributes", None)
+    doc[extra_key] = {}
+
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((extra_key,), "invalid_value")
+    ]
+
+
 def test_v2_zattrs_presence_round_trips() -> None:
     """The .zattrs file's presence is part of the store: an absent file reads
     as UNSET and emits no .zattrs; an explicit empty file reads as {} and
@@ -837,6 +852,12 @@ def test_parse_json_materializes_abstract_containers() -> None:
     json.dumps(parsed, allow_nan=False)
 
 
+def test_json_type_guard_rejects_abstract_sequence() -> None:
+    """A guard cannot narrow an abstract sequence that only the parser materializes."""
+    assert not is_json(range(3))
+    assert parse_json(range(3)) == (0, 1, 2)
+
+
 def test_parse_metadata_field_materializes_abstract_containers() -> None:
     """Named-config parsing produces canonical containers at every nesting level."""
     value = UserDict({"name": "example", "configuration": UserDict({"values": range(2)})})
@@ -846,6 +867,14 @@ def test_parse_metadata_field_materializes_abstract_containers() -> None:
     assert isinstance(parsed, dict)
     assert parsed == {"name": "example", "configuration": {"values": (0, 1)}}
     assert type(parsed["configuration"]) is dict
+
+
+def test_metadata_field_type_guard_rejects_abstract_mapping() -> None:
+    """A metadata-field guard only narrows concrete TypedDict-shaped objects."""
+    value = UserDict({"name": "bytes"})
+
+    assert not is_metadata_field_v3(value)
+    assert parse_metadata_field_v3(value) == {"name": "bytes"}
 
 
 def test_validate_json_reports_json_in_message() -> None:
