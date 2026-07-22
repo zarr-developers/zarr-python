@@ -175,11 +175,13 @@ class DefaultAsyncHierarchyEngine:
     def __init__(self, store: Store) -> None:
         self.store = store
 
-    def array_engine(self, path: str, metadata: ArrayMetadata) -> DefaultAsyncArrayEngine:
+    def array_engine(
+        self, path: str, metadata: ArrayMetadata, config: ArrayConfig | None = None
+    ) -> DefaultAsyncArrayEngine:
         return DefaultAsyncArrayEngine(
             store_path=StorePath(self.store, path),
             metadata=metadata,
-            config=parse_array_config(None),
+            config=config if config is not None else parse_array_config(None),
         )
 
 
@@ -189,5 +191,7 @@ class DefaultHierarchyEngine:
     def __init__(self, store: Store) -> None:
         self._async = DefaultAsyncHierarchyEngine(store)
 
-    def array_engine(self, path: str, metadata: ArrayMetadata) -> DefaultArrayEngine:
-        return DefaultArrayEngine(self._async.array_engine(path, metadata))
+    def array_engine(
+        self, path: str, metadata: ArrayMetadata, config: ArrayConfig | None = None
+    ) -> DefaultArrayEngine:
+        return DefaultArrayEngine(self._async.array_engine(path, metadata, config))

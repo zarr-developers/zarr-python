@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from zarr.core.array_spec import ArrayConfig
     from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer
     from zarr.core.metadata import ArrayMetadata
 
@@ -81,11 +82,15 @@ class AsyncArrayEngine(Protocol):
 class HierarchyEngine(Protocol):
     """A store-bound factory for synchronous array engines."""
 
-    def array_engine(self, path: str, metadata: ArrayMetadata) -> ArrayEngine: ...
+    def array_engine(
+        self, path: str, metadata: ArrayMetadata, config: ArrayConfig | None = None
+    ) -> ArrayEngine: ...
 
 
 @runtime_checkable
 class AsyncHierarchyEngine(Protocol):
     """A store-bound factory for asynchronous array engines."""
 
-    def array_engine(self, path: str, metadata: ArrayMetadata) -> AsyncArrayEngine: ...
+    def array_engine(
+        self, path: str, metadata: ArrayMetadata, config: ArrayConfig | None = None
+    ) -> AsyncArrayEngine: ...

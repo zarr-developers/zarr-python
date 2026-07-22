@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         HierarchyEngine,
     )
     from zarr.abc.store import Store
+    from zarr.core.array_spec import ArrayConfig
     from zarr.core.metadata import ArrayMetadata
 
 __all__ = ["EngineName", "resolve_async_engine", "resolve_sync_engine"]
@@ -93,13 +94,17 @@ def resolve_async_engine(
     store: Store,
     path: str,
     metadata: ArrayMetadata,
+    config: ArrayConfig | None = None,
 ) -> AsyncArrayEngine:
     """Resolve an `engine=` argument to a bound `AsyncArrayEngine`.
 
     `None` and `"default"` produce the built-in codec-pipeline engine;
     `"zarrista"` lazily imports the `zarrista` package (raising a clear
     `ImportError` if it is not installed); an existing engine instance is
-    returned unchanged.
+    returned unchanged. `config`, when given, is threaded to the engine so it
+    honours the owning array's runtime configuration (e.g. `order`,
+    `read_missing_chunks`); the hierarchy cache is keyed only by store, so
+    engines for arrays with differing configs still share resources.
     """
     if engine is None:
         engine = "default"
@@ -108,7 +113,7 @@ def resolve_async_engine(
         hierarchy: AsyncHierarchyEngine = _cached_hierarchy(  # type: ignore[assignment]
             engine, "async", store, factory
         )
-        return _keepalive(hierarchy.array_engine(path, metadata), hierarchy)  # type: ignore[return-value]
+        return _keepalive(hierarchy.array_engine(path, metadata, config), hierarchy)  # type: ignore[return-value]
     return engine
 
 
@@ -118,6 +123,7 @@ def resolve_sync_engine(
     store: Store,
     path: str,
     metadata: ArrayMetadata,
+    config: ArrayConfig | None = None,
 ) -> ArrayEngine:
     """Resolve an `engine=` argument to a bound `ArrayEngine`. See `resolve_async_engine`."""
     if engine is None:
@@ -127,5 +133,5 @@ def resolve_sync_engine(
         hierarchy: HierarchyEngine = _cached_hierarchy(  # type: ignore[assignment]
             engine, "sync", store, factory
         )
-        return _keepalive(hierarchy.array_engine(path, metadata), hierarchy)  # type: ignore[return-value]
+        return _keepalive(hierarchy.array_engine(path, metadata, config), hierarchy)  # type: ignore[return-value]
     return engine

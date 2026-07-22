@@ -175,6 +175,19 @@ def strip_squeeze(post: tuple[Any, ...]) -> tuple[Any, ...]:
     return post
 
 
+def squeeze_axes(post: tuple[Any, ...]) -> tuple[int, ...]:
+    """Return the axes recorded by a trailing `_Squeeze` marker, else `()`.
+
+    Orthogonal *writes* assign into the unsqueezed box using
+    `strip_squeeze(post)`; when the selection dropped integer axes, the value
+    must be widened with `np.newaxis` at exactly these axes (matching
+    `oindex_set`). Returns `()` when `post` carries no marker.
+    """
+    if post and isinstance(post[-1], _Squeeze):
+        return post[-1].axes
+    return ()
+
+
 def normalize_coordinate(
     selection: tuple[Any, ...], shape: tuple[int, ...]
 ) -> tuple[Region, tuple[np.ndarray, ...]]:

@@ -10,6 +10,7 @@ from zarr.core.engine._normalize import (
     normalize_block,
     normalize_coordinate,
     normalize_orthogonal,
+    squeeze_axes,
     strip_squeeze,
 )
 from zarr.core.engine._resolve import (
@@ -31,5 +32,6 @@ __all__ = [
     "normalize_orthogonal",
     "resolve_async_engine",
     "resolve_sync_engine",
+    "squeeze_axes",
     "strip_squeeze",
 ]
