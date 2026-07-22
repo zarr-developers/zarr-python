@@ -1432,11 +1432,13 @@ class TestCacheStoreNegativeCaching:
         cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
         proto = default_buffer_prototype()
 
-        fetched_at = time.monotonic()
-        # A concurrent set() completes after the (stale) fetch began...
+        # No entry exists when the (stale) fetch begins...
+        prior_entry = cs._state.entries.get("k")
+        assert prior_entry is None
+        # ...a concurrent set() completes during the fetch...
         await cs.set("k", CPUBuffer.from_bytes(b"value"))
         # ...then the stale absent observation lands.
-        await cs._cache_miss("k", None, None, fetched_at)
+        await cs._cache_miss("k", None, None, prior_entry)
 
         entry = cs._state.entries.get("k")
         assert entry is not None

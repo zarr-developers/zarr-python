@@ -432,23 +432,29 @@ class CacheStore(WrapperStore[Store]):
     # ------------------------------------------------------------------
 
     async def _cache_miss(
-        self, key: str, byte_range: ByteRequest | None, result: Buffer | None, fetched_at: float
+        self,
+        key: str,
+        byte_range: ByteRequest | None,
+        result: Buffer | None,
+        prior_entry: _Entry | None,
     ) -> None:
         """Handle a cache miss by storing or cleaning up after a source-store fetch.
 
-        ``fetched_at`` is the monotonic time at which the source fetch *began*. It
-        guards the absent path against a write/miss race: if a concurrent ``set``
-        completes after the fetch began (leaving a present entry newer than
-        ``fetched_at``), the stale "absent" result must not shadow the new value.
+        ``prior_entry`` is the key's tracked entry as observed just *before* the
+        source fetch began (``None`` if there was none). It guards the absent path
+        against a write/miss race: if the key's slot now holds a *different* present
+        entry, a concurrent ``set`` completed during the fetch, and the stale
+        "absent" result must not shadow the new value. Identity (not timestamps) is
+        used so the check is immune to coarse clocks.
         """
         if result is None:
             if byte_range is None:
                 async with self._state.lock:
                     entry = self._state.entries.get(key)
-                    if entry is not None and entry.present and entry.insert_time >= fetched_at:
-                        # A concurrent write completed after this fetch began — the key
-                        # now has a (cached) value. Recording the miss would shadow it,
-                        # so drop the stale "absent" observation instead.
+                    if entry is not None and entry.present and entry is not prior_entry:
+                        # A concurrent write completed during this fetch — the key now
+                        # has a (cached) value. Recording the miss would shadow it, so
+                        # drop the stale "absent" observation instead.
                         return
                     # The key is absent in the source: drop any (stale) cached value and
                     # byte-range entries for it, then either remember the miss (so a
@@ -517,9 +523,9 @@ class CacheStore(WrapperStore[Store]):
 
         # Cache miss — fetch from source store
         self._state.misses += 1
-        fetched_at = time.monotonic()
+        prior_entry = self._state.entries.get(key) if byte_range is None else None
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result, fetched_at)
+        await self._cache_miss(key, byte_range, result, prior_entry)
         return result
 
     async def _get_no_cache(
@@ -527,9 +533,9 @@ class CacheStore(WrapperStore[Store]):
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._state.misses += 1
-        fetched_at = time.monotonic()
+        prior_entry = self._state.entries.get(key) if byte_range is None else None
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result, fetched_at)
+        await self._cache_miss(key, byte_range, result, prior_entry)
         return result
 
     async def get(
