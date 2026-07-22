@@ -5594,7 +5594,13 @@ def _finalize_result(
     if scalarize and result.shape == ():
         # basic indexing collapses to a scalar (matches the historical
         # `out_buffer.as_scalar()` return for all-integer basic selections)
-        return cast("NDArrayLikeOrScalar", np.asarray(result)[()])
+        if isinstance(result, np.ndarray):
+            return cast("NDArrayLikeOrScalar", np.asarray(result)[()])
+        # a device buffer (cupy/torch): extract the 0-d element in its own
+        # namespace rather than coercing to host via `np.asarray`, consistent
+        # with the value the orthogonal/fancy routes return
+        device_result: Any = result
+        return cast("NDArrayLikeOrScalar", device_result[()])
     return result
 
 
@@ -6045,11 +6051,14 @@ def _widen_value_for_squeeze(
     the box, matching `zarr.core.indexing.oindex_set`. Scalars and 0-d values are
     returned unchanged (they broadcast on their own).
     """
-    if squeeze_axes_ and not np.isscalar(value) and np.asarray(value).ndim > 0:
+    if squeeze_axes_ and not np.isscalar(value) and getattr(value, "ndim", 0) > 0:
         value_selection: list[Any] = [slice(None)] * ndim
         for ax in squeeze_axes_:
             value_selection[ax] = np.newaxis
-        return cast("NDArrayLike", np.asarray(value)[tuple(value_selection)])
+        # index the value in its own array namespace so a device buffer
+        # (cupy/torch) is widened on-device instead of coerced to host
+        indexed: Any = value
+        return cast("NDArrayLike", indexed[tuple(value_selection)])
     return value
 
 

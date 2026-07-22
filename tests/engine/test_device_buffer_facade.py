@@ -117,10 +117,41 @@ class _DeviceEngine:
         return self
 
 
+class _AsyncDeviceEngine:
+    """Async mirror of `_DeviceEngine` for the `AsyncArray` data path."""
+
+    def __init__(self, data: npt.NDArray[Any]) -> None:
+        self._data = data
+
+    async def read_selection(
+        self, selection: Region, *, prototype: BufferPrototype
+    ) -> _DeviceArray:
+        return _DeviceArray(self._data[_region_to_index(selection)].copy())
+
+    async def write_selection(
+        self, selection: Region, value: NDBuffer, *, prototype: BufferPrototype
+    ) -> None:
+        arr: object = value.as_ndarray_like()
+        assert isinstance(arr, _DeviceArray), (
+            "facade coerced the box off the device namespace before writing"
+        )
+        self._data[_region_to_index(selection)] = arr._a
+
+    def with_metadata(self, metadata: ArrayMetadata) -> _AsyncDeviceEngine:
+        return self
+
+
 def _array_on_device_engine() -> tuple[zarr.Array[Any], _DeviceEngine]:
     z = zarr.create_array(MemoryStore(), shape=(8,), chunks=(4,), dtype="int64")
     engine = _DeviceEngine(np.zeros(8, dtype="int64"))
     # inject the device engine as this array's cached sync engine
+    z._engine = engine  # type: ignore[assignment]
+    return z, engine
+
+
+def _array_2d_on_device_engine() -> tuple[zarr.Array[Any], _DeviceEngine]:
+    z = zarr.create_array(MemoryStore(), shape=(4, 4), chunks=(4, 4), dtype="int64")
+    engine = _DeviceEngine(np.arange(16, dtype="int64").reshape(4, 4))
     z._engine = engine  # type: ignore[assignment]
     return z, engine
 
@@ -154,6 +185,37 @@ def test_strided_getitem_keeps_device_buffer() -> None:
     result: object = z[::2]
     assert isinstance(result, _DeviceArray), "strided read coerced off the device namespace"
     np.testing.assert_array_equal(result._a, np.arange(8, dtype="int64")[::2])
+
+
+def test_basic_selection_scalar_read_keeps_device_buffer() -> None:
+    # all-integer basic read scalarizes a 0-d result; `_finalize_result` must
+    # extract the element in the device namespace, not via `np.asarray(result)[()]`.
+    z, engine = _array_2d_on_device_engine()
+    result: object = z.get_basic_selection((1, 2))
+    assert isinstance(result, _DeviceArray), "scalar read coerced off the device namespace"
+    np.testing.assert_array_equal(result._a, engine._data[1, 2])
+
+
+async def test_async_getitem_scalar_read_keeps_device_buffer() -> None:
+    z = zarr.create_array(MemoryStore(), shape=(4, 4), chunks=(4, 4), dtype="int64")
+    aa = z.async_array
+    engine = _AsyncDeviceEngine(np.arange(16, dtype="int64").reshape(4, 4))
+    object.__setattr__(aa, "engine", engine)
+    result: object = await aa.getitem((1, 2))
+    assert isinstance(result, _DeviceArray), "async scalar read coerced off the device namespace"
+    np.testing.assert_array_equal(result._a, engine._data[1, 2])
+
+
+def test_oindex_set_integer_and_array_axis_keeps_device_buffer() -> None:
+    # orthogonal write with a dropped integer axis widens the value with a
+    # `np.newaxis`; `_widen_value_for_squeeze` must index the value in its own
+    # namespace instead of `np.asarray(value)[...]`.
+    z, engine = _array_2d_on_device_engine()
+    value = _DeviceArray(np.array([10, 20], dtype="int64"))
+    z.oindex[1, np.array([0, 2])] = value
+    expected = np.arange(16, dtype="int64").reshape(4, 4)
+    expected[1, [0, 2]] = [10, 20]
+    np.testing.assert_array_equal(engine._data, expected)
 
 
 def test_facade_never_coerces_device_buffer_to_host() -> None:
