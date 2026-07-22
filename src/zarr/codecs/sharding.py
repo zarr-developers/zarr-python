@@ -14,7 +14,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
     CodecPipeline,
-    SupportsSyncCodec,
+    _codec_supports_sync,
 )
 from zarr.abc.store import (
     ByteGetter,
@@ -1406,8 +1406,30 @@ class ShardingCodec(
             is_complete_chunk for *_, is_complete_chunk in indexed_chunks
         )
 
+    @property
+    def _sync_capable(self) -> bool:
+        """Dynamic opt-out consulted by `_codec_supports_sync` / `ChunkTransform`.
+
+        This codec structurally satisfies `SupportsSyncCodec`, but every sync
+        method (`_decode_sync`, `_encode_sync`, `_decode_partial_sync`,
+        `_encode_partial_sync`) delegates to the inner and index codec chains
+        through `ChunkTransform`, so it can only run synchronously when every
+        codec in BOTH chains is itself sync-capable. Reporting False here makes
+        `ChunkTransform` construction raise, which in turn makes
+        `FusedCodecPipeline.evolve_from_array_spec` set `sync_transform=None` —
+        the whole pipeline then declines the sync fast path and routes through
+        the async paths (partial shard decode / async fallback write), exactly
+        as it does for an async-only TOP-level codec or a non-sync store.
+        """
+        return self._inner_codecs_sync_capable() and self._index_codecs_sync_capable()
+
+    def _inner_codecs_sync_capable(self) -> bool:
+        # _codec_supports_sync (not bare isinstance) so a nested sharding codec
+        # with an async-only inner chain propagates its opt-out outward.
+        return all(_codec_supports_sync(c) for c in self.codecs)
+
     def _index_codecs_sync_capable(self) -> bool:
-        return all(isinstance(c, SupportsSyncCodec) for c in self.index_codecs)
+        return all(_codec_supports_sync(c) for c in self.index_codecs)
 
     async def _decode_shard_index(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
