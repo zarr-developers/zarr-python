@@ -115,3 +115,34 @@ def test_strip_squeeze_removes_trailing_marker() -> None:
 def test_strip_squeeze_identity_when_no_marker() -> None:
     post = (slice(None), slice(2, 4))
     assert strip_squeeze(post) == post
+
+
+def test_normalize_orthogonal_list_of_bools_matches_array_bool_mask() -> None:
+    """List of booleans should produce the same result as np.ndarray bool mask."""
+    from zarr.core.indexing import oindex as _reference_oindex
+
+    # Test case from the defect report: list of 10 booleans for axis 0
+    bool_list = [True, False, True] + [False] * 7
+    bool_array = np.array(bool_list, dtype=bool)
+
+    # Both should produce the same result when used as selectors
+    region_list, post_list = normalize_orthogonal((bool_list, slice(None)), SHAPE)
+    region_array, post_array = normalize_orthogonal((bool_array, slice(None)), SHAPE)
+
+    # Reference implementation using zarr.core.indexing.oindex
+    expected = _reference_oindex(ARR, (bool_array, slice(None)))
+
+    # List of bools should match the array bool mask result
+    result_list = apply_post_index(_read_box(region_list), post_list)
+    result_array = apply_post_index(_read_box(region_array), post_array)
+
+    np.testing.assert_array_equal(result_list, expected)
+    np.testing.assert_array_equal(result_array, expected)
+
+
+def test_normalize_orthogonal_wrong_length_list_of_bools_raises_error() -> None:
+    """Wrong-length list of booleans should raise IndexError like ndarray."""
+    wrong_length_bool_list = [True, False, True]  # Length 3, but axis 0 has size 10
+
+    with pytest.raises(IndexError, match="boolean index for axis 0 must be 1-d with length 10"):
+        normalize_orthogonal((wrong_length_bool_list, slice(None)), SHAPE)

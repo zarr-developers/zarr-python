@@ -114,17 +114,22 @@ def normalize_orthogonal(selection: Any, shape: tuple[int, ...]) -> tuple[Region
     for dim, (sel, size) in enumerate(zip(sel_tuple, shape, strict=True)):
         if isinstance(sel, slice):
             idxs = np.arange(*sel.indices(size))
-        elif isinstance(sel, np.ndarray) and sel.dtype == bool:
-            if sel.ndim != 1 or sel.shape[0] != size:
-                raise IndexError(f"boolean index for axis {dim} must be 1-d with length {size}")
-            idxs = np.nonzero(sel)[0]
         elif isinstance(sel, (np.ndarray, list)):
-            idxs = np.asarray(sel, dtype=np.intp)
-            if idxs.ndim != 1:
-                raise IndexError(f"orthogonal index for axis {dim} must be 1-d")
-            idxs = np.where(idxs < 0, idxs + size, idxs)
-            if idxs.size and (idxs.min() < 0 or idxs.max() >= size):
-                raise IndexError(f"index out of bounds for axis {dim} with size {size}")
+            # Convert to array first to check dtype (handles list of bools)
+            sel_array = np.asarray(sel)
+            if sel_array.dtype == bool:
+                # Boolean mask path
+                if sel_array.ndim != 1 or sel_array.shape[0] != size:
+                    raise IndexError(f"boolean index for axis {dim} must be 1-d with length {size}")
+                idxs = np.nonzero(sel_array)[0]
+            else:
+                # Integer index path
+                idxs = np.asarray(sel, dtype=np.intp)
+                if idxs.ndim != 1:
+                    raise IndexError(f"orthogonal index for axis {dim} must be 1-d")
+                idxs = np.where(idxs < 0, idxs + size, idxs)
+                if idxs.size and (idxs.min() < 0 or idxs.max() >= size):
+                    raise IndexError(f"index out of bounds for axis {dim} with size {size}")
         else:
             idxs = np.array([_normalize_int(sel, size, dim)], dtype=np.intp)
         if idxs.size == 0:
