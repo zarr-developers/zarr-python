@@ -703,7 +703,7 @@ ProgramExecution = Literal["materialize", "eager_on_lazy", "out", "set_scalar", 
 
 @dataclass(frozen=True)
 class IndexOperation:
-    """One indexing step in an :class:`IndexingProgram`.
+    """One indexing step in an `IndexingProgram`.
 
     ``selection`` carries exactly what the runner needs to reproduce the step on
     *both* a zarr array and its NumPy reference:
@@ -723,7 +723,7 @@ class IndexOperation:
 
 @dataclass(frozen=True)
 class IndexingProgram:
-    """A composed sequence of :class:`IndexOperation` plus an execution recipe."""
+    """A composed sequence of `IndexOperation` plus an execution recipe."""
 
     operations: tuple[IndexOperation, ...]
     execution: ProgramExecution
