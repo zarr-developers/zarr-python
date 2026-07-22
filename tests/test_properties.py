@@ -2,7 +2,7 @@ import itertools
 import json
 import numbers
 from collections.abc import Generator
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -15,24 +15,32 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
+from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
+from tests.conftest import Expect
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.testing.strategies import (
+    IndexingProgram,
+    IndexMode,
+    IndexOperation,
     array_metadata,
     arrays,
     basic_indices,
     block_indices,
     block_test_arrays,
     complex_rectilinear_arrays,
+    indexing_programs,
+    numpy_array_indexers,
     numpy_arrays,
-    orthogonal_indices,
+    program_shapes,
     rectilinear_arrays,
     simple_arrays,
     stores,
+    windows,
     zarr_formats,
 )
 
@@ -116,33 +124,10 @@ def test_array_creates_implicit_groups(array):
             )
 
 
-# this decorator removes timeout; not ideal but it should avoid intermittent CI failures
-
-
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
-    nparray = zarray[:]
-    indexer = data.draw(basic_indices(shape=nparray.shape))
-
-    # sync get
-    actual = zarray[indexer]
-    assert_array_equal(nparray[indexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.getitem(indexer)
-    assert_array_equal(nparray[indexer], actual)
-
-    # sync set
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
-    zarray[indexer] = new_data
-    nparray[indexer] = new_data
-    assert_array_equal(nparray, zarray[:])
-
-    # TODO test async setitem?
+# Eager basic/oindex/vindex/mask indexing is exercised comprehensively (read,
+# out=, async read, and write) by the single oracle `test_indexing_parity`
+# defined below. Special array shapes that the oracle's strategies don't cover
+# keep dedicated tests (complex rectilinear arrays here; block indexing later).
 
 
 @settings(deadline=None)
@@ -152,105 +137,6 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     nparray, zarray = data.draw(complex_rectilinear_arrays())
     indexer = data.draw(basic_indices(shape=nparray.shape))
     assert_array_equal(nparray[indexer], zarray[indexer])
-
-
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_oindex(data: st.DataObject) -> None:
-    # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(
-        st.one_of(
-            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
-            rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
-        )
-    )
-    nparray = zarray[:]
-    zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
-
-    # sync get
-    actual = zarray.oindex[zindexer]
-    assert_array_equal(nparray[npindexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.oindex.getitem(zindexer)
-    assert_array_equal(nparray[npindexer], actual)
-
-    # sync get
-    assume(zarray.shards is None)  # GH2834
-    for idxr in npindexer:
-        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
-            # behaviour of setitem with repeated indices is not guaranteed in practice
-            assume(False)
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
-    nparray[npindexer] = new_data
-    zarray.oindex[zindexer] = new_data
-    assert_array_equal(nparray, zarray[:])
-
-    # note: async oindex setitem not yet implemented
-
-
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_vindex(data: st.DataObject) -> None:
-    # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(
-        st.one_of(
-            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
-            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
-        )
-    )
-    nparray = zarray[:]
-    indexer = data.draw(
-        npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
-        )
-    )
-
-    # sync get
-    actual = zarray.vindex[indexer]
-    assert_array_equal(nparray[indexer], actual)
-
-    # async get
-    async_zarray = zarray._async_array
-    actual = await async_zarray.vindex.getitem(indexer)
-    assert_array_equal(nparray[indexer], actual)
-
-    # sync set
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
-
-    # note: async vindex setitem not yet implemented
-
-
-@settings(deadline=None)
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-def test_mask_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
-    nparray = zarray[:]
-    mask = data.draw(npst.arrays(dtype=np.bool_, shape=st.just(nparray.shape)))
-
-    expected = nparray[mask]
-
-    # sync get, via both the dedicated method and the vindex interface
-    assert_array_equal(expected, zarray.get_mask_selection(mask))
-    assert_array_equal(expected, zarray.vindex[mask])
-
-    # sync set, via both interfaces
-    assume(zarray.shards is None)  # GH2834
-    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
-    nparray[mask] = new_data
-    zarray.set_mask_selection(mask, new_data)
-    assert_array_equal(nparray, zarray[:])
-
-    zarray.vindex[mask] = new_data
-    assert_array_equal(nparray, zarray[:])
 
 
 @settings(deadline=None)
@@ -448,3 +334,735 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+# The indexing modes and which Array method implements each. vindex/mask are
+# "vectorized" — they scatter through a single flat index, so an out= buffer must
+# be flat (number of selected points) rather than the multi-dimensional result.
+_INDEX_MODES: tuple[IndexMode, ...] = ("basic", "oindex", "vindex", "mask")
+# Modes that scatter through a flat index (so an out= buffer must be flat). Kept a
+# tuple like _INDEX_MODES; membership is checked against it below.
+_VECTORIZED_MODES: tuple[IndexMode, ...] = ("vindex", "mask")
+
+
+def _get(target: zarr.Array, mode: IndexMode, zsel: Any, *, out: Any = None) -> Any:
+    """Read `zsel` from `target` via the get-method for `mode`."""
+    if mode == "basic":
+        return target.get_basic_selection(zsel, out=out)
+    if mode == "oindex":
+        return target.get_orthogonal_selection(zsel, out=out)
+    if mode == "vindex":
+        return target.get_coordinate_selection(zsel, out=out)
+    if mode == "mask":
+        return target.get_mask_selection(zsel, out=out)
+    raise AssertionError(mode)
+
+
+def _async_get(async_array: Any, mode: IndexMode, zsel: Any) -> Any:
+    """The async read coroutine for `mode` (vindex/mask share the vectorized accessor)."""
+    if mode == "basic":
+        return async_array.getitem(zsel)
+    if mode == "oindex":
+        return async_array.oindex.getitem(zsel)
+    return async_array.vindex.getitem(zsel)
+
+
+def _setitem(zarray: zarr.Array, mode: IndexMode, zsel: Any, value: Any) -> None:
+    """Write `value` at `zsel` via the set-method for `mode`."""
+    if mode == "basic":
+        zarray[zsel] = value
+    elif mode == "oindex":
+        zarray.oindex[zsel] = value
+    elif mode == "vindex":
+        zarray.vindex[zsel] = value
+    elif mode == "mask":
+        zarray.set_mask_selection(zsel, value)
+    else:
+        raise AssertionError(mode)
+
+
+def _write_is_unambiguous(mode: IndexMode, zsel: Any, shape: tuple[int, ...]) -> bool:
+    """Whether a write to `zsel` targets each cell at most once.
+
+    `zsel` must be the *raw zarr selection* (per-axis arrays/slices), NOT the
+    broadcast np.ix_-style form NumPy needs: for oindex the broadcast form tiles
+    each component across every axis, so the per-axis uniqueness check below would
+    trip on tiling instead of genuine duplicates and reject well-defined writes.
+
+    Negative indices are normalized first (`[2, -2]` on length 4 both target cell
+    2), then duplicate targets are detected. A repeated target makes the surviving
+    value depend on the order the writes are applied. NumPy happens to be
+    deterministic here (last-write-wins), but only as an implementation detail of
+    iterating the index serially in C order — it is not a guarantee. zarr writes
+    scalars into chunks and cannot in general promise a write order, so it cannot
+    be expected to match NumPy's choice. There is therefore no well-defined oracle
+    for such a write, and we reject it (a fundamental limitation, not a bug).
+    """
+    sel = zsel if isinstance(zsel, tuple) else (zsel,)
+    if mode == "oindex":
+        # Independent axes: each fancy axis must select each index at most once.
+        for axis, s in enumerate(sel):
+            if isinstance(s, np.ndarray):
+                norm = np.where(s < 0, s + shape[axis], s)
+                if norm.size != np.unique(norm).size:
+                    return False
+        return True
+    if mode == "vindex":
+        # Correlated coordinate arrays: a target is the tuple of normalized coords,
+        # so the write is well-defined iff no coordinate tuple repeats.
+        norm = [
+            np.where(s < 0, s + shape[axis], s)
+            for axis, s in enumerate(sel)
+            if isinstance(s, np.ndarray)
+        ]
+        if len(norm) == 0:
+            return True
+        coords = np.stack([a.ravel() for a in np.broadcast_arrays(*norm)], axis=-1)
+        return len(coords) == len(np.unique(coords, axis=0))
+    return True  # basic / mask never target a cell twice
+
+
+def _n_array_axes(zsel: Any) -> int:
+    """Number of integer-array (fancy) axes in a *raw* zarr selection (slices excluded).
+
+    Must be the raw per-axis selection, not the broadcast numpy form: the latter
+    turns every axis into an array, so this would always return ``ndim``.
+    """
+    sel = zsel if isinstance(zsel, tuple) else (zsel,)
+    return sum(isinstance(s, np.ndarray) for s in sel)
+
+
+def _eligible(mode: IndexMode, shape: tuple[int, ...]) -> bool:
+    """Whether `mode` can be exercised on `shape`.
+
+    Rank-0 arrays have no interesting selections. `basic` and `mask` handle
+    zero-length axes (a boolean mask of the array's shape simply selects nothing,
+    which zarr and NumPy agree on — verified against `set_mask_selection` too).
+    The integer-array fancy modes (`oindex`/`vindex`) cannot address an empty
+    axis, so they require every axis to be non-empty.
+    """
+    if len(shape) == 0:
+        return False
+    if mode in ("basic", "mask"):
+        return True
+    return all(s > 0 for s in shape)
+
+
+def assert_read_matches_numpy(
+    target: zarr.Array,
+    ref: np.ndarray[Any, Any],
+    mode: IndexMode,
+    zsel: Any,
+    npsel: Any,
+    *,
+    out_layout: Literal["eager", "transform"] = "eager",
+) -> None:
+    """Assert `target`'s read of `zsel` (mode) matches `ref[npsel]`, with/without out=.
+
+    Consumer-agnostic: `target` is any `zarr.Array` (an eager array or a lazy
+    view) and `ref` is the NumPy array it must behave like. The two consumers
+    disagree on the `out=` buffer shape for the vectorized vindex/mask modes, so
+    `out_layout` names which convention `target` implements:
+
+    - `"eager"` (legacy path): vindex/mask scatter through a flat index, so the
+      buffer is flat — `(number of selected points,)`.
+    - `"transform"` (lazy views, Task 4): `out=` takes the broadcast selection
+      shape for every mode, so the buffer always has the result shape.
+    """
+    expected = np.asarray(ref[npsel])
+    actual = np.asarray(_get(target, mode, zsel))
+    # dtype must match, not just values (catches silent dtype coercion); ndindex's
+    # assert_equal does the same. Guarded to ndim>=1 to avoid python-vs-numpy
+    # scalar dtype noise on 0-d results.
+    if expected.ndim >= 1:
+        assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
+    assert_array_equal(actual, expected)
+    if expected.ndim >= 1 and expected.size > 0:
+        if out_layout == "eager" and mode in _VECTORIZED_MODES:
+            buf_shape: tuple[int, ...] = (expected.size,)
+        else:
+            buf_shape = expected.shape
+        buf = default_buffer_prototype().nd_buffer.empty(shape=buf_shape, dtype=expected.dtype)
+        _get(target, mode, zsel, out=buf)
+        assert_array_equal(np.asarray(buf.as_ndarray_like()).reshape(expected.shape), expected)
+
+
+def _indexing_array(data: st.DataObject) -> zarr.Array:
+    """An eager array (regular or rectilinear) for the indexing-parity oracles."""
+    return data.draw(
+        st.one_of(
+            # min_side=0 restores zero-extent-array coverage: the `_eligible` helper
+            # routes zero-size shapes to the modes that tolerate them (basic/mask).
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=0)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+        )
+    )
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_indexing_read_parity(data: st.DataObject) -> None:
+    """Every indexing *read* on an eager array matches NumPy (all modes).
+
+    Covers {basic, oindex, vindex, mask}: sync read, read into an out= buffer, and
+    async read. No special-casing — reads are well-defined for every selection.
+    Consumer-agnostic via assert_read_matches_numpy, which test_lazy_view_indexing_parity
+    reuses for lazy views.
+    """
+    zarray = _indexing_array(data)
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    assume(_eligible(mode, nparray.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=nparray.shape))
+
+    assert_read_matches_numpy(zarray, nparray, mode, zsel, npsel)
+    expected = np.asarray(nparray[npsel])
+    assert_array_equal(np.asarray(await _async_get(zarray._async_array, mode, zsel)), expected)
+    if mode == "mask":  # a mask read may also be spelled vindex[mask]; they must agree
+        assert_array_equal(np.asarray(zarray.vindex[zsel]), expected)
+
+
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_indexing_write_parity(data: st.DataObject) -> None:
+    """Every *supported, well-defined* indexing write on an eager array matches NumPy.
+
+    Two families of selections are filtered out with `assume` (they are not
+    failures to test here):
+
+    - **Repeated coordinates** (vindex/oindex selecting a cell more than once):
+      the write order, and thus the final value, is undefined — NumPy has the same
+      ambiguity. This is a fundamental limitation, not a zarr bug.
+    - **Sharded orthogonal writes across >= 2 array axes**: unsupported by the
+      sharding partial-write codec; pinned at the pytest level by
+      `test_oindex_sharded_multiaxis_write_xfail` rather than hidden here.
+    """
+    zarray = _indexing_array(data)
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    assume(_eligible(mode, nparray.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=nparray.shape))
+    if mode in ("oindex", "vindex"):
+        assume(_write_is_unambiguous(mode, zsel, nparray.shape))
+    if mode == "oindex" and zarray.shards is not None:
+        assume(_n_array_axes(zsel) < 2)
+
+    expected = np.asarray(nparray[npsel])
+    new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
+    _setitem(zarray, mode, zsel, new_data)
+    nparray[npsel] = new_data
+    assert_array_equal(nparray, zarray[:])
+    if mode == "mask":  # the vindex[mask] = ... spelling must agree with set_mask_selection
+        zarray.vindex[zsel] = new_data
+        assert_array_equal(nparray, zarray[:])
+
+
+@pytest.mark.xfail(
+    reason="GH2834: the sharding partial-write codec does not support orthogonal "
+    "writes spanning two or more array axes",
+    strict=True,
+)
+def test_oindex_sharded_multiaxis_write_xfail() -> None:
+    """Pin the one known-unsupported write: oindex across >= 2 array axes on a shard.
+
+    Single-axis oindex, vindex, and mask writes to sharded arrays all work; only
+    the multi-array-axis orthogonal case is broken. Strict xfail so this flips to a
+    failure (prompting removal) if/when GH2834 is fixed.
+    """
+    a = zarr.create_array({}, shape=(12, 12), chunks=(3, 3), shards=(6, 6), dtype="i4")
+    a[...] = np.arange(144, dtype="i4").reshape(12, 12)
+    i0, i1 = np.array([0, 5, 9]), np.array([1, 6, 10])
+    a.set_orthogonal_selection((i0, i1), np.zeros((3, 3), dtype="i4"))
+    assert_array_equal(a.oindex[i0, i1], np.zeros((3, 3), dtype="i4"))
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=("vindex", (np.array([2, -2, 0, 1]),), (4,)),
+            output=False,
+            id="vindex-neg-collision",
+        ),
+        Expect(input=("vindex", (np.array([0, 1, 2]),), (4,)), output=True, id="vindex-distinct"),
+        Expect(
+            input=("oindex", (np.array([1, -3]),), (4,)), output=False, id="oindex-neg-collision"
+        ),
+        Expect(
+            input=("oindex", (np.array([0, 2]), np.array([1, 1])), (4, 4)),
+            output=False,
+            id="oindex-repeat",
+        ),
+        Expect(
+            input=("oindex", (np.array([0, 2]), np.array([1, 3])), (4, 4)),
+            output=True,
+            id="oindex-distinct",
+        ),
+        Expect(input=("basic", (slice(None),), (4,)), output=True, id="basic-always"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_write_is_unambiguous(
+    case: Expect[tuple[IndexMode, Any, tuple[int, ...]], bool],
+) -> None:
+    """A write is well-defined iff each target cell is hit at most once *after*
+    negative indices are normalized.
+
+    Cases use the *raw zarr selection* (per-axis arrays) — the form real callers
+    pass — so `oindex-distinct` ([0,2] x [1,3]) is well-defined. See
+    `test_write_filter_rejects_broadcast_oindex` for why the broadcast form must not
+    be passed. Regression anchor for the CI fix: vindex `[2, -2, 0, 1]` on length 4
+    maps `-2 -> 2`, so cell 2 is written twice (order-dependent) and must be rejected
+    even though the raw values are all distinct.
+    """
+    mode, zsel, shape = case.input
+    assert _write_is_unambiguous(mode, zsel, shape) is case.output
+
+
+def test_write_filter_rejects_broadcast_oindex() -> None:
+    """The write filter must be fed the raw per-axis selection, not the broadcast form.
+
+    `numpy_array_indexers(mode="oindex")` returns a raw per-axis `zsel` and a broadcast
+    np.ix_-style `npsel`. A well-defined multi-axis write ([0,2] x [1,3]) is admitted
+    on the raw form but — because the broadcast form tiles each component across all
+    axes — is wrongly rejected on `npsel`. This pins the review finding that passing
+    `npsel` silently skipped essentially every multi-axis orthogonal write.
+    """
+    zsel = (np.array([0, 2]), np.array([1, 3]))  # raw per-axis, distinct -> well-defined
+    assert _write_is_unambiguous("oindex", zsel, (4, 4)) is True
+    # the fully-tiled form orthogonal_indices produces (np.broadcast_arrays over np.ix_)
+    broadcast = tuple(np.broadcast_arrays(*np.ix_(*zsel)))
+    assert _write_is_unambiguous("oindex", broadcast, (4, 4)) is False  # tiling; do not pass
+    # _n_array_axes counts only genuine fancy axes on the raw form (slices excluded),
+    # so a single-fancy-axis oindex is correctly allowed on a sharded array.
+    assert _n_array_axes((slice(None), np.array([1, 3]))) == 1
+
+
+@st.composite
+def _bounds_selection(draw: st.DrawFn, mode: IndexMode, shape: tuple[int, ...]) -> Any:
+    """An integer selection whose components may fall outside `[-size, size)`, to
+    probe out-of-bounds behavior. Returns `(zarr_sel, numpy_sel)`."""
+    wide = {s: st.integers(-2 * s - 1, 2 * s) for s in set(shape)}
+    if mode == "basic":
+        sel = tuple(draw(wide[s]) for s in shape)
+        return sel, sel
+    n = draw(st.integers(1, 4))
+    arrs = tuple(
+        np.array(draw(st.lists(wide[s], min_size=n, max_size=n)), dtype=np.intp) for s in shape
+    )
+    if mode == "oindex":
+        return arrs, np.ix_(*arrs)  # numpy outer-product oracle
+    return arrs, arrs  # vindex: pointwise
+
+
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_indexing_bounds_error_parity(data: st.DataObject) -> None:
+    """Out-of-bounds integer indexing raises in zarr iff it raises in NumPy.
+
+    zarr's bounds errors (BoundsCheckError etc.) subclass IndexError, so the eager
+    methods must agree with NumPy on *whether* an index is in bounds. This is the
+    ndindex `check_same` error-parity idea, and it catches the silent-wrong-data
+    class — returning garbage where NumPy would raise.
+    """
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=6)))
+    nparray = zarray[:]
+    mode = data.draw(st.sampled_from(("basic", "oindex", "vindex")))
+    zsel, npsel = data.draw(_bounds_selection(mode, nparray.shape))
+    try:
+        expected = np.asarray(nparray[npsel])
+    except IndexError:
+        with pytest.raises(IndexError):
+            _get(zarray, mode, zsel)
+        return
+    assert_array_equal(np.asarray(_get(zarray, mode, zsel)), expected)
+
+
+class _IndexingStateMachine(RuleBasedStateMachine):
+    """Apply many random indexing writes to one array while a NumPy model tracks it
+    in lockstep; the model must match after every step.
+
+    This is the TensorStore `driver_testutil` pattern with NumPy as the oracle:
+    a single array accumulates many writes, so it catches read-modify-write,
+    chunk-boundary, and shard-merge/persistence bugs that the single-shot
+    `test_indexing_write_parity` cannot see. Concrete geometries are defined by
+    subclasses; the rules are dtype-agnostic (fixed i4 — dtype breadth lives in the
+    property tests).
+    """
+
+    shape: tuple[int, ...] = ()
+    chunks: tuple[int, ...] = ()
+    shards: tuple[int, ...] | None = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        n = int(np.prod(self.shape, dtype=int))
+        self.model = np.arange(n, dtype="i4").reshape(self.shape)
+        self.zarray = zarr.create_array(
+            {}, shape=self.shape, chunks=self.chunks, shards=self.shards, dtype="i4"
+        )
+        self.zarray[...] = self.model
+
+    @rule(data=st.data(), mode=st.sampled_from(_INDEX_MODES))
+    def write(self, data: st.DataObject, mode: IndexMode) -> None:
+        if not _eligible(mode, self.shape):
+            return
+        zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=self.shape))
+        if mode in ("oindex", "vindex") and not _write_is_unambiguous(mode, zsel, self.shape):
+            return
+        if mode == "oindex" and self.shards is not None and _n_array_axes(zsel) >= 2:
+            return  # GH2834, see test_oindex_sharded_multiaxis_write_xfail
+        expected = np.asarray(self.model[npsel])
+        value = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=self.model.dtype))
+        self.model[npsel] = value
+        _setitem(self.zarray, mode, zsel, value)
+
+    @rule(data=st.data(), mode=st.sampled_from(_INDEX_MODES))
+    def read(self, data: st.DataObject, mode: IndexMode) -> None:
+        if not _eligible(mode, self.shape):
+            return
+        zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=self.shape))
+        assert_array_equal(np.asarray(_get(self.zarray, mode, zsel)), np.asarray(self.model[npsel]))
+
+    @invariant()
+    def matches_model(self) -> None:
+        assert_array_equal(self.zarray[:], self.model)
+
+
+class _RegularStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (12,), (3,), None
+
+
+class _Sharded2DStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (8, 9), (2, 3), (4, 9)
+
+
+class _ThreeDStateMachine(_IndexingStateMachine):
+    shape, chunks, shards = (4, 5, 6), (2, 3, 3), None
+
+
+# Run these under the slow-hypothesis CI job (like the store stateful tests): a
+# stateful run is a sequence of steps, so it is heavier than the single-shot tests.
+TestIndexingStateMachineRegular = pytest.mark.slow_hypothesis(_RegularStateMachine.TestCase)
+TestIndexingStateMachineSharded = pytest.mark.slow_hypothesis(_Sharded2DStateMachine.TestCase)
+TestIndexingStateMachine3D = pytest.mark.slow_hypothesis(_ThreeDStateMachine.TestCase)
+
+
+def _canonical_nonneg(sel: Any, shape: tuple[int, ...]) -> Any:
+    """NumPy-normalize a selection to its non-negative canonical form.
+
+    Wraps negative integers and integer-array values, resolves slice bounds via
+    Python slice semantics, and expands ellipsis — producing the literal
+    spelling of the same NumPy selection, as the lazy path requires.
+    """
+    items = sel if isinstance(sel, tuple) else (sel,)
+    n_explicit = sum(1 for s in items if s is not Ellipsis)
+    out: list[Any] = []
+    dim = 0
+    for s in items:
+        if s is Ellipsis:
+            for _ in range(len(shape) - n_explicit):
+                out.append(slice(0, shape[dim], 1))
+                dim += 1
+        elif isinstance(s, (int, np.integer)) and not isinstance(s, (bool, np.bool_)):
+            v = int(s)
+            out.append(v + shape[dim] if v < 0 else v)
+            dim += 1
+        elif isinstance(s, slice):
+            start, stop, step = s.indices(shape[dim])
+            if stop < start:  # NumPy empty-by-reversal -> literal empty interval
+                stop = start
+            out.append(slice(start, stop, step))
+            dim += 1
+        elif isinstance(s, np.ndarray) and s.dtype != np.bool_:
+            out.append(np.where(s < 0, s + shape[dim], s))
+            dim += 1
+        else:  # boolean mask or anything already canonical
+            out.append(s)
+            dim += 1
+    return tuple(out) if isinstance(sel, tuple) else out[0]
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
+)
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+async def test_lazy_view_indexing_parity(data: st.DataObject) -> None:
+    """The eager read oracle, applied to a re-zeroed lazy view (the lazy consumer).
+
+    A view is just another `zarr.Array`, so it flows through the same
+    `assert_read_matches_numpy` harness. Views preserve their domain
+    (TensorStore semantics: coordinates are literal), so to compare against a
+    zero-based NumPy reference the view is explicitly re-zeroed with
+    `translate_to` — exercising domain translation on every example. Skipped
+    until `Array.lazy` exists, so the eager oracle can merge ahead of the lazy
+    feature.
+    """
+    # min_side=0 exercises the `windows()` zero-extent branch and, via `_eligible`,
+    # zero-size lazy-view reads in the basic/mask modes that tolerate them.
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=0)))
+    nparray = zarray[:]
+    window = data.draw(windows(shape=nparray.shape))
+    view = zarray.lazy[window].translate_to((0,) * nparray.ndim)
+    vref = nparray[window]
+    mode = data.draw(st.sampled_from(_INDEX_MODES))
+    assume(_eligible(mode, vref.shape))
+    zsel, npsel = data.draw(numpy_array_indexers(mode=mode, shape=vref.shape))
+    # The strategies draw NumPy-dialect selections. The lazy boundary wraps
+    # negatives against the (here zero-origin) view, matching NumPy, but positive
+    # indices are literal domain coordinates; canonicalizing to the equivalent
+    # non-negative form keeps the comparison valid for both rules. NumPy semantics
+    # are invariant under this, so the reference side (npsel) is unchanged.
+    # Lazy views take out= in the broadcast result shape for every mode (Task 4)
+    # — *except* when the composed transform is an identity, where the read
+    # methods fast-path to the legacy implementation and its flat-vindex out=
+    # convention applies. Mirror that dispatch here.
+    out_layout: Literal["eager", "transform"] = (
+        "eager" if view._async_array._is_identity else "transform"
+    )
+    assert_read_matches_numpy(
+        view, vref, mode, _canonical_nonneg(zsel, vref.shape), npsel, out_layout=out_layout
+    )
+
+
+# ---------------------------------------------------------------------------
+# Composed indexing programs (Task 5): a differential oracle over sequences of
+# composed indexing operations. Where the single-shot parity tests above check
+# one selection at a time, these compose one to three operations through the real
+# index-transform layer and check the composed result — and each of five
+# execution recipes — against a NumPy model applied in lockstep.
+# ---------------------------------------------------------------------------
+
+# Public program dialect -> the internal accessor mode used by _get/_setitem.
+_PROGRAM_INDEX_MODE: dict[str, IndexMode] = {
+    "basic": "basic",
+    "orthogonal": "oindex",
+    "vectorized": "vindex",
+}
+
+
+def _program_selections(op: IndexOperation) -> tuple[Any, Any]:
+    """The ``(zarr_selection, numpy_selection)`` pair for one program step.
+
+    Only ``orthogonal`` needs distinct spellings (per-axis vs the ``np.ix_``
+    outer-product form); ``basic`` and ``vectorized`` index both sides alike.
+    """
+    if op.mode == "orthogonal":
+        zsel, npsel = op.selection
+        return zsel, npsel
+    return op.selection, op.selection
+
+
+def _apply_lazy_step(view: zarr.Array, mode: str, zsel: Any) -> zarr.Array:
+    """Compose one lazy indexing step onto ``view`` and re-zero the result.
+
+    Re-zeroing (``translate_to``) keeps the next step's NumPy-dialect selection
+    valid against a zero-origin domain (positive coordinates stay literal, so they
+    match NumPy) while still exercising domain translation on every step.
+    """
+    if mode == "basic":
+        out = view.lazy[zsel]
+    elif mode == "orthogonal":
+        out = view.lazy.oindex[zsel]
+    elif mode == "vectorized":
+        out = view.lazy.vindex[zsel]
+    else:
+        raise AssertionError(mode)
+    if out.ndim:
+        out = out.translate_to((0,) * out.ndim)
+    return out
+
+
+def _compare_read(actual_raw: Any, expected: np.ndarray[Any, Any]) -> None:
+    """Assert a program read matches NumPy in scalar/array kind, shape, dtype, values."""
+    actual = np.asarray(actual_raw)
+    # Scalar-versus-array kind: a zero-rank read must come back as a scalar, a
+    # ranked read as an array. np.ndim reads 0 for python/numpy scalars.
+    assert np.ndim(actual_raw) == expected.ndim, ("kind", np.ndim(actual_raw), expected.ndim)
+    if expected.ndim >= 1:  # skip 0-d to avoid python-vs-numpy scalar dtype noise
+        assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
+    assert actual.shape == expected.shape, (actual.shape, expected.shape)
+    assert_array_equal(actual, expected)
+
+
+def _compose_base(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], operations: tuple[IndexOperation, ...]
+) -> tuple[zarr.Array, np.ndarray[Any, Any]]:
+    """Compose every operation *except the last* as lazy views, in lockstep with NumPy.
+
+    Returns the composed (zero-origin) lazy base view and the matching NumPy
+    array; their shapes are asserted equal at each step. The prefix operations are
+    always basic (fancy steps only ever occur last), so the NumPy side stays a
+    view — which matters for the write executions, where assignment through it must
+    reach the root array.
+    """
+    base = zarray
+    ref = nparray
+    for op in operations[:-1]:
+        zsel, npsel = _program_selections(op)
+        base = _apply_lazy_step(base, op.mode, _canonical_nonneg(zsel, base.shape))
+        ref = ref[npsel]
+        assert base.shape == ref.shape, (base.shape, ref.shape)
+    return base, ref
+
+
+def _run_program_read(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], program: IndexingProgram
+) -> None:
+    base, ref = _compose_base(zarray, nparray, program.operations)
+    last = program.operations[-1]
+    imode = _PROGRAM_INDEX_MODE[last.mode]
+    zsel, npsel = _program_selections(last)
+    czsel = _canonical_nonneg(zsel, base.shape)
+    expected = np.asarray(ref[npsel])
+
+    if program.execution == "eager_on_lazy":
+        # Apply the final step as an *eager* indexing read on the composed view.
+        _compare_read(_get(base, imode, czsel), expected)
+        return
+
+    # materialize / out: compose the final step lazily too, then read the whole view.
+    view = _apply_lazy_step(base, last.mode, czsel)
+    _compare_read(view[...], expected)
+    if program.execution == "out" and expected.ndim >= 1 and expected.size > 0:
+        # A whole-view basic read: the transform path takes the full result shape
+        # (Task 4), for every mode, so the buffer is never the flat vectorized form.
+        buf = default_buffer_prototype().nd_buffer.empty(shape=expected.shape, dtype=expected.dtype)
+        view.get_basic_selection(Ellipsis, out=buf)
+        assert_array_equal(np.asarray(buf.as_ndarray_like()), expected)
+
+
+def _run_program_write(
+    zarray: zarr.Array, nparray: np.ndarray[Any, Any], program: IndexingProgram
+) -> None:
+    root = nparray.copy()  # the NumPy model we mutate and compare against
+    base, sub = _compose_base(zarray, root, program.operations)
+    last = program.operations[-1]
+    imode = _PROGRAM_INDEX_MODE[last.mode]
+    zsel, npsel = _program_selections(last)
+    czsel = _canonical_nonneg(zsel, base.shape)
+    if last.mode in ("orthogonal", "vectorized"):
+        # A fancy write hitting a cell twice is order-dependent and has no oracle
+        # (same limitation NumPy has); program arrays are unsharded so GH2834 (the
+        # only other write restriction) cannot arise.
+        assume(_write_is_unambiguous(imode, czsel, base.shape))
+
+    result_shape = sub[npsel].shape
+    value: Any
+    if program.execution == "set_scalar":
+        value = np.array(-7, dtype=root.dtype)
+    else:  # set_array: distinct (negative) values expose scatter/order bugs
+        value = (-(np.arange(int(np.prod(result_shape)), dtype="i8") + 1)).reshape(result_shape)
+        value = value.astype(root.dtype)
+
+    sub[npsel] = value  # writes through the basic-view chain into `root`
+    _setitem(base, imode, czsel, value)
+    assert_array_equal(zarray[:], root)
+
+
+def _build_program_array(shape: tuple[int, ...]) -> tuple[zarr.Array, np.ndarray[Any, Any]]:
+    """A deterministic i4 array filled with ``arange``, chunked ~2-per-axis.
+
+    Fixed dtype and a regular (unsharded) grid keep the program oracle focused on
+    composition and execution correctness — dtype breadth and rectilinear/sharded
+    grids are covered by the single-shot parity tests and the state machines. The
+    ~2-chunks-per-axis geometry makes composed selections routinely cross chunk
+    boundaries.
+    """
+    chunks = tuple(max(1, (s + 1) // 2) for s in shape)
+    nparray = np.arange(int(np.prod(shape, dtype=int)), dtype="i4").reshape(shape)
+    zarray = zarr.create_array({}, shape=shape, chunks=chunks, dtype="i4")
+    zarray[...] = nparray
+    return zarray, nparray
+
+
+@st.composite
+def _indexing_scenarios(draw: st.DrawFn) -> tuple[tuple[int, ...], IndexingProgram]:
+    """Draw a ``(shape, program)`` scenario. Kept together so `@example` can pin both."""
+    shape = draw(program_shapes)
+    program = draw(indexing_programs(shape=shape))
+    return shape, program
+
+
+def _orth(*axes: Any) -> tuple[tuple[np.ndarray[Any, Any], ...], Any]:
+    """Build an orthogonal selection ``(zarr_per_axis, numpy_ix_form)`` for `@example`."""
+    arrs = tuple(np.asarray(a) for a in axes)
+    return arrs, np.ix_(*arrs)
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "lazy"), reason="lazy indexing (Array.lazy) not available"
+)
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+# slice-then-oindex: the canonical composed-fancy regression. Reversing the Task 2
+# correlation predicate makes this example fail (mutation check).
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram(
+            (
+                IndexOperation("basic", (slice(1, 4), slice(None))),
+                IndexOperation("orthogonal", _orth([0, 2], [1, 3])),
+            ),
+            "materialize",
+        ),
+    )
+)
+# unequal orthogonal lengths: the outer product must not assume square selections.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram((IndexOperation("orthogonal", _orth([0, 1, 2], [0, 1])),), "materialize"),
+    )
+)
+# multidimensional vindex read into an out= buffer.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram(
+            (
+                IndexOperation(
+                    "vectorized", (np.array([[0, 1], [2, 3]]), np.array([[1, 0], [3, 2]]))
+                ),
+            ),
+            "out",
+        ),
+    )
+)
+# zero-rank result: a full integer selection collapses to a scalar.
+@example(
+    scenario=(
+        (3, 3),
+        IndexingProgram((IndexOperation("basic", (1, 2)),), "materialize"),
+    )
+)
+# empty result: a 0-length slice yields a zero-size read.
+@example(
+    scenario=(
+        (4, 4),
+        IndexingProgram((IndexOperation("basic", (slice(0, 0), slice(None))),), "materialize"),
+    )
+)
+@given(scenario=_indexing_scenarios())
+def test_indexing_program_parity(scenario: tuple[tuple[int, ...], IndexingProgram]) -> None:
+    """A composed indexing program matches NumPy under every execution recipe.
+
+    Reads (`materialize`, `eager_on_lazy`, `out`) check scalar/array kind, shape,
+    dtype and values; writes (`set_scalar`, `set_array`) apply the equivalent
+    assignment to a NumPy root and compare the whole zarr array afterwards. The
+    generator composes at most one fancy step and always keeps it last — see
+    `indexing_programs` for the documented exclusions (fancy-after-fancy is
+    unsupported and raises `NotImplementedError`; basic-after-fancy is
+    known-broken; both are deliberately not generated).
+    """
+    shape, program = scenario
+    zarray, nparray = _build_program_array(shape)
+    if program.execution in ("set_scalar", "set_array"):
+        _run_program_write(zarray, nparray, program)
+    else:
+        _run_program_read(zarray, nparray, program)

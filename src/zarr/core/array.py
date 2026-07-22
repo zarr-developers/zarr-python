@@ -19,6 +19,12 @@ from warnings import warn
 
 import numpy as np
 from typing_extensions import Sentinel, deprecated
+from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
+from zarr_indexing.output_map import ArrayMap
+from zarr_indexing.transform import (
+    IndexTransform,
+    selection_to_transform,
+)
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -42,6 +48,7 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    ChunkSpec,
     _is_rectilinear_chunks,
     as_regular_shape,
     guess_chunks,
@@ -55,6 +62,7 @@ from zarr.core.chunk_key_encodings import (
     V2ChunkKeyEncoding,
     parse_chunk_key_encoding,
 )
+from zarr.core.chunk_partition import ChunkProjection, iter_chunk_projections
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -104,10 +112,14 @@ from zarr.core.indexing import (
     _iter_regions,
     check_fields,
     check_no_multi_fields,
+    ensure_tuple,
+    is_basic_selection,
+    is_coordinate_selection,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
     is_scalar,
     pop_fields,
+    replace_lists,
 )
 from zarr.core.metadata import (
     ArrayMetadata,
@@ -133,6 +145,7 @@ from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
+    LazyViewError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -370,6 +383,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     _chunk_grid: ChunkGrid = field(init=False)
+    _transform: IndexTransform = field(init=False)
     config: ArrayConfig
 
     @overload
@@ -406,6 +420,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+        object.__setattr__(self, "_transform", IndexTransform.from_shape(metadata_parsed.shape))
 
     @classmethod
     async def _create(
@@ -808,6 +823,35 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
         return cls(store_path=store_path, metadata=_metadata_dict)
 
+    def _with_transform(self, transform: IndexTransform) -> AsyncArray[T_ArrayMetadata]:
+        """Return a new AsyncArray sharing storage but with a different transform."""
+        new = object.__new__(type(self))
+        object.__setattr__(new, "metadata", self.metadata)
+        object.__setattr__(new, "store_path", self.store_path)
+        object.__setattr__(new, "config", self.config)
+        object.__setattr__(new, "_chunk_grid", self._chunk_grid)
+        object.__setattr__(new, "codec_pipeline", self.codec_pipeline)
+        object.__setattr__(new, "_transform", transform)
+        return new
+
+    def translate_by(self, shift: tuple[int, ...]) -> AsyncArray[T_ArrayMetadata]:
+        """Shift this array's domain by `shift`, preserving which cells it addresses.
+
+        TensorStore's `translate_by`: the view's coordinate labels move; the data
+        does not. `a.translate_by((-10,))` gives a view whose domain starts at
+        -10, where coordinate -10 addresses the cell that 0 addressed before.
+        """
+        return self._with_transform(self._transform.translate_domain_by(tuple(shift)))
+
+    def translate_to(self, origins: tuple[int, ...]) -> AsyncArray[T_ArrayMetadata]:
+        """Move this array's domain so its per-dimension origins equal `origins`.
+
+        TensorStore's `translate_to`; `view.translate_to((0,) * view.ndim)`
+        re-zeros a view's coordinate system without changing which cells it
+        addresses.
+        """
+        return self._with_transform(self._transform.translate_domain_to(tuple(origins)))
+
     @property
     def store(self) -> Store:
         return self.store_path.store
@@ -826,7 +870,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the Array.
         """
-        return len(self.metadata.shape)
+        return len(self.shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -837,6 +881,114 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             The shape of the Array.
         """
+        return self._transform.domain.shape
+
+    @property
+    def _is_identity(self) -> bool:
+        """Whether this array's transform is the identity over the full storage domain.
+
+        A freshly-opened or resized array has the identity transform: input coord
+        `i` maps to storage coord `i` over the whole storage shape. Eager
+        indexing on such an array produces the same coordinates the legacy
+        indexers compute, so it can take the legacy fast path and skip
+        transform resolution. Lazy views (created via `_with_transform`)
+        carry a non-identity transform and must go through the transform path.
+        Cheap (O(ndim)); the domain's shape lookup it relies on is memoized.
+        """
+        return _transform_is_identity(self._transform, self.metadata.shape)
+
+    def _require_identity(self, name: str) -> None:
+        """Raise `LazyViewError` if this array is a non-identity lazy view.
+
+        Grid-describing/mutating members assume the array fills its chunk grid,
+        which a view (a sliced/indexed array) generally does not. See
+        `LazyViewError`; `name` is the member being guarded, for the message.
+        """
+        if not self._is_identity:
+            raise LazyViewError(
+                f"`{name}` is not defined for a lazy view (a sliced or indexed array that "
+                f"does not fill its chunk grid). Use `chunk_projections` for this view's "
+                f"chunk granularity; the backing array's stored structure is available via "
+                f"`metadata` / `chunk_grid`."
+            )
+
+    def _require_identity_for_async(self, name: str) -> None:
+        """Raise `LazyViewError` if this async entry point is used on a lazy view.
+
+        The async surface does not yet route selections through a view's index
+        transform: it builds a legacy indexer from `metadata.shape`, which for a
+        non-identity view would silently read or write the *wrong* region. Until
+        async transform routing lands, guard these entry points and steer users
+        to the synchronous surface. `name` is the member being guarded.
+        """
+        if not self._is_identity:
+            raise LazyViewError(
+                f"`{name}` on the async surface does not yet support lazy views "
+                f"(sliced or indexed arrays with a non-identity transform); it would "
+                f"silently read or write the wrong region. Use the synchronous `Array` "
+                f"surface, or materialize the view first with `.result()` (for example, "
+                f"index `view.result()` instead of `await view.async_array...`)."
+            )
+
+    @property
+    def _is_sharded(self) -> bool:
+        """Whether the array stores inner chunks inside shards (a sharding codec).
+
+        A sharding codec is the array-bytes codec in the chain: array-array
+        filters may precede it and bytes-bytes codecs (e.g. an outer compressor)
+        may follow it, so its presence — not the chain's length — is what makes
+        an array sharded. `validate_codecs` permits such trailing codecs, and
+        they round-trip data correctly; keying off `len(codecs) == 1` would
+        misclassify them as unsharded.
+        """
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        return any(isinstance(codec, ShardingCodec) for codec in codecs)
+
+    def chunk_projections(
+        self, *, unit: Literal["read", "write"] = "read"
+    ) -> Iterator[ChunkProjection]:
+        """Enumerate the stored chunks this array (or lazy view) projects onto.
+
+        Yields a `ChunkProjection` per stored chunk: its coordinate, store key, and
+        (extent-clipped) shape; the region of the chunk this array covers; the region
+        of this array it maps to; and whether the coverage is partial (a partial
+        write is a read-modify-write). For an identity array every chunk is fully
+        covered and the projections tile the whole domain; for a view only the touched
+        chunks appear.
+
+        `unit` selects the granularity: `"write"` is the store-object grid (the shard
+        when sharded, else the chunk); `"read"` is the chunk grid. They coincide
+        unless the array is sharded. Read-unit (inner-chunk) partitioning of a sharded
+        array is not yet implemented; use `unit="write"` there.
+
+        To partition an arbitrary selection, compose through the lazy accessor:
+        `array.lazy[sel].chunk_projections()`.
+        """
+        if unit not in ("read", "write"):
+            raise ValueError(f"unit must be 'read' or 'write', got {unit!r}")
+        if unit == "read" and self._is_sharded:
+            raise NotImplementedError(
+                "read-unit (inner-chunk) `chunk_projections` for sharded arrays is not yet "
+                "implemented; use `unit='write'` for shard-granularity projections."
+            )
+        return iter_chunk_projections(
+            self._transform, self._chunk_grid, self.metadata.encode_chunk_key
+        )
+
+    def is_chunk_aligned(self) -> bool:
+        """Whether this array/view aligns to write-unit (store-object) boundaries.
+
+        True iff no stored write unit is only partially covered — i.e. every unit can
+        be written without a read-modify-write. A cheap wrapper over
+        `chunk_projections`.
+        """
+        return all(not p.is_partial for p in self.chunk_projections(unit="write"))
+
+    @property
+    def storage_shape(self) -> tuple[int, ...]:
+        """The shape of the underlying storage array (ignoring any view transform)."""
         return self.metadata.shape
 
     @property
@@ -852,6 +1004,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]:
             The chunk shape of the Array.
         """
+        self._require_identity("chunks")
         # TODO: move sharding awareness out of metadata
         return self.metadata.chunks
 
@@ -878,6 +1031,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
+        self._require_identity("read_chunk_sizes")
 
         from zarr.codecs.sharding import ShardingCodec
 
@@ -909,7 +1063,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
-
+        self._require_identity("write_chunk_sizes")
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -925,6 +1079,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]:
             The shard shape of the Array.
         """
+        self._require_identity("shards")
         return self.metadata.shards
 
     @property
@@ -936,7 +1091,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return math.prod(self.metadata.shape)
+        # `self.shape` is the view's logical shape (== metadata.shape for a
+        # non-view); using it keeps `size`/`nbytes` correct for lazy views.
+        return math.prod(self.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -1101,6 +1258,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
+        self._require_identity("cdata_shape")
         return self._chunk_grid_shape
 
     @property
@@ -1157,6 +1315,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The total number of chunks in the array.
         """
+        self._require_identity("nchunks")
         return product(self._chunk_grid_shape)
 
     @property
@@ -1241,6 +1400,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         result = asyncio.run(example())
         ```
         """
+        self._require_identity("nchunks_initialized")
         return await _nchunks_initialized(self)
 
     async def _nshards_initialized(self) -> int:
@@ -1282,6 +1442,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return await _nshards_initialized(self)
 
     async def nbytes_stored(self) -> int:
+        self._require_identity("nbytes_stored")
         return await _nbytes_stored(self.store_path)
 
     def _iter_chunk_coords(
@@ -1500,7 +1661,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> asyncio.run(example())
         np.int32(0)
         """
-
+        self._require_identity_for_async("getitem")
         return await _getitem(
             self.store_path,
             self.metadata,
@@ -1519,6 +1680,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_orthogonal_selection")
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
@@ -1542,6 +1704,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_mask_selection")
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
@@ -1565,6 +1728,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
+        self._require_identity_for_async("get_coordinate_selection")
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
@@ -1610,6 +1774,42 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             fields=fields,
         )
 
+    async def _get_selection_t(
+        self,
+        transform: IndexTransform,
+        *,
+        prototype: BufferPrototype,
+        out: NDBuffer | None = None,
+    ) -> NDArrayLikeOrScalar:
+        return await _get_selection_via_transform(
+            self.store_path,
+            self.metadata,
+            self.config,
+            transform,
+            self.codec_pipeline,
+            prototype=prototype,
+            out=out,
+            chunk_grid=self._chunk_grid,
+        )
+
+    async def _set_selection_t(
+        self,
+        transform: IndexTransform,
+        value: npt.ArrayLike,
+        *,
+        prototype: BufferPrototype,
+    ) -> None:
+        return await _set_selection_via_transform(
+            self.store_path,
+            self.metadata,
+            self.config,
+            transform,
+            value,
+            self.codec_pipeline,
+            prototype=prototype,
+            chunk_grid=self._chunk_grid,
+        )
+
     async def setitem(
         self,
         selection: BasicSelection,
@@ -1649,6 +1849,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
+        self._require_identity_for_async("setitem")
         return await _setitem(
             self.store_path,
             self.metadata,
@@ -1700,6 +1901,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -----
         - This method is asynchronous and should be awaited.
         """
+        self._require_identity("resize")
         return await _resize(self, new_shape, delete_outside_chunks)
 
     async def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
@@ -1721,6 +1923,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         The size of all dimensions other than `axis` must match between this
         array and `data`.
         """
+        self._require_identity("append")
         return await _append(self, data, axis)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
@@ -1753,7 +1956,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self
 
     def __repr__(self) -> str:
-        return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
+        base = f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}"
+        # Identity (non-view) arrays keep the legacy repr; only lazy views carry
+        # a `domain={...}` suffix describing the view's coordinate box.
+        if self._is_identity:
+            return f"{base}>"
+        return f"{base} domain={self._transform.selection_repr}>"
 
     @property
     def info(self) -> Any:
@@ -1792,6 +2000,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Compressors        : (ZstdCodec(level=0, checksum=False),)
         No. bytes          : 480
         """
+        self._require_identity("info")
         return self._info()
 
     async def info_complete(self) -> Any:
@@ -1811,6 +2020,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
+        self._require_identity("info_complete")
         return await _info_complete(self)
 
     def _info(
@@ -1872,6 +2082,49 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _chunk_grid(self) -> ChunkGrid:
         """The chunk grid for this array, bound to the array's shape."""
         return self.async_array._chunk_grid
+
+    def _with_transform(self, transform: IndexTransform) -> Array[T_ArrayMetadata]:
+        """Return a new Array sharing storage but with a different transform."""
+        new_async = self._async_array._with_transform(transform)
+        return type(self)(new_async)
+
+    def translate_by(self, shift: tuple[int, ...]) -> Array[T_ArrayMetadata]:
+        """Shift this array's domain by `shift`, preserving which cells it addresses.
+
+        TensorStore's `translate_by`: the view's coordinate labels move; the data
+        does not. `a.translate_by((-10,))` gives a view whose domain starts at
+        -10, where coordinate -10 addresses the cell that 0 addressed before.
+        """
+        return self._with_transform(self._async_array._transform.translate_domain_by(tuple(shift)))
+
+    def translate_to(self, origins: tuple[int, ...]) -> Array[T_ArrayMetadata]:
+        """Move this array's domain so its per-dimension origins equal `origins`.
+
+        TensorStore's `translate_to`; `view.translate_to((0,) * view.ndim)`
+        re-zeros a view's coordinate system without changing which cells it
+        addresses.
+        """
+        return self._with_transform(
+            self._async_array._transform.translate_domain_to(tuple(origins))
+        )
+
+    def __iter__(self) -> Any:
+        """Iterate over the first axis (identity arrays only).
+
+        Lazy views are not iterable, matching TensorStore: the Python iteration
+        protocol counts positions from 0, which are not valid coordinates in a
+        preserved (possibly non-zero-origin) domain — silently yielding nothing
+        or the wrong cells. Read the view first: `iter(view.result())`.
+        """
+        if not self._async_array._is_identity:
+            raise TypeError(
+                "lazy views are not iterable; materialize first, e.g. iterate `view.result()`"
+            )
+        if self.ndim == 0:
+            raise TypeError("iteration over a 0-d array")
+        # A plain generator function would defer these raises to the first
+        # next(); returning an inner generator keeps them eager at iter().
+        return (self[i] for i in range(self.shape[0]))
 
     @classmethod
     def _create(
@@ -2208,7 +2461,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         When sharding is used, this counts inner chunks (not shards) per dimension.
         """
-        return self._chunk_grid_shape
+        # Deliberately NOT main's `self._chunk_grid_shape` delegation: the public
+        # property must keep routing through the async `cdata_shape`, which
+        # carries the lazy-view guard (`_require_identity`); the private
+        # `_chunk_grid_shape` is the unguarded internal member.
+        return self.async_array.cdata_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
@@ -2285,6 +2542,27 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         from the shape and dtype alone.
         """
         return self.async_array.nbytes
+
+    def chunk_projections(
+        self, *, unit: Literal["read", "write"] = "read"
+    ) -> Iterator[ChunkProjection]:
+        """Enumerate the stored chunks this array (or lazy view) projects onto.
+
+        See [zarr.AsyncArray.chunk_projections][] for the full description. Each
+        `ChunkProjection` reports a stored chunk's coordinate/key/shape, the region of
+        it this array covers, the region of this array it maps to, and whether the
+        coverage is partial. Compose through `lazy` to partition an arbitrary
+        selection: `array.lazy[sel].chunk_projections()`.
+        """
+        return self.async_array.chunk_projections(unit=unit)
+
+    def is_chunk_aligned(self) -> bool:
+        """Whether this array/view aligns to write-unit (store-object) boundaries.
+
+        True iff no stored write unit is only partially covered. See
+        [zarr.AsyncArray.is_chunk_aligned][].
+        """
+        return self.async_array.is_chunk_aligned()
 
     @property
     def nchunks_initialized(self) -> int:
@@ -2747,6 +3025,104 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             self.set_basic_selection(cast("BasicSelection", pure_selection), value, fields=fields)
 
+    def _reject_bool_scalar(self, sel: Any) -> None:
+        # `isinstance(True, int)` is True, so a bare Python/NumPy bool scalar would
+        # otherwise pass the integer validators and silently read element 0/1 where
+        # eager NumPy indexing raises. Boolean *arrays* (masks) remain valid.
+        if isinstance(sel, (bool, np.bool_)):
+            raise IndexError(
+                "boolean scalar indices are not supported; use a boolean array "
+                "(mask) for boolean indexing"
+            )
+
+    def _normalize_public_selection(self, selection: Any) -> Any:
+        """Normalize a user selection at the public Array boundary.
+
+        Rejects boolean *scalar* indices, validates boolean-mask shapes, and wraps
+        negative integers, negative index-array elements, and negative slice bounds
+        to literal coordinates in the current view's domain: an index `k` with
+        `-size <= k < 0` on axis `d` becomes `exclusive_max[d] + k` (from the end of
+        the view's domain — exactly NumPy for a zero-origin domain). Positive indices
+        are left as literal domain coordinates. A boolean mask consumes `mask.ndim`
+        dimensions and must exactly match the view domain's shape on them (NumPy
+        parity), else IndexError — never a silent truncation. The transform layer
+        stays literal; it performs the final bounds check, so an out-of-range value
+        (a positive past the end, or `k < -size`) is rejected there before any chunk
+        access.
+        """
+        domain = self._async_array._transform.domain
+        exclusive_max = domain.exclusive_max
+        ndim = len(exclusive_max)
+
+        is_tuple = isinstance(selection, tuple)
+        items = list(selection) if is_tuple else [selection]
+
+        for item in items:
+            self._reject_bool_scalar(item)
+
+        # A boolean mask consumes one dimension per mask axis; everything else
+        # consumes exactly one (newaxis/Ellipsis consume none).
+        n_real = 0
+        has_mask = False
+        for item in items:
+            if item is Ellipsis or item is None:
+                continue
+            mask = _as_bool_mask(item)
+            if mask is not None:
+                has_mask = True
+                n_real += mask.ndim
+            else:
+                n_real += 1
+        if n_real > ndim:
+            if has_mask:
+                # The transform layer would raise an unhelpful ValueError for a
+                # too-high-rank mask; raise the canonical IndexError here.
+                raise IndexError(
+                    f"too many indices for array: array has {ndim} dimension(s), "
+                    f"but {n_real} were indexed"
+                )
+            # Otherwise leave the selection untouched and let the transform layer
+            # raise its canonical error with the correct message.
+            return selection
+
+        normalized: list[Any] = []
+        axis = 0
+        for item in items:
+            if item is Ellipsis:
+                axis += ndim - n_real  # ellipsis fills the unaddressed axes
+                normalized.append(item)
+            elif item is None:
+                normalized.append(item)  # newaxis consumes no domain axis
+            else:
+                mask = _as_bool_mask(item)
+                if mask is not None:
+                    expected = domain.shape[axis : axis + mask.ndim]
+                    for offset, (want, got) in enumerate(zip(expected, mask.shape, strict=True)):
+                        if want != got:
+                            raise IndexError(
+                                "boolean index did not match indexed array along "
+                                f"dimension {axis + offset}; dimension is {want} but "
+                                f"corresponding boolean dimension is {got}"
+                            )
+                    normalized.append(item)
+                    axis += mask.ndim
+                else:
+                    normalized.append(_wrap_negative_index(item, exclusive_max[axis]))
+                    axis += 1
+        return tuple(normalized) if is_tuple else normalized[0]
+
+    def _reject_fields_on_view(self, fields: Fields | None) -> None:
+        # Routing `fields=` on a non-identity view through the legacy indexer
+        # ignores the transform and reads/writes the wrong storage region. The
+        # transform layer cannot preserve field-aware semantics, so reject before
+        # any storage access rather than corrupt data.
+        if fields is not None and not self._async_array._is_identity:
+            raise NotImplementedError(
+                "field selection (`fields=`) is not supported on a lazy view "
+                "(non-identity transform); materialize the view first "
+                "(e.g. zarr.array(view[...]))"
+            )
+
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -2869,14 +3245,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        return sync(
-            self.async_array._get_selection(
-                BasicIndexer(selection, self.shape, self._chunk_grid),
-                out=out,
-                fields=fields,
-                prototype=prototype,
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity-transform) arrays and structured-dtype field
+            # selection use the original indexer path directly.
+            return sync(
+                self.async_array._get_selection(
+                    BasicIndexer(selection, self.shape, self._chunk_grid),
+                    out=out,
+                    fields=fields,
+                    prototype=prototype,
+                )
             )
-        )
+        selection = self._normalize_public_selection(selection)
+        transform = selection_to_transform(selection, self._async_array._transform, "basic")
+        return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_basic_selection(
         self,
@@ -2978,8 +3361,18 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity-transform) arrays and structured-dtype field
+            # selection use the original indexer path directly.
+            indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
+            sync(
+                self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            )
+            return
+        selection = self._normalize_public_selection(selection)
+        transform = selection_to_transform(selection, self._async_array._transform, "basic")
+        sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
     def get_orthogonal_selection(
         self,
@@ -3106,12 +3499,25 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity) arrays and structured-dtype field selection use the
+            # original indexer path directly.
+            indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+            return sync(
+                self.async_array._get_selection(
+                    indexer=indexer, out=out, fields=fields, prototype=prototype
+                )
             )
+        # Lazy view (non-identity transform): route through the transform so the
+        # view's offset/stride are honored. Use basic mode for plain int/slice
+        # selections (so integer axes drop), orthogonal mode for fancy selections.
+        selection = self._normalize_public_selection(selection)
+        mode: Literal["basic", "orthogonal"] = (
+            "basic" if is_basic_selection(selection) else "orthogonal"
         )
+        transform = selection_to_transform(selection, self._async_array._transform, mode)
+        return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_orthogonal_selection(
         self,
@@ -3224,10 +3630,24 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            # Eager (identity) arrays and structured-dtype field selection use the
+            # original indexer path directly.
+            indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
+            sync(
+                self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            )
+            return
+        # Lazy view (non-identity transform): route through the transform so the
+        # view's offset/stride are honored. Use basic mode for plain int/slice
+        # selections (so integer axes drop), orthogonal mode for fancy selections.
+        selection = self._normalize_public_selection(selection)
+        mode: Literal["basic", "orthogonal"] = (
+            "basic" if is_basic_selection(selection) else "orthogonal"
         )
+        transform = selection_to_transform(selection, self._async_array._transform, mode)
+        sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
     def get_mask_selection(
         self,
@@ -3312,12 +3732,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+            return sync(
+                self.async_array._get_selection(
+                    indexer=indexer, out=out, fields=fields, prototype=prototype
+                )
             )
-        )
+        # Unwrap if VIndex passed a tuple
+        if isinstance(mask, tuple) and len(mask) == 1:
+            mask = mask[0]
+        # Validate mask
+        mask_arr = np.asarray(mask)
+        if mask_arr.dtype != np.bool_:
+            raise IndexError("invalid mask selection; expected Boolean array")
+        if mask_arr.shape != self.shape:
+            raise IndexError(
+                f"invalid mask selection; expected Boolean array with shape {self.shape}, "
+                f"got {mask_arr.shape}"
+            )
+        selection = (mask_arr,)
+        transform = selection_to_transform(selection, self._async_array._transform, "vectorized")
+        return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_mask_selection(
         self,
@@ -3401,8 +3838,26 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
+            sync(
+                self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            )
+            return
+        if isinstance(mask, tuple) and len(mask) == 1:
+            mask = mask[0]
+        mask_arr = np.asarray(mask)
+        if mask_arr.dtype != np.bool_:
+            raise IndexError("invalid mask selection; expected Boolean array")
+        if mask_arr.shape != self.shape:
+            raise IndexError(
+                f"invalid mask selection; expected Boolean array with shape {self.shape}, "
+                f"got {mask_arr.shape}"
+            )
+        selection = (mask_arr,)
+        transform = selection_to_transform(selection, self._async_array._transform, "vectorized")
+        sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
     def get_coordinate_selection(
         self,
@@ -3420,7 +3875,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         selection : tuple
             An integer (coordinate) array for each dimension of the array.
         out : NDBuffer, optional
-            If given, load the selected data directly into this buffer.
+            If given, load the selected data directly into this buffer. The expected
+            shape of `out` currently differs between eager arrays and lazy views:
+            on an ordinary (identity) array `out` must be a flat buffer of shape
+            `(n,)`, where `n` is the number of selected points; on a lazy view `out`
+            must have the broadcast selection shape (the shape the coordinate arrays
+            broadcast to). The broadcast-shape contract is the long-term direction;
+            the flat contract on eager arrays is retained for backwards
+            compatibility and is expected to be aligned to it in a future release.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
@@ -3489,17 +3951,40 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-        out_array = sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+            out_array = sync(
+                self.async_array._get_selection(
+                    indexer=indexer, out=out, fields=fields, prototype=prototype
+                )
             )
+            if hasattr(out_array, "shape"):
+                out_array = np.array(out_array).reshape(indexer.sel_shape)
+            return out_array
+        # Validate and normalize as coordinate selection
+        sel_normalized = ensure_tuple(selection)
+        sel_normalized = tuple(
+            np.asarray([s], dtype=np.intp) if isinstance(s, (int, np.integer)) else s
+            for s in sel_normalized
         )
-
-        if hasattr(out_array, "shape"):
-            # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
-        return out_array
+        sel_normalized = replace_lists(sel_normalized)
+        if not is_coordinate_selection(sel_normalized, self.shape):
+            raise IndexError(
+                "invalid coordinate selection; expected one integer "
+                "(coordinate) array per dimension of the target array, "
+                f"got {selection!r}"
+            )
+        # Wrap negative coordinates against the view's domain (see
+        # _normalize_public_selection); positive coordinates stay literal.
+        sel_normalized = self._normalize_public_selection(sel_normalized)
+        transform = selection_to_transform(
+            sel_normalized, self._async_array._transform, "vectorized"
+        )
+        # `_get_selection_via_transform` already returns the broadcast selection
+        # shape (transform.domain.shape == the broadcast shape of the coordinate
+        # arrays), so no further reshape/copy is needed here.
+        return sync(self._async_array._get_selection_t(transform, out=out, prototype=prototype))
 
     def set_coordinate_selection(
         self,
@@ -3580,30 +4065,57 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        # Normalize a caller-supplied empty fields list/tuple to None, so that
+        # `fields is not None` uniformly means "a field was requested" (matching
+        # pop_fields, which yields None for no fields); keep the exact-emptiness
+        # check rather than a falsy one.
+        if fields == [] or fields == ():
+            fields = None
+        self._reject_fields_on_view(fields)
+        if fields is not None or self._async_array._is_identity:
+            indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+            if not is_scalar(value, self.dtype):
+                try:
+                    from numcodecs.compat import ensure_ndarray_like
 
-        # handle value - need ndarray-like flatten value
-        if not is_scalar(value, self.dtype):
-            try:
-                from numcodecs.compat import ensure_ndarray_like
-
-                value = ensure_ndarray_like(value)  # TODO replace with agnostic
-            except TypeError:
-                # Handle types like `list` or `tuple`
-                value = np.array(value)  # TODO replace with agnostic
-        if hasattr(value, "shape") and len(value.shape) > 1:
-            value = np.array(value).reshape(-1)
-
-        if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
-        ):
-            raise ValueError(
-                f"Attempting to set a selection of {indexer.sel_shape[0]} "
-                f"elements with an array of {value.shape[0]} elements."
+                    value = ensure_ndarray_like(value)
+                except TypeError:
+                    value = np.array(value)
+            if hasattr(value, "shape") and len(value.shape) > 1:
+                value = np.array(value).reshape(-1)
+            if not is_scalar(value, self.dtype) and (
+                isinstance(value, NDArrayLike) and indexer.shape != value.shape
+            ):
+                raise ValueError(
+                    f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                    f"elements with an array of {value.shape[0]} elements."
+                )
+            sync(
+                self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
             )
-
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+            return
+        sel_normalized = ensure_tuple(selection)
+        sel_normalized = tuple(
+            np.asarray([s], dtype=np.intp) if isinstance(s, (int, np.integer)) else s
+            for s in sel_normalized
+        )
+        sel_normalized = replace_lists(sel_normalized)
+        if not is_coordinate_selection(sel_normalized, self.shape):
+            raise IndexError(
+                "invalid coordinate selection; expected one integer "
+                "(coordinate) array per dimension of the target array, "
+                f"got {selection!r}"
+            )
+        # Wrap negative coordinates against the view's domain (see
+        # _normalize_public_selection); positive coordinates stay literal.
+        sel_normalized = self._normalize_public_selection(sel_normalized)
+        transform = selection_to_transform(
+            sel_normalized, self._async_array._transform, "vectorized"
+        )
+        # Flatten value for coordinate selection
+        if not is_scalar(value, self.dtype) and hasattr(value, "shape") and len(value.shape) > 1:
+            value = np.asarray(value).reshape(-1)
+        sync(self._async_array._set_selection_t(transform, value, prototype=prototype))
 
     def get_block_selection(
         self,
@@ -3702,6 +4214,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        if not self._async_array._is_identity:
+            # Block selection addresses the storage chunk grid; it is ill-defined
+            # on a lazy view (offset/stride) and the legacy indexer would read raw
+            # storage blocks, ignoring the transform. Reject rather than corrupt.
+            raise NotImplementedError(
+                "block selection is not supported on a lazy view; materialize the "
+                "view first (e.g. zarr.array(view[...]))"
+            )
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         return sync(
             self.async_array._get_selection(
@@ -3802,6 +4322,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
+        if not self._async_array._is_identity:
+            # See get_block_selection: block selection is ill-defined on a lazy
+            # view, so reject rather than write to the wrong storage region.
+            raise NotImplementedError(
+                "block selection is not supported on a lazy view; materialize the "
+                "view first (e.g. zarr.array(view[...]))"
+            )
         indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -3830,6 +4357,19 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         [set_block_selection][zarr.Array.set_block_selection] for documentation and
         examples."""
         return BlockIndex(self)
+
+    @property
+    def lazy(self) -> _LazyIndexAccessor:
+        """Lazy indexing accessor. Returns a new Array with composed transform, no I/O."""
+        return _LazyIndexAccessor(self)
+
+    def result(self, prototype: BufferPrototype | None = None) -> NDArrayLikeOrScalar:
+        """Read and return the data for this array view.
+
+        Equivalent to `self[...]` but more explicit for lazy views, and forwards
+        `prototype`. Named after `tensorstore.Future.result`.
+        """
+        return self.get_basic_selection(Ellipsis, prototype=prototype)
 
     def resize(self, new_shape: ShapeLike) -> None:
         """
@@ -3934,7 +4474,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return type(self)(new_array)
 
     def __repr__(self) -> str:
-        return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
+        base = f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}"
+        # Identity (non-view) arrays keep the legacy repr; only lazy views carry
+        # a `domain={...}` suffix describing the view's coordinate box.
+        if self._async_array._is_identity:
+            return f"{base}>"
+        return f"{base} domain={self._async_array._transform.selection_repr}>"
 
     @property
     def info(self) -> Any:
@@ -4049,6 +4594,116 @@ type CompressorsLike = (
     | None
 )
 type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+
+
+def _as_bool_mask(item: Any) -> np.ndarray[Any, np.dtype[np.bool_]] | None:
+    """Return `item` as a boolean ndarray if it is a boolean mask (ndarray or
+    list), else None. Boolean *scalars* are not masks (rejected separately)."""
+    if isinstance(item, (list, np.ndarray)):
+        arr = np.asarray(item)
+        if arr.dtype == np.bool_:
+            return arr
+    return None
+
+
+def _wrap_negative_index(item: Any, exclusive_max: int) -> Any:
+    """Wrap negative values in a single per-axis selection element to literal
+    coordinates against `exclusive_max` (from-the-end within the axis's domain).
+
+    A negative integer `k` becomes `exclusive_max + k`; negative slice bounds and
+    negative integer-array elements are wrapped the same way. Positive values,
+    `None` slice bounds, boolean masks, and non-integer items pass through
+    unchanged. This performs no bounds checking — the transform layer rejects an
+    out-of-range value (a positive past the end, or one that wraps below the
+    domain origin) before any chunk access.
+    """
+    if isinstance(item, slice):
+        start = item.start
+        stop = item.stop
+        if start is not None and start < 0:
+            start += exclusive_max
+        if stop is not None and stop < 0:
+            stop += exclusive_max
+        return slice(start, stop, item.step)
+    if isinstance(item, (int, np.integer)):
+        k = int(item)
+        return k + exclusive_max if k < 0 else k
+    if isinstance(item, (list, np.ndarray)):
+        arr = np.asarray(item)
+        if arr.dtype == np.bool_ or not np.issubdtype(arr.dtype, np.integer):
+            return item  # boolean mask or non-integer array: no wrapping
+        return np.where(arr < 0, arr + exclusive_max, arr)
+    return item
+
+
+class _LazyOIndex:
+    """Lazy orthogonal indexing via `array.lazy.oindex[...]`."""
+
+    __slots__ = ("_array",)
+
+    def __init__(self, array: Array[Any]) -> None:
+        self._array = array
+
+    def __getitem__(self, selection: Any) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "orthogonal")
+        return self._array._with_transform(new_t)
+
+    def __setitem__(self, selection: Any, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "orthogonal")
+        self._array._with_transform(new_t)[...] = value
+
+
+class _LazyVIndex:
+    """Lazy vectorized indexing via `array.lazy.vindex[...]`."""
+
+    __slots__ = ("_array",)
+
+    def __init__(self, array: Array[Any]) -> None:
+        self._array = array
+
+    def __getitem__(self, selection: Any) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "vectorized")
+        return self._array._with_transform(new_t)
+
+    def __setitem__(self, selection: Any, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "vectorized")
+        self._array._with_transform(new_t)[...] = value
+
+
+class _LazyIndexAccessor:
+    """Provides lazy indexing via `array.lazy[...]`."""
+
+    __slots__ = ("_array",)
+
+    def __init__(self, array: Array[Any]) -> None:
+        self._array = array
+
+    def __getitem__(self, selection: Selection) -> Array[Any]:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "basic")
+        return self._array._with_transform(new_t)
+
+    def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
+        selection = self._array._normalize_public_selection(selection)
+        new_t = selection_to_transform(selection, self._array._async_array._transform, "basic")
+        self._array._with_transform(new_t)[...] = value
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Shape of the array (or view) this accessor indexes into."""
+        return self._array.shape
+
+    @property
+    def oindex(self) -> _LazyOIndex:
+        return _LazyOIndex(self._array)
+
+    @property
+    def vindex(self) -> _LazyVIndex:
+        return _LazyVIndex(self._array)
 
 
 class ShardsConfigParam(TypedDict):
@@ -4256,6 +4911,23 @@ async def from_array(
                [0, 0]])
     """
     mode: Literal["a"] = "a"
+    # Reject lazy-view sources up front, before touching the store or creating the
+    # target array. The copy loop reads via `data.async_array.getitem`, which does
+    # not yet route through a view's index transform (it would copy the wrong
+    # region); guard here so the user gets one clear error and no half-created
+    # target is left behind.
+    _source_async: AsyncArray[Any] | None = None
+    if isinstance(data, Array):
+        _source_async = data._async_array
+    elif isinstance(data, AsyncArray):
+        _source_async = data
+    if _source_async is not None and not _source_async._is_identity:
+        raise LazyViewError(
+            "Creating an array from a lazy view (a sliced or indexed array with a "
+            "non-identity transform) via `from_array` is not yet supported. "
+            "Materialize the view first, e.g. `zarr.from_array(store, data=view.result())`, "
+            "or use the synchronous copy idiom."
+        )
     config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
@@ -5364,6 +6036,27 @@ async def _nbytes_stored(
     return await store_path.store.getsize_prefix(store_path.path)
 
 
+def _array_spec_from_chunk_spec(
+    metadata: ArrayMetadata,
+    spec: ChunkSpec,
+    array_config: ArrayConfig,
+    prototype: BufferPrototype,
+) -> ArraySpec:
+    """Build an ArraySpec from an already-resolved ChunkSpec.
+
+    Split out from `_get_chunk_spec` so the transform read/write path can
+    resolve `chunk_grid[chunk_coords]` once per chunk and feed the same
+    `spec` to both this and `_is_complete_chunk`.
+    """
+    return ArraySpec(
+        shape=spec.codec_shape,
+        dtype=metadata.dtype,
+        fill_value=metadata.fill_value,
+        config=array_config,
+        prototype=prototype,
+    )
+
+
 def _get_chunk_spec(
     metadata: ArrayMetadata,
     chunk_grid: ChunkGrid,
@@ -5375,13 +6068,325 @@ def _get_chunk_spec(
     spec = chunk_grid[chunk_coords]
     if spec is None:
         raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
-    return ArraySpec(
-        shape=spec.codec_shape,
-        dtype=metadata.dtype,
-        fill_value=metadata.fill_value,
-        config=array_config,
-        prototype=prototype,
-    )
+    return _array_spec_from_chunk_spec(metadata, spec, array_config, prototype)
+
+
+def _is_vectorized_transform(transform: IndexTransform) -> bool:
+    """Return True for a vectorized (vindex/coordinate) transform.
+
+    Coordinate ArrayMaps (`input_dimension is None`) are jointly indexed over
+    the broadcast input domain and scatter through a single flat index, so the
+    output buffer is flattened during read/write and reshaped afterwards. This
+    holds whenever *any* such map is present — including a single coordinate map
+    with a multi-dimensional index array (`vindex[idx_2d]` on a 1-D array),
+    whose flat result still needs a flat buffer. Orthogonal ArrayMaps (oindex),
+    each bound to a distinct input dimension, form an outer product and keep a
+    multi-dimensional buffer — even when every output is an ArrayMap
+    (e.g. `oindex[i0, i1]`).
+    """
+    return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
+
+
+def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, ...]) -> bool:
+    """Return True if `transform` is the identity over the full storage domain.
+
+    An identity transform maps input coordinate `i` to storage coordinate `i`
+    across the array's whole storage shape (origin 0, unit stride, dimensions in
+    order). Such an array is an ordinary eager array — indexing it produces the
+    same coordinates the legacy indexers compute, so the legacy fast path is
+    safe. Any narrowing, striding, reordering, or fancy selection (i.e. a lazy
+    view) yields a non-identity transform that must go through the transform
+    resolver. Cheap: O(ndim), no array work.
+    """
+    from zarr_indexing.output_map import DimensionMap
+
+    domain = transform.domain
+    ndim = len(storage_shape)
+    if domain.ndim != ndim or len(transform.output) != ndim:
+        return False
+    if domain.inclusive_min != (0,) * ndim or domain.exclusive_max != storage_shape:
+        return False
+    for i, m in enumerate(transform.output):
+        if not (
+            type(m) is DimensionMap and m.input_dimension == i and m.offset == 0 and m.stride == 1
+        ):
+            return False
+    return True
+
+
+def _is_complete_chunk(sub_transform: IndexTransform, spec: ChunkSpec) -> bool:
+    """Check if a sub-transform covers an entire chunk.
+
+    `spec` is the chunk's already-resolved `ChunkSpec` (the caller looks
+    it up once and shares it with `_array_spec_from_chunk_spec`).
+    """
+    from zarr_indexing.output_map import ConstantMap, DimensionMap
+
+    shape = spec.shape
+    for out_dim, m in enumerate(sub_transform.output):
+        if isinstance(m, ConstantMap):
+            # A ConstantMap means a single element is selected along this output dimension,
+            # so the write does not cover the full chunk along this dimension.
+            chunk_dim_size = shape[out_dim]
+            if chunk_dim_size > 1:
+                return False
+            continue  # chunk dim size is 1, so selecting the single element is complete
+        if isinstance(m, DimensionMap):
+            chunk_dim_size = shape[out_dim]
+            # Compute actual storage range: storage = offset + stride * input_coord
+            dim_lo = sub_transform.domain.inclusive_min[m.input_dimension]
+            dim_hi = sub_transform.domain.exclusive_max[m.input_dimension]
+            if m.stride == 1:
+                storage_start = m.offset + dim_lo
+                storage_stop = m.offset + dim_hi
+                if storage_start != 0 or storage_stop != chunk_dim_size:
+                    return False
+            else:
+                return False  # strided access is never a complete chunk
+        else:
+            return False  # ArrayMap is never a "complete chunk"
+    return True
+
+
+async def _get_selection_via_transform(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    transform: IndexTransform,
+    codec_pipeline: CodecPipeline,
+    *,
+    prototype: BufferPrototype,
+    out: NDBuffer | None = None,
+    chunk_grid: ChunkGrid | None = None,
+) -> NDArrayLikeOrScalar:
+    """Read data using an IndexTransform."""
+    # The user-facing transform may carry a preserved (possibly non-zero-origin)
+    # domain; the I/O layer addresses output buffers positionally, so normalize
+    # to a zero-origin domain here. Translation preserves the cell mapping.
+    transform = transform.translate_domain_to((0,) * transform.input_rank)
+    if chunk_grid is None:
+        chunk_grid = ChunkGrid.from_metadata(metadata)
+
+    # Get dtype (same logic as existing _get_selection)
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+        order = metadata.order
+    else:
+        zdtype = metadata.data_type
+        order = config.order
+    dtype = zdtype.to_native_dtype()
+
+    out_shape = transform.domain.shape
+
+    # Vectorized indexing (any correlated ArrayMap, input_dimension None — even a
+    # single one, e.g. vindex[idx_2d]) scatters through a single flat index, so
+    # the working buffer must be 1D during the read and reshaped to out_shape
+    # afterwards. Orthogonal indexing — including the case where every output is
+    # an ArrayMap bound to a distinct input dimension (oindex[i0, i1]) — keeps a
+    # multi-dimensional buffer, one out_sel entry per dim. A zero-rank domain
+    # still needs a flat (1,) working buffer for the scatter, but its single cell
+    # maps to a scalar on return (see the out_shape == () branch below).
+    needs_flat_buffer = _is_vectorized_transform(transform)
+    buffer_shape = (product(out_shape),) if needs_flat_buffer else out_shape
+
+    # Setup output buffer. The caller-visible `out` contract is the broadcast
+    # selection shape (out_shape). Vectorized reads still scatter through a flat
+    # index internally, so when `out` is supplied for a vectorized selection we
+    # read into a flat temporary and copy the reshaped result into `out` below.
+    copy_into_out: NDBuffer | None = None
+    if out is not None:
+        if not isinstance(out, NDBuffer):
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out.shape != out_shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {out_shape}, got {out.shape}"
+            )
+        if needs_flat_buffer:
+            copy_into_out = out
+            out_buffer = prototype.nd_buffer.empty(shape=buffer_shape, dtype=dtype, order=order)
+        else:
+            out_buffer = out
+    else:
+        out_buffer = prototype.nd_buffer.empty(shape=buffer_shape, dtype=dtype, order=order)
+
+    if product(out_shape) > 0:
+        _config = config
+        if metadata.zarr_format == 2:
+            _config = replace(_config, order=order)
+
+        # Build batch_info using transforms
+        batch_info = []
+        drop_axes: tuple[int, ...] = ()
+        for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(
+            transform, chunk_grid
+        ):
+            chunk_spec = chunk_grid[chunk_coords]
+            if chunk_spec is None:
+                raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
+            chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
+            drop_axes = da  # same for all chunks
+            batch_info.append(
+                (
+                    store_path / metadata.encode_chunk_key(chunk_coords),
+                    _array_spec_from_chunk_spec(metadata, chunk_spec, _config, prototype),
+                    chunk_sel,
+                    out_sel,
+                    _is_complete_chunk(sub_transform, chunk_spec),
+                )
+            )
+
+        results = await codec_pipeline.read(batch_info, out_buffer, drop_axes=drop_axes)
+
+        # Handle read_missing_chunks
+        if _config.read_missing_chunks is False:
+            missing_info = []
+            for i, result in enumerate(results):
+                if result["status"] == "missing":
+                    coords_path = batch_info[i][0]
+                    missing_info.append(f"  chunk at '{coords_path}'")
+            if len(missing_info) > 0:
+                chunks_str = "\n".join(missing_info)
+                raise ChunkNotFoundError(
+                    f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
+                    f"Set the 'array.read_missing_chunks' config to True to fill "
+                    f"missing chunks with the fill value.\n"
+                    f"Missing chunks:\n{chunks_str}"
+                )
+
+    # Return scalar for 0-d results. A correlated read used a flat (1,) working
+    # buffer for the scatter, so collapse it to a 0-d value before extracting.
+    if out_shape == ():
+        if copy_into_out is not None:
+            copy_into_out[...] = out_buffer.as_ndarray_like().reshape(())
+            return copy_into_out.as_scalar()
+        # Mirror NDBuffer.as_scalar (GPU-safe conversion), but collapse the flat
+        # (1,) correlated working buffer to 0-d first.
+        return cast("NDArrayLikeOrScalar", out_buffer.as_numpy_array().reshape(())[()])
+    out_result = out_buffer.as_ndarray_like()
+    # Reshape the flat working buffer back to the broadcast selection shape. The
+    # buffer is freshly allocated and contiguous, so reshape returns a view — no
+    # copy — and preserves the backend array type.
+    if needs_flat_buffer and hasattr(out_result, "reshape"):
+        out_result = out_result.reshape(out_shape)
+    # A vectorized read filled a flat temporary; copy the reshaped result into
+    # the caller-provided out buffer, whose shape is the broadcast selection shape.
+    if copy_into_out is not None:
+        copy_into_out[...] = out_result
+        return copy_into_out.as_ndarray_like()
+    return out_result
+
+
+async def _set_selection_via_transform(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    config: ArrayConfig,
+    transform: IndexTransform,
+    value: npt.ArrayLike,
+    codec_pipeline: CodecPipeline,
+    *,
+    prototype: BufferPrototype,
+    chunk_grid: ChunkGrid | None = None,
+) -> None:
+    """Write data using an IndexTransform."""
+    # See _get_selection_via_transform: normalize to a zero-origin domain
+    # so value/buffer placement is positional.
+    transform = transform.translate_domain_to((0,) * transform.input_rank)
+    if chunk_grid is None:
+        chunk_grid = ChunkGrid.from_metadata(metadata)
+
+    # Get dtype from metadata
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+    else:
+        zdtype = metadata.data_type
+    dtype = zdtype.to_native_dtype()
+
+    # check value shape
+    if np.isscalar(value):
+        array_like = prototype.buffer.create_zero_length().as_array_like()
+        if isinstance(array_like, np._typing._SupportsArrayFunc):
+            array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
+        value = np.asanyarray(value, dtype=dtype, like=array_like_)
+    else:
+        if not hasattr(value, "shape"):
+            value = np.asarray(value, dtype)
+        if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
+            if hasattr(value, "astype"):
+                value = value.astype(dtype=dtype, order="A")
+            else:
+                value = np.array(value, dtype=dtype, order="A")
+    value = cast("NDArrayLike", value)
+
+    # Validate value shape against selection shape
+    sel_shape = transform.domain.shape
+    needs_flat_buffer = _is_vectorized_transform(transform)
+    if hasattr(value, "shape") and value.shape != () and value.shape != sel_shape:
+        if needs_flat_buffer:
+            # For ArrayMap (coordinate/vindex), values are flattened so check total size
+            sel_size = product(sel_shape)
+            val_size = product(value.shape)
+            if val_size != sel_size and val_size != 1:
+                raise ValueError(
+                    f"Attempting to set a selection with a value of incompatible shape. "
+                    f"The selection has shape {sel_shape}, but the value has shape {value.shape}."
+                )
+        else:
+            # Check if value is broadcastable to sel_shape
+            try:
+                np.broadcast_shapes(value.shape, sel_shape)
+            except ValueError:
+                raise ValueError(
+                    f"Attempting to set a selection with a value of incompatible shape. "
+                    f"The selection has shape {sel_shape}, but the value has shape {value.shape}."
+                ) from None
+
+    if product(sel_shape) == 0:
+        return
+
+    # When the transform has ArrayMap outputs, chunk resolution produces
+    # flat scatter indices (out_indices). The value buffer must be 1D
+    # during the write, matching the flat index layout.
+    if (
+        needs_flat_buffer
+        and hasattr(value, "reshape")
+        and not np.isscalar(value)
+        and np.ndim(value) > 0
+    ):
+        value = np.asarray(value).reshape(-1)
+
+    # Convert to NDBuffer
+    value_buffer = prototype.nd_buffer.from_ndarray_like(value)
+
+    # Determine memory order
+    if metadata.zarr_format == 2:
+        order = metadata.order
+    else:
+        order = config.order
+
+    _config = config
+    if metadata.zarr_format == 2:
+        _config = replace(_config, order=order)
+
+    # Build batch_info using transforms
+    batch_info = []
+    drop_axes: tuple[int, ...] = ()
+    for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
+        chunk_spec = chunk_grid[chunk_coords]
+        if chunk_spec is None:
+            raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
+        chunk_sel, out_sel, da = sub_transform_to_selections(sub_transform, out_indices)
+        drop_axes = da  # same for all chunks
+        batch_info.append(
+            (
+                store_path / metadata.encode_chunk_key(chunk_coords),
+                _array_spec_from_chunk_spec(metadata, chunk_spec, _config, prototype),
+                chunk_sel,
+                out_sel,
+                _is_complete_chunk(sub_transform, chunk_spec),
+            )
+        )
+
+    await codec_pipeline.write(batch_info, value_buffer, drop_axes=drop_axes)
 
 
 async def _get_selection(
@@ -5494,7 +6499,7 @@ async def _get_selection(
                     coords = indexed_chunks[i][0]
                     key = metadata.encode_chunk_key(coords)
                     missing_info.append(f"  chunk '{key}' (grid position {coords})")
-            if missing_info:
+            if len(missing_info) > 0:
                 chunks_str = "\n".join(missing_info)
                 raise ChunkNotFoundError(
                     f"{len(missing_info)} chunk(s) not found in store '{store_path}'.\n"
@@ -5765,9 +6770,10 @@ async def _resize(
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
 
-    # Update metadata and chunk_grid (in place)
+    # Update metadata, chunk_grid, and transform (in place)
     object.__setattr__(array, "metadata", new_metadata)
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+    object.__setattr__(array, "_transform", IndexTransform.from_shape(new_shape))
 
 
 async def _append(

@@ -37,6 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'zarr-indexing>=0.1.0',
 ]
 
 dynamic = [
@@ -116,6 +117,11 @@ remote-tests = [
     "moto[s3,server]==5.2.2",
     "requests==2.34.2",
 ]
+interop-tests = [
+    # Third-party array consumers whose duck-typing contract we test against;
+    # left floating so the `optional` matrix exercises their latest releases.
+    "dask[array]",
+]
 release = [
     "towncrier==25.8.0",
 ]
@@ -146,12 +152,31 @@ dev = [
     "mypy==2.1.0",
 ]
 
+# The repo is a uv workspace so that `zarr` can depend on the in-tree
+# `packages/zarr-indexing` during development and CI. Released wheels depend on
+# the published zarr-indexing distribution; the workspace source below only
+# affects resolution from a checkout (uv.lock, `uv run`, hatch envs using uv).
+[tool.uv.workspace]
+members = ["packages/zarr-indexing"]
+
+[tool.uv.sources]
+zarr-indexing = { workspace = true }
+
 [tool.coverage.report]
 exclude_also = [
     'if TYPE_CHECKING:',
 ]
 
 [tool.coverage.run]
+# Measured source lives in two trees: zarr's own `src` and the in-tree
+# `zarr-indexing` workspace package. Configured here (not via `--source=src`
+# on the CLI) so every `coverage run` invocation — the hatch run-coverage /
+# run-coverage-html / run-hypothesis scripts and ad-hoc local runs — measures
+# both consistently.
+source = [
+    "src",
+    "packages/zarr-indexing/src",
+]
 omit = [
     "bench/compress_normal.py",
 ]
@@ -160,9 +185,10 @@ omit = [
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
 # this filter `git describe` matches the most recent tag of any shape,
-# including the `zarr_metadata-v*` tags used to release the zarr-metadata
-# subpackage — which would make a from-source build report a `0.2.x` version
-# instead of `3.x`.
+# including the `zarr_metadata-v*` and `zarr_indexing-v*` tags used to release
+# the in-tree subpackages — which would make a from-source build report a
+# `0.x` subpackage version instead of `3.x`. (`--match v*` excludes both, since
+# neither tag starts with a bare `v`.)
 version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
@@ -189,21 +215,22 @@ matrix.deps.features = [
 ]
 matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
+  {value = "interop-tests", if = ["optional"]},
 ]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
+    "coverage run -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
     "coverage xml",
 ]
 run-coverage-html = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest --ignore tests/benchmarks {args:}",
     "coverage html",
 ]
 run = "pytest --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
 run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
+    "coverage run -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
     "coverage xml",
 ]
 run-benchmark = "pytest --benchmark-enable tests/benchmarks"
@@ -226,7 +253,7 @@ python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
 run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
+    "coverage run -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
     "coverage xml",
 ]
 run = "pytest -m gpu --ignore tests/benchmarks"
@@ -427,7 +454,12 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "9"
-testpaths = ["src", "tests", "docs/user-guide"]
+# `packages/zarr-indexing/tests` is collected here rather than run in an
+# isolated package env: those tests exercise chunk resolution against zarr's
+# concrete `ChunkGrid`, so they need `zarr` importable (which the root env
+# provides). Keeping them in testpaths means the main test suite / `run-coverage`
+# continues to exercise the transform algebra after the move to the subpackage.
+testpaths = ["src", "tests", "docs/user-guide", "packages/zarr-indexing/tests"]
 log_cli_level = "INFO"
 log_level = "INFO"
 # Enables strict_config, strict_markers, strict_xfail, strict_parametrization_ids, and

@@ -35,6 +35,7 @@ from zarr.api.synchronous import (
     zeros_like,
 )
 from zarr.core.array import Array, AsyncArray
+from zarr.core.chunk_partition import ChunkProjection
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
 
@@ -146,6 +147,7 @@ __all__ = [
     "Array",
     "AsyncArray",
     "AsyncGroup",
+    "ChunkProjection",
     "Group",
     "__version__",
     "array",

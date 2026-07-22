@@ -2,6 +2,7 @@ import itertools
 import math
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -27,6 +28,7 @@ from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.indexing import Selection
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -612,6 +614,210 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+IndexMode = Literal["basic", "oindex", "vindex", "mask"]
+
+
+@st.composite
+def windows(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[slice, ...]:
+    """A non-negative, full-rank tuple of slice windows — one per axis.
+
+    A rank-preserving sub-region selection: each axis gets `start:stop` with
+    `0 <= start < stop <= size` (an empty `0:0` slice for a zero-length axis).
+    Bounds stay non-negative so the window is valid for any consumer, including
+    those that treat negative indices as literal coordinates rather than
+    from-the-end (e.g. building a sub-array view).
+    """
+    out: list[slice] = []
+    for size in shape:
+        if size == 0:
+            out.append(slice(0, 0))
+            continue
+        start = draw(st.integers(min_value=0, max_value=size - 1))
+        stop = draw(st.integers(min_value=start + 1, max_value=size))
+        out.append(slice(start, stop))
+    return tuple(out)
+
+
+@st.composite
+def numpy_array_indexers(
+    draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]
+) -> tuple[Selection, Selection]:
+    """A `(zarr_selection, numpy_selection)` pair for `mode` on `shape`.
+
+    Scope: the *element-space* indexing modes that have a direct NumPy-array
+    equivalent, so a NumPy array of `shape` can serve as the correctness oracle.
+    One strategy covers them all, so a test can be written once and parametrized
+    over mode instead of re-deriving selection setup per test:
+
+    - `"basic"`  — slices / ints / ellipsis (no newaxis, no negative slices)
+    - `"oindex"` — per-axis integer arrays or slices (orthogonal / outer product)
+    - `"vindex"` — broadcast integer coordinate arrays (vectorized)
+    - `"mask"`   — a boolean array of `shape`
+
+    The two returned selections differ only for `oindex` (zarr's per-axis
+    spelling vs the `np.ix_`-style spelling numpy needs); for the other modes
+    the same object indexes both a zarr array and its numpy reference. The
+    array-based modes (`oindex`/`vindex`/`mask`) need `shape` to have no
+    zero-length axis; `basic` has no such requirement.
+
+    Deliberately excluded is **block** indexing (`Array.blocks` /
+    `get_block_selection`): it addresses the *chunk grid*, not array elements,
+    so it is parametrized by the chunk grid rather than `shape` and has no
+    NumPy-array equivalent to compare against — its oracle is a coordinate
+    translation built by the separate `block_indices` strategy.
+    """
+    if mode == "basic":
+        sel = draw(basic_indices(shape=shape))
+        return sel, sel
+    if mode == "oindex":
+        return draw(orthogonal_indices(shape=shape))
+    if mode == "vindex":
+        idx = draw(
+            npst.integer_array_indices(
+                shape=shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            )
+        )
+        return idx, idx
+    if mode == "mask":
+        m = draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
+        return m, m
+    raise ValueError(f"unknown indexing mode: {mode!r}")
+
+
+# --- Composed indexing programs -------------------------------------------------
+#
+# A *program* is a short sequence of indexing operations composed on a single
+# array, plus an execution recipe describing how to realize the composed
+# selection (read whole, read a sub-selection eagerly, read into an ``out=``
+# buffer, or write). It exists to differentially test the index-transform layer:
+# every operation composes a real transform, and the runner (in
+# ``tests/test_properties.py``) checks the composed result against a NumPy oracle
+# that applies the equivalent selections in lockstep.
+#
+# The mode vocabulary here is the *public dialect* ("orthogonal"/"vectorized"),
+# not the internal accessor names ("oindex"/"vindex"); the runner maps between
+# them.
+ProgramMode = Literal["basic", "orthogonal", "vectorized"]
+ProgramExecution = Literal["materialize", "eager_on_lazy", "out", "set_scalar", "set_array"]
+
+
+@dataclass(frozen=True)
+class IndexOperation:
+    """One indexing step in an `IndexingProgram`.
+
+    ``selection`` carries exactly what the runner needs to reproduce the step on
+    *both* a zarr array and its NumPy reference:
+
+    - ``"basic"`` — a single object used verbatim for both (slice / int /
+      ellipsis / tuple thereof).
+    - ``"orthogonal"`` — a ``(zarr_selection, numpy_selection)`` pair, where the
+      NumPy side is the ``np.ix_`` outer-product spelling of the per-axis
+      selection.
+    - ``"vectorized"`` — a single coordinate selection used verbatim for both
+      (plain NumPy fancy-indexing semantics).
+    """
+
+    mode: ProgramMode
+    selection: Any
+
+
+@dataclass(frozen=True)
+class IndexingProgram:
+    """A composed sequence of `IndexOperation` plus an execution recipe."""
+
+    operations: tuple[IndexOperation, ...]
+    execution: ProgramExecution
+
+
+# Small arrays keep 300 Hypothesis examples cheap while still crossing chunk
+# boundaries (the runner chunks each axis into ~2 pieces). ``min_side=0`` lets a
+# program start from — or a basic step produce — a zero-extent axis, which is the
+# required "empty result" coverage class.
+program_shapes = npst.array_shapes(min_dims=1, max_dims=3, min_side=0, max_side=4)
+
+
+def _basic_result_shape(shape: tuple[int, ...], selection: Any) -> tuple[int, ...]:
+    """The NumPy result shape of applying a *basic* ``selection`` to ``shape``.
+
+    Used to carry the visible shape forward while generating a program, so each
+    step's selection is drawn against the shape the previous steps leave behind.
+    Uses a tiny placeholder array (program shapes are capped small).
+    """
+    result_shape: tuple[int, ...] = np.empty(shape, dtype=np.int8)[selection].shape
+    return result_shape
+
+
+@st.composite
+def indexing_programs(draw: st.DrawFn, *, shape: tuple[int, ...]) -> IndexingProgram:
+    """Generate a composable indexing program over an array of ``shape``.
+
+    Structure (one to three operations): a prefix of zero-to-two **basic** steps,
+    optionally followed by a single **fancy** (orthogonal/vectorized) step as the
+    *last* operation. The visible shape is carried forward so every step is valid
+    against what its predecessors produce.
+
+    **Why fancy is confined to the last position** — the exclusions here are
+    deliberate and documented so they can shrink as the underlying bugs are
+    fixed:
+
+    - *Fancy-after-fancy* composition (applying oindex/vindex to a view that
+      already carries an orthogonal ArrayMap axis) is unsupported: it raises a
+      clear ``NotImplementedError`` at composition time rather than resolving, so
+      at most one fancy step is generated.
+    - *Basic-after-fancy* is excluded wholesale. Integer basic indexing on an
+      oindex-picked axis is a strict xfail
+      (``TestKnownFancyIntBugs::test_int_read_on_oindex_view``); rather than track
+      which composed axes became "fancy-picked" and admit only the working
+      basic-on-non-fancy-axis subset, we keep fancy last and let the basic prefix
+      cover multi-step basic composition. (When those bugs are fixed this
+      restriction can be relaxed to interleave basic and fancy freely.)
+
+    A fancy step is only emitted when the current shape has rank ``>= 1`` and no
+    zero-length axis (integer/orthogonal selections cannot address an empty axis);
+    otherwise the program stays basic-only. If nothing else was generated, a
+    single basic step is appended so a program always has at least one operation.
+    """
+    n_basic = draw(st.integers(min_value=0, max_value=2))
+    want_fancy = draw(st.booleans())
+
+    operations: list[IndexOperation] = []
+    cur = shape
+    for _ in range(n_basic):
+        if len(cur) == 0:
+            break  # a rank-0 (scalar) view has no further indexing to compose
+        sel = draw(basic_indices(shape=cur))
+        operations.append(IndexOperation("basic", sel))
+        cur = _basic_result_shape(cur, sel)
+
+    fancy_ok = len(cur) > 0 and all(s > 0 for s in cur)
+    if want_fancy and fancy_ok:
+        mode = draw(st.sampled_from(("orthogonal", "vectorized")))
+        if mode == "orthogonal":
+            zsel, npsel = draw(orthogonal_indices(shape=cur))
+            operations.append(IndexOperation("orthogonal", (zsel, npsel)))
+        else:
+            idx = draw(
+                npst.integer_array_indices(
+                    shape=cur,
+                    result_shape=npst.array_shapes(min_side=1, max_side=4, max_dims=2),
+                )
+            )
+            operations.append(IndexOperation("vectorized", idx))
+
+    if len(operations) == 0:
+        operations.append(IndexOperation("basic", draw(basic_indices(shape=cur))))
+
+    executions: tuple[ProgramExecution, ...] = (
+        "materialize",
+        "eager_on_lazy",
+        "out",
+        "set_scalar",
+        "set_array",
+    )
+    execution = draw(st.sampled_from(executions))
+    return IndexingProgram(tuple(operations), execution)
+
+
 @st.composite
 def block_indices(
     draw: st.DrawFn, *, chunk_sizes: tuple[tuple[int, ...], ...]
@@ -620,17 +826,17 @@ def block_indices(
     Strategy for block-selection indexers over a chunk grid.
 
     Block indexing is basic indexing applied to the block grid (the grid of
-    chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
-    count, mirroring how ``orthogonal_indices`` reuses ``basic_indices`` per
-    axis. ``chunk_sizes`` gives the per-chunk data sizes of the array's *outer*
-    (block) grid for every axis — i.e. ``Array.write_chunk_sizes``, the grid that
-    ``Array.blocks`` addresses (the shard grid when sharding is used). For
-    example ``(3, 3, 3, 1)`` for a length-10 axis with a regular chunk size of 3,
-    or the explicit edges of a rectilinear axis; ``nchunks`` for an axis is
-    ``len(chunk_sizes[axis])``.
+    chunks), so each axis is drawn with `basic_indices` over that axis's chunk
+    count, mirroring how `orthogonal_indices` reuses `basic_indices` per
+    axis. `chunk_sizes` gives the per-chunk data sizes of the array's *outer*
+    (block) grid for every axis — i.e. `Array.write_chunk_sizes`, the grid that
+    `Array.blocks` addresses (the shard grid when sharding is used). For
+    example `(3, 3, 3, 1)` for a length-10 axis with a regular chunk size of 3,
+    or the explicit edges of a rectilinear axis; `nchunks` for an axis is
+    `len(chunk_sizes[axis])`.
 
     The array-space translation uses the cumulative sum of those sizes, matching
-    ``BlockIndexer``'s use of ``dim_grid.chunk_offset``. Because the sizes are
+    `BlockIndexer`'s use of `dim_grid.chunk_offset`. Because the sizes are
     clipped to the array extent, the final offset equals the extent and the
     translation is exact for regular (uniform), rectilinear, and sharded grids
     alike.
@@ -643,7 +849,7 @@ def block_indices(
     -------
     block_indexer
         A per-axis tuple of ints / step-1 slices addressing whole chunks,
-        suitable for ``Array.blocks`` / ``get_block_selection`` / ``set_block_selection``.
+        suitable for `Array.blocks` / `get_block_selection` / `set_block_selection`.
     array_indexer
         The equivalent array-space selection (a tuple of slices) for indexing
         the corresponding numpy array, used as the comparison oracle.
@@ -679,7 +885,7 @@ def block_indices(
         # basic_indices draws slices far more often than bare integers, so the
         # integer (single-block) branch below would only be hit on rare draws.
         # Union in an explicit integer so it is reliably exercised — keeping
-        # coverage deterministic under the derandomized ``ci`` Hypothesis profile.
+        # coverage deterministic under the derandomized `ci` Hypothesis profile.
         (dim_sel,) = draw(
             dim_strategy | st.integers(min_value=0, max_value=nchunks - 1).map(lambda i: (i,))
         )
@@ -704,9 +910,9 @@ def block_test_arrays(
     - **regular**: a regular chunk grid, optionally wrapped in sharding.
     - **rectilinear**: a variable (rectilinear) chunk grid, always unsharded.
 
-    Returns ``(zarray, nparray)``. The per-axis block sizes the oracle needs are
-    ``zarray.write_chunk_sizes`` — the array's *outer* (block / shard) grid, which
-    is exactly the grid ``Array.blocks`` addresses; the caller reads it directly.
+    Returns `(zarray, nparray)`. The per-axis block sizes the oracle needs are
+    `zarray.write_chunk_sizes` — the array's *outer* (block / shard) grid, which
+    is exactly the grid `Array.blocks` addresses; the caller reads it directly.
     """
     chunks: tuple[int, ...] | list[list[int]]
     if draw(st.booleans()):
@@ -752,10 +958,10 @@ def key_ranges(
         [(key, byte_request),
          (key, byte_request),...]
 
-    where ``byte_request`` is ``None`` or any of the concrete ``ByteRequest``
+    where `byte_request` is `None` or any of the concrete `ByteRequest`
     subtypes. The bounds are drawn independently of each value's length, so the
     offsets/suffixes routinely exceed the data and exercise the clamping logic
-    in ``_normalize_byte_range_index``.
+    in `_normalize_byte_range_index`.
     """
 
     def make_range(start: int, length: int) -> RangeByteRequest:
@@ -784,7 +990,7 @@ def complex_rectilinear_arrays(
     """Generate a rectilinear array with many small chunks.
 
     The shape is derived from the chunk edges (5-10 chunks per dim,
-    sizes 1-5), exercising higher chunk counts than ``rectilinear_arrays``.
+    sizes 1-5), exercising higher chunk counts than `rectilinear_arrays`.
     """
     ndim = draw(st.integers(min_value=1, max_value=3))
     nchunks = draw(st.integers(min_value=5, max_value=10))
