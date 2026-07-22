@@ -16,11 +16,11 @@ from typing import Literal
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3.array import ArrayMetadataV3
-from zarr_metadata.v3.group import GroupMetadataV3
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 
-class ConsolidatedMetadataV3(TypedDict):
+class ZarrV3ConsolidatedMetadataJSON(TypedDict):
     """
     Inline consolidated metadata embedded in a v3 group.
 
@@ -31,9 +31,9 @@ class ConsolidatedMetadataV3(TypedDict):
 
     kind: Literal["inline"]
     must_understand: Literal[False]
-    metadata: Mapping[str, ArrayMetadataV3 | GroupMetadataV3]
+    metadata: Mapping[str, ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON]
 
 
 __all__ = [
-    "ConsolidatedMetadataV3",
+    "ZarrV3ConsolidatedMetadataJSON",
 ]

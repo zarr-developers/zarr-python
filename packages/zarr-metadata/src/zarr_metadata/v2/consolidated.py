@@ -15,7 +15,7 @@ from zarr_metadata.v2.attributes import ZAttrsMetadata
 from zarr_metadata.v2.group import ZGroupMetadata
 
 
-class ConsolidatedMetadataV2(TypedDict):
+class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     """
     `.zmetadata` file contents.
 
@@ -38,5 +38,5 @@ class ConsolidatedMetadataV2(TypedDict):
 
 
 __all__ = [
-    "ConsolidatedMetadataV2",
+    "ZarrV2ConsolidatedMetadataJSON",
 ]

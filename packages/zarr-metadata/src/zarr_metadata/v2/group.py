@@ -26,7 +26,7 @@ class ZGroupMetadata(TypedDict):
     zarr_format: Literal[2]
 
 
-class GroupMetadataV2(TypedDict):
+class ZarrV2GroupMetadataJSON(TypedDict):
     """
     Zarr v2 group metadata document, in-memory merged form.
 
@@ -44,11 +44,11 @@ class GroupMetadataV2(TypedDict):
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-class GroupMetadataV2Partial(TypedDict, total=False):
+class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False):
     """
-    Partial form of `GroupMetadataV2`: every field is `NotRequired`.
+    Partial form of `ZarrV2GroupMetadataJSON`: every field is `NotRequired`.
 
-    Field annotations mirror `GroupMetadataV2` exactly. The only difference is
+    Field annotations mirror `ZarrV2GroupMetadataJSON` exactly. The only difference is
     `total=False`, which makes every key optional at the type level.
 
     Use this when typing dicts that intentionally hold a subset of a complete
@@ -58,7 +58,7 @@ class GroupMetadataV2Partial(TypedDict, total=False):
     `*Partial` types; the practical effect is that `zarr_format` becomes optional.
 
     The `NotRequired[...]` wrapper on `attributes` is intentional: keeping it
-    preserves byte-identical `__annotations__` with `GroupMetadataV2` so the
+    preserves byte-identical `__annotations__` with `ZarrV2GroupMetadataJSON` so the
     `==` check in `tests/test_partial_equivalence.py` passes without
     special-casing that field (PEP 655 explicitly permits `NotRequired` inside
     `total=False`).
@@ -66,7 +66,7 @@ class GroupMetadataV2Partial(TypedDict, total=False):
     Note: v2 group metadata has no `extra_items` setting (the v2 spec has no
     extension-field concept), so this partial inherits the same closed shape.
 
-    Drift between this type and `GroupMetadataV2` is prevented by
+    Drift between this type and `ZarrV2GroupMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.
     """
 
@@ -75,7 +75,7 @@ class GroupMetadataV2Partial(TypedDict, total=False):
 
 
 __all__ = [
-    "GroupMetadataV2",
-    "GroupMetadataV2Partial",
     "ZGroupMetadata",
+    "ZarrV2GroupMetadataJSON",
+    "ZarrV2GroupMetadataJSONPartial",
 ]

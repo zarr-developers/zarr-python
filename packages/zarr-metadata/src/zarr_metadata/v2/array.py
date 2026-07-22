@@ -6,9 +6,9 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2.codec import CodecMetadataV2
+from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 
-DataTypeMetadataV2 = str | tuple[tuple[str, str] | tuple[str, str, tuple[int, ...]], ...]
+ZarrV2DataTypeMetadata = str | tuple[tuple[str, str] | tuple[str, str, tuple[int, ...]], ...]
 """The v2 dtype representation.
 
 Either a numpy-style dtype string (e.g. `"<f8"`, `"|S10"`) or a tuple of
@@ -22,7 +22,7 @@ parsing it out is a caller concern, not part of this type.
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
 """
 
-ArrayOrderV2 = Literal["C", "F"]
+ZarrV2ArrayOrder = Literal["C", "F"]
 """Literal type of permitted values for the `order` field of v2 array metadata.
 
 `"C"` (row-major) or `"F"` (column-major) — the in-chunk byte layout.
@@ -33,7 +33,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 ARRAY_ORDER_V2: Final = ("C", "F")
 """Tuple of permitted values for the `order` field of v2 array metadata."""
 
-ArrayDimensionSeparatorV2 = Literal[".", "/"]
+ZarrV2ArrayDimensionSeparator = Literal[".", "/"]
 """Literal type of permitted values for the `dimension_separator` field of v2 array metadata.
 
 `"."` (legacy default) joins chunk grid coordinates as `0.0`, `0.1`, ...
@@ -60,15 +60,15 @@ class ZArrayMetadata(TypedDict):
     zarr_format: Literal[2]
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
-    dtype: DataTypeMetadataV2
-    compressor: CodecMetadataV2 | None
+    dtype: ZarrV2DataTypeMetadata
+    compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
-    order: ArrayOrderV2
-    filters: tuple[CodecMetadataV2, ...] | None
-    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    order: ZarrV2ArrayOrder
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
 
 
-class ArrayMetadataV2(TypedDict):
+class ZarrV2ArrayMetadataJSON(TypedDict):
     """
     Zarr v2 array metadata document, in-memory merged form.
 
@@ -86,12 +86,12 @@ class ArrayMetadataV2(TypedDict):
     zarr_format: Literal[2]
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
-    dtype: DataTypeMetadataV2
-    compressor: CodecMetadataV2 | None
+    dtype: ZarrV2DataTypeMetadata
+    compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
-    order: ArrayOrderV2
-    filters: tuple[CodecMetadataV2, ...] | None
-    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    order: ZarrV2ArrayOrder
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
     attributes: NotRequired[Mapping[str, JSONValue]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
@@ -99,11 +99,11 @@ class ArrayMetadataV2(TypedDict):
     """
 
 
-class ArrayMetadataV2Partial(TypedDict, total=False):
+class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False):
     """
-    Partial form of `ArrayMetadataV2`: every field is `NotRequired`.
+    Partial form of `ZarrV2ArrayMetadataJSON`: every field is `NotRequired`.
 
-    Field annotations mirror `ArrayMetadataV2` exactly. The only difference is
+    Field annotations mirror `ZarrV2ArrayMetadataJSON` exactly. The only difference is
     `total=False`, which makes every key optional at the type level.
 
     Use this when typing dicts that intentionally hold a subset of a complete
@@ -113,26 +113,26 @@ class ArrayMetadataV2Partial(TypedDict, total=False):
 
     The `NotRequired[...]` wrappers on `dimension_separator` and `attributes`
     are intentional: keeping them preserves byte-identical `__annotations__`
-    with `ArrayMetadataV2` so the `==` check in
+    with `ZarrV2ArrayMetadataJSON` so the `==` check in
     `tests/test_partial_equivalence.py` passes without special-casing those
     fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
 
     Note: v2 array metadata has no `extra_items` setting (the v2 spec has no
     extension-field concept), so this partial inherits the same closed shape.
 
-    Drift between this type and `ArrayMetadataV2` is prevented by
+    Drift between this type and `ZarrV2ArrayMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.
     """
 
     zarr_format: Literal[2]
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
-    dtype: DataTypeMetadataV2
-    compressor: CodecMetadataV2 | None
+    dtype: ZarrV2DataTypeMetadata
+    compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
-    order: ArrayOrderV2
-    filters: tuple[CodecMetadataV2, ...] | None
-    dimension_separator: NotRequired[ArrayDimensionSeparatorV2]
+    order: ZarrV2ArrayOrder
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
     attributes: NotRequired[Mapping[str, JSONValue]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
@@ -143,10 +143,10 @@ class ArrayMetadataV2Partial(TypedDict, total=False):
 __all__ = [
     "ARRAY_DIMENSION_SEPARATOR_V2",
     "ARRAY_ORDER_V2",
-    "ArrayDimensionSeparatorV2",
-    "ArrayMetadataV2",
-    "ArrayMetadataV2Partial",
-    "ArrayOrderV2",
-    "DataTypeMetadataV2",
     "ZArrayMetadata",
+    "ZarrV2ArrayDimensionSeparator",
+    "ZarrV2ArrayMetadataJSON",
+    "ZarrV2ArrayMetadataJSONPartial",
+    "ZarrV2ArrayOrder",
+    "ZarrV2DataTypeMetadata",
 ]

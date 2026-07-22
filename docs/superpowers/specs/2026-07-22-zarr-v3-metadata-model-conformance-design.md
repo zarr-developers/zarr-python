@@ -29,7 +29,7 @@ The implementation will be checked against:
 
 1. [Zarr core protocol v3.1](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html),
    especially Array metadata, Group metadata, Codecs, and Extensions.
-2. [zarrs](https://github.com/zarrs/zarrs), especially its `MetadataV3`,
+2. [zarrs](https://github.com/zarrs/zarrs), especially its `ZarrV3MetadataFieldJSON`,
    `AdditionalFieldV3`, array-opening validation, and consolidated-metadata
    extension handling.
 3. Existing zarr-python metadata emitted in the wild, but only for explicit
@@ -42,7 +42,7 @@ read, and never emitted.
 
 ## Chosen approach
 
-Evolve the existing normalized `NamedConfigModelV3` instead of introducing a
+Evolve the existing normalized `ZarrV3NamedConfig` instead of introducing a
 new hierarchy of role-specific extension classes or preserving every source
 JSON spelling.
 
@@ -64,13 +64,13 @@ Two alternatives were rejected:
 
 ### Raw type
 
-`NamedConfigV3` will describe the v3.1 object form:
+`ZarrV3NamedConfigJSON` will describe the v3.1 object form:
 
 - required `name: str`;
 - optional `configuration: Mapping[str, JSONValue]`; and
 - optional `must_understand: bool`.
 
-`MetadataV3` remains the union of a shorthand name string and this object
+`ZarrV3MetadataFieldJSON` remains the union of a shorthand name string and this object
 form.
 
 The object form accepts only those three members. Extension-owned fields must
@@ -80,7 +80,7 @@ during normalization.
 
 ### Normalized model
 
-`NamedConfigModelV3` will hold:
+`ZarrV3NamedConfig` will hold:
 
 - `name: str`;
 - `configuration: dict[str, JSONValue]`, normalized to an empty mapping when
@@ -197,8 +197,8 @@ and `update()` continue to support building or repairing intermediate models.
 The existing class names remain. The intended public changes are additive or
 corrections to annotations that did not match accepted runtime data:
 
-- `NamedConfigV3` gains optional `must_understand`;
-- `NamedConfigModelV3` gains a defaulted `must_understand` field; and
+- `ZarrV3NamedConfigJSON` gains optional `must_understand`;
+- `ZarrV3NamedConfig` gains a defaulted `must_understand` field; and
 - v3 additional-field annotations widen to arbitrary JSON.
 
 Documents currently accepted only because an extension envelope contains

@@ -4,7 +4,7 @@
 
 **Goal:** Make the extension-agnostic v3 metadata models preserve Zarr 3.1 extension envelopes, enforce core envelope/cardinality rules, and keep raw types, parsers, guards, and serializers consistent.
 
-**Architecture:** Keep one normalized `NamedConfigModelV3` for every extension point. It parses shorthand and object forms, stores opaque configuration plus `must_understand`, and applies one field-independent shorthand heuristic. The array validator supplies only core rules that vary by extension point; it never resolves an extension name or configuration.
+**Architecture:** Keep one normalized `ZarrV3NamedConfig` for every extension point. It parses shorthand and object forms, stores opaque configuration plus `must_understand`, and applies one field-independent shorthand heuristic. The array validator supplies only core rules that vary by extension point; it never resolves an extension name or configuration.
 
 **Tech Stack:** Python 3.11+, frozen dataclasses, `TypedDict`/PEP 728, pytest, Ruff, Pyright, and optional Pydantic v2 integration.
 
@@ -32,8 +32,8 @@
 - Modify: `packages/zarr-metadata/src/zarr_metadata/pydantic.py`
 
 **Interfaces:**
-- Produces: `NamedConfigV3` with optional `must_understand: bool`.
-- Produces: `NamedConfigModelV3(name: str, configuration: dict[str, JSONValue], must_understand: bool = True)`.
+- Produces: `ZarrV3NamedConfigJSON` with optional `must_understand: bool`.
+- Produces: `ZarrV3NamedConfig(name: str, configuration: dict[str, JSONValue], must_understand: bool = True)`.
 - Produces: `validate_metadata_field_v3(value: object, *, allow_must_understand_false: bool = True) -> list[ValidationProblem]`.
 
 - [x] **Step 1: Write failing normalized-model tests**
@@ -43,17 +43,17 @@ Update the existing case tables and canonical-document expectation:
 ```python
 ZARR_TO_JSON_CASES = [
     Expect(
-        NamedConfigModelV3(name="regular", configuration={"chunk_shape": [1]}),
+        ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": [1]}),
         {"name": "regular", "configuration": {"chunk_shape": [1]}},
         id="with-configuration",
     ),
     Expect(
-        NamedConfigModelV3(name="bytes", configuration={}),
+        ZarrV3NamedConfig(name="bytes", configuration={}),
         "bytes",
         id="empty-configuration-shorthand",
     ),
     Expect(
-        NamedConfigModelV3(name="optional", configuration={}, must_understand=False),
+        ZarrV3NamedConfig(name="optional", configuration={}, must_understand=False),
         {"name": "optional", "must_understand": False},
         id="false-obligation-needs-object",
     ),
@@ -109,7 +109,7 @@ Expected: invalid obligation values and the unknown member are accepted before t
 - [x] **Step 5: Implement the raw type, validator, and normalized model**
 
 ```python
-class NamedConfigV3(TypedDict):
+class ZarrV3NamedConfigJSON(TypedDict):
     name: str
     configuration: NotRequired[Mapping[str, JSONValue]]
     must_understand: NotRequired[bool]
@@ -120,15 +120,15 @@ require a real boolean for the last member; keep all string names valid.
 
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
-class NamedConfigModelV3:
+class ZarrV3NamedConfig:
     name: str
     configuration: dict[str, JSONValue]
     must_understand: bool = True
 
-    def to_json(self) -> MetadataV3:
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
         if not self.configuration and self.must_understand:
             return self.name
-        out: NamedConfigV3 = {"name": self.name}
+        out: ZarrV3NamedConfigJSON = {"name": self.name}
         if self.configuration:
             out["configuration"] = self.configuration
         if not self.must_understand:
@@ -140,11 +140,11 @@ class NamedConfigModelV3:
 
 - [x] **Step 6: Update and test the Pydantic serializer**
 
-Change `MetadataFieldV3`'s serializer return type from `dict` to `str | dict`.
+Change `ZarrV3MetadataField`'s serializer return type from `dict` to `str | dict`.
 
 ```python
 def test_metadata_field_serializes_shorthand_and_false_object() -> None:
-    adapter = TypeAdapter(zmp.MetadataFieldV3)
+    adapter = TypeAdapter(zmp.ZarrV3MetadataField)
     assert adapter.dump_python(adapter.validate_python({"name": "bytes"})) == "bytes"
     assert adapter.dump_python(
         adapter.validate_python({"name": "optional", "must_understand": False})
@@ -188,14 +188,14 @@ git commit -m "fix(zarr-metadata): preserve v3 extension obligations" \
 ```python
 @pytest.mark.parametrize("field", ["codecs", "storage_transformers"])
 def test_optional_extension_points_allow_must_understand_false(field: str) -> None:
-    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc[field] = ({"name": "optional", "must_understand": False},)
     assert validate_array_metadata_v3(doc) == []
 
 
 @pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
 def test_required_extension_points_reject_must_understand_false(field: str) -> None:
-    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc[field] = {"name": "optional", "must_understand": False}
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
         ((field, "must_understand"), "invalid_value")
@@ -203,7 +203,7 @@ def test_required_extension_points_reject_must_understand_false(field: str) -> N
 
 
 def test_v3_codecs_cannot_be_empty() -> None:
-    doc = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc["codecs"] = ()
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
         (("codecs",), "invalid_value")
@@ -256,24 +256,24 @@ git commit -m "fix(zarr-metadata): enforce v3 core extension rules" \
 - Modify: `packages/zarr-metadata/src/zarr_metadata/model/_validation.py`
 
 **Interfaces:**
-- Produces: public `ExtensionFieldV3` alias for arbitrary `JSONValue`.
+- Produces: public `ZarrV3ExtensionField` alias for arbitrary `JSONValue`.
 - Produces: `extra_fields: dict[str, JSONValue]` and matching guards/parsers.
 
 - [x] **Step 1: Write failing parser/guard agreement tests**
 
 ```python
 def test_v3_scalar_extra_field_agrees_across_parser_guard_and_model() -> None:
-    raw = dict(ArrayMetadataModelV3.create_default().to_json()) | {"ext": 1}
+    raw = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"ext": 1}
     parsed = parse_array_metadata_v3(raw)
     assert is_array_metadata_v3(parsed)
-    model = ArrayMetadataModelV3.from_json(raw)
+    model = ZarrV3ArrayMetadata.from_json(raw)
     assert model.extra_fields == {"ext": 1}
     assert model.must_understand_fields == {"ext": 1}
 
 
 def test_group_v3_scalar_extra_field_roundtrips_as_must_understand() -> None:
     raw = {"zarr_format": 3, "node_type": "group", "ext": [1, 2]}
-    model = GroupMetadataModelV3.from_json(raw)
+    model = ZarrV3GroupMetadata.from_json(raw)
     assert model.to_json()["ext"] == (1, 2)
     assert model.must_understand_fields == {"ext": (1, 2)}
 ```
@@ -289,7 +289,7 @@ Expected: the canonical array guard rejects the parsed scalar extra field.
 
 - [x] **Step 3: Correct raw/model annotations and the guard**
 
-Replace the object-shaped `ExtensionFieldV3` TypedDict with a public alias to
+Replace the object-shaped `ZarrV3ExtensionField` TypedDict with a public alias to
 `JSONValue`; use it as `extra_items` on full and partial array/group types.
 Update model partials, dataclass fields, helper signatures, and casts to
 `dict[str, JSONValue]`. Remove the canonical array guard's requirement that
@@ -305,7 +305,7 @@ packages/zarr-metadata/.venv/bin/pytest packages/zarr-metadata/tests/model/test_
   packages/zarr-metadata/tests/test_public_api.py -q
 ```
 
-Expected: all selected files pass and `ExtensionFieldV3` remains exported.
+Expected: all selected files pass and `ZarrV3ExtensionField` remains exported.
 
 - [x] **Step 5: Commit Task 3**
 

@@ -3,7 +3,7 @@
 Pydantic's native dataclass introspection CAN be made to work (see
 `test_native_dataclass_introspection_is_possible_but_diverges`): the models
 keep their annotation-only imports behind `TYPE_CHECKING`, so a bare
-`TypeAdapter(ArrayMetadataModelV3)` raises `class-not-fully-defined`, but
+`TypeAdapter(ZarrV3ArrayMetadata)` raises `class-not-fully-defined`, but
 `rebuild(_types_namespace=...)` with the names supplied resolves the schema.
 It is still the wrong tool: it validates the MODEL SHAPE, not the DOCUMENT —
 no `from_json` normalization (a bare-string `data_type` is rejected), and
@@ -42,24 +42,24 @@ from pydantic import (
 )
 
 from zarr_metadata import JSONValue
-from zarr_metadata.model import ArrayMetadataModelV3, NamedConfigModelV3
+from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3NamedConfig
 
 # --- the integration (this is the example) -----------------------------------
 
 
-def _as_array_metadata_v3(value: object) -> ArrayMetadataModelV3:
+def _as_array_metadata_v3(value: object) -> ZarrV3ArrayMetadata:
     """Accept an existing model instance or a raw metadata document."""
-    if isinstance(value, ArrayMetadataModelV3):
+    if isinstance(value, ZarrV3ArrayMetadata):
         return value
-    return ArrayMetadataModelV3.from_json(value)
+    return ZarrV3ArrayMetadata.from_json(value)
 
 
-# return_type is explicit because to_json's own annotation (`ArrayMetadataV3`)
+# return_type is explicit because to_json's own annotation (`ZarrV3ArrayMetadataJSON`)
 # is a TYPE_CHECKING-only name pydantic cannot resolve at runtime.
 ArrayMetadataV3Field = Annotated[
-    InstanceOf[ArrayMetadataModelV3],
+    InstanceOf[ZarrV3ArrayMetadata],
     BeforeValidator(_as_array_metadata_v3),
-    PlainSerializer(ArrayMetadataModelV3.to_json, return_type=dict),
+    PlainSerializer(ZarrV3ArrayMetadata.to_json, return_type=dict),
 ]
 """A pydantic-ready field type for v3 array metadata.
 
@@ -93,14 +93,14 @@ def test_raw_document_is_validated_into_a_model() -> None:
     """A raw metadata document on a pydantic field is parsed by from_json,
     with the library's normalization applied (tuples, canonical field form)."""
     manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
-    assert isinstance(manifest.metadata, ArrayMetadataModelV3)
+    assert isinstance(manifest.metadata, ZarrV3ArrayMetadata)
     assert manifest.metadata.shape == (10,)
     assert manifest.metadata.data_type.name == "uint8"
 
 
 def test_model_instance_passes_through() -> None:
     """An already-constructed model instance is accepted unchanged."""
-    model = ArrayMetadataModelV3.from_json(VALID_DOC)
+    model = ZarrV3ArrayMetadata.from_json(VALID_DOC)
     manifest = ArrayManifest(path="a/b", metadata=model)
     assert manifest.metadata is model
 
@@ -137,7 +137,7 @@ def test_type_adapter_standalone() -> None:
     """The annotated alias also works without a BaseModel, via TypeAdapter."""
     adapter = TypeAdapter(ArrayMetadataV3Field)
     model = adapter.validate_python(VALID_DOC)
-    assert isinstance(model, ArrayMetadataModelV3)
+    assert isinstance(model, ZarrV3ArrayMetadata)
     assert adapter.dump_python(model) == model.to_json()
 
 
@@ -157,20 +157,20 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
     path needs its divergences documented again."""
     from zarr_metadata._common import JSONValue
     from zarr_metadata.model import UNSET
-    from zarr_metadata.v3._common import MetadataV3
-    from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
 
     def build_and_use() -> None:
-        adapter = TypeAdapter(ArrayMetadataModelV3)
+        adapter = TypeAdapter(ZarrV3ArrayMetadata)
         adapter.rebuild(
             force=True,
             _types_namespace={
                 "JSONValue": JSONValue,
-                "ExtensionFieldV3": ExtensionFieldV3,
-                "MetadataV3": MetadataV3,
-                "ArrayMetadataV3": ArrayMetadataV3,
-                "NamedConfigModelV3": NamedConfigModelV3,
-                "MetadataFieldModelV3": NamedConfigModelV3,
+                "ZarrV3ExtensionField": ZarrV3ExtensionField,
+                "ZarrV3MetadataFieldJSON": ZarrV3MetadataFieldJSON,
+                "ZarrV3ArrayMetadataJSON": ZarrV3ArrayMetadataJSON,
+                "ZarrV3NamedConfig": ZarrV3NamedConfig,
+                "ZarrV3MetadataField": ZarrV3NamedConfig,
                 "UNSET": UNSET,
             },
         )
@@ -205,7 +205,7 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
     """A pydantic-native, attribute-typed view of a v3 array metadata document.
 
     The library is the engine: every input is canonicalized and structurally
-    validated by `ArrayMetadataModelV3.from_json` before pydantic sees the
+    validated by `ZarrV3ArrayMetadata.from_json` before pydantic sees the
     fields, and `to_document` / `to_metadata_model` emit through the library.
     """
 
@@ -229,7 +229,7 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
         """Route every input document through the library's validation and
         normalization; pydantic then parses only canonical documents."""
         if isinstance(data, Mapping):
-            doc = dict(ArrayMetadataModelV3.from_json(data).to_json())
+            doc = dict(ZarrV3ArrayMetadata.from_json(data).to_json())
             for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
                 if isinstance(doc[key], str):
                     doc[key] = {"name": doc[key]}
@@ -241,7 +241,7 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
             return doc
         return data
 
-    def to_metadata_model(self) -> ArrayMetadataModelV3:
+    def to_metadata_model(self) -> ZarrV3ArrayMetadata:
         """Bridge back to the canonical model, via the document form.
 
         In the document, "no dimension names" is key-absence, not null; the
@@ -250,7 +250,7 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
         doc = self.model_dump()
         if doc["dimension_names"] is None:
             del doc["dimension_names"]
-        return ArrayMetadataModelV3.from_json(doc)
+        return ZarrV3ArrayMetadata.from_json(doc)
 
     def to_document(self) -> dict[str, object]:
         """The canonical document (omit-empty conventions applied)."""
@@ -288,7 +288,7 @@ def test_spec_bridges_to_canonical_model_and_document() -> None:
     doc = dict(VALID_DOC) | {"attributes": {"resolution_um": 0.5}}
     spec = ArrayMetadataV3Spec[MicroscopyAttrs].model_validate(doc)
     model = spec.to_metadata_model()
-    assert isinstance(model, ArrayMetadataModelV3)
+    assert isinstance(model, ZarrV3ArrayMetadata)
     assert spec.to_document() == dict(model.to_json())
     # and back: the document revalidates to an equal spec
     assert ArrayMetadataV3Spec[MicroscopyAttrs].model_validate(spec.to_document()) == spec

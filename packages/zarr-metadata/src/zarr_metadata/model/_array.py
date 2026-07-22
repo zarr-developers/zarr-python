@@ -23,29 +23,29 @@ from zarr_metadata.model._validation import (
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata._common import JSONValue, NamedConfigV3
+    from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
     from zarr_metadata.v2.array import (
-        ArrayDimensionSeparatorV2,
-        ArrayMetadataV2,
-        ArrayOrderV2,
-        DataTypeMetadataV2,
+        ZarrV2ArrayDimensionSeparator,
+        ZarrV2ArrayMetadataJSON,
+        ZarrV2ArrayOrder,
+        ZarrV2DataTypeMetadata,
     )
-    from zarr_metadata.v2.codec import CodecMetadataV2
-    from zarr_metadata.v3._common import MetadataV3
-    from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
+    from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
 
-ArrayMetadataStoreKeyV3 = Literal["zarr.json"]
-ARRAY_METADATA_STORE_KEY_V3: Final[ArrayMetadataStoreKeyV3] = "zarr.json"
+ZarrV3ArrayMetadataStoreKey = Literal["zarr.json"]
+ARRAY_METADATA_STORE_KEY_V3: Final[ZarrV3ArrayMetadataStoreKey] = "zarr.json"
 
-ArrayMetadataStoreKeyV2 = Literal[".zarray"]
-ARRAY_METADATA_STORE_KEY_V2: Final[ArrayMetadataStoreKeyV2] = ".zarray"
+ZarrV2ArrayMetadataStoreKey = Literal[".zarray"]
+ARRAY_METADATA_STORE_KEY_V2: Final[ZarrV2ArrayMetadataStoreKey] = ".zarray"
 
-AttributesStoreKeyV2 = Literal[".zattrs"]
-ATTRIBUTES_STORE_KEY_V2: Final[AttributesStoreKeyV2] = ".zattrs"
+ZarrV2AttributesStoreKey = Literal[".zattrs"]
+ATTRIBUTES_STORE_KEY_V2: Final[ZarrV2AttributesStoreKey] = ".zattrs"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class NamedConfigModelV3:
+class ZarrV3NamedConfig:
     """A normalized v3 metadata field with its reader obligation.
 
     Bare names and missing configurations normalize to an empty configuration.
@@ -57,10 +57,10 @@ class NamedConfigModelV3:
     configuration: dict[str, JSONValue]
     must_understand: bool = True
 
-    def to_json(self) -> MetadataV3:
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
         if not self.configuration and self.must_understand:
             return self.name
-        out: NamedConfigV3 = {"name": self.name}
+        out: ZarrV3NamedConfigJSON = {"name": self.name}
         if self.configuration:
             out["configuration"] = self.configuration
         if not self.must_understand:
@@ -68,7 +68,7 @@ class NamedConfigModelV3:
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> NamedConfigModelV3:
+    def from_json(cls, data: object) -> ZarrV3NamedConfig:
         field = parse_metadata_field_v3(data)
         if isinstance(field, str):
             return cls(name=field, configuration={}, must_understand=True)
@@ -85,24 +85,24 @@ class NamedConfigModelV3:
         )
 
 
-MetadataFieldModelV3: TypeAlias = NamedConfigModelV3
+ZarrV3MetadataField: TypeAlias = ZarrV3NamedConfig
 """The in-memory model of one field of a v3 metadata document.
 
 This is the role-named alias for annotation positions: model fields and
-consumer signatures should say `MetadataFieldModelV3` (the logical meaning)
-rather than `NamedConfigModelV3` (the serialized form the field currently
+consumer signatures should say `ZarrV3MetadataField` (the logical meaning)
+rather than `ZarrV3NamedConfig` (the serialized form the field currently
 takes). Today every metadata field normalizes to a named configuration plus
-its reader obligation, so
-the alias is exactly `NamedConfigModelV3`; if a future spec revision adds a
-field form that cannot be normalized to those values, this alias
-widens to a union and annotation sites do not change. Mirrors the raw-layer
-split between `NamedConfigV3` (shape) and `MetadataV3` (field union).
+its reader obligation, so the alias is exactly `ZarrV3NamedConfig`; if a future
+spec revision adds a field form that cannot be normalized to those values,
+this alias widens to a union and annotation sites do not change. Mirrors the
+raw-layer split between `ZarrV3NamedConfigJSON` (shape) and
+`ZarrV3MetadataFieldJSON` (field union).
 """
 
 
 def must_understand_subset(
-    extra_fields: Mapping[str, ExtensionFieldV3],
-) -> dict[str, ExtensionFieldV3]:
+    extra_fields: Mapping[str, ZarrV3ExtensionField],
+) -> dict[str, ZarrV3ExtensionField]:
     """The subset of `extra_fields` the reader is obligated to understand.
 
     Per the v3 spec, an extension field is implicitly `must_understand: True`
@@ -111,11 +111,11 @@ def must_understand_subset(
     explicitly `must_understand: false`. A non-mapping field value cannot
     carry the explicit waiver, so it always requires understanding (the
     runtime isinstance check defends against values looser than the declared
-    `ExtensionFieldV3`).
+    `ZarrV3ExtensionField`).
     """
     fields = cast("Mapping[str, object]", extra_fields)
     return cast(
-        "dict[str, ExtensionFieldV3]",
+        "dict[str, ZarrV3ExtensionField]",
         {
             name: value
             for name, value in fields.items()
@@ -127,13 +127,13 @@ def must_understand_subset(
     )
 
 
-class ArrayMetadataModelV3Partial(TypedDict, total=False):
+class ZarrV3ArrayMetadataPartial(TypedDict, total=False):
     """
-    Partial form of the constructor-settable fields of `ArrayMetadataModelV3`.
+    Partial form of the constructor-settable fields of `ZarrV3ArrayMetadata`.
 
     Every key is optional and typed with the model's own (not serialized)
     value types, so it describes valid keyword arguments to
-    `ArrayMetadataModelV3.update`. The `init=False` fields `zarr_format` and
+    `ZarrV3ArrayMetadata.update`. The `init=False` fields `zarr_format` and
     `node_type` are intentionally excluded, since they cannot be passed to
     `dataclasses.replace`.
 
@@ -143,46 +143,45 @@ class ArrayMetadataModelV3Partial(TypedDict, total=False):
 
     shape: tuple[int, ...]
     fill_value: JSONValue
-    data_type: MetadataFieldModelV3
-    chunk_grid: MetadataFieldModelV3
-    codecs: tuple[MetadataFieldModelV3, ...]
-    chunk_key_encoding: MetadataFieldModelV3
+    data_type: ZarrV3MetadataField
+    chunk_grid: ZarrV3MetadataField
+    codecs: tuple[ZarrV3MetadataField, ...]
+    chunk_key_encoding: ZarrV3MetadataField
     dimension_names: tuple[str | None, ...] | UNSET
     attributes: dict[str, JSONValue]
-    storage_transformers: tuple[MetadataFieldModelV3, ...]
-    extra_fields: dict[str, ExtensionFieldV3]
+    storage_transformers: tuple[ZarrV3MetadataField, ...]
+    extra_fields: dict[str, ZarrV3ExtensionField]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ArrayMetadataModelV3:
+class ZarrV3ArrayMetadata:
     """In-memory model of a v3 array metadata document.
 
-    A canonical, semantically lossless representation of the `zarr.json` content for an
-    array. Extension points (`data_type`, `chunk_grid`, `chunk_key_encoding`,
-    `codecs`, `storage_transformers`) are held as `MetadataFieldModelV3`
-    values (currently `NamedConfigModelV3` name, configuration, and obligation
-    records) and are never interpreted; `fill_value` is held verbatim in its
-    JSON form. Equivalent extension spellings normalize to shorthand strings
-    when configuration is empty and understanding is required.
+    A canonical, semantically lossless representation of the `zarr.json`
+    content for an array. Extension points (`data_type`, `chunk_grid`,
+    `chunk_key_encoding`, `codecs`, `storage_transformers`) are held as
+    `ZarrV3MetadataField` values (currently `ZarrV3NamedConfig` name,
+    configuration, and obligation records) and are never interpreted;
+    `fill_value` is held verbatim in its JSON form. Equivalent extension
+    spellings normalize to shorthand strings when configuration is empty and
+    understanding is required.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
     shape: tuple[int, ...]
     fill_value: JSONValue
-    data_type: MetadataFieldModelV3
-    chunk_grid: MetadataFieldModelV3
-    codecs: tuple[MetadataFieldModelV3, ...]
-    chunk_key_encoding: MetadataFieldModelV3
+    data_type: ZarrV3MetadataField
+    chunk_grid: ZarrV3MetadataField
+    codecs: tuple[ZarrV3MetadataField, ...]
+    chunk_key_encoding: ZarrV3MetadataField
     dimension_names: tuple[str | None, ...] | UNSET
     attributes: dict[str, JSONValue]
-    storage_transformers: tuple[MetadataFieldModelV3, ...]
-    extra_fields: dict[str, ExtensionFieldV3]
+    storage_transformers: tuple[ZarrV3MetadataField, ...]
+    extra_fields: dict[str, ZarrV3ExtensionField]
 
     @classmethod
-    def create_default(
-        cls, **overrides: Unpack[ArrayMetadataModelV3Partial]
-    ) -> ArrayMetadataModelV3:
+    def create_default(cls, **overrides: Unpack[ZarrV3ArrayMetadataPartial]) -> ZarrV3ArrayMetadata:
         """
         Create a default (empty) v3 array metadata model, with optional overrides.
 
@@ -201,16 +200,16 @@ class ArrayMetadataModelV3:
         responsibility.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
-            overrides["chunk_grid"] = NamedConfigModelV3(
+            overrides["chunk_grid"] = ZarrV3NamedConfig(
                 name="regular", configuration={"chunk_shape": tuple(overrides["shape"])}
             )
         default = cls(
             shape=(),
             fill_value=0,
-            data_type=NamedConfigModelV3(name="uint8", configuration={}),
-            chunk_grid=NamedConfigModelV3(name="regular", configuration={"chunk_shape": ()}),
-            codecs=(NamedConfigModelV3(name="bytes", configuration={}),),
-            chunk_key_encoding=NamedConfigModelV3(name="default", configuration={}),
+            data_type=ZarrV3NamedConfig(name="uint8", configuration={}),
+            chunk_grid=ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": ()}),
+            codecs=(ZarrV3NamedConfig(name="bytes", configuration={}),),
+            chunk_key_encoding=ZarrV3NamedConfig(name="default", configuration={}),
             dimension_names=UNSET,
             attributes={},
             storage_transformers=(),
@@ -218,12 +217,12 @@ class ArrayMetadataModelV3:
         )
         return default.update(**overrides)
 
-    def update(self, **kwargs: Unpack[ArrayMetadataModelV3Partial]) -> ArrayMetadataModelV3:
+    def update(self, **kwargs: Unpack[ZarrV3ArrayMetadataPartial]) -> ZarrV3ArrayMetadata:
         """
-        Return a new `ArrayMetadataModelV3` with the given fields updated.
+        Return a new `ZarrV3ArrayMetadata` with the given fields updated.
 
         Only the constructor-settable fields listed in
-        `ArrayMetadataModelV3Partial` can be updated; any attempt to update
+        `ZarrV3ArrayMetadataPartial` can be updated; any attempt to update
         other fields (including the fixed `zarr_format` / `node_type`) is
         rejected at the type level. Each given field fully replaces its
         previous value, including `extra_fields`.
@@ -244,14 +243,14 @@ class ArrayMetadataModelV3:
                 [
                     ValidationProblem(
                         ("extra_fields",),
-                        "Extra fields cannot overlap with standard ArrayMetadataV3 fields",
+                        "Extra fields cannot overlap with standard Zarr V3 array metadata fields",
                         "invalid_value",
                     )
                 ]
             )
 
-    def to_json(self) -> ArrayMetadataV3:
-        out: ArrayMetadataV3 = {
+    def to_json(self) -> ZarrV3ArrayMetadataJSON:
+        out: ZarrV3ArrayMetadataJSON = {
             "zarr_format": self.zarr_format,
             "node_type": self.node_type,
             "shape": self.shape,
@@ -278,32 +277,32 @@ class ArrayMetadataModelV3:
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> ArrayMetadataModelV3:
+    def from_json(cls, data: object) -> ZarrV3ArrayMetadata:
         parsed = parse_array_metadata_v3(arrays_to_tuples(data))
         # Sound cast: the TypedDict types all non-standard keys as its
-        # `extra_items` (`ExtensionFieldV3`); the comprehension's inferred value
+        # `extra_items` (`ZarrV3ExtensionField`); the comprehension's inferred value
         # type is the union over ALL keys because the key filter cannot narrow it.
         extra_fields = cast(
-            "dict[str, ExtensionFieldV3]",
+            "dict[str, ZarrV3ExtensionField]",
             {k: v for k, v in parsed.items() if k not in ARRAY_METADATA_STANDARD_KEYS_V3},
         )
         return cls(
             shape=parsed["shape"],
             fill_value=parsed["fill_value"],
-            data_type=NamedConfigModelV3.from_json(parsed["data_type"]),
-            chunk_grid=NamedConfigModelV3.from_json(parsed["chunk_grid"]),
-            codecs=tuple(NamedConfigModelV3.from_json(c) for c in parsed["codecs"]),
-            chunk_key_encoding=NamedConfigModelV3.from_json(parsed["chunk_key_encoding"]),
+            data_type=ZarrV3NamedConfig.from_json(parsed["data_type"]),
+            chunk_grid=ZarrV3NamedConfig.from_json(parsed["chunk_grid"]),
+            codecs=tuple(ZarrV3NamedConfig.from_json(c) for c in parsed["codecs"]),
+            chunk_key_encoding=ZarrV3NamedConfig.from_json(parsed["chunk_key_encoding"]),
             dimension_names=parsed.get("dimension_names", UNSET),
             attributes=dict(parsed.get("attributes", {})),
             storage_transformers=tuple(
-                NamedConfigModelV3.from_json(t) for t in parsed.get("storage_transformers", ())
+                ZarrV3NamedConfig.from_json(t) for t in parsed.get("storage_transformers", ())
             ),
             extra_fields=extra_fields,
         )
 
     @property
-    def must_understand_fields(self) -> dict[str, ExtensionFieldV3]:
+    def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
@@ -315,7 +314,7 @@ class ArrayMetadataModelV3:
         return must_understand_subset(self.extra_fields)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ArrayMetadataModelV3:
+    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V3))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
@@ -324,12 +323,12 @@ class ArrayMetadataModelV3:
         }
 
 
-class ArrayMetadataModelV2Partial(TypedDict, total=False):
+class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
     """
-    Partial form of the constructor-settable fields of `ArrayMetadataModelV2`.
+    Partial form of the constructor-settable fields of `ZarrV2ArrayMetadata`.
 
     Every key is optional and typed with the model's own value types, so it
-    describes valid keyword arguments to `ArrayMetadataModelV2.update` and
+    describes valid keyword arguments to `ZarrV2ArrayMetadata.update` and
     `create_default`. The `init=False` field `zarr_format` is intentionally
     excluded, since it cannot be passed to `dataclasses.replace`.
 
@@ -338,18 +337,18 @@ class ArrayMetadataModelV2Partial(TypedDict, total=False):
     """
 
     shape: tuple[int, ...]
-    dtype: DataTypeMetadataV2
+    dtype: ZarrV2DataTypeMetadata
     chunks: tuple[int, ...]
     fill_value: JSONValue
-    order: ArrayOrderV2
-    compressor: CodecMetadataV2 | None
-    filters: tuple[CodecMetadataV2, ...] | None
-    dimension_separator: ArrayDimensionSeparatorV2
+    order: ZarrV2ArrayOrder
+    compressor: ZarrV2CodecMetadata | None
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    dimension_separator: ZarrV2ArrayDimensionSeparator
     attributes: dict[str, JSONValue] | UNSET
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ArrayMetadataModelV2:
+class ZarrV2ArrayMetadata:
     """In-memory model of a v2 array metadata document.
 
     A canonical, lossless representation of the `.zarray` content plus the
@@ -365,34 +364,32 @@ class ArrayMetadataModelV2:
 
     zarr_format: Literal[2] = field(default=2, init=False)
     shape: tuple[int, ...]
-    dtype: DataTypeMetadataV2
+    dtype: ZarrV2DataTypeMetadata
     chunks: tuple[int, ...]
     fill_value: JSONValue
-    order: ArrayOrderV2
-    compressor: CodecMetadataV2 | None
-    filters: tuple[CodecMetadataV2, ...] | None
+    order: ZarrV2ArrayOrder
+    compressor: ZarrV2CodecMetadata | None
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
     # "." is the v2 convention's default for an ABSENT dimension_separator key;
     # from_json normalizes absence to it (a semantics-preserving spelling
     # normalization, like the v3 bare-string metadata-field form). The value
     # is never None: the document grammar has no null spelling for this field.
-    dimension_separator: ArrayDimensionSeparatorV2 = field(default=".")
+    dimension_separator: ZarrV2ArrayDimensionSeparator = field(default=".")
     attributes: dict[str, JSONValue] | UNSET
 
-    def update(self, **kwargs: Unpack[ArrayMetadataModelV2Partial]) -> ArrayMetadataModelV2:
+    def update(self, **kwargs: Unpack[ZarrV2ArrayMetadataPartial]) -> ZarrV2ArrayMetadata:
         """
-        Return a new `ArrayMetadataModelV2` with the given fields updated.
+        Return a new `ZarrV2ArrayMetadata` with the given fields updated.
 
         Only the constructor-settable fields listed in
-        `ArrayMetadataModelV2Partial` can be updated; the fixed `zarr_format` is
+        `ZarrV2ArrayMetadataPartial` can be updated; the fixed `zarr_format` is
         rejected at the type level. Each given field fully replaces its previous
         value.
         """
         return dataclasses.replace(self, **kwargs)
 
     @classmethod
-    def create_default(
-        cls, **overrides: Unpack[ArrayMetadataModelV2Partial]
-    ) -> ArrayMetadataModelV2:
+    def create_default(cls, **overrides: Unpack[ZarrV2ArrayMetadataPartial]) -> ZarrV2ArrayMetadata:
         """
         Create a default (empty) v2 array metadata model, with optional overrides.
 
@@ -421,7 +418,7 @@ class ArrayMetadataModelV2:
         )
         return default.update(**overrides)
 
-    def to_json(self) -> ArrayMetadataV2:
+    def to_json(self) -> ZarrV2ArrayMetadataJSON:
         """Return the merged in-memory document form.
 
         `attributes` is included when set (even empty). This is not the
@@ -429,7 +426,7 @@ class ArrayMetadataModelV2:
         `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
-        out: ArrayMetadataV2 = {
+        out: ZarrV2ArrayMetadataJSON = {
             "zarr_format": self.zarr_format,
             "shape": self.shape,
             "dtype": self.dtype,
@@ -445,7 +442,7 @@ class ArrayMetadataModelV2:
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> ArrayMetadataModelV2:
+    def from_json(cls, data: object) -> ZarrV2ArrayMetadata:
         parsed = parse_array_metadata_v2(arrays_to_tuples(data))
         return cls(
             shape=parsed["shape"],
@@ -460,7 +457,7 @@ class ArrayMetadataModelV2:
         )
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ArrayMetadataModelV2:
+    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
         zarray_raw = cast("object", load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V2))
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)

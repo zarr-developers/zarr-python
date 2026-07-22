@@ -20,10 +20,10 @@ Usage:
 
     class ArrayManifest(BaseModel):
         path: str
-        metadata: zmp.ArrayMetadataV3
+        metadata: zmp.ZarrV3ArrayMetadata
 
 Static type checkers see each field type as its core model class, so
-`manifest.metadata` is an `ArrayMetadataModelV3`.
+`manifest.metadata` is a `zarr_metadata.model.ZarrV3ArrayMetadata`.
 """
 
 from __future__ import annotations
@@ -32,15 +32,7 @@ from typing import TYPE_CHECKING, Annotated, TypeVar
 
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer, WithJsonSchema
 
-from zarr_metadata.model import (
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV3,
-    ConsolidatedMetadataModelV2,
-    ConsolidatedMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV3,
-    NamedConfigModelV3,
-)
+from zarr_metadata import model as _model
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,68 +56,72 @@ def _coerce_to(cls: type[_M], parse: Callable[[object], _M]) -> Callable[[object
 _DOCUMENT_SCHEMA = {"type": "object"}
 _FIELD_SCHEMA = {"anyOf": [{"type": "string"}, {"type": "object"}]}
 
-ArrayMetadataV3 = Annotated[
-    InstanceOf[ArrayMetadataModelV3],
-    BeforeValidator(_coerce_to(ArrayMetadataModelV3, ArrayMetadataModelV3.from_json)),
-    PlainSerializer(ArrayMetadataModelV3.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ArrayMetadataV3"}),
+ZarrV3ArrayMetadata = Annotated[
+    InstanceOf[_model.ZarrV3ArrayMetadata],
+    BeforeValidator(_coerce_to(_model.ZarrV3ArrayMetadata, _model.ZarrV3ArrayMetadata.from_json)),
+    PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV3ArrayMetadata"}),
 ]
 """Field type for a v3 array metadata document (`zarr.json` content)."""
 
-ArrayMetadataV2 = Annotated[
-    InstanceOf[ArrayMetadataModelV2],
-    BeforeValidator(_coerce_to(ArrayMetadataModelV2, ArrayMetadataModelV2.from_json)),
-    PlainSerializer(ArrayMetadataModelV2.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ArrayMetadataV2"}),
+ZarrV2ArrayMetadata = Annotated[
+    InstanceOf[_model.ZarrV2ArrayMetadata],
+    BeforeValidator(_coerce_to(_model.ZarrV2ArrayMetadata, _model.ZarrV2ArrayMetadata.from_json)),
+    PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV2ArrayMetadata"}),
 ]
 """Field type for a v2 array metadata document (merged `.zarray` + `.zattrs` form)."""
 
-GroupMetadataV3 = Annotated[
-    InstanceOf[GroupMetadataModelV3],
-    BeforeValidator(_coerce_to(GroupMetadataModelV3, GroupMetadataModelV3.from_json)),
-    PlainSerializer(GroupMetadataModelV3.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "GroupMetadataV3"}),
+ZarrV3GroupMetadata = Annotated[
+    InstanceOf[_model.ZarrV3GroupMetadata],
+    BeforeValidator(_coerce_to(_model.ZarrV3GroupMetadata, _model.ZarrV3GroupMetadata.from_json)),
+    PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV3GroupMetadata"}),
 ]
 """Field type for a v3 group metadata document (`zarr.json` content)."""
 
-GroupMetadataV2 = Annotated[
-    InstanceOf[GroupMetadataModelV2],
-    BeforeValidator(_coerce_to(GroupMetadataModelV2, GroupMetadataModelV2.from_json)),
-    PlainSerializer(GroupMetadataModelV2.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "GroupMetadataV2"}),
+ZarrV2GroupMetadata = Annotated[
+    InstanceOf[_model.ZarrV2GroupMetadata],
+    BeforeValidator(_coerce_to(_model.ZarrV2GroupMetadata, _model.ZarrV2GroupMetadata.from_json)),
+    PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV2GroupMetadata"}),
 ]
 """Field type for a v2 group metadata document (merged `.zgroup` + `.zattrs` form)."""
 
-ConsolidatedMetadataV3 = Annotated[
-    InstanceOf[ConsolidatedMetadataModelV3],
-    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV3, ConsolidatedMetadataModelV3.from_json)),
-    PlainSerializer(ConsolidatedMetadataModelV3.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ConsolidatedMetadataV3"}),
+ZarrV3ConsolidatedMetadata = Annotated[
+    InstanceOf[_model.ZarrV3ConsolidatedMetadata],
+    BeforeValidator(
+        _coerce_to(_model.ZarrV3ConsolidatedMetadata, _model.ZarrV3ConsolidatedMetadata.from_json)
+    ),
+    PlainSerializer(_model.ZarrV3ConsolidatedMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV3ConsolidatedMetadata"}),
 ]
 """Field type for v3 inline consolidated metadata."""
 
-ConsolidatedMetadataV2 = Annotated[
-    InstanceOf[ConsolidatedMetadataModelV2],
-    BeforeValidator(_coerce_to(ConsolidatedMetadataModelV2, ConsolidatedMetadataModelV2.from_json)),
-    PlainSerializer(ConsolidatedMetadataModelV2.to_json, return_type=dict),
-    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ConsolidatedMetadataV2"}),
+ZarrV2ConsolidatedMetadata = Annotated[
+    InstanceOf[_model.ZarrV2ConsolidatedMetadata],
+    BeforeValidator(
+        _coerce_to(_model.ZarrV2ConsolidatedMetadata, _model.ZarrV2ConsolidatedMetadata.from_json)
+    ),
+    PlainSerializer(_model.ZarrV2ConsolidatedMetadata.to_json, return_type=dict),
+    WithJsonSchema(_DOCUMENT_SCHEMA | {"title": "ZarrV2ConsolidatedMetadata"}),
 ]
 """Field type for a v2 `.zmetadata` document."""
 
-MetadataFieldV3 = Annotated[
-    InstanceOf[NamedConfigModelV3],
-    BeforeValidator(_coerce_to(NamedConfigModelV3, NamedConfigModelV3.from_json)),
-    PlainSerializer(NamedConfigModelV3.to_json, return_type=str | dict),
-    WithJsonSchema(_FIELD_SCHEMA | {"title": "MetadataFieldV3"}),
+ZarrV3MetadataField = Annotated[
+    InstanceOf[_model.ZarrV3NamedConfig],
+    BeforeValidator(_coerce_to(_model.ZarrV3NamedConfig, _model.ZarrV3NamedConfig.from_json)),
+    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=str | dict),
+    WithJsonSchema(_FIELD_SCHEMA | {"title": "ZarrV3MetadataField"}),
 ]
 """Field type for one normalized v3 metadata extension envelope."""
 
 __all__ = [
-    "ArrayMetadataV2",
-    "ArrayMetadataV3",
-    "ConsolidatedMetadataV2",
-    "ConsolidatedMetadataV3",
-    "GroupMetadataV2",
-    "GroupMetadataV3",
-    "MetadataFieldV3",
+    "ZarrV2ArrayMetadata",
+    "ZarrV2ConsolidatedMetadata",
+    "ZarrV2GroupMetadata",
+    "ZarrV3ArrayMetadata",
+    "ZarrV3ConsolidatedMetadata",
+    "ZarrV3GroupMetadata",
+    "ZarrV3MetadataField",
 ]

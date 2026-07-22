@@ -12,7 +12,7 @@ from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._array import (
     ATTRIBUTES_STORE_KEY_V2,
-    ArrayMetadataModelV3,
+    ZarrV3ArrayMetadata,
     must_understand_subset,
 )
 from zarr_metadata.model._sentinel import UNSET
@@ -30,19 +30,19 @@ from zarr_metadata.model._validation import (
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.v2.group import GroupMetadataV2
-    from zarr_metadata.v3.array import ExtensionFieldV3
-    from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
-    from zarr_metadata.v3.group import GroupMetadataV3
+    from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
+    from zarr_metadata.v3.array import ZarrV3ExtensionField
+    from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
+    from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
-GroupMetadataStoreKeyV3 = Literal["zarr.json"]
-GROUP_METADATA_STORE_KEY_V3: Final[GroupMetadataStoreKeyV3] = "zarr.json"
+ZarrV3GroupMetadataStoreKey = Literal["zarr.json"]
+GROUP_METADATA_STORE_KEY_V3: Final[ZarrV3GroupMetadataStoreKey] = "zarr.json"
 
-GroupMetadataStoreKeyV2 = Literal[".zgroup"]
-GROUP_METADATA_STORE_KEY_V2: Final[GroupMetadataStoreKeyV2] = ".zgroup"
+ZarrV2GroupMetadataStoreKey = Literal[".zgroup"]
+GROUP_METADATA_STORE_KEY_V2: Final[ZarrV2GroupMetadataStoreKey] = ".zgroup"
 
-ConsolidatedMetadataStoreKeyV2 = Literal[".zmetadata"]
-CONSOLIDATED_METADATA_STORE_KEY_V2: Final[ConsolidatedMetadataStoreKeyV2] = ".zmetadata"
+ZarrV2ConsolidatedMetadataStoreKey = Literal[".zmetadata"]
+CONSOLIDATED_METADATA_STORE_KEY_V2: Final[ZarrV2ConsolidatedMetadataStoreKey] = ".zmetadata"
 
 # The key under which consolidated metadata is embedded in a v3 group document.
 # This is a reference-implementation convention (not a spec artifact), stored
@@ -50,12 +50,12 @@ CONSOLIDATED_METADATA_STORE_KEY_V2: Final[ConsolidatedMetadataStoreKeyV2] = ".zm
 CONSOLIDATED_METADATA_KEY_V3: Final = "consolidated_metadata"
 
 
-class GroupMetadataModelV3Partial(TypedDict, total=False):
+class ZarrV3GroupMetadataPartial(TypedDict, total=False):
     """
-    Partial form of the constructor-settable fields of `GroupMetadataModelV3`.
+    Partial form of the constructor-settable fields of `ZarrV3GroupMetadata`.
 
     Every key is optional and typed with the model's own value types, so it
-    describes valid keyword arguments to `GroupMetadataModelV3.update` and
+    describes valid keyword arguments to `ZarrV3GroupMetadata.update` and
     `create_default`. The `init=False` fields `zarr_format` and `node_type`
     are intentionally excluded, since they cannot be passed to
     `dataclasses.replace`.
@@ -65,25 +65,25 @@ class GroupMetadataModelV3Partial(TypedDict, total=False):
     """
 
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | UNSET
-    extra_fields: dict[str, ExtensionFieldV3]
+    consolidated_metadata: ZarrV3ConsolidatedMetadata | UNSET
+    extra_fields: dict[str, ZarrV3ExtensionField]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class GroupMetadataModelV3:
+class ZarrV3GroupMetadata:
     """In-memory model of a v3 group metadata document.
 
-    A canonical, lossless representation of the `zarr.json` content for a
-    group. The `consolidated_metadata` reference-implementation convention is
-    modeled as a typed field holding thin child models; every other unknown
-    top-level key lands in `extra_fields` verbatim.
+    A canonical, semantically lossless representation of the `zarr.json`
+    content for a group. The `consolidated_metadata` reference-implementation
+    convention is modeled as a typed field holding thin child models; every
+    other unknown top-level key lands in `extra_fields` verbatim.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["group"] = field(default="group", init=False)
     attributes: dict[str, JSONValue]
-    consolidated_metadata: ConsolidatedMetadataModelV3 | UNSET
-    extra_fields: dict[str, ExtensionFieldV3]
+    consolidated_metadata: ZarrV3ConsolidatedMetadata | UNSET
+    extra_fields: dict[str, ZarrV3ExtensionField]
 
     def __post_init__(self) -> None:
         reserved = GROUP_METADATA_STANDARD_KEYS_V3 | {CONSOLIDATED_METADATA_KEY_V3}
@@ -92,16 +92,14 @@ class GroupMetadataModelV3:
                 [
                     ValidationProblem(
                         ("extra_fields",),
-                        "Extra fields cannot overlap with standard GroupMetadataV3 fields",
+                        "Extra fields cannot overlap with standard Zarr V3 group metadata fields",
                         "invalid_value",
                     )
                 ]
             )
 
     @classmethod
-    def create_default(
-        cls, **overrides: Unpack[GroupMetadataModelV3Partial]
-    ) -> GroupMetadataModelV3:
+    def create_default(cls, **overrides: Unpack[ZarrV3GroupMetadataPartial]) -> ZarrV3GroupMetadata:
         """
         Create a default (empty) v3 group metadata model, with optional overrides.
 
@@ -112,19 +110,19 @@ class GroupMetadataModelV3:
         default = cls(attributes={}, consolidated_metadata=UNSET, extra_fields={})
         return default.update(**overrides)
 
-    def update(self, **kwargs: Unpack[GroupMetadataModelV3Partial]) -> GroupMetadataModelV3:
+    def update(self, **kwargs: Unpack[ZarrV3GroupMetadataPartial]) -> ZarrV3GroupMetadata:
         """
-        Return a new `GroupMetadataModelV3` with the given fields updated.
+        Return a new `ZarrV3GroupMetadata` with the given fields updated.
 
         Only the constructor-settable fields listed in
-        `GroupMetadataModelV3Partial` can be updated; the fixed `zarr_format` /
+        `ZarrV3GroupMetadataPartial` can be updated; the fixed `zarr_format` /
         `node_type` are rejected at the type level. Each given field fully
         replaces its previous value, including `extra_fields`.
         """
         return dataclasses.replace(self, **kwargs)
 
-    def to_json(self) -> GroupMetadataV3:
-        out: GroupMetadataV3 = {
+    def to_json(self) -> ZarrV3GroupMetadataJSON:
+        out: ZarrV3GroupMetadataJSON = {
             "zarr_format": self.zarr_format,
             "node_type": self.node_type,
         }
@@ -133,30 +131,30 @@ class GroupMetadataModelV3:
         if self.consolidated_metadata is not UNSET:
             # Consolidated metadata is a known non-core top-level JSON field.
             out[CONSOLIDATED_METADATA_KEY_V3] = cast(
-                "ExtensionFieldV3", self.consolidated_metadata.to_json()
+                "ZarrV3ExtensionField", self.consolidated_metadata.to_json()
             )
         for key, value in self.extra_fields.items():
             out[key] = value
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> GroupMetadataModelV3:
+    def from_json(cls, data: object) -> ZarrV3GroupMetadata:
         parsed = parse_group_metadata_v3(arrays_to_tuples(data))
         # Cast for narrowing across standard and arbitrary extra TypedDict items.
         consolidated_raw = cast("object", parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET))
-        consolidated: ConsolidatedMetadataModelV3 | UNSET
+        consolidated: ZarrV3ConsolidatedMetadata | UNSET
         if consolidated_raw is UNSET or consolidated_raw is None:
             # consolidated_metadata: null was written by a historical
             # zarr-python bug; it gets no model representation. It is read as
             # absence and never written back — repaired, not preserved.
             consolidated = UNSET
         else:
-            consolidated = ConsolidatedMetadataModelV3.from_json(consolidated_raw)
+            consolidated = ZarrV3ConsolidatedMetadata.from_json(consolidated_raw)
         # Sound cast: the TypedDict types all non-standard keys as its
-        # `extra_items` (`ExtensionFieldV3`); the comprehension's inferred value
+        # `extra_items` (`ZarrV3ExtensionField`); the comprehension's inferred value
         # type is the union over ALL keys because the key filter cannot narrow it.
         extra_fields = cast(
-            "dict[str, ExtensionFieldV3]",
+            "dict[str, ZarrV3ExtensionField]",
             {
                 k: v
                 for k, v in parsed.items()
@@ -170,7 +168,7 @@ class GroupMetadataModelV3:
         )
 
     @property
-    def must_understand_fields(self) -> dict[str, ExtensionFieldV3]:
+    def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
@@ -182,7 +180,7 @@ class GroupMetadataModelV3:
         return must_understand_subset(self.extra_fields)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV3:
+    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3GroupMetadata:
         return cls.from_json(load_store_json(mapping, GROUP_METADATA_STORE_KEY_V3))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
@@ -192,7 +190,7 @@ class GroupMetadataModelV3:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ConsolidatedMetadataModelV3:
+class ZarrV3ConsolidatedMetadata:
     """In-memory model of v3 inline consolidated metadata.
 
     Models the reference-implementation convention where consolidated metadata
@@ -204,7 +202,7 @@ class ConsolidatedMetadataModelV3:
 
     kind: Literal["inline"] = field(default="inline", init=False)
     must_understand: bool = False
-    metadata: dict[str, ArrayMetadataModelV3 | GroupMetadataModelV3]
+    metadata: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata]
 
     def __post_init__(self) -> None:
         if self.must_understand is not False:
@@ -219,7 +217,7 @@ class ConsolidatedMetadataModelV3:
                 ]
             )
 
-    def to_json(self) -> ConsolidatedMetadataV3:
+    def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
         # `must_understand` is emitted as the literal False: the field is typed
         # permissively as `bool`, but `__post_init__` guarantees the value.
         return {
@@ -229,27 +227,27 @@ class ConsolidatedMetadataModelV3:
         }
 
     @classmethod
-    def from_json(cls, data: object) -> ConsolidatedMetadataModelV3:
+    def from_json(cls, data: object) -> ZarrV3ConsolidatedMetadata:
         problems = validate_consolidated_metadata_v3(data)
         if problems:
             raise MetadataValidationError(problems)
         env = cast("Mapping[str, object]", data)
-        entries: dict[str, ArrayMetadataModelV3 | GroupMetadataModelV3] = {}
+        entries: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata] = {}
         for key, entry in cast("Mapping[str, object]", env["metadata"]).items():
             node_type = cast("Mapping[str, object]", entry).get("node_type")
             if node_type == "array":
-                entries[key] = ArrayMetadataModelV3.from_json(entry)
+                entries[key] = ZarrV3ArrayMetadata.from_json(entry)
             else:
-                entries[key] = GroupMetadataModelV3.from_json(entry)
+                entries[key] = ZarrV3GroupMetadata.from_json(entry)
         return cls(metadata=entries)
 
 
-class GroupMetadataModelV2Partial(TypedDict, total=False):
+class ZarrV2GroupMetadataPartial(TypedDict, total=False):
     """
-    Partial form of the constructor-settable fields of `GroupMetadataModelV2`.
+    Partial form of the constructor-settable fields of `ZarrV2GroupMetadata`.
 
     Every key is optional and typed with the model's own value types, so it
-    describes valid keyword arguments to `GroupMetadataModelV2.update` and
+    describes valid keyword arguments to `ZarrV2GroupMetadata.update` and
     `create_default`. The `init=False` field `zarr_format` is intentionally
     excluded, since it cannot be passed to `dataclasses.replace`.
 
@@ -261,12 +259,12 @@ class GroupMetadataModelV2Partial(TypedDict, total=False):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class GroupMetadataModelV2:
+class ZarrV2GroupMetadata:
     """In-memory model of a v2 group metadata document.
 
     A canonical, lossless representation of the `.zgroup` content plus the
     sibling `.zattrs` attributes, folded into a single in-memory value
-    (mirroring the merged `GroupMetadataV2` document form). `attributes` is
+    (mirroring the merged `ZarrV2GroupMetadataJSON` document form). `attributes` is
     `UNSET` when no `.zattrs` file (or merged `attributes` key) exists —
     distinct from an explicit empty `.zattrs`, which is `{}` and round-trips
     as a file.
@@ -276,9 +274,7 @@ class GroupMetadataModelV2:
     attributes: dict[str, JSONValue] | UNSET
 
     @classmethod
-    def create_default(
-        cls, **overrides: Unpack[GroupMetadataModelV2Partial]
-    ) -> GroupMetadataModelV2:
+    def create_default(cls, **overrides: Unpack[ZarrV2GroupMetadataPartial]) -> ZarrV2GroupMetadata:
         """
         Create a default (empty) v2 group metadata model, with optional overrides.
 
@@ -289,18 +285,18 @@ class GroupMetadataModelV2:
         default = cls(attributes=UNSET)
         return default.update(**overrides)
 
-    def update(self, **kwargs: Unpack[GroupMetadataModelV2Partial]) -> GroupMetadataModelV2:
+    def update(self, **kwargs: Unpack[ZarrV2GroupMetadataPartial]) -> ZarrV2GroupMetadata:
         """
-        Return a new `GroupMetadataModelV2` with the given fields updated.
+        Return a new `ZarrV2GroupMetadata` with the given fields updated.
 
         Only the constructor-settable fields listed in
-        `GroupMetadataModelV2Partial` can be updated; the fixed `zarr_format`
+        `ZarrV2GroupMetadataPartial` can be updated; the fixed `zarr_format`
         is rejected at the type level. Each given field fully replaces its
         previous value.
         """
         return dataclasses.replace(self, **kwargs)
 
-    def to_json(self) -> GroupMetadataV2:
+    def to_json(self) -> ZarrV2GroupMetadataJSON:
         """Return the merged in-memory document form.
 
         `attributes` is included when set (even empty). This is not the
@@ -308,18 +304,18 @@ class GroupMetadataModelV2:
         `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
-        out: GroupMetadataV2 = {"zarr_format": self.zarr_format}
+        out: ZarrV2GroupMetadataJSON = {"zarr_format": self.zarr_format}
         if self.attributes is not UNSET:
             out["attributes"] = self.attributes
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> GroupMetadataModelV2:
+    def from_json(cls, data: object) -> ZarrV2GroupMetadata:
         parsed = parse_group_metadata_v2(arrays_to_tuples(data))
         return cls(attributes=(dict(parsed["attributes"]) if "attributes" in parsed else UNSET))
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> GroupMetadataModelV2:
+    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2GroupMetadata:
         zgroup_raw = cast("object", load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2))
         if not isinstance(zgroup_raw, Mapping):
             return cls.from_json(zgroup_raw)
@@ -343,7 +339,7 @@ class GroupMetadataModelV2:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ConsolidatedMetadataModelV2:
+class ZarrV2ConsolidatedMetadata:
     """In-memory model of a v2 `.zmetadata` document.
 
     The `metadata` map holds the flat file-keyed entries (`"path/.zarray"`,
@@ -363,7 +359,7 @@ class ConsolidatedMetadataModelV2:
         }
 
     @classmethod
-    def from_json(cls, data: object) -> ConsolidatedMetadataModelV2:
+    def from_json(cls, data: object) -> ZarrV2ConsolidatedMetadata:
         if not isinstance(data, Mapping):
             raise MetadataValidationError(
                 [ValidationProblem((), "expected a mapping", "invalid_type")]
@@ -413,7 +409,7 @@ class ConsolidatedMetadataModelV2:
         return cls(metadata=entries_tupled)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ConsolidatedMetadataModelV2:
+    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ConsolidatedMetadata:
         return cls.from_json(load_store_json(mapping, CONSOLIDATED_METADATA_STORE_KEY_V2))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:

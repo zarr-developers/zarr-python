@@ -32,7 +32,11 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
-    "typing_extensions>=4.14",
+    # >=4.16: first release where `Sentinel` pickles by reference
+    # (`__reduce__` returns the sentinel's name), so `UNSET` — and any model
+    # holding it — can cross process boundaries and be deep-copied with its
+    # singleton identity intact. 4.15 and earlier refuse to pickle sentinels.
+    "typing_extensions>=4.16",
 ]
 
 [project.urls]

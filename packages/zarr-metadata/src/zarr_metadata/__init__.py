@@ -1,40 +1,48 @@
 from importlib.metadata import version
 
-from zarr_metadata._common import JSONValue, NamedConfigV3
+from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata.model import (
     UNSET,
-    ArrayMetadataModelV2,
-    ArrayMetadataModelV2Partial,
-    ArrayMetadataModelV3,
-    ArrayMetadataModelV3Partial,
-    ConsolidatedMetadataModelV2,
-    ConsolidatedMetadataModelV3,
-    GroupMetadataModelV2,
-    GroupMetadataModelV2Partial,
-    GroupMetadataModelV3,
-    GroupMetadataModelV3Partial,
-    MetadataFieldModelV3,
     MetadataValidationError,
-    NamedConfigModelV3,
     ProblemKind,
     ValidationProblem,
+    ZarrV2ArrayMetadata,
+    ZarrV2ArrayMetadataPartial,
+    ZarrV2ConsolidatedMetadata,
+    ZarrV2GroupMetadata,
+    ZarrV2GroupMetadataPartial,
+    ZarrV3ArrayMetadata,
+    ZarrV3ArrayMetadataPartial,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
+    ZarrV3GroupMetadataPartial,
+    ZarrV3MetadataField,
+    ZarrV3NamedConfig,
 )
 from zarr_metadata.v2.array import (
     ARRAY_DIMENSION_SEPARATOR_V2,
     ARRAY_ORDER_V2,
-    ArrayDimensionSeparatorV2,
-    ArrayMetadataV2,
-    ArrayMetadataV2Partial,
-    ArrayOrderV2,
-    DataTypeMetadataV2,
     ZArrayMetadata,
+    ZarrV2ArrayDimensionSeparator,
+    ZarrV2ArrayMetadataJSON,
+    ZarrV2ArrayMetadataJSONPartial,
+    ZarrV2ArrayOrder,
+    ZarrV2DataTypeMetadata,
 )
 from zarr_metadata.v2.attributes import ZAttrsMetadata
-from zarr_metadata.v2.codec import CodecMetadataV2
-from zarr_metadata.v2.consolidated import ConsolidatedMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2, GroupMetadataV2Partial, ZGroupMetadata
-from zarr_metadata.v3._common import MetadataV3
-from zarr_metadata.v3.array import ArrayMetadataV3, ArrayMetadataV3Partial, ExtensionFieldV3
+from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
+from zarr_metadata.v2.group import (
+    ZarrV2GroupMetadataJSON,
+    ZarrV2GroupMetadataJSONPartial,
+    ZGroupMetadata,
+)
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3.array import (
+    ZarrV3ArrayMetadataJSON,
+    ZarrV3ArrayMetadataJSONPartial,
+    ZarrV3ExtensionField,
+)
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RECTILINEAR_CHUNK_GRID_NAME,
     RectilinearChunkGridMetadata,
@@ -104,7 +112,7 @@ from zarr_metadata.v3.codec.transpose import (
     TransposeCodecName,
 )
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME, ZstdCodecMetadata, ZstdCodecName
-from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
+from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
 from zarr_metadata.v3.data_type.bool import (
     BOOL_DATA_TYPE_NAME,
     BoolDataTypeName,
@@ -203,7 +211,7 @@ from zarr_metadata.v3.data_type.uint64 import (
     Uint64DataTypeName,
     Uint64FillValue,
 )
-from zarr_metadata.v3.group import GroupMetadataV3, GroupMetadataV3Partial
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON, ZarrV3GroupMetadataJSONPartial
 
 __version__ = version("zarr-metadata")
 
@@ -253,16 +261,6 @@ __all__ = [
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "ZSTD_CODEC_NAME",
-    "ArrayDimensionSeparatorV2",
-    "ArrayMetadataModelV2",
-    "ArrayMetadataModelV2Partial",
-    "ArrayMetadataModelV3",
-    "ArrayMetadataModelV3Partial",
-    "ArrayMetadataV2",
-    "ArrayMetadataV2Partial",
-    "ArrayMetadataV3",
-    "ArrayMetadataV3Partial",
-    "ArrayOrderV2",
     "BloscCName",
     "BloscCodecMetadata",
     "BloscCodecName",
@@ -277,37 +275,22 @@ __all__ = [
     "CastRoundingMode",
     "CastValueCodecMetadata",
     "CastValueCodecName",
-    "CodecMetadataV2",
     "Complex64DataTypeName",
     "Complex64FillValue",
     "Complex128DataTypeName",
     "Complex128FillValue",
-    "ConsolidatedMetadataModelV2",
-    "ConsolidatedMetadataModelV3",
-    "ConsolidatedMetadataV2",
-    "ConsolidatedMetadataV3",
     "Crc32cCodecMetadata",
     "Crc32cCodecName",
-    "DataTypeMetadataV2",
     "DefaultChunkKeyEncodingMetadata",
     "DefaultChunkKeyEncodingName",
     "DefaultChunkKeyEncodingSeparator",
     "Endianness",
-    "ExtensionFieldV3",
     "Float16DataTypeName",
     "Float16FillValue",
     "Float32DataTypeName",
     "Float32FillValue",
     "Float64DataTypeName",
     "Float64FillValue",
-    "GroupMetadataModelV2",
-    "GroupMetadataModelV2Partial",
-    "GroupMetadataModelV3",
-    "GroupMetadataModelV3Partial",
-    "GroupMetadataV2",
-    "GroupMetadataV2Partial",
-    "GroupMetadataV3",
-    "GroupMetadataV3Partial",
     "GzipCodecMetadata",
     "GzipCodecName",
     "Int8DataTypeName",
@@ -319,11 +302,7 @@ __all__ = [
     "Int64DataTypeName",
     "Int64FillValue",
     "JSONValue",
-    "MetadataFieldModelV3",
-    "MetadataV3",
     "MetadataValidationError",
-    "NamedConfigModelV3",
-    "NamedConfigV3",
     "NumpyDatetime64DataTypeName",
     "NumpyDatetime64FillValue",
     "NumpyTimeUnit",
@@ -362,6 +341,35 @@ __all__ = [
     "ZArrayMetadata",
     "ZAttrsMetadata",
     "ZGroupMetadata",
+    "ZarrV2ArrayDimensionSeparator",
+    "ZarrV2ArrayMetadata",
+    "ZarrV2ArrayMetadataJSON",
+    "ZarrV2ArrayMetadataJSONPartial",
+    "ZarrV2ArrayMetadataPartial",
+    "ZarrV2ArrayOrder",
+    "ZarrV2CodecMetadata",
+    "ZarrV2ConsolidatedMetadata",
+    "ZarrV2ConsolidatedMetadataJSON",
+    "ZarrV2DataTypeMetadata",
+    "ZarrV2GroupMetadata",
+    "ZarrV2GroupMetadataJSON",
+    "ZarrV2GroupMetadataJSONPartial",
+    "ZarrV2GroupMetadataPartial",
+    "ZarrV3ArrayMetadata",
+    "ZarrV3ArrayMetadataJSON",
+    "ZarrV3ArrayMetadataJSONPartial",
+    "ZarrV3ArrayMetadataPartial",
+    "ZarrV3ConsolidatedMetadata",
+    "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3ExtensionField",
+    "ZarrV3GroupMetadata",
+    "ZarrV3GroupMetadataJSON",
+    "ZarrV3GroupMetadataJSONPartial",
+    "ZarrV3GroupMetadataPartial",
+    "ZarrV3MetadataField",
+    "ZarrV3MetadataFieldJSON",
+    "ZarrV3NamedConfig",
+    "ZarrV3NamedConfigJSON",
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "__version__",

@@ -24,7 +24,7 @@ building a `TypeAdapter`; a bare recursive `TypeAlias` raises
 """
 
 
-class NamedConfigV3(TypedDict):
+class ZarrV3NamedConfigJSON(TypedDict):
     """
     Externally-tagged union member for a metadata field.
 
