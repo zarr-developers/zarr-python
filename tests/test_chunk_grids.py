@@ -330,8 +330,19 @@ def test_normalize_chunks_1d_returns_int64_array(
         ((-1, -1), (10, 10)),
         ((-1, 5), (10, 5)),
         ("auto", (10, 10)),
+        (False, (10, 10)),
+        ([5, 5], (5, 5)),
+        (np.int64(5), (5, 5)),
     ],
-    ids=["scalar-minus-one", "tuple-minus-one", "mixed-minus-one", "auto"],
+    ids=[
+        "scalar-minus-one",
+        "tuple-minus-one",
+        "mixed-minus-one",
+        "auto",
+        "false-single-chunk",
+        "list",
+        "numpy-int",
+    ],
 )
 def test_create_array_valid_chunk_forms(chunks: Any, expected: tuple[int, ...]) -> None:
     """Valid chunk specifications produce arrays with the expected chunk shape."""
