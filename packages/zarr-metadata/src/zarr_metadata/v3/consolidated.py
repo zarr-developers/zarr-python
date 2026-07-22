@@ -24,9 +24,9 @@ class ZarrV3ConsolidatedMetadataJSON(TypedDict):
     """
     Inline consolidated metadata embedded in a v3 group.
 
-    The `metadata` map contains only v3 array and group entries - v2
-    entries are excluded by design. Mixing v2 entries into a v3
-    consolidated metadata document is invalid per spec.
+    The `metadata` map contains only v3 array and group entries. V2 entries
+    are excluded from this interoperability convention by design; the v3 core
+    specification does not define consolidated metadata.
     """
 
     kind: Literal["inline"]

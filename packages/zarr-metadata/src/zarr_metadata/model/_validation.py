@@ -552,7 +552,11 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
 
 def is_array_metadata_v3(value: object) -> TypeIs[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v3 array metadata document."""
-    return not validate_array_metadata_v3(value) and _is_canonical_array_metadata_v3(value)
+    return (
+        _is_canonical_json(value)
+        and not validate_array_metadata_v3(value)
+        and _is_canonical_array_metadata_v3(value)
+    )
 
 
 def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
@@ -580,8 +584,26 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
         _unexpected_keys(ARRAY_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
     )
     problems.extend(_check_literal(doc, "zarr_format", 2))
-    problems.extend(_validate_dim_sequence(doc, "shape"))
-    problems.extend(_validate_dim_sequence(doc, "chunks"))
+    shape_problems = _validate_dim_sequence(doc, "shape")
+    chunks_problems = _validate_dim_sequence(doc, "chunks")
+    problems.extend(shape_problems)
+    problems.extend(chunks_problems)
+    if (
+        not shape_problems
+        and not chunks_problems
+        and _is_int_sequence(doc.get("shape"))
+        and _is_int_sequence(doc.get("chunks"))
+    ):
+        shape = cast("Sequence[int]", doc["shape"])
+        chunks = cast("Sequence[int]", doc["chunks"])
+        if len(shape) != len(chunks):
+            problems.append(
+                ValidationProblem(
+                    ("chunks",),
+                    "expected the same number of dimensions as shape",
+                    "invalid_value",
+                )
+            )
     if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
         problems.append(
             ValidationProblem(
@@ -615,6 +637,10 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
                 )
             )
         elif filters is not None:
+            if len(cast("Sequence[object]", filters)) == 0:
+                problems.append(
+                    ValidationProblem(("filters",), "expected at least one filter", "invalid_value")
+                )
             for index, item in enumerate(cast("Sequence[object]", filters)):
                 problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
@@ -634,7 +660,11 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
 
 def is_array_metadata_v2(value: object) -> TypeIs[ZarrV2ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v2 array metadata document."""
-    return not validate_array_metadata_v2(value) and _is_canonical_array_metadata_v2(value)
+    return (
+        _is_canonical_json(value)
+        and not validate_array_metadata_v2(value)
+        and _is_canonical_array_metadata_v2(value)
+    )
 
 
 def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
@@ -743,9 +773,7 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
 
 def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v3 group metadata document."""
-    return isinstance(value, dict) and not validate_group_metadata_v3(
-        cast("dict[object, object]", value)
-    )
+    return _is_canonical_json(value) and not validate_group_metadata_v3(value)
 
 
 def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
@@ -778,9 +806,7 @@ def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
 
 def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document."""
-    return isinstance(value, dict) and not validate_group_metadata_v2(
-        cast("dict[object, object]", value)
-    )
+    return _is_canonical_json(value) and not validate_group_metadata_v2(value)
 
 
 def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:

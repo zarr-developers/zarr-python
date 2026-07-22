@@ -1214,6 +1214,30 @@ def test_v2_filters_must_be_codec_sequence_or_none() -> None:
         assert [(p.loc, p.kind) for p in problems] == [(("filters",), "invalid_type")], bad
 
 
+def test_v2_shape_and_chunks_must_have_equal_rank() -> None:
+    """Raw v2 metadata requires one chunk length per array dimension."""
+    doc = dict(ZarrV2ArrayMetadata.create_default(shape=(2, 3)).to_json())
+    doc["chunks"] = (1,)
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
+        (("chunks",), "invalid_value")
+    ]
+    with pytest.raises(MetadataValidationError, match="same number of dimensions"):
+        ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+
+
+def test_v2_filters_must_be_nonempty_when_present() -> None:
+    """A non-null v2 filter sequence contains one or more codec configurations."""
+    doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    doc["filters"] = ()
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
+        (("filters",), "invalid_value")
+    ]
+    with pytest.raises(MetadataValidationError, match="at least one filter"):
+        ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+
+
 def test_v2_dimension_separator_literal_enforced() -> None:
     """A dimension_separator other than '.' or '/' is rejected."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dimension_separator": "-"}
@@ -1490,6 +1514,19 @@ def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
     assert isinstance(v3_parsed["codecs"], tuple)
     assert isinstance(v2_parsed["shape"], tuple)
     assert isinstance(v2_parsed["chunks"], tuple)
+
+
+def test_array_guards_reject_noncanonical_nested_json() -> None:
+    """Document guards cannot narrow values that only parsers can materialize."""
+    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    v3["fill_value"] = range(2)
+    v2 = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    v2["fill_value"] = range(2)
+
+    assert not is_array_metadata_v3(v3)
+    assert not is_array_metadata_v2(v2)
+    assert parse_array_metadata_v3(v3)["fill_value"] == (0, 1)
+    assert parse_array_metadata_v2(v2)["fill_value"] == (0, 1)
 
 
 # --- must_understand partition (spec: MUST fail to open unrecognized fields) --

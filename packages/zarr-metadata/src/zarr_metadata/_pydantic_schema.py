@@ -5,22 +5,21 @@ from __future__ import annotations
 from collections.abc import Mapping  # noqa: TC003  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
-from pydantic import ConfigDict, Field, with_config
+from pydantic import Field
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v2.array import (  # noqa: TC001  # resolved by Pydantic at runtime
     ZarrV2DataTypeMetadata,
 )
-from zarr_metadata.v2.codec import (  # noqa: TC001  # resolved by Pydantic at runtime
+from zarr_metadata.v2.codec import (  # resolved by Pydantic at runtime
     ZarrV2CodecMetadata,
 )
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV3NamedConfigJSON(TypedDict):
+class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """Closed v3 named configuration accepted at optional extension points."""
 
     name: str
@@ -28,8 +27,7 @@ class ZarrV3NamedConfigJSON(TypedDict):
     must_understand: NotRequired[bool]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV3MandatoryNamedConfigJSON(TypedDict):
+class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
     """Closed named configuration accepted where understanding is mandatory."""
 
     name: str
@@ -40,6 +38,7 @@ class ZarrV3MandatoryNamedConfigJSON(TypedDict):
 ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
 ZarrV3MandatoryMetadataFieldJSON = str | ZarrV3MandatoryNamedConfigJSON
 ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MetadataFieldJSON, ...], Field(min_length=1)]
+ZarrV2FilterPipelineJSON = Annotated[tuple[ZarrV2CodecMetadata, ...], Field(min_length=1)]
 
 
 class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
@@ -58,8 +57,7 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV3ConsolidatedMetadataJSON(TypedDict):
+class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
     """Schema input for the closed inline consolidated-metadata envelope."""
 
     kind: Literal["inline"]
@@ -76,8 +74,7 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=JSONValue):
     consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON | None]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV2ArrayMetadataJSON(TypedDict):
+class ZarrV2ArrayMetadataJSON(TypedDict, closed=True):
     """Schema input for the closed, merged v2 array representation."""
 
     zarr_format: Literal[2]
@@ -87,21 +84,19 @@ class ZarrV2ArrayMetadataJSON(TypedDict):
     compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
     order: Literal["C", "F"]
-    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    filters: ZarrV2FilterPipelineJSON | None
     dimension_separator: NotRequired[Literal[".", "/"]]
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV2GroupMetadataJSON(TypedDict):
+class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
     """Schema input for the closed, merged v2 group representation."""
 
     zarr_format: Literal[2]
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-@with_config(ConfigDict(extra="forbid"))
-class ZarrV2ConsolidatedMetadataJSON(TypedDict):
+class ZarrV2ConsolidatedMetadataJSON(TypedDict, closed=True):
     """Schema input matching the v2 consolidated model's structural parser."""
 
     zarr_consolidated_format: Literal[1]

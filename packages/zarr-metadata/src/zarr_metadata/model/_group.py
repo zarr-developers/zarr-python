@@ -350,7 +350,7 @@ class ZarrV2ConsolidatedMetadata:
     """In-memory model of a v2 `.zmetadata` document.
 
     The `metadata` map holds the flat file-keyed entries (`"path/.zarray"`,
-    `"path/.zattrs"`, ...) verbatim, preserving byte-faithful round-tripping.
+    `"path/.zattrs"`, ...) verbatim, preserving the normalized JSON tree.
     Entries are deliberately NOT merged into per-node models: which nodes had
     a `.zattrs` file at all is information the canonical representation must
     keep. Interpreting entries into node models is consumer work.

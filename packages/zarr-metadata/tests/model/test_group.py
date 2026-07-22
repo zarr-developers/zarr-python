@@ -20,6 +20,8 @@ from zarr_metadata.model._group import (
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
+    is_group_metadata_v2,
+    is_group_metadata_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
     validate_group_metadata_v2,
@@ -149,6 +151,17 @@ def test_group_parser_materializes_abstract_mapping(
 
     assert type(parsed) is dict
     assert parsed == document
+
+
+def test_group_guards_reject_noncanonical_nested_json() -> None:
+    """Document guards cannot narrow values that only parsers can materialize."""
+    v3 = {"zarr_format": 3, "node_type": "group", "extension": range(2)}
+    v2 = {"zarr_format": 2, "attributes": {"values": range(2)}}
+
+    assert not is_group_metadata_v3(v3)
+    assert not is_group_metadata_v2(v2)
+    assert parse_group_metadata_v3(v3)["extension"] == (0, 1)
+    assert parse_group_metadata_v2(v2)["attributes"] == {"values": (0, 1)}
 
 
 def test_group_v3_extension_fields_are_validated() -> None:

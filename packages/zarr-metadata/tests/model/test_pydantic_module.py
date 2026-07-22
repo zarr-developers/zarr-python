@@ -6,6 +6,7 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 """
 
 import json
+import warnings
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -127,6 +128,24 @@ def test_json_schema_generation() -> None:
     ]
 
 
+def test_json_schema_generation_emits_no_warnings() -> None:
+    """Consumers can generate every public integration schema without warning filters."""
+    field_types = (
+        zmp.ZarrV3ArrayMetadata,
+        zmp.ZarrV2ArrayMetadata,
+        zmp.ZarrV3GroupMetadata,
+        zmp.ZarrV2GroupMetadata,
+        zmp.ZarrV3ConsolidatedMetadata,
+        zmp.ZarrV2ConsolidatedMetadata,
+        zmp.ZarrV3MetadataField,
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for field_type in field_types:
+            TypeAdapter(field_type).json_schema()
+
+
 def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     """The schema accepts nested structured dtypes supported by the v2 specification."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
@@ -161,6 +180,14 @@ def test_array_schemas_reject_negative_dimensions() -> None:
         doc = json.loads(json.dumps(source))
         doc["shape"] = [-1]
         _assert_runtime_and_schema_reject(field_type, doc)
+
+
+def test_v2_array_schema_rejects_empty_filters() -> None:
+    """The v2 schema mirrors the runtime one-or-more filter rule."""
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    doc["filters"] = []
+
+    _assert_runtime_and_schema_reject(zmp.ZarrV2ArrayMetadata, doc)
 
 
 @pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])

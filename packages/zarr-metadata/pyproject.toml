@@ -71,9 +71,9 @@ xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
     "error",
-    # pydantic warns about ReadOnly TypedDict items not being enforced at runtime.
-    # That's expected here — we rely on type-checker enforcement, not pydantic mutation guards.
-    "ignore::UserWarning:pydantic._internal._generate_schema",
+    # Pydantic validates these public immutable-shape TypedDicts correctly but
+    # cannot enforce the type checker's ReadOnly mutation restriction.
+    "ignore:Items? .* using the `ReadOnly` qualifier.*:UserWarning:pydantic._internal._generate_schema",
 ]
 
 [tool.numpydoc_validation]

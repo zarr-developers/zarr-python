@@ -15,30 +15,34 @@ The optional integration requires Pydantic 2.13 or newer.
 
 ## What this is for
 
-These types describe the JSON shape of Zarr metadata. They are
-intended for libraries that **read, write, validate, or transform**
-Zarr metadata. Pair them with a runtime validator like
-[pydantic](https://docs.pydantic.dev/) to check JSON loaded from disk:
+The public `TypedDict` definitions describe the static JSON shape of Zarr
+metadata. For strict, loc-aware validation of JSON loaded from disk, use the
+model parser:
 
 ```python
 import json
-from pydantic import TypeAdapter
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.model import ZarrV3ArrayMetadata
 
 with open("zarr.json", "rb") as f:
     raw = json.load(f)
 
-metadata = TypeAdapter(ZarrV3ArrayMetadataJSON).validate_python(raw)
+metadata = ZarrV3ArrayMetadata.from_json(raw)
 ```
 
-For a normalized model with loc-aware validation and serialization:
+The optional Pydantic integration delegates raw input to the same strict
+parser and returns the same normalized model class:
 
 ```python
-from zarr_metadata.model import ZarrV3ArrayMetadata
+from pydantic import TypeAdapter
+import zarr_metadata.pydantic as zmp
 
-model = ZarrV3ArrayMetadata.from_json(raw)
-encoded = model.to_key_value()["zarr.json"]
+metadata = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(raw)
+encoded = metadata.to_key_value()["zarr.json"]
 ```
+
+A bare `TypeAdapter` over a public document `TypedDict` is a coercive shape
+adapter, not a Zarr conformance validator; it may coerce values or discard
+members that the strict model parser rejects.
 
 ## Validation boundary
 
@@ -49,6 +53,14 @@ JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
 names or configurations, resolve codec pipelines, or decide whether a data
 type, chunk grid, codec, or storage transformer is supported. Those decisions
 belong to consumer implementations.
+
+The Pydantic integration's generated JSON Schemas express independently
+checkable document structure and field constraints, but they are not a
+replacement for runtime model validation. Standard JSON Schema treats a
+mathematically integral number such as `1.0` as an integer, while the runtime
+boundary requires Python `int` values, and it cannot express arbitrary
+same-length relations such as `dimension_names` versus `shape` or v2 `chunks`
+versus `shape`. Consumers should run the model parser after schema validation.
 
 ## Scope
 
