@@ -3,13 +3,14 @@
 Date: 2026-07-22
 Status: approved
 Branch: `claude/zarr-array-engine-protocol-239cfa`
+Reviewed-by: @kylebarron (Zarrista developer), 2026-07-22 — feedback integrated
 
 ## Goal
 
 Move the pluggable-backend boundary inside zarr-python's array classes:
-`Array` wraps an object satisfying `ArrayEngineProtocol`, and `AsyncArray`
-wraps an object satisfying `AsyncArrayEngineProtocol` (the same contract with
-async methods). The engine owns the I/O data path — reading and writing
+`Array` wraps an object satisfying the `ArrayEngine` protocol, and
+`AsyncArray` wraps an object satisfying the `AsyncArrayEngine` protocol (the
+same contract with async methods). The engine owns the I/O data path — reading and writing
 decoded data for selections — while `Array`/`AsyncArray` keep metadata
 management, indexing normalization, and resize/append logic.
 
@@ -21,7 +22,8 @@ Two engine families ship:
 - **Zarrista engines** — powered by [Zarrista](https://pypi.org/project/zarrista/)
   (Development Seed's zarrs-backed low-level Zarr API). We build against
   Zarrista's `main` branch (unreleased; approved for use), pinned to a git
-  commit until the next release.
+  commit; the Zarrista team can publish a new beta release on request, at
+  which point the pin becomes `>=` that beta.
 
 This strategy **replaces** the `zarr.crud` layer and the homemade Rust
 bindings from earlier on this branch. `zarr.crud`, `zarr.zarrs`, and the
@@ -61,17 +63,18 @@ Sync `Array` and async `AsyncArray` are separate native classes:
 
 ### Protocols (`zarr.abc.engine`)
 
-Four runtime-checkable protocols. The async pair:
+Four runtime-checkable protocols, named without a `Protocol` suffix
+(`ArrayEngine(Protocol)` is enough; implementations get names like
+`ZarristaEngine`). The async pair:
 
 ```python
-class AsyncArrayEngineProtocol(Protocol):
+class AsyncArrayEngine(Protocol):
     async def read_selection(
         self,
         indexer: Indexer,
         *,
         prototype: BufferPrototype,
-        out: NDBuffer | None = None,
-    ) -> NDBuffer: ...
+    ) -> NDArrayLike: ...
 
     async def write_selection(
         self,
@@ -81,17 +84,17 @@ class AsyncArrayEngineProtocol(Protocol):
         prototype: BufferPrototype,
     ) -> None: ...
 
-    def with_metadata(self, metadata: ArrayMetadata) -> AsyncArrayEngineProtocol: ...
+    def with_metadata(self, metadata: ArrayMetadata) -> AsyncArrayEngine: ...
 
 
-class AsyncHierarchyEngineProtocol(Protocol):
+class AsyncHierarchyEngine(Protocol):
     def array_engine(
         self, path: str, metadata: ArrayMetadata
-    ) -> AsyncArrayEngineProtocol: ...
+    ) -> AsyncArrayEngine: ...
 ```
 
-`ArrayEngineProtocol` and `HierarchyEngineProtocol` are identical with sync
-methods and sync return types.
+`ArrayEngine` and `HierarchyEngine` are identical with sync methods and sync
+return types.
 
 Contract details:
 
@@ -102,27 +105,36 @@ Contract details:
   share resources (the translated store handle, runtime, caches). This is the
   factory the registry uses; users may also construct an array engine directly
   and pass it to array creation/open.
-- `read_selection` fills and returns `out` when given; when `out is None` it
-  returns a buffer of its own making (zero-copy where the backend allows).
-  The **engine speaks `Indexer`**: zarr-python's normalized selection plan
+- `read_selection` returns a buffer of the engine's own making: any object
+  implementing at least `__array__` (numpy coercion), zero-copy where the
+  backend allows. Additional export protocols (DLPack, Arrow) are welcome on
+  concrete engines but are not part of the contract. There is **no `out`
+  parameter** in v1; one may be added later as a performance improvement, and
+  the facade meanwhile serves user-supplied `out=` arguments by copying the
+  engine's result into them.
+- The **engine speaks `Indexer`**: zarr-python's normalized selection plan
   (iterable of `(chunk_coords, chunk_selection, out_selection,
   is_complete_chunk)` projections with `shape` / `drop_axes`). Engines may
   consume the indexer wholesale (fast paths) or iterate its projections.
+  (Reviewer note: Kyle raised chunk-level indexing as a simpler v1 contract;
+  we are staying indexer-level per the approach decision — it is the only
+  shape that keeps the default path unchanged.)
 - `with_metadata` returns a rebound engine for the same store/path with new
   metadata. `resize`/`append`/`update_attributes` use it, so rebinding works
   uniformly for factory-made and user-provided engines.
 - Facade-side responsibilities (not the engine's): building the indexer,
   `fields` handling, output dtype/order resolution, scalar extraction,
-  `drop_axes` squeezing, and the empty-selection short circuit.
+  `drop_axes` squeezing, copying into a user-supplied `out=` buffer, and the
+  empty-selection short circuit.
 
 ### Wiring into `Array`/`AsyncArray`
 
-- `AsyncArray` gains an `engine: AsyncArrayEngineProtocol` attribute. The
+- `AsyncArray` gains an `engine: AsyncArrayEngine` attribute. The
   module-level `_get_selection`/`_set_selection` shrink to: resolve output
   buffer arguments, call the engine, post-process. The current codec-pipeline
   body of those functions **becomes** the default async engine's
   implementation, byte-for-byte.
-- `Array` gains `engine: ArrayEngineProtocol`. Its data methods
+- `Array` gains `engine: ArrayEngine`. Its data methods
   (`__getitem__`/`__setitem__`, `get/set_basic_selection`,
   `get/set_orthogonal_selection`, `get/set_mask_selection`,
   `get/set_coordinate_selection`, `get/set_block_selection`, and the
@@ -136,22 +148,30 @@ Contract details:
 
 ### Engine selection
 
-- `engine=` parameter on array creation/open APIs: an
-  `ArrayEngineProtocol`/`AsyncArrayEngineProtocol` instance (used as-is, sync
-  vs async matching the entry point), or a registered name (`"default"`,
-  `"zarrista"`), or `None`.
-- `None` resolves via a hierarchy-engine registry keyed by name plus a config
-  key `array.engine` (default `"default"`). The registry maps a name to a
-  hierarchy-engine factory taking the zarr store; the resulting hierarchy
-  engine is cached per `(name, store)` so array engines opened from one store
-  share resources.
-- This replaces the `zarr.crud` registry; the pattern (register by name,
-  config default, instance override) carries over.
+- `engine=` parameter on array creation/open APIs, with three accepted forms:
+  the string `"default"`, the string `"zarrista"`, or an
+  `ArrayEngine`/`AsyncArrayEngine` instance the user constructed themselves
+  (used as-is, sync vs async matching the entry point):
+
+  ```python
+  engine = ZarristaEngine(...)          # user-constructed, full control
+  zarr.open_array(store, engine=engine)
+  zarr.open_array(store, engine="zarrista")  # named, we construct it
+  ```
+
+- **No config key in v1.** Omitting `engine=` means the default (pure-Python)
+  engine — today's behavior. A global config default can be added later.
+- Name resolution is a small internal mapping from name to hierarchy-engine
+  factory taking the zarr store; the resulting hierarchy engine is cached per
+  `(name, store)` so array engines opened from one store share resources.
+  This replaces the `zarr.crud` registry.
 
 ### Zarrista engines (`zarr.zarrista`)
 
-- `ZarristaHierarchyEngine` (sync) / `ZarristaAsyncHierarchyEngine`:
-  constructed with a zarr-python store, translating it at construction time:
+- Array engines `ZarristaEngine` (sync) / `ZarristaAsyncEngine`, minted by
+  `ZarristaHierarchyEngine` / `ZarristaAsyncHierarchyEngine`: the hierarchy
+  engine is constructed with a zarr-python store, translating it at
+  construction time:
   - sync: `LocalStore → zarrista.FilesystemStore`.
   - async: `zarr.storage.ObjectStore →` its underlying obstore instance;
     an icechunk store/session → `icechunk.Session`.
@@ -171,11 +191,13 @@ Contract details:
 - **Writes**: per-chunk over the indexer's projections. A complete-chunk
   projection encodes the value directly via `store_chunk`; a partial chunk
   does read-modify-write: `retrieve_chunk` → patch with numpy → `store_chunk`.
-  When Zarrista exposes `store_array_subset`, the basic-selection fast path
-  upgrades without protocol changes.
+  Kyle confirmed exposing `store_array_subset` (multi-chunk write) is easy on
+  the Zarrista side; when it lands, basic-selection writes collapse to one
+  Rust call with no protocol change.
 - **Buffers**: `Tensor` → zero-copy numpy (`to_numpy`); `VariableArray` →
-  Arrow → numpy object array for vlen dtypes; `MaskedTensor`/
-  `MaskedVariableArray` unsupported (zarr-python has no masked dtype) — raise.
+  numpy via Zarrista's upcoming numpy export (a copy for now — confirmed
+  planned); `MaskedTensor`/`MaskedVariableArray` unsupported (zarr-python has
+  no masked dtype) — raise.
 - Registered under the name `"zarrista"` on import of `zarr.zarrista`; import
   errors cleanly when `zarrista` is not installed.
 - Dependency: optional dependency group `zarrista`, git-pinned to a Zarrista
@@ -229,6 +251,9 @@ the store-translation and metadata-handoff learnings carry into
 
 ## Feature requests for Zarrista (tracked, not blocking)
 
+Kyle has reviewed this list and is open to all of them; (1) is confirmed easy
+and (a copying) numpy export for `VariableArray` is already planned.
+
 1. **`store_array_subset`** — zarrs has it natively; exposing it moves
    partial-chunk read-modify-write into Rust and collapses the per-chunk
    write path for basic selections.
@@ -253,3 +278,18 @@ the store-translation and metadata-handoff learnings carry into
   Python-side per-chunk RMW now, upgradeable when `store_array_subset` lands.
 - Protocol granularity: engines speak `Indexer` (approach A), keeping the
   default path unchanged and giving engines full selection information.
+
+Post-review (kylebarron, on the shared gist):
+
+- Protocol names drop the `Protocol` suffix: `ArrayEngine`,
+  `AsyncArrayEngine`, `HierarchyEngine`, `AsyncHierarchyEngine`.
+- No `out` parameter in the v1 protocol; revisit later for performance.
+- Engine read results only need `__array__`; other export protocols
+  (DLPack, Arrow) are optional extras on implementations.
+- No config key in v1: engine choice is explicit via
+  `engine="default" | "zarrista" | <instance>`; a global config default may
+  come later.
+- Zarrista can cut a beta release on request, so the git pin is temporary.
+- Kyle's open question — chunk-level indexing as a simpler v1 engine
+  contract — noted; staying indexer-level (approach A) to keep the default
+  path byte-for-byte unchanged.
