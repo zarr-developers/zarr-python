@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import operator
 import types
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 from zarr.abc.engine import Region
 
 if TYPE_CHECKING:
+    from zarr.core.buffer import NDArrayLike
     from zarr.core.indexing import BasicSelection
 
 
@@ -152,14 +153,21 @@ def normalize_orthogonal(selection: Any, shape: tuple[int, ...]) -> tuple[Region
     return region, post
 
 
-def apply_post_index(box: np.ndarray, post: tuple[Any, ...]) -> np.ndarray:
-    """Apply a post index produced by a `normalize_*` helper to a box read."""
+def apply_post_index(box: NDArrayLike, post: tuple[Any, ...]) -> NDArrayLike:
+    """Apply a post index produced by a `normalize_*` helper to a box read.
+
+    Indexing stays in `box`'s own array namespace (numpy, cupy, torch, ...) so a
+    device buffer is never forced onto the host; the local is `Any`-typed because
+    the `NDArrayLike` protocol only types slice-key indexing, not the tuple keys
+    the `normalize_*` helpers emit.
+    """
+    indexed: Any = box
     if post and isinstance(post[-1], _Squeeze):
-        result = box[post[:-1]] if len(post) > 1 else box
-        return np.squeeze(result, axis=post[-1].axes)
+        result = indexed[post[:-1]] if len(post) > 1 else indexed
+        return cast("NDArrayLike", np.squeeze(result, axis=post[-1].axes))
     if post == ():
         return box
-    return np.asarray(box[post])
+    return cast("NDArrayLike", indexed[post])
 
 
 def strip_squeeze(post: tuple[Any, ...]) -> tuple[Any, ...]:

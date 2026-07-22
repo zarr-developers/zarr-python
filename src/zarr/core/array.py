@@ -5632,13 +5632,20 @@ def _finish_get_selection(
         # unchanged so a custom `NDArrayLike` type (e.g. GPU/torch buffers)
         # survives instead of being coerced to numpy by `np.asarray`
         return _finalize_result(raw, out, scalarize=scalarize)
-    box = np.asarray(raw)
+    # Stay in the engine result's own array namespace: field selection and
+    # `apply_post_index` are plain indexing (which cupy/torch implement), so a
+    # device buffer is never forced onto the host by an `np.asarray` here.
+    box = raw
     if fields:
         # non-empty `fields` selects structured sub-fields; an empty list/tuple
         # (from `pop_fields` on a field-free selection) means "all fields"
         box = box[fields]  # type: ignore[index]
     result = apply_post_index(box, post_index)
-    result = np.asarray(result, order=order)
+    # Materialize the post-indexed (strided/fancy) view in the array's effective
+    # memory order without leaving the result's namespace -- `astype` is a method
+    # on the array itself, so a device buffer stays on-device (unlike
+    # `np.asarray(..., order=...)`, which would coerce it to numpy).
+    result = result.astype(result.dtype, order=order, copy=True)
     return _finalize_result(result, out, scalarize=scalarize)
 
 
@@ -5666,7 +5673,9 @@ async def _get_selection(
         metadata, config, region, post_index, out=out, fields=fields
     )
     if product(region.shape) == 0:
-        empty = np.empty(result_shape, dtype=out_dtype)
+        # allocate through the prototype so an empty read honours the requested
+        # buffer type (e.g. a GPU prototype) instead of a host numpy array
+        empty = prototype.nd_buffer.empty(result_shape, out_dtype).as_ndarray_like()
         return _finalize_result(empty, out, scalarize=scalarize)
 
     raw = await engine.read_selection(region, prototype=prototype)
@@ -5695,7 +5704,9 @@ def _get_selection_sync(
         metadata, config, region, post_index, out=out, fields=fields
     )
     if product(region.shape) == 0:
-        empty = np.empty(result_shape, dtype=out_dtype)
+        # allocate through the prototype so an empty read honours the requested
+        # buffer type (e.g. a GPU prototype) instead of a host numpy array
+        empty = prototype.nd_buffer.empty(result_shape, out_dtype).as_ndarray_like()
         return _finalize_result(empty, out, scalarize=scalarize)
 
     raw = engine.read_selection(region, prototype=prototype)
@@ -5798,9 +5809,11 @@ def _prepare_set_selection(
         # shape misaligned with the ndim-preserving box.
         int_axes = tuple(i for i, p in enumerate(stripped) if isinstance(p, (int, np.integer)))
         broadcast_value = _widen_value_for_squeeze(assign_value, int_axes, len(region.shape))
-        identity_box = np.array(
-            np.broadcast_to(np.asarray(broadcast_value), region.shape), dtype=dtype
-        )
+        # `np.broadcast_to` dispatches through `__array_function__`, so a device
+        # buffer stays in its own namespace; `astype` (a method on the array)
+        # then materializes a writable, dtype-correct box without an
+        # `np.asarray` host coercion.
+        identity_box = np.broadcast_to(broadcast_value, region.shape).astype(dtype, copy=True)
     return _SetSelectionPrep(
         identity_box=identity_box,
         fields=fields,
@@ -5814,8 +5827,13 @@ def _patch_selection_box(raw: NDArrayLike, prep: _SetSelectionPrep) -> NDArrayLi
     (`prep.identity_box is None`), using the same `post_index` the read path
     uses (dropping the orthogonal `_Squeeze` marker and widening the value at
     dropped integer axes, matching `oindex_set`)."""
-    box = np.array(np.asarray(raw))
-    target = box[prep.fields] if prep.fields else box  # type: ignore[index]
+    # `.copy()` yields a writable box in the engine result's own namespace (a
+    # device buffer is patched on-device); `np.asarray` would coerce it to host.
+    box = raw.copy()
+    # `target` indexing/assignment uses tuple/ellipsis keys the `NDArrayLike`
+    # protocol does not type (it only declares slice-key access), so it is
+    # `Any`-typed here; at runtime numpy/cupy/torch all support these keys.
+    target: Any = box[prep.fields] if prep.fields else box  # type: ignore[index]
     if prep.stripped == ():
         target[...] = prep.assign_value
     else:
@@ -5825,10 +5843,14 @@ def _patch_selection_box(raw: NDArrayLike, prep: _SetSelectionPrep) -> NDArrayLi
 
 def _finish_set_selection(box: NDArrayLike, prototype: BufferPrototype) -> NDBuffer:
     """Shared postamble for `_set_selection`/`_set_selection_sync`: make the
-    box contiguous (0-d arrays pass through unchanged -- `np.ascontiguousarray`
-    would otherwise promote them to shape `(1,)`) and wrap it for
-    `engine.write_selection`."""
-    contiguous_box = box if box.ndim == 0 else np.ascontiguousarray(box)
+    box C-contiguous and wrap it for `engine.write_selection`.
+
+    `astype` (a method on the array) forces C-order in the box's own namespace
+    -- copying only when needed, exactly like `np.ascontiguousarray` -- so a
+    device buffer (cupy/torch) stays on-device instead of being coerced to host.
+    0-d arrays pass through unchanged (`np.ascontiguousarray` would have promoted
+    them to shape `(1,)`)."""
+    contiguous_box = box if box.ndim == 0 else box.astype(box.dtype, order="C", copy=False)
     return prototype.nd_buffer.from_ndarray_like(contiguous_box)
 
 
