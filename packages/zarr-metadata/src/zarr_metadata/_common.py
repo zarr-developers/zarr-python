@@ -34,3 +34,4 @@ class NamedConfigV3(TypedDict):
 
     name: str
     configuration: NotRequired[Mapping[str, JSONValue]]
+    must_understand: NotRequired[bool]

@@ -182,7 +182,9 @@ def _validate_extension_fields_v3(
     return problems
 
 
-def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
+def validate_metadata_field_v3(
+    value: object, *, allow_must_understand_false: bool = True
+) -> list[ValidationProblem]:
     """Return every reason `value` is not a v3 metadata field.
 
     A metadata field is a bare name string or a `{name, configuration}` mapping.
@@ -199,6 +201,16 @@ def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
         ]
     field = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = []
+    allowed_keys = frozenset({"name", "configuration", "must_understand"})
+    for key in field:
+        if not isinstance(key, str):
+            problems.append(
+                ValidationProblem((), f"non-string metadata field key {key!r}", "invalid_type")
+            )
+        elif key not in allowed_keys:
+            problems.append(
+                ValidationProblem((key,), "unexpected metadata field member", "invalid_value")
+            )
     if not isinstance(field.get("name"), str):
         problems.append(ValidationProblem(("name",), "expected a string name", "invalid_type"))
     if "configuration" in field:
@@ -214,6 +226,20 @@ def validate_metadata_field_v3(value: object) -> list[ValidationProblem]:
         else:
             for key, item in cast("Mapping[str, object]", configuration).items():
                 problems.extend(_prefix("configuration", _prefix(key, validate_json(item))))
+    if "must_understand" in field:
+        must_understand = field["must_understand"]
+        if not isinstance(must_understand, bool):
+            problems.append(
+                ValidationProblem(("must_understand",), "expected a boolean", "invalid_type")
+            )
+        elif not allow_must_understand_false and not must_understand:
+            problems.append(
+                ValidationProblem(
+                    ("must_understand",),
+                    "false is not supported at this extension point",
+                    "invalid_value",
+                )
+            )
     return problems
 
 

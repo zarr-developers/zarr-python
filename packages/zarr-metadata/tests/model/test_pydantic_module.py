@@ -65,7 +65,7 @@ def test_field_type_validates_and_dumps_canonically(
     model = adapter.validate_python(doc)
     assert type(model) is model_cls
     assert adapter.validate_python(model) is model
-    assert adapter.dump_python(model) == dict(model.to_json())
+    assert adapter.dump_python(model) == model.to_json()
 
 
 def test_core_instances_interoperate() -> None:
@@ -113,6 +113,15 @@ def test_json_roundtrip() -> None:
 
     manifest = Manifest.model_validate({"metadata": V3_ARRAY_DOC})
     assert Manifest.model_validate_json(manifest.model_dump_json()) == manifest
+
+
+def test_metadata_field_serializes_shorthand_and_false_object() -> None:
+    """The optional integration exposes the core model's canonical extension form."""
+    adapter = TypeAdapter(zmp.MetadataFieldV3)
+    assert adapter.dump_python(adapter.validate_python({"name": "bytes"})) == "bytes"
+    assert adapter.dump_python(
+        adapter.validate_python({"name": "optional", "must_understand": False})
+    ) == {"name": "optional", "must_understand": False}
 
 
 def test_core_package_does_not_import_pydantic() -> None:

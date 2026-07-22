@@ -115,7 +115,7 @@ ConsolidatedMetadataV2 = Annotated[
 MetadataFieldV3 = Annotated[
     InstanceOf[NamedConfigModelV3],
     BeforeValidator(_coerce_to(NamedConfigModelV3, NamedConfigModelV3.from_json)),
-    PlainSerializer(NamedConfigModelV3.to_json, return_type=dict),
+    PlainSerializer(NamedConfigModelV3.to_json, return_type=str | dict),
     WithJsonSchema(_FIELD_SCHEMA | {"title": "MetadataFieldV3"}),
 ]
 """Field type for one v3 metadata field (bare name string or name + configuration)."""

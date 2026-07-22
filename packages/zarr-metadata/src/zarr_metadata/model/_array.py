@@ -23,7 +23,7 @@ from zarr_metadata.model._validation import (
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata._common import JSONValue
+    from zarr_metadata._common import JSONValue, NamedConfigV3
     from zarr_metadata.v2.array import (
         ArrayDimensionSeparatorV2,
         ArrayMetadataV2,
@@ -46,31 +46,43 @@ ATTRIBUTES_STORE_KEY_V2: Final[AttributesStoreKeyV2] = ".zattrs"
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class NamedConfigModelV3:
-    """A v3 metadata field in normalized form: a name plus a configuration.
+    """A normalized v3 metadata field with its reader obligation.
 
-    This is the in-memory model of `MetadataV3` (a bare name string or a
-    `{name, configuration}` mapping): the bare-name and missing-configuration
-    forms normalize to an empty configuration.
+    Bare names and missing configurations normalize to an empty configuration.
+    Bare names and missing `must_understand` members normalize to the spec's
+    implicit `True` value.
     """
 
     name: str
     configuration: dict[str, JSONValue]
+    must_understand: bool = True
 
     def to_json(self) -> MetadataV3:
-        return {"name": self.name, "configuration": self.configuration}
+        if not self.configuration and self.must_understand:
+            return self.name
+        out: NamedConfigV3 = {"name": self.name}
+        if self.configuration:
+            out["configuration"] = self.configuration
+        if not self.must_understand:
+            out["must_understand"] = False
+        return out
 
     @classmethod
     def from_json(cls, data: object) -> NamedConfigModelV3:
         field = parse_metadata_field_v3(data)
         if isinstance(field, str):
-            return cls(name=field, configuration={})
+            return cls(name=field, configuration={}, must_understand=True)
         # Sound cast: parse_metadata_field_v3 checked the configuration is a
         # string-keyed mapping of JSON values; arrays_to_tuples only converts
         # lists to tuples within that shape.
         configuration = cast(
             "dict[str, JSONValue]", arrays_to_tuples(dict(field.get("configuration", {})))
         )
-        return cls(name=field["name"], configuration=configuration)
+        return cls(
+            name=field["name"],
+            configuration=configuration,
+            must_understand=field.get("must_understand", True),
+        )
 
 
 MetadataFieldModelV3: TypeAlias = NamedConfigModelV3

@@ -132,16 +132,22 @@ ZARR_TO_JSON_CASES = [
     ),
     Expect(
         NamedConfigModelV3(name="bytes", configuration={}),
-        {"name": "bytes", "configuration": {}},
-        id="without-configuration",
+        "bytes",
+        id="empty-configuration-shorthand",
     ),
 ]
 
 
 @pytest.mark.parametrize("case", ZARR_TO_JSON_CASES, ids=lambda c: c.id)
-def test_zarr_metadata_v3_to_json(case: Expect[NamedConfigModelV3, dict[str, object]]) -> None:
-    """NamedConfigModelV3.to_json emits the canonical object form."""
+def test_zarr_metadata_v3_to_json(case: Expect[NamedConfigModelV3, object]) -> None:
+    """NamedConfigModelV3.to_json emits the canonical extension form."""
     assert case.input.to_json() == case.output
+
+
+def test_zarr_metadata_v3_to_json_preserves_false_obligation() -> None:
+    """An empty optional extension stays an object so false is not lost."""
+    model = NamedConfigModelV3(name="optional", configuration={}, must_understand=False)
+    assert model.to_json() == {"name": "optional", "must_understand": False}
 
 
 # --- NamedConfigModelV3.from_json -----------------------------------------------
@@ -167,6 +173,12 @@ def test_zarr_metadata_v3_from_json(case: Expect[object, NamedConfigModelV3]) ->
     assert NamedConfigModelV3.from_json(case.input) == case.output
 
 
+def test_zarr_metadata_v3_from_json_preserves_false_obligation() -> None:
+    """Explicit false is represented on the normalized model."""
+    model = NamedConfigModelV3.from_json({"name": "optional", "must_understand": False})
+    assert model.must_understand is False
+
+
 # --- V3 baseline -----------------------------------------------------------
 
 
@@ -181,10 +193,10 @@ def test_v3_to_json_emits_canonical_document() -> None:
         "node_type": "array",
         "shape": (10,),
         "fill_value": 0,
-        "data_type": {"name": "int32", "configuration": {}},
+        "data_type": "int32",
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (10,)}},
-        "codecs": ({"name": "bytes", "configuration": {}},),
-        "chunk_key_encoding": {"name": "default", "configuration": {}},
+        "codecs": ("bytes",),
+        "chunk_key_encoding": "default",
     }
 
 
@@ -233,7 +245,7 @@ def test_v3_single_storage_transformer_included() -> None:
     out: dict[str, object] = dict(
         ArrayMetadataModelV3.create_default(storage_transformers=(st,)).to_json()
     )
-    assert out["storage_transformers"] == ({"name": "some_transformer", "configuration": {}},)
+    assert out["storage_transformers"] == ("some_transformer",)
 
 
 def test_v3_no_storage_transformers_omitted() -> None:
@@ -639,11 +651,31 @@ def test_v2_roundtrip_json_model_json() -> None:
 def test_v3_parser_accepts_bare_string_data_type() -> None:
     """V3 from_json accepts a bare-string data_type and re-serializes it canonically."""
     doc = ArrayMetadataModelV3.create_default().to_json()
-    doc["data_type"] = "int32"  # bare-string form, not canonical object form
+    doc["data_type"] = "int32"
     model = ArrayMetadataModelV3.from_json(doc)
-    # parses correctly, re-serializes to canonical object form
     assert model.data_type == NamedConfigModelV3(name="int32", configuration={})
-    assert model.to_json()["data_type"] == {"name": "int32", "configuration": {}}
+    assert model.to_json()["data_type"] == "int32"
+
+
+@pytest.mark.parametrize("name", ["bytes", "ANY string", "urn:example:codec"])
+def test_metadata_field_accepts_any_string_name(name: str) -> None:
+    """The structural layer checks the name type, not syntax or registration."""
+    assert validate_metadata_field_v3({"name": name}) == []
+
+
+@pytest.mark.parametrize("value", [0, 1, "false", None])
+def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
+    """must_understand is a JSON boolean, not a truthy scalar."""
+    problems = validate_metadata_field_v3({"name": "x", "must_understand": value})
+    assert [(problem.loc, problem.kind) for problem in problems] == [
+        (("must_understand",), "invalid_type")
+    ]
+
+
+def test_metadata_field_rejects_unknown_envelope_member() -> None:
+    """Unknown envelope keys cannot be silently discarded during normalization."""
+    problems = validate_metadata_field_v3({"name": "x", "typo": 1})
+    assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "invalid_value")]
 
 
 def test_v2_roundtrip_with_compressor_and_filters() -> None:
