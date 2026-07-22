@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import errno
+import os
 import pathlib
 import re
+from tempfile import gettempdir
 
 import numpy as np
 import pytest
@@ -164,7 +167,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
     path = tmp_path / "data"
-    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+    with _atomic_write(path, "wb", tmp_path, exclusive=exclusive) as f:
         f.write(b"abc")
     assert path.read_bytes() == b"abc"
     assert list(path.parent.iterdir()) == [path]  # no temp files
@@ -174,7 +177,7 @@ def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> Non
 def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> None:
     path = tmp_path / "data"
     with pytest.raises(RuntimeError):  # noqa: PT012
-        with _atomic_write(path, "wb", exclusive=exclusive) as f:
+        with _atomic_write(path, "wb", tmp_path, exclusive=exclusive) as f:
             f.write(b"a")
             raise RuntimeError
     assert not path.exists()
@@ -186,7 +189,7 @@ def test_atomic_write_non_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
     with path.open("wb") as f:
         f.write(b"xyz")
     assert path.read_bytes() == b"xyz"
-    with _atomic_write(path, "wb", exclusive=False) as f:
+    with _atomic_write(path, "wb", tmp_path, exclusive=False) as f:
         f.write(b"abc")
     assert path.read_bytes() == b"abc"
     assert list(path.parent.iterdir()) == [path]  # no temp files
@@ -198,7 +201,45 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
         f.write(b"xyz")
     assert path.read_bytes() == b"xyz"
     with pytest.raises(FileExistsError):
-        with _atomic_write(path, "wb", exclusive=True) as f:
+        with _atomic_write(path, "wb", tmp_path, exclusive=True) as f:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+def test_tmp_dir_arg(tmp_path: pathlib.Path) -> None:
+    store = LocalStore(tmp_path, tmp_dir=tmp_path / "scratch")
+    assert store._resolve_tmp_dir() == tmp_path / "scratch"
+
+
+def test_tmp_dir_from_config(tmp_path: pathlib.Path) -> None:
+    with zarr.config.set({"store.local.tmp_dir": str(tmp_path / "cfg")}):
+        store = LocalStore(tmp_path)
+        assert store._resolve_tmp_dir() == tmp_path / "cfg"
+
+
+def test_tmp_dir_default(tmp_path: pathlib.Path) -> None:
+    store = LocalStore(tmp_path)
+    assert store._resolve_tmp_dir() == pathlib.Path(gettempdir())
+
+
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_atomic_write_cross_device_raises(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, exclusive: bool
+) -> None:
+    def _raise_exdev(*args: object, **kwargs: object) -> None:
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    if exclusive:
+        monkeypatch.setattr("zarr.storage._local._safe_move", _raise_exdev)
+    else:
+        monkeypatch.setattr(os, "replace", _raise_exdev)
+
+    path = tmp_path / "data"
+    with pytest.raises(OSError, match="same filesystem") as excinfo:
+        with _atomic_write(path, "wb", tmp_path, exclusive=exclusive) as f:
+            f.write(b"abc")
+
+    assert excinfo.value.errno == errno.EXDEV  # errno preserved
+    assert not path.exists()  # target never got created
+    assert list(tmp_path.iterdir()) == []  # tmp cleans up
