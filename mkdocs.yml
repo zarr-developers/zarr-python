@@ -53,6 +53,7 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.codecs</code>': api/zarr/codecs.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.codecs.numcodecs</code>': api/zarr/codecs/numcodecs.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.config</code>': api/zarr/config.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.chunk_regions_initialized</code>': api/zarr/functions/chunk_regions_initialized.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.consolidate_metadata</code>': api/zarr/functions/consolidate_metadata.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create</code>': api/zarr/functions/create.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create_array</code>': api/zarr/functions/create_array.md
@@ -78,10 +79,13 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_group</code>': api/zarr/functions/open_group.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_like</code>': api/zarr/functions/open_like.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.print_debug_info</code>': api/zarr/functions/print_debug_info.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.read_regions</code>': api/zarr/functions/read_regions.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.regions_initialized</code>': api/zarr/functions/regions_initialized.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.registry</code>': api/zarr/registry.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save</code>': api/zarr/functions/save.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save_array</code>': api/zarr/functions/save_array.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save_group</code>': api/zarr/functions/save_group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.shards_initialized</code>': api/zarr/functions/shards_initialized.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.storage</code>': api/zarr/storage.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing</code>':
         - api/zarr/testing/index.md

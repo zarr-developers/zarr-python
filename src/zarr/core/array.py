@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from asyncio import gather
+from asyncio import Semaphore, as_completed, ensure_future, gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -147,7 +147,7 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Iterator
     from typing import Self
 
     import numpy.typing as npt
@@ -4014,19 +4014,316 @@ async def _shards_initialized(
     [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
-    store_contents = [
-        x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
+    # Thin wrapper over the public, strategy-aware entry point. The "list" strategy
+    # preserves this function's historical behavior (a single prefix listing).
+    return await shards_initialized(array, strategy="list")
+
+
+# When the array has at most this many possible shards, ``shards_initialized``
+# probes each key individually rather than listing the prefix. Probing avoids
+# paying for a prefix listing that may contain many unrelated objects, and is
+# cheap when there are few keys to check.
+_PROBE_THRESHOLD = 64
+
+
+async def shards_initialized(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> tuple[str, ...]:
+    """
+    Return the storage keys of the shards that have been persisted to the store.
+
+    This reports storage at the granularity of stored objects: for sharded arrays it
+    returns shard keys (the objects that actually exist in the store), and for unsharded
+    arrays it returns chunk keys. To turn these into array regions, use
+    [regions_initialized][zarr.regions_initialized].
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist.
+
+        - ``"list"`` issues a single ``store.list_prefix`` call and keeps the keys that
+          belong to this array's shard grid (ignoring metadata and any other objects
+          under the same prefix).
+        - ``"probe"`` checks the existence of each possible shard key individually and
+          concurrently. This avoids listing a prefix that may hold many unrelated
+          objects, and is faster when the array has few possible shards.
+        - ``"auto"`` uses ``"probe"`` when the array has at most a small number of
+          possible shards and ``"list"`` otherwise.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The storage keys of the populated shards (or chunks, when unsharded),
+        in chunk-grid order.
+
+    Notes
+    -----
+    This reports membership at the granularity of *stored objects* and does not
+    introspect the contents of a shard. For a sharded array, a shard is reported as
+    initialized if its object exists in the store, even if some (or all) of its inner
+    chunks were never written — those positions still read back as the fill value. In
+    other words, an "initialized" region may contain empty inner chunks. For unsharded
+    arrays there is one object per chunk, so no such ambiguity arises.
+
+    See Also
+    --------
+    regions_initialized : The array regions spanned by the populated shards.
+    read_regions : Read and decode a collection of array regions.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+
+    keys = list(_iter_shard_keys(array))
+
+    if strategy == "auto":
+        strategy = "probe" if len(keys) <= _PROBE_THRESHOLD else "list"
+
+    if strategy == "list":
+        # A single prefix listing, filtered to keys that belong to this array's shard
+        # grid. Non-chunk objects under the same prefix (metadata, etc.) are excluded by
+        # the intersection, handling prefixes that also hold unrelated objects.
+        contents = {
+            _relativize_path(path=key, prefix=array.store_path.path)
+            async for key in array.store_path.store.list_prefix(prefix=array.store_path.path)
+            # obstore can include a directory marker whose key matches the listed prefix;
+            # it is not an initialized shard and must be excluded before relativizing.
+            if array.store_path.path == "" or key != array.store_path.path
+        }
+        return tuple(key for key in keys if key in contents)
+    elif strategy == "probe":
+        # Per-key existence checks, concurrently. Preferable when the prefix may
+        # contain many unrelated objects, or when there are few keys to check.
+        present = await concurrent_map(
+            [(array.store_path / key,) for key in keys],
+            lambda store_path: store_path.exists(),
+            zarr_config.get("async.concurrency"),
+        )
+        return tuple(key for key, is_present in zip(keys, present, strict=True) if is_present)
+    else:
+        raise ValueError(
+            f"Unknown strategy {strategy!r}. Expected one of 'auto', 'list', or 'probe'."
+        )
+
+
+async def regions_initialized(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+) -> list[tuple[slice, ...]]:
+    """
+    Return the array regions spanned by the shards that have been persisted to the store.
+
+    This is [shards_initialized][zarr.shards_initialized] expressed as regions: it filters
+    the array's shard regions down to those whose shard is populated. The result is
+    suitable to pass directly to [read_regions][zarr.read_regions].
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist. See [shards_initialized][zarr.shards_initialized].
+
+    Returns
+    -------
+    list[tuple[slice, ...]]
+        The regions spanned by the populated shards, in chunk-grid order.
+
+    Notes
+    -----
+    Regions are reported at stored-object granularity: a sharded region may contain
+    empty inner chunks that were never written (they read back as the fill value). See
+    [shards_initialized][zarr.shards_initialized] for details.
+
+    See Also
+    --------
+    shards_initialized : The storage keys of the populated shards.
+    read_regions : Read and decode a collection of array regions.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+    initialized = frozenset(await shards_initialized(array, strategy=strategy))
+    # "regions that are initialized" is a filter over the array's shard regions, keyed on
+    # whether the corresponding shard key is populated.
+    return [
+        region
+        for region, key in zip(_iter_shard_regions(array), _iter_shard_keys(array), strict=True)
+        if key in initialized
     ]
-    store_contents_relative = [
-        _relativize_path(path=key, prefix=array.store_path.path)
-        for key in store_contents
-        # obstore can include a directory marker whose key matches the listed prefix;
-        # it is not an initialized shard and must be excluded before relativizing.
-        if array.store_path.path == "" or key != array.store_path.path
+
+
+async def read_regions(
+    array: AnyArray | AnyAsyncArray,
+    regions: Iterable[tuple[slice, ...]],
+    *,
+    concurrency: int | None = None,
+) -> AsyncIterator[tuple[tuple[slice, ...], NDArrayLikeOrScalar]]:
+    """
+    Concurrently read and decode a collection of array regions, yielding each
+    ``(region, data)`` pair as soon as its data is available.
+
+    Each yielded value pairs a region (a tuple of slices into the array) with the decoded
+    data for that region. The regions to read are supplied by the caller; pass the result
+    of [regions_initialized][zarr.regions_initialized] to read only the populated parts of
+    a sparse array without materializing the full array.
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to read from.
+    regions : iterable of tuple of slice
+        The regions to read. Each region is a tuple of slices, one per array dimension.
+    concurrency : int, optional
+        The maximum number of regions read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Yields
+    ------
+    tuple[tuple[slice, ...], NDArrayLikeOrScalar]
+        A region and its decoded data, in completion order (not necessarily the order
+        of ``regions``).
+
+    See Also
+    --------
+    regions_initialized : The array regions spanned by the populated shards.
+    shards_initialized : The storage keys of the populated shards.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+    if concurrency is None:
+        concurrency = zarr_config.get("async.concurrency")
+
+    semaphore = Semaphore(concurrency)
+
+    async def _read(
+        region: tuple[slice, ...],
+    ) -> tuple[tuple[slice, ...], NDArrayLikeOrScalar]:
+        async with semaphore:
+            return region, await array.getitem(region)
+
+    for future in as_completed([ensure_future(_read(region)) for region in regions]):
+        yield await future
+
+
+def _sharding_codec(array: AnyAsyncArray) -> Any:
+    """Return the array's top-level ``ShardingCodec`` instance, or ``None`` if the array
+    is not sharded."""
+    from zarr.codecs.sharding import ShardingCodec
+
+    codecs: tuple[Codec, ...] = getattr(array.metadata, "codecs", ())
+    if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        return codecs[0]
+    return None
+
+
+async def chunk_regions_initialized(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+    concurrency: int | None = None,
+) -> list[tuple[slice, ...]]:
+    """
+    Return the array regions spanned by the *inner chunks* that have been written.
+
+    Unlike [regions_initialized][zarr.regions_initialized], which reports at stored-object
+    (shard) granularity, this reports at chunk granularity: for a sharded array it looks
+    *inside* each populated shard — reading only the shard index, not the chunk data — and
+    reports the regions of the inner chunks that were actually written, skipping empty inner
+    chunks. For an unsharded array, stored objects already are chunks, so this is identical
+    to [regions_initialized][zarr.regions_initialized].
+
+    The cost scales with the number of *populated shards*: discovering them is a single
+    listing (see [shards_initialized][zarr.shards_initialized]), and each populated shard
+    then costs one small range read of its index (the chunk data is never fetched).
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist. See [shards_initialized][zarr.shards_initialized].
+    concurrency : int, optional
+        The maximum number of shard indexes read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Returns
+    -------
+    list[tuple[slice, ...]]
+        The regions spanned by the populated inner chunks, in chunk-grid order.
+
+    See Also
+    --------
+    regions_initialized : The array regions at stored-object (shard) granularity.
+    read_regions : Read and decode a collection of array regions.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+
+    sharding_codec = _sharding_codec(array)
+    if sharding_codec is None:
+        # No sharding: each stored object is a chunk, so chunk granularity == shard
+        # granularity. Reuse the cheap listing-based path verbatim.
+        return await regions_initialized(array, strategy=strategy)
+
+    if concurrency is None:
+        concurrency = zarr_config.get("async.concurrency")
+
+    # array.chunks is the inner-chunk shape when sharding; array.shards is the shard shape.
+    assert array.shards is not None  # guaranteed by sharding_codec is not None
+    chunks_per_shard = tuple(s // c for s, c in zip(array.shards, array.chunks, strict=True))
+    chunk_grid_shape = array._chunk_grid_shape
+
+    # 1. Discover populated shards (a single listing) and recover their grid coordinates.
+    populated_keys = frozenset(await shards_initialized(array, strategy=strategy))
+    populated_shard_coords = [
+        coord
+        for coord, key in zip(_iter_shard_coords(array), _iter_shard_keys(array), strict=True)
+        if key in populated_keys
     ]
-    return tuple(
-        chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
+
+    # 2. Read each populated shard's index (only) and expand its populated inner chunks to
+    #    global chunk coordinates. The shard data itself is never fetched.
+    async def _populated_chunk_coords(shard_coord: tuple[int, ...]) -> list[tuple[int, ...]]:
+        byte_getter = array.store_path / array.metadata.encode_chunk_key(shard_coord)
+        index = await sharding_codec._load_shard_index_maybe(byte_getter, chunks_per_shard)
+        if index is None:
+            return []
+        origin = tuple(s * cps for s, cps in zip(shard_coord, chunks_per_shard, strict=True))
+        coords: list[tuple[int, ...]] = []
+        for local in zip(
+            *(d.tolist() for d in np.nonzero(index.get_full_chunk_map())), strict=True
+        ):
+            coord = tuple(o + lo for o, lo in zip(origin, local, strict=True))
+            # Guard against an edge shard whose index references chunks past the array bounds.
+            if all(ci < gi for ci, gi in zip(coord, chunk_grid_shape, strict=True)):
+                coords.append(coord)
+        return coords
+
+    per_shard = await concurrent_map(
+        [(coord,) for coord in populated_shard_coords],
+        _populated_chunk_coords,
+        concurrency,
     )
+
+    # 3. Turn the populated chunk coordinates into array regions, in chunk-grid order.
+    chunk_shape = array.chunks
+    ndim = len(array.shape)
+    unit = (1,) * ndim
+    return [
+        next(
+            iter(
+                _iter_regions(
+                    array.shape, chunk_shape, origin=coord, selection_shape=unit, trim_excess=True
+                )
+            )
+        )
+        for coord in sorted({coord for coords in per_shard for coord in coords})
+    ]
 
 
 type FiltersLike = (
