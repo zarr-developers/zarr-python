@@ -13,6 +13,7 @@ __all__ = [
     "NegativeStepError",
     "NodeTypeValidationError",
     "UnstableSpecificationWarning",
+    "UnsupportedEngineError",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
     "ZarrFutureWarning",
@@ -154,4 +155,12 @@ class ArrayIndexError(IndexError): ...
 class ChunkNotFoundError(BaseZarrError):
     """
     Raised when a chunk that was expected to exist in storage was not retrieved successfully.
+    """
+
+
+class UnsupportedEngineError(ValueError):
+    """Raised when an array engine cannot serve the requested store or array.
+
+    Examples: a store the engine cannot translate, or metadata (e.g. Zarr v2)
+    the engine does not support. Raised at engine construction time.
     """
