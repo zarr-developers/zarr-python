@@ -1047,6 +1047,7 @@ _COORD_1D_CASES: list[Expect[CoordinateSelection, None]] = [
     Expect(input=[3, 25, 8, 17], output=None, id="out-of-order"),
     Expect(input=[1, 8, 15, 29], output=None, id="sorted"),
     Expect(input=[29, 15, 8, 1], output=None, id="reversed"),
+    Expect(input=np.array([29, 15, 8, 1], dtype=np.uint32), output=None, id="reversed-uint"),
     Expect(input=[2, 2, 8, 8], output=None, id="duplicates"),
     Expect(input=np.array([[2, 4], [6, 8]]), output=None, id="multi-dim"),
     # sorted-1D fast path (chunk_shape=(7,)): boundaries, contiguous runs, single chunk, full

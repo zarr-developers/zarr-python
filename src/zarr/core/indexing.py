@@ -1226,7 +1226,8 @@ class CoordinateIndexer(Indexer):
                 and coords.size > 0
                 and coords[0] >= 0
                 and coords[-1] < shape[0]
-                and bool((np.diff(coords) >= 0).all())  # sorted ascending -> grouped by chunk
+                and coords[0] <= coords[-1]
+                and bool((coords[:-1] <= coords[1:]).all())  # sorted -> grouped by chunk
             ):
                 size = g0.size
                 first = int(coords[0]) // size
