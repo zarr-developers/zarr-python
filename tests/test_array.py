@@ -45,7 +45,7 @@ from zarr.core.array import (
     default_serializer_v3,
 )
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
-from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, cpu, default_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     guess_chunks,
@@ -447,6 +447,8 @@ async def test_chunks_initialized(
     arr = zarr.create_array(
         store, name=path, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1"
     )
+    if path:
+        await store.set(path, cpu.Buffer.from_bytes(b""))
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_shard_keys()))
@@ -1684,7 +1686,7 @@ class TestCreateArray:
         store: Store, zarr_format: ZarrFormat, endianness: EndiannessStr
     ) -> None:
         """
-        Test that that endianness is correctly set when creating an array when not specifying a serializer
+        Test that endianness is correctly set when creating an array when not specifying a serializer.
         """
         dtype = Int16(endianness=endianness)
         arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)
@@ -1693,7 +1695,8 @@ class TestCreateArray:
         assert endianness_from_numpy_str(byte_order) == endianness  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+# The explicit id for b"a" avoids colliding with the auto-generated id for "a".
+@pytest.mark.parametrize("value", [1, 1.4, "a", pytest.param(b"a", id="a-bytes"), np.array(1)])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
@@ -1902,9 +1905,18 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
     [
         pytest.param(
             "fork",
-            marks=pytest.mark.skipif(
-                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
-            ),
+            marks=[
+                pytest.mark.skipif(
+                    sys.platform in ("win32", "darwin"),
+                    reason="fork not supported on Windows or OSX",
+                ),
+                # Python 3.15 deprecates fork() in multi-threaded processes, and zarr's
+                # sync event-loop thread is always running here. Fork-safety despite
+                # those threads is exactly what this test pins down, so keep running it.
+                pytest.mark.filterwarnings(
+                    r"ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning"
+                ),
+            ],
         ),
         "spawn",
         pytest.param(

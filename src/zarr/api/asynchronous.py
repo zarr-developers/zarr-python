@@ -114,6 +114,19 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
+def _warn_unimplemented_kwargs(kwargs: dict[str, Any]) -> None:
+    """
+    Emit a "not yet implemented" warning for each provided keyword argument that is not None.
+
+    ``kwargs`` maps a keyword argument name to its supplied value. The ``stacklevel`` is chosen
+    so the warning points at the caller of the public API function (the same location as an
+    inline ``warnings.warn(..., stacklevel=2)`` would).
+    """
+    for name, value in kwargs.items():
+        if value is not None:
+            warnings.warn(f"{name} is not yet implemented", ZarrRuntimeWarning, stacklevel=3)
+
+
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
@@ -140,6 +153,7 @@ class _LikeArgs(TypedDict):
     filters: NotRequired[tuple[Numcodec, ...] | None]
     compressor: NotRequired[CompressorLikev2]
     codecs: NotRequired[tuple[Codec, ...]]
+    fill_value: NotRequired[Any]
 
 
 def _like_args(a: ArrayLike) -> _LikeArgs:
@@ -157,6 +171,7 @@ def _like_args(a: ArrayLike) -> _LikeArgs:
         new["dtype"] = a.dtype
 
     if isinstance(a, AsyncArray | Array):
+        new["fill_value"] = a.metadata.fill_value
         if isinstance(a.metadata, ArrayV2Metadata):
             new["order"] = a.order
             new["compressor"] = a.metadata.compressor
@@ -300,17 +315,25 @@ async def load(
 
     See Also
     --------
-    save
+    save, open
 
     Notes
     -----
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
+
+    Unlike [`open`][zarr.open], which returns a lazy [`Array`][zarr.Array] or
+    [`Group`][zarr.Group] backed by the store, `load` eagerly reads the data and
+    returns it as an in-memory array (or a dict of arrays for a group).
+    The array type is NumPy by default, but follows the configured
+    buffer prototype (for example, CuPy for GPU use cases).
+    Use `open` when you want to read or write data incrementally without loading it
+    all into memory.
     """
 
     obj = await open(store=store, path=path, zarr_format=zarr_format)
     if isinstance(obj, AsyncArray):
-        return await obj.getitem(slice(None))
+        return await obj.getitem(Ellipsis)
     else:
         raise NotImplementedError("loading groups not yet supported")
 
@@ -353,6 +376,17 @@ async def open(
     -------
     z : array or group
         Return type depends on what exists in the given store.
+
+    See Also
+    --------
+    load
+
+    Notes
+    -----
+    `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
+    the store, so data is read and written incrementally. Use [`load`][zarr.load]
+    instead when you want the data eagerly read into an in-memory array (a
+    NumPy array by default).
     """
 
     if mode is None:
@@ -488,7 +522,7 @@ async def save_array(
         overwrite=overwrite,
         **kwargs,
     )
-    await new.setitem(slice(None), arr)
+    await new.setitem(Ellipsis, arr)
 
 
 async def save_group(
@@ -819,14 +853,14 @@ async def open_group(
         The new group.
     """
 
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
+    _warn_unimplemented_kwargs(
+        {
+            "cache_attrs": cache_attrs,
+            "synchronizer": synchronizer,
+            "meta_array": meta_array,
+            "chunk_store": chunk_store,
+        }
+    )
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
@@ -1016,20 +1050,17 @@ async def create(
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if cache_metadata is not None:
-        warnings.warn("cache_metadata is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if object_codec is not None:
-        warnings.warn("object_codec is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if read_only is not None:
-        warnings.warn("read_only is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
+    _warn_unimplemented_kwargs(
+        {
+            "synchronizer": synchronizer,
+            "chunk_store": chunk_store,
+            "cache_metadata": cache_metadata,
+            "cache_attrs": cache_attrs,
+            "object_codec": object_codec,
+            "read_only": read_only,
+            "meta_array": meta_array,
+        }
+    )
 
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
@@ -1117,8 +1148,6 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     and these are not guaranteed to be stable from one access to the next.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1161,8 +1190,6 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
         The new array.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1200,7 +1227,10 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_args = _like_args(a)
+    # `ones` supplies its own fill_value, so drop any inherited from `a`.
+    like_args.pop("fill_value", None)
+    like_kwargs = like_args | kwargs
     return await ones(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1276,8 +1306,6 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The opened array.
     """
     like_kwargs = _like_args(a) | kwargs
-    if isinstance(a, (AsyncArray | Array)):
-        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1315,5 +1343,8 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_args = _like_args(a)
+    # `zeros` supplies its own fill_value, so drop any inherited from `a`.
+    like_args.pop("fill_value", None)
+    like_kwargs = like_args | kwargs
     return await zeros(**like_kwargs)  # type: ignore[arg-type]

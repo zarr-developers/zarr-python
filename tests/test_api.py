@@ -396,6 +396,22 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
         assert group.nmembers() == n_args + n_kwargs
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        np.array(42, dtype=np.int64),
+        np.array("teststr", dtype=np.bytes_),
+    ],
+)
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+def test_group_setitem_loads_scalar_arrays(sync_store: Store, data: np.ndarray) -> None:
+    root = zarr.open_group(store=sync_store)
+    root["test"] = data
+
+    assert_array_equal(root["test"][...], data)
+    assert_array_equal(zarr.load(store=sync_store, path="test"), data)
+
+
 def test_save_errors() -> None:
     with pytest.raises(ValueError, match="at least one array must be provided"):
         # no arrays provided

@@ -16,6 +16,12 @@ migrate your code from version 2 to version 3. If we have missed anything, pleas
 open a [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/new)
 so we can improve this guide.
 
+!!! tip
+    This page is about migrating your *code* from the Zarr-Python 2 API to the
+    Zarr-Python 3 API. If you want to migrate the *metadata* of stored data from
+    Zarr format 2 to Zarr format 3, see the `zarr migrate` command described in
+    the [command-line interface documentation](cli.md).
+
 ## Compatibility target
 
 The goals described above necessitated some breaking changes to the API (hence the
@@ -36,34 +42,40 @@ the following actions in order:
    will be compatible in Zarr-Python 3. However, the following breaking API changes are
    planned:
 
-   - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
-     directly from `numcodecs`:
+    - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
+      directly from `numcodecs`:
 
-     ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
-     from numcodecs import Blosc
-     # instead of:
-     # from zarr import Blosc
-     ```
+        ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
+        from numcodecs import Blosc
+        # instead of:
+        # from zarr import Blosc
+        ```
 
-   - The `zarr.v3_api_available` feature flag is being removed. In Zarr-Python 3
-     the v3 API is always available, so you shouldn't need to use this flag.
-   - The following internal modules are being removed or significantly changed. If
-     your application relies on imports from any of the below modules, you will need
-     to either a) modify your application to no longer rely on these imports or b)
-     vendor the parts of the specific modules that you need.
+    - The `zarr.v3_api_available` feature flag is being removed. In Zarr-Python 3
+      the v3 API is always available, so you shouldn't need to use this flag.
+    - `zarr.errors` has been consolidated. Several exception classes from
+      Zarr-Python 2 (such as `zarr.errors.PathNotFoundError`) have been removed
+      or replaced. For example, missing nodes now raise `zarr.errors.NodeNotFoundError`
+      (which subclasses both `BaseZarrError` and `FileNotFoundError`) instead of
+      `zarr.errors.PathNotFoundError`. Review any code that catches exceptions
+      from `zarr.errors` after migrating.
+    - The following internal modules are being removed or significantly changed. If
+      your application relies on imports from any of the below modules, you will need
+      to either a) modify your application to no longer rely on these imports or b)
+      vendor the parts of the specific modules that you need.
 
-     * `zarr.attrs` has gone, with no replacement
-     * `zarr.codecs` has changed, see "Codecs" section below for more information
-     * `zarr.context` has gone, with no replacement
-     * `zarr.core` remains but should be considered private API
-     * `zarr.hierarchy` has gone, with no replacement (use `zarr.Group` inplace of `zarr.hierarchy.Group`)
-     * `zarr.indexing` has gone, with no replacement
-     * `zarr.meta` has gone, with no replacement
-     * `zarr.meta_v1` has gone, with no replacement
-     * `zarr.sync` has gone, with no replacement
-     * `zarr.types` has gone, with no replacement
-     * `zarr.util` has gone, with no replacement
-     * `zarr.n5` has gone, see below for an alternative N5 options
+        * `zarr.attrs` has gone, with no replacement
+        * `zarr.codecs` has changed, see "Codecs" section below for more information
+        * `zarr.context` has gone, with no replacement
+        * `zarr.core` remains but should be considered private API
+        * `zarr.hierarchy` has gone, with no replacement (use `zarr.Group` in place of `zarr.hierarchy.Group`)
+        * `zarr.indexing` has gone, with no replacement
+        * `zarr.meta` has gone, with no replacement
+        * `zarr.meta_v1` has gone, with no replacement
+        * `zarr.sync` has gone, with no replacement
+        * `zarr.types` has gone, with no replacement
+        * `zarr.util` has gone, with no replacement
+        * `zarr.n5` has gone, see below for an alternative N5 option
 
 3. Test that your package works with version 3.
 4. Update the pin to include `zarr>=3,<4`.
@@ -71,8 +83,9 @@ the following actions in order:
 ## Zarr-Python 2 support window
 
 Zarr-Python 2.x is still available, though we recommend migrating to Zarr-Python 3 for
-its performance improvements and new features. Security and bug fixes will be made to
-the 2.x series for at least six months following the first Zarr-Python 3 release.
+its performance improvements and new features. Security and bug fixes were made to
+the 2.x series for six months following the first Zarr-Python 3 release (January 2025);
+the 2.x series is no longer actively maintained.
 If you need to use the latest Zarr-Python 2 release, you can install it with:
 
 ```console
@@ -110,8 +123,9 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 2. The h5py compatibility methods `create_dataset` and `require_dataset` have been removed.
    Use the following replacements:
 
-   - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
-   - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
+    - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
+    - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
+
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
 4. The `zarr.storage.init_group` low-level helper function has been removed. Use
@@ -151,11 +165,9 @@ The following stores have been renamed or changed:
 | `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
 | `FSStore`          | [`zarr.storage.FsspecStore`][]         |
 | `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
-| `zarr.
-
 
 A number of deprecated stores were also removed.
-See issue #1274 for more details on the removal of these stores.
+See [issue #1274](https://github.com/zarr-developers/zarr-python/issues/1274) for more details on the removal of these stores.
 
 - `N5Store` - see https://github.com/zarr-developers/n5py for an alternative interface to
   N5 formatted data.
@@ -169,7 +181,7 @@ See issue #1274 for more details on the removal of these stores.
 
 The latter five stores in this list do not have an equivalent in Zarr-Python 3.
 If you are interested in developing a custom store that targets these backends, see
-[developing custom stores](storage.md/#developing-custom-stores) or open an
+[developing custom stores](storage.md#developing-custom-stores) or open an
 [issue](https://github.com/zarr-developers/zarr-python/issues) to discuss your use case.
 
 ### Codecs
@@ -199,23 +211,21 @@ When installing using `pip`:
   (e.g. [`zarr.create`][], [`zarr.open`][], [`zarr.group`][], [`zarr.array`][]) has
   been removed. Use `zarr_format` instead.
 
-## 🚧 Work in Progress 🚧
+## Unimplemented Zarr-Python 2 features
 
-Zarr-Python 3 is still under active development, and is not yet fully complete.
-The following list summarizes areas of the codebase that we expect to build out
-after the 3.0.0 release. If features listed below are important to your use case
+A few features of Zarr-Python 2 remain unimplemented in Zarr-Python 3.
+If any of the features listed below are important to your use case
 of Zarr-Python, please open (or comment on) a
 [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/new).
 
-The following functions / methods have not been ported to Zarr-Python 3 yet:
+The following functions / methods have not been ported to Zarr-Python 3:
 
 - `zarr.copy` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 - `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 - `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
-- `zarr.Group.move` ([issue #2108](https://github.com/zarr-developers/zarr-python/issues/2108))
 
 The following features (corresponding to function arguments to functions in
-  `zarr`) have not been ported to Zarr-Python 3 yet. Using these features
+  `zarr`) have not been ported to Zarr-Python 3. Using these features
   will raise a warning or a `NotImplementedError`:
 
 - `cache_attrs`
@@ -224,10 +234,9 @@ The following features (corresponding to function arguments to functions in
 - `meta_array`
 - `object_codec` ([issue #2617](https://github.com/zarr-developers/zarr-python/issues/2617))
 - `synchronizer` ([issue #1596](https://github.com/zarr-developers/zarr-python/issues/1596))
-- `dimension_separator`
 
 The following features that were supported by Zarr-Python 2 have not been ported
-  to Zarr-Python 3 yet:
+  to Zarr-Python 3:
 
 - Object dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
 - Ragged arrays ([issue #2618](https://github.com/zarr-developers/zarr-python/issues/2618))

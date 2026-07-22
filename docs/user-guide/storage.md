@@ -18,13 +18,13 @@ being created automatically:
 ```python exec="true" session="storage" source="above" result="ansi"
 import zarr
 
-# Implicitly create a writable LocalStore
+# Implicitly creates a writable LocalStore
 group = zarr.create_group(store='data/foo/bar')
 print(group)
 ```
 
 ```python exec="true" session="storage" source="above" result="ansi"
-# Implicitly create a read-only FsspecStore
+# Implicitly creates a read-only FsspecStore
 # Note: requires s3fs to be installed
 group = zarr.open_group(
    store='s3://noaa-nwm-retro-v2-zarr-pds',
@@ -41,17 +41,21 @@ group = zarr.create_group(store=data)
 print(group)
 ```
 
+<!-- markdownlint-disable-next-line MD042 -- empty link is an intentional MkDocs anchor target -->
 [](){#user-guide-store-like}
+
 ### StoreLike
 
 `StoreLike` values can be:
 
 - a `Path` or string indicating a location on the local file system.
   This will create a [local store](#local-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    from pathlib import Path
    group = zarr.open_group(store=Path('data/foo/bar'))
@@ -59,6 +63,7 @@ print(group)
    ```
 
 - an FSSpec URI string, indicating a [remote store](#remote-store) location:
+
    ```python exec="true" session="storage" source="above" result="ansi"
    # Note: requires s3fs to be installed
    group = zarr.open_group(
@@ -70,10 +75,12 @@ print(group)
    ```
 
 - an empty dictionary or None, which will create a new [memory store](#memory-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store={})
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store=None)
    print(group)
@@ -138,24 +145,24 @@ print(group)
 ```
 
 The type of filesystem (e.g. S3, https, etc..) is inferred from the scheme of the url (e.g. s3 for "**s3**://noaa-nwm-retro-v2-zarr-pds").
-In case a specific filesystem is needed, one can explicitly create it. For example to create an S3 filesystem:
+In case a specific filesystem is needed, one can explicitly create it. For example to create an S3 filesystem
+(note that the filesystem must be created with `asynchronous=True`):
 
 ```python exec="true" session="storage" source="above" result="ansi"
 # Note: requires s3fs to be installed
 import fsspec
-fs = fsspec.filesystem(
-   's3', anon=True, asynchronous=True,
-   client_kwargs={'endpoint_url': "https://noaa-nwm-retro-v2-zarr-pds.s3.amazonaws.com"}
-)
-store = zarr.storage.FsspecStore(fs)
+fs = fsspec.filesystem('s3', anon=True, asynchronous=True)
+store = zarr.storage.FsspecStore(fs, path='noaa-nwm-retro-v2-zarr-pds', read_only=True)
 print(store)
 ```
 
+When using an S3-compatible service other than AWS, pass the service endpoint to the
+filesystem via `client_kwargs={'endpoint_url': 'https://...'}`.
 
 ### Memory Store
 
-The [`zarr.storage.MemoryStore`][] is an in-memory store that allows for serialization of
-Zarr data (metadata and chunks) to a dictionary:
+The [`zarr.storage.MemoryStore`][] stores Zarr data (metadata and chunks) in an
+in-memory dictionary:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 data = {}
@@ -199,3 +206,5 @@ print(group.info)
 Zarr-Python [`zarr.abc.store.Store`][] API is meant to be extended. The Store Abstract Base
 Class includes all of the methods needed to be a fully operational store in Zarr Python.
 Zarr also provides a test harness for custom stores: [`zarr.testing.store.StoreTests`][].
+See the [Custom stores](extending.md#custom-stores) section of the extending guide for
+more on implementing your own store.

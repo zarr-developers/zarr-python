@@ -4,13 +4,20 @@ Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
 support a similar interface.
 
-To create a group, use the [`zarr.group`][] function:
+To create a group, use the [`zarr.create_group`][] function:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 import zarr
 root = zarr.create_group(store="memory://groups-demo")
 print(root)
 ```
+
+Zarr-Python provides three related functions for making groups:
+[`zarr.create_group`][] creates a new group; [`zarr.open_group`][] creates or
+re-opens a group depending on its `mode` argument (see below); and
+[`zarr.group`][], which is kept for compatibility with Zarr-Python 2, is
+equivalent to calling [`zarr.open_group`][] with `mode='a'` (or `mode='w'`
+when `overwrite=True`).
 
 Groups have a similar API to the Group class from [h5py](https://www.h5py.org/). For example, groups can contain other groups:
 
@@ -26,7 +33,8 @@ z1 = bar.create_array(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dty
 print(z1)
 ```
 
-Members of a group can be accessed via the suffix notation, e.g.:
+Members of a group can be accessed with square-bracket item access, like a
+Python `dict`, e.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 print(root['foo'])
@@ -66,10 +74,46 @@ print(z)
 
 For more information on groups see the [`zarr.Group` API docs](../api/zarr/group.md).
 
-## Batch Group Creation
+## Exploring group contents
+
+Groups also support a dict-like interface for enumerating their contents. The
+[`zarr.Group.keys`][] method iterates over member names, and the `in` operator
+tests for membership:
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(list(root.keys()))
+print('foo' in root)
+```
+
+The [`zarr.Group.members`][] method returns `(name, member)` pairs for the
+arrays and groups contained in a group:
+
+```python exec="true" session="groups" source="above" result="ansi"
+for name, member in root.members():
+    print(name, member)
+```
+
+By default only immediate members are returned. Pass `max_depth=None` to
+recursively traverse the whole hierarchy below a group:
+
+```python exec="true" session="groups" source="above" result="ansi"
+for name, member in root.members(max_depth=None):
+    print(name, member)
+```
+
+Members can be deleted with the `del` operator, which removes the member's
+metadata and data from the store:
+
+```python exec="true" session="groups" source="above" result="ansi"
+del root['foo/bar/baz']
+for name, member in root.members(max_depth=None):
+    print(name, member)
+```
+
+## Batch group creation
 
 You can also create multiple groups concurrently with a single function call. [`zarr.create_hierarchy`][] takes
-a [`zarr Storage`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
+a [`Store`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
 writes metadata documents to storage:
 
 ```python exec="true" session="groups" source="above" result="ansi"
@@ -130,4 +174,3 @@ Groups also have the [`zarr.Group.tree`][] method, e.g.:
 ```python exec="true" session="groups" source="above" result="ansi"
 print(root.tree())
 ```
-
