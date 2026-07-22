@@ -3875,7 +3875,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         selection : tuple
             An integer (coordinate) array for each dimension of the array.
         out : NDBuffer, optional
-            If given, load the selected data directly into this buffer.
+            If given, load the selected data directly into this buffer. The expected
+            shape of `out` currently differs between eager arrays and lazy views:
+            on an ordinary (identity) array `out` must be a flat buffer of shape
+            `(n,)`, where `n` is the number of selected points; on a lazy view `out`
+            must have the broadcast selection shape (the shape the coordinate arrays
+            broadcast to). The broadcast-shape contract is the long-term direction;
+            the flat contract on eager arrays is retained for backwards
+            compatibility and is expected to be aligned to it in a future release.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
