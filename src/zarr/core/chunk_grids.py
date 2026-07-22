@@ -718,17 +718,23 @@ def _guess_regular_chunks(
 
 
 def normalize_chunks_1d(
-    chunks: int | Iterable[object], span: int
+    chunks: int | Iterable[object] | None, span: int
 ) -> np.ndarray[tuple[int], np.dtype[np.int64]]:
     """
     Normalize a one-dimensional chunk specification into a 1D int64 array of
     chunk sizes that cover the span.
 
-    `-1` means "one chunk covering the entire span."
+    `-1` means "one chunk covering the entire span." `None` is rejected with
+    an informative error directing the user to `-1`.
     For an integer chunk size, all chunks are uniform — the last chunk may
     overhang the span. The actual data extent of each chunk is determined
     by the chunk grid at runtime, not by this function.
     """
+    if chunks is None:
+        raise ValueError(
+            "None is not a valid chunk size for a dimension. "
+            "Use -1 for a single chunk covering the full extent of an axis."
+        )
     if chunks == -1:
         return np.array([span], dtype=np.int64)
     if isinstance(chunks, int):
@@ -779,7 +785,8 @@ def normalize_chunks_nd(
     """
     if chunks is None or chunks is True:
         raise ValueError(
-            f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
+            f'{chunks!r} is not a valid chunk input. Use chunks="auto" or omit the chunks '
+            "argument for automatic chunking, or pass an int / tuple of ints."
         )
 
     # handle no chunking
