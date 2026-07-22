@@ -449,13 +449,24 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
         if key in doc:
-            problems.extend(_prefix(key, validate_metadata_field_v3(doc[key])))
+            problems.extend(
+                _prefix(
+                    key,
+                    validate_metadata_field_v3(doc[key], allow_must_understand_false=False),
+                )
+            )
     for key in ("codecs", "storage_transformers"):
         if key in doc:
             entries = doc[key]
             if isinstance(entries, str) or not isinstance(entries, Sequence):
                 problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
+                if key == "codecs" and len(entries) == 0:
+                    problems.append(
+                        ValidationProblem(
+                            ("codecs",), "expected at least one codec", "invalid_value"
+                        )
+                    )
                 for index, entry in enumerate(cast("Sequence[object]", entries)):
                     problems.extend(_prefix(key, _prefix(index, validate_metadata_field_v3(entry))))
     if "attributes" in doc:

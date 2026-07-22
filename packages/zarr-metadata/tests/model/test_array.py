@@ -678,6 +678,33 @@ def test_metadata_field_rejects_unknown_envelope_member() -> None:
     assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "invalid_value")]
 
 
+@pytest.mark.parametrize("field", ["codecs", "storage_transformers"])
+def test_optional_extension_points_allow_must_understand_false(field: str) -> None:
+    """Codecs and storage transformers may be explicitly ignorable."""
+    doc: dict[str, object] = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc[field] = ({"name": "optional", "must_understand": False},)
+    assert validate_array_metadata_v3(doc) == []
+
+
+@pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
+def test_required_extension_points_reject_must_understand_false(field: str) -> None:
+    """Core extension points needed to locate or decode chunks cannot be ignored."""
+    doc: dict[str, object] = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc[field] = {"name": "optional", "must_understand": False}
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
+        ((field, "must_understand"), "invalid_value")
+    ]
+
+
+def test_v3_codecs_cannot_be_empty() -> None:
+    """The core document requires at least one array-to-bytes codec."""
+    doc: dict[str, object] = dict(ArrayMetadataModelV3.create_default().to_json())
+    doc["codecs"] = ()
+    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
+        (("codecs",), "invalid_value")
+    ]
+
+
 def test_v2_roundtrip_with_compressor_and_filters() -> None:
     # Non-None compressor/filters must round-trip; extra assertion on .compressor.
     """A v2 model with non-None compressor and filters round-trips."""
