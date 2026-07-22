@@ -11,6 +11,7 @@ from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import product
 from zarr.core.indexing import BasicIndexer
 from zarr.core.sync import sync
+from zarr.errors import ChunkNotFoundError
 from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
@@ -88,7 +89,8 @@ class DefaultAsyncArrayEngine:
         if product(indexer.shape) > 0:
             _config = self._v2_order_config()
             regular_chunk_spec = self._regular_chunk_spec(_config, prototype)
-            await self._codec_pipeline.read(
+            indexed_chunks = list(indexer)
+            results = await self._codec_pipeline.read(
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -101,11 +103,26 @@ class DefaultAsyncArrayEngine:
                         out_selection,
                         is_complete_chunk,
                     )
-                    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+                    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexed_chunks
                 ],
                 out_buffer,
                 drop_axes=indexer.drop_axes,
             )
+            if _config.read_missing_chunks is False:
+                missing_info = []
+                for i, result in enumerate(results):
+                    if result["status"] == "missing":
+                        coords = indexed_chunks[i][0]
+                        key = self.metadata.encode_chunk_key(coords)
+                        missing_info.append(f"  chunk '{key}' (grid position {coords})")
+                if missing_info:
+                    chunks_str = "\n".join(missing_info)
+                    raise ChunkNotFoundError(
+                        f"{len(missing_info)} chunk(s) not found in store '{self.store_path}'.\n"
+                        f"Set the 'array.read_missing_chunks' config to True to fill "
+                        f"missing chunks with the fill value.\n"
+                        f"Missing chunks:\n{chunks_str}"
+                    )
         return out_buffer.as_ndarray_like()
 
     async def write_selection(

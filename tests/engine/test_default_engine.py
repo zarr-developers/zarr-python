@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 
 import zarr
 from zarr.abc.engine import AsyncArrayEngine, Region
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.engine import DefaultArrayEngine, DefaultAsyncArrayEngine
 from zarr.core.sync import sync
+from zarr.errors import ChunkNotFoundError
 from zarr.storage import MemoryStore
 
 
@@ -62,3 +64,25 @@ def test_with_metadata_rebinds() -> None:
     )
     new_meta = z.async_array.metadata
     assert eng.with_metadata(new_meta) is not eng
+
+
+def test_read_missing_chunks_false_raises() -> None:
+    z = zarr.create_array(
+        MemoryStore(),
+        shape=(6,),
+        chunks=(2,),
+        dtype="int16",
+        config={"read_missing_chunks": False},
+    )
+    z[0:2] = np.arange(2, dtype="int16")  # chunks 1 and 2 never written
+    eng = DefaultAsyncArrayEngine(
+        store_path=z.async_array.store_path,
+        metadata=z.async_array.metadata,
+        config=z.async_array.config,
+    )
+    with pytest.raises(ChunkNotFoundError):
+        sync(
+            eng.read_selection(
+                Region(start=(0,), end_exclusive=(6,)), prototype=default_buffer_prototype()
+            )
+        )
