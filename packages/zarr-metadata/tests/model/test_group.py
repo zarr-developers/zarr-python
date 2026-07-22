@@ -58,6 +58,14 @@ def test_group_v3_extra_fields_roundtrip() -> None:
     assert model.to_json() == doc
 
 
+def test_group_v3_json_extra_field_roundtrips_as_must_understand() -> None:
+    """A non-object extra field is preserved and implicitly requires understanding."""
+    doc = {"zarr_format": 3, "node_type": "group", "ext": [1, 2]}
+    model = GroupMetadataModelV3.from_json(doc)
+    assert model.to_json()["ext"] == (1, 2)
+    assert model.must_understand_fields == {"ext": (1, 2)}
+
+
 def test_group_v3_extra_fields_overlap_rejected() -> None:
     """Constructing a v3 group model with extra_fields shadowing a standard key raises."""
     with pytest.raises(ValueError, match="Extra fields"):

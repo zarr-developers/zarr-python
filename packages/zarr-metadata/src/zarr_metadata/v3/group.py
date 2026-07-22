@@ -16,7 +16,7 @@ class GroupMetadataV3(TypedDict, extra_items=ExtensionFieldV3):
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
 
-    Extra keys are permitted if they conform to `ExtensionFieldV3`.
+    Extra keys may contain arbitrary JSON values.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadata
     """

@@ -356,14 +356,9 @@ def _is_canonical_array_metadata_v3(value: object) -> bool:
         _is_canonical_metadata_field_v3(item) for item in cast("tuple[object, ...]", doc["codecs"])
     ):
         return False
-    if "storage_transformers" in doc and not all(
+    return "storage_transformers" not in doc or all(
         _is_canonical_metadata_field_v3(item)
         for item in cast("tuple[object, ...]", doc["storage_transformers"])
-    ):
-        return False
-    return all(
-        key in ARRAY_METADATA_STANDARD_KEYS_V3 or isinstance(item, dict)
-        for key, item in doc.items()
     )
 
 

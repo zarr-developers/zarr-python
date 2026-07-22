@@ -1331,6 +1331,8 @@ def test_v3_json_extension_without_waiver_is_preserved_as_must_understand() -> N
     """A JSON extension without an explicit false waiver remains must-understand."""
     doc = dict(ArrayMetadataModelV3.create_default().to_json())
     doc["ext"] = 1
+    parsed = parse_array_metadata_v3(doc)
+    assert is_array_metadata_v3(parsed)
     model = ArrayMetadataModelV3.from_json(doc)
     assert model.extra_fields["ext"] == 1
     assert model.must_understand_fields == {"ext": 1}
