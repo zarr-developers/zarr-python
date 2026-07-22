@@ -28,8 +28,8 @@ class NamedConfigV3(TypedDict):
     """
     Externally-tagged union member for a metadata field.
 
-    The `configuration` mapping holds arbitrary JSON-encodable values;
-    it is typed as `Mapping[str, JSONValue]`.
+    The optional `configuration` mapping holds arbitrary JSON-encodable
+    values. `must_understand` is implicitly true when absent.
     """
 
     name: str

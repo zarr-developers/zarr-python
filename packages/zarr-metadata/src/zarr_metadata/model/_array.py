@@ -91,9 +91,10 @@ MetadataFieldModelV3: TypeAlias = NamedConfigModelV3
 This is the role-named alias for annotation positions: model fields and
 consumer signatures should say `MetadataFieldModelV3` (the logical meaning)
 rather than `NamedConfigModelV3` (the serialized form the field currently
-takes). Today every metadata field normalizes to a named configuration, so
+takes). Today every metadata field normalizes to a named configuration plus
+its reader obligation, so
 the alias is exactly `NamedConfigModelV3`; if a future spec revision adds a
-field form that cannot be normalized to name + configuration, this alias
+field form that cannot be normalized to those values, this alias
 widens to a union and annotation sites do not change. Mirrors the raw-layer
 split between `NamedConfigV3` (shape) and `MetadataV3` (field union).
 """
@@ -156,12 +157,13 @@ class ArrayMetadataModelV3Partial(TypedDict, total=False):
 class ArrayMetadataModelV3:
     """In-memory model of a v3 array metadata document.
 
-    A canonical, lossless representation of the `zarr.json` content for an
+    A canonical, semantically lossless representation of the `zarr.json` content for an
     array. Extension points (`data_type`, `chunk_grid`, `chunk_key_encoding`,
     `codecs`, `storage_transformers`) are held as `MetadataFieldModelV3`
-    values (currently always `NamedConfigModelV3` name + configuration pairs)
-    and are never interpreted; `fill_value` is held
-    verbatim in its JSON form.
+    values (currently `NamedConfigModelV3` name, configuration, and obligation
+    records) and are never interpreted; `fill_value` is held verbatim in its
+    JSON form. Equivalent extension spellings normalize to shorthand strings
+    when configuration is empty and understanding is required.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)

@@ -9,7 +9,7 @@ from zarr_metadata._common import NamedConfigV3
 
 MetadataV3 = str | NamedConfigV3
 """The JSON shape of any v3 metadata extension-point entry: either a bare
-short-hand name string or a `{name, configuration}` envelope.
+short-hand name string or a `{name, configuration, must_understand}` envelope.
 
 Used for `data_type`, `chunk_grid`, `chunk_key_encoding`, individual
 codec entries, and `storage_transformers` in v3 array metadata, and for

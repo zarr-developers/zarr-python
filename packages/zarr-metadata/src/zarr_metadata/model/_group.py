@@ -131,10 +131,7 @@ class GroupMetadataModelV3:
         if len(self.attributes) > 0:
             out["attributes"] = self.attributes
         if self.consolidated_metadata is not UNSET:
-            # The consolidated-metadata shape ({kind, must_understand, metadata},
-            # no `name`) predates the strict v3.1 extension-field rules, so it is
-            # not assignable to `ExtensionFieldV3`; see the discussion on
-            # `zarr_metadata.v3.consolidated`.
+            # Consolidated metadata is a known non-core top-level JSON field.
             out[CONSOLIDATED_METADATA_KEY_V3] = cast(
                 "ExtensionFieldV3", self.consolidated_metadata.to_json()
             )
@@ -145,8 +142,7 @@ class GroupMetadataModelV3:
     @classmethod
     def from_json(cls, data: object) -> GroupMetadataModelV3:
         parsed = parse_group_metadata_v3(arrays_to_tuples(data))
-        # Cast to object: the TypedDict's extra_items type does not admit null,
-        # but wild documents (historical zarr-python) contain it.
+        # Cast for narrowing across standard and arbitrary extra TypedDict items.
         consolidated_raw = cast("object", parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET))
         consolidated: ConsolidatedMetadataModelV3 | UNSET
         if consolidated_raw is UNSET or consolidated_raw is None:

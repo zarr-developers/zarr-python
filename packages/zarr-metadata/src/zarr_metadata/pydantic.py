@@ -118,7 +118,7 @@ MetadataFieldV3 = Annotated[
     PlainSerializer(NamedConfigModelV3.to_json, return_type=str | dict),
     WithJsonSchema(_FIELD_SCHEMA | {"title": "MetadataFieldV3"}),
 ]
-"""Field type for one v3 metadata field (bare name string or name + configuration)."""
+"""Field type for one normalized v3 metadata extension envelope."""
 
 __all__ = [
     "ArrayMetadataV2",

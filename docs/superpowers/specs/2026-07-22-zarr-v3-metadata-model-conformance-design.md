@@ -1,6 +1,6 @@
 # Design: Zarr v3 metadata model conformance
 
-**Status:** Approved design; implementation pending.
+**Status:** Approved and implemented.
 **Scope:** `packages/zarr-metadata`, principally the raw v3 metadata types,
 the immutable model layer, and their validators and tests.
 **Normative authority:** Zarr core protocol v3.1. The behavior of zarrs and
@@ -88,21 +88,21 @@ during normalization.
 - `must_understand: bool`, normalized to `True` when absent or when the input
   is a shorthand string.
 
-`to_json()` will continue emitting the canonical object form with a
-configuration mapping. It will omit `must_understand` when true and emit
-`"must_understand": false` when false. Thus the model is semantically
-lossless, but deliberately not spelling-preserving.
+`to_json()` will use one field-independent canonicalization rule. When the
+configuration is empty and `must_understand` is true, it emits the shorthand
+name string. Otherwise it emits an object, omitting `configuration` when empty
+and omitting `must_understand` when true. Thus the model is semantically
+lossless, but deliberately not spelling-preserving. The same rule naturally
+emits core data types as strings without giving the data-type field a separate
+model or serializer.
 
 ### Name validation
 
-Names will be checked syntactically without attempting to query or freeze the
-external extension registry:
-
-- registered-name syntax is `^[a-z][a-z0-9-_.]+$`; and
-- legacy URI names remain accepted for v3.0 compatibility.
-
-Registry membership is not a structural property that an extension-agnostic
-offline model can determine. Extension resolution remains a reader concern.
+Names will be checked only to ensure that they are strings. The model will not
+validate registered-name syntax, URI syntax, or membership in the external
+extension registry. Those properties are not part of the extension-agnostic
+structural boundary and are left to applications that resolve extension
+names.
 
 ## Context-sensitive `must_understand` rules
 
@@ -202,7 +202,7 @@ corrections to annotations that did not match accepted runtime data:
 - v3 additional-field annotations widen to arbitrary JSON.
 
 Documents currently accepted only because an extension envelope contains
-unknown members, an invalid name, a forbidden false `must_understand`, or an
+unknown members, a non-string name, a forbidden false `must_understand`, or an
 empty codec list will become validation errors. Those documents violate the
 agreed core grammar; accepting them is not a compatibility contract to retain.
 
@@ -213,7 +213,7 @@ Implementation will be test-first and cover:
 1. shorthand and object normalization, including implicit true;
 2. explicit true/false round trips;
 3. invalid `must_understand` types and unknown envelope members;
-4. registered and legacy URI name forms plus invalid names;
+4. arbitrary string names accepted and non-string names rejected;
 5. false `must_understand` rejected at mandatory extension points;
 6. false accepted for codecs and storage transformers;
 7. empty codecs rejected without interpreting non-empty pipelines;

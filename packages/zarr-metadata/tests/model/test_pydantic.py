@@ -121,8 +121,8 @@ def test_dump_emits_canonical_document() -> None:
     manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     dumped = manifest.model_dump()
     assert dumped["metadata"] == manifest.metadata.to_json()
-    # the bare-string data_type was normalized to the canonical object form
-    assert dumped["metadata"]["data_type"] == {"name": "uint8", "configuration": {}}
+    # Empty configurations use the extension-definition shorthand form.
+    assert dumped["metadata"]["data_type"] == "uint8"
 
 
 def test_json_roundtrip_through_pydantic() -> None:
@@ -194,10 +194,11 @@ AttrsT = TypeVar("AttrsT")
 
 
 class NamedConfig(BaseModel):
-    """Pydantic mirror of a normalized metadata field (name + configuration)."""
+    """Pydantic mirror of a normalized metadata extension envelope."""
 
     name: str
     configuration: dict[str, JSONValue] = {}
+    must_understand: bool = True
 
 
 class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
@@ -229,6 +230,13 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
         normalization; pydantic then parses only canonical documents."""
         if isinstance(data, Mapping):
             doc = dict(ArrayMetadataModelV3.from_json(data).to_json())
+            for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
+                if isinstance(doc[key], str):
+                    doc[key] = {"name": doc[key]}
+            for key in ("codecs", "storage_transformers"):
+                doc[key] = tuple(
+                    {"name": item} if isinstance(item, str) else item for item in doc.get(key, ())
+                )
             doc.setdefault("attributes", {})
             return doc
         return data

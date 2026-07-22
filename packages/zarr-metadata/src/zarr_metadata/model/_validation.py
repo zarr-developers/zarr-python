@@ -187,7 +187,8 @@ def validate_metadata_field_v3(
 ) -> list[ValidationProblem]:
     """Return every reason `value` is not a v3 metadata field.
 
-    A metadata field is a bare name string or a `{name, configuration}` mapping.
+    A metadata field is a bare name string or a mapping containing `name` and
+    optional `configuration` and `must_understand` members.
     """
     if isinstance(value, str):
         return []
@@ -195,7 +196,7 @@ def validate_metadata_field_v3(
         return [
             ValidationProblem(
                 (),
-                "expected a metadata field (string or {name, configuration})",
+                "expected a metadata field (string or extension object)",
                 "invalid_type",
             )
         ]
@@ -456,7 +457,7 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
             if isinstance(entries, str) or not isinstance(entries, Sequence):
                 problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
-                if key == "codecs" and len(entries) == 0:
+                if key == "codecs" and len(cast("Sequence[object]", entries)) == 0:
                     problems.append(
                         ValidationProblem(
                             ("codecs",), "expected at least one codec", "invalid_value"
