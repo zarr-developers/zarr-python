@@ -48,10 +48,12 @@ nav:
       - api/zarr/registry.md
       - api/zarr/storage.md
       - api/zarr/experimental.md
+      - api/zarr/zarrista.md
       - ABC:
         - api/zarr/abc/index.md
         - api/zarr/abc/buffer.md
         - api/zarr/abc/codec.md
+        - api/zarr/abc/engine.md
         - api/zarr/abc/numcodec.md
         - api/zarr/abc/metadata.md
         - api/zarr/abc/store.md

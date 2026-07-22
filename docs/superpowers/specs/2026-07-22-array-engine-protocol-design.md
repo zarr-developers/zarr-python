@@ -100,7 +100,7 @@ class AsyncArrayEngine(Protocol):
 
 class AsyncHierarchyEngine(Protocol):
     def array_engine(
-        self, path: str, metadata: ArrayMetadata
+        self, path: str, metadata: ArrayMetadata, config: ArrayConfig | None = None
     ) -> AsyncArrayEngine: ...
 ```
 
@@ -223,8 +223,9 @@ Contract details:
   numpy via Zarrista's upcoming numpy export (a copy for now — confirmed
   planned); `MaskedTensor`/`MaskedVariableArray` unsupported (zarr-python has
   no masked dtype) — raise.
-- Registered under the name `"zarrista"` on import of `zarr.zarrista`; import
-  errors cleanly when `zarrista` is not installed.
+- Selected by the engine resolver under the name `"zarrista"`, which lazily
+  imports `zarr.zarrista` only when that name is resolved; the import errors
+  cleanly when `zarrista` is not installed.
 - Dependency: optional dependency group `zarrista`, git-pinned to a Zarrista
   `main` commit until its next release, then `>=` that release.
 
