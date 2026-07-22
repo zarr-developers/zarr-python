@@ -241,10 +241,35 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_codecs(metadata.codecs)
+        pipeline = get_pipeline_class().from_codecs(metadata.codecs)
+        from zarr.core.metadata.v3 import RegularChunkGridMetadata
+
+        # Use the regular chunk shape if available, otherwise use a
+        # placeholder. The ChunkTransform is shape-agnostic — the actual
+        # chunk shape is passed per-call at decode/encode time.
+        if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
+            chunk_shape = metadata.chunk_grid.chunk_shape
+        else:
+            chunk_shape = (1,) * len(metadata.shape)
+        chunk_spec = ArraySpec(
+            shape=chunk_shape,
+            dtype=metadata.data_type,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
-        return get_pipeline_class().from_codecs([v2_codec])
+        pipeline = get_pipeline_class().from_codecs([v2_codec])
+        chunk_spec = ArraySpec(
+            shape=metadata.chunks,
+            dtype=metadata.dtype,
+            fill_value=metadata.fill_value,
+            config=ArrayConfig.from_dict({"order": metadata.order}),
+            prototype=default_buffer_prototype(),
+        )
+        return pipeline.evolve_from_array_spec(chunk_spec)
     raise TypeError  # pragma: no cover
 
 
@@ -310,6 +335,22 @@ async def get_array_metadata(
         parse_node_type_array(metadata_dict.get("node_type"))
 
     return metadata_dict
+
+
+async def _prepare_overwrite(
+    store_path: StorePath, *, zarr_format: ZarrFormat, overwrite: bool
+) -> None:
+    """
+    Prepare a store path for writing a new node.
+
+    If ``overwrite`` is true and the store supports deletes, any existing node at
+    ``store_path`` is deleted. Otherwise, the absence of an existing node is enforced
+    (raising if one is present).
+    """
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
+    else:
+        await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
 
 @dataclass(frozen=True)
@@ -539,7 +580,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         shape = parse_shapelike(shape)
         if codecs is None:
-            filters = default_filters_v3(dtype)
+            # no data types have default filters
+            filters = ()
             serializer = default_serializer_v3(dtype)
             compressors = default_compressors_v3(dtype)
 
@@ -592,13 +634,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV3:
-        if overwrite:
-            if store_path.store.supports_deletes:
-                await store_path.delete_dir()
-            else:
-                await ensure_no_existing_node(store_path, zarr_format=3)
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=3)
+        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
 
         if isinstance(chunk_key_encoding, tuple):
             chunk_key_encoding = (
@@ -673,13 +709,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV2:
-        if overwrite:
-            if store_path.store.supports_deletes:
-                await store_path.delete_dir()
-            else:
-                await ensure_no_existing_node(store_path, zarr_format=2)
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=2)
+        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
 
         compressor_parsed: CompressorLikev2
         if compressor == "auto":
@@ -1127,10 +1157,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         The zarr-specific representation of the array data type
         """
-        if self.metadata.zarr_format == 2:
-            return self.metadata.dtype
-        else:
-            return self.metadata.data_type
+        # `dtype` returns the zarr dtype object for both v2 and v3 metadata
+        # (on v3 it is an alias for `data_type`).
+        return self.metadata.dtype
 
     @property
     def dtype(self) -> TBaseDType:
@@ -1652,13 +1681,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
         self._require_identity_for_async("get_orthogonal_selection")
-        return await _get_orthogonal_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
+        return await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            selection,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1673,13 +1705,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
         self._require_identity_for_async("get_mask_selection")
-        return await _get_mask_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
+        return await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            mask,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1694,17 +1729,24 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype | None = None,
     ) -> NDArrayLikeOrScalar:
         self._require_identity_for_async("get_coordinate_selection")
-        return await _get_coordinate_selection(
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
+        out_array = await _get_selection(
             self.store_path,
             self.metadata,
             self.codec_pipeline,
             self.config,
             self._chunk_grid,
-            selection,
+            indexer=indexer,
             out=out,
             fields=fields,
             prototype=prototype,
         )
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
+        return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
@@ -2414,6 +2456,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         When sharding is used, this counts inner chunks (not shards) per dimension.
         """
+        # Deliberately NOT main's `self._chunk_grid_shape` delegation: the public
+        # property must keep routing through the async `cdata_shape`, which
+        # carries the lazy-view guard (`_require_identity`); the private
+        # `_chunk_grid_shape` is the unguarded internal member.
         return self.async_array.cdata_shape
 
     @property
@@ -4504,7 +4550,11 @@ async def _shards_initialized(
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
     store_contents_relative = [
-        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
+        _relativize_path(path=key, prefix=array.store_path.path)
+        for key in store_contents
+        # obstore can include a directory marker whose key matches the listed prefix;
+        # it is not an initialized shard and must be excluded before relativizing.
+        if array.store_path.path == "" or key != array.store_path.path
     ]
     return tuple(
         chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
@@ -5057,10 +5107,7 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    if overwrite and store_path.store.supports_deletes:
-        await store_path.delete_dir()
-    else:
-        await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
 
     # Validate rectilinear chunks constraints
     if _is_rectilinear_chunks(chunks):
@@ -5487,15 +5534,6 @@ def _parse_chunk_key_encoding(
     return result
 
 
-def default_filters_v3(dtype: ZDType[Any, Any]) -> tuple[ArrayArrayCodec, ...]:
-    """
-    Given a data type, return the default filters for that data type.
-
-    This is an empty tuple. No data types have default filters.
-    """
-    return ()
-
-
 def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ...]:
     """
     Given a data type, return the default compressors for that data type.
@@ -5648,7 +5686,8 @@ def _parse_chunk_encoding_v3(
     if filters is None:
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
-        out_array_array = default_filters_v3(dtype)
+        # no data types have default filters
+        out_array_array = ()
     else:
         maybe_array_array: Iterable[Codec | dict[str, JSON]]
         if isinstance(filters, dict | Codec):
@@ -6376,11 +6415,8 @@ async def _get_selection(
     NDArrayLikeOrScalar
         The selected data.
     """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
+    # `dtype` returns the zarr dtype object for both v2 and v3 metadata.
+    zdtype = metadata.dtype
     dtype = zdtype.to_native_dtype()
 
     # Determine memory order
@@ -6510,182 +6546,6 @@ async def _getitem(
     )
 
 
-async def _get_orthogonal_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: OrthogonalSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get an orthogonal selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : OrthogonalSelection
-        The orthogonal selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = OrthogonalIndexer(selection, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_mask_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    mask: MaskSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a mask selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    mask : MaskSelection
-        The boolean mask specifying the selection.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = MaskIndexer(mask, metadata.shape, chunk_grid)
-    return await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-
-async def _get_coordinate_selection(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: CoordinateSelection,
-    *,
-    out: NDBuffer | None = None,
-    fields: Fields | None = None,
-    prototype: BufferPrototype | None = None,
-) -> NDArrayLikeOrScalar:
-    """
-    Get a coordinate selection from the array.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : CoordinateSelection
-        The coordinate selection specification.
-    out : NDBuffer | None, optional
-        An output buffer to write the data to.
-    fields : Fields | None, optional
-        Fields to select from structured arrays.
-    prototype : BufferPrototype | None, optional
-        A buffer prototype to use for the retrieved data.
-
-    Returns
-    -------
-    NDArrayLikeOrScalar
-        The selected data.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = CoordinateIndexer(selection, metadata.shape, chunk_grid)
-    out_array = await _get_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer=indexer,
-        out=out,
-        fields=fields,
-        prototype=prototype,
-    )
-
-    if hasattr(out_array, "shape"):
-        # restore shape
-        out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
-    return out_array
-
-
 async def _set_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
@@ -6722,11 +6582,8 @@ async def _set_selection(
     fields : Fields | None, optional
         Fields to select from structured arrays.
     """
-    # Get dtype from metadata
-    if metadata.zarr_format == 2:
-        zdtype = metadata.dtype
-    else:
-        zdtype = metadata.data_type
+    # `dtype` returns the zarr dtype object for both v2 and v3 metadata.
+    zdtype = metadata.dtype
     dtype = zdtype.to_native_dtype()
 
     # check fields are sensible

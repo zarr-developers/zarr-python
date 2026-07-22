@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+import asyncio
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
 
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.sharding import (
     MAX_UINT_64,
     ShardingCodec,
@@ -13,9 +19,13 @@ from zarr.codecs.sharding import (
     _ShardingByteGetter,
     _ShardReader,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import Buffer as ABCBuffer
+from zarr.core.buffer import NDBuffer, default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
+from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
 from zarr.core.config import config
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage._common import StorePath
 from zarr.storage._memory import MemoryStore
 
@@ -512,6 +522,257 @@ def test_is_total_shard_1d() -> None:
     # Partial
     partial_coords: set[tuple[int, ...]] = {(0,), (2,)}
     assert codec._is_total_shard(partial_coords, chunks_per_shard) is False
+
+
+# ============================================================================
+# _inner_codecs_fixed_size tests
+# ============================================================================
+
+
+def test_inner_codecs_fixed_size_no_compression() -> None:
+    """Inner codecs without compression should be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    assert codec._inner_codecs_fixed_size is True
+
+
+def test_inner_codecs_fixed_size_with_compression() -> None:
+    """Inner codecs with compression should NOT be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
+    assert codec._inner_codecs_fixed_size is False
+
+
+# ============================================================================
+# inner-chain spec threading
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class _WidenToInt16(ArrayArrayCodec):
+    """Test-only sync-capable AA codec that reports its output dtype as int16."""
+
+    is_fixed_size = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "_widen_to_int16"}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> _WidenToInt16:
+        return cls()
+
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        return replace(chunk_spec, dtype=get_data_type_from_native_dtype(np.dtype("int16")))
+
+    def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+        return input_byte_length
+
+    def _encode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    def _decode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    async def _encode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    async def _decode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+
+def _int8_spec(shape: tuple[int, ...]) -> ArraySpec:
+    zdtype = get_data_type_from_native_dtype(np.dtype("int8"))  # single-byte source
+    return ArraySpec(
+        shape=shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+
+
+def test_inner_chunk_transform_threads_spec() -> None:
+    """The inner codec chain must be evolved with the spec threaded forward.
+
+    A dtype-widening inner array->array codec means the BytesCodec serializer
+    is evolved against the WIDENED dtype, not the single-byte source —
+    otherwise it strips its `endian` to None and fails to decode multi-byte
+    inner chunks. Same contract as the pipeline-level `evolve_codecs`
+    regression test, applied to `_get_inner_chunk_transform`.
+    """
+    codec = ShardingCodec(chunk_shape=(4,), codecs=[_WidenToInt16(), BytesCodec(endian="little")])
+    shard_spec = _int8_spec((8,))
+
+    transform = codec._get_inner_chunk_transform(shard_spec)
+    serializer = transform._ab_codec
+    assert isinstance(serializer, BytesCodec)
+    assert serializer.endian is not None, (
+        "inner BytesCodec lost its `endian` — _get_inner_chunk_transform did not "
+        "thread the dtype-widening codec's spec into the serializer"
+    )
+
+
+def test_evolve_from_array_spec_threads_spec() -> None:
+    """`ShardingCodec.evolve_from_array_spec` must thread the spec through the
+    inner chain, like `_get_inner_chunk_transform` does.
+
+    This method runs EARLIER, on the real array-creation path (the outer
+    pipeline evolves the sharding codec itself), so an unthreaded evolve here
+    bakes an endian-stripped BytesCodec into the evolved instance's `codecs`
+    before the transform builders ever run — and the later threaded evolve then
+    raises instead of recovering. Calling `_get_inner_chunk_transform` on the
+    EVOLVED instance pins the full real path.
+    """
+    codec = ShardingCodec(chunk_shape=(4,), codecs=[_WidenToInt16(), BytesCodec(endian="little")])
+    # the array spec the OUTER pipeline evolves the sharding codec against
+    array_spec = _int8_spec((8,))
+
+    evolved = codec.evolve_from_array_spec(array_spec)
+    inner_serializer = next(c for c in evolved.codecs if isinstance(c, BytesCodec))
+    assert inner_serializer.endian is not None, (
+        "evolve_from_array_spec evolved the inner BytesCodec against the "
+        "un-widened spec, stripping its `endian`"
+    )
+
+    # and the evolved instance must still build a working inner transform
+    transform = evolved._get_inner_chunk_transform(array_spec)
+    serializer = transform._ab_codec
+    assert isinstance(serializer, BytesCodec)
+    assert serializer.endian is not None
+
+
+# ============================================================================
+# async whole-shard codec methods
+#
+# `ShardingCodec` advertises partial decode/encode, so the codec pipeline
+# always routes sharded reads/writes through `_decode_partial_single` /
+# `_encode_partial_single`. The whole-shard async methods `_decode_single` /
+# `_encode_single` are reached only via the direct `ArrayBytesCodec` API (e.g.
+# a consumer that calls the codec outside a pipeline), so they get no coverage
+# from end-to-end array tests. Pin them with a direct round-trip.
+# ============================================================================
+
+
+@pytest.mark.parametrize("write_empty_chunks", [True, False])
+def test_decode_single_encode_single_roundtrip(write_empty_chunks: bool) -> None:
+    """`ShardingCodec._encode_single` then `_decode_single` round-trips a whole
+    shard. Covers the async whole-shard path the pipeline bypasses in favor of
+    the partial methods."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=write_empty_chunks),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    data = np.arange(50, dtype="float64")
+    value = CPUNDBuffer.from_numpy_array(data)
+
+    encoded = asyncio.run(codec._encode_single(value, spec))
+    assert encoded is not None  # data is non-empty -> a shard is always produced
+    decoded = asyncio.run(codec._decode_single(encoded, spec))
+    np.testing.assert_array_equal(decoded.as_numpy_array(), data)
+
+
+def test_encode_single_all_empty_returns_none() -> None:
+    """`_encode_single` of an all-fill shard under write_empty_chunks=False
+    elides every inner chunk and returns None (the all-empty branch)."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    fill = CPUNDBuffer.from_numpy_array(np.zeros(50, dtype="float64"))
+
+    assert asyncio.run(codec._encode_single(fill, spec)) is None
+
+
+def test_decode_single_all_empty_fills() -> None:
+    """`_decode_single` of a shard whose index is all-empty fills the output
+    with the fill value (the is_all_empty fast path)."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(-1.0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    # an empty shard is just the encoded empty index
+    empty_index = asyncio.run(codec._encode_shard_index(_ShardIndex.create_empty((5,))))
+    decoded = asyncio.run(codec._decode_single(empty_index, spec))
+    np.testing.assert_array_equal(decoded.as_numpy_array(), np.full(50, -1.0))
+
+
+# ============================================================================
+# async-only index codec fallback (#269)
+#
+# `_decode_shard_index` / `_encode_shard_index` delegate to their sync twins
+# when every index codec is sync-capable, and otherwise fall back to the async
+# pipeline. The default index chain (bytes + crc32c) is sync-capable, so the
+# fallback is exercised only by an async-only index codec.
+# ============================================================================
+
+
+class _AsyncOnlyBytesCodec(ArrayBytesCodec):
+    """An array<->bytes codec that implements ONLY the async per-chunk methods.
+
+    Wraps a real `BytesCodec` for the actual conversion but deliberately omits
+    `_encode_sync`/`_decode_sync`, so it is NOT a `SupportsSyncCodec`. Used as
+    an index codec to force the async-pipeline fallback in
+    `_decode_shard_index`/`_encode_shard_index`.
+    """
+
+    _inner = BytesCodec()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "_async_only_bytes"}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> _AsyncOnlyBytesCodec:
+        return cls()
+
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> _AsyncOnlyBytesCodec:
+        return self
+
+    def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+        return input_byte_length
+
+    async def _decode_single(self, chunk_bytes: ABCBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await self._inner._decode_single(chunk_bytes, chunk_spec)
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> ABCBuffer:
+        result = await self._inner._encode_single(chunk_array, chunk_spec)
+        assert result is not None
+        return result
+
+
+def test_shard_index_async_fallback_for_async_only_index_codec() -> None:
+    """An async-only index codec is not sync-capable, so `_encode_shard_index`
+    and `_decode_shard_index` must take the async-pipeline fallback (#269)
+    instead of the sync twins — and still round-trip."""
+    from zarr.abc.codec import SupportsSyncCodec
+
+    codec = ShardingCodec(
+        chunk_shape=(10,),
+        codecs=[BytesCodec()],
+        index_codecs=[_AsyncOnlyBytesCodec(), Crc32cCodec()],
+    )
+    assert not codec._index_codecs_sync_capable()
+    assert not isinstance(_AsyncOnlyBytesCodec(), SupportsSyncCodec)
+
+    chunks_per_shard = (5,)
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 42))
+
+    encoded = asyncio.run(codec._encode_shard_index(index))
+    decoded = asyncio.run(codec._decode_shard_index(encoded, chunks_per_shard))
+    np.testing.assert_array_equal(decoded.offsets_and_lengths, index.offsets_and_lengths)
 
 
 # ============================================================================

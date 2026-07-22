@@ -18,61 +18,86 @@ nav:
       - user-guide/lazy_indexing.md
       - user-guide/groups.md
       - user-guide/attributes.md
+      - user-guide/data_types.md
       - user-guide/storage.md
       - user-guide/config.md
-      - user-guide/cli.md
-      - user-guide/v3_migration.md
-      - user-guide/data_types.md
       - user-guide/performance.md
+      - user-guide/cli.md
       - user-guide/extending.md
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
       - user-guide/experimental.md
+      - user-guide/v3_migration.md
       - user-guide/glossary.md
   - Examples:
       - user-guide/examples/custom_dtype.md
-      - user-guide/examples/rectilinear_chunks.ipynb
+      - user-guide/examples/rectilinear_chunks.md
   - API Reference:
       - api/zarr/index.md
-      - api/zarr/array.md
-      - api/zarr/group.md
-      - api/zarr/create.md
-      - api/zarr/dtype.md
-      - api/zarr/load.md
-      - api/zarr/open.md
-      - api/zarr/save.md
-      - api/zarr/codecs.md
-      - api/zarr/codecs/numcodecs.md
-      - api/zarr/config.md
-      - api/zarr/errors.md
-      - api/zarr/metadata.md
-      - api/zarr/registry.md
-      - api/zarr/storage.md
-      - api/zarr/experimental.md
-      - ABC:
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc</code>':
         - api/zarr/abc/index.md
-        - api/zarr/abc/buffer.md
-        - api/zarr/abc/codec.md
-        - api/zarr/abc/numcodec.md
-        - api/zarr/abc/metadata.md
-        - api/zarr/abc/store.md
-      - API:
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.buffer</code>': api/zarr/abc/buffer.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.codec</code>': api/zarr/abc/codec.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.metadata</code>': api/zarr/abc/metadata.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.numcodec</code>': api/zarr/abc/numcodec.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.store</code>': api/zarr/abc/store.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.api</code>':
         - api/zarr/api/index.md
-        - api/zarr/api/asynchronous.md
-        - api/zarr/api/synchronous.md
-      - Buffer:
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.api.asynchronous</code>': api/zarr/api/asynchronous.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.api.synchronous</code>': api/zarr/api/synchronous.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-class"></code> <code>zarr.Array</code>': api/zarr/array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.array</code>': api/zarr/functions/array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.buffer</code>':
         - api/zarr/buffer/index.md
-        - api/zarr/buffer/cpu.md
-        - api/zarr/buffer/gpu.md
-      - Testing:
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.buffer.cpu</code>': api/zarr/buffer/cpu.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.buffer.gpu</code>': api/zarr/buffer/gpu.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.codecs</code>': api/zarr/codecs.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.codecs.numcodecs</code>': api/zarr/codecs/numcodecs.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.config</code>': api/zarr/config.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.consolidate_metadata</code>': api/zarr/functions/consolidate_metadata.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create</code>': api/zarr/functions/create.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create_array</code>': api/zarr/functions/create_array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create_group</code>': api/zarr/functions/create_group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.create_hierarchy</code>': api/zarr/functions/create_hierarchy.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.dtype</code>': api/zarr/dtype.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.empty</code>': api/zarr/functions/empty.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.empty_like</code>': api/zarr/functions/empty_like.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.errors</code>': api/zarr/errors.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.experimental</code>': api/zarr/experimental.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.from_array</code>': api/zarr/functions/from_array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.full</code>': api/zarr/functions/full.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.full_like</code>': api/zarr/functions/full_like.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-class"></code> <code>zarr.Group</code>': api/zarr/group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.group</code>': api/zarr/functions/group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.load</code>': api/zarr/functions/load.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.metadata</code>': api/zarr/metadata.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.ones</code>': api/zarr/functions/ones.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.ones_like</code>': api/zarr/functions/ones_like.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open</code>': api/zarr/functions/open.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_array</code>': api/zarr/functions/open_array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_consolidated</code>': api/zarr/functions/open_consolidated.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_group</code>': api/zarr/functions/open_group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_like</code>': api/zarr/functions/open_like.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.print_debug_info</code>': api/zarr/functions/print_debug_info.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.registry</code>': api/zarr/registry.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save</code>': api/zarr/functions/save.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save_array</code>': api/zarr/functions/save_array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save_group</code>': api/zarr/functions/save_group.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.storage</code>': api/zarr/storage.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing</code>':
         - api/zarr/testing/index.md
-        - api/zarr/testing/buffer.md
-        - api/zarr/testing/stateful.md
-        - api/zarr/testing/store.md
-        - api/zarr/testing/strategies.md
-        - api/zarr/testing/utils.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.buffer</code>': api/zarr/testing/buffer.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.stateful</code>': api/zarr/testing/stateful.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.store</code>': api/zarr/testing/store.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.strategies</code>': api/zarr/testing/strategies.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.utils</code>': api/zarr/testing/utils.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros</code>': api/zarr/functions/zeros.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros_like</code>': api/zarr/functions/zeros_like.md
   - release-notes.md
   - contributing.md
+hooks:
+  - mkdocs_hooks.py
+
 watch:
   - src/zarr
   - docs
@@ -129,11 +154,6 @@ extra_css:
 plugins:
   - autorefs
   - search
-  - mkdocs-jupyter:
-      include: ["docs/user-guide/examples/*.ipynb"]
-      execute: false
-      ignore_h1_titles: true
-      show_input: true
   - markdown-exec
   - mkdocstrings:
       enable_inventory: true
@@ -218,6 +238,10 @@ plugins:
         'developers/index.html.md': 'contributing.md'
         'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'api.md': 'api/zarr/index.md'
+        'api/zarr/create.md': 'api/zarr/functions/create.md'
+        'api/zarr/open.md': 'api/zarr/functions/open.md'
+        'api/zarr/save.md': 'api/zarr/functions/save.md'
+        'api/zarr/load.md': 'api/zarr/functions/load.md'
         'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
 
 # Based on https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
