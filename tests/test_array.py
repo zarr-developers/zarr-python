@@ -2388,7 +2388,7 @@ async def test_create_array_chunks_3d(
     assert arr.write_chunk_sizes == expected
 
 
-# --- shards_initialized / initialized_regions / read_regions ---------------------------
+# --- shards_initialized / regions_initialized / read_regions ---------------------------
 
 
 def _ca_sparse_1d(store: Store) -> tuple[Array[Any], npt.NDArray[Any]]:
@@ -2506,10 +2506,10 @@ async def test_list_strategy_ignores_non_chunk_objects() -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
-def test_initialized_regions_count_matches_keys(store: Store, setup_name: str) -> None:
+def test_regions_initialized_count_matches_keys(store: Store, setup_name: str) -> None:
     """There is one initialized region per populated shard key."""
     arr, _ = _CA_SETUPS[setup_name](store)
-    assert len(zarr.initialized_regions(arr)) == len(zarr.shards_initialized(arr))
+    assert len(zarr.regions_initialized(arr)) == len(zarr.shards_initialized(arr))
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -2523,24 +2523,24 @@ def test_initialized_regions_count_matches_keys(store: Store, setup_name: str) -
     ],
     ids=["none", "single", "adjacent", "non_adjacent"],
 )
-def test_initialized_regions_are_exactly_written(
+def test_regions_initialized_are_exactly_written(
     store: Store, regions: tuple[tuple[slice, ...], ...]
 ) -> None:
-    """Writing a set of chunk-aligned regions makes ``initialized_regions`` report
+    """Writing a set of chunk-aligned regions makes ``regions_initialized`` report
     exactly those regions, and nothing else."""
     arr = zarr.create_array(store=store, shape=(64,), chunks=(8,), dtype="int32", fill_value=0)
     for region in regions:
         arr[region] = 1  # non-fill value so the chunk is persisted
-    assert set(zarr.initialized_regions(arr)) == set(regions)
+    assert set(zarr.regions_initialized(arr)) == set(regions)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
-def test_read_initialized_regions_reconstructs_baseline(store: Store, setup_name: str) -> None:
+def test_read_regions_initialized_reconstructs_baseline(store: Store, setup_name: str) -> None:
     """Reading the initialized regions and scattering them onto a fill-valued array
     reproduces the full ``arr[:]`` read exactly."""
     arr, baseline = _CA_SETUPS[setup_name](store)
-    results = zarr.read_regions(arr, zarr.initialized_regions(arr))
+    results = zarr.read_regions(arr, zarr.regions_initialized(arr))
     result = _ca_pack(arr, results, baseline)
     assert np.array_equal(result, baseline)
     assert result.dtype == baseline.dtype
@@ -2548,19 +2548,19 @@ def test_read_initialized_regions_reconstructs_baseline(store: Store, setup_name
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", ["sparse_1d", "dense_1d", "sparse_2d", "all_empty"])
-def test_initialized_chunk_regions_unsharded_matches_initialized_regions(
+def test_chunk_regions_initialized_unsharded_matches_regions_initialized(
     store: Store, setup_name: str
 ) -> None:
     """For unsharded arrays each stored object is a chunk, so chunk granularity equals
     stored-object granularity."""
     arr, _ = _CA_SETUPS[setup_name](store)
-    assert zarr.initialized_chunk_regions(arr) == zarr.initialized_regions(arr)
+    assert zarr.chunk_regions_initialized(arr) == zarr.regions_initialized(arr)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_initialized_chunk_regions_sharded_skips_empty_inner_chunks(store: Store) -> None:
+def test_chunk_regions_initialized_sharded_skips_empty_inner_chunks(store: Store) -> None:
     """Within a populated shard, only the inner chunks that were actually written are
-    reported — finer than the shard-level ``initialized_regions``."""
+    reported — finer than the shard-level ``regions_initialized``."""
     # chunks (2, 2) within shards (4, 4): each shard is a 2x2 grid of inner chunks.
     arr = zarr.create_array(
         store=store, shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="int32", fill_value=0
@@ -2569,13 +2569,13 @@ def test_initialized_chunk_regions_sharded_skips_empty_inner_chunks(store: Store
     arr[4:6, 4:6] = 2  # two inner chunks of shard (1, 1)
     arr[6:8, 6:8] = 3
     # Shard granularity: two coarse 4x4 shard regions.
-    assert zarr.initialized_regions(arr) == [
+    assert zarr.regions_initialized(arr) == [
         (slice(0, 4, 1), slice(0, 4, 1)),
         (slice(4, 8, 1), slice(4, 8, 1)),
     ]
     # Chunk granularity: exactly the three written 2x2 inner chunks (empty inner chunks
     # within the populated shards are skipped).
-    assert zarr.initialized_chunk_regions(arr) == [
+    assert zarr.chunk_regions_initialized(arr) == [
         (slice(0, 2, 1), slice(0, 2, 1)),
         (slice(4, 6, 1), slice(4, 6, 1)),
         (slice(6, 8, 1), slice(6, 8, 1)),
@@ -2584,13 +2584,13 @@ def test_initialized_chunk_regions_sharded_skips_empty_inner_chunks(store: Store
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
-def test_read_initialized_chunk_regions_reconstructs_baseline(
+def test_read_chunk_regions_initialized_reconstructs_baseline(
     store: Store, setup_name: str
 ) -> None:
     """Reading the populated inner-chunk regions and scattering them reproduces the full
     ``arr[:]`` read exactly, for both sharded and unsharded arrays."""
     arr, baseline = _CA_SETUPS[setup_name](store)
-    results = zarr.read_regions(arr, zarr.initialized_chunk_regions(arr))
+    results = zarr.read_regions(arr, zarr.chunk_regions_initialized(arr))
     assert np.array_equal(_ca_pack(arr, results, baseline), baseline)
 
 
@@ -2609,7 +2609,7 @@ def test_read_regions_explicit_regions(store: Store) -> None:
 def test_read_regions_concurrency_one(store: Store) -> None:
     """A concurrency limit of 1 produces the same result as the default."""
     arr, baseline = _ca_sparse_2d(store)
-    results = zarr.read_regions(arr, zarr.initialized_regions(arr), concurrency=1)
+    results = zarr.read_regions(arr, zarr.regions_initialized(arr), concurrency=1)
     assert np.array_equal(_ca_pack(arr, results, baseline), baseline)
 
 
@@ -2619,7 +2619,7 @@ async def test_read_regions_async_matches_sync(store: Store, setup_name: str) ->
     """The async streaming generator yields the same ``(region, data)`` set as the
     synchronous wrapper."""
     arr, _ = _CA_SETUPS[setup_name](store)
-    regions = zarr.initialized_regions(arr)
+    regions = zarr.regions_initialized(arr)
     async_pairs = {
         region: np.asarray(data).tobytes()
         async for region, data in zarr.api.asynchronous.read_regions(arr._async_array, regions)
@@ -2643,7 +2643,7 @@ async def test_async_chunk_access_accepts_sync_array(store: Store) -> None:
     underlying async array."""
     arr, _ = _ca_sparse_1d(store)
     keys = await zarr.api.asynchronous.shards_initialized(arr)
-    regions = await zarr.api.asynchronous.initialized_regions(arr)
+    regions = await zarr.api.asynchronous.regions_initialized(arr)
     results = [pair async for pair in zarr.api.asynchronous.read_regions(arr, regions)]
     assert set(keys) == {"c/1", "c/5"}
     assert set(regions) == {(slice(8, 16, 1),), (slice(40, 48, 1),)}

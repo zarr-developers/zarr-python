@@ -4037,7 +4037,7 @@ async def shards_initialized(
     This reports storage at the granularity of stored objects: for sharded arrays it
     returns shard keys (the objects that actually exist in the store), and for unsharded
     arrays it returns chunk keys. To turn these into array regions, use
-    [initialized_regions][zarr.initialized_regions].
+    [regions_initialized][zarr.regions_initialized].
 
     Parameters
     ----------
@@ -4072,7 +4072,7 @@ async def shards_initialized(
 
     See Also
     --------
-    initialized_regions : The array regions spanned by the populated shards.
+    regions_initialized : The array regions spanned by the populated shards.
     read_regions : Read and decode a collection of array regions.
     """
     if isinstance(array, Array):
@@ -4110,7 +4110,7 @@ async def shards_initialized(
         )
 
 
-async def initialized_regions(
+async def regions_initialized(
     array: AnyArray | AnyAsyncArray,
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
@@ -4169,7 +4169,7 @@ async def read_regions(
 
     Each yielded value pairs a region (a tuple of slices into the array) with the decoded
     data for that region. The regions to read are supplied by the caller; pass the result
-    of [initialized_regions][zarr.initialized_regions] to read only the populated parts of
+    of [regions_initialized][zarr.regions_initialized] to read only the populated parts of
     a sparse array without materializing the full array.
 
     Parameters
@@ -4190,7 +4190,7 @@ async def read_regions(
 
     See Also
     --------
-    initialized_regions : The array regions spanned by the populated shards.
+    regions_initialized : The array regions spanned by the populated shards.
     shards_initialized : The storage keys of the populated shards.
     """
     if isinstance(array, Array):
@@ -4221,7 +4221,7 @@ def _sharding_codec(array: AnyAsyncArray) -> Any:
     return None
 
 
-async def initialized_chunk_regions(
+async def chunk_regions_initialized(
     array: AnyArray | AnyAsyncArray,
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
@@ -4230,12 +4230,12 @@ async def initialized_chunk_regions(
     """
     Return the array regions spanned by the *inner chunks* that have been written.
 
-    Unlike [initialized_regions][zarr.initialized_regions], which reports at stored-object
+    Unlike [regions_initialized][zarr.regions_initialized], which reports at stored-object
     (shard) granularity, this reports at chunk granularity: for a sharded array it looks
     *inside* each populated shard — reading only the shard index, not the chunk data — and
     reports the regions of the inner chunks that were actually written, skipping empty inner
     chunks. For an unsharded array, stored objects already are chunks, so this is identical
-    to [initialized_regions][zarr.initialized_regions].
+    to [regions_initialized][zarr.regions_initialized].
 
     The cost scales with the number of *populated shards*: discovering them is a single
     listing (see [shards_initialized][zarr.shards_initialized]), and each populated shard
@@ -4258,7 +4258,7 @@ async def initialized_chunk_regions(
 
     See Also
     --------
-    initialized_regions : The array regions at stored-object (shard) granularity.
+    regions_initialized : The array regions at stored-object (shard) granularity.
     read_regions : Read and decode a collection of array regions.
     """
     if isinstance(array, Array):
@@ -4268,7 +4268,7 @@ async def initialized_chunk_regions(
     if sharding_codec is None:
         # No sharding: each stored object is a chunk, so chunk granularity == shard
         # granularity. Reuse the cheap listing-based path verbatim.
-        return await initialized_regions(array, strategy=strategy)
+        return await regions_initialized(array, strategy=strategy)
 
     if concurrency is None:
         concurrency = zarr_config.get("async.concurrency")

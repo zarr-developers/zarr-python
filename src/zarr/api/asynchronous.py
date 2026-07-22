@@ -15,12 +15,12 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    chunk_regions_initialized,
     create_array,
     from_array,
     get_array_metadata,
-    initialized_chunk_regions,
-    initialized_regions,
     read_regions,
+    regions_initialized,
     shards_initialized,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
@@ -70,6 +70,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "array",
+    "chunk_regions_initialized",
     "consolidate_metadata",
     "copy",
     "copy_all",
@@ -83,8 +84,6 @@ __all__ = [
     "full",
     "full_like",
     "group",
-    "initialized_chunk_regions",
-    "initialized_regions",
     "load",
     "ones",
     "ones_like",
@@ -94,6 +93,7 @@ __all__ = [
     "open_group",
     "open_like",
     "read_regions",
+    "regions_initialized",
     "save",
     "save_array",
     "save_group",

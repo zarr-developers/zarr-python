@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "array",
+    "chunk_regions_initialized",
     "consolidate_metadata",
     "copy",
     "copy_all",
@@ -58,8 +59,6 @@ __all__ = [
     "full",
     "full_like",
     "group",
-    "initialized_chunk_regions",
-    "initialized_regions",
     "load",
     "ones",
     "ones_like",
@@ -69,6 +68,7 @@ __all__ = [
     "open_group",
     "open_like",
     "read_regions",
+    "regions_initialized",
     "save",
     "save_array",
     "save_group",
@@ -1466,7 +1466,7 @@ def shards_initialized(
     This reports storage at the granularity of stored objects: for sharded arrays it
     returns shard keys (the objects that actually exist in the store), and for unsharded
     arrays it returns chunk keys. To turn these into array regions, use
-    [initialized_regions][zarr.initialized_regions].
+    [regions_initialized][zarr.regions_initialized].
 
     Parameters
     ----------
@@ -1492,13 +1492,13 @@ def shards_initialized(
 
     See Also
     --------
-    initialized_regions : The array regions spanned by the populated shards.
+    regions_initialized : The array regions spanned by the populated shards.
     read_regions : Read and decode a collection of array regions.
     """
     return sync(async_api.shards_initialized(_as_async_array(array), strategy=strategy))
 
 
-def initialized_regions(
+def regions_initialized(
     array: Array[Any] | AsyncArray[Any],
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
@@ -1527,10 +1527,10 @@ def initialized_regions(
     shards_initialized : The storage keys of the populated shards.
     read_regions : Read and decode a collection of array regions.
     """
-    return sync(async_api.initialized_regions(_as_async_array(array), strategy=strategy))
+    return sync(async_api.regions_initialized(_as_async_array(array), strategy=strategy))
 
 
-def initialized_chunk_regions(
+def chunk_regions_initialized(
     array: Array[Any] | AsyncArray[Any],
     *,
     strategy: Literal["auto", "list", "probe"] = "auto",
@@ -1539,11 +1539,11 @@ def initialized_chunk_regions(
     """
     Return the array regions spanned by the inner chunks that have been written.
 
-    Unlike [initialized_regions][zarr.initialized_regions], which reports at stored-object
+    Unlike [regions_initialized][zarr.regions_initialized], which reports at stored-object
     (shard) granularity, this reports at chunk granularity: for a sharded array it reads each
     populated shard's index (not its data) and reports the regions of the inner chunks that
     were actually written, skipping empty inner chunks. For an unsharded array this is
-    identical to [initialized_regions][zarr.initialized_regions].
+    identical to [regions_initialized][zarr.regions_initialized].
 
     Parameters
     ----------
@@ -1562,11 +1562,11 @@ def initialized_chunk_regions(
 
     See Also
     --------
-    initialized_regions : The array regions at stored-object (shard) granularity.
+    regions_initialized : The array regions at stored-object (shard) granularity.
     read_regions : Read and decode a collection of array regions.
     """
     return sync(
-        async_api.initialized_chunk_regions(
+        async_api.chunk_regions_initialized(
             _as_async_array(array), strategy=strategy, concurrency=concurrency
         )
     )
@@ -1584,7 +1584,7 @@ def read_regions(
 
     Each pair associates a region (a tuple of slices into the array) with the decoded data
     for that region. The regions to read are supplied by the caller; pass the result of
-    [initialized_regions][zarr.initialized_regions] to read only the populated parts of a
+    [regions_initialized][zarr.regions_initialized] to read only the populated parts of a
     sparse array without materializing the full array. For lazy, streaming consumption use
     the asynchronous [zarr.api.asynchronous.read_regions][] instead, which yields each pair
     as soon as its data is available.
@@ -1607,7 +1607,7 @@ def read_regions(
 
     See Also
     --------
-    initialized_regions : The array regions spanned by the populated shards.
+    regions_initialized : The array regions spanned by the populated shards.
     shards_initialized : The storage keys of the populated shards.
     """
 
