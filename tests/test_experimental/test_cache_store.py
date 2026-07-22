@@ -298,7 +298,7 @@ class TestCacheStore:
 
         # Check initial values
         assert info["cache_store_type"] == "MemoryStore"
-        assert info["max_age_seconds"] == "infinity"
+        assert info["max_age_seconds"] == 300  # the default: finite, bounded staleness
         assert info["max_size"] is None  # Default unlimited
         assert info["current_size"] == 0
         assert info["cache_set_data"] is True
@@ -1398,3 +1398,117 @@ class TestCacheStoreNegativeCaching:
         r2 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
         assert r2 is not None
         assert r2.to_bytes() == b"NEW"
+
+    async def test_default_max_age_is_finite(self) -> None:
+        """The default TTL is finite so remembered misses (and cached values) are
+        re-validated against the source at bounded staleness."""
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore())
+        assert cs.max_age_seconds == 300
+
+    async def test_negative_count_capped_without_max_size(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With ``max_size=None`` the marker *count* is capped: a scan over a huge
+        sparse key space cannot grow the index without bound."""
+        import zarr.experimental.cache_store as mod
+
+        monkeypatch.setattr(mod, "_MAX_NEGATIVE_ENTRIES", 10)
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        for i in range(25):
+            assert await cs.get(f"c/{i}", proto) is None
+
+        assert cs.cache_info()["missing_keys"] == 10
+        assert cs._state.negative_count == 10
+        assert cs.cache_stats()["evictions"] >= 15
+        # LRU: the most recent misses are the ones retained.
+        assert all(f"c/{i}" in cs._state.entries for i in range(15, 25))
+
+    async def test_concurrent_write_not_shadowed_by_stale_miss(self) -> None:
+        """A miss observed *before* a concurrent write completed must not overwrite
+        the newly written (present) entry with an absent marker."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        fetched_at = time.monotonic()
+        # A concurrent set() completes after the (stale) fetch began...
+        await cs.set("k", CPUBuffer.from_bytes(b"value"))
+        # ...then the stale absent observation lands.
+        await cs._cache_miss("k", None, None, fetched_at)
+
+        entry = cs._state.entries.get("k")
+        assert entry is not None
+        assert entry.present
+        assert cs.cache_info()["missing_keys"] == 0
+        result = await cs.get("k", proto)
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    async def test_negative_hit_refreshes_lru(self) -> None:
+        """A negative-cache hit marks the marker most-recently-used, so a hot absent
+        key outlives cold markers under eviction pressure."""
+        # Budget fits exactly two 128-byte markers.
+        cs = CacheStore(MemoryStore(), cache_store=MemoryStore(), cache_missing=True, max_size=256)
+        proto = default_buffer_prototype()
+
+        assert await cs.get("a", proto) is None
+        assert await cs.get("b", proto) is None
+        # Touch "a": it becomes most-recently-used.
+        assert await cs.get("a", proto) is None
+        assert cs.cache_stats()["negative_hits"] == 1
+        # A third marker must evict "b" (the LRU marker), not the hot "a".
+        assert await cs.get("c", proto) is None
+        assert "a" in cs._state.entries
+        assert "b" not in cs._state.entries
+        assert "c" in cs._state.entries
+
+    async def test_oversized_set_rolls_back_backing_cache(self) -> None:
+        """A written value larger than ``max_size`` must not linger untracked in the
+        backing cache store."""
+        cache = MemoryStore()
+        cs = CacheStore(MemoryStore(), cache_store=cache, max_size=64, cache_set_data=True)
+        proto = default_buffer_prototype()
+
+        await cs.set("big", CPUBuffer.from_bytes(b"x" * 128))
+        # The source has the value; the backing cache holds no untracked orphan.
+        assert await cs._store.get("big", proto) is not None
+        assert await cache.get("big", proto) is None
+        assert cs._state.current_size == 0
+
+    async def test_oversized_read_rolls_back_backing_cache(self) -> None:
+        """A fetched value larger than ``max_size`` must not linger untracked in the
+        backing cache store (mirror of the write-path rollback)."""
+        source = MemoryStore()
+        cache = MemoryStore()
+        cs = CacheStore(source, cache_store=cache, max_size=64)
+        proto = default_buffer_prototype()
+
+        await source.set("big", CPUBuffer.from_bytes(b"x" * 128))
+        result = await cs.get("big", proto)
+        assert result is not None
+        assert len(result) == 128
+        assert await cache.get("big", proto) is None
+        assert cs._state.current_size == 0
+
+    async def test_full_key_miss_invalidates_byte_ranges(self) -> None:
+        """Observing a key absent invalidates cached byte-range entries for it, so
+        ``get(key)`` and ``get(key, byte_range)`` cannot diverge."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), cache_missing=True)
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"old data!!"))
+        r1 = await cs.get("k", proto, byte_range=RangeByteRequest(0, 3))
+        assert r1 is not None
+        assert r1.to_bytes() == b"old"
+        assert ("k", RangeByteRequest(0, 3)) in cs._state.entries
+
+        # Key removed out-of-band; a full-key read observes the absence.
+        await source.delete("k")
+        assert await cs.get("k", proto) is None
+
+        # The stale byte-range entry is gone, and a fresh range read sees the absence.
+        assert ("k", RangeByteRequest(0, 3)) not in cs._state.entries
+        assert await cs.get("k", proto, byte_range=RangeByteRequest(0, 3)) is None

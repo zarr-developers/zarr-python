@@ -27,6 +27,13 @@ _CacheEntryKey = str | tuple[str, ByteRequest]
 # together — rather than letting negative entries grow without limit.
 _NEGATIVE_ENTRY_SIZE = 128
 
+# When ``max_size is None`` the shared byte budget cannot bound anything, so the
+# number of negative (known-absent) markers is capped here instead: recording a
+# marker beyond this count evicts the least-recently-used marker first. This keeps
+# a scan over a very large sparse key space from accumulating one entry per absent
+# key without bound (at the default charge this cap is ~13 MB of index overhead).
+_MAX_NEGATIVE_ENTRIES = 100_000
+
 
 @dataclass(slots=True)
 class _Entry:
@@ -60,6 +67,9 @@ class _CacheState:
     # key_insert_times / missing_keys structures so a key has one unambiguous state.
     entries: OrderedDict[_CacheEntryKey, _Entry] = field(default_factory=OrderedDict)
     current_size: int = 0
+    # Number of entries with ``present=False``, maintained incrementally so the
+    # negative-marker cap (``_MAX_NEGATIVE_ENTRIES``) is O(1) to enforce.
+    negative_count: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     hits: int = 0
     misses: int = 0
@@ -90,7 +100,9 @@ class CacheStore(WrapperStore[Store]):
         supports deletes)
     max_age_seconds : int or "infinity", optional
         Maximum age of cached entries in seconds. The string "infinity" means
-        entries never expire. Default is "infinity".
+        entries never expire. Default is 300 (five minutes), so that both cached
+        values and remembered misses are re-validated against the source at a
+        bounded staleness; pass "infinity" to opt out of expiration entirely.
     max_size : int | None, optional
         Maximum size of the cache in bytes. When exceeded, least recently used
         items are evicted. None means unlimited size. Default is None.
@@ -108,17 +120,17 @@ class CacheStore(WrapperStore[Store]):
 
         Notes:
 
-        - With ``max_age_seconds="infinity"`` (the default) a remembered miss never
-          expires, so a key written to the source by another process stays invisible
-          through this cache. Pair ``cache_missing=True`` with a finite
-          ``max_age_seconds`` if the source may be written concurrently.
+        - With ``max_age_seconds="infinity"`` a remembered miss never expires, so a
+          key written to the source by another process stays invisible through this
+          cache until it is written through this instance. The default finite
+          ``max_age_seconds`` bounds that staleness; keep it finite if the source
+          may be written concurrently.
         - Negative entries share the ``max_size`` budget with cached values: each is
           charged a small flat overhead, and under memory pressure miss-markers are
           evicted (least-recently-used first) before any cached value. A single
-          ``max_size`` therefore bounds *total* cache memory. When ``max_size is None``
-          both caches are unbounded, so a scan over a very large sparse key space will
-          accumulate one small entry per absent key; set ``max_size`` (and/or a finite
-          ``max_age_seconds``, or ``cache_missing=False``) for such workloads.
+          ``max_size`` therefore bounds *total* cache memory. When ``max_size is
+          None``, the number of negative markers is instead capped at an internal
+          limit (100,000), evicting the least-recently-used marker first.
         - This is store-level, per-key negative caching aimed at the stock ``arr[:]``
           path, which probes every chunk. For very large sparse arrays, prefer the
           array-level sparse-read primitives ``zarr.shards_initialized`` and
@@ -161,7 +173,7 @@ class CacheStore(WrapperStore[Store]):
         store: Store,
         *,
         cache_store: Store,
-        max_age_seconds: int | str = "infinity",
+        max_age_seconds: int | str = 300,
         max_size: int | None = None,
         cache_set_data: bool = True,
         cache_missing: bool = True,
@@ -238,9 +250,11 @@ class CacheStore(WrapperStore[Store]):
         old = self._state.entries.pop(key, None)
         if old is not None:
             self._state.current_size = max(0, self._state.current_size - old.size)
+            if not old.present:
+                self._state.negative_count -= 1
 
-        # Make room by evicting older absent markers only — never cached values.
         if self.max_size is not None:
+            # Make room by evicting older absent markers only — never cached values.
             while self._state.current_size + _NEGATIVE_ENTRY_SIZE > self.max_size:
                 lru_absent = next(
                     (k for k, e in self._state.entries.items() if not e.present), None
@@ -248,12 +262,23 @@ class CacheStore(WrapperStore[Store]):
                 if lru_absent is None:
                     return  # only cached values fill the budget — don't record the miss
                 await self._evict_key(lru_absent)
+        else:
+            # No byte budget to share: bound the marker *count* instead, so a scan
+            # over a huge sparse key space cannot grow the index without limit.
+            while self._state.negative_count >= _MAX_NEGATIVE_ENTRIES:
+                lru_absent = next(
+                    (k for k, e in self._state.entries.items() if not e.present), None
+                )
+                if lru_absent is None:  # pragma: no cover - count implies one exists
+                    break
+                await self._evict_key(lru_absent)
 
         # The key was popped above, so this assignment appends it as most-recent.
         self._state.entries[key] = _Entry(
             insert_time=time.monotonic(), size=_NEGATIVE_ENTRY_SIZE, present=False
         )
         self._state.current_size += _NEGATIVE_ENTRY_SIZE
+        self._state.negative_count += 1
 
     def _evict_missing(self, key: str) -> None:
         """Drop any negative entry for *key* (it is now present or being written).
@@ -265,6 +290,7 @@ class CacheStore(WrapperStore[Store]):
         entry = self._state.entries.get(key)
         if entry is not None and not entry.present:
             self._state.current_size = max(0, self._state.current_size - entry.size)
+            self._state.negative_count -= 1
             del self._state.entries[key]
 
     async def _accommodate_value(self, value_size: int) -> None:
@@ -313,6 +339,8 @@ class CacheStore(WrapperStore[Store]):
         """
         entry = self._state.entries.pop(entry_key, None)
         key_size = entry.size if entry is not None else 0
+        if entry is not None and not entry.present:
+            self._state.negative_count -= 1
 
         if isinstance(entry_key, str):
             # Absent markers store no value in the backing cache — skip the delete.
@@ -355,6 +383,8 @@ class CacheStore(WrapperStore[Store]):
             old = self._state.entries.pop(entry_key, None)
             if old is not None:
                 self._state.current_size = max(0, self._state.current_size - old.size)
+                if not old.present:
+                    self._state.negative_count -= 1
 
             # Make room for the new value, then track it (appended as most-recent).
             await self._accommodate_value(value_size)
@@ -381,6 +411,8 @@ class CacheStore(WrapperStore[Store]):
         entry = self._state.entries.pop(entry_key, None)
         if entry is not None:
             self._state.current_size = max(0, self._state.current_size - entry.size)
+            if not entry.present:
+                self._state.negative_count -= 1
 
     def _invalidate_range_entries(self, key: str) -> None:
         """Remove all byte-range entries for *key* from the range cache and tracking.
@@ -400,17 +432,31 @@ class CacheStore(WrapperStore[Store]):
     # ------------------------------------------------------------------
 
     async def _cache_miss(
-        self, key: str, byte_range: ByteRequest | None, result: Buffer | None
+        self, key: str, byte_range: ByteRequest | None, result: Buffer | None, fetched_at: float
     ) -> None:
-        """Handle a cache miss by storing or cleaning up after a source-store fetch."""
+        """Handle a cache miss by storing or cleaning up after a source-store fetch.
+
+        ``fetched_at`` is the monotonic time at which the source fetch *began*. It
+        guards the absent path against a write/miss race: if a concurrent ``set``
+        completes after the fetch began (leaving a present entry newer than
+        ``fetched_at``), the stale "absent" result must not shadow the new value.
+        """
         if result is None:
             if byte_range is None:
-                await self._cache.delete(key)
                 async with self._state.lock:
-                    # The key is absent in the source. Either remember the miss (so a
+                    entry = self._state.entries.get(key)
+                    if entry is not None and entry.present and entry.insert_time >= fetched_at:
+                        # A concurrent write completed after this fetch began — the key
+                        # now has a (cached) value. Recording the miss would shadow it,
+                        # so drop the stale "absent" observation instead.
+                        return
+                    # The key is absent in the source: drop any (stale) cached value and
+                    # byte-range entries for it, then either remember the miss (so a
                     # repeat read short-circuits without a source round-trip) or just
-                    # drop any stale tracking slot — ``_record_missing`` replaces the
-                    # slot itself, reclaiming the bytes of any prior cached value.
+                    # drop the tracking slot — ``_record_missing`` replaces the slot
+                    # itself, reclaiming the bytes of any prior cached value.
+                    await self._cache.delete(key)
+                    self._invalidate_range_entries(key)
                     if self.cache_missing:
                         await self._record_missing(key)
                     else:
@@ -430,7 +476,11 @@ class CacheStore(WrapperStore[Store]):
                 # ``_track_entry`` overwrites the key's single slot with a present
                 # entry, so any prior negative marker is structurally replaced —
                 # no separate negative-cache eviction is needed here.
-                await self._track_entry(key, result)
+                tracked = await self._track_entry(key, result)
+                if not tracked:
+                    # Value too large for the cache — roll back so the backing cache
+                    # holds no untracked (uncounted, unevictable) orphan.
+                    await self._cache.delete(key)
             else:
                 entry_key = (key, byte_range)
                 self._state.range_cache.setdefault(key, {})[byte_range] = result
@@ -467,8 +517,9 @@ class CacheStore(WrapperStore[Store]):
 
         # Cache miss — fetch from source store
         self._state.misses += 1
+        fetched_at = time.monotonic()
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result)
+        await self._cache_miss(key, byte_range, result, fetched_at)
         return result
 
     async def _get_no_cache(
@@ -476,8 +527,9 @@ class CacheStore(WrapperStore[Store]):
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._state.misses += 1
+        fetched_at = time.monotonic()
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result)
+        await self._cache_miss(key, byte_range, result, fetched_at)
         return result
 
     async def get(
@@ -512,6 +564,9 @@ class CacheStore(WrapperStore[Store]):
                 entry = self._state.entries.get(key)
                 if entry is not None and not entry.present and self._is_fresh(key):
                     self._state.negative_hits += 1
+                    # Mark the marker most-recently-used so eviction stays LRU:
+                    # a frequently-probed absent key should outlive cold markers.
+                    self._state.entries.move_to_end(key)
                     return None
 
         entry_key: _CacheEntryKey = (key, byte_range) if byte_range is not None else key
@@ -540,7 +595,11 @@ class CacheStore(WrapperStore[Store]):
                 self._evict_missing(key)
         if self.cache_set_data:
             await self._cache.set(key, value)
-            await self._track_entry(key, value)
+            tracked = await self._track_entry(key, value)
+            if not tracked:
+                # Value too large for the cache — roll back so the backing cache
+                # holds no untracked (uncounted, unevictable) orphan.
+                await self._cache.delete(key)
         else:
             await self._cache.delete(key)
             async with self._state.lock:
@@ -635,6 +694,7 @@ class CacheStore(WrapperStore[Store]):
             self._state.entries.clear()
             self._state.range_cache.clear()
             self._state.current_size = 0
+            self._state.negative_count = 0
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""

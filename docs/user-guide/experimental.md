@@ -259,10 +259,11 @@ flat overhead, and under memory pressure markers are evicted (least-recently-use
 before any cached value, so a flood of empty-chunk reads can never evict real cached data.
 Only full-key reads are affected — byte-range reads and `exists()` are unchanged.
 
-> **Note:** With the default `max_age_seconds="infinity"`, a remembered miss never expires,
-> so a key written to the source by another process stays invisible through the cache until
-> it is written through the cache. Pair `cache_missing=True` with a finite `max_age_seconds`
-> when the source may be written concurrently. For very large sparse arrays, prefer the
+> **Note:** A remembered miss stays visible-as-absent until it expires (`max_age_seconds`,
+> a finite 300 seconds by default) or the key is written through the cache. With
+> `max_age_seconds="infinity"` it never expires, so a key written to the source by another
+> process stays invisible through the cache; keep the TTL finite when the source may be
+> written concurrently. For very large sparse arrays, prefer the
 > array-level sparse-read primitives `zarr.shards_initialized` / `zarr.read_regions`, which
 > read only populated chunks and avoid the empty-chunk reads entirely.
 
