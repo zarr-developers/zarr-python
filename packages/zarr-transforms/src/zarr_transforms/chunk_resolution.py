@@ -135,12 +135,12 @@ def iter_chunk_transforms(
 
     array_map_1d = _one_dimensional_correlated_array_map(transform)
     if array_map_1d is not None:
-        m, storage = array_map_1d
+        sorted_map, storage = array_map_1d
         if storage[0] <= storage[-1] and bool(np.all(storage[1:] >= storage[:-1])):
             dim_grid = dim_grids[0]
             first_chunk = dim_grid.index_to_chunk(int(storage[0]))
             if dim_grid.chunk_size(first_chunk) > 0:
-                yield from _iter_sorted_1d_array_map(m, storage, dim_grid)
+                yield from _iter_sorted_1d_array_map(sorted_map, storage, dim_grid)
                 return
 
     # Enumerate candidate chunks via the cartesian product of per-dimension
