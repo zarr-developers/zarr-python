@@ -5790,9 +5790,16 @@ def _prepare_set_selection(
 
     identity_box = None
     if identity_post:
-        # full-box write: broadcast the value into the box without a read
+        # full-box write: broadcast the value into the box without a read. Basic
+        # integer axes drop a dimension from the value (their post entry is a
+        # plain int, not an orthogonal `_Squeeze` marker), so re-insert a size-1
+        # axis at each dropped position before broadcasting -- otherwise a
+        # non-trailing dropped axis (e.g. `arr[:, 0] = v`) leaves the value's
+        # shape misaligned with the ndim-preserving box.
+        int_axes = tuple(i for i, p in enumerate(stripped) if isinstance(p, (int, np.integer)))
+        broadcast_value = _widen_value_for_squeeze(assign_value, int_axes, len(region.shape))
         identity_box = np.array(
-            np.broadcast_to(np.asarray(assign_value), region.shape), dtype=dtype
+            np.broadcast_to(np.asarray(broadcast_value), region.shape), dtype=dtype
         )
     return _SetSelectionPrep(
         identity_box=identity_box,
@@ -6018,7 +6025,9 @@ def _block_region(
     """
     indexer = BlockIndexer(selection, shape, chunk_grid)
     starts = tuple(di.start for di in indexer.dim_indexers)
-    ends = tuple(di.stop for di in indexer.dim_indexers)
+    # an empty block slice (e.g. `blocks[1:0]`) yields `start > stop` on that
+    # axis; clamp so the box is zero-length rather than negative-length.
+    ends = tuple(max(di.start, di.stop) for di in indexer.dim_indexers)
     return Region(start=starts, end_exclusive=ends)
 
 
