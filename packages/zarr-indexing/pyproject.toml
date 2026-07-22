@@ -3,7 +3,7 @@ requires = ["hatchling>=1.29.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "zarr-transforms"
+name = "zarr-indexing"
 dynamic = ["version"]
 description = "Composable, lazy coordinate transforms for Zarr array indexing."
 readme = "README.md"
@@ -36,29 +36,29 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
-Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-transforms"
+Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
 Issues = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-transforms/CHANGELOG.md"
-Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-transforms/README.md"
+Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md"
+Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/README.md"
 
 [dependency-groups]
 # The transform tests exercise chunk resolution against zarr's ChunkGrid
 # (tests/test_chunk_resolution.py) and are collected by the parent zarr-python
 # test suite, which already has zarr installed. `zarr` is intentionally NOT
 # listed here to avoid a workspace dependency cycle; run these tests from the
-# repo root (`uv run pytest packages/zarr-transforms/tests`), not in isolation.
+# repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
 test = ["pytest"]
 
 [tool.hatch.version]
 source = "vcs"
-tag-pattern = '^zarr_transforms-v(?P<version>.+)$'
-# `git_describe_command` ensures we get the zarr_transforms tags instead of latest.
+tag-pattern = '^zarr_indexing-v(?P<version>.+)$'
+# `git_describe_command` ensures we get the zarr_indexing tags instead of latest.
 # `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
 # test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
-raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_transforms-v*", local_scheme = "no-local-version" }
+raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*", local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/zarr_transforms"]
+packages = ["src/zarr_indexing"]
 
 [tool.ruff]
 extend = "../../pyproject.toml"
@@ -79,7 +79,7 @@ enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 # This strict config was written for zarr-metadata's JSON/dataclass-shaped
-# code. zarr-transforms is numpy-heavy, and numpy's stubs return partially
+# code. zarr-indexing is numpy-heavy, and numpy's stubs return partially
 # unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
 # fully-typed call sites, so the reportUnknown* family below cannot reasonably
 # be satisfied here. Downgraded to warnings (not silenced) rather than
@@ -103,10 +103,10 @@ checks = [
 [tool.towncrier]
 # Fragments for this package live alongside the package source, separate
 # from the parent zarr-python `changes/` directory, so a PR touching only
-# `packages/zarr-transforms/` produces a release note for this package only.
+# `packages/zarr-indexing/` produces a release note for this package only.
 directory = "changes"
 filename = "CHANGELOG.md"
-package = "zarr_transforms"
+package = "zarr_indexing"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
 issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"

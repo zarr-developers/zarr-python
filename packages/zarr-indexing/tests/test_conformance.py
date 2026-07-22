@@ -2,7 +2,7 @@
 
 Runs the vendored, language-agnostic ndsel fixtures (see
 `tests/conformance/PROVENANCE.md`) against this package's message layer
-(`zarr_transforms.messages`). An implementation is conformant iff:
+(`zarr_indexing.messages`). An implementation is conformant iff:
 
 - for every *success* fixture, `normalize_ndsel(input)` equals the fixture's
   `normalized` value by structural JSON equality;
@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from zarr_transforms.messages import NdselError, normalize_ndsel
+from zarr_indexing.messages import NdselError, normalize_ndsel
 
 _CONFORMANCE_DIR = Path(__file__).parent / "conformance"
 

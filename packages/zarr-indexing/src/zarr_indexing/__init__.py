@@ -22,14 +22,14 @@ consumes without importing zarr.
 
 from importlib.metadata import version
 
-from zarr_transforms.chunk_resolution import (
+from zarr_indexing.chunk_resolution import (
     iter_chunk_transforms,
     sub_transform_to_selections,
 )
-from zarr_transforms.composition import compose
-from zarr_transforms.domain import IndexDomain
-from zarr_transforms.grid import ChunkGridLike, DimensionGridLike
-from zarr_transforms.json import (
+from zarr_indexing.composition import compose
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.grid import ChunkGridLike, DimensionGridLike
+from zarr_indexing.json import (
     IndexDomainJSON,
     IndexTransformJSON,
     OutputIndexMapJSON,
@@ -40,11 +40,11 @@ from zarr_transforms.json import (
     transform_from_canonical,
     transform_to_canonical,
 )
-from zarr_transforms.messages import NdselError, normalize_ndsel, parse_ndsel
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_transforms.transform import IndexTransform, selection_to_transform
+from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.transform import IndexTransform, selection_to_transform
 
-__version__ = version("zarr-transforms")
+__version__ = version("zarr-indexing")
 
 __all__ = [
     "ArrayMap",

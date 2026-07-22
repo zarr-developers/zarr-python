@@ -9,7 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "zarr",
-    "zarr-transforms",
+    "zarr-indexing",
 ]
 
 [[package]]
@@ -3459,7 +3459,7 @@ dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "typing-extensions" },
-    { name = "zarr-transforms" },
+    { name = "zarr-indexing" },
 ]
 
 [package.optional-dependencies]
@@ -3586,7 +3586,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
-    { name = "zarr-transforms", editable = "packages/zarr-transforms" },
+    { name = "zarr-indexing", editable = "packages/zarr-indexing" },
 ]
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 
@@ -3679,8 +3679,8 @@ test = [
 ]
 
 [[package]]
-name = "zarr-transforms"
-source = { editable = "packages/zarr-transforms" }
+name = "zarr-indexing"
+source = { editable = "packages/zarr-indexing" }
 dependencies = [
     { name = "numpy" },
 ]

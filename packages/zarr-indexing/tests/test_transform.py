@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_transforms.domain import IndexDomain
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_transforms.transform import IndexTransform, selection_to_transform
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.transform import IndexTransform, selection_to_transform
 
 
 class TestIndexTransformConstruction:
@@ -553,7 +553,7 @@ class TestArrayMapDependencyAxes:
     from its (full-rank) shape: non-singleton axes vary, singleton axes do not."""
 
     def test_orthogonal_single_axis(self) -> None:
-        from zarr_transforms.transform import _array_map_dependency_axes
+        from zarr_indexing.transform import _array_map_dependency_axes
 
         t = IndexTransform.from_shape((10, 20)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
         m0, m1 = t.output[0], t.output[1]
@@ -563,7 +563,7 @@ class TestArrayMapDependencyAxes:
         assert _array_map_dependency_axes(m1.index_array) == (1,)
 
     def test_vectorized_shares_axes(self) -> None:
-        from zarr_transforms.transform import _array_map_dependency_axes
+        from zarr_indexing.transform import _array_map_dependency_axes
 
         t = IndexTransform.from_shape((10, 20)).vindex[np.array([1, 3]), np.array([2, 4])]
         m0, m1 = t.output[0], t.output[1]
@@ -573,7 +573,7 @@ class TestArrayMapDependencyAxes:
         assert _array_map_dependency_axes(m1.index_array) == (0,)
 
     def test_scalar_array_has_no_dependency(self) -> None:
-        from zarr_transforms.transform import _array_map_dependency_axes
+        from zarr_indexing.transform import _array_map_dependency_axes
 
         assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_transforms.transform import IndexTransform
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.transform import IndexTransform
 
 
 def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:

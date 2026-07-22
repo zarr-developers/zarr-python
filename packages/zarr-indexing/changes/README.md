@@ -1,9 +1,9 @@
-Writing a changelog entry for `zarr-transforms`
+Writing a changelog entry for `zarr-indexing`
 -----------------------------------------------
 
-Fragments in **this** directory are release notes for the `zarr-transforms`
+Fragments in **this** directory are release notes for the `zarr-indexing`
 package only — kept separate from the parent zarr-python `changes/`
-directory so a PR touching only `packages/zarr-transforms/` produces a
+directory so a PR touching only `packages/zarr-indexing/` produces a
 release note for this package only.
 
 Please put a new file in this directory named `xxxx.<type>.md`, where
@@ -17,9 +17,9 @@ Please put a new file in this directory named `xxxx.<type>.md`, where
   - misc
 
 Inside the file, please write a short description of what you have
-changed, and how it impacts users of `zarr-transforms`.
+changed, and how it impacts users of `zarr-indexing`.
 
-A `zarr-transforms` release runs `towncrier build` in `packages/zarr-transforms/`,
+A `zarr-indexing` release runs `towncrier build` in `packages/zarr-indexing/`,
 which consumes the fragments here and updates `CHANGELOG.md`. Fragments
 that describe parent zarr-python changes (not the transforms package)
 belong in the top-level `changes/` directory, not here.

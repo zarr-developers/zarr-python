@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from zarr_transforms.domain import IndexDomain
+from zarr_indexing.domain import IndexDomain
 
 
 class TestIndexDomainConstruction:

@@ -1,15 +1,15 @@
-name: zarr-transforms
+name: zarr-indexing
 
 on:
   push:
     branches: [main]
     paths:
-      - 'packages/zarr-transforms/**'
-      - '.github/workflows/zarr-transforms.yml'
+      - 'packages/zarr-indexing/**'
+      - '.github/workflows/zarr-indexing.yml'
   pull_request:
     paths:
-      - 'packages/zarr-transforms/**'
-      - '.github/workflows/zarr-transforms.yml'
+      - 'packages/zarr-indexing/**'
+      - '.github/workflows/zarr-indexing.yml'
   workflow_dispatch:
 
 permissions:
@@ -42,12 +42,12 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
       # The transform tests exercise chunk resolution against zarr's ChunkGrid,
       # so they run from the repo root against the full workspace (which installs
-      # both `zarr` and the `zarr-transforms` workspace member) rather than in
+      # both `zarr` and the `zarr-indexing` workspace member) rather than in
       # package isolation.
       - name: Sync test dependency group
         run: uv sync --group test --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --group test pytest packages/zarr-transforms/tests
+        run: uv run --group test pytest packages/zarr-indexing/tests
 
   ruff:
     name: ruff
@@ -55,7 +55,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-transforms
+        working-directory: packages/zarr-indexing
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -71,7 +71,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-transforms
+        working-directory: packages/zarr-indexing
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -87,8 +87,8 @@ jobs:
       - name: Run pyright
         run: uv run --group test --with pyright pyright src
 
-  zarr-transforms-complete:
-    name: zarr-transforms complete
+  zarr-indexing-complete:
+    name: zarr-indexing complete
     needs: [test, ruff, pyright]
     if: always()
     runs-on: ubuntu-latest

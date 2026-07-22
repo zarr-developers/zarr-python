@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from zarr_transforms.messages import NdselError, normalize_ndsel, parse_ndsel
+from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
 
 _MESSAGES = [
     {"kind": "point", "coords": [4, 7]},

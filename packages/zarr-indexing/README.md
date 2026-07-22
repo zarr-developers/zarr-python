@@ -1,4 +1,4 @@
-# zarr-transforms
+# zarr-indexing
 
 Composable, lazy coordinate transforms for Zarr array indexing.
 
@@ -22,7 +22,7 @@ repository and consumed by `zarr` to resolve array indexing operations.
 ## Installation
 
 ```bash
-pip install zarr-transforms
+pip install zarr-indexing
 ```
 
 ## License

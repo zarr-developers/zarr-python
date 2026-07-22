@@ -1,10 +1,10 @@
-name: zarr-transforms release
+name: zarr-indexing release
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'zarr_transforms-v*'
+      - 'zarr_indexing-v*'
 
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-transforms
+        working-directory: packages/zarr-indexing
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -37,8 +37,8 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: zarr-transforms-dist
-          path: packages/zarr-transforms/dist
+          name: zarr-indexing-dist
+          path: packages/zarr-indexing/dist
 
   test_artifacts:
     name: Test built artifacts
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: zarr-transforms-dist
+          name: zarr-indexing-dist
           path: dist
 
       - name: Install uv
@@ -62,23 +62,23 @@ jobs:
         run: |
           wheel=$(ls dist/*.whl)
           uv run --with "${wheel}" --python 3.12 --no-project \
-            python -c "import zarr_transforms; print('zarr_transforms', zarr_transforms.__version__)"
+            python -c "import zarr_indexing; print('zarr_indexing', zarr_indexing.__version__)"
 
   upload_pypi:
     name: Upload to PyPI
     needs: [build, test_artifacts]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/zarr_transforms-v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/zarr_indexing-v')
     runs-on: ubuntu-latest
     environment:
-      name: zarr-transforms-releases
-      url: https://pypi.org/p/zarr-transforms
+      name: zarr-indexing-releases
+      url: https://pypi.org/p/zarr-indexing
     permissions:
       id-token: write          # required for OIDC trusted publishing
       attestations: write      # required for artifact attestations
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: zarr-transforms-dist
+          name: zarr-indexing-dist
           path: dist
 
       - name: Generate artifact attestation
@@ -95,15 +95,15 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
-      name: zarr-transforms-releases-test
-      url: https://test.pypi.org/p/zarr-transforms
+      name: zarr-indexing-releases-test
+      url: https://test.pypi.org/p/zarr-indexing
     permissions:
       id-token: write
       attestations: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: zarr-transforms-dist
+          name: zarr-indexing-dist
           path: dist
 
       - name: Generate artifact attestation

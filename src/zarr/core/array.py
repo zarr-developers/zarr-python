@@ -19,9 +19,9 @@ from warnings import warn
 
 import numpy as np
 from typing_extensions import Sentinel, deprecated
-from zarr_transforms.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
-from zarr_transforms.output_map import ArrayMap
-from zarr_transforms.transform import (
+from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
+from zarr_indexing.output_map import ArrayMap
+from zarr_indexing.transform import (
     IndexTransform,
     selection_to_transform,
 )
@@ -6085,7 +6085,7 @@ def _transform_is_identity(transform: IndexTransform, storage_shape: tuple[int, 
     view) yields a non-identity transform that must go through the transform
     resolver. Cheap: O(ndim), no array work.
     """
-    from zarr_transforms.output_map import DimensionMap
+    from zarr_indexing.output_map import DimensionMap
 
     domain = transform.domain
     ndim = len(storage_shape)
@@ -6107,7 +6107,7 @@ def _is_complete_chunk(sub_transform: IndexTransform, spec: ChunkSpec) -> bool:
     `spec` is the chunk's already-resolved `ChunkSpec` (the caller looks
     it up once and shares it with `_array_spec_from_chunk_spec`).
     """
-    from zarr_transforms.output_map import ConstantMap, DimensionMap
+    from zarr_indexing.output_map import ConstantMap, DimensionMap
 
     shape = spec.shape
     for out_dim, m in enumerate(sub_transform.output):

@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_transforms.composition import compose
-from zarr_transforms.domain import IndexDomain
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_transforms.transform import IndexTransform
+from zarr_indexing.composition import compose
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.transform import IndexTransform
 
 
 class TestComposeConstantInner:

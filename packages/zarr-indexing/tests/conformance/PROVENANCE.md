@@ -11,10 +11,10 @@ unmodified**, from the ndsel reference repository.
 - **Path in source:** `conformance/`
 
 **Do not edit these files.** They are vendored as-is so that
-`zarr_transforms`' ndsel message layer can be checked against the same
+`zarr_indexing`' ndsel message layer can be checked against the same
 language-agnostic corpus every other ndsel implementation runs. To update the
 corpus, re-vendor from a newer ndsel commit and update the commit SHA above.
 
 ndsel PR #1 (merged) corrected the `slice` desugaring origin from
 `floor(a/s)` to `trunc(a/s)` (rounding toward zero), which matches
-`zarr_transforms`' existing `_trunc_div` semantics.
+`zarr_indexing`' existing `_trunc_div` semantics.

@@ -2,7 +2,7 @@
 
 This is the **engine layer**. Where `messages.py` is pure JSON→JSON and imposes
 no array constraints, this module converts a *canonical* ndsel transform body
-(spec section 4.3, as produced by `zarr_transforms.messages.normalize_ndsel`)
+(spec section 4.3, as produced by `zarr_indexing.messages.normalize_ndsel`)
 into the numpy-backed `IndexTransform` the chunk engine runs on, and back.
 
 Two engine constraints live **here and only here**:
@@ -48,10 +48,10 @@ from typing import Any, Required, TypedDict
 
 import numpy as np
 
-from zarr_transforms.domain import IndexDomain
-from zarr_transforms.messages import normalize_ndsel
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_transforms.transform import (
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.messages import normalize_ndsel
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.transform import (
     IndexTransform,
     _array_map_dependency_axes,  # pyright: ignore[reportPrivateUsage]
 )

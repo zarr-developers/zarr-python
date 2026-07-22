@@ -9,7 +9,7 @@ carries). This test loads a handful of finite-bound canonical bodies into
 Skipped when tensorstore is not installed. Run it explicitly with:
 
     uv run --with tensorstore pytest \
-        packages/zarr-transforms/tests/test_ndsel_tensorstore.py -q
+        packages/zarr-indexing/tests/test_ndsel_tensorstore.py -q
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_transforms.json import transform_from_canonical, transform_to_canonical
-from zarr_transforms.transform import IndexTransform
+from zarr_indexing.json import transform_from_canonical, transform_to_canonical
+from zarr_indexing.transform import IndexTransform
 
 ts = pytest.importorskip("tensorstore")
 

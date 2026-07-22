@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_transforms.domain import IndexDomain
-from zarr_transforms.json import (
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.json import (
     IndexTransformJSON,
     index_domain_from_json,
     index_domain_to_json,
@@ -13,8 +13,8 @@ from zarr_transforms.json import (
     output_index_map_from_json,
     output_index_map_to_json,
 )
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_transforms.transform import IndexTransform
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.transform import IndexTransform
 
 
 def _maps_equal(a: object, b: object) -> bool:

@@ -37,7 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
-    'zarr-transforms>=0.1.0',
+    'zarr-indexing>=0.1.0',
 ]
 
 dynamic = [
@@ -153,14 +153,14 @@ dev = [
 ]
 
 # The repo is a uv workspace so that `zarr` can depend on the in-tree
-# `packages/zarr-transforms` during development and CI. Released wheels depend on
-# the published zarr-transforms distribution; the workspace source below only
+# `packages/zarr-indexing` during development and CI. Released wheels depend on
+# the published zarr-indexing distribution; the workspace source below only
 # affects resolution from a checkout (uv.lock, `uv run`, hatch envs using uv).
 [tool.uv.workspace]
-members = ["packages/zarr-transforms"]
+members = ["packages/zarr-indexing"]
 
 [tool.uv.sources]
-zarr-transforms = { workspace = true }
+zarr-indexing = { workspace = true }
 
 [tool.coverage.report]
 exclude_also = [
@@ -169,13 +169,13 @@ exclude_also = [
 
 [tool.coverage.run]
 # Measured source lives in two trees: zarr's own `src` and the in-tree
-# `zarr-transforms` workspace package. Configured here (not via `--source=src`
+# `zarr-indexing` workspace package. Configured here (not via `--source=src`
 # on the CLI) so every `coverage run` invocation — the hatch run-coverage /
 # run-coverage-html / run-hypothesis scripts and ad-hoc local runs — measures
 # both consistently.
 source = [
     "src",
-    "packages/zarr-transforms/src",
+    "packages/zarr-indexing/src",
 ]
 omit = [
     "bench/compress_normal.py",
@@ -185,7 +185,7 @@ omit = [
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
 # this filter `git describe` matches the most recent tag of any shape,
-# including the `zarr_metadata-v*` and `zarr_transforms-v*` tags used to release
+# including the `zarr_metadata-v*` and `zarr_indexing-v*` tags used to release
 # the in-tree subpackages — which would make a from-source build report a
 # `0.x` subpackage version instead of `3.x`. (`--match v*` excludes both, since
 # neither tag starts with a bare `v`.)
@@ -454,12 +454,12 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "9"
-# `packages/zarr-transforms/tests` is collected here rather than run in an
+# `packages/zarr-indexing/tests` is collected here rather than run in an
 # isolated package env: those tests exercise chunk resolution against zarr's
 # concrete `ChunkGrid`, so they need `zarr` importable (which the root env
 # provides). Keeping them in testpaths means the main test suite / `run-coverage`
 # continues to exercise the transform algebra after the move to the subpackage.
-testpaths = ["src", "tests", "docs/user-guide", "packages/zarr-transforms/tests"]
+testpaths = ["src", "tests", "docs/user-guide", "packages/zarr-indexing/tests"]
 log_cli_level = "INFO"
 log_level = "INFO"
 # Enables strict_config, strict_markers, strict_xfail, strict_parametrization_ids, and

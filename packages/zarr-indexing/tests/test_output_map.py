@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from zarr_transforms.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 
 
 class TestConstantMap:
