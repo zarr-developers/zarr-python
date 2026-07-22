@@ -4210,6 +4210,122 @@ async def read_regions(
         yield await future
 
 
+def _sharding_codec(array: AnyAsyncArray) -> Any:
+    """Return the array's top-level ``ShardingCodec`` instance, or ``None`` if the array
+    is not sharded."""
+    from zarr.codecs.sharding import ShardingCodec
+
+    codecs: tuple[Codec, ...] = getattr(array.metadata, "codecs", ())
+    if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        return codecs[0]
+    return None
+
+
+async def initialized_chunk_regions(
+    array: AnyArray | AnyAsyncArray,
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+    concurrency: int | None = None,
+) -> list[tuple[slice, ...]]:
+    """
+    Return the array regions spanned by the *inner chunks* that have been written.
+
+    Unlike [initialized_regions][zarr.initialized_regions], which reports at stored-object
+    (shard) granularity, this reports at chunk granularity: for a sharded array it looks
+    *inside* each populated shard — reading only the shard index, not the chunk data — and
+    reports the regions of the inner chunks that were actually written, skipping empty inner
+    chunks. For an unsharded array, stored objects already are chunks, so this is identical
+    to [initialized_regions][zarr.initialized_regions].
+
+    The cost scales with the number of *populated shards*: discovering them is a single
+    listing (see [shards_initialized][zarr.shards_initialized]), and each populated shard
+    then costs one small range read of its index (the chunk data is never fetched).
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist. See [shards_initialized][zarr.shards_initialized].
+    concurrency : int, optional
+        The maximum number of shard indexes read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Returns
+    -------
+    list[tuple[slice, ...]]
+        The regions spanned by the populated inner chunks, in chunk-grid order.
+
+    See Also
+    --------
+    initialized_regions : The array regions at stored-object (shard) granularity.
+    read_regions : Read and decode a collection of array regions.
+    """
+    if isinstance(array, Array):
+        array = array._async_array
+
+    sharding_codec = _sharding_codec(array)
+    if sharding_codec is None:
+        # No sharding: each stored object is a chunk, so chunk granularity == shard
+        # granularity. Reuse the cheap listing-based path verbatim.
+        return await initialized_regions(array, strategy=strategy)
+
+    if concurrency is None:
+        concurrency = zarr_config.get("async.concurrency")
+
+    # array.chunks is the inner-chunk shape when sharding; array.shards is the shard shape.
+    assert array.shards is not None  # guaranteed by sharding_codec is not None
+    chunks_per_shard = tuple(s // c for s, c in zip(array.shards, array.chunks, strict=True))
+    chunk_grid_shape = array._chunk_grid_shape
+
+    # 1. Discover populated shards (a single listing) and recover their grid coordinates.
+    populated_keys = frozenset(await shards_initialized(array, strategy=strategy))
+    populated_shard_coords = [
+        coord
+        for coord, key in zip(_iter_shard_coords(array), _iter_shard_keys(array), strict=True)
+        if key in populated_keys
+    ]
+
+    # 2. Read each populated shard's index (only) and expand its populated inner chunks to
+    #    global chunk coordinates. The shard data itself is never fetched.
+    async def _populated_chunk_coords(shard_coord: tuple[int, ...]) -> list[tuple[int, ...]]:
+        byte_getter = array.store_path / array.metadata.encode_chunk_key(shard_coord)
+        index = await sharding_codec._load_shard_index_maybe(byte_getter, chunks_per_shard)
+        if index is None:
+            return []
+        origin = tuple(s * cps for s, cps in zip(shard_coord, chunks_per_shard, strict=True))
+        coords: list[tuple[int, ...]] = []
+        for local in zip(
+            *(d.tolist() for d in np.nonzero(index.get_full_chunk_map())), strict=True
+        ):
+            coord = tuple(o + lo for o, lo in zip(origin, local, strict=True))
+            # Guard against an edge shard whose index references chunks past the array bounds.
+            if all(ci < gi for ci, gi in zip(coord, chunk_grid_shape, strict=True)):
+                coords.append(coord)
+        return coords
+
+    per_shard = await concurrent_map(
+        [(coord,) for coord in populated_shard_coords],
+        _populated_chunk_coords,
+        concurrency,
+    )
+
+    # 3. Turn the populated chunk coordinates into array regions, in chunk-grid order.
+    chunk_shape = array.chunks
+    ndim = len(array.shape)
+    unit = (1,) * ndim
+    return [
+        next(
+            iter(
+                _iter_regions(
+                    array.shape, chunk_shape, origin=coord, selection_shape=unit, trim_excess=True
+                )
+            )
+        )
+        for coord in sorted({coord for coords in per_shard for coord in coords})
+    ]
+
+
 type FiltersLike = (
     Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec

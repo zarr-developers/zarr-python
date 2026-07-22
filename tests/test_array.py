@@ -2547,6 +2547,54 @@ def test_read_initialized_regions_reconstructs_baseline(store: Store, setup_name
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", ["sparse_1d", "dense_1d", "sparse_2d", "all_empty"])
+def test_initialized_chunk_regions_unsharded_matches_initialized_regions(
+    store: Store, setup_name: str
+) -> None:
+    """For unsharded arrays each stored object is a chunk, so chunk granularity equals
+    stored-object granularity."""
+    arr, _ = _CA_SETUPS[setup_name](store)
+    assert zarr.initialized_chunk_regions(arr) == zarr.initialized_regions(arr)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_initialized_chunk_regions_sharded_skips_empty_inner_chunks(store: Store) -> None:
+    """Within a populated shard, only the inner chunks that were actually written are
+    reported — finer than the shard-level ``initialized_regions``."""
+    # chunks (2, 2) within shards (4, 4): each shard is a 2x2 grid of inner chunks.
+    arr = zarr.create_array(
+        store=store, shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="int32", fill_value=0
+    )
+    arr[0:2, 0:2] = 1  # one inner chunk of shard (0, 0)
+    arr[4:6, 4:6] = 2  # two inner chunks of shard (1, 1)
+    arr[6:8, 6:8] = 3
+    # Shard granularity: two coarse 4x4 shard regions.
+    assert zarr.initialized_regions(arr) == [
+        (slice(0, 4, 1), slice(0, 4, 1)),
+        (slice(4, 8, 1), slice(4, 8, 1)),
+    ]
+    # Chunk granularity: exactly the three written 2x2 inner chunks (empty inner chunks
+    # within the populated shards are skipped).
+    assert zarr.initialized_chunk_regions(arr) == [
+        (slice(0, 2, 1), slice(0, 2, 1)),
+        (slice(4, 6, 1), slice(4, 6, 1)),
+        (slice(6, 8, 1), slice(6, 8, 1)),
+    ]
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("setup_name", list(_CA_SETUPS))
+def test_read_initialized_chunk_regions_reconstructs_baseline(
+    store: Store, setup_name: str
+) -> None:
+    """Reading the populated inner-chunk regions and scattering them reproduces the full
+    ``arr[:]`` read exactly, for both sharded and unsharded arrays."""
+    arr, baseline = _CA_SETUPS[setup_name](store)
+    results = zarr.read_regions(arr, zarr.initialized_chunk_regions(arr))
+    assert np.array_equal(_ca_pack(arr, results, baseline), baseline)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_read_regions_explicit_regions(store: Store) -> None:
     """Explicit regions are read and returned with their decoded data."""
     arr, baseline = _ca_sparse_1d(store)

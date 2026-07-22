@@ -58,6 +58,7 @@ __all__ = [
     "full",
     "full_like",
     "group",
+    "initialized_chunk_regions",
     "initialized_regions",
     "load",
     "ones",
@@ -1527,6 +1528,48 @@ def initialized_regions(
     read_regions : Read and decode a collection of array regions.
     """
     return sync(async_api.initialized_regions(_as_async_array(array), strategy=strategy))
+
+
+def initialized_chunk_regions(
+    array: Array[Any] | AsyncArray[Any],
+    *,
+    strategy: Literal["auto", "list", "probe"] = "auto",
+    concurrency: int | None = None,
+) -> list[tuple[slice, ...]]:
+    """
+    Return the array regions spanned by the inner chunks that have been written.
+
+    Unlike [initialized_regions][zarr.initialized_regions], which reports at stored-object
+    (shard) granularity, this reports at chunk granularity: for a sharded array it reads each
+    populated shard's index (not its data) and reports the regions of the inner chunks that
+    were actually written, skipping empty inner chunks. For an unsharded array this is
+    identical to [initialized_regions][zarr.initialized_regions].
+
+    Parameters
+    ----------
+    array : Array or AsyncArray
+        The array to inspect.
+    strategy : {"auto", "list", "probe"}, default "auto"
+        How to discover which shards exist. See [shards_initialized][zarr.shards_initialized].
+    concurrency : int, optional
+        The maximum number of shard indexes read concurrently. Defaults to the
+        ``async.concurrency`` config value.
+
+    Returns
+    -------
+    list[tuple[slice, ...]]
+        The regions spanned by the populated inner chunks, in chunk-grid order.
+
+    See Also
+    --------
+    initialized_regions : The array regions at stored-object (shard) granularity.
+    read_regions : Read and decode a collection of array regions.
+    """
+    return sync(
+        async_api.initialized_chunk_regions(
+            _as_async_array(array), strategy=strategy, concurrency=concurrency
+        )
+    )
 
 
 def read_regions(
