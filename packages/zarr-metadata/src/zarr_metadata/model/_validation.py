@@ -14,9 +14,10 @@ string-matching messages.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, NoReturn, cast
 
 from typing_extensions import TypeIs
 
@@ -76,7 +77,11 @@ def _prefix(loc_head: str | int, problems: list[ValidationProblem]) -> list[Vali
 
 def validate_json(value: object) -> list[ValidationProblem]:
     """Return every reason `value` is not JSON-serializable (recursively)."""
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return []
+        return [ValidationProblem((), f"non-finite float {value!r} is not JSON", "invalid_value")]
+    if isinstance(value, (str, int, bool)) or value is None:
         return []
     problems: list[ValidationProblem] = []
     if isinstance(value, Mapping):
@@ -101,11 +106,12 @@ def is_json(value: object) -> TypeIs[JSONValue]:
 
 
 def parse_json(value: object) -> JSONValue:
-    """Return `value` narrowed to `JSONValue`, or raise `MetadataValidationError`."""
-    problems = validate_json(value)
+    """Return a canonical `JSONValue`, or raise `MetadataValidationError`."""
+    normalized = arrays_to_tuples(value)
+    problems = validate_json(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(JSONValue, value)
+    return cast(JSONValue, normalized)
 
 
 # The standard top-level keys of a v3 array metadata document. Anything outside
@@ -124,6 +130,12 @@ ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
 ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2ArrayMetadataJSON.__required_keys__
 )
+ARRAY_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
+    ZarrV2ArrayMetadataJSON.__optional_keys__
+)
+ARRAY_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
+    ARRAY_METADATA_REQUIRED_KEYS_V2 | ARRAY_METADATA_OPTIONAL_KEYS_V2
+)
 
 # The standard top-level keys of a v3 group metadata document. Anything outside
 # this set is an extension field.
@@ -140,6 +152,12 @@ GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
 GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2GroupMetadataJSON.__required_keys__
 )
+GROUP_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
+    ZarrV2GroupMetadataJSON.__optional_keys__
+)
+GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
+    GROUP_METADATA_REQUIRED_KEYS_V2 | GROUP_METADATA_OPTIONAL_KEYS_V2
+)
 
 
 def _missing_keys(required: frozenset[str], doc: Mapping[str, object]) -> list[ValidationProblem]:
@@ -150,11 +168,28 @@ def _missing_keys(required: frozenset[str], doc: Mapping[str, object]) -> list[V
     ]
 
 
+def _unexpected_keys(
+    allowed: frozenset[str], doc: Mapping[object, object]
+) -> list[ValidationProblem]:
+    """One problem per member outside a closed document's declared shape."""
+    problems: list[ValidationProblem] = []
+    for key in doc:
+        if not isinstance(key, str):
+            problems.append(
+                ValidationProblem((), f"non-string document key {key!r}", "invalid_type")
+            )
+        elif key not in allowed:
+            problems.append(
+                ValidationProblem((key,), "unexpected document member", "invalid_value")
+            )
+    return problems
+
+
 def _check_literal(
     doc: Mapping[str, object], key: str, expected: object
 ) -> list[ValidationProblem]:
     """One `invalid_value` problem if `doc[key]` is present but not `expected`."""
-    if key in doc and doc[key] != expected:
+    if key in doc and (type(doc[key]) is not type(expected) or doc[key] != expected):
         return [
             ValidationProblem((key,), f"expected {expected!r}, got {doc[key]!r}", "invalid_value")
         ]
@@ -251,10 +286,11 @@ def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
 
 def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
     """Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or raise `MetadataValidationError`."""
-    problems = validate_metadata_field_v3(value)
+    normalized = arrays_to_tuples(value)
+    problems = validate_metadata_field_v3(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ZarrV3MetadataFieldJSON, value)
+    return cast(ZarrV3MetadataFieldJSON, normalized)
 
 
 def _is_int_sequence(value: object) -> bool:
@@ -523,6 +559,9 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc)
+    problems.extend(
+        _unexpected_keys(ARRAY_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
+    )
     problems.extend(_check_literal(doc, "zarr_format", 2))
     problems.extend(_validate_dim_sequence(doc, "shape"))
     problems.extend(_validate_dim_sequence(doc, "chunks"))
@@ -606,6 +645,12 @@ def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
         for key in ("kind", "must_understand", "metadata")
         if key not in env
     ]
+    problems.extend(
+        _unexpected_keys(
+            frozenset({"kind", "must_understand", "metadata"}),
+            cast("Mapping[object, object]", value),
+        )
+    )
     problems.extend(_check_literal(env, "kind", "inline"))
     if "must_understand" in env and env["must_understand"] is not False:
         problems.append(ValidationProblem(("must_understand",), "expected False", "invalid_value"))
@@ -681,15 +726,18 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
 
 def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v3 group metadata document."""
-    return not validate_group_metadata_v3(value)
+    return isinstance(value, dict) and not validate_group_metadata_v3(
+        cast("dict[object, object]", value)
+    )
 
 
 def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    problems = validate_group_metadata_v3(value)
+    normalized = arrays_to_tuples(value)
+    problems = validate_group_metadata_v3(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ZarrV3GroupMetadataJSON, value)
+    return cast(ZarrV3GroupMetadataJSON, normalized)
 
 
 def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
@@ -702,6 +750,9 @@ def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc)
+    problems.extend(
+        _unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
+    )
     problems.extend(_check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
@@ -710,15 +761,23 @@ def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
 
 def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document."""
-    return not validate_group_metadata_v2(value)
+    return isinstance(value, dict) and not validate_group_metadata_v2(
+        cast("dict[object, object]", value)
+    )
 
 
 def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    problems = validate_group_metadata_v2(value)
+    normalized = arrays_to_tuples(value)
+    problems = validate_group_metadata_v2(normalized)
     if problems:
         raise MetadataValidationError(problems)
-    return cast(ZarrV2GroupMetadataJSON, value)
+    return cast(ZarrV2GroupMetadataJSON, normalized)
+
+
+def _reject_json_constant(constant: str) -> NoReturn:
+    """Reject the JavaScript constants accepted by Python's JSON decoder."""
+    raise ValueError(f"non-standard JSON constant {constant!r}")
 
 
 def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:
@@ -734,23 +793,35 @@ def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:
             [ValidationProblem((key,), "missing store key", "missing_key")]
         )
     try:
-        return json.loads(mapping[key])
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return json.loads(mapping[key], parse_constant=_reject_json_constant)
+    except (UnicodeDecodeError, ValueError) as exc:
         raise MetadataValidationError(
             [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]
         ) from exc
 
 
+def dump_store_json(value: object, *, indent: int | str | None = None) -> bytes:
+    """Encode a metadata document as strict RFC 8259 JSON bytes."""
+    return json.dumps(value, indent=indent, allow_nan=False).encode("utf-8")
+
+
 def arrays_to_tuples(obj: object) -> object:
-    """Recursively convert every list in a JSON-decoded structure to a tuple."""
-    if isinstance(obj, list):
-        return tuple(arrays_to_tuples(item) for item in cast("list[object]", obj))
-    if isinstance(obj, dict):
-        mapping = cast("dict[object, object]", obj)
+    """Recursively materialize mappings and convert array-like values to tuples."""
+    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
+        sequence = cast("Sequence[object]", obj)
+        converted_sequence = tuple(arrays_to_tuples(item) for item in sequence)
+        if isinstance(obj, tuple) and all(
+            converted is original
+            for converted, original in zip(converted_sequence, sequence, strict=True)
+        ):
+            return cast("tuple[object, ...]", obj)
+        return converted_sequence
+    if isinstance(obj, Mapping):
+        mapping = cast("Mapping[object, object]", obj)
         converted: dict[object, object] = {
             key: arrays_to_tuples(value) for key, value in mapping.items()
         }
-        if all(converted[key] is value for key, value in mapping.items()):
+        if isinstance(obj, dict) and all(converted[key] is value for key, value in mapping.items()):
             return cast("object", obj)
         return converted
     return obj

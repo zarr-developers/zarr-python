@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, cast
@@ -21,6 +20,7 @@ from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    dump_store_json,
     load_store_json,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
@@ -184,9 +184,7 @@ class ZarrV3GroupMetadata:
         return cls.from_json(load_store_json(mapping, GROUP_METADATA_STORE_KEY_V3))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
-        return {
-            GROUP_METADATA_STORE_KEY_V3: json.dumps(self.to_json(), indent=indent).encode("utf-8")
-        }
+        return {GROUP_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -228,10 +226,11 @@ class ZarrV3ConsolidatedMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV3ConsolidatedMetadata:
-        problems = validate_consolidated_metadata_v3(data)
+        normalized = arrays_to_tuples(data)
+        problems = validate_consolidated_metadata_v3(normalized)
         if problems:
             raise MetadataValidationError(problems)
-        env = cast("Mapping[str, object]", data)
+        env = cast("Mapping[str, object]", normalized)
         entries: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata] = {}
         for key, entry in cast("Mapping[str, object]", env["metadata"]).items():
             node_type = cast("Mapping[str, object]", entry).get("node_type")
@@ -330,11 +329,9 @@ class ZarrV2GroupMetadata:
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file.
         zgroup = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        out = {GROUP_METADATA_STORE_KEY_V2: json.dumps(zgroup, indent=indent).encode("utf-8")}
+        out = {GROUP_METADATA_STORE_KEY_V2: dump_store_json(zgroup, indent=indent)}
         if self.attributes is not UNSET:
-            out[ATTRIBUTES_STORE_KEY_V2] = json.dumps(self.attributes, indent=indent).encode(
-                "utf-8"
-            )
+            out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
         return out
 
 
@@ -360,16 +357,21 @@ class ZarrV2ConsolidatedMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2ConsolidatedMetadata:
-        if not isinstance(data, Mapping):
+        normalized = arrays_to_tuples(data)
+        if not isinstance(normalized, Mapping):
             raise MetadataValidationError(
                 [ValidationProblem((), "expected a mapping", "invalid_type")]
             )
-        doc = cast("Mapping[str, object]", data)
+        doc = cast("Mapping[str, object]", normalized)
         problems: list[ValidationProblem] = [
             ValidationProblem((key,), "missing required key", "missing_key")
             for key in ("zarr_consolidated_format", "metadata")
             if key not in doc
         ]
+        problems.extend(
+            ValidationProblem((key,), "unexpected document member", "invalid_value")
+            for key in doc.keys() - {"zarr_consolidated_format", "metadata"}
+        )
         if "zarr_consolidated_format" in doc and (
             not isinstance(doc["zarr_consolidated_format"], int)
             or isinstance(doc["zarr_consolidated_format"], bool)
@@ -413,8 +415,4 @@ class ZarrV2ConsolidatedMetadata:
         return cls.from_json(load_store_json(mapping, CONSOLIDATED_METADATA_STORE_KEY_V2))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
-        return {
-            CONSOLIDATED_METADATA_STORE_KEY_V2: json.dumps(self.to_json(), indent=indent).encode(
-                "utf-8"
-            )
-        }
+        return {CONSOLIDATED_METADATA_STORE_KEY_V2: dump_store_json(self.to_json(), indent=indent)}

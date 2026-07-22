@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast
@@ -16,6 +15,7 @@ from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    dump_store_json,
     load_store_json,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
@@ -318,9 +318,7 @@ class ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V3))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
-        return {
-            ARRAY_METADATA_STORE_KEY_V3: json.dumps(self.to_json(), indent=indent).encode("utf-8")
-        }
+        return {ARRAY_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
@@ -472,9 +470,7 @@ class ZarrV2ArrayMetadata:
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        out = {ARRAY_METADATA_STORE_KEY_V2: json.dumps(zarray, indent=indent).encode("utf-8")}
+        out = {ARRAY_METADATA_STORE_KEY_V2: dump_store_json(zarray, indent=indent)}
         if self.attributes is not UNSET:
-            out[ATTRIBUTES_STORE_KEY_V2] = json.dumps(self.attributes, indent=indent).encode(
-                "utf-8"
-            )
+            out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
         return out

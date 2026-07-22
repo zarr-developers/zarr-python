@@ -101,8 +101,27 @@ def test_json_schema_generation() -> None:
         codec: zmp.ZarrV3MetadataField
 
     schema = Manifest.model_json_schema()
-    assert schema["properties"]["metadata"] == {"type": "object", "title": "ZarrV3ArrayMetadata"}
-    assert schema["properties"]["codec"]["anyOf"] == [{"type": "string"}, {"type": "object"}]
+    metadata_schema = schema["$defs"]["ZarrV3ArrayMetadataJSON"]
+    assert schema["properties"]["metadata"]["$ref"] == "#/$defs/ZarrV3ArrayMetadataJSON"
+    assert metadata_schema["required"] == [
+        "zarr_format",
+        "node_type",
+        "data_type",
+        "shape",
+        "chunk_grid",
+        "chunk_key_encoding",
+        "fill_value",
+        "codecs",
+    ]
+    assert metadata_schema["properties"]["zarr_format"] == {
+        "const": 3,
+        "title": "Zarr Format",
+        "type": "integer",
+    }
+    assert schema["properties"]["codec"]["anyOf"] == [
+        {"type": "string"},
+        {"$ref": "#/$defs/ZarrV3NamedConfigJSON"},
+    ]
 
 
 def test_json_roundtrip() -> None:

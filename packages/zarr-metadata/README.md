@@ -9,6 +9,9 @@ JSON shapes specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/late
 and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
 specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
 and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
+It also provides canonical frozen-dataclass models, structural validators,
+parsers, store-key serialization, and optional Pydantic field integrations.
+The optional integration requires Pydantic 2.13 or newer.
 
 ## What this is for
 
@@ -28,17 +31,24 @@ with open("zarr.json", "rb") as f:
 metadata = TypeAdapter(ZarrV3ArrayMetadataJSON).validate_python(raw)
 ```
 
-## What this is *not*
+For a normalized model with loc-aware validation and serialization:
 
-- Not a parser or builder. There are no `make_array_metadata(...)` factories —
-  that surface belongs to consumer libraries.
-- Not a runtime validator on its own. Pair with `pydantic`, `msgspec`, or
-  similar to enforce shapes at decode time.
+```python
+from zarr_metadata.model import ZarrV3ArrayMetadata
 
-Even with a runtime validator, these types only describe **structural**
-shape — they will not flag *semantically* invalid metadata, like a 3D v3
-array whose `dimension_names` has 4 entries instead of 3. That's a job
-for downstream validator routines.
+model = ZarrV3ArrayMetadata.from_json(raw)
+encoded = model.to_key_value()["zarr.json"]
+```
+
+## Validation boundary
+
+The model validators enforce the declared document structure and a small set
+of context-free consistency rules, including fixed format literals, finite
+JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
+`dimension_names` entry per array dimension. They do not interpret extension
+names or configurations, resolve codec pipelines, or decide whether a data
+type, chunk grid, codec, or storage transformer is supported. Those decisions
+belong to consumer implementations.
 
 ## Scope
 

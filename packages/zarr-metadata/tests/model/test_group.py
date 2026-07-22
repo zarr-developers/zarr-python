@@ -2,6 +2,8 @@
 
 import dataclasses
 import json
+from collections import UserDict
+from collections.abc import Callable
 
 import pytest
 
@@ -17,6 +19,7 @@ from zarr_metadata.model._group import (
 )
 from zarr_metadata.model._validation import (
     MetadataValidationError,
+    ValidationProblem,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
     validate_group_metadata_v2,
@@ -96,6 +99,56 @@ def test_group_v3_bad_attributes() -> None:
     """parse_group_metadata_v3 rejects a non-mapping attributes value."""
     with pytest.raises(MetadataValidationError, match="attributes"):
         parse_group_metadata_v3({"zarr_format": 3, "node_type": "group", "attributes": 5})
+
+
+@pytest.mark.parametrize(
+    ("document", "validate"),
+    [
+        pytest.param(
+            {"zarr_format": 2.0},
+            validate_group_metadata_v2,
+            id="v2",
+        ),
+        pytest.param(
+            {"zarr_format": 3.0, "node_type": "group"},
+            validate_group_metadata_v3,
+            id="v3",
+        ),
+    ],
+)
+def test_group_zarr_format_rejects_float(
+    document: object, validate: Callable[[object], list[ValidationProblem]]
+) -> None:
+    """Integer-valued floats do not satisfy integer format literals."""
+    assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
+
+
+def test_group_v2_rejects_unknown_document_member() -> None:
+    """The closed v2 merged-document shape rejects undeclared members."""
+    assert [(p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})] == [
+        (("x",), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parse", "document"),
+    [
+        pytest.param(parse_group_metadata_v2, {"zarr_format": 2}, id="v2"),
+        pytest.param(
+            parse_group_metadata_v3,
+            {"zarr_format": 3, "node_type": "group"},
+            id="v3",
+        ),
+    ],
+)
+def test_group_parser_materializes_abstract_mapping(
+    parse: Callable[[object], object], document: dict[str, object]
+) -> None:
+    """A successful group parser always returns the declared concrete TypedDict shape."""
+    parsed = parse(UserDict(document))
+
+    assert type(parsed) is dict
+    assert parsed == document
 
 
 def test_group_v3_extension_fields_are_validated() -> None:
@@ -394,6 +447,27 @@ def test_group_v3_valid_consolidated_passes_validator() -> None:
         },
     }
     assert validate_group_metadata_v3(doc) == []
+
+
+def test_v3_consolidated_rejects_unknown_envelope_member() -> None:
+    """The inline consolidated envelope is closed and never drops accepted members."""
+    doc = {
+        "kind": "inline",
+        "must_understand": False,
+        "metadata": {},
+        "unexpected": 1,
+    }
+
+    with pytest.raises(MetadataValidationError, match="unexpected"):
+        ZarrV3ConsolidatedMetadata.from_json(doc)
+
+
+def test_v2_consolidated_rejects_unknown_document_member() -> None:
+    """The v2 consolidated document is closed and never drops accepted members."""
+    doc = {"zarr_consolidated_format": 1, "metadata": {}, "unexpected": 1}
+
+    with pytest.raises(MetadataValidationError, match="unexpected"):
+        ZarrV2ConsolidatedMetadata.from_json(doc)
 
 
 # --- must_understand partition ------------------------------------------------

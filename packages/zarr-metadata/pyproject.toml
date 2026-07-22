@@ -47,7 +47,7 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/README.md"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2"]
+test = ["pytest", "pydantic>=2.13"]
 
 [tool.hatch.version]
 source = "vcs"

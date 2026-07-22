@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+from collections import UserDict
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -787,8 +788,9 @@ JSON_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
     Expect(None, frozenset(), id="none"),
     Expect({"a": [1, {"b": None}], "c": "x"}, frozenset(), id="nested-containers"),
     Expect((1, 2, 3), frozenset(), id="tuple-array"),
-    Expect(float("nan"), frozenset(), id="nan"),
-    Expect(float("inf"), frozenset(), id="inf"),
+    Expect(float("nan"), frozenset({()}), id="nan"),
+    Expect(float("inf"), frozenset({()}), id="inf"),
+    Expect(float("-inf"), frozenset({()}), id="negative-inf"),
     Expect(object(), frozenset({()}), id="object"),
     Expect(b"abc", frozenset({()}), id="bytes"),
     Expect(bytearray(b"abc"), frozenset({()}), id="bytearray"),
@@ -816,10 +818,34 @@ def test_validate_json(case: Expect[object, frozenset[tuple[str | int, ...]]]) -
 def test_parse_json(case: Expect[object, frozenset[tuple[str | int, ...]]]) -> None:
     """parse_json returns valid JSON values and raises on invalid ones."""
     if case.output == frozenset():
-        assert parse_json(case.input) is case.input
+        parsed = parse_json(case.input)
+        assert arrays_to_tuples(parsed) == arrays_to_tuples(case.input)
     else:
         with pytest.raises(MetadataValidationError):
             parse_json(case.input)
+
+
+def test_parse_json_materializes_abstract_containers() -> None:
+    """Accepted Mapping and Sequence values normalize to JSON encoder containers."""
+    value = UserDict({"values": range(3)})
+
+    parsed = parse_json(value)
+
+    assert parsed == {"values": (0, 1, 2)}
+    assert type(parsed) is dict
+    assert type(parsed["values"]) is tuple
+    json.dumps(parsed, allow_nan=False)
+
+
+def test_parse_metadata_field_materializes_abstract_containers() -> None:
+    """Named-config parsing produces canonical containers at every nesting level."""
+    value = UserDict({"name": "example", "configuration": UserDict({"values": range(2)})})
+
+    parsed = parse_metadata_field_v3(value)
+
+    assert isinstance(parsed, dict)
+    assert parsed == {"name": "example", "configuration": {"values": (0, 1)}}
+    assert type(parsed["configuration"]) is dict
 
 
 def test_validate_json_reports_json_in_message() -> None:
@@ -1178,6 +1204,66 @@ def test_v3_zarr_format_literal_enforced() -> None:
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"zarr_format": 2}
     problems = validate_array_metadata_v3(doc)
     assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+
+
+@pytest.mark.parametrize(
+    ("document", "validate"),
+    [
+        pytest.param(
+            dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"zarr_format": 2.0},
+            validate_array_metadata_v2,
+            id="v2",
+        ),
+        pytest.param(
+            dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"zarr_format": 3.0},
+            validate_array_metadata_v3,
+            id="v3",
+        ),
+    ],
+)
+def test_array_zarr_format_rejects_float(
+    document: object, validate: Callable[[object], list[ValidationProblem]]
+) -> None:
+    """Integer-valued floats do not satisfy integer format literals."""
+    assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
+
+
+def test_array_v2_rejects_unknown_document_member() -> None:
+    """The closed v2 merged-document shape rejects undeclared members."""
+    doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
+        (("unexpected",), "invalid_value")
+    ]
+
+
+def test_array_v3_from_json_materializes_abstract_containers() -> None:
+    """A flexible input mapping becomes the canonical dict/tuple model shape."""
+    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()))
+    doc["shape"] = range(2)
+
+    model = ZarrV3ArrayMetadata.from_json(doc)
+
+    assert model.shape == (0, 1)
+    assert type(model.shape) is tuple
+
+
+def test_from_key_value_rejects_non_standard_json_constant() -> None:
+    """Store JSON decoding rejects JavaScript NaN/Infinity constants."""
+    doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    doc["fill_value"] = float("nan")
+    raw = json.dumps(doc)
+
+    with pytest.raises(MetadataValidationError, match="invalid JSON"):
+        ZarrV3ArrayMetadata.from_key_value({"zarr.json": raw.encode()})
+
+
+def test_to_key_value_rejects_non_finite_model_value() -> None:
+    """Strict encoding prevents directly-constructed models from writing invalid JSON."""
+    model = ZarrV3ArrayMetadata.create_default(fill_value=float("nan"))
+
+    with pytest.raises(ValueError, match="JSON compliant"):
+        model.to_key_value()
 
 
 def test_v3_node_type_literal_enforced() -> None:
