@@ -10,8 +10,12 @@ from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 
 ZarrV2DataTypeMetadata = TypeAliasType(
     "ZarrV2DataTypeMetadata",
-    "str | tuple[tuple[str, ZarrV2DataTypeMetadata] | "
-    "tuple[str, ZarrV2DataTypeMetadata, tuple[int, ...]], ...]",
+    str
+    | tuple[
+        tuple[str, "ZarrV2DataTypeMetadata"]
+        | tuple[str, "ZarrV2DataTypeMetadata", tuple[int, ...]],
+        ...,
+    ],
 )
 """The v2 dtype representation.
 

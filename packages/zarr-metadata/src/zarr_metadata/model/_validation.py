@@ -107,9 +107,13 @@ def _is_canonical_json(value: object) -> TypeIs[JSONValue]:
     if isinstance(value, (str, int, bool)) or value is None:
         return True
     if isinstance(value, (list, tuple)):
-        return all(_is_canonical_json(item) for item in value)
+        sequence = cast("list[object] | tuple[object, ...]", value)
+        return all(_is_canonical_json(item) for item in sequence)
     if isinstance(value, dict):
-        return all(isinstance(key, str) and _is_canonical_json(item) for key, item in value.items())
+        mapping = cast("dict[object, object]", value)
+        return all(
+            isinstance(key, str) and _is_canonical_json(item) for key, item in mapping.items()
+        )
     return False
 
 
@@ -294,11 +298,12 @@ def validate_metadata_field_v3(
 
 def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
     """Whether `value` is a v3 metadata field: a bare name or a named config."""
-    return isinstance(value, str) or (
-        isinstance(value, dict)
-        and _is_canonical_json(value)
-        and not validate_metadata_field_v3(value)
-    )
+    if isinstance(value, str):
+        return True
+    if not isinstance(value, dict):
+        return False
+    field = cast("dict[object, object]", value)
+    return _is_canonical_json(field) and not validate_metadata_field_v3(field)
 
 
 def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
