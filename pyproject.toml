@@ -7,7 +7,6 @@ exclude = [
   "/.github",
   "/bench",
   "/docs",
-  "/packages/zarrs-bindings",
 ]
 
 [project]
@@ -134,10 +133,6 @@ dev = [
     {include-group = "docs"},
     "universal-pathlib",
     "mypy",
-]
-zarrs = [
-    {include-group = "test"},
-    "zarrs-bindings",
 ]
 zarrista = [
     {include-group = "test"},
@@ -450,7 +445,6 @@ addopts = [
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
-    "--ignore=src/zarr/zarrs",
 ]
 filterwarnings = [
     "error",
@@ -506,6 +500,3 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
-
-[tool.uv.sources]
-zarrs-bindings = { path = "packages/zarrs-bindings" }

@@ -4079,21 +4079,6 @@ zarrista = [
     { name = "uv" },
     { name = "zarrista" },
 ]
-zarrs = [
-    { name = "coverage" },
-    { name = "hypothesis" },
-    { name = "numpydoc" },
-    { name = "pytest" },
-    { name = "pytest-accept" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
-    { name = "pytest-codspeed" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
-    { name = "tomlkit" },
-    { name = "uv" },
-    { name = "zarrs-bindings" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -4216,21 +4201,6 @@ zarrista = [
     { name = "uv" },
     { name = "zarrista", git = "https://github.com/developmentseed/zarrista?rev=95e47ad4c414c5920f0cf15550f923039641da8e" },
 ]
-zarrs = [
-    { name = "coverage", specifier = ">=7.10" },
-    { name = "hypothesis" },
-    { name = "numpydoc" },
-    { name = "pytest" },
-    { name = "pytest-accept" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
-    { name = "pytest-codspeed" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
-    { name = "tomlkit" },
-    { name = "uv" },
-    { name = "zarrs-bindings", directory = "packages/zarrs-bindings" },
-]
 
 [[package]]
 name = "zarr-metadata"
@@ -4251,7 +4221,3 @@ source = { git = "https://github.com/developmentseed/zarrista?rev=95e47ad4c414c5
 dependencies = [
     { name = "zarr-metadata" },
 ]
-
-[[package]]
-name = "zarrs-bindings"
-source = { directory = "packages/zarrs-bindings" }
