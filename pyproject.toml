@@ -139,6 +139,15 @@ zarrs = [
     {include-group = "test"},
     "zarrs-bindings",
 ]
+zarrista = [
+    {include-group = "test"},
+    "zarrista @ git+https://github.com/developmentseed/zarrista@95e47ad4c414c5920f0cf15550f923039641da8e",
+    # zarrista's `store` submodule unconditionally imports both of these
+    # (for its `AsyncStore` type alias), even though neither is declared in
+    # zarrista's own package metadata as a runtime dependency.
+    "icechunk>=1.1.21",
+    "obstore>=0.10.1",
+]
 
 [tool.coverage.report]
 exclude_also = [

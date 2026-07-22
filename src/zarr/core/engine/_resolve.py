@@ -144,9 +144,7 @@ def _hierarchy_factory(name: str, *, sync: bool) -> Callable[[Store], object]:
                 "engine='zarrista' requires the `zarrista` package; "
                 "install zarr with the `zarrista` extra"
             ) from e
-        return (  # type: ignore[no-any-return]
-            ZarristaHierarchyEngine if sync else ZarristaAsyncHierarchyEngine
-        )
+        return ZarristaHierarchyEngine if sync else ZarristaAsyncHierarchyEngine
     raise ValueError(f"unknown engine name {name!r}; expected 'default' or 'zarrista'")
 
 
