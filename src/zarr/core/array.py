@@ -1580,13 +1580,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post, sel_shape = _coordinate_region_post(selection, self.metadata.shape)
-        out_array = await self._get_selection(
-            region, post, prototype=prototype, out=out, fields=fields
-        )
-        if hasattr(out_array, "shape"):
-            # restore the (possibly multi-dimensional) selection shape
-            out_array = cast("NDArrayLikeOrScalar", np.asarray(out_array).reshape(sel_shape))
-        return out_array
+        # `out` is validated/filled against the (possibly multi-dimensional)
+        # selection shape, not the flattened pointwise read, so it is handled by
+        # `_finalize_coordinate_result` rather than the flat-shaped inner read.
+        out_array = await self._get_selection(region, post, prototype=prototype, fields=fields)
+        return _finalize_coordinate_result(out_array, sel_shape, out)
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
@@ -3584,21 +3582,19 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         region, post, sel_shape = _coordinate_region_post(selection, self.shape)
+        # `out` is validated/filled against the (possibly multi-dimensional)
+        # selection shape, not the flattened pointwise read, so it is handled by
+        # `_finalize_coordinate_result` rather than the flat-shaped inner read.
         out_array = _get_selection_sync(
             self.engine,
             self.metadata,
             self.config,
             region,
             post,
-            out=out,
             fields=fields,
             prototype=prototype,
         )
-
-        if hasattr(out_array, "shape"):
-            # restore shape
-            out_array = np.asarray(out_array).reshape(sel_shape)
-        return out_array
+        return _finalize_coordinate_result(out_array, sel_shape, out)
 
     def set_coordinate_selection(
         self,
@@ -5600,6 +5596,33 @@ def _finalize_result(
         # `out_buffer.as_scalar()` return for all-integer basic selections)
         return cast("NDArrayLikeOrScalar", np.asarray(result)[()])
     return result
+
+
+def _finalize_coordinate_result(
+    out_array: NDArrayLikeOrScalar, sel_shape: tuple[int, ...], out: NDBuffer | None
+) -> NDArrayLikeOrScalar:
+    """Reshape a flat pointwise (coordinate/mask) read back to the selection
+    shape and, if an `out` buffer was supplied, validate and fill it.
+
+    `_coordinate_region_post` flattens the (possibly multi-dimensional)
+    coordinate arrays before handing the engine a pointwise index, so the raw
+    read is 1-d. `out` is validated against the SELECTION shape -- which may be
+    multi-dimensional -- not that flattened shape, matching the pre-engine
+    behaviour where a 2-d coordinate array accepted a matching 2-d `out`.
+    """
+    if hasattr(out_array, "shape"):
+        # restore the (possibly multi-dimensional) selection shape
+        out_array = cast("NDArrayLikeOrScalar", np.asarray(out_array).reshape(sel_shape))
+    if out is not None:
+        if not isinstance(out, NDBuffer):
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out.shape != sel_shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {sel_shape}, got {out.shape}"
+            )
+        out.as_ndarray_like()[...] = out_array  # type: ignore[index]
+        return out.as_ndarray_like()
+    return out_array
 
 
 def _get_selection_prepare(
