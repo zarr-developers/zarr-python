@@ -37,7 +37,7 @@ _MAX_NEGATIVE_ENTRIES = 100_000
 
 @dataclass(slots=True)
 class _Entry:
-    """A single cache slot, tracked in :attr:`_CacheState.entries`.
+    """A single cache slot, tracked in ``_CacheState.entries``.
 
     ``present=True`` (the default): a value is cached for this key — in the
     Store-backed cache for full keys, or the in-memory range cache for
