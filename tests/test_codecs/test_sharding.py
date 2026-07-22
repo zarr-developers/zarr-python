@@ -701,6 +701,9 @@ def test_write_partial_sharded_chunks(store: Store) -> None:
     assert np.array_equal(a[0:16, 0:16], data)
 
 
+# ZipStore overwrites shards by appending duplicate archive members (reads return
+# the most recent), which zipfile reports via a "Duplicate name" UserWarning.
+@pytest.mark.filterwarnings("ignore:Duplicate name:UserWarning")
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_delete_empty_shards(store: Store) -> None:
     if not store.supports_deletes:

@@ -84,6 +84,114 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
 
+    def test_store_supports_deletes(self, store: ZipStore) -> None:
+        assert store.supports_deletes
+
+    async def test_delete_compacts_duplicates(self, store: ZipStore) -> None:
+        # Overwriting a key leaves a duplicate member in the archive; deleting
+        # another key rewrites the archive and should compact the duplicates so
+        # the surviving key has a single, most-recent entry (issue #828).
+        await store.set("foo", cpu.Buffer.from_bytes(b"v1"))
+        with pytest.warns(UserWarning, match="Duplicate name: 'foo'"):
+            await store.set("foo", cpu.Buffer.from_bytes(b"v2"))
+        await store.set("bar", cpu.Buffer.from_bytes(b"bar"))
+
+        await store.delete("bar")
+
+        assert not await store.exists("bar")
+        assert store._zf.namelist().count("foo") == 1
+        buf = await self.get(store, "foo")
+        assert buf.to_bytes() == b"v2"
+
+    async def test_delete_then_set(self, store: ZipStore) -> None:
+        # after a delete (which reopens the archive) writes must still work
+        await store.set("foo", cpu.Buffer.from_bytes(b"foo"))
+        await store.delete("foo")
+        assert not await store.exists("foo")
+        await store.set("baz", cpu.Buffer.from_bytes(b"baz"))
+        buf = await self.get(store, "baz")
+        assert buf.to_bytes() == b"baz"
+
+    async def test_delete_and_delete_dir_auto_open(self, tmp_path: Path) -> None:
+        # delete() and delete_dir() should auto-open the archive like _get/_set,
+        # rather than assuming the caller opened it first.
+        store = ZipStore(tmp_path / "del.zip", mode="w", read_only=False)
+        assert not store._is_open
+        await store.delete("missing")  # exercises the auto-open branch in delete()
+        assert store._is_open
+
+        store2 = ZipStore(tmp_path / "deldir.zip", mode="w", read_only=False)
+        assert not store2._is_open
+        await store2.delete_dir("missing")  # auto-open branch in delete_dir()
+        assert store2._is_open
+
+    async def test_delete_dir_prefix_already_normalized(self, store: ZipStore) -> None:
+        # a prefix that already ends in "/" must skip the slash-appending branch
+        await store.set("foo/zarr.json", cpu.Buffer.from_bytes(b"a"))
+        await store.set("foo/c/0", cpu.Buffer.from_bytes(b"b"))
+        await store.set("bar/zarr.json", cpu.Buffer.from_bytes(b"c"))
+
+        await store.delete_dir("foo/")
+
+        assert not await store.exists("foo/zarr.json")
+        assert not await store.exists("foo/c/0")
+        assert await store.exists("bar/zarr.json")
+
+    async def test_delete_dir_empty_prefix_removes_all(self, store: ZipStore) -> None:
+        # an empty prefix also skips normalization and should remove everything
+        await store.set("a", cpu.Buffer.from_bytes(b"a"))
+        await store.set("b/c", cpu.Buffer.from_bytes(b"b"))
+
+        await store.delete_dir("")
+
+        assert not await store.exists("a")
+        assert not await store.exists("b/c")
+        assert store._zf.namelist() == []
+
+    async def test_delete_cleans_up_temp_on_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # if the rewrite fails (e.g. os.replace raises), the temporary archive
+        # must be removed and the original left untouched.
+        import zarr.storage._zip as zip_module
+
+        store = ZipStore(tmp_path / "fail.zip", mode="w", read_only=False)
+        await store.set("foo", cpu.Buffer.from_bytes(b"v"))
+
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(zip_module.os, "replace", boom)
+
+        with pytest.raises(OSError, match="replace failed"):
+            await store.delete("foo")
+
+        # no leftover temp file: only the original archive remains
+        assert set(os.listdir(tmp_path)) == {"fail.zip"}
+
+    async def test_delete_failure_when_temp_already_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # defensive cleanup branch: if the temp archive is already gone when the
+        # rewrite fails, cleanup is skipped and the original error still propagates.
+        import zarr.storage._zip as zip_module
+
+        store = ZipStore(tmp_path / "fail2.zip", mode="w", read_only=False)
+        await store.set("foo", cpu.Buffer.from_bytes(b"v"))
+
+        real_remove = zip_module.os.remove
+
+        def replace_then_vanish(src: str, dst: str) -> None:
+            real_remove(src)  # temp disappears before the except block runs
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(zip_module.os, "replace", replace_then_vanish)
+
+        with pytest.raises(OSError, match="replace failed"):
+            await store.delete("foo")
+
+        assert set(os.listdir(tmp_path)) == {"fail2.zip"}
+
     # TODO: fix this warning
     @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
@@ -101,17 +209,19 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
             z[0, 0] = 100
 
-        # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
-        # a work around will be needed here.
-        with pytest.raises(NotImplementedError):
-            z[0:10, 0:10] = 99
+        # assigning an entire chunk to the fill value deletes the chunk;
+        # ZipStore now supports deletes by rewriting the archive (issue #828)
+        z[0:10, 0:10] = 99
+        expected = data.copy()
+        expected[0:10, 0:10] = 99
+        assert np.array_equal(expected, z[:])
 
         bar = root.create_group("bar", attributes={"hello": "world"})
         assert "hello" in dict(bar.attrs)
 
-        # keys cannot be deleted
-        with pytest.raises(NotImplementedError):
-            del root["bar"]
+        # keys can now be deleted
+        del root["bar"]
+        assert "bar" not in root
 
         store.close()
 
