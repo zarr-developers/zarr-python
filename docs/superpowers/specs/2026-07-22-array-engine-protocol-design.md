@@ -68,17 +68,28 @@ Four runtime-checkable protocols, named without a `Protocol` suffix
 `ZarristaEngine`). The async pair:
 
 ```python
+class Region(NamedTuple):
+    """A contiguous, step-1 box in array-element coordinates.
+
+    One entry per dimension; `start` inclusive, `end_exclusive` exclusive,
+    already normalized (non-negative, clipped to the array shape).
+    """
+
+    start: tuple[int, ...]
+    end_exclusive: tuple[int, ...]
+
+
 class AsyncArrayEngine(Protocol):
     async def read_selection(
         self,
-        indexer: Indexer,
+        selection: Region,
         *,
         prototype: BufferPrototype,
     ) -> NDArrayLike: ...
 
     async def write_selection(
         self,
-        indexer: Indexer,
+        selection: Region,
         value: NDBuffer,
         *,
         prototype: BufferPrototype,
@@ -112,28 +123,44 @@ Contract details:
   parameter** in v1; one may be added later as a performance improvement, and
   the facade meanwhile serves user-supplied `out=` arguments by copying the
   engine's result into them.
-- The **engine speaks `Indexer`**: zarr-python's normalized selection plan
-  (iterable of `(chunk_coords, chunk_selection, out_selection,
-  is_complete_chunk)` projections with `shape` / `drop_axes`). Engines may
-  consume the indexer wholesale (fast paths) or iterate its projections.
-  (Reviewer note: Kyle raised chunk-level indexing as a simpler v1 contract;
-  we are staying indexer-level per the approach decision — it is the only
-  shape that keeps the default path unchanged.)
+- The **engine speaks `Region`**: indexing across the engine boundary is
+  restricted to contiguous, step-1 boxes, interchanged as the `Region`
+  namedtuple above. Results and `value` inputs are ndim-preserving with shape
+  `end_exclusive - start` per dimension (matching Zarrista's ndim-preserving
+  `Selection` semantics). Engines never see raw user selections, steps,
+  fancy indices, or zarr-python `Indexer` objects. `write_selection` must
+  handle boxes that partially overlap chunks (read-modify-write is the
+  engine's concern; the default engine's codec pipeline already does this).
 - `with_metadata` returns a rebound engine for the same store/path with new
   metadata. `resize`/`append`/`update_attributes` use it, so rebinding works
   uniformly for factory-made and user-provided engines.
-- Facade-side responsibilities (not the engine's): building the indexer,
-  `fields` handling, output dtype/order resolution, scalar extraction,
-  `drop_axes` squeezing, copying into a user-supplied `out=` buffer, and the
-  empty-selection short circuit.
+- Facade-side responsibilities (not the engine's): normalizing every public
+  selection kind down to `Region` calls, `fields` handling, output
+  dtype/order resolution, scalar extraction and integer-axis squeezing,
+  copying into a user-supplied `out=` buffer, and the empty-selection short
+  circuit. Normalization rules:
+  - contiguous basic selections (slices with step 1, integers as length-1
+    ranges, Ellipsis expansion) map to one `Region` directly;
+  - everything else — strided slices, orthogonal/coordinate/mask/block
+    selections — is served through its step-1 **bounding box**: reads fetch
+    the box and post-index the result; writes read the box, patch it with
+    numpy indexing, and write the box back (facade-level RMW).
+  - Consequence, accepted for now: sparse fancy selections over a large
+    extent transfer the whole bounding box through the engine. Revisit via a
+    richer interchange if it bites.
 
 ### Wiring into `Array`/`AsyncArray`
 
 - `AsyncArray` gains an `engine: AsyncArrayEngine` attribute. The
-  module-level `_get_selection`/`_set_selection` shrink to: resolve output
-  buffer arguments, call the engine, post-process. The current codec-pipeline
-  body of those functions **becomes** the default async engine's
-  implementation, byte-for-byte.
+  module-level `_get_selection`/`_set_selection` shrink to: normalize the
+  selection to `Region` calls (see normalization rules above), call the
+  engine, post-process. The default async engine implements
+  `read_selection`/`write_selection` by building a `BasicIndexer` for the
+  region and running today's codec-pipeline machinery — for contiguous
+  selections the work done is identical to today. For strided and fancy
+  selections the facade's bounding-box normalization replaces today's
+  per-chunk gather/scatter for **all** engines; this is a deliberate
+  simplification (see the accepted consequence above).
 - `Array` gains `engine: ArrayEngine`. Its data methods
   (`__getitem__`/`__setitem__`, `get/set_basic_selection`,
   `get/set_orthogonal_selection`, `get/set_mask_selection`,
@@ -182,18 +209,16 @@ Contract details:
   `zarrista.Array.from_metadata(metadata.to_dict(), store, path)` (async:
   `AsyncArray.from_metadata`). Zarr v2 metadata raises immediately (Zarrista
   is v3-only).
-- **Reads**: an indexer that is basic with all-step-1 slices maps directly to
-  a zarrista `Selection` and one `retrieve_array_subset` call (all-Rust,
-  sharding-aware, parallel). Any other indexer (steps, orthogonal,
-  coordinate, mask, block) is served per-chunk: for each projection,
-  `retrieve_chunk` → zero-copy numpy view → scatter into the output buffer.
-  Rust still does all decoding; Python does the gather.
-- **Writes**: per-chunk over the indexer's projections. A complete-chunk
-  projection encodes the value directly via `store_chunk`; a partial chunk
-  does read-modify-write: `retrieve_chunk` → patch with numpy → `store_chunk`.
-  Kyle confirmed exposing `store_array_subset` (multi-chunk write) is easy on
-  the Zarrista side; when it lands, basic-selection writes collapse to one
-  Rust call with no protocol change.
+- **Reads**: a `Region` maps directly to a zarrista `Selection` (a tuple of
+  step-1 slices) and one `retrieve_array_subset` call — all-Rust,
+  sharding-aware, parallel. No selection-kind dispatch in the engine at all.
+- **Writes**: `write_selection` decomposes the region over the chunk grid
+  internally: a chunk fully covered by the region encodes the value directly
+  via `store_chunk`; a partially covered chunk does read-modify-write —
+  `retrieve_chunk` → patch with numpy → `store_chunk`. Kyle confirmed
+  exposing `store_array_subset` (multi-chunk write) is easy on the Zarrista
+  side; when it lands, `write_selection` collapses to one Rust call with no
+  protocol change.
 - **Buffers**: `Tensor` → zero-copy numpy (`to_numpy`); `VariableArray` →
   numpy via Zarrista's upcoming numpy export (a copy for now — confirmed
   planned); `MaskedTensor`/`MaskedVariableArray` unsupported (zarr-python has
@@ -278,6 +303,8 @@ and (a copying) numpy export for `VariableArray` is already planned.
   Python-side per-chunk RMW now, upgradeable when `store_array_subset` lands.
 - Protocol granularity: engines speak `Indexer` (approach A), keeping the
   default path unchanged and giving engines full selection information.
+  **Superseded** — see the post-review revision below: the interchange is now
+  the contiguous-box `Region`.
 
 Post-review (kylebarron, on the shared gist):
 
@@ -291,5 +318,13 @@ Post-review (kylebarron, on the shared gist):
   come later.
 - Zarrista can cut a beta release on request, so the git pin is temporary.
 - Kyle's open question — chunk-level indexing as a simpler v1 engine
-  contract — noted; staying indexer-level (approach A) to keep the default
-  path byte-for-byte unchanged.
+  contract — initially answered with indexer-level (approach A).
+
+Post-review revision (supersedes approach A's interchange):
+
+- The engine interchange is restricted to contiguous, step-1 boxes: the
+  `Region` namedtuple (`start`, `end_exclusive`). Engines never see raw
+  selections or `Indexer` objects. All selection normalization (and
+  bounding-box + post-index / facade-RMW for strided and fancy selections)
+  moves to the facade. The bounding-box amplification for sparse fancy
+  selections is an accepted trade-off for now.
