@@ -56,6 +56,20 @@ def test_zarrista_engine_edge_chunk_full_write(tmp_path: Path) -> None:
     )
 
 
+def test_zarrista_reads_are_writable(tmp_path: Path) -> None:
+    # zarrista's `Tensor` wraps Rust-owned memory that `np.asarray` exposes
+    # read-only. zarr-python reads have always returned writable arrays, so the
+    # facade must copy such a result -- both on the full-box identity path and
+    # on a partial (bounding-box) read.
+    _make(tmp_path)
+    ze = zarr.open_array(LocalStore(tmp_path), engine="zarrista")
+
+    full = np.asarray(ze[:, :])
+    assert full.flags.writeable
+    partial = np.asarray(ze[2:7, 1:5])
+    assert partial.flags.writeable
+
+
 def test_zarrista_rejects_v2(tmp_path: Path) -> None:
     zarr.create_array(LocalStore(tmp_path), shape=(4,), chunks=(2,), dtype="int8", zarr_format=2)
     with pytest.raises(UnsupportedEngineError, match="v3"):

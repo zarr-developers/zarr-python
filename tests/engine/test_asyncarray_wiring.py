@@ -37,6 +37,49 @@ class _SpyEngine:
         return _SpyEngine(self.inner.with_metadata(metadata))
 
 
+class _ReadOnlyEngine:
+    """Wraps a real engine but returns a read-only numpy view from reads.
+
+    Mimics an engine (e.g. `zarrista`) that exposes foreign-owned memory as a
+    non-writable numpy array. The facade must copy such a result so a read
+    still yields a writable array.
+    """
+
+    def __init__(self, inner: DefaultAsyncArrayEngine) -> None:
+        self.inner = inner
+
+    async def read_selection(self, selection: Region, *, prototype: BufferPrototype) -> NDArrayLike:
+        result = await self.inner.read_selection(selection, prototype=prototype)
+        view = np.asarray(result)
+        view.flags.writeable = False
+        return cast("NDArrayLike", view)
+
+    async def write_selection(
+        self, selection: Region, value: NDBuffer, *, prototype: BufferPrototype
+    ) -> None:
+        return await self.inner.write_selection(selection, value, prototype=prototype)
+
+    def with_metadata(self, metadata: ArrayMetadata) -> _ReadOnlyEngine:
+        return _ReadOnlyEngine(self.inner.with_metadata(metadata))
+
+
+async def test_read_only_engine_result_is_copied_to_writable() -> None:
+    # Regression: the identity-read fast path returned the engine buffer
+    # unchanged. When an engine returns non-writable numpy memory, the facade
+    # must copy it so reads keep zarr-python's writable-array guarantee.
+    z = zarr.create_array(MemoryStore(), shape=(6,), chunks=(3,), dtype="int16")
+    aa = z.async_array
+    inner = DefaultAsyncArrayEngine(
+        store_path=aa.store_path, metadata=aa.metadata, config=aa.config
+    )
+    object.__setattr__(aa, "engine", _ReadOnlyEngine(inner))
+    await aa.setitem(slice(None), np.arange(6, dtype="int16"))
+
+    result = np.asarray(await aa.getitem(slice(None)))
+    assert result.flags.writeable
+    np.testing.assert_array_equal(result, np.arange(6, dtype="int16"))
+
+
 async def test_asyncarray_routes_io_through_engine() -> None:
     # NOTE: the async variant of the spy test. `Array` (the sync facade) now
     # resolves and calls its own sync engine (see tests/engine/test_sync_path.py);

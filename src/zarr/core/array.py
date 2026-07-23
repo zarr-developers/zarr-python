@@ -5681,7 +5681,17 @@ def _finish_get_selection(
     if not fields and _is_identity_read(post_index, region.shape):
         # a full-box, step-1 read is exactly the engine result; return it
         # unchanged so a custom `NDArrayLike` type (e.g. GPU/torch buffers)
-        # survives instead of being coerced to numpy by `np.asarray`
+        # survives instead of being coerced to numpy by `np.asarray`.
+        # zarr-python reads have always returned writable arrays; the non-identity
+        # paths below copy (via `astype(copy=True)`), but this fast path hands the
+        # engine buffer straight back. An engine may expose read-only memory (e.g.
+        # `zarrista` wraps Rust-owned bytes that `np.asarray` sees as
+        # non-writable), so copy a numpy-visible, non-writable result to restore
+        # the writability guarantee. Device buffers (cupy/torch) have no `.flags`
+        # and are left untouched, so this never forces them onto the host.
+        flags = getattr(raw, "flags", None)
+        if flags is not None and not flags.writeable:
+            raw = raw.copy()
         return _finalize_result(raw, out, scalarize=scalarize)
     # Stay in the engine result's own array namespace: field selection and
     # `apply_post_index` are plain indexing (which cupy/torch implement), so a
