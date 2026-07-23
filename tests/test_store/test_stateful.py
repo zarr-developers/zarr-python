@@ -8,7 +8,7 @@ from hypothesis.stateful import (
 
 import zarr
 from zarr.abc.store import Store
-from zarr.storage import LocalStore, ZipStore
+from zarr.storage import LocalStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
 pytestmark = [
@@ -26,26 +26,22 @@ def _enable_rectilinear_chunks() -> Generator[None, None, None]:
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.filterwarnings("ignore:Duplicate name:UserWarning")
 def test_zarr_hierarchy(sync_store: Store) -> None:
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
 
-    if isinstance(sync_store, ZipStore):
-        pytest.skip(reason="ZipStore does not support delete")
-
+    # ZipStore now supports soft-delete — skip removed
     run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
 
 
+@pytest.mark.filterwarnings("ignore:Duplicate name:UserWarning")
 def test_zarr_store(sync_store: Store) -> None:
     def mk_test_instance_sync() -> ZarrStoreStateMachine:
         return ZarrStoreStateMachine(sync_store)
 
-    if isinstance(sync_store, ZipStore):
-        pytest.skip(reason="ZipStore does not support delete")
+    # ZipStore now supports soft-delete — skip removed
 
     if isinstance(sync_store, LocalStore):
-        # This test uses arbitrary keys, which are passed to `set` and `delete`.
-        # It assumes that `set` and `delete` are the only two operations that modify state.
-        # But LocalStore, directories can hang around even after a key is delete-d.
         pytest.skip(reason="Test isn't suitable for LocalStore.")
     run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
