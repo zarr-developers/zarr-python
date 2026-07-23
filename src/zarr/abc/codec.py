@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.chunk_layouts import ChunkLayout
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
@@ -167,6 +168,18 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         chunk_grid : ChunkGridMetadata
             The array chunk grid metadata
         """
+
+    def inner_chunk_layout(self) -> ChunkLayout | None:
+        """The chunk structure this codec creates inside each chunk it encodes.
+
+        ``None`` (the default) means chunks are opaque -- this codec does not
+        subdivide them. Codecs that subdivide chunks, such as
+        :class:`zarr.codecs.ShardingCodec`, override this to report the
+        sub-chunk structure. Consumers should treat this as an optional
+        protocol member (``getattr(codec, "inner_chunk_layout", lambda: None)``)
+        so third-party codecs that predate it keep working.
+        """
+        return None
 
     async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
         raise NotImplementedError  # pragma: no cover

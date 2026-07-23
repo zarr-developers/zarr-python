@@ -52,8 +52,14 @@ canonical chunk specifications rather than raw user input.
 """
 
 
-class ChunkLayout(NamedTuple):
+class _ResolvedChunks(NamedTuple):
     """Result of resolving user `chunks`/`shards` into grid metadata inputs.
+
+    Internal, creation-time only. Not to be confused with the public
+    :class:`zarr.ChunkLayout` (``zarr.core.chunk_layouts``), which is the
+    canonical, extent-free distillation consumers introspect; this type
+    carries normalized per-dimension edge arrays for the metadata-construction
+    path. See ``design/chunk-layout.md`` § "Naming collision".
 
     outer_chunks
         Chunk sizes for the chunk grid metadata.  When sharding is active
@@ -66,7 +72,7 @@ class ChunkLayout(NamedTuple):
     """
 
     outer_chunks: ChunksTuple
-    inner: ChunkLayout | None = None
+    inner: _ResolvedChunks | None = None
 
 
 @dataclass(frozen=True)
@@ -871,7 +877,7 @@ def resolve_outer_and_inner_chunks(
     chunks: ChunksTuple,
     shard_shape: ShardsLike | None,
     item_size: int,
-) -> ChunkLayout:
+) -> _ResolvedChunks:
     """Resolve user `chunks`/`shards` into outer and inner chunk specs.
 
     Parameters
@@ -890,18 +896,18 @@ def resolve_outer_and_inner_chunks(
 
     Returns
     -------
-    ChunkLayout
+    _ResolvedChunks
         `outer_chunks` is the `ChunksTuple` for chunk grid
         metadata.  `inner` holds the sub-chunk structure for
         `ShardingCodec`, or is `None` when sharding is not active.
     """
     if shard_shape is None:
-        return ChunkLayout(outer_chunks=chunks)
+        return _ResolvedChunks(outer_chunks=chunks)
 
     # Rectilinear shards: normalize the nested sequence directly.
     if _is_rectilinear_chunks(shard_shape):
         outer = normalize_chunks_nd(shard_shape, array_shape)
-        return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
+        return _ResolvedChunks(outer_chunks=outer, inner=_ResolvedChunks(outer_chunks=chunks))
 
     # Extract the flat chunk shape (first size per dimension) for arithmetic.
     chunk_shape_flat = as_regular_shape(chunks)
@@ -937,4 +943,4 @@ def resolve_outer_and_inner_chunks(
         shard_flat = cast("tuple[int, ...]", shard_shape)
 
     outer = normalize_chunks_nd(shard_flat, array_shape)
-    return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
+    return _ResolvedChunks(outer_chunks=outer, inner=_ResolvedChunks(outer_chunks=chunks))
