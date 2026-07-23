@@ -195,13 +195,48 @@ arr_f = arr.with_config({"order": "F"})
 print(arr_f.config)
 ```
 
+## Zarr format 3 codec pipeline
+
+Zarr format 3 stores a single ordered `codecs` pipeline in array metadata, but
+Zarr-Python's array creation functions expose that pipeline through three
+role-specific parameters:
+
+- `filters`: [`zarr.abc.codec.ArrayArrayCodec`][] instances. These transform chunk
+  arrays into chunk arrays before serialization.
+- `serializer`: one [`zarr.abc.codec.ArrayBytesCodec`][] instance. This transforms
+  a chunk array into bytes. Every Zarr format 3 array needs exactly one
+  array-to-bytes codec, either supplied explicitly or chosen by default.
+- `compressors`: [`zarr.abc.codec.BytesBytesCodec`][] instances. These transform
+  bytes into bytes after serialization.
+
+The `compressors` parameter is only for bytes-to-bytes codecs. If a codec is an
+`ArrayBytesCodec`, pass it with `serializer`, not `compressors`. For example, the
+built-in [`zarr.codecs.BytesCodec`][] can be supplied explicitly as the serializer:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+serializer = zarr.codecs.BytesCodec(endian="little")
+z_explicit_serializer = zarr.create_array(
+    store="data/example-explicit-serializer.zarr",
+    shape=(100,),
+    chunks=(10,),
+    dtype="int32",
+    serializer=serializer,
+    compressors=None,
+)
+print(z_explicit_serializer.serializer)
+print(f"Compressors: {z_explicit_serializer.compressors}")
+```
+
+The same rule applies to third-party Zarr format 3 codecs: if the codec is
+documented as an `ArrayBytesCodec`, provide an instance as `serializer=...`.
+
 ## Compressors
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
 Zstandard and Gzip compressors. Additional compressors are available through
 a separate package called [NumCodecs](https://numcodecs.readthedocs.io/) which provides various
 compressor libraries including LZ4, Zlib, BZ2 and LZMA.
-Different compressors can be provided via the `compressors` keyword
+Different bytes-to-bytes compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
