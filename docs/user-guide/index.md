@@ -6,6 +6,7 @@ Welcome to the user guide, where you can learn more about using Zarr-Python!
 
 New to Zarr-Python? Start here:
 
+- **[From Zero to Zarr](from_zero_to_zarr.md)** - A zero-prerequisites tour of how Zarr stores an array, from a NumPy array to stored bytes
 - **[Installation](installation.md)** - Install Zarr-Python
 - **[Quick start](../quick-start.md)** - Quick overview of core functionality
 
