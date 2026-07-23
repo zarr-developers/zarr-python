@@ -20,6 +20,7 @@ import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from tests.conftest import skip_object_dtype
 from zarr import Array, Group
+from zarr._constants import IS_WASM
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -1900,6 +1901,10 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
     return arr[index]
 
 
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="can't start new processes in Pyodide",
+)
 @pytest.mark.parametrize(
     "method",
     [
