@@ -96,11 +96,32 @@ copies — so every full-box zarrista read pays a copy that the zero-copy
 design was meant to avoid. (Latent-bug history: before the guard, `arr[:]`
 via zarrista returned read-only arrays and in-place user code broke.)
 
-**Ask.** Either an ownership-transferring export (`Tensor.into_numpy()` —
-Rust relinquishes the allocation, numpy gets a writable array, no copy) or
-a documented `to_numpy(writable=True)` that copies inside Rust. The former
-restores true zero-copy for the common read path; the latter at least
-moves the copy where it's visible and optimizable.
+**Ask.** Use DLPack's existing semantics — no new protocol. Of the three
+standard interchange models, only one fits writable hand-off:
+
+- The **buffer protocol** is shared-ownership-by-refcount; writability is a
+  per-export decision (`PyBUF_WRITABLE`). A writable export is sound iff
+  the Rust side never touches the allocation after exporting — acceptable
+  as a fallback, but the safety condition is invisible convention.
+- **Arrow C data** (already used for `VariableArray`) is release-callback
+  ownership over **immutable-by-contract** buffers; it has no writable
+  story and should not be bent into one.
+- **DLPack** is built for this. `Tensor.__dlpack__` already exists and
+  speaks the versioned protocol (`max_version`). Two spec-compliant
+  options, both with heavy precedent:
+  1. *Shared writable view (the PyTorch/CuPy pattern)*: export the
+     `DLManagedTensorVersioned` **without** `DLPACK_FLAG_BITMASK_READ_ONLY`,
+     with a deleter that holds a strong reference to the `Tensor`.
+     `np.from_dlpack` then yields a writable ndarray aliasing the Rust
+     allocation; sound because a freshly decoded result is never touched
+     by Rust again. Smallest change.
+  2. *True move*: the deleter owns the allocation directly (drops the
+     `Vec`); the `Tensor` tombstones itself and further access raises. The
+     capsule's one-shot convention (`used_dltensor` rename) already
+     enforces single consumption on the consumer side.
+
+Either way, the binding's read path becomes `np.from_dlpack(result)` on
+the fast path and the writability copy-guard never fires for zarrista.
 
 ## 5. A missing-chunk policy on reads
 
