@@ -5593,12 +5593,14 @@ def _finalize_result(
         return out.as_ndarray_like()
     if scalarize and result.shape == ():
         # basic indexing collapses to a scalar (matches the historical
-        # `out_buffer.as_scalar()` return for all-integer basic selections)
-        if isinstance(result, np.ndarray):
+        # `out_buffer.as_scalar()` return for all-integer basic selections).
+        # Any numpy result -- a 0-d `ndarray` or an already-collapsed numpy
+        # scalar (`np.generic`, e.g. `np.bytes_` from a vlen/fixed-bytes read) --
+        # goes through `np.asarray(...)[()]`, bit-identical to the old behaviour;
+        # only a genuine device buffer (cupy/torch), which is neither, is indexed
+        # in its own namespace to avoid a host coercion.
+        if isinstance(result, (np.ndarray, np.generic)):
             return cast("NDArrayLikeOrScalar", np.asarray(result)[()])
-        # a device buffer (cupy/torch): extract the 0-d element in its own
-        # namespace rather than coercing to host via `np.asarray`, consistent
-        # with the value the orthogonal/fancy routes return
         device_result: Any = result
         return cast("NDArrayLikeOrScalar", device_result[()])
     return result

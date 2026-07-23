@@ -218,6 +218,21 @@ def test_oindex_set_integer_and_array_axis_keeps_device_buffer() -> None:
     np.testing.assert_array_equal(engine._data, expected)
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+def test_scalar_bytes_read_returns_numpy_scalar() -> None:
+    # A fixed/vlen-bytes scalar read produces a numpy scalar (`np.bytes_`), not a
+    # 0-d ndarray; the device-namespace `result[()]` branch must not swallow it
+    # (`np.bytes_[()]` raises "byte indices must be integers"). numpy scalars go
+    # through the `np.asarray` path, staying bit-identical to the historical
+    # `as_scalar()` return. (Distilled from a `test_basic_indexing` hypothesis
+    # failure; uses the real default engine, no device stand-in.)
+    z = zarr.create_array(MemoryStore(), shape=(1,), chunks=(1,), dtype="S4")
+    z[:] = np.array([b"ab"], dtype="S4")
+    result = z.get_basic_selection(0)
+    assert isinstance(result, np.bytes_)
+    assert result == b"ab"
+
+
 def test_facade_never_coerces_device_buffer_to_host() -> None:
     # Belt-and-braces: a bare `np.asarray` on the stand-in must raise, proving the
     # tests above would trip any host coercion the facade performed.
