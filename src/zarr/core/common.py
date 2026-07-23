@@ -147,12 +147,15 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    if isinstance(data, str):
-        if expected is None or data == expected:
-            return data
-        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
-    else:
-        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+    from zarr.core.json_parse import convert
+
+    try:
+        data = cast("str", convert(data, str))
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.") from exc
+    if expected is None or data == expected:
+        return data
+    raise ValueError(f"Expected '{expected}'. Got {data} instead.")
 
 
 def parse_configuration(data: JSON) -> JSON:
@@ -227,15 +230,15 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+    from zarr.core.json_parse import parse_field
+
+    return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))
 
 
 def parse_bool(data: Any) -> bool:
-    if isinstance(data, bool):
-        return data
-    raise ValueError(f"Expected bool, got {data} instead.")
+    from zarr.core.json_parse import convert
+
+    return cast("bool", convert(data, bool))
 
 
 def parse_int(data: Any) -> int:

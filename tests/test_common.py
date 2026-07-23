@@ -9,8 +9,10 @@ import pytest
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    parse_bool,
     parse_int,
     parse_name,
+    parse_order,
     parse_shapelike,
     product,
 )
@@ -69,8 +71,26 @@ def test_parse_name_valid(data: tuple[Any, Any]) -> None:
 
 @pytest.mark.parametrize("data", [0, 1, "hello", "f"])
 def test_parse_indexing_order_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match="Expected one of"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
         parse_indexing_order(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, "hello", "f"])
+def test_parse_order_invalid(data: Any) -> None:
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
+        parse_order(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, "true", None, [True]])
+def test_parse_bool_invalid(data: Any) -> None:
+    """Non-bool values are rejected with a ValueError."""
+    with pytest.raises(ValueError, match="Expected instance of bool"):
+        parse_bool(data)
+
+
+@pytest.mark.parametrize("data", [True, False])
+def test_parse_bool_valid(data: bool) -> None:
+    assert parse_bool(data) is data
 
 
 @pytest.mark.parametrize("data", ["1", 1.0, True, False, None, [1], (1,)])
