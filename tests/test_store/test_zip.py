@@ -20,7 +20,6 @@ from hypothesis.stateful import (
 import zarr
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
@@ -139,13 +138,13 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         zarr_path = tmp_path / "foo.zarr"
         root = zarr.open_group(store=zarr_path, mode="w")
         root.require_group("foo")
-        assert isinstance(foo := root["foo"], Group)  # noqa: RUF018
+        foo = root.get_group("foo")
         foo["bar"] = np.array([1])
         shutil.make_archive(str(zarr_path), "zip", zarr_path)
         zip_path = tmp_path / "foo.zarr.zip"
         zipped = zarr.open_group(ZipStore(zip_path, mode="r"), mode="r")
         assert list(zipped.keys()) == list(root.keys())
-        assert isinstance(group := zipped["foo"], Group)
+        group = zipped.get_group("foo")
         assert list(group.keys()) == list(group.keys())
 
     async def test_list_without_explicit_open(self, tmp_path: Path) -> None:

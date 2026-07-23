@@ -51,6 +51,7 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
     GroupNotFoundError,
@@ -819,6 +820,70 @@ class AsyncGroup:
             return await self.getitem(key)
         except KeyError:
             return default
+
+    async def get_array(self, path: str) -> AnyAsyncArray:
+        """Obtain an array member of this group, raising if it is absent or not an array.
+
+        Parameters
+        ----------
+        path : str
+            Path of the array relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subarray`.
+
+        Returns
+        -------
+        AsyncArray
+            The array at the given path.
+
+        Raises
+        ------
+        ArrayNotFoundError
+            If no node exists at the given path.
+        ContainsGroupError
+            If the node at the given path is a group rather than an array.
+        """
+        store_path = self.store_path / path
+        try:
+            node = await self.getitem(path)
+        except KeyError as e:
+            msg = f"No array found in store {store_path.store!r} at path {store_path.path!r}"
+            raise ArrayNotFoundError(msg) from e
+        if isinstance(node, AsyncGroup):
+            msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsGroupError(msg)
+        return node
+
+    async def get_group(self, path: str) -> AsyncGroup:
+        """Obtain a group member of this group, raising if it is absent or not a group.
+
+        Parameters
+        ----------
+        path : str
+            Path of the group relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subsubgroup`.
+
+        Returns
+        -------
+        AsyncGroup
+            The group at the given path.
+
+        Raises
+        ------
+        GroupNotFoundError
+            If no node exists at the given path.
+        ContainsArrayError
+            If the node at the given path is an array rather than a group.
+        """
+        store_path = self.store_path / path
+        try:
+            node = await self.getitem(path)
+        except KeyError as e:
+            msg = f"No group found in store {store_path.store!r} at path {store_path.path!r}"
+            raise GroupNotFoundError(msg) from e
+        if isinstance(node, AsyncArray):
+            msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsArrayError(msg)
+        return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
@@ -1879,6 +1944,74 @@ class Group(SyncMixin):
             return self[path]
         except KeyError:
             return default
+
+    def get_array(self, path: str) -> AnyArray:
+        """Obtain an array member of this group, raising if it is absent or not an array.
+
+        Parameters
+        ----------
+        path : str
+            Path of the array relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subarray`.
+
+        Returns
+        -------
+        Array
+            The array at the given path.
+
+        Raises
+        ------
+        ArrayNotFoundError
+            If no node exists at the given path.
+        ContainsGroupError
+            If the node at the given path is a group rather than an array.
+
+        Examples
+        --------
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
+        group.get_array("subarray")
+        # <Array memory://... shape=(10,) dtype=float64>
+        ```
+        """
+        return Array(self._sync(self._async_group.get_array(path)))
+
+    def get_group(self, path: str) -> Group:
+        """Obtain a group member of this group, raising if it is absent or not a group.
+
+        Parameters
+        ----------
+        path : str
+            Path of the group relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subsubgroup`.
+
+        Returns
+        -------
+        Group
+            The group at the given path.
+
+        Raises
+        ------
+        GroupNotFoundError
+            If no node exists at the given path.
+        ContainsArrayError
+            If the node at the given path is an array rather than a group.
+
+        Examples
+        --------
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_group(name="subgroup")
+        group.get_group("subgroup")
+        # <Group memory://...>
+        ```
+        """
+        return Group(self._sync(self._async_group.get_group(path)))
 
     def __delitem__(self, key: str) -> None:
         """Delete a group member.

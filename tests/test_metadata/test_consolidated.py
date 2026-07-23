@@ -111,12 +111,10 @@ class TestConsolidated:
         group = await zarr.api.asynchronous.open_consolidated(
             store=memory_store, zarr_format=zarr_format
         )
-        raw = await group.getitem("raw")
-        assert isinstance(raw, zarr.AsyncGroup)
+        raw = await group.get_group("raw")
         assert raw.metadata.consolidated_metadata is not None
 
-        varm = await raw.getitem("varm")
-        assert isinstance(varm, zarr.AsyncGroup)
+        varm = await raw.get_group("varm")
         assert varm.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_open_consolidated_false_raises(self) -> None:
@@ -770,8 +768,7 @@ class TestConsolidated:
             await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
         group = await zarr.api.asynchronous.open_group(store=memory_store)
-        subgroup = await group.getitem("/a")
-        assert isinstance(subgroup, AsyncGroup)
+        subgroup = await group.get_group("/a")
         members = [x async for x in subgroup.keys()]  # noqa: SIM118
         assert members == ["b"]
 
