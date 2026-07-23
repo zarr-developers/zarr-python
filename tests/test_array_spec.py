@@ -166,3 +166,17 @@ class TestArraySpecHashEq:
         pos = _make_spec(native_dtype=native_dtype, fill_value=pos_fill)
         assert neg != pos
         assert hash(neg) != hash(pos)
+
+    @pytest.mark.parametrize(
+        ("obj"),
+        [
+            pytest.param(None, id="None"),
+            pytest.param(42, id="int"),
+            pytest.param("hello", id="str"),
+            pytest.param([1, 2, 3], id="list"),
+            pytest.param({"a": 1}, id="dict"),
+        ],
+    )
+    def test_unequal_with_invalid_type(self, obj: Any) -> None:
+        assert (_make_spec() == obj) is False
+        assert _make_spec() != obj
