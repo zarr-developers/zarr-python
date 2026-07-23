@@ -88,6 +88,33 @@ def test_zarrista_vlen_read_not_implemented(tmp_path: Path) -> None:
         ze[:]
 
 
+def test_zarrista_sync_rejects_read_missing_chunks_false(tmp_path: Path) -> None:
+    # The zarrista engine cannot enforce read_missing_chunks=False (it fills
+    # missing chunks instead of raising), so minting a sync engine with that
+    # config must fail loudly rather than silently downgrade the semantics.
+    from zarr.core.array_spec import ArrayConfig
+    from zarr.zarrista._engine import ZarristaHierarchyEngine
+
+    z = _make(tmp_path)
+    config = ArrayConfig(order="C", write_empty_chunks=False, read_missing_chunks=False)
+    hierarchy = ZarristaHierarchyEngine(LocalStore(tmp_path))
+    with pytest.raises(UnsupportedEngineError, match="read_missing_chunks=False"):
+        hierarchy.array_engine("", z.metadata, config)
+
+
+async def test_zarrista_async_rejects_read_missing_chunks_false(tmp_path: Path) -> None:
+    # Same fail-loud contract as the sync engine, exercised on the async
+    # hierarchy engine's `array_engine` factory.
+    from zarr.core.array_spec import ArrayConfig
+    from zarr.zarrista._engine import ZarristaAsyncHierarchyEngine
+
+    z = _make(tmp_path)
+    config = ArrayConfig(order="C", write_empty_chunks=False, read_missing_chunks=False)
+    hierarchy = ZarristaAsyncHierarchyEngine(LocalStore(tmp_path))
+    with pytest.raises(UnsupportedEngineError, match="read_missing_chunks=False"):
+        hierarchy.array_engine("", z.metadata, config)
+
+
 async def test_zarrista_async_engine_read_write_combinations(tmp_path: Path) -> None:
     # exercises `ZarristaAsyncEngine` directly (over an obstore-backed
     # `ObjectStore`), rather than through the sync `Array`/`ZarristaEngine`

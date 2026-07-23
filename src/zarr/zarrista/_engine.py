@@ -39,6 +39,26 @@ def _require_v3(metadata: ArrayMetadata) -> ArrayMetadataV3:
     return cast("ArrayMetadataV3", metadata.to_dict())
 
 
+def _reject_unenforceable_config(config: ArrayConfig | None) -> None:
+    """Reject an `ArrayConfig` the zarrista engine cannot honour.
+
+    The zarrista engine owns its own codec options and does not consult
+    zarr-python's `ArrayConfig`. Most fields (e.g. `order`) only affect the
+    in-memory layout of the returned array, which the facade normalizes, so
+    ignoring them is safe. `read_missing_chunks=False`, however, changes
+    *semantics*: the default engine raises `ChunkNotFoundError` for a missing
+    chunk, whereas zarrista silently fills it with the fill value. Per the
+    project's fail-loud rule, refuse rather than silently downgrade to
+    fill-value reads.
+    """
+    if config is not None and not config.read_missing_chunks:
+        raise UnsupportedEngineError(
+            "the zarrista engine cannot enforce read_missing_chunks=False "
+            "(it fills missing chunks with the fill value instead of raising); "
+            "use the default engine to enforce this setting"
+        )
+
+
 def _region_to_selection(region: Region) -> tuple[slice, ...]:
     return tuple(slice(s, e) for s, e in zip(region.start, region.end_exclusive, strict=True))
 
@@ -142,11 +162,15 @@ class ZarristaHierarchyEngine:
         """Mint a sync array engine bound to `path`/`metadata`.
 
         `config` is accepted for protocol conformance with `HierarchyEngine`
-        but is unused: zarrista owns its own codec options and does not read
-        zarr-python's `ArrayConfig` (e.g. `order`, `read_missing_chunks`).
+        and is otherwise unused -- zarrista owns its own codec options and does
+        not read zarr-python's `ArrayConfig` (e.g. `order`) -- with one
+        exception: `config.read_missing_chunks=False` is rejected with an
+        `UnsupportedEngineError`, since zarrista cannot enforce it and would
+        silently fill missing chunks instead of raising.
         """
         import zarrista
 
+        _reject_unenforceable_config(config)
         return ZarristaEngine(
             zarrista.Array.from_metadata(_require_v3(metadata), self._zstore, "/" + path.strip("/"))
         )
@@ -244,11 +268,15 @@ class ZarristaAsyncHierarchyEngine:
         """Mint an async array engine bound to `path`/`metadata`.
 
         `config` is accepted for protocol conformance with
-        `AsyncHierarchyEngine` but is unused: zarrista owns its own codec
-        options and does not read zarr-python's `ArrayConfig` (e.g. `order`,
-        `read_missing_chunks`). `metadata` is validated as Zarr v3 eagerly
-        (cheap, and lets an unsupported-format error surface immediately);
-        the store itself is only translated lazily, on first I/O.
+        `AsyncHierarchyEngine` and is otherwise unused -- zarrista owns its own
+        codec options and does not read zarr-python's `ArrayConfig` (e.g.
+        `order`) -- with one exception: `config.read_missing_chunks=False` is
+        rejected with an `UnsupportedEngineError`, since zarrista cannot enforce
+        it and would silently fill missing chunks instead of raising. `metadata`
+        is validated as Zarr v3 eagerly (cheap, and lets an unsupported-format
+        error surface immediately); the store itself is only translated lazily,
+        on first I/O.
         """
+        _reject_unenforceable_config(config)
         _require_v3(metadata)
         return ZarristaAsyncEngine(self._zarr_store, "/" + path.strip("/"), metadata)
