@@ -9,36 +9,58 @@ JSON shapes specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/late
 and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
 specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
 and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
+It also provides canonical frozen-dataclass models, structural validators,
+parsers, store-key serialization, and optional Pydantic field integrations.
+The optional integration requires Pydantic 2.13 or newer.
 
 ## What this is for
 
-These types describe the JSON shape of Zarr metadata. They are
-intended for libraries that **read, write, validate, or transform**
-Zarr metadata. Pair them with a runtime validator like
-[pydantic](https://docs.pydantic.dev/) to check JSON loaded from disk:
+The public `TypedDict` definitions describe the static JSON shape of Zarr
+metadata. For strict, loc-aware validation of JSON loaded from disk, use the
+model parser:
 
 ```python
 import json
-from pydantic import TypeAdapter
-from zarr_metadata.v3.array import ArrayMetadataV3
+from zarr_metadata.model import ZarrV3ArrayMetadata
 
 with open("zarr.json", "rb") as f:
     raw = json.load(f)
 
-metadata = TypeAdapter(ArrayMetadataV3).validate_python(raw)
+metadata = ZarrV3ArrayMetadata.from_json(raw)
 ```
 
-## What this is *not*
+The optional Pydantic integration delegates raw input to the same strict
+parser and returns the same normalized model class:
 
-- Not a parser or builder. There are no `make_array_metadata(...)` factories —
-  that surface belongs to consumer libraries.
-- Not a runtime validator on its own. Pair with `pydantic`, `msgspec`, or
-  similar to enforce shapes at decode time.
+```python
+from pydantic import TypeAdapter
+import zarr_metadata.pydantic as zmp
 
-Even with a runtime validator, these types only describe **structural**
-shape — they will not flag *semantically* invalid metadata, like a 3D v3
-array whose `dimension_names` has 4 entries instead of 3. That's a job
-for downstream validator routines.
+metadata = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(raw)
+encoded = metadata.to_key_value()["zarr.json"]
+```
+
+A bare `TypeAdapter` over a public document `TypedDict` is a coercive shape
+adapter, not a Zarr conformance validator; it may coerce values or discard
+members that the strict model parser rejects.
+
+## Validation boundary
+
+The model validators enforce the declared document structure and a small set
+of context-free consistency rules, including fixed format literals, finite
+JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
+`dimension_names` entry per array dimension. They do not interpret extension
+names or configurations, resolve codec pipelines, or decide whether a data
+type, chunk grid, codec, or storage transformer is supported. Those decisions
+belong to consumer implementations.
+
+The Pydantic integration's generated JSON Schemas express independently
+checkable document structure and field constraints, but they are not a
+replacement for runtime model validation. Standard JSON Schema treats a
+mathematically integral number such as `1.0` as an integer, while the runtime
+boundary requires Python `int` values, and it cannot express arbitrary
+same-length relations such as `dimension_names` versus `shape` or v2 `chunks`
+versus `shape`. Consumers should run the model parser after schema validation.
 
 ## Scope
 
