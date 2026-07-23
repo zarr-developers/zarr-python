@@ -20,6 +20,13 @@ def _array() -> zarr.Array[Any]:
     return zarr.create_array(MemoryStore(), shape=(4,), chunks=(2,), dtype="int8")
 
 
+def test_list_engines() -> None:
+    # `list_engines` reports exactly the known engine names, sorted, and is
+    # re-exported at the top level for discoverability.
+    assert zarr.list_engines() == ["default", "zarrista"]
+    assert callable(zarr.list_engines)
+
+
 def test_resolution_combinations() -> None:
     z = _array()
     store = z.store

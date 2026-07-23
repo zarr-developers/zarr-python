@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 import weakref
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, get_args
 
 from zarr.core.engine._default import (
     DefaultAsyncHierarchyEngine,
@@ -28,12 +28,28 @@ if TYPE_CHECKING:
 __all__ = [
     "EngineName",
     "classify_engine_arg",
+    "list_engines",
     "resolve_async_engine",
     "resolve_sync_engine",
     "route_sync_engine_arg",
 ]
 
 EngineName = Literal["default", "zarrista"]
+
+
+def list_engines() -> list[str]:
+    """Return the sorted names of the built-in array engines.
+
+    Any of these names can be passed as the `engine=` argument to
+    `zarr.open_array`, `zarr.create_array`, and the other array entry points to
+    select the data-path engine backing the array.
+
+    `"zarrista"` additionally requires the optional `zarrista` package to be
+    installed; without it, resolving that engine raises an `ImportError`.
+    """
+    # `EngineName` is the single source of truth for known engine names --
+    # `_hierarchy_factory` dispatches on exactly these literals.
+    return sorted(get_args(EngineName))
 
 
 def classify_engine_arg(engine: object) -> Literal["name", "sync", "async"]:
