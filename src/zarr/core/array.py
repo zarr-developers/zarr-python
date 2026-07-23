@@ -118,6 +118,7 @@ from zarr.core.metadata import (
     ArrayV3Metadata,
 )
 from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.model import array_metadata_to_model
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -135,6 +136,7 @@ from zarr.errors import (
     ChunkNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
+    ZarrPendingDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.registry import (
@@ -151,6 +153,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     import numpy.typing as npt
+    from zarr_metadata.model import ZarrV2ArrayMetadata, ZarrV3ArrayMetadata
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
@@ -406,6 +409,44 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+
+    @property
+    def _future_metadata(self) -> ZarrV2ArrayMetadata | ZarrV3ArrayMetadata:
+        """
+        The metadata of this array as a ``zarr_metadata`` document model.
+
+        This is the planned future type of the public ``metadata`` attribute:
+        a canonical, lossless model of the stored metadata document, with
+        extension points (data type, codecs, chunk grid, chunk key encoding)
+        held as uninterpreted name + configuration pairs and the fill value
+        held in its JSON form. Interpreted runtime objects (``ZDType``, the
+        codec pipeline, the chunk grid) remain available as attributes of the
+        array itself.
+
+        The model is derived lazily from ``metadata`` and cached; the cache is
+        keyed on the identity of the ``metadata`` object, so every metadata
+        change must swap in a new metadata object rather than mutating the
+        current one in place.
+        """
+        cache = cast(
+            "tuple[object, ZarrV2ArrayMetadata | ZarrV3ArrayMetadata] | None",
+            self.__dict__.get("_future_metadata_cache"),
+        )
+        if cache is not None and cache[0] is self.metadata:
+            return cache[1]
+        model = array_metadata_to_model(self.metadata)
+        # Direct __dict__ assignment: the dataclass is frozen, and the cache
+        # is derived state, not a field.
+        self.__dict__["_future_metadata_cache"] = (self.metadata, model)
+        return model
+
+    def __getstate__(self) -> dict[str, Any]:
+        # The cached _future_metadata model is derived state: drop it from
+        # pickles so the serialized form stays lean and never couples to the
+        # cache layout, and let the receiving process re-derive it on demand.
+        state = self.__dict__.copy()
+        state.pop("_future_metadata_cache", None)
+        return state
 
     @classmethod
     async def _create(
@@ -826,7 +867,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             The number of dimensions in the Array.
         """
-        return len(self.metadata.shape)
+        return len(self._future_metadata.shape)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -837,7 +878,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple
             The shape of the Array.
         """
-        return self.metadata.shape
+        return self._future_metadata.shape
 
     @property
     def chunks(self) -> tuple[int, ...]:
@@ -936,7 +977,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         int
             Total number of elements in the array
         """
-        return math.prod(self.metadata.shape)
+        return math.prod(self._future_metadata.shape)
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -1521,7 +1562,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
+        indexer = OrthogonalIndexer(selection, self._future_metadata.shape, self._chunk_grid)
         return await _get_selection(
             self.store_path,
             self.metadata,
@@ -1544,7 +1585,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
+        indexer = MaskIndexer(mask, self._future_metadata.shape, self._chunk_grid)
         return await _get_selection(
             self.store_path,
             self.metadata,
@@ -1567,7 +1608,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
+        indexer = CoordinateIndexer(selection, self._future_metadata.shape, self._chunk_grid)
         out_array = await _get_selection(
             self.store_path,
             self.metadata,
@@ -1818,7 +1859,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> Any:
         chunk_shape = self.chunks if self._chunk_grid.is_regular else None
         return ArrayInfo(
-            _zarr_format=self.metadata.zarr_format,
+            _zarr_format=self._future_metadata.zarr_format,
             _data_type=self._zdtype,
             _fill_value=self.metadata.fill_value,
             _shape=self.shape,
@@ -2148,7 +2189,35 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def metadata(self) -> ArrayMetadata:
+        warnings.warn(
+            "In a future release of Zarr Python, the type of the `metadata` attribute "
+            "will change: it will return the metadata document model classes defined in "
+            "the `zarr-metadata` package (`ZarrV2ArrayMetadata` / `ZarrV3ArrayMetadata`) "
+            "instead of `ArrayV2Metadata` / `ArrayV3Metadata`. "
+            "The `_future_metadata` attribute previews the new interface.",
+            ZarrPendingDeprecationWarning,
+            stacklevel=2,
+        )
         return self.async_array.metadata
+
+    @property
+    def _metadata(self) -> ArrayMetadata:
+        """The runtime metadata object, without the pending-type-change warning.
+
+        Internal accessor for code that still needs the interpreted metadata
+        classes during the migration to the ``zarr_metadata`` document models.
+        """
+        return self.async_array.metadata
+
+    @property
+    def _future_metadata(self) -> ZarrV2ArrayMetadata | ZarrV3ArrayMetadata:
+        """
+        The metadata of this array as a ``zarr_metadata`` document model.
+
+        See ``AsyncArray._future_metadata``. This is the planned future type
+        of the public ``metadata`` attribute.
+        """
+        return self.async_array._future_metadata
 
     @property
     def store_path(self) -> StorePath:
@@ -2164,7 +2233,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def fill_value(self) -> Any:
-        return self.metadata.fill_value
+        return self._metadata.fill_value
 
     @property
     def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
@@ -5737,13 +5806,15 @@ async def _resize(
         If False, the data in those chunks will be preserved.
     """
     new_shape = parse_shapelike(new_shape)
-    assert len(new_shape) == len(array.metadata.shape)
+    assert len(new_shape) == len(array._future_metadata.shape)
 
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
 
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
-    only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
+    only_growing = all(
+        new >= old for new, old in zip(new_shape, array._future_metadata.shape, strict=True)
+    )
 
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
@@ -5860,11 +5931,15 @@ async def _update_attributes(
     AsyncArray
         The array with the updated attributes.
     """
-    array.metadata.attributes.update(new_attributes)
+    # Swap in a new metadata object rather than mutating the current one in
+    # place: derived state (e.g. the cached ``_future_metadata`` model) is
+    # invalidated by metadata object identity.
+    new_metadata = array.metadata.update_attributes({**array.metadata.attributes, **new_attributes})
 
     # Write new metadata
-    await save_metadata(array.store_path, array.metadata)
+    await save_metadata(array.store_path, new_metadata)
 
+    object.__setattr__(array, "metadata", new_metadata)
     return array
 
 

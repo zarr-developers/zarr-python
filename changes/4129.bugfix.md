@@ -1,0 +1,1 @@
+Zarr V3 array metadata declaring a configuration-free data type in the object form (`{"name": "uint8", "configuration": {}}`) is now readable. The Zarr V3 specification treats this spelling and the bare-name spelling (`"uint8"`) as equivalent, but the data type registry previously only accepted the exact spelling each data type's own serialization produces.

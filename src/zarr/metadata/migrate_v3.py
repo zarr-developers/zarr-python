@@ -85,10 +85,10 @@ def migrate_to_v3(zarr_v2: AnyArray | Group, output_path: StorePath, dry_run: bo
     dry_run : bool, optional
         Enable a 'dry run' - files that would be created are logged, but no files are created or changed.
     """
-    if not zarr_v2.metadata.zarr_format == 2:
+    if not zarr_v2._metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
-    if isinstance(zarr_v2.metadata, GroupMetadata):
+    if isinstance(zarr_v2._metadata, GroupMetadata):
         _convert_group(zarr_v2, output_path, dry_run)
     else:
         _convert_array(zarr_v2, output_path, dry_run)
@@ -155,7 +155,7 @@ async def remove_metadata(
 
 
 def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> None:
-    if zarr_v2.metadata.consolidated_metadata is not None:
+    if zarr_v2._metadata.consolidated_metadata is not None:
         raise NotImplementedError("Migration of consolidated metadata isn't supported.")
 
     # process members of the group
@@ -164,13 +164,13 @@ def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> Non
 
     # write group's converted metadata
     group_metadata_v3 = GroupMetadata(
-        attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
+        attributes=zarr_v2._metadata.attributes, zarr_format=3, consolidated_metadata=None
     )
     sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
 
 
 def _convert_array(zarr_v2: AnyArray, output_path: StorePath, dry_run: bool) -> None:
-    array_metadata_v3 = _convert_array_metadata(cast(ArrayV2Metadata, zarr_v2.metadata))
+    array_metadata_v3 = _convert_array_metadata(cast(ArrayV2Metadata, zarr_v2._metadata))
     sync(_save_v3_metadata(array_metadata_v3, output_path, dry_run=dry_run))
 
 

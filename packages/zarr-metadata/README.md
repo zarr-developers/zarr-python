@@ -20,12 +20,12 @@ Zarr metadata. Pair them with a runtime validator like
 ```python
 import json
 from pydantic import TypeAdapter
-from zarr_metadata.v3.array import ArrayMetadataV3
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 
 with open("zarr.json", "rb") as f:
     raw = json.load(f)
 
-metadata = TypeAdapter(ArrayMetadataV3).validate_python(raw)
+metadata = TypeAdapter(ZarrV3ArrayMetadataJSON).validate_python(raw)
 ```
 
 ## What this is *not*

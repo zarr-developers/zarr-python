@@ -16,6 +16,7 @@ __all__ = [
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
     "ZarrFutureWarning",
+    "ZarrPendingDeprecationWarning",
     "ZarrRuntimeWarning",
 ]
 
@@ -124,6 +125,16 @@ class UnstableSpecificationWarning(ZarrFutureWarning):
 class ZarrDeprecationWarning(DeprecationWarning):
     """
     A warning raised to indicate that a feature will be removed in a future release.
+    """
+
+
+class ZarrPendingDeprecationWarning(PendingDeprecationWarning):
+    """
+    A warning raised to indicate that a feature will be deprecated in a future release.
+
+    Like ``PendingDeprecationWarning``, this is ignored by default: it exists
+    so that downstream libraries can opt in to early notice of planned
+    changes before a ``DeprecationWarning``-grade deprecation begins.
     """
 
 

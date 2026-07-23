@@ -18,23 +18,23 @@ class Attributes(MutableMapping[str, JSON]):
         self._obj = obj
 
     def __getitem__(self, key: str) -> JSON:
-        return self._obj.metadata.attributes[key]
+        return self._obj._metadata.attributes[key]
 
     def __setitem__(self, key: str, value: JSON) -> None:
-        new_attrs = dict(self._obj.metadata.attributes)
+        new_attrs = dict(self._obj._metadata.attributes)
         new_attrs[key] = value
         self._obj = self._obj.update_attributes(new_attrs)
 
     def __delitem__(self, key: str) -> None:
-        new_attrs = dict(self._obj.metadata.attributes)
+        new_attrs = dict(self._obj._metadata.attributes)
         del new_attrs[key]
         self.put(new_attrs)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._obj.metadata.attributes)
+        return iter(self._obj._metadata.attributes)
 
     def __len__(self) -> int:
-        return len(self._obj.metadata.attributes)
+        return len(self._obj._metadata.attributes)
 
     def put(self, d: dict[str, JSON]) -> None:
         """
@@ -50,8 +50,8 @@ class Attributes(MutableMapping[str, JSON]):
         #> {'a': '3', 'c': 4}
         ```
         """
-        self._obj.metadata.attributes.clear()
+        self._obj._metadata.attributes.clear()
         self._obj = self._obj.update_attributes(d)
 
     def asdict(self) -> dict[str, JSON]:
-        return dict(self._obj.metadata.attributes)
+        return dict(self._obj._metadata.attributes)

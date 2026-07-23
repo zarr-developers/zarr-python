@@ -1,26 +1,26 @@
 """Zarr v2 metadata types."""
 
 from zarr_metadata.v2.array import (
-    ArrayDimensionSeparatorV2,
-    ArrayMetadataV2,
-    ArrayOrderV2,
-    DataTypeMetadataV2,
     ZArrayMetadata,
+    ZarrV2ArrayDimensionSeparator,
+    ZarrV2ArrayMetadataJSON,
+    ZarrV2ArrayOrder,
+    ZarrV2DataTypeMetadata,
 )
 from zarr_metadata.v2.attributes import ZAttrsMetadata
-from zarr_metadata.v2.codec import CodecMetadataV2
-from zarr_metadata.v2.consolidated import ConsolidatedMetadataV2
-from zarr_metadata.v2.group import GroupMetadataV2, ZGroupMetadata
+from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
+from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZGroupMetadata
 
 __all__ = [
-    "ArrayDimensionSeparatorV2",
-    "ArrayMetadataV2",
-    "ArrayOrderV2",
-    "CodecMetadataV2",
-    "ConsolidatedMetadataV2",
-    "DataTypeMetadataV2",
-    "GroupMetadataV2",
     "ZArrayMetadata",
     "ZAttrsMetadata",
     "ZGroupMetadata",
+    "ZarrV2ArrayDimensionSeparator",
+    "ZarrV2ArrayMetadataJSON",
+    "ZarrV2ArrayOrder",
+    "ZarrV2CodecMetadata",
+    "ZarrV2ConsolidatedMetadataJSON",
+    "ZarrV2DataTypeMetadata",
+    "ZarrV2GroupMetadataJSON",
 ]

@@ -359,7 +359,7 @@ def arrays(
     )
 
     assert isinstance(a, Array)
-    if a.metadata.zarr_format == 3:
+    if a._metadata.zarr_format == 3:
         assert a.fill_value is not None
     assert a.name is not None
     assert a.path == normalize_path(array_path)
@@ -370,13 +370,13 @@ def arrays(
     # Verify chunks — for rectilinear grids, .chunks raises
     if zarr_format == 3:
         assert shard_shape == a.shards
-        if isinstance(a.metadata.chunk_grid, RegularChunkGridMetadata):
-            assert a.metadata.chunk_grid.chunk_shape == (
+        if isinstance(a._metadata.chunk_grid, RegularChunkGridMetadata):
+            assert a._metadata.chunk_grid.chunk_shape == (
                 a.shards if shard_shape is not None else a.chunks
             )
             assert shard_shape == a.shards
         else:
-            assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
+            assert isinstance(a._metadata.chunk_grid, RectilinearChunkGridMetadata)
             assert shard_shape is None
 
     assert a.basename == name, (a.basename, name)

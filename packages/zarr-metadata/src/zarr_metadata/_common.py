@@ -13,7 +13,7 @@ from typing_extensions import TypeAliasType, TypedDict
 
 JSONValue = TypeAliasType(
     "JSONValue",
-    "int | float | bool | None | str | list[JSONValue] | tuple[JSONValue, ...] | Mapping[str, JSONValue]",  # type: ignore[reportInvalidTypeForm]
+    "int | float | bool | None | str | list[JSONValue] | tuple[JSONValue, ...] | Mapping[str, JSONValue]",
 )
 """A recursive type alias for JSON-encodable values.
 
@@ -24,7 +24,7 @@ building a `TypeAdapter`; a bare recursive `TypeAlias` raises
 """
 
 
-class NamedConfigV3(TypedDict):
+class ZarrV3NamedConfigJSON(TypedDict):
     """
     Externally-tagged union member for a metadata field.
 
