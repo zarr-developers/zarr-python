@@ -1,5 +1,6 @@
 """Tests for the metadata models in ``zarr_metadata.model``."""
 
+import copy
 import dataclasses
 import json
 from collections import UserDict
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 from typing_extensions import Unpack
 
-from tests.model._cases import Expect, ExpectFail
+from tests.model._cases import Expect, ExpectFail, mutate_nested_containers
 from zarr_metadata.model import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
@@ -645,6 +646,40 @@ def test_v2_roundtrip_json_model_json() -> None:
     """A v2 document round-trips through from_json/to_json back to an equal document."""
     doc = ZarrV2ArrayMetadata.create_default(attributes={"a": 1}).to_json()
     assert ZarrV2ArrayMetadata.from_json(doc).to_json() == doc
+
+
+# --- to_json shares no mutable state with the model ------------------------
+
+TO_JSON_NO_ALIASING_PARAMS = [
+    pytest.param(
+        ZarrV3ArrayMetadata.create_default(
+            shape=(2,),
+            attributes={"a": {"b": [1]}},
+            codecs=(ZarrV3NamedConfig(name="blosc", configuration={"opts": {"level": 1}}),),
+            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
+        ),
+        id="v3",
+    ),
+    pytest.param(
+        ZarrV2ArrayMetadata.create_default(
+            attributes={"a": {"b": [1]}},
+            compressor={"id": "zstd", "opts": {"level": 1}},
+            filters=({"id": "delta", "cfg": [1]},),
+            fill_value=[0, 0],
+        ),
+        id="v2",
+    ),
+]
+
+
+@pytest.mark.parametrize("model", TO_JSON_NO_ALIASING_PARAMS)
+def test_to_json_shares_no_mutable_state_with_model(
+    model: ZarrV3ArrayMetadata | ZarrV2ArrayMetadata,
+) -> None:
+    """Mutating a document returned by to_json leaves the model unchanged."""
+    baseline = copy.deepcopy(model.to_json())
+    mutate_nested_containers(model.to_json())
+    assert model.to_json() == baseline
 
 
 def test_v3_parser_accepts_bare_string_data_type() -> None:

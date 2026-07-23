@@ -1,5 +1,6 @@
 """Tests for the group and consolidated metadata models in `zarr_metadata.model`."""
 
+import copy
 import dataclasses
 import json
 from collections import UserDict
@@ -7,6 +8,7 @@ from collections.abc import Callable
 
 import pytest
 
+from tests.model._cases import mutate_nested_containers
 from zarr_metadata.model import UNSET
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.model._group import (
@@ -522,3 +524,49 @@ def test_group_v3_null_consolidated_metadata_repaired_to_absence() -> None:
     assert model.consolidated_metadata is UNSET
     assert "consolidated_metadata" not in model.to_json()
     assert model == ZarrV3GroupMetadata.from_json({"zarr_format": 3, "node_type": "group"})
+
+
+# --- to_json shares no mutable state with the model ------------------------
+
+TO_JSON_NO_ALIASING_PARAMS = [
+    pytest.param(
+        ZarrV3GroupMetadata.create_default(
+            attributes={"a": {"b": [1]}},
+            consolidated_metadata=ZarrV3ConsolidatedMetadata(
+                metadata={
+                    "child": ZarrV3ArrayMetadata.create_default(attributes={"x": {"y": 1}}),
+                    "grp": ZarrV3GroupMetadata.create_default(attributes={"x": {"y": 1}}),
+                }
+            ),
+            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
+        ),
+        id="v3-group",
+    ),
+    pytest.param(
+        ZarrV2GroupMetadata.create_default(attributes={"a": {"b": [1]}}),
+        id="v2-group",
+    ),
+    pytest.param(
+        ZarrV3ConsolidatedMetadata(
+            metadata={"child": ZarrV3ArrayMetadata.create_default(attributes={"x": {"y": 1}})}
+        ),
+        id="v3-consolidated",
+    ),
+    pytest.param(
+        ZarrV2ConsolidatedMetadata(metadata={"a/.zarray": {"nested": {"x": [1]}}}),
+        id="v2-consolidated",
+    ),
+]
+
+
+@pytest.mark.parametrize("model", TO_JSON_NO_ALIASING_PARAMS)
+def test_to_json_shares_no_mutable_state_with_model(
+    model: ZarrV3GroupMetadata
+    | ZarrV2GroupMetadata
+    | ZarrV3ConsolidatedMetadata
+    | ZarrV2ConsolidatedMetadata,
+) -> None:
+    """Mutating a document returned by to_json leaves the model unchanged."""
+    baseline = copy.deepcopy(model.to_json())
+    mutate_nested_containers(model.to_json())
+    assert model.to_json() == baseline

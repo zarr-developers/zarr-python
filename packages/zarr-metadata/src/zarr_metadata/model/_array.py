@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -62,7 +63,8 @@ class ZarrV3NamedConfig:
             return self.name
         out: ZarrV3NamedConfigJSON = {"name": self.name}
         if self.configuration:
-            out["configuration"] = self.configuration
+            # to_json output shares no mutable state with the model.
+            out["configuration"] = copy.deepcopy(self.configuration)
         if not self.must_understand:
             out["must_understand"] = False
         return out
@@ -250,11 +252,13 @@ class ZarrV3ArrayMetadata:
             )
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
+        # to_json output shares no mutable state with the model: every value
+        # that can hold a mutable container is deep-copied.
         out: ZarrV3ArrayMetadataJSON = {
             "zarr_format": self.zarr_format,
             "node_type": self.node_type,
             "shape": self.shape,
-            "fill_value": self.fill_value,
+            "fill_value": copy.deepcopy(self.fill_value),
             "data_type": self.data_type.to_json(),
             "chunk_grid": self.chunk_grid.to_json(),
             "codecs": tuple(codec.to_json() for codec in self.codecs),
@@ -263,7 +267,7 @@ class ZarrV3ArrayMetadata:
         if self.dimension_names is not UNSET:
             out["dimension_names"] = self.dimension_names
         if len(self.attributes) > 0:
-            out["attributes"] = self.attributes
+            out["attributes"] = copy.deepcopy(self.attributes)
         if len(self.storage_transformers) > 0:
             out["storage_transformers"] = tuple(
                 transformer.to_json() for transformer in self.storage_transformers
@@ -273,7 +277,7 @@ class ZarrV3ArrayMetadata:
         # indexed-write path against `extra_items`, but not the `update(**...)`
         # overload.
         for key, value in self.extra_fields.items():
-            out[key] = value
+            out[key] = copy.deepcopy(value)
         return out
 
     @classmethod
@@ -424,19 +428,21 @@ class ZarrV2ArrayMetadata:
         `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
+        # to_json output shares no mutable state with the model: every value
+        # that can hold a mutable container is deep-copied.
         out: ZarrV2ArrayMetadataJSON = {
             "zarr_format": self.zarr_format,
             "shape": self.shape,
             "dtype": self.dtype,
             "order": self.order,
             "chunks": self.chunks,
-            "fill_value": self.fill_value,
+            "fill_value": copy.deepcopy(self.fill_value),
             "dimension_separator": self.dimension_separator,
-            "compressor": self.compressor,
-            "filters": self.filters,
+            "compressor": copy.deepcopy(self.compressor),
+            "filters": copy.deepcopy(self.filters),
         }
         if self.attributes is not UNSET:
-            out["attributes"] = self.attributes
+            out["attributes"] = copy.deepcopy(self.attributes)
         return out
 
     @classmethod

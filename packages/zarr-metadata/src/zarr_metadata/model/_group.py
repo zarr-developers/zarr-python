@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -122,19 +123,21 @@ class ZarrV3GroupMetadata:
         return dataclasses.replace(self, **kwargs)
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
+        # to_json output shares no mutable state with the model: every value
+        # that can hold a mutable container is deep-copied.
         out: ZarrV3GroupMetadataJSON = {
             "zarr_format": self.zarr_format,
             "node_type": self.node_type,
         }
         if len(self.attributes) > 0:
-            out["attributes"] = self.attributes
+            out["attributes"] = copy.deepcopy(self.attributes)
         if self.consolidated_metadata is not UNSET:
             # Consolidated metadata is a known non-core top-level JSON field.
             out[CONSOLIDATED_METADATA_KEY_V3] = cast(
                 "ZarrV3ExtensionField", self.consolidated_metadata.to_json()
             )
         for key, value in self.extra_fields.items():
-            out[key] = value
+            out[key] = copy.deepcopy(value)
         return out
 
     @classmethod
@@ -303,9 +306,10 @@ class ZarrV2GroupMetadata:
         `attributes` (they live in the sibling `.zattrs` file). Use
         `to_key_value` to produce the spec-conforming split for storage.
         """
+        # to_json output shares no mutable state with the model.
         out: ZarrV2GroupMetadataJSON = {"zarr_format": self.zarr_format}
         if self.attributes is not UNSET:
-            out["attributes"] = self.attributes
+            out["attributes"] = copy.deepcopy(self.attributes)
         return out
 
     @classmethod
@@ -360,9 +364,10 @@ class ZarrV2ConsolidatedMetadata:
     metadata: dict[str, JSONValue]
 
     def to_json(self) -> dict[str, JSONValue]:
+        # to_json output shares no mutable state with the model.
         return {
             "zarr_consolidated_format": self.zarr_consolidated_format,
-            "metadata": self.metadata,
+            "metadata": copy.deepcopy(self.metadata),
         }
 
     @classmethod
