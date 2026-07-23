@@ -1,8 +1,10 @@
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pytest
 
+import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr.core.chunk_grids import (
     ChunkLayout,
@@ -142,6 +144,35 @@ def test_chunk_layout_nested() -> None:
             id="negative-uniform",
             msg="Chunk size must be positive",
         ),
+        ExpectFail(
+            input=(None, 100),
+            exception=ValueError,
+            id="none-chunk-size",
+            msg="None is not a valid chunk size for a dimension",
+        ),
+        # bool is a subclass of int; without an explicit guard, True would
+        # silently pass through the int branch as chunk size 1.
+        ExpectFail(
+            input=(True, 100),
+            exception=ValueError,
+            id="bool-chunk-size",
+            msg="True is not a valid chunk size for a dimension",
+        ),
+        # Non-iterable, non-int values must get an informative error rather
+        # than a bare crash from list().
+        ExpectFail(
+            input=(2.5, 100),
+            exception=TypeError,
+            id="float-chunk-size",
+            msg="Expected an int or an iterable of ints",
+        ),
+        # Strings are iterable but never a valid chunk size.
+        ExpectFail(
+            input=("5", 100),
+            exception=TypeError,
+            id="string-chunk-size",
+            msg="Expected an int or an iterable of ints",
+        ),
         ExpectFail(input=([], 100), exception=ValueError, id="empty-list", msg="must not be empty"),
         ExpectFail(
             input=([10, -1, 10], 100),
@@ -206,7 +237,44 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
             id="true",
             msg="True is not a valid chunk input",
         ),
-        ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        # A per-dimension `None` (dask-style "full extent") is rejected with a
+        # pointer to the `-1` sentinel.
+        ExpectFail(
+            input=((None, 5), (100, 100)),
+            exception=ValueError,
+            id="per-dimension-none",
+            msg="Use -1 for a single chunk covering the full extent of an axis",
+        ),
+        # A per-dimension `True` must not silently become chunk size 1.
+        ExpectFail(
+            input=((True, 5), (100, 100)),
+            exception=ValueError,
+            id="per-dimension-true",
+            msg="True is not a valid chunk size for a dimension",
+        ),
+        # A non-iterable per-dimension value gets an informative error.
+        ExpectFail(
+            input=((2.5, 5), (100, 100)),
+            exception=TypeError,
+            id="per-dimension-float",
+            msg="Expected an int or an iterable of ints",
+        ),
+        # Strings are iterable but rejected outright. Note that `chunks="auto"`
+        # is intercepted by the callers before normalization, so a string here
+        # always means invalid input.
+        ExpectFail(
+            input=("foo", (100,)),
+            exception=TypeError,
+            id="string",
+            msg="not a valid chunk input",
+        ),
+        # A non-iterable whole argument gets an informative error.
+        ExpectFail(
+            input=(2.5, (100,)),
+            exception=TypeError,
+            id="non-iterable",
+            msg="Expected an int or an iterable of ints",
+        ),
         ExpectFail(
             input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
         ),
@@ -253,3 +321,79 @@ def test_normalize_chunks_1d_returns_int64_array(
     assert result.dtype == np.int64
     assert result.ndim == 1
     assert result.tolist() == case.output
+
+
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        (-1, (10, 10)),
+        ((-1, -1), (10, 10)),
+        ((-1, 5), (10, 5)),
+        ("auto", (10, 10)),
+        (False, (10, 10)),
+        ([5, 5], (5, 5)),
+        (np.int64(5), (5, 5)),
+    ],
+    ids=[
+        "scalar-minus-one",
+        "tuple-minus-one",
+        "mixed-minus-one",
+        "auto",
+        "false-single-chunk",
+        "list",
+        "numpy-int",
+    ],
+)
+def test_create_array_valid_chunk_forms(chunks: Any, expected: tuple[int, ...]) -> None:
+    """Valid chunk specifications produce arrays with the expected chunk shape."""
+    arr = zarr.create_array(store={}, shape=(10, 10), dtype="i4", chunks=chunks)
+    assert arr.chunks == expected
+
+
+@pytest.mark.parametrize(
+    ("make_chunks", "shape", "expected"),
+    [
+        # whole-argument generator of per-dimension sizes
+        (lambda: (10 for _ in range(2)), (100, 10), ((10,) * 10, (10,))),
+        # rectilinear spec with a generator as one dimension's sizes
+        (lambda: ((c for c in (60, 40)), [5, 5]), (100, 10), ((60, 40), (5, 5))),
+    ],
+    ids=["whole-argument-generator", "per-dimension-generator"],
+)
+def test_normalize_chunks_nd_accepts_generators(
+    make_chunks: Callable[[], Any],
+    shape: tuple[int, ...],
+    expected: tuple[tuple[int, ...], ...],
+) -> None:
+    """Generator inputs are materialized and normalized like any other iterable."""
+    _assert_chunks_equal(normalize_chunks_nd(make_chunks(), shape), expected)
+
+
+def test_create_rejects_per_dimension_true_chunk() -> None:
+    """A per-dimension True in `chunks` via `zarr.create` must not become chunk size 1."""
+    with pytest.raises(ValueError, match="True is not a valid chunk size for a dimension"):
+        zarr.create(store={}, shape=(10, 10), dtype="i4", chunks=(True, 5))
+
+
+def test_create_rejects_per_dimension_none_chunk() -> None:
+    """A per-dimension None in `chunks` via `zarr.create` raises an informative error."""
+    with pytest.raises(
+        ValueError, match="Use -1 for a single chunk covering the full extent of an axis"
+    ):
+        zarr.create(store={}, shape=(10, 10), dtype="i4", chunks=(None, 5))  # type: ignore[arg-type]
+
+
+def test_create_array_rejects_per_dimension_none_chunk() -> None:
+    """A per-dimension None in `chunks` via `zarr.create_array` raises an informative error."""
+    with pytest.raises(
+        ValueError, match="Use -1 for a single chunk covering the full extent of an axis"
+    ):
+        zarr.create_array(store={}, shape=(10, 10), dtype="i4", chunks=(None, 5))  # type: ignore[arg-type]
+
+
+def test_create_array_rejects_chunks_none() -> None:
+    """`chunks=None` via `zarr.create_array` points the user at `chunks="auto"`."""
+    with pytest.raises(
+        ValueError, match='Use chunks="auto" or omit the chunks argument for automatic chunking'
+    ):
+        zarr.create_array(store={}, shape=(10, 10), dtype="i4", chunks=None)  # type: ignore[arg-type]

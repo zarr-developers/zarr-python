@@ -4461,7 +4461,17 @@ async def init_array(
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
 
-    # Normalize the user's chunks into canonical ChunksTuple form
+    # Normalize the user's chunks into canonical ChunksTuple form.
+    # Auto-chunking is an API-level concept, so the guidance toward it is
+    # raised here rather than in the mechanical normalizer. Validate through
+    # an object-typed view: None/True are outside ChunksLike but reachable
+    # from untyped callers.
+    chunks_input: object = chunks
+    if chunks_input is None or chunks_input is True:
+        raise ValueError(
+            f'{chunks!r} is not a valid chunk input. Use chunks="auto" or omit the chunks '
+            "argument for automatic chunking, or pass an int / iterable of ints."
+        )
 
     if chunks == "auto":
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES

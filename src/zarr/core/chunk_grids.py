@@ -6,6 +6,7 @@ import math
 import numbers
 import operator
 import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import (
@@ -31,7 +32,7 @@ from zarr.core.common import (
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterator, Sequence
 
     from zarr.core.array import ShardsLike
     from zarr.core.metadata import ArrayMetadata
@@ -717,18 +718,33 @@ def _guess_regular_chunks(
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks_1d(
-    chunks: int | Iterable[object], span: int
-) -> np.ndarray[tuple[int], np.dtype[np.int64]]:
+def normalize_chunks_1d(chunks: object, span: int) -> np.ndarray[tuple[int], np.dtype[np.int64]]:
     """
     Normalize a one-dimensional chunk specification into a 1D int64 array of
     chunk sizes that cover the span.
 
-    `-1` means "one chunk covering the entire span."
+    Accepts `object` and narrows internally: `None` and `bool` are rejected
+    with informative errors (`-1` is the sentinel for "one chunk covering the
+    entire span"), strings and other non-iterables are rejected, and any other
+    iterable (including a generator) is materialized as an explicit list of
+    chunk sizes.
     For an integer chunk size, all chunks are uniform — the last chunk may
     overhang the span. The actual data extent of each chunk is determined
     by the chunk grid at runtime, not by this function.
     """
+    if chunks is None:
+        raise ValueError(
+            "None is not a valid chunk size for a dimension. "
+            "Use -1 for a single chunk covering the full extent of an axis."
+        )
+    # bool is a subclass of int, so without this guard True would silently
+    # pass through the integer branch below as chunk size 1.
+    if chunks is True or chunks is False:
+        raise ValueError(
+            f"{chunks} is not a valid chunk size for a dimension. "
+            "Chunk sizes must be positive integers, or -1 for a single chunk "
+            "covering the full extent of an axis."
+        )
     if chunks == -1:
         return np.array([span], dtype=np.int64)
     if isinstance(chunks, int):
@@ -738,39 +754,45 @@ def normalize_chunks_1d(
             return np.array([chunks], dtype=np.int64)
         n = ceildiv(span, chunks)
         return np.full(n, chunks, dtype=np.int64)
-    else:
-        chunk_list = list(chunks)
-        if not chunk_list:
-            raise ValueError("Chunk specification must not be empty")
-        non_int = [
-            (idx, c) for idx, c in enumerate(chunk_list) if not isinstance(c, numbers.Integral)
-        ]
-        if non_int:
-            non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
-            raise TypeError(
-                f"Each chunk size must be an integer; got non-integer element(s) {non_int_vals!r} "
-                f"at indices {non_int_idxs!r}. Chunk sizes must be declared as a flat sequence of "
-                f"positive integers (e.g. [3, 3, 1])."
-            )
-        ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
-        if any(c <= 0 for c in ints):
-            raise ValueError(f"All chunk sizes must be positive, got {ints}")
-        if sum(ints) != span:
-            raise ValueError(f"Chunk sizes {ints} do not sum to span {span}")
-        return np.asarray(ints, dtype=np.int64)
+    # str/bytes are iterable but never a valid chunk specification
+    if isinstance(chunks, (str, bytes)) or not isinstance(chunks, Iterable):
+        raise TypeError(
+            f"{chunks!r} is not a valid chunk size for a dimension. "
+            "Expected an int or an iterable of ints."
+        )
+    chunk_list = list(chunks)
+    if not chunk_list:
+        raise ValueError("Chunk specification must not be empty")
+    non_int = [(idx, c) for idx, c in enumerate(chunk_list) if not isinstance(c, numbers.Integral)]
+    if non_int:
+        non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
+        raise TypeError(
+            f"Each chunk size must be an integer; got non-integer element(s) {non_int_vals!r} "
+            f"at indices {non_int_idxs!r}. Chunk sizes must be declared as a flat sequence of "
+            f"positive integers (e.g. [3, 3, 1])."
+        )
+    ints: list[int] = [int(c) for c in chunk_list]
+    if any(c <= 0 for c in ints):
+        raise ValueError(f"All chunk sizes must be positive, got {ints}")
+    if sum(ints) != span:
+        raise ValueError(f"Chunk sizes {ints} do not sum to span {span}")
+    return np.asarray(ints, dtype=np.int64)
 
 
 def normalize_chunks_nd(
-    chunks: Any,
+    chunks: object,
     shape: tuple[int, ...],
 ) -> ChunksTuple:
     """
     Normalize a chunk specification into a `ChunksTuple`.
 
     This is a mechanical transformation — no heuristics, no guessing.
-    Handles `False` ("all data in one chunk"), scalar ints, `-1` sentinels (one chunk
-    per dimension covering the full span), and explicit per-dimension lists
-    of chunk sizes (regular or rectilinear).
+    Accepts `object` and narrows internally: `False` ("all data in one chunk"),
+    scalar ints, `-1` sentinels (one chunk per dimension covering the full
+    span), and per-dimension iterables of chunk sizes (regular or
+    rectilinear). Any non-string iterable — including a generator — is
+    materialized before use; strings and non-iterables are rejected with
+    informative errors.
 
     For auto-chunking, use `guess_chunks` which returns a
     `ChunksTuple` directly. `chunks=None` and `chunks=True` are rejected
@@ -779,7 +801,8 @@ def normalize_chunks_nd(
     """
     if chunks is None or chunks is True:
         raise ValueError(
-            f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
+            f"{chunks!r} is not a valid chunk input. "
+            "Expected an int, an iterable of ints, or False."
         )
 
     # handle no chunking
@@ -788,16 +811,24 @@ def normalize_chunks_nd(
 
     # handle 1D convenience form. bool is excluded above so this only catches actual ints.
     if isinstance(chunks, numbers.Integral):
-        chunks = tuple(int(chunks) for _ in shape)
+        chunks_tuple: tuple[Any, ...] = tuple(int(chunks) for _ in shape)
+    elif isinstance(chunks, Iterable) and not isinstance(chunks, (str, bytes)):
+        # materialize before use so generators are supported and len() is safe;
+        # str/bytes are iterable but never a valid chunk specification
+        chunks_tuple = tuple(chunks)
+    else:
+        raise TypeError(
+            f"{chunks!r} is not a valid chunk input. Expected an int or an iterable of ints."
+        )
 
     # handle bad dimensionality
-    if len(chunks) != len(shape):
+    if len(chunks_tuple) != len(shape):
         raise ValueError(
-            f"chunks has {len(chunks)} dimensions but shape has {len(shape)} dimensions"
+            f"chunks has {len(chunks_tuple)} dimensions but shape has {len(shape)} dimensions"
         )
 
     return ChunksTuple(
-        tuple(normalize_chunks_1d(c, span=s) for c, s in zip(chunks, shape, strict=True))
+        tuple(normalize_chunks_1d(c, span=s) for c, s in zip(chunks_tuple, shape, strict=True))
     )
 
 
