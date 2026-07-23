@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import warnings
 from contextlib import suppress
-from logging import getLogger
 from typing import TYPE_CHECKING, Any
 
 from packaging.version import parse as parse_version
@@ -18,8 +17,6 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
 from zarr.storage._utils import _dereference_path
-
-logger = getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -36,26 +33,6 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     IsADirectoryError,
     NotADirectoryError,
 )
-
-
-async def _close_fs(fs: AsyncFileSystem) -> None:
-    """
-    Best-effort async close of an fsspec async filesystem owned by FsspecStore.
-
-    For filesystems that expose ``set_session()`` (e.g. s3fs) the underlying
-    aiohttp ``ClientSession`` is closed explicitly, which prevents
-    "Unclosed client session" ``ResourceWarning``s from aiohttp.  For all
-    other filesystem types the call is a no-op (not every implementation
-    manages an HTTP session directly).
-
-    Note that ``set_session()`` lazily creates a session if none exists yet, so
-    closing a store that never performed any I/O may instantiate a session
-    purely to close it.  This is accepted best-effort behavior; fsspec does not
-    expose a stable, cross-implementation way to test for an existing session.
-    """
-    if hasattr(fs, "set_session"):
-        session = await fs.set_session()
-        await session.close()
 
 
 def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
@@ -126,6 +103,15 @@ class FsspecStore(Store):
     ZarrUserWarning
         If the file system (fs) was not created with `asynchronous=True`.
 
+    Notes
+    -----
+    Closing the store does not close the underlying filesystem or its network
+    session. fsspec caches and shares filesystem instances across callers, so
+    the store cannot know whether it is the only user, and closing a shared
+    session would break other stores. The filesystem's lifecycle belongs to
+    whoever created it; use fsspec's own tools (e.g. `clear_instance_cache`)
+    to release it.
+
     See Also
     --------
     FsspecStore.from_upath
@@ -152,9 +138,6 @@ class FsspecStore(Store):
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
-        # True only when this store created fs itself (from_url / from_mapper with new instance).
-        # Callers who supply their own fs remain responsible for its lifecycle.
-        self._owns_fs: bool = False
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
@@ -220,17 +203,13 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
-        original_fs = fs_map.fs
-        fs = _make_async(original_fs)
-        store = cls(
+        fs = _make_async(fs_map.fs)
+        return cls(
             fs=fs,
             path=fs_map.root,
             read_only=read_only,
             allowed_exceptions=allowed_exceptions,
         )
-        # _make_async returns a new instance when converting sync→async; own it.
-        store._owns_fs = fs is not original_fs
-        return store
 
     @classmethod
     def from_url(
@@ -272,39 +251,16 @@ class FsspecStore(Store):
         if not fs.async_impl:
             fs = _make_async(fs)
 
-        store = cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
-        store._owns_fs = True
-        return store
+        return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 
     def with_read_only(self, read_only: bool = False) -> FsspecStore:
         # docstring inherited
-        new_store = type(self)(
+        return type(self)(
             fs=self.fs,
             path=self.path,
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
         )
-        # The derived store shares the same fs. Transfer ownership so the
-        # surviving store closes it, and clear ours to avoid a double-close.
-        # Otherwise the common ``from_url(...).with_read_only()`` chain would
-        # drop the only owner (the unreferenced source) and leak the session.
-        new_store._owns_fs = self._owns_fs
-        self._owns_fs = False
-        return new_store
-
-    def close(self) -> None:
-        # docstring inherited
-        if self._owns_fs:
-            from zarr.core.sync import sync as zarr_sync
-
-            # Best-effort: a failure to release the session must not block close(),
-            # but log it so a genuine regression in the close path stays observable
-            # rather than silently reverting to the leaking behavior.
-            try:
-                zarr_sync(_close_fs(self.fs))
-            except Exception:
-                logger.debug("Failed to close owned filesystem %r", self.fs, exc_info=True)
-        super().close()
 
     async def clear(self) -> None:
         # docstring inherited

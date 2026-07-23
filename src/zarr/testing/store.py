@@ -5,6 +5,8 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Self
 
+import numpy as np
+
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
@@ -38,21 +40,21 @@ class StoreTests[S: Store, B: Buffer]:
 
     @staticmethod
     def _require_get_sync(store: S) -> SupportsGetSync:
-        """Skip unless *store* implements :class:`SupportsGetSync`."""
+        """Skip unless *store* implements [`SupportsGetSync`][zarr.abc.store.SupportsGetSync]."""
         if not isinstance(store, SupportsGetSync):
             pytest.skip("store does not implement SupportsGetSync")
         return store  # type: ignore[unreachable]
 
     @staticmethod
     def _require_set_sync(store: S) -> SupportsSetSync:
-        """Skip unless *store* implements :class:`SupportsSetSync`."""
+        """Skip unless *store* implements [`SupportsSetSync`][zarr.abc.store.SupportsSetSync]."""
         if not isinstance(store, SupportsSetSync):
             pytest.skip("store does not implement SupportsSetSync")
         return store  # type: ignore[unreachable]
 
     @staticmethod
     def _require_delete_sync(store: S) -> SupportsDeleteSync:
-        """Skip unless *store* implements :class:`SupportsDeleteSync`."""
+        """Skip unless *store* implements [`SupportsDeleteSync`][zarr.abc.store.SupportsDeleteSync]."""
         if not isinstance(store, SupportsDeleteSync):
             pytest.skip("store does not implement SupportsDeleteSync")
         return store  # type: ignore[unreachable]
@@ -624,13 +626,31 @@ class LatencyStore(WrapperStore[Store]):
     performance testing.
     """
 
-    get_latency: float
-    set_latency: float
+    _get_latency: float | tuple[float, float]
+    _set_latency: float | tuple[float, float]
 
-    def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        get_latency: float | tuple[float, float] = 0,
+        set_latency: float | tuple[float, float] = 0,
+    ) -> None:
         super().__init__(store)
-        self.get_latency = float(get_latency)
-        self.set_latency = float(set_latency)
+        self._get_latency = get_latency if isinstance(get_latency, tuple) else float(get_latency)
+        self._set_latency = set_latency if isinstance(set_latency, tuple) else float(set_latency)
+
+    @property
+    def get_latency(self) -> float:
+        if isinstance(self._get_latency, float):
+            return self._get_latency
+        return max(0.0, np.random.normal(loc=self._get_latency[0], scale=self._get_latency[1]))
+
+    @property
+    def set_latency(self) -> float:
+        if isinstance(self._set_latency, float):
+            return self._set_latency
+        return max(0.0, np.random.normal(loc=self._set_latency[0], scale=self._set_latency[1]))
 
     def _with_store(self, store: Store) -> Self:
         return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)

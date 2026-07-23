@@ -4,6 +4,93 @@ This section contains documentation for experimental Zarr Python features. The f
 [experimental API policy](../contributing.md#experimental-api-policy) for the stability
 guarantees (or lack thereof) that apply to everything documented on this page.
 
+## `FusedCodecPipeline`
+
+A *codec pipeline* is the machinery that turns chunks of array data into stored bytes and back, by running the configured codecs (filters, serializer, compressors) and performing the storage IO.
+The default pipeline, `BatchedCodecPipeline`, schedules both the IO and codec work asynchronously -- roughly one coroutine per chunk operation.
+
+`FusedCodecPipeline` is an experimental alternative that runs codec compute and synchronous IO *synchronously*, avoiding that per-chunk async scheduling overhead and nasty [`asyncio.to_thread` overhead](https://github.com/python/cpython/issues/136084).
+On real workloads the scheduling cost can dominate the actual codec work, so removing it is a significant speedup -- especially for **sharded arrays**, where a single shard read or write involves many inner chunks.
+
+> **Note:** The win is *not* a faster compressor or a different on-disk format -- the bytes written are
+> identical. It is purely the removal of async scheduling overhead, plus a few vectorized fast paths
+> for dense, uncompressed shards i.e., removing compute where it is not needed.
+
+### When it helps
+
+There are two main benefits in this new pipeline:
+
+1. When storage IO is fast enough that the *scheduling* overhead, not the IO itself, is the bottleneck. That means **low-latency stores** that are themselves synchronous -- in particular [`zarr.storage.MemoryStore`][] and [`zarr.storage.LocalStore`][].
+
+2. Whenever codec work that is truly synchronous will not need the overhead of `async` scheduling i.e., inner-chunk codec work in sharding using something like `zstd`. We also now make use of `asyncio.as_completed` so that IO from asynchronous sources can begin decompression immediately.
+
+### Opting in
+
+`FusedCodecPipeline` is opt-in: the default pipeline is unchanged, so existing code behaves exactly as
+before. Select it through the [runtime configuration](config.md), by setting `codec_pipeline.path`:
+
+```python exec="true" session="experimental-fused" source="above" result="ansi"
+import zarr
+
+zarr.config.set(
+    {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+)
+```
+
+You can set this globally as above (affecting every array created or opened afterwards), or scope it to
+a block of code using `zarr.config.set` as a context manager:
+
+```python exec="true" session="experimental-fused" source="above"
+import numpy as np
+import zarr
+from zarr.storage import MemoryStore
+
+with zarr.config.set(
+    {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+):
+    # A sharded array on an in-memory store -- the low-latency case the
+    # synchronous pipeline targets.
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(1000, 1000),
+        chunks=(100, 100),
+        shards=(1000, 1000),
+        dtype="float32",
+    )
+    arr[:] = np.random.random((1000, 1000)).astype("float32")
+    result = arr[:]
+
+print(result.shape)
+```
+
+To return to the default pipeline, set `codec_pipeline.path` back to the batched implementation:
+
+```python exec="true" session="experimental-fused" source="above"
+import zarr
+
+zarr.config.set(
+    {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
+)
+```
+
+### Threading
+
+By default the synchronous pipeline runs fully threaded i.e., `os.cpu_count()`.
+For memory-backed workflows, you may find that setting `max_workers` to 1 helps (since requests for data from the store are GIL-locked, unlike, say, file-backed i/o).
+
+```python exec="true" session="experimental-fused" source="above"
+import zarr
+
+# Use a fixed-size thread pool for codec compute.
+zarr.config.set({"codec_pipeline.max_workers": 8})
+
+# Or "auto", sized to the number of CPUs.
+zarr.config.set({"codec_pipeline.max_workers": None})
+```
+
+On many-core nodes a pool sized to `cpu_count` can oversubscribe workloads that already parallelize at a higher level (e.g. Dask).
+`codec_pipeline.max_workers` only affects `FusedCodecPipeline`; the default `BatchedCodecPipeline` ignores it.
+
 ## `CacheStore`
 
 Zarr Python 3.1.4 adds [`zarr.experimental.cache_store.CacheStore`][], which provides a dual-store caching implementation
@@ -80,7 +167,6 @@ print(f"Speedup is {speedup}")
 ```
 
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
-
 
 ### Cache Configuration
 
