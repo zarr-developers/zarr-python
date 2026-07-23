@@ -264,7 +264,7 @@ class StoreTests[S: Store, B: Buffer]:
         with pytest.raises((ValueError, TypeError), match=r"Unexpected byte_range, got.*"):
             await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
 
-    async def test_get_many(self, store: S) -> None:
+    async def test_get_many_streaming(self, store: S) -> None:
         """
         Ensure that multiple keys can be retrieved at once with the _get_many method.
         """
@@ -408,6 +408,41 @@ class StoreTests[S: Store, B: Buffer]:
         assert all(
             obs.to_bytes() == exp.to_bytes() for obs, exp in zip(observed, expected, strict=True)
         )
+
+    async def test_get_many(self, store: S) -> None:
+        # put a handful of whole values
+        for key, data in {"c/0/0": b"aaaaa", "c/0/1": b"bb", "c/0/2": b"cccc"}.items():
+            await self.set(store, key, self.buffer_cls.from_bytes(data))
+
+        # mix bare keys, an explicit (key, None) tuple, a partial range, and a
+        # missing key. Each request must be reported exactly once, by index.
+        requests: list[tuple[str, ByteRequest | None] | str] = [
+            "c/0/0",
+            ("c/0/1", None),
+            ("c/0/0", RangeByteRequest(1, 3)),
+            "c/0/2",
+            "c/0/missing",
+        ]
+        collected: dict[int, Buffer | None] = {}
+        async for batch in store.get_many(requests, prototype=default_buffer_prototype()):
+            for index, value in batch:
+                assert index not in collected  # reported exactly once
+                collected[index] = value
+
+        assert set(collected) == set(range(len(requests)))
+        assert collected[4] is None  # missing key -> None (not omitted)
+        expected = {0: b"aaaaa", 1: b"bb", 2: b"aa", 3: b"cccc"}  # index 2 is "aaaaa"[1:3]
+        for index, want in expected.items():
+            buffer = collected[index]
+            assert buffer is not None
+            assert buffer.to_bytes() == want
+
+    async def test_get_many_empty(self, store: S) -> None:
+        # an empty request is valid and yields no results
+        batches = [
+            batch async for batch in store.get_many([], prototype=default_buffer_prototype())
+        ]
+        assert [pair for batch in batches for pair in batch] == []
 
     async def test_exists(self, store: S) -> None:
         assert not await store.exists("foo")
