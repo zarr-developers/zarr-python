@@ -198,6 +198,9 @@ async def test_open_like_creates_array_by_default(
 async def test_open_like_default_mode_rejects_read_only_store(
     zarr_format: ZarrFormat,
 ) -> None:
+    # mode "a" (open-or-create) on a read-only store serves the "open" half:
+    # since the node does not exist and creating is impossible, the open
+    # fails with a not-found error rather than rejecting the mode upfront.
     ref_arr = zarr.create_array(
         store={},
         shape=(11, 12),
@@ -206,7 +209,7 @@ async def test_open_like_default_mode_rejects_read_only_store(
         zarr_format=zarr_format,
     )
 
-    with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
+    with pytest.raises(ValueError, match="No array found"):
         await zarr.api.asynchronous.open_like(
             ref_arr,
             path="foo",
