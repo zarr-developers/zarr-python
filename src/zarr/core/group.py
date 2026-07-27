@@ -1193,7 +1193,11 @@ class AsyncGroup:
             if shape != ds.shape:
                 raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
 
-            dtype = parse_data_type(dtype, zarr_format=self.metadata.zarr_format).to_native_dtype()
+            # `np.dtype(None)` used to resolve to float64 here; keep that default.
+            dtype = parse_data_type(
+                "float64" if dtype is None else dtype,
+                zarr_format=self.metadata.zarr_format,
+            ).to_native_dtype()
             if exact:
                 if ds.dtype != dtype:
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
