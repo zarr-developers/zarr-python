@@ -583,6 +583,71 @@ class TestNodeAppV2AndV3:
         assert len(response.content) > 0
 
 
+class TestPathTraversalProtection:
+    """store_app and node_app must reject path-traversal attempts before
+    touching the store, regardless of URL-encoding tricks."""
+
+    def test_get_traversal_outside_store_root_returns_404(self, tmp_path: Any) -> None:
+        """A GET for a percent-encoded '../secret.txt' must not escape the
+        store root and read a file outside it."""
+        from zarr.storage import LocalStore
+
+        root = tmp_path / "store_root"
+        root.mkdir()
+        secret = tmp_path / "secret.txt"
+        secret.write_text("top secret contents")
+
+        store = LocalStore(root)
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        response = client.get("/..%2fsecret.txt")
+        assert response.status_code == 404
+        assert b"top secret" not in response.content
+
+    def test_put_traversal_outside_store_root_returns_404(self, tmp_path: Any) -> None:
+        """A PUT to a percent-encoded '../pwned.txt' must not escape the
+        store root and write a file outside it."""
+        from zarr.storage import LocalStore
+
+        root = tmp_path / "store_root"
+        root.mkdir()
+        pwned = tmp_path / "pwned.txt"
+
+        store = LocalStore(root)
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        response = client.put("/..%2fpwned.txt", content=b"pwned")
+        assert response.status_code == 404
+        assert not pwned.exists()
+
+    @pytest.mark.parametrize(
+        "encoded_path",
+        [
+            "/..%2fsecret.txt",
+            "/%2e%2e/secret.txt",
+            "/..%2f..%2fsecret.txt",
+        ],
+    )
+    def test_encoded_traversal_variants_return_404(self, tmp_path: Any, encoded_path: str) -> None:
+        """Various percent-encoded traversal spellings must all be rejected."""
+        from zarr.storage import LocalStore
+
+        root = tmp_path / "store_root"
+        root.mkdir()
+        secret = tmp_path / "secret.txt"
+        secret.write_text("top secret contents")
+
+        store = LocalStore(root)
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        response = client.get(encoded_path)
+        assert response.status_code == 404
+        assert b"top secret" not in response.content
+
+
 def _get_free_port() -> int:
     """Return an unused TCP port on localhost."""
     import socket

@@ -18,7 +18,9 @@ pip install zarr-server
 ### Building an ASGI App
 
 `store_app` creates an ASGI app that exposes every key
-in a store:
+in a store. Only point it at a store whose full contents are safe to serve
+publicly — it grants read (and, if `PUT` is enabled, write) access to
+everything the store contains, with no per-key filtering:
 
 ```python
 import zarr
