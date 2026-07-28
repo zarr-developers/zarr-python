@@ -129,6 +129,19 @@ array = zarr.create_array(store=store, shape=(2,), dtype='float64')
 print(array)
 ```
 
+In place of a path, `ZipStore` also accepts an open binary file object (for
+example a file opened with `fsspec`, or an `obstore` reader), enabling zip
+archives on remote storage. The file must stay open for as long as the store
+is in use:
+
+```python exec="true" session="storage" source="above" result="ansi"
+store.close()
+f = open('data.zip', mode='rb')  # must stay open while the store is used
+array = zarr.open_array(store=zarr.storage.ZipStore(f), mode='r')
+print(array[:])
+f.close()
+```
+
 ### Remote Store
 
 The [`zarr.storage.FsspecStore`][] stores the contents of a Zarr hierarchy following the same
