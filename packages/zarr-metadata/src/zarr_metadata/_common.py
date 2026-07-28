@@ -16,11 +16,11 @@ JSONValue = TypeAliasType(
     int
     | float
     | bool
-    | None
     | str
     | list["JSONValue"]
     | tuple["JSONValue", ...]
-    | Mapping[str, "JSONValue"],
+    | Mapping[str, "JSONValue"]
+    | None,
 )
 """A recursive type alias for JSON-encodable values.
 
