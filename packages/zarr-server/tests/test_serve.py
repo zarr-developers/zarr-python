@@ -799,3 +799,59 @@ class TestServeBackground:
         with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
             response = httpx.get(f"{server.url}/zarr.json")
             assert response.status_code == 200
+
+
+class TestBackgroundServerBoundedShutdown:
+    """BackgroundServer.shutdown() must not hang forever on a slow or stuck
+    in-flight request."""
+
+    def test_shutdown_returns_promptly_with_slow_inflight_request(self) -> None:
+        """A request that takes far longer than shutdown_timeout must not
+        prevent shutdown() from returning within roughly shutdown_timeout,
+        via uvicorn's force_exit rather than an unbounded thread join."""
+        import asyncio
+        import threading
+        import time
+
+        import httpx
+        from starlette.applications import Starlette
+        from starlette.responses import Response
+        from starlette.routing import Route
+
+        from zarr_server._serve import _start_server
+
+        async def slow(request: Any) -> Response:
+            # Sleeps far longer than shutdown_timeout below, so a correct
+            # implementation must force the connection closed rather than
+            # wait for this to finish.
+            await asyncio.sleep(5)
+            return Response(status_code=204)
+
+        app = Starlette(routes=[Route("/slow", slow, methods=["GET"])])
+        port = _get_free_port()
+        server = _start_server(
+            app, host="127.0.0.1", port=port, background=True, shutdown_timeout=1
+        )
+        assert server is not None
+
+        request_errors: list[BaseException] = []
+
+        def make_slow_request() -> None:
+            try:
+                httpx.get(f"http://127.0.0.1:{port}/slow", timeout=10)
+            except Exception as exc:  # connection drop when the server force-closes is expected
+                request_errors.append(exc)
+
+        request_thread = threading.Thread(target=make_slow_request, daemon=True)
+        request_thread.start()
+        time.sleep(0.2)  # give the request time to actually start
+
+        start = time.monotonic()
+        server.shutdown()
+        elapsed = time.monotonic() - start
+
+        # shutdown_timeout=1 plus some scheduling slack; well under the
+        # 5-second handler sleep an unbounded join would have waited out.
+        assert elapsed < 3.0, f"shutdown() took {elapsed:.2f}s, expected well under 3s"
+
+        request_thread.join(timeout=10)

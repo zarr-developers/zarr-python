@@ -47,6 +47,9 @@ class BackgroundServer:
     ----------
     server : uvicorn.Server
         The running uvicorn server instance.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully during
+        :meth:`shutdown` before forcing the server closed. Defaults to ``5``.
 
     Examples
     --------
@@ -56,12 +59,19 @@ class BackgroundServer:
     """
 
     def __init__(
-        self, server: uvicorn.Server, thread: threading.Thread, *, host: str, port: int
+        self,
+        server: uvicorn.Server,
+        thread: threading.Thread,
+        *,
+        host: str,
+        port: int,
+        shutdown_timeout: int = 5,
     ) -> None:
         self._server = server
         self._thread = thread
         self.host = host
         self.port = port
+        self._shutdown_timeout = shutdown_timeout
 
     @property
     def url(self) -> str:
@@ -69,9 +79,21 @@ class BackgroundServer:
         return f"http://{self.host}:{self.port}"
 
     def shutdown(self) -> None:
-        """Signal the server to shut down and wait for it to stop."""
+        """Signal the server to shut down and wait for it to stop.
+
+        Waits up to ``shutdown_timeout`` seconds (set when the server was
+        started) for the server thread to exit on its own -- uvicorn's own
+        graceful-shutdown wait for in-flight requests is bounded by the same
+        value via ``timeout_graceful_shutdown``. If the thread is still
+        alive after that, ``force_exit`` is set on the underlying uvicorn
+        server to tear it down immediately rather than block forever on a
+        stuck or slow in-flight request.
+        """
         self._server.should_exit = True
-        self._thread.join()
+        self._thread.join(timeout=self._shutdown_timeout)
+        if self._thread.is_alive():
+            self._server.force_exit = True
+            self._thread.join()
 
     def __enter__(self) -> Self:
         return self
@@ -209,11 +231,18 @@ def _start_server(
     host: str,
     port: int,
     background: bool,
+    shutdown_timeout: int = 5,
 ) -> BackgroundServer | None:
-    """Create a uvicorn server for *app* and either block or run in a daemon thread."""
+    """Create a uvicorn server for *app* and either block or run in a daemon thread.
+
+    ``shutdown_timeout`` bounds uvicorn's own graceful-shutdown wait for
+    in-flight requests (``timeout_graceful_shutdown``), and, for a
+    background server, is also the bound :meth:`BackgroundServer.shutdown`
+    uses before forcing the server thread closed.
+    """
     import uvicorn
 
-    config = uvicorn.Config(app, host=host, port=port)
+    config = uvicorn.Config(app, host=host, port=port, timeout_graceful_shutdown=shutdown_timeout)
     server = uvicorn.Server(config)
 
     if not background:
@@ -231,7 +260,7 @@ def _start_server(
             raise RuntimeError("Server failed to start within 5 seconds")
         time.sleep(0.01)
 
-    return BackgroundServer(server, thread, host=host, port=port)
+    return BackgroundServer(server, thread, host=host, port=port, shutdown_timeout=shutdown_timeout)
 
 
 def store_app(
@@ -312,6 +341,7 @@ def serve_store(
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     background: Literal[False] = ...,
+    shutdown_timeout: int = ...,
 ) -> None: ...
 
 
@@ -324,6 +354,7 @@ def serve_store(
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     background: Literal[True],
+    shutdown_timeout: int = ...,
 ) -> BackgroundServer: ...
 
 
@@ -335,6 +366,7 @@ def serve_store(
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     background: bool = False,
+    shutdown_timeout: int = 5,
 ) -> BackgroundServer | None:
     """Serve every key in a zarr ``Store`` over HTTP.
 
@@ -357,6 +389,11 @@ def serve_store(
         If ``False`` (the default), the server blocks until shut down.
         If ``True``, the server runs in a daemon thread and this function
         returns immediately.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully before
+        the server is forced closed, whether on `BackgroundServer.shutdown`
+        or (for a blocking server) on receiving a shutdown signal. Defaults
+        to ``5``.
 
     Returns
     -------
@@ -367,7 +404,9 @@ def serve_store(
         automatic shutdown.
     """
     app = store_app(store, methods=methods, cors_options=cors_options)
-    return _start_server(app, host=host, port=port, background=background)
+    return _start_server(
+        app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
+    )
 
 
 @overload
@@ -379,6 +418,7 @@ def serve_node(
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     background: Literal[False] = ...,
+    shutdown_timeout: int = ...,
 ) -> None: ...
 
 
@@ -391,6 +431,7 @@ def serve_node(
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     background: Literal[True],
+    shutdown_timeout: int = ...,
 ) -> BackgroundServer: ...
 
 
@@ -402,6 +443,7 @@ def serve_node(
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     background: bool = False,
+    shutdown_timeout: int = 5,
 ) -> BackgroundServer | None:
     """Serve only the keys belonging to a zarr ``Array`` or ``Group`` over HTTP.
 
@@ -434,6 +476,11 @@ def serve_node(
         If ``False`` (the default), the server blocks until shut down.
         If ``True``, the server runs in a daemon thread and this function
         returns immediately.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully before
+        the server is forced closed, whether on `BackgroundServer.shutdown`
+        or (for a blocking server) on receiving a shutdown signal. Defaults
+        to ``5``.
 
     Returns
     -------
@@ -444,4 +491,6 @@ def serve_node(
         automatic shutdown.
     """
     app = node_app(node, methods=methods, cors_options=cors_options)
-    return _start_server(app, host=host, port=port, background=background)
+    return _start_server(
+        app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
+    )
