@@ -20,7 +20,7 @@ class TestChunkResolutionIdentity:
         """Array fits in one chunk."""
         t = IndexTransform.from_shape((10,))
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=10),))
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 1
         coords, sub_t, _ = results[0]
         assert coords == (0,)
@@ -30,7 +30,7 @@ class TestChunkResolutionIdentity:
         """1D array spanning 3 chunks."""
         t = IndexTransform.from_shape((30,))
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=30),))
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 3
         coords_list = [r[0] for r in results]
         assert (0,) in coords_list
@@ -46,7 +46,7 @@ class TestChunkResolutionIdentity:
                 FixedDimension(size=10, extent=30),
             )
         )
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 6
         coords_list = [r[0] for r in results]
         assert (0, 0) in coords_list
@@ -61,7 +61,7 @@ class TestChunkResolutionSliced:
         # before resolving, so mirror that contract here.
         t = IndexTransform.from_shape((100,))[5:8].translate_domain_to((0,))
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=100),))
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 1
         coords, sub_t, _ = results[0]
         assert coords == (0,)
@@ -72,7 +72,7 @@ class TestChunkResolutionSliced:
         """Slice that spans two chunks."""
         t = IndexTransform.from_shape((100,))[8:15]
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=100),))
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 2
         coords_list = [r[0] for r in results]
         assert (0,) in coords_list
@@ -89,7 +89,7 @@ class TestChunkResolutionConstant:
                 FixedDimension(size=10, extent=100),
             )
         )
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 10
         for coords, _, _ in results:
             assert coords[0] == 2
@@ -104,7 +104,7 @@ class TestChunkResolutionArray:
             output=(ArrayMap(index_array=idx),),
         )
         grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=30),))
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         coords_list = [r[0] for r in results]
         assert (0,) in coords_list
         assert (1,) in coords_list
@@ -126,7 +126,7 @@ class TestChunkResolutionSorted1D:
             for _ in range(50):
                 idx = np.sort(rng.integers(0, 30, size=int(rng.integers(1, 80)))).astype(np.intp)
                 transform = IndexTransform.from_shape((30,)).vindex[idx]
-                direct = list(iter_chunk_transforms(transform, grid))
+                direct = list(iter_chunk_transforms(transform, grid._dimensions))
 
                 with monkeypatch.context() as context:
                     context.setattr(
@@ -134,7 +134,7 @@ class TestChunkResolutionSorted1D:
                         "_one_dimensional_correlated_array_map",
                         lambda _transform: None,
                     )
-                    general = list(iter_chunk_transforms(transform, grid))
+                    general = list(iter_chunk_transforms(transform, grid._dimensions))
 
                 assert [result[0] for result in direct] == [result[0] for result in general]
                 for direct_result, general_result in zip(direct, general, strict=True):
@@ -161,7 +161,7 @@ class TestChunkResolutionSorted1D:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert [result[0] for result in results] == [(0,), (1,), (2,)]
         assert calls["n"] == 0
@@ -191,7 +191,7 @@ class TestChunkResolutionSorted1D:
         )
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=8),))
 
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert [result[0] for result in results] == [(0,), (1,)]
         expected_chunk_indices = ([1], [0, 3])
@@ -210,7 +210,7 @@ class TestChunkResolutionSorted1D:
         t = IndexTransform.from_shape((10,)).vindex[idx]
         grid = ChunkGrid(dimensions=(VaryingDimension(edges=(2, 3, 5), extent=10),))
 
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert [result[0] for result in results] == [(0,), (1,), (2,)]
         expected_chunk_indices = ([0, 1], [0, 1], [0, 4])
@@ -227,7 +227,7 @@ class TestChunkResolutionSorted1D:
         grid = ChunkGrid(dimensions=(FixedDimension(size=0, extent=10),))
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert results == []
         assert calls["n"] == 1
@@ -238,7 +238,7 @@ class TestChunkResolutionSorted1D:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert [result[0] for result in results] == [(0,), (1,), (2,)]
         assert calls["n"] == 3
@@ -249,7 +249,7 @@ class TestChunkResolutionSorted1D:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         assert [result[0] for result in results] == [(0,), (1,), (2,)]
         assert calls["n"] == 3
@@ -295,7 +295,7 @@ class TestChunkResolutionTouchedOnly:
         t = IndexTransform.from_shape((4000,)).vindex[np.array([1, 3997], dtype=np.intp)]
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         coords = sorted(r[0] for r in results)
         assert coords == [(0,), (999,)]
@@ -323,7 +323,7 @@ class TestChunkResolutionTouchedOnly:
         ]
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         coords = sorted(r[0] for r in results)
         assert coords == [(0, 0), (0, 999), (999, 0), (999, 999)]
@@ -352,7 +352,7 @@ class TestChunkResolutionTouchedOnly:
         ]
 
         calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
 
         coords = sorted(r[0] for r in results)
         assert coords == [(0, 0), (999, 999)]
@@ -448,7 +448,7 @@ class TestChunkResolutionArrayMapFlavours:
             output=(ArrayMap(index_array=np.array([], dtype=np.intp)),),
         )
         grid = ChunkGrid(dimensions=(FixedDimension(size=3, extent=10),))
-        assert list(iter_chunk_transforms(t, grid)) == []
+        assert list(iter_chunk_transforms(t, grid._dimensions)) == []
 
     def test_orthogonal_outer_product_selectors(self) -> None:
         """Two independent arrays produce np.ix_-style (mesh) chunk/out selectors."""
@@ -456,7 +456,7 @@ class TestChunkResolutionArrayMapFlavours:
         grid = ChunkGrid(
             dimensions=(FixedDimension(size=10, extent=10), FixedDimension(size=10, extent=10))
         )
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 1
         _coords, sub_t, out_indices = results[0]
         chunk_sel, out_sel, drop_axes = sub_transform_to_selections(sub_t, out_indices)
@@ -481,7 +481,7 @@ class TestChunkResolutionArrayMapFlavours:
             )
         )
         # One chunk holds everything: both points survive, slice dim spans [0,5).
-        results = list(iter_chunk_transforms(t, grid))
+        results = list(iter_chunk_transforms(t, grid._dimensions))
         assert len(results) == 1
         _coords, sub_t, out_indices = results[0]
         chunk_sel, out_sel, _drop = sub_transform_to_selections(sub_t, out_indices)

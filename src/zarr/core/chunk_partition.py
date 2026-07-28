@@ -100,7 +100,9 @@ def iter_chunk_projections(
     """
     transform = transform.translate_domain_to((0,) * transform.input_rank)
     chunk_sizes = chunk_grid.chunk_sizes  # per-dimension, extent-clipped
-    for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
+    for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(
+        transform, chunk_grid._dimensions
+    ):
         if chunk_grid[chunk_coords] is None:
             raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")
         chunk_selection, array_selection, _drop_axes = sub_transform_to_selections(

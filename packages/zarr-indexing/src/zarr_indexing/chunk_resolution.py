@@ -44,7 +44,7 @@ from zarr_indexing.transform import IndexTransform
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from zarr_indexing.grid import ChunkGridLike, DimensionGridLike
+    from zarr_indexing.grid import DimensionGridLike
 
 OutIndices = (
     dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]] | None
@@ -114,24 +114,19 @@ def _iter_sorted_1d_array_map(
 
 def iter_chunk_transforms(
     transform: IndexTransform,
-    chunk_grid: ChunkGridLike,
+    dim_grids: Sequence[DimensionGridLike],
 ) -> Iterator[ChunkTransformResult]:
-    """Resolve a composed IndexTransform against a ChunkGrid.
+    """Resolve a composed IndexTransform against per-dimension chunk grids.
 
-    Yields `(chunk_coords, sub_transform, out_indices)` triples:
+    `dim_grids` holds one `DimensionGridLike` per output (storage) dimension —
+    for zarr this is the chunk grid's per-dimension sequence. Yields
+    `(chunk_coords, sub_transform, out_indices)` triples:
 
     - `chunk_coords`: which chunk to access.
     - `sub_transform`: maps output buffer coords to chunk-local coords.
     - `out_indices`: for vectorized/array indexing, the output scatter
       indices (integer array). `None` for basic/slice indexing.
     """
-    # `_dimensions` is declared on the `ChunkGridLike` Protocol in `grid.py` so
-    # that zarr's concrete `ChunkGrid` (whose own `_dimensions` is a private
-    # attribute) satisfies it structurally without a hard zarr import. Pyright's
-    # `reportPrivateUsage` still fires on the underscore name; renaming the
-    # Protocol member (or zarr's attribute) is an open pre-publish API
-    # decision, not made here.
-    dim_grids = chunk_grid._dimensions  # pyright: ignore[reportPrivateUsage]
 
     array_map_1d = _one_dimensional_correlated_array_map(transform)
     if array_map_1d is not None:

@@ -1202,7 +1202,7 @@ class TestChunkCoverageParity:
 
         seen: set[tuple[int, ...]] = set()
         for chunk_coords, sub_transform, _out_indices in iter_chunk_transforms(
-            transform, chunk_grid
+            transform, chunk_grid._dimensions
         ):
             spec = chunk_grid[chunk_coords]
             if spec is None:

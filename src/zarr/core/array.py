@@ -6218,7 +6218,7 @@ async def _get_selection_via_transform(
         batch_info = []
         drop_axes: tuple[int, ...] = ()
         for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(
-            transform, chunk_grid
+            transform, chunk_grid._dimensions
         ):
             chunk_spec = chunk_grid[chunk_coords]
             if chunk_spec is None:
@@ -6370,7 +6370,9 @@ async def _set_selection_via_transform(
     # Build batch_info using transforms
     batch_info = []
     drop_axes: tuple[int, ...] = ()
-    for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(transform, chunk_grid):
+    for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(
+        transform, chunk_grid._dimensions
+    ):
         chunk_spec = chunk_grid[chunk_coords]
         if chunk_spec is None:
             raise IndexError(f"Chunk coordinates {chunk_coords} are out of bounds.")

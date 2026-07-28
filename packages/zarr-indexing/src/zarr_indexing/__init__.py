@@ -28,7 +28,7 @@ from zarr_indexing.chunk_resolution import (
 )
 from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.grid import ChunkGridLike, DimensionGridLike
+from zarr_indexing.grid import DimensionGridLike
 from zarr_indexing.json import (
     IndexDomainJSON,
     IndexTransformJSON,
@@ -48,7 +48,6 @@ __version__ = version("zarr-indexing")
 
 __all__ = [
     "ArrayMap",
-    "ChunkGridLike",
     "ConstantMap",
     "DimensionGridLike",
     "DimensionMap",
