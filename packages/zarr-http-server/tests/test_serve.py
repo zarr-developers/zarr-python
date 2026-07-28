@@ -9,7 +9,7 @@ import zarr
 from starlette.testclient import TestClient
 from zarr.buffer import cpu
 
-from zarr_server._serve import CorsOptions, _parse_range_header, node_app, store_app
+from zarr_http_server._serve import CorsOptions, _parse_range_header, node_app, store_app
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -799,7 +799,7 @@ class TestServeBackground:
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr_server import serve_store
+        from zarr_http_server import serve_store
 
         buf = cpu.buffer_prototype.buffer.from_bytes(b"hello")
         sync(store.set("key", buf))
@@ -819,7 +819,7 @@ class TestServeBackground:
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr_server import serve_node
+        from zarr_http_server import serve_node
 
         arr = zarr.create_array(store, shape=(4,), chunks=(2,), dtype="f8")
         arr[:] = np.arange(4, dtype="f8")
@@ -836,7 +836,7 @@ class TestReadBackWithZarrClient:
     with a zarr client over HTTP.
 
     This needs an HTTP-capable fsspec, which is a client-side concern that
-    `zarr-server` deliberately does not depend on -- it lives in the `docs`
+    `zarr-http-server` deliberately does not depend on -- it lives in the `docs`
     dependency group, alongside the other deps the README examples need.
     """
 
@@ -846,7 +846,7 @@ class TestReadBackWithZarrClient:
         pytest.importorskip("fsspec")
         pytest.importorskip("aiohttp")
 
-        from zarr_server import serve_node
+        from zarr_http_server import serve_node
 
         expected = np.arange(100, dtype="uint8").reshape(10, 10)
         arr = zarr.create_array(store, data=expected, chunks=(5, 5), write_data=True)
@@ -874,7 +874,7 @@ class TestBackgroundServerBoundedShutdown:
         from starlette.responses import Response
         from starlette.routing import Route
 
-        from zarr_server._serve import _start_server
+        from zarr_http_server._serve import _start_server
 
         async def slow(request: Any) -> Response:
             # Sleeps far longer than shutdown_timeout below, so a correct

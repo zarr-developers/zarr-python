@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, overload
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.buffer import cpu
 
-from zarr_server._keys import is_valid_node_key
+from zarr_http_server._keys import is_valid_node_key
 
 if TYPE_CHECKING:
     import uvicorn

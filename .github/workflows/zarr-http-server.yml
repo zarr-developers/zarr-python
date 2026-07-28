@@ -1,15 +1,15 @@
-name: zarr-server
+name: zarr-http-server
 
 on:
   push:
     branches: [main]
     paths:
-      - 'packages/zarr-server/**'
-      - '.github/workflows/zarr-server.yml'
+      - 'packages/zarr-http-server/**'
+      - '.github/workflows/zarr-http-server.yml'
   pull_request:
     paths:
-      - 'packages/zarr-server/**'
-      - '.github/workflows/zarr-server.yml'
+      - 'packages/zarr-http-server/**'
+      - '.github/workflows/zarr-http-server.yml'
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-server
+        working-directory: packages/zarr-http-server
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +55,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-server
+        working-directory: packages/zarr-http-server
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -71,7 +71,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: packages/zarr-server
+        working-directory: packages/zarr-http-server
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -87,8 +87,8 @@ jobs:
       - name: Run mypy
         run: uv run --group test --with mypy mypy src
 
-  zarr-server-complete:
-    name: zarr-server complete
+  zarr-http-server-complete:
+    name: zarr-http-server complete
     needs: [test, ruff, mypy]
     if: always()
     runs-on: ubuntu-latest

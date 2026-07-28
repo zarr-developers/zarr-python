@@ -1,8 +1,8 @@
-# zarr-server
+# zarr-http-server
 
 HTTP server for Zarr stores, arrays, and groups.
 
-`zarr-server` exposes a Zarr `Store`, `Array`, or `Group` over HTTP via an
+`zarr-http-server` exposes a Zarr `Store`, `Array`, or `Group` over HTTP via an
 ASGI app, so any HTTP-capable client (including zarr-python itself, via
 `FsspecStore` or `ObjectStore`) can read the data. The app is built on
 [Starlette](https://www.starlette.io/) and can be run with any ASGI server;
@@ -12,7 +12,7 @@ ASGI app, so any HTTP-capable client (including zarr-python itself, via
 ## Installation
 
 ```bash
-pip install zarr-server
+pip install zarr-http-server
 ```
 
 ### Building an ASGI App
@@ -24,7 +24,7 @@ everything the store contains, with no per-key filtering:
 
 ```python
 import zarr
-from zarr_server import store_app
+from zarr_http_server import store_app
 
 store = zarr.storage.MemoryStore()
 zarr.create_array(store, shape=(100, 100), chunks=(10, 10), dtype="float64")
@@ -41,7 +41,7 @@ receive a 404, even if those keys exist in the underlying store:
 
 ```python
 import zarr
-from zarr_server import node_app
+from zarr_http_server import node_app
 
 store = zarr.storage.MemoryStore()
 root = zarr.open_group(store)
@@ -60,7 +60,7 @@ build an ASGI app *and* start a [Uvicorn](https://www.uvicorn.org/) server.
 By default they block until the server is shut down:
 
 ```python
-from zarr_server import serve_store
+from zarr_http_server import serve_store
 
 serve_store(store, host="127.0.0.1", port=8000)
 ```
@@ -71,7 +71,7 @@ can be used as a context manager for automatic shutdown:
 
 The example below also *reads back* over HTTP, which is a client-side
 concern: `zarr.open_array(server.url)` goes through `FsspecStore`, which needs
-an HTTP-capable fsspec that `zarr-server` does not pull in.
+an HTTP-capable fsspec that `zarr-http-server` does not pull in.
 
 ```bash
 pip install "fsspec[http]"
@@ -82,7 +82,7 @@ pip install "fsspec[http]"
 import numpy as np
 
 import zarr
-from zarr_server import serve_node
+from zarr_http_server import serve_node
 from zarr.storage import MemoryStore
 
 store = MemoryStore()
@@ -104,7 +104,7 @@ Both `store_app` and `node_app` (and their `serve_*` counterparts) accept a
 browser-based clients:
 
 ```python
-from zarr_server import CorsOptions, store_app
+from zarr_http_server import CorsOptions, store_app
 
 app = store_app(
     store,

@@ -2,7 +2,7 @@
 
 from importlib.metadata import version
 
-from zarr_server._serve import (
+from zarr_http_server._serve import (
     BackgroundServer,
     CorsOptions,
     HTTPMethod,
@@ -12,7 +12,7 @@ from zarr_server._serve import (
     store_app,
 )
 
-__version__ = version("zarr-server")
+__version__ = version("zarr-http-server")
 
 __all__ = [
     "BackgroundServer",

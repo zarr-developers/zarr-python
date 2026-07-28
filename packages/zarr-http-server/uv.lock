@@ -1001,7 +1001,7 @@ test = [
 ]
 
 [[package]]
-name = "zarr-server"
+name = "zarr-http-server"
 source = { editable = "." }
 dependencies = [
     { name = "starlette" },
