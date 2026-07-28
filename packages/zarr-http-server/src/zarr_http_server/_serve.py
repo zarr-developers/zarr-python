@@ -226,6 +226,14 @@ def _make_starlette_app(
     if methods is None:
         methods = {"GET"}
 
+    # An empty set must not reach Starlette: `Route` treats a falsy `methods`
+    # as "match every method", so asking for no methods would serve them all.
+    if not methods:
+        raise ValueError(
+            "methods must name at least one HTTP method; "
+            f"accepted methods are {', '.join(sorted(_SUPPORTED_METHODS))}."
+        )
+
     unsupported = sorted(set(methods) - _SUPPORTED_METHODS)
     if unsupported:
         raise ValueError(

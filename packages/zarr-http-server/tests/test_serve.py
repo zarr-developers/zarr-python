@@ -353,6 +353,17 @@ class TestMethodValidation:
         assert head.status_code == 200
         assert head.content == b""
 
+    def test_empty_method_set_raises(self, store: Store) -> None:
+        """Asking for no methods must be rejected rather than producing a
+        server that answers every verb, including writes: Starlette treats a
+        falsy `methods` on a Route as "match anything"."""
+        for build in (
+            lambda: store_app(store, methods=set()),
+            lambda: node_app(zarr.open_group(store, mode="a"), methods=set()),
+        ):
+            with pytest.raises(ValueError, match="at least one"):
+                build()
+
     @pytest.mark.parametrize("method", ["DELETE", "POST", "PATCH", "OPTIONS", "TRACE"])
     def test_unsupported_method_raises(self, store: Store, method: str) -> None:
         """A verb the handler cannot implement is rejected when the app is
