@@ -394,18 +394,15 @@ requires-dist = [
     { name = "donfig", specifier = ">=0.8" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2023.10.0" },
     { name = "google-crc32c", specifier = ">=1.5" },
-    { name = "httpx", marker = "extra == 'server'" },
     { name = "numcodecs", specifier = ">=0.14" },
     { name = "numpy", specifier = ">=2" },
     { name = "obstore", marker = "extra == 'remote'", specifier = ">=0.5.1" },
     { name = "packaging", specifier = ">=22.0" },
-    { name = "starlette", marker = "extra == 'server'" },
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
-    { name = "uvicorn", marker = "extra == 'server'" },
 ]
-provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote", "server"]
+provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -414,7 +411,6 @@ dev = [
     { name = "coverage", specifier = "==7.14.3" },
     { name = "fsspec", specifier = ">=2023.10.0" },
     { name = "griffe-inherited-docstrings", specifier = "==1.1.3" },
-    { name = "httpx2", specifier = "==2.9.1" },
     { name = "hypothesis", specifier = "==6.155.7" },
     { name = "markdown-exec", extras = ["ansi"], specifier = "==1.12.1" },
     { name = "mike", specifier = "==2.2.0" },
@@ -464,7 +460,6 @@ remote-tests = [
     { name = "botocore" },
     { name = "coverage", specifier = "==7.14.3" },
     { name = "fsspec", specifier = ">=2023.10.0" },
-    { name = "httpx2", specifier = "==2.9.1" },
     { name = "hypothesis", specifier = "==6.155.7" },
     { name = "moto", extras = ["s3", "server"], specifier = "==5.2.2" },
     { name = "numpydoc", specifier = "==1.10.0" },
@@ -483,7 +478,6 @@ remote-tests = [
 ]
 test = [
     { name = "coverage", specifier = "==7.14.3" },
-    { name = "httpx2", specifier = "==2.9.1" },
     { name = "hypothesis", specifier = "==6.155.7" },
     { name = "numpydoc", specifier = "==1.10.0" },
     { name = "pytest", specifier = "==9.1.1" },
