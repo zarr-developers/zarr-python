@@ -219,11 +219,8 @@ def _start_server(
         server.run()
         return None
 
-    # Signal handlers can only be installed on the main thread, so
-    # disable them when running in a background thread.
-    # See https://github.com/encode/uvicorn/issues/742
-    server.install_signal_handlers = lambda: None
-
+    # uvicorn skips signal-handler installation off the main thread
+    # (Server.capture_signals), so no workaround is needed here.
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
 
