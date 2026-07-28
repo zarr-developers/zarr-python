@@ -842,6 +842,44 @@ class TestServeBackground:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestBackgroundServerReportsBoundPort:
+    """`port=0` asks the OS for a free port, so the server must report the
+    port it actually bound rather than the zero it was asked for."""
+
+    def test_port_zero_reports_the_bound_port(self, store: Store) -> None:
+        import httpx
+
+        from zarr_http_server import serve_store
+
+        sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(b"hello")))
+
+        with serve_store(store, host="127.0.0.1", port=0, background=True) as server:
+            assert server.port != 0
+            assert server.url == f"http://127.0.0.1:{server.port}"
+            # The reported URL is the one that actually serves the data.
+            assert httpx.get(f"{server.url}/key").content == b"hello"
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestUnopenableChildIsNotAnError:
+    """A child a node_app cannot open makes a key unverifiable, not the
+    request an error -- validating key *shape* never needs to decode data."""
+
+    def test_child_with_unparseable_metadata_returns_404(self, store: Store) -> None:
+        """A corrupt child metadata document must yield 404, not a 500 that
+        makes the whole subtree unservable with a traceback per request."""
+        root = zarr.open_group(store, mode="w")
+        root.create_array("good", shape=(2,), chunks=(2,), dtype="f8")
+        sync(store.set("junk/zarr.json", cpu.buffer_prototype.buffer.from_bytes(b"not json")))
+
+        client = TestClient(node_app(root))
+
+        assert client.get("/good/zarr.json").status_code == 200
+        assert client.get("/junk/zarr.json").status_code == 404
+        assert client.get("/junk/c/0").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 class TestReadBackWithZarrClient:
     """The round-trip the README leads with: serve an array, then open it
     with a zarr client over HTTP.

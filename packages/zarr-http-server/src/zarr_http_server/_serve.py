@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ntpath
 import threading
 import time
@@ -184,8 +185,12 @@ async def _handle_request(request: Request) -> Response:
     if any(segment in ("", ".", "..") for segment in segments) or ntpath.splitdrive(path)[0]:
         return Response(status_code=404)
 
-    # If serving a node, validate the key before touching the store.
-    if node is not None and not is_valid_node_key(node, path):
+    # If serving a node, validate the key before touching the store. Group
+    # validation opens children through zarr's synchronous API, which drives
+    # the store to completion and would otherwise block the event loop for
+    # the duration -- serializing every concurrent request behind it, and
+    # outlasting the shutdown timeout.
+    if node is not None and not await asyncio.to_thread(is_valid_node_key, node, path):
         return Response(status_code=404)
 
     # Resolve the full store key by prepending the node's prefix.
@@ -289,7 +294,18 @@ def _start_server(
             raise RuntimeError("Server failed to start within 5 seconds")
         time.sleep(0.01)
 
-    return BackgroundServer(server, thread, host=host, port=port, shutdown_timeout=shutdown_timeout)
+    # Report the port the socket actually bound rather than the one asked for,
+    # so `port=0` ("pick a free port") yields a usable `url`.
+    bound_port = port
+    for bound in server.servers:
+        for sock in bound.sockets:
+            bound_port = int(sock.getsockname()[1])
+            break
+        break
+
+    return BackgroundServer(
+        server, thread, host=host, port=bound_port, shutdown_timeout=shutdown_timeout
+    )
 
 
 def store_app(

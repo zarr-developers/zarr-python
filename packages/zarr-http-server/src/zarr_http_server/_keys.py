@@ -179,7 +179,13 @@ def is_valid_node_key(node: Array[Any] | Group, key: str) -> bool:
 
     try:
         child = node[child_name]
-    except KeyError:
+    except Exception:
+        # A child that cannot be opened cannot vouch for the key. Beyond a
+        # missing name (KeyError), this covers metadata this process cannot
+        # parse -- unreadable JSON, or a codec supplied by a plugin the
+        # server does not have installed. Validating a key's *shape* never
+        # needs to decode data, so an unopenable child makes the key
+        # unverifiable, not the request an error.
         return False
 
     return is_valid_node_key(child, remainder)
