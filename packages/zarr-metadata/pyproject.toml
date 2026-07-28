@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "zarr-metadata"
 dynamic = ["version"]
-description = "Spec-defined metadata types for Zarr v2 and v3."
+description = "Spec-defined metadata types, models, and validators for Zarr v2 and v3."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

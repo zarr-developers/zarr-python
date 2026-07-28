@@ -1,17 +1,23 @@
 # zarr-metadata
 
-Python type definitions for Zarr v2 and v3 metadata.
+Python types, models, and validators for Zarr v2 and v3 metadata.
 
 ## What this is
 
-A typed-data package: `TypedDict` definitions and `Literal` aliases for the
-JSON shapes specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html)
-and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
-specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
-and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
-It also provides canonical frozen-dataclass models, structural validators,
-parsers, store-key serialization, and optional Pydantic field integrations.
-The optional integration requires Pydantic 2.13 or newer.
+Two layers and an optional integration:
+
+- **Typed JSON shapes**: `TypedDict` definitions and `Literal` aliases for the
+  JSON documents specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html)
+  and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
+  specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
+  and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
+- **Document models** (`zarr_metadata.model`): canonical frozen-dataclass
+  models of whole metadata documents, with structural validators, loc-aware
+  parsers, and store-key (de)serialization. A document produced by `to_json`
+  shares no mutable state with the model that produced it.
+- **Optional Pydantic integration** (`zarr_metadata.pydantic`, requires
+  Pydantic 2.13 or newer): each model as a Pydantic field type that validates
+  raw documents through the same strict parser.
 
 ## What this is for
 
@@ -67,7 +73,14 @@ versus `shape`. Consumers should run the model parser after schema validation.
 At minimum, this library supports what Zarr-Python needs: the complete
 Zarr v2 and v3 specs, consolidated metadata, and a subset of the metadata
 defined in `zarr-extensions`. We are generally open to contributions that
-add types for Zarr metadata with a published spec.
+add types, models, or structural validation for Zarr metadata with a
+published spec.
+
+Runtime array behavior is out of scope: nothing here encodes or decodes
+chunks, resolves codec or data type names to implementations, or performs
+store I/O. The models begin and end at the metadata documents themselves —
+`from_key_value` / `to_key_value` map documents to store keys and bytes,
+and everything past that belongs to consumer libraries.
 
 ## Releasing
 
