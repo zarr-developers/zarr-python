@@ -647,6 +647,52 @@ class TestPathTraversalProtection:
         assert response.status_code == 404
         assert b"top secret" not in response.content
 
+    def test_get_absolute_key_bypass_returns_404(self, tmp_path: Any) -> None:
+        """A percent-encoded leading slash decodes to an ABSOLUTE path param
+        (e.g. request '/%2fetc%2fhostname' -> path param '/etc/hostname').
+        '/etc/hostname'.split('/') -> ['', 'etc', 'hostname'] has no '.' or
+        '..' segment, so the two-element guard misses it, but LocalStore
+        resolves an absolute key by discarding its root entirely -- an
+        arbitrary-file read. The empty leading segment must be rejected."""
+        from zarr.storage import LocalStore
+
+        root = tmp_path / "store_root"
+        root.mkdir()
+        secret = tmp_path / "secret_abs.txt"
+        secret.write_text("top secret absolute contents")
+
+        store = LocalStore(root)
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        # Mirror the exploit: percent-encode every "/" (including the
+        # leading one) in the absolute secret path as "%2f".
+        encoded_path = "/" + str(secret).replace("/", "%2f")
+
+        response = client.get(encoded_path)
+        assert response.status_code == 404
+        assert b"top secret absolute" not in response.content
+        assert secret.read_text() == "top secret absolute contents"
+
+    def test_put_absolute_key_bypass_returns_404(self, tmp_path: Any) -> None:
+        """Same absolute-key vector as above, but for PUT: a percent-encoded
+        leading slash must not allow writing a file outside the store root."""
+        from zarr.storage import LocalStore
+
+        root = tmp_path / "store_root"
+        root.mkdir()
+        pwned = tmp_path / "pwned_abs.txt"
+
+        store = LocalStore(root)
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        encoded_path = "/" + str(pwned).replace("/", "%2f")
+
+        response = client.put(encoded_path, content=b"pwned")
+        assert response.status_code == 404
+        assert not pwned.exists()
+
 
 def _get_free_port() -> int:
     """Return an unused TCP port on localhost."""

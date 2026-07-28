@@ -140,12 +140,12 @@ async def _handle_request(request: Request) -> Response:
     prefix: str = request.app.state.prefix
     path = request.path_params.get("path", "")
 
-    # Reject path-traversal attempts before touching the store. Starlette
-    # percent-decodes path params, so "..%2f" arrives here as a literal ".."
-    # segment; without this guard a filesystem-backed store (e.g. LocalStore)
-    # would resolve it outside the store root. Applied unconditionally (not
-    # just when node is None) as defense in depth.
-    if any(segment in (".", "..") for segment in path.split("/")):
+    # Reject non-canonical / traversal-prone keys before touching the store.
+    # Starlette percent-decodes path params, so "..%2f" arrives as a literal
+    # ".." segment and "%2f"-encoded leading slashes arrive as an empty leading
+    # segment (making the key absolute, which escapes a filesystem store root).
+    # Legitimate zarr keys never contain empty, ".", or ".." segments.
+    if any(segment in ("", ".", "..") for segment in path.split("/")):
         return Response(status_code=404)
 
     # If serving a node, validate the key before touching the store.
