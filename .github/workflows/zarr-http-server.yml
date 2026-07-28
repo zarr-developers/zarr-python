@@ -6,10 +6,16 @@ on:
     paths:
       - 'packages/zarr-http-server/**'
       - '.github/workflows/zarr-http-server.yml'
+      # The package resolves zarr from the repo root for its own tests, so a
+      # core change can break it. Run this suite when core changes too.
+      - 'src/zarr/**'
   pull_request:
     paths:
       - 'packages/zarr-http-server/**'
       - '.github/workflows/zarr-http-server.yml'
+      # The package resolves zarr from the repo root for its own tests, so a
+      # core change can break it. Run this suite when core changes too.
+      - 'src/zarr/**'
   workflow_dispatch:
 
 permissions:

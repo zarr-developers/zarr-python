@@ -26,12 +26,14 @@ ZMETADATA_V2_JSON = ".zmetadata"
 if TYPE_CHECKING:
     from zarr import Array, Group
 
-_METADATA_KEYS_V3 = frozenset({ZARR_JSON})
-_METADATA_KEYS_V2 = frozenset({ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON})
+_ARRAY_METADATA_KEYS_V3 = frozenset({ZARR_JSON})
+_ARRAY_METADATA_KEYS_V2 = frozenset({ZARRAY_JSON, ZATTRS_JSON})
+_GROUP_METADATA_KEYS_V3 = frozenset({ZARR_JSON})
+_GROUP_METADATA_KEYS_V2 = frozenset({ZGROUP_JSON, ZATTRS_JSON, ZMETADATA_V2_JSON})
 
 
-def metadata_keys(zarr_format: int) -> frozenset[str]:
-    """Return the set of metadata key basenames for a given zarr format version.
+def array_metadata_keys(zarr_format: int) -> frozenset[str]:
+    """Return the metadata key basenames an array owns, for a zarr format.
 
     Parameters
     ----------
@@ -43,8 +45,25 @@ def metadata_keys(zarr_format: int) -> frozenset[str]:
     frozenset of str
     """
     if zarr_format == 3:
-        return _METADATA_KEYS_V3
-    return _METADATA_KEYS_V2
+        return _ARRAY_METADATA_KEYS_V3
+    return _ARRAY_METADATA_KEYS_V2
+
+
+def group_metadata_keys(zarr_format: int) -> frozenset[str]:
+    """Return the metadata key basenames a group owns, for a zarr format.
+
+    Parameters
+    ----------
+    zarr_format : int
+        The zarr format version (2 or 3).
+
+    Returns
+    -------
+    frozenset of str
+    """
+    if zarr_format == 3:
+        return _GROUP_METADATA_KEYS_V3
+    return _GROUP_METADATA_KEYS_V2
 
 
 def decode_chunk_key(array: Array[Any], key: str) -> tuple[int, ...] | None:
@@ -65,7 +84,12 @@ def decode_chunk_key(array: Array[Any], key: str) -> tuple[int, ...] | None:
     try:
         if array.metadata.zarr_format == 2:
             parts = key.split(array.metadata.dimension_separator)
-            return tuple(int(p) for p in parts)
+            coords = tuple(int(p) for p in parts)
+            # A 0-d v2 array holds its single chunk under "0", which decodes
+            # to a 1-tuple that no 0-d grid could match.
+            if len(array.shape) == 0:
+                return () if coords == (0,) else None
+            return coords
 
         encoding = array.metadata.chunk_key_encoding
         separator = getattr(encoding, "separator", "/")
@@ -135,7 +159,7 @@ def is_valid_array_key(array: Array[Any], key: str) -> bool:
     -------
     bool
     """
-    if key in metadata_keys(array.metadata.zarr_format):
+    if key in array_metadata_keys(array.metadata.zarr_format):
         return True
     return is_valid_chunk_key(array, key)
 
@@ -166,7 +190,7 @@ def is_valid_node_key(node: Array[Any] | Group, key: str) -> bool:
         return is_valid_array_key(node, key)
 
     # Group
-    if key in metadata_keys(node.metadata.zarr_format):
+    if key in group_metadata_keys(node.metadata.zarr_format):
         return True
 
     # Try to match the first path component against a child member.

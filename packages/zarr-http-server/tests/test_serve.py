@@ -8,10 +8,12 @@ import pytest
 import zarr
 from starlette.testclient import TestClient
 from zarr.buffer import cpu
+from zarr.storage import LocalStore
 
 from zarr_http_server._serve import CorsOptions, _parse_range_header, node_app, store_app
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Coroutine
 
     from zarr.abc.store import Store
@@ -98,12 +100,20 @@ class TestNodeAppDoesNotExposeNonZarrKeys:
         response = client.get("/regular/c/0/0")
         assert response.status_code == 200
 
-    def test_out_of_bounds_chunk_key_returns_404(self, group_with_arrays: zarr.Group) -> None:
+    def test_out_of_bounds_chunk_key_returns_404(
+        self, store: Store, group_with_arrays: zarr.Group
+    ) -> None:
         """A chunk key that is syntactically valid but references indices beyond
         the array's chunk grid should return 404."""
         arr = group_with_arrays["regular"]
         assert isinstance(arr, zarr.Array)
         arr[:] = np.ones((4, 4))
+
+        # Put real data at the out-of-grid key, so that a 404 can only come
+        # from the bounds check -- not from the key merely being absent.
+        planted = cpu.buffer_prototype.buffer.from_bytes(b"out of grid")
+        sync(store.set("regular/c/99/99", planted))
+        assert sync(store.get("regular/c/99/99", cpu.buffer_prototype)) is not None
 
         app = node_app(group_with_arrays)
         client = TestClient(app)
@@ -586,10 +596,16 @@ class TestNodeAppV2AndV3:
         arr = zarr.create_array(store, shape=(4,), chunks=(2,), dtype="f8", zarr_format=zarr_format)
         arr[:] = np.ones(4)
 
+        # Plant data at the out-of-grid key so the 404 must come from the
+        # bounds check rather than from the key being absent.
+        key = _chunk_key(zarr_format, "99")
+        sync(store.set(key, cpu.buffer_prototype.buffer.from_bytes(b"out of grid")))
+        assert sync(store.get(key, cpu.buffer_prototype)) is not None
+
         app = node_app(arr)
         client = TestClient(app)
 
-        response = client.get(f"/{_chunk_key(zarr_format, '99')}")
+        response = client.get(f"/{key}")
         assert response.status_code == 404
 
     def test_non_zarr_key_returns_404(self, store: Store, zarr_format: ZarrFormat) -> None:
@@ -839,6 +855,105 @@ class TestServeBackground:
         with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
             response = httpx.get(f"{server.url}/zarr.json")
             assert response.status_code == 200
+
+
+class TestHostileKeysAreNotServerErrors:
+    """A key the store cannot express is a miss, not a server fault: the
+    server must never answer 5xx for input a client can choose freely.
+
+    This needs a filesystem-backed store -- a `MemoryStore` accepts any key
+    as a dict key, so only `LocalStore` surfaces the underlying errors (an
+    embedded NUL, a name longer than the filesystem allows).
+    """
+
+    @pytest.mark.parametrize(
+        "path", ["/x%00y", "/ok.txt%00", "/" + "a" * 3000, "/" + "b" * 3000 + "/zarr.json"]
+    )
+    def test_unexpressable_key_returns_404_not_500(self, tmp_path: pathlib.Path, path: str) -> None:
+        store = LocalStore(str(tmp_path / "root"))
+        client = TestClient(store_app(store, methods={"GET", "PUT"}))
+
+        assert client.get(path).status_code == 404
+        assert client.put(path, content=b"x").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestPutBodyLimit:
+    """`Store.set` takes a whole buffer, so an unbounded body would let one
+    request size the server's memory use."""
+
+    def test_body_over_the_limit_is_rejected(self, store: Store) -> None:
+        client = TestClient(store_app(store, methods={"GET", "PUT"}, max_body_size=64))
+
+        assert client.put("/key", content=b"x" * 65).status_code == 413
+        # Nothing was written.
+        assert sync(store.get("key", cpu.buffer_prototype)) is None
+        # A body within the limit still succeeds.
+        assert client.put("/key", content=b"x" * 64).status_code == 204
+
+    def test_limit_can_be_lifted(self, store: Store) -> None:
+        client = TestClient(store_app(store, methods={"GET", "PUT"}, max_body_size=None))
+        assert client.put("/key", content=b"x" * 5000).status_code == 204
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestRangeResponseCorrectness:
+    """A 206 must describe which bytes it carries, and a range that cannot be
+    satisfied must say so rather than returning an empty 206."""
+
+    def test_206_carries_content_range(self, store: Store) -> None:
+        sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(b"0123456789")))
+        client = TestClient(store_app(store))
+
+        response = client.get("/key", headers={"Range": "bytes=2-5"})
+        assert response.status_code == 206
+        assert response.content == b"2345"
+        assert response.headers["Content-Range"] == "bytes 2-5/*"
+
+    def test_range_beyond_end_is_416(self, store: Store) -> None:
+        sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(b"0123456789")))
+        client = TestClient(store_app(store))
+
+        assert client.get("/key", headers={"Range": "bytes=1000-2000"}).status_code == 416
+
+    def test_inverted_range_is_416(self, store: Store) -> None:
+        sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(b"0123456789")))
+        client = TestClient(store_app(store))
+
+        assert client.get("/key", headers={"Range": "bytes=5-2"}).status_code == 416
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestZeroDimensionalArray:
+    """A 0-d array has exactly one chunk, spelled `0` in v2 and `c` in v3."""
+
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    def test_sole_chunk_is_served(self, store: Store, zarr_format: ZarrFormat) -> None:
+        arr = zarr.create_array(store, shape=(), dtype="i4", zarr_format=zarr_format)
+        arr[...] = 7
+
+        client = TestClient(node_app(arr))
+        chunk_key = "0" if zarr_format == 2 else "c"
+
+        assert client.get(f"/{chunk_key}").status_code == 200
+        # A 1-d coordinate is not valid for a 0-d grid.
+        assert client.get("/0/0").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestGroupAndArrayMetadataKeysAreDistinct:
+    """A v2 group owns `.zgroup`; `.zarray` belongs to arrays, and vice versa."""
+
+    def test_node_does_not_claim_the_other_kind_of_metadata(self, store: Store) -> None:
+        root = zarr.open_group(store, mode="w", zarr_format=2)
+        arr = root.create_array("a", shape=(2,), chunks=(2,), dtype="f8")
+
+        # Plant both documents so a 404 reflects the key set, not absence.
+        sync(store.set(".zarray", cpu.buffer_prototype.buffer.from_bytes(b"{}")))
+        sync(store.set("a/.zgroup", cpu.buffer_prototype.buffer.from_bytes(b"{}")))
+
+        assert TestClient(node_app(root)).get("/.zarray").status_code == 404
+        assert TestClient(node_app(arr)).get("/.zgroup").status_code == 404
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

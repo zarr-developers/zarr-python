@@ -45,6 +45,14 @@ as if they were `GET`.
 
 _SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
 
+DEFAULT_MAX_BODY_SIZE = 256 * 1024 * 1024
+"""Default cap on a `PUT` body, in bytes.
+
+`Store.set` takes a whole `Buffer`, so a body cannot be streamed and is held
+in memory in full. Without a cap, one request sizes the server's memory use.
+Pass `max_body_size=None` to lift it.
+"""
+
 
 class BackgroundServer:
     """A running background HTTP server that can be used as a context manager.
@@ -143,9 +151,39 @@ def _parse_range_header(range_header: str) -> ByteRequest | None:
             return OffsetByteRequest(offset=start)
         # range request: bytes=N-M (HTTP end is inclusive, ByteRequest end is exclusive)
         end = int(end_str) + 1
+        if start >= end:
+            # An inverted range like "bytes=5-2" is unsatisfiable, not a read
+            # of negative length.
+            return None
         return RangeByteRequest(start=start, end=end)
     except ValueError:
         return None
+
+
+def _content_range(byte_range: ByteRequest, length: int) -> str | None:
+    """Build a `Content-Range` value for a 206 response, if the offsets are known.
+
+    Parameters
+    ----------
+    byte_range : ByteRequest
+        The range that was served.
+    length : int
+        The number of bytes actually returned.
+
+    Returns
+    -------
+    str or None
+        A `bytes <first>-<last>/*` value, or `None` for a suffix request,
+        whose absolute offset cannot be known without the object's size.
+    """
+    if isinstance(byte_range, RangeByteRequest):
+        start = byte_range.start
+    elif isinstance(byte_range, OffsetByteRequest):
+        start = byte_range.offset
+    else:
+        return None
+    # The total length is unknown here; RFC 9110 permits "*" in its place.
+    return f"bytes {start}-{start + length - 1}/*"
 
 
 async def _get_response(store: Store, path: str, byte_range: ByteRequest | None = None) -> Response:
@@ -155,12 +193,27 @@ async def _get_response(store: Store, path: str, byte_range: ByteRequest | None 
     proto = cpu.buffer_prototype
     content_type = "application/json" if path.endswith("zarr.json") else "application/octet-stream"
 
-    buf = await store.get(path, proto, byte_range=byte_range)
+    try:
+        buf = await store.get(path, proto, byte_range=byte_range)
+    except (ValueError, OSError):
+        # The key passed the shape guard but the store cannot express it --
+        # an embedded NUL, or a name longer than the filesystem allows. It
+        # names nothing that exists, so it is a miss, not a server fault.
+        return Response(status_code=404)
     if buf is None:
         return Response(status_code=404)
 
-    status_code = 206 if byte_range is not None else 200
-    return Response(content=buf.to_bytes(), status_code=status_code, media_type=content_type)
+    if byte_range is None:
+        return Response(content=buf.to_bytes(), status_code=200, media_type=content_type)
+
+    body = buf.to_bytes()
+    if len(body) == 0:
+        # The range lies wholly beyond the end of the object.
+        return Response(status_code=416)
+
+    content_range = _content_range(byte_range, len(body))
+    headers = {"Content-Range": content_range} if content_range is not None else None
+    return Response(content=body, status_code=206, media_type=content_type, headers=headers)
 
 
 async def _handle_request(request: Request) -> Response:
@@ -197,9 +250,23 @@ async def _handle_request(request: Request) -> Response:
     store_key = f"{prefix}/{path}" if prefix else path
 
     if request.method == "PUT":
+        max_body_size: int | None = request.app.state.max_body_size
+        if max_body_size is not None:
+            declared = request.headers.get("content-length")
+            if declared is not None and declared.isdigit() and int(declared) > max_body_size:
+                return Response(status_code=413)
+
         body = await request.body()
+        if max_body_size is not None and len(body) > max_body_size:
+            return Response(status_code=413)
+
         buf = cpu.buffer_prototype.buffer.from_bytes(body)
-        await store.set(store_key, buf)
+        try:
+            await store.set(store_key, buf)
+        except (ValueError, OSError):
+            # As on the read path: a key the store cannot express names
+            # nothing writable, rather than indicating a server fault.
+            return Response(status_code=404)
         return Response(status_code=204)
 
     range_header = request.headers.get("range")
@@ -216,6 +283,7 @@ def _make_starlette_app(
     *,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
+    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
     """Create a Starlette app with the request handler.
 
@@ -290,6 +358,14 @@ def _start_server(
 
     deadline = time.monotonic() + 5.0
     while not server.started:
+        if not thread.is_alive():
+            # uvicorn logs the underlying error and calls sys.exit, which in a
+            # thread ends it without surfacing anything to the caller. The
+            # overwhelmingly common cause is a port already in use.
+            raise RuntimeError(
+                f"Server thread exited before startup completed; {host}:{port} "
+                "may already be in use. See the server log for the cause."
+            )
         if time.monotonic() > deadline:
             raise RuntimeError("Server failed to start within 5 seconds")
         time.sleep(0.01)
@@ -313,6 +389,7 @@ def store_app(
     *,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
+    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
     """Create a Starlette ASGI app that serves every key in a zarr ``Store``.
 
@@ -325,6 +402,11 @@ def store_app(
         Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
+    max_body_size : int or None, optional
+        Largest `PUT` body to accept, in bytes; larger requests get a 413.
+        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
+        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
+        pass `None` to lift the cap.
 
     Returns
     -------
@@ -335,6 +417,7 @@ def store_app(
     app.state.store = store
     app.state.node = None
     app.state.prefix = ""
+    app.state.max_body_size = max_body_size
     return app
 
 
@@ -343,6 +426,7 @@ def node_app(
     *,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
+    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
     """Create a Starlette ASGI app that serves only the keys belonging to a
     zarr ``Array`` or ``Group``.
@@ -366,6 +450,11 @@ def node_app(
         Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
+    max_body_size : int or None, optional
+        Largest `PUT` body to accept, in bytes; larger requests get a 413.
+        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
+        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
+        pass `None` to lift the cap.
 
     Returns
     -------
@@ -376,6 +465,7 @@ def node_app(
     app.state.store = node.store_path.store
     app.state.node = node
     app.state.prefix = node.store_path.path
+    app.state.max_body_size = max_body_size
     return app
 
 
@@ -387,6 +477,7 @@ def serve_store(
     port: int = ...,
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
     background: Literal[False] = ...,
     shutdown_timeout: int = ...,
 ) -> None: ...
@@ -400,9 +491,24 @@ def serve_store(
     port: int = ...,
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
     background: Literal[True],
     shutdown_timeout: int = ...,
 ) -> BackgroundServer: ...
+
+
+@overload
+def serve_store(
+    store: Store,
+    *,
+    host: str = ...,
+    port: int = ...,
+    methods: set[HTTPMethod] | None = ...,
+    cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
+    background: bool,
+    shutdown_timeout: int = ...,
+) -> BackgroundServer | None: ...
 
 
 def serve_store(
@@ -412,6 +518,7 @@ def serve_store(
     port: int = 8000,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
+    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
     shutdown_timeout: int = 5,
 ) -> BackgroundServer | None:
@@ -433,6 +540,11 @@ def serve_store(
         Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
+    max_body_size : int or None, optional
+        Largest `PUT` body to accept, in bytes; larger requests get a 413.
+        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
+        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
+        pass `None` to lift the cap.
     background : bool, optional
         If ``False`` (the default), the server blocks until shut down.
         If ``True``, the server runs in a daemon thread and this function
@@ -451,7 +563,7 @@ def serve_store(
         ``BackgroundServer`` can be used as a context manager for
         automatic shutdown.
     """
-    app = store_app(store, methods=methods, cors_options=cors_options)
+    app = store_app(store, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
     return _start_server(
         app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
     )
@@ -465,6 +577,7 @@ def serve_node(
     port: int = ...,
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
     background: Literal[False] = ...,
     shutdown_timeout: int = ...,
 ) -> None: ...
@@ -478,9 +591,24 @@ def serve_node(
     port: int = ...,
     methods: set[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
     background: Literal[True],
     shutdown_timeout: int = ...,
 ) -> BackgroundServer: ...
+
+
+@overload
+def serve_node(
+    node: Array[Any] | Group,
+    *,
+    host: str = ...,
+    port: int = ...,
+    methods: set[HTTPMethod] | None = ...,
+    cors_options: CorsOptions | None = ...,
+    max_body_size: int | None = ...,
+    background: bool,
+    shutdown_timeout: int = ...,
+) -> BackgroundServer | None: ...
 
 
 def serve_node(
@@ -490,6 +618,7 @@ def serve_node(
     port: int = 8000,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
+    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
     shutdown_timeout: int = 5,
 ) -> BackgroundServer | None:
@@ -521,6 +650,11 @@ def serve_node(
         Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
+    max_body_size : int or None, optional
+        Largest `PUT` body to accept, in bytes; larger requests get a 413.
+        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
+        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
+        pass `None` to lift the cap.
     background : bool, optional
         If ``False`` (the default), the server blocks until shut down.
         If ``True``, the server runs in a daemon thread and this function
@@ -539,7 +673,7 @@ def serve_node(
         ``BackgroundServer`` can be used as a context manager for
         automatic shutdown.
     """
-    app = node_app(node, methods=methods, cors_options=cors_options)
+    app = node_app(node, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
     return _start_server(
         app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
     )
