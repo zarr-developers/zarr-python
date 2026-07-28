@@ -18,7 +18,7 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import BasicSelection, decode_morton, morton_order_iter
+from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
@@ -173,8 +173,8 @@ def test_open(store: Store) -> None:
 
 def test_morton_exact_order() -> None:
     """Test exact morton ordering for power-of-2 shapes."""
-    assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
-    assert list(morton_order_iter((2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
+    assert list(morton_order_coords((2, 2, 2))) == [
         (0, 0, 0),
         (1, 0, 0),
         (0, 1, 0),
@@ -184,7 +184,7 @@ def test_morton_exact_order() -> None:
         (0, 1, 1),
         (1, 1, 1),
     ]
-    assert list(morton_order_iter((2, 2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2, 2, 2))) == [
         (0, 0, 0, 0),
         (1, 0, 0, 0),
         (0, 1, 0, 0),
@@ -219,15 +219,16 @@ def test_morton_exact_order() -> None:
         (1, 1),
         (5, 1, 3),
         (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
 def test_morton_is_permutation(shape: tuple[int, ...]) -> None:
-    """Test that morton_order_iter produces every valid coordinate exactly once."""
+    """Test that morton_order_coords produces every valid coordinate exactly once."""
     import itertools
 
     from zarr.core.common import product
 
-    order = list(morton_order_iter(shape))
+    order = list(morton_order_coords(shape))
     expected_len = product(shape)
     # completeness: every valid coordinate is present
     assert len(order) == expected_len
@@ -256,7 +257,7 @@ def test_morton_ordering(shape: tuple[int, ...]) -> None:
     so the ordering should be exactly decode_morton(0), decode_morton(1), ...
     """
 
-    order = list(morton_order_iter(shape))
+    order = list(morton_order_coords(shape))
     for i, coord in enumerate(order):
         assert coord == decode_morton(i, shape)
 
@@ -401,3 +402,41 @@ async def test_resize(store: Store) -> None:
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
     assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None
+
+
+def _resolve_metadata_codecs() -> list[Codec]:
+    from zarr.codecs.crc32c_ import Crc32cCodec
+    from zarr.codecs.zstd import ZstdCodec
+
+    return [
+        BytesCodec(),
+        GzipCodec(level=1),
+        TransposeCodec(order=(0,)),
+        Crc32cCodec(),
+        ZstdCodec(level=1),
+    ]
+
+
+@pytest.mark.parametrize("codec", _resolve_metadata_codecs(), ids=lambda c: type(c).__name__)
+def test_resolve_metadata_only_mutates_shape(codec: Codec) -> None:
+    """A codec's resolve_metadata may change a chunk's `shape` but must leave the
+    prototype, dtype, fill_value, and config untouched -- the pipeline relies on
+    those being stable across the codec chain.
+    """
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec_in = ArraySpec(
+        shape=(10,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0.0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    spec_out = codec.resolve_metadata(spec_in)
+    name = type(codec).__name__
+    assert spec_out.prototype is spec_in.prototype, f"{name} changed prototype"
+    assert spec_out.dtype == spec_in.dtype, f"{name} changed dtype"
+    assert spec_out.fill_value == spec_in.fill_value, f"{name} changed fill_value"
+    assert spec_out.config == spec_in.config, f"{name} changed config"

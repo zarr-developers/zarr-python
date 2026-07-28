@@ -3,9 +3,13 @@ import pytest
 
 import zarr
 from zarr import AsyncArray, config
+from zarr.abc.codec import SupportsSyncCodec
 from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import NDBuffer, default_buffer_prototype
 from zarr.core.common import MemoryOrder
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
@@ -93,3 +97,27 @@ def test_transpose_invalid(
                 chunk_key_encoding={"name": "v2", "separator": "."},
                 filters=[TransposeCodec(order=order)],  # type: ignore[arg-type]
             )
+
+
+def test_transpose_codec_supports_sync() -> None:
+    assert isinstance(TransposeCodec(order=(0, 1)), SupportsSyncCodec)
+
+
+def test_transpose_codec_sync_roundtrip() -> None:
+    codec = TransposeCodec(order=(1, 0))
+    arr = np.arange(12, dtype="float64").reshape(3, 4)
+    zdtype = get_data_type_from_native_dtype(arr.dtype)
+    spec = ArraySpec(
+        shape=arr.shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    nd_buf: NDBuffer = default_buffer_prototype().nd_buffer.from_numpy_array(arr)
+
+    encoded = codec._encode_sync(nd_buf, spec)
+    assert encoded is not None
+    resolved_spec = codec.resolve_metadata(spec)
+    decoded = codec._decode_sync(encoded, resolved_spec)
+    np.testing.assert_array_equal(arr, decoded.as_numpy_array())

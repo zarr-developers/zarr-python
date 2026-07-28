@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -9,15 +8,13 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, gpu
-from zarr.core.sync import sync
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype, gpu
 from zarr.errors import ZarrUserWarning
-from zarr.storage import GpuMemoryStore, MemoryStore
+from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
-    from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ZarrFormat
 
 
@@ -79,53 +76,107 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
 
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_bytes_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
+    @pytest.mark.parametrize("method", ["set", "set_sync", "set_if_not_exists"])
+    async def test_set_does_not_retain_caller_buffer(self, store: MemoryStore, method: str) -> None:
+        """Writing a buffer must not alias the caller's memory.
+
+        MemoryStore keeps whatever it is handed alive in a dict, so retaining
+        the caller's buffer lets a later mutation of that buffer rewrite data
+        already committed to the store.
+        """
+        source = np.frombuffer(bytearray(b"\x01\x02\x03\x04"), dtype="B")
+        value = cpu.Buffer.from_array_like(source)
+
+        if method == "set_sync":
+            store.set_sync("k", value)
+        else:
+            await getattr(store, method)("k", value)
+
+        source[:] = 0xF  # mutate the caller's memory after the write
+        stored = await store.get("k", prototype=default_buffer_prototype())
+        assert stored is not None
+        assert stored.to_bytes() == b"\x01\x02\x03\x04"
+
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            "zarr.core.codec_pipeline.BatchedCodecPipeline",
+            "zarr.core.codec_pipeline.FusedCodecPipeline",
+        ],
+    )
+    @pytest.mark.parametrize(("shape", "chunks"), [((30,), (10,)), ((8,), (4,)), ((4,), (4,))])
+    def test_write_does_not_alias_source_array(
+        self, pipeline: str, shape: tuple[int], chunks: tuple[int]
     ) -> None:
-        """Test that get_bytes works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
+        """Mutating the source array after a write must not corrupt stored chunks.
 
-        result = await store._get_bytes(key, prototype=buffer_cls)
-        assert result == data
+        Without compression the encoded buffer is a zero-copy view of the
+        caller's array all the way down to the store, so this covers both the
+        single-chunk and multi-chunk write paths.
+        """
+        with zarr.config.set({"codec_pipeline.path": pipeline}):
+            array = zarr.create_array(
+                store=MemoryStore(), shape=shape, chunks=chunks, dtype="i4", compressors=None
+            )
+            source = np.arange(shape[0], dtype="i4")
+            expected = source.copy()
+            array[:] = source
+            source[:] = -1
 
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_bytes_sync_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_bytes_sync works with prototype=None."""
-        data = b"hello world"
-        key = "test_key"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
+            np.testing.assert_array_equal(array[:], expected)
 
-        result = store._get_bytes_sync(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    async def test_get_json_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
-
-        result = await store._get_json(key, prototype=buffer_cls)
-        assert result == data
-
-    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
-    def test_get_json_sync_with_prototype_none(
-        self, store: MemoryStore, buffer_cls: None | BufferPrototype
-    ) -> None:
-        """Test that get_json_sync works with prototype=None."""
-        data = {"foo": "bar", "number": 42}
-        key = "test.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
-
-        result = store._get_json_sync(key, prototype=buffer_cls)
-        assert result == data
+    # --- byte-range-write tests: disabled ---
+    # Byte-range-write support (set_range / set_range_sync / SupportsSetRange)
+    # was removed from this PR pending a decision on the store interface. These
+    # tests are known-good and kept commented out to restore once that lands.
+    # def test_supports_set_range(self, store: MemoryStore) -> None:
+    #     """MemoryStore should implement SupportsSetRange."""
+    #     assert isinstance(store, SupportsSetRange)
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # async def test_set_range(
+    #     self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range should overwrite bytes at the given offset."""
+    #     await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+    #     await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = await store.get("test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # def test_set_range_sync(
+    #     self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range_sync should overwrite bytes at the given offset."""
+    #     store._is_open = True
+    #     store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+    #     store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
 
 
 # TODO: fix this warning
@@ -181,3 +232,283 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
+
+
+class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
+    store_cls = ManagedMemoryStore
+    buffer_cls = cpu.Buffer
+
+    async def set(self, store: ManagedMemoryStore, key: str, value: Buffer) -> None:
+        store._store_dict[key] = value
+
+    async def get(self, store: ManagedMemoryStore, key: str) -> Buffer:
+        return store._store_dict[key]
+
+    @pytest.fixture
+    def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, Any]:
+        # Use a unique name per test to avoid sharing state between tests
+        # but ensure the name is deterministic for equality tests
+        # Replace '/' with '-' since store names cannot contain '/'
+        sanitized_name = request.node.name.replace("/", "-")
+        return {"name": f"test-{sanitized_name}"}
+
+    @pytest.fixture
+    async def store(self, store_kwargs: dict[str, Any]) -> ManagedMemoryStore:
+        return self.store_cls(**store_kwargs)
+
+    def test_store_repr(self, store: ManagedMemoryStore) -> None:
+        assert str(store) == f"memory://{store.name}"
+
+    async def test_serializable_store(self, store: ManagedMemoryStore) -> None:
+        """
+        Test pickling semantics for ManagedMemoryStore.
+
+        When pickled and unpickled within the same process (where the original
+        store still exists in the registry), the unpickled store reconnects to
+        the same backing dict.
+        """
+        import pickle
+
+        # Add some data to the store
+        await store.set("test-key", self.buffer_cls.from_bytes(b"test-value"))
+
+        # Pickle and unpickle the store
+        pickled = pickle.dumps(store)
+        store2 = pickle.loads(pickled)
+
+        # The unpickled store should reconnect to the same backing dict
+        assert store2._store_dict is store._store_dict
+        assert store2.name == store.name
+        assert store2.path == store.path
+        assert store2.read_only == store.read_only
+
+        # The data should be accessible
+        result = await store2.get("test-key")
+        assert result is not None
+        assert result.to_bytes() == b"test-value"
+
+    async def test_pickle_with_path(self) -> None:
+        """Test that path is preserved through pickle round-trip."""
+        import pickle
+
+        store = ManagedMemoryStore(name="pickle-path-test", path="some/path")
+        await store.set("key", self.buffer_cls.from_bytes(b"value"))
+
+        pickled = pickle.dumps(store)
+        store2 = pickle.loads(pickled)
+
+        assert store2.path == "some/path"
+        assert store2._store_dict is store._store_dict
+
+        # Check that operations use the path correctly
+        result = await store2.get("key")
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+    def test_pickle_after_gc(self) -> None:
+        """
+        Test that unpickling after the original store is garbage collected
+        creates a new empty store with the same name (in the same process).
+        """
+        import gc
+        import pickle
+
+        # Create a store with a unique name and pickle it
+        store = ManagedMemoryStore(name="gc-pickle-test")
+        store._store_dict["key"] = self.buffer_cls.from_bytes(b"value")
+        pickled = pickle.dumps(store)
+
+        # Delete the store and garbage collect
+        del store
+        gc.collect()
+
+        # Unpickling should create a new store with an empty dict
+        store2 = pickle.loads(pickled)
+        assert store2.name == "gc-pickle-test"
+        # The dict is empty because the original was garbage collected
+        assert len(store2._store_dict) == 0
+
+    async def test_cross_process_detection(self) -> None:
+        """
+        Test that unpickling a ManagedMemoryStore in a different process raises an error.
+
+        This prevents silent data loss when a store is pickled and unpickled
+        in a different process (e.g., with multiprocessing).
+        """
+        import os
+
+        store = ManagedMemoryStore(name="cross-process-test")
+        await store.set("key", self.buffer_cls.from_bytes(b"value"))
+
+        # Get the reduce tuple and modify the state to simulate a different process
+        cls, args, state = store.__reduce__()
+        state["created_pid"] = os.getpid() + 1  # Fake a different process ID
+
+        # Manually reconstruct what pickle.loads would do
+        # This simulates unpickling data that was pickled in a different process
+        reconstructed = cls(*args)
+        with pytest.raises(RuntimeError, match="was created in process"):
+            reconstructed.__setstate__(state)
+
+    def test_store_supports_writes(self, store: ManagedMemoryStore) -> None:
+        assert store.supports_writes
+
+    def test_store_supports_listing(self, store: ManagedMemoryStore) -> None:
+        assert store.supports_listing
+
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_deterministic_size(
+        self, store: MemoryStore, dtype: npt.DTypeLike, zarr_format: ZarrFormat
+    ) -> None:
+        a = zarr.empty(
+            store=store,
+            shape=(3,),
+            chunks=(1000,),
+            dtype=dtype,
+            zarr_format=zarr_format,
+            overwrite=True,
+        )
+        a[...] = 1
+        a.resize((1000,))
+
+        np.testing.assert_array_equal(a[:3], 1)
+        np.testing.assert_array_equal(a[3:], 0)
+
+    def test_from_url(self, store: ManagedMemoryStore) -> None:
+        """Test that from_url creates a store sharing the same dict."""
+        url = str(store)
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+
+    def test_from_url_with_path(self, store: ManagedMemoryStore) -> None:
+        """Test that from_url extracts path component from URL."""
+        url = f"{store}/some/path"
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+        assert store2.path == "some/path"
+        assert str(store2) == url
+
+    def test_from_url_invalid(self) -> None:
+        """Test that from_url raises ValueError for non-existent store."""
+        with pytest.raises(ValueError, match="Memory store not found"):
+            ManagedMemoryStore.from_url("memory://nonexistent-store")
+
+    def test_from_url_not_memory_scheme(self) -> None:
+        """Test that from_url raises ValueError for non-memory URLs."""
+        with pytest.raises(ValueError, match="Expected a 'memory://' URL"):
+            ManagedMemoryStore.from_url("file:///tmp/test")
+
+    def test_named_store(self) -> None:
+        """Test that stores can be created with explicit names."""
+        store = ManagedMemoryStore(name="my-test-store")
+        assert store.name == "my-test-store"
+        assert str(store) == "memory://my-test-store"
+
+    def test_named_store_shares_dict(self) -> None:
+        """Test that creating a store with the same name shares the dict."""
+        store1 = ManagedMemoryStore(name="shared-store")
+        store2 = ManagedMemoryStore(name="shared-store")
+        assert store1._store_dict is store2._store_dict
+        assert store1.name == store2.name
+
+    def test_auto_generated_name(self) -> None:
+        """Test that stores get auto-generated names when none provided."""
+        store = ManagedMemoryStore()
+        assert store.name is not None
+        assert str(store) == f"memory://{store.name}"
+
+    def test_with_read_only_shares_dict(self, store: ManagedMemoryStore) -> None:
+        """Test that with_read_only creates a store sharing the same dict."""
+        store2 = store.with_read_only(True)
+        assert store2._store_dict is store._store_dict
+        assert store2.read_only is True
+        assert store.read_only is False
+
+    def test_with_read_only_preserves_path(self) -> None:
+        """Test that with_read_only preserves the path."""
+        store = ManagedMemoryStore(name="path-test", path="some/path")
+        store2 = store.with_read_only(True)
+        assert store2.path == "some/path"
+        assert store2._store_dict is store._store_dict
+
+    async def test_path_prefix_operations(self) -> None:
+        """Test that store operations use the path prefix correctly."""
+        store = ManagedMemoryStore(name="prefix-test")
+        store_with_path = ManagedMemoryStore.from_url("memory://prefix-test/subdir")
+
+        # Write via store_with_path
+        await store_with_path.set("key", self.buffer_cls.from_bytes(b"value"))
+
+        # The key should be stored with the prefix in the underlying dict
+        assert "subdir/key" in store._store_dict
+        assert "key" not in store._store_dict
+
+        # Read via store_with_path should work
+        result = await store_with_path.get("key")
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+        # Read via store without path should use full key
+        result2 = await store.get("subdir/key")
+        assert result2 is not None
+        assert result2.to_bytes() == b"value"
+
+    async def test_path_list_operations(self) -> None:
+        """Test that list operations filter by path prefix."""
+        store = ManagedMemoryStore(name="list-test")
+
+        # Set up some keys at different paths
+        await store.set("a/key1", self.buffer_cls.from_bytes(b"v1"))
+        await store.set("a/key2", self.buffer_cls.from_bytes(b"v2"))
+        await store.set("b/key3", self.buffer_cls.from_bytes(b"v3"))
+
+        # Create a store with path "a"
+        store_a = ManagedMemoryStore.from_url("memory://list-test/a")
+
+        # list() should only return keys under "a", without the "a/" prefix
+        keys = [k async for k in store_a.list()]
+        assert sorted(keys) == ["key1", "key2"]
+
+    async def test_path_exists(self) -> None:
+        """Test that exists() uses the path prefix."""
+        store = ManagedMemoryStore(name="exists-test")
+        await store.set("prefix/key", self.buffer_cls.from_bytes(b"value"))
+
+        store_with_path = ManagedMemoryStore.from_url("memory://exists-test/prefix")
+        assert await store_with_path.exists("key")
+        assert not await store_with_path.exists("prefix/key")
+
+    def test_path_normalization(self) -> None:
+        """Test that paths are normalized."""
+        store1 = ManagedMemoryStore(name="norm-test", path="a/b/")
+        store2 = ManagedMemoryStore(name="norm-test", path="/a/b")
+        store3 = ManagedMemoryStore(name="norm-test", path="a//b")
+        assert store1.path == "a/b"
+        assert store2.path == "a/b"
+        assert store3.path == "a/b"
+
+    def test_name_cannot_contain_slash(self) -> None:
+        """Test that store names cannot contain '/'."""
+        with pytest.raises(ValueError, match="cannot contain '/'"):
+            ManagedMemoryStore(name="foo/bar")
+
+    def test_garbage_collection(self) -> None:
+        """Test that the dict is garbage collected when no stores reference it."""
+        import gc
+
+        store = ManagedMemoryStore()
+        url = str(store)
+
+        # URL should resolve while store exists
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+
+        # Delete both stores
+        del store
+        del store2
+        gc.collect()
+
+        # URL should no longer resolve
+        with pytest.raises(ValueError, match="garbage collected"):
+            ManagedMemoryStore.from_url(url)

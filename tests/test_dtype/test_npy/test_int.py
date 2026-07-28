@@ -216,7 +216,16 @@ class TestUInt16(BaseTestZDType):
 class TestUInt32(BaseTestZDType):
     test_cls = UInt32
     scalar_type = np.uint32
-    valid_dtype = (np.dtype(">u4"), np.dtype("<u4"))
+
+    # On Windows, this creates an UIntDType (instead of UInt32DType),
+    # similar to how np.dtype('i') creates an IntDType instead of Int32DType.
+    # However, np.dtype('u') raises a TypeError.
+    uint_dtype = (np.array([1], dtype=np.uint32) & 1).dtype
+
+    # The behavior of some tests associated with this class variable are
+    # order-dependent -- uint_dtype correctly fails certain tests only if it's not
+    # in the last position of the tuple. I have no idea how this is possible!
+    valid_dtype = (uint_dtype, np.dtype(">u4"), np.dtype("<u4"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.int16),

@@ -16,7 +16,7 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
-from zarr.storage._common import _dereference_path
+from zarr.storage._utils import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -102,6 +102,15 @@ class FsspecStore(Store):
     -----
     ZarrUserWarning
         If the file system (fs) was not created with `asynchronous=True`.
+
+    Notes
+    -----
+    Closing the store does not close the underlying filesystem or its network
+    session. fsspec caches and shares filesystem instances across callers, so
+    the store cannot know whether it is the only user, and closing a shared
+    session would break other stores. The filesystem's lifecycle belongs to
+    whoever created it; use fsspec's own tools (e.g. `clear_instance_cache`)
+    to release it.
 
     See Also
     --------
@@ -371,30 +380,31 @@ class FsspecStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        if key_ranges:
-            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
-            key_ranges = list(key_ranges)
-            paths: list[str] = []
-            starts: list[int | None] = []
-            stops: list[int | None] = []
-            for key, byte_range in key_ranges:
-                paths.append(_dereference_path(self.path, key))
-                if byte_range is None:
-                    starts.append(None)
-                    stops.append(None)
-                elif isinstance(byte_range, RangeByteRequest):
-                    starts.append(byte_range.start)
-                    stops.append(byte_range.end)
-                elif isinstance(byte_range, OffsetByteRequest):
-                    starts.append(byte_range.offset)
-                    stops.append(None)
-                elif isinstance(byte_range, SuffixByteRequest):
-                    starts.append(-byte_range.suffix)
-                    stops.append(None)
-                else:
-                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
-        else:
+        # Materialise first: key_ranges may be a one-shot iterable, so a bare
+        # truthiness check (e.g. `if key_ranges`) would be unreliable for an
+        # empty generator. _cat_ranges also expects lists of paths/starts/stops.
+        key_ranges = list(key_ranges)
+        if not key_ranges:
             return []
+        paths: list[str] = []
+        starts: list[int | None] = []
+        stops: list[int | None] = []
+        for key, byte_range in key_ranges:
+            paths.append(_dereference_path(self.path, key))
+            if byte_range is None:
+                starts.append(None)
+                stops.append(None)
+            elif isinstance(byte_range, RangeByteRequest):
+                starts.append(byte_range.start)
+                stops.append(byte_range.end)
+            elif isinstance(byte_range, OffsetByteRequest):
+                starts.append(byte_range.offset)
+                stops.append(None)
+            elif isinstance(byte_range, SuffixByteRequest):
+                starts.append(-byte_range.suffix)
+                stops.append(None)
+            else:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         # TODO: expectations for exceptions or missing keys?
         res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
@@ -408,7 +418,7 @@ class FsspecStore(Store):
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
-        for onefile in (a.removeprefix(self.path + "/") for a in allfiles):
+        for onefile in (a.removeprefix(f"{self.path}/") for a in allfiles):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
@@ -418,7 +428,7 @@ class FsspecStore(Store):
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
-        for onefile in (a.replace(prefix + "/", "") for a in allfiles):
+        for onefile in (a.replace(f"{prefix}/", "") for a in allfiles):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:

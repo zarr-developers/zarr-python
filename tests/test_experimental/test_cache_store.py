@@ -131,21 +131,14 @@ class TestCacheStore:
         test_data = CPUBuffer.from_bytes(b"expiring data")
         await cached_store.set("expire_key", test_data)
 
-        # Should be fresh initially (if _is_key_fresh method exists)
-        if hasattr(cached_store, "_is_key_fresh"):
-            assert cached_store._is_key_fresh("expire_key")
+        # Should be fresh initially
+        assert cached_store._is_key_fresh("expire_key")
 
-            # Wait for expiration
-            await asyncio.sleep(1.1)
+        # Wait for expiration
+        await asyncio.sleep(1.1)
 
-            # Should now be stale
-            assert not cached_store._is_key_fresh("expire_key")
-        else:
-            # Skip freshness check if method doesn't exist
-            await asyncio.sleep(1.1)
-            # Just verify the data is still accessible
-            result = await cached_store.get("expire_key", default_buffer_prototype())
-            assert result is not None
+        # Should now be stale
+        assert not cached_store._is_key_fresh("expire_key")
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
         """Test behavior when cache_set_data=False."""
@@ -225,10 +218,6 @@ class TestCacheStore:
 
     async def test_infinity_max_age(self, cached_store: CacheStore) -> None:
         """Test that 'infinity' max_age means cache never expires."""
-        # Skip test if _is_key_fresh method doesn't exist
-        if not hasattr(cached_store, "_is_key_fresh"):
-            pytest.skip("_is_key_fresh method not implemented")
-
         test_data = CPUBuffer.from_bytes(b"eternal data")
         await cached_store.set("eternal_key", test_data)
 

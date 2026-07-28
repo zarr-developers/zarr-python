@@ -29,7 +29,8 @@ def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(2) == 2
 
 
-@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, "3"])
+# The explicit id for "3" avoids colliding with the auto-generated id for the int 3.
+@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, pytest.param("3", id="3-str")])
 def test_parse_zarr_format_invalid(data: Any) -> None:
     with pytest.raises(ValueError, match=f"Invalid value. Expected 2. Got {data}"):
         parse_zarr_format(data)
@@ -306,6 +307,60 @@ def test_from_dict_extra_fields() -> None:
         order="C",
     )
     assert result == expected
+
+
+def test_eq_nan_fill_value() -> None:
+    """Two metadata objects with an identical NaN fill_value compare equal.
+
+    NaN is not equal to itself under IEEE 754, so the default dataclass __eq__
+    reports two otherwise-identical metadata objects as unequal. Metadata
+    equality must treat matching NaN fill values as equal (see issue #2929).
+    """
+    a = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    b = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    assert a == b
+
+
+def test_eq_distinct_fill_value() -> None:
+    """Metadata objects that differ only in fill_value do not compare equal."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=0.0, order="C")
+    b = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=1.0, order="C")
+    assert a != b
+
+
+@pytest.mark.parametrize("fill_value", [np.float64("inf"), np.float64("-inf")])
+def test_eq_inf_fill_value(fill_value: np.float64) -> None:
+    """Two metadata objects with an identical infinite fill_value compare equal."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=fill_value, order="C")
+    b = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=fill_value, order="C")
+    assert a == b
+
+
+def test_hash_consistent_with_eq_nan_fill_value() -> None:
+    """Equal metadata objects with a NaN fill_value hash equal.
+
+    NaN hashes by identity, so a field-based hash would break the
+    ``a == b implies hash(a) == hash(b)`` invariant for objects that compare
+    equal under the to_dict-based __eq__.
+    """
+    a = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    b = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_non_metadata() -> None:
+    """Comparison against a non-metadata object returns False rather than erroring."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=0.0, order="C")
+    assert a != object()
 
 
 def test_zstd_checksum() -> None:

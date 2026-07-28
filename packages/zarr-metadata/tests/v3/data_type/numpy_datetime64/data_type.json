@@ -1,0 +1,7 @@
+{
+  "name": "numpy.datetime64",
+  "configuration": {
+    "unit": "ns",
+    "scale_factor": 1
+  }
+}

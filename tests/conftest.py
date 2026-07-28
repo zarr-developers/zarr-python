@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import pathlib
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -16,16 +17,22 @@ from hypothesis import HealthCheck, Verbosity, settings
 import zarr.registry
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
-from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.codecs.sharding import IndexLocation, ShardingCodec
 from zarr.core.array import (
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
     _parse_chunk_key_encoding,
 )
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
+from zarr.core.chunk_grids import (
+    SHARDED_INNER_CHUNK_MAX_BYTES,
+    as_regular_shape,
+    guess_chunks,
+    normalize_chunks_nd,
+    resolve_outer_and_inner_chunks,
+)
 from zarr.core.common import (
     JSON,
-    DimensionNames,
+    DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
@@ -37,16 +44,15 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, create_chunk_grid_metadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from contextlib import AbstractContextManager
     from typing import Any, Literal
-
-    from _pytest.compat import LEGACY_PATH
 
     from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
@@ -56,6 +62,38 @@ if TYPE_CHECKING:
         V2ChunkKeyEncoding,
     )
     from zarr.core.dtype.wrapper import ZDType
+
+
+@dataclass(frozen=True)
+class Expect[TIn, TOut]:
+    """A test case with explicit input, expected output, and a human-readable id."""
+
+    input: TIn
+    output: TOut
+    id: str
+
+
+@dataclass(frozen=True)
+class ExpectFail[TIn]:
+    """A test case that should raise an exception.
+
+    `msg` is a regex matched against the exception text (pytest's native
+    `match=` semantics). Leave it `None` to assert only the exception type. Set
+    `escape=True` when `msg` is a literal that contains regex metacharacters
+    such as `(`, `[`, or `.`; `escape` has no effect when `msg` is `None`.
+    """
+
+    input: TIn
+    exception: type[Exception]
+    id: str
+    msg: str | None = None
+    escape: bool = False
+
+    def raises(self) -> AbstractContextManager[pytest.ExceptionInfo[Exception]]:
+        if self.msg is None:
+            return pytest.raises(self.exception)
+        pattern = re.escape(self.msg) if self.escape else self.msg
+        return pytest.raises(self.exception, match=pattern)
 
 
 async def parse_store(
@@ -68,9 +106,9 @@ async def parse_store(
     if store == "fsspec":
         return await FsspecStore.open(url=path)
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="w")
+        return await ZipStore.open(f"{path}/zarr.zip", mode="w")
     if store == "memory_get_latency":
-        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0)
+        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0.0)
     raise AssertionError
 
 
@@ -81,14 +119,14 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = await LocalStore.open(str(tmpdir))
+async def store_path(tmp_path: pathlib.Path) -> StorePath:
+    store = await LocalStore.open(str(tmp_path))
     return StorePath(store)
 
 
 @pytest.fixture
-async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return await LocalStore.open(str(tmpdir))
+async def local_store(tmp_path: pathlib.Path) -> LocalStore:
+    return await LocalStore.open(str(tmp_path))
 
 
 @pytest.fixture
@@ -102,29 +140,30 @@ async def memory_store() -> MemoryStore:
 
 
 @pytest.fixture
-async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
-    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
+async def zip_store(tmp_path: pathlib.Path) -> ZipStore:
+    return await ZipStore.open(str(tmp_path / "zarr.zip"), mode="w")
 
 
 @pytest.fixture
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmp_path))
 
 
 @pytest.fixture
-async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store2(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     """Fixture to create a second store for testing copy operations between stores"""
     param = request.param
-    store2_path = tmpdir.mkdir("store2")
+    store2_path = tmp_path / "store2"
+    store2_path.mkdir()
     return await parse_store(param, str(store2_path))
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
+def sync_store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     result = sync(parse_store(request.param, str(tmp_path)))
     if not isinstance(result, Store):
-        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
+        raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
 
 
@@ -136,10 +175,10 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture
-async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = await parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmp_path))
     return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
@@ -313,7 +352,7 @@ def create_array_metadata(
     zarr_format: ZarrFormat,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     """
     Create array metadata
@@ -326,10 +365,18 @@ def create_array_metadata(
     item_size = 1
     if isinstance(dtype_parsed, HasItemSize):
         item_size = dtype_parsed.item_size
-    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+    if chunks == "auto":
+        chunks_normalized = guess_chunks(
+            shape_parsed,
+            item_size,
+            max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES if shards is not None else None,
+        )
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+    outer_chunks, inner = resolve_outer_and_inner_chunks(
         array_shape=shape_parsed,
+        chunks=chunks_normalized,
         shard_shape=shards,
-        chunk_shape=chunks,
         item_size=item_size,
     )
 
@@ -337,7 +384,6 @@ def create_array_metadata(
         order_parsed = zarr_config.get("array.order")
     else:
         order_parsed = order
-    chunks_out: tuple[int, ...]
 
     if zarr_format == 2:
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
@@ -347,7 +393,7 @@ def create_array_metadata(
         return ArrayV2Metadata(
             shape=shape_parsed,
             dtype=dtype_parsed,
-            chunks=chunk_shape_parsed,
+            chunks=as_regular_shape(outer_chunks),
             order=order_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
@@ -365,32 +411,30 @@ def create_array_metadata(
 
         sub_codecs: tuple[Codec, ...] = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
-        if shard_shape_parsed is not None:
-            index_location = None
+        if inner is not None:
+            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
+            index_location: IndexLocation = "end"
             if isinstance(shards, dict):
-                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
-            if index_location is None:
-                index_location = ShardingCodecIndexLocation.end
+                index_location = cast("IndexLocation", shards.get("index_location", "end"))
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed,
+                chunk_shape=inner_chunks_flat,
                 codecs=sub_codecs,
                 index_location=index_location,
             )
+            validation_grid = create_chunk_grid_metadata(outer_chunks)
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
+                shape=inner_chunks_flat,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=validation_grid,
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
         else:
-            chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
         return ArrayV3Metadata(
             shape=shape_parsed,
             data_type=dtype_parsed,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out),
+            chunk_grid=create_chunk_grid_metadata(outer_chunks),
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value,
             codecs=codecs_out,
@@ -452,7 +496,7 @@ def meta_from_array(
     zarr_format: ZarrFormat = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
 ) -> ArrayV3Metadata | ArrayV2Metadata:
     """
     Create array metadata from an array
@@ -499,3 +543,37 @@ def deep_nan_equal(a: object, b: object) -> bool:
     if isinstance(a, Sequence) and isinstance(b, Sequence):
         return all(deep_nan_equal(a[i], b[i]) for i in range(len(a)))
     return nan_equal(a, b)
+
+
+# Shared mock-S3 (moto) backend. A single server is reused across the whole test session by
+# every test that needs S3 -- both the fsspec store tests and the documentation examples --
+# instead of each module standing up its own. Consumers create their own buckets and choose
+# how the endpoint reaches the client (explicit storage_options vs. the AWS_ENDPOINT_URL
+# env var) on top of this fixture.
+
+
+@pytest.fixture(scope="session")
+def moto_server() -> Generator[str, None, None]:
+    """Start a session-scoped moto S3 server and yield its endpoint URL.
+
+    The server binds an ephemeral port (port=0), so the endpoint is only known at
+    runtime; consumers must take it from this fixture rather than a constant. A fixed
+    port deadlocks under pytest-xdist: session-scoped fixtures run once per *worker*, so
+    concurrent workers race to bind the same port, and the losers block forever inside
+    ThreadedMotoServer.start(), whose server thread dies on "Address already in use"
+    before ever setting the ready event that start() waits on.
+
+    importorskip lives inside the fixture so moto is only required when a test actually
+    requests an S3 backend, not for the whole test session."""
+    moto_server_mod = pytest.importorskip("moto.moto_server.threaded_moto_server")
+
+    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server.get_host_and_port()
+    # moto needs *some* credentials present; use throwaway values if the environment has none.
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
+    try:
+        yield f"http://{host}:{port}/"
+    finally:
+        server.stop()

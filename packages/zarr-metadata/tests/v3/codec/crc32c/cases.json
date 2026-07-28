@@ -1,0 +1,10 @@
+{
+  "no_configuration": {
+    "name": "crc32c"
+  },
+  "empty_configuration": {
+    "name": "crc32c",
+    "configuration": {}
+  },
+  "short_hand_name": "crc32c"
+}

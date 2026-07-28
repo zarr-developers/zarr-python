@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
 
-    from zarr.codecs.bytes import Endian
+    from zarr.codecs.bytes import EndianLiteral
     from zarr.core.common import BytesLike
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
@@ -44,6 +44,8 @@ class ArrayLike(Protocol):
     def __getitem__(self, key: slice) -> Self: ...
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
+
+    def copy(self) -> Self: ...
 
 
 @runtime_checkable
@@ -71,8 +73,13 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
-    ) -> Self: ...
+        self,
+        shape: tuple[int, ...],
+        /,
+        *,
+        order: Literal["A", "C", "F"] | None = ...,
+        copy: bool | None = ...,
+    ) -> NDArrayLike: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
@@ -92,7 +99,7 @@ class NDArrayLike(Protocol):
 
     def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
 
-    def all(self) -> bool: ...
+    def all(self) -> np.bool_: ...
 
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
@@ -267,7 +274,7 @@ class Buffer(ABC):
         -------
             An object that implements the Python buffer protocol
         """
-        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
+        return memoryview(self.as_numpy_array())
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -491,18 +498,19 @@ class NDBuffer:
         return self._data.shape
 
     @property
-    def byteorder(self) -> Endian:
-        from zarr.codecs.bytes import Endian
-
+    def byteorder(self) -> EndianLiteral:
         if self.dtype.byteorder == "<":
-            return Endian.little
+            return "little"
         elif self.dtype.byteorder == ">":
-            return Endian.big
+            return "big"
         else:
-            return Endian(sys.byteorder)
+            return sys.byteorder
 
     def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
-        return self.__class__(self._data.reshape(newshape))
+        # numpy accepts a bare -1, but the NDArrayLike protocol only types the
+        # tuple form; normalize so the forwarded value matches the protocol.
+        shape = (newshape,) if newshape == -1 else newshape
+        return self.__class__(self._data.reshape(shape))
 
     def squeeze(self, axis: tuple[int, ...]) -> Self:
         newshape = tuple(a for i, a in enumerate(self.shape) if i not in axis)
@@ -535,7 +543,7 @@ class NDBuffer:
             and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
         ):
             _data, other = np.broadcast_arrays(self._data, np.asarray(other, self._data.dtype))
-            void_dtype = "V" + str(_data.dtype.itemsize)
+            void_dtype = f"V{_data.dtype.itemsize}"
             return np.array_equal(_data.view(void_dtype), other.view(void_dtype))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value

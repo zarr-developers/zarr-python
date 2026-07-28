@@ -1,0 +1,6 @@
+{
+  "default": {
+    "name": "zstd",
+    "configuration": {"level": 3, "checksum": false}
+  }
+}

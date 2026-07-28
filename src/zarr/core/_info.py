@@ -117,7 +117,7 @@ class ArrayInfo:
 
         if self._chunk_shape is None:
             # for non-regular chunk grids
-            kwargs["chunk_shape"] = "<variable>"
+            kwargs["_chunk_shape"] = "<variable>"
 
         template += "\nFilters            : {_filters}"
 

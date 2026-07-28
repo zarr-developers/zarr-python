@@ -7,6 +7,7 @@ from zarr.core.common import (
     MemoryOrder,
     parse_bool,
     parse_fill_value,
+    parse_int,
     parse_order,
     parse_shapelike,
 )
@@ -28,6 +29,9 @@ class ArrayConfigParams(TypedDict):
 
     order: NotRequired[MemoryOrder]
     write_empty_chunks: NotRequired[bool]
+    read_missing_chunks: NotRequired[bool]
+    sharding_coalesce_max_gap_bytes: NotRequired[int]
+    sharding_coalesce_max_bytes: NotRequired[int]
 
 
 @dataclass(frozen=True)
@@ -41,17 +45,45 @@ class ArrayConfig:
         The memory layout of the arrays returned when reading data from the store.
     write_empty_chunks : bool
         If True, empty chunks will be written to the store.
+    read_missing_chunks : bool
+        If True, missing chunks will be filled with the array's fill value on read.
+        If False, reading missing chunks will raise a ``ChunkNotFoundError``.
+    sharding_coalesce_max_gap_bytes : int
+        When reading multiple chunks from the same shard, nearby byte ranges
+        separated by no more than this many bytes are coalesced into a single
+        request to the store.
+    sharding_coalesce_max_bytes : int
+        Requests will not be coalesced if doing so would exceed this byte size.
     """
 
     order: MemoryOrder
     write_empty_chunks: bool
+    read_missing_chunks: bool
+    sharding_coalesce_max_gap_bytes: int
+    sharding_coalesce_max_bytes: int
 
-    def __init__(self, order: MemoryOrder, write_empty_chunks: bool) -> None:
+    def __init__(
+        self,
+        order: MemoryOrder,
+        write_empty_chunks: bool,
+        *,
+        read_missing_chunks: bool = True,
+        sharding_coalesce_max_gap_bytes: int = 1 << 20,  # 1 MiB
+        sharding_coalesce_max_bytes: int = 16 << 20,  # 16 MiB
+    ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
+        read_missing_chunks_parsed = parse_bool(read_missing_chunks)
+        sharding_coalesce_max_gap_bytes_parsed = parse_int(sharding_coalesce_max_gap_bytes)
+        sharding_coalesce_max_bytes_parsed = parse_int(sharding_coalesce_max_bytes)
 
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
+        object.__setattr__(self, "read_missing_chunks", read_missing_chunks_parsed)
+        object.__setattr__(
+            self, "sharding_coalesce_max_gap_bytes", sharding_coalesce_max_gap_bytes_parsed
+        )
+        object.__setattr__(self, "sharding_coalesce_max_bytes", sharding_coalesce_max_bytes_parsed)
 
     @classmethod
     def from_dict(cls, data: ArrayConfigParams) -> Self:
@@ -62,7 +94,10 @@ class ArrayConfig:
         """
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
-            field_name = cast("Literal['order', 'write_empty_chunks']", f.name)
+            field_name = cast(
+                "Literal['order', 'write_empty_chunks', 'read_missing_chunks', 'sharding_coalesce_max_gap_bytes', 'sharding_coalesce_max_bytes']",
+                f.name,
+            )
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
             else:
@@ -73,7 +108,13 @@ class ArrayConfig:
         """
         Serialize an instance of this class to a dict.
         """
-        return {"order": self.order, "write_empty_chunks": self.write_empty_chunks}
+        return {
+            "order": self.order,
+            "write_empty_chunks": self.write_empty_chunks,
+            "read_missing_chunks": self.read_missing_chunks,
+            "sharding_coalesce_max_gap_bytes": self.sharding_coalesce_max_gap_bytes,
+            "sharding_coalesce_max_bytes": self.sharding_coalesce_max_bytes,
+        }
 
 
 ArrayConfigLike = ArrayConfig | ArrayConfigParams
