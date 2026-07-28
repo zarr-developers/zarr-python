@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "zarr",
+    "zarr-indexing",
+]
+
 [[package]]
 name = "aiobotocore"
 version = "3.7.0"
@@ -3604,3 +3610,21 @@ test = [
     { name = "tomlkit", specifier = "==0.15.0" },
     { name = "uv", specifier = "==0.11.26" },
 ]
+
+[[package]]
+name = "zarr-indexing"
+source = { editable = "packages/zarr-indexing" }
+dependencies = [
+    { name = "numpy" },
+]
+
+[package.dev-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "numpy", specifier = ">=2" }]
+
+[package.metadata.requires-dev]
+test = [{ name = "pytest" }]
