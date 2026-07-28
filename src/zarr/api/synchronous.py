@@ -1399,11 +1399,13 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyArray:
     path : str
         The path to the new array.
     **kwargs
-        Any keyword arguments to pass to the array constructor.
+        Additional keyword arguments passed to `open_array`.
+        If `mode` is omitted or `None`, it defaults to `"a"`. Pass `mode="r"` when
+        opening an existing array from a read-only store.
 
     Returns
     -------
-    AsyncArray
+    Array
         The opened array.
     """
     return Array(sync(async_api.open_like(a, path=path, **kwargs)))
