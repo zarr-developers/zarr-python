@@ -31,6 +31,16 @@ repos:
       - id: check-yaml
         exclude: mkdocs.yml
       - id: trailing-whitespace
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.22.1
+    hooks:
+      # Markdown structure/hygiene. Rule selection and ignores are in
+      # .markdownlint-cli2.jsonc; complements ci/lint_docs.py (RST residue,
+      # list-breaking fences) and `mkdocs build --strict`. Scoped to docs/ to
+      # match the config's globs (pre-commit passes filenames, which would
+      # otherwise override that scoping and lint all repo Markdown).
+      - id: markdownlint-cli2
+        files: ^docs/
   - repo: local
     hooks:
       - id: mypy

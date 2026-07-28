@@ -94,18 +94,18 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.14.1",
-    "pytest==9.0.3",
+    "coverage==7.14.3",
+    "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
-    "pytest-accept==0.2.3",
+    "pytest-accept==0.3.0",
     "numpydoc==1.10.0",
-    "hypothesis==6.155.2",
+    "hypothesis==6.155.7",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.0",
-    "uv==0.11.20",
+    "uv==0.11.26",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -124,20 +124,19 @@ docs = [
     "mkdocs-material[imaging]==9.7.6",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.4",
-    "mkdocstrings-python==2.0.4",
+    "mkdocstrings-python==2.0.5",
     "mike==2.2.0",
-    "mkdocs-jupyter==0.26.3",
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.1",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.15.16",
+    "ruff==0.15.20",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
     "numcodecs[msgpack]",
     "s3fs>=2023.10.0",
     "astroid==4.1.2",
-    "pytest==9.0.3",
+    "pytest==9.1.1",
 ]
 dev = [
     {include-group = "test"},
@@ -427,11 +426,21 @@ module = [
 ignore_errors = true
 
 [tool.pytest.ini_options]
-minversion = "7"
+minversion = "9"
 testpaths = ["src", "tests", "docs/user-guide"]
 log_cli_level = "INFO"
 log_level = "INFO"
-xfail_strict = true
+# Enables strict_config, strict_markers, strict_xfail, strict_parametrization_ids, and
+# any strictness options added in future pytest releases. Note that the equivalent
+# `--strict-config`/`--strict-markers` flags were silently ignored when passed via
+# addopts before pytest 9.1 (pytest#14442), so this option is the reliable spelling.
+strict = true
+# Turn deadlocks into loud failures: if a single test exceeds this many seconds, dump
+# every thread's traceback and kill the run (exit_on_timeout is new in pytest 9). Sized
+# far above the slowest legitimate test (~20s locally; slower under coverage/Windows/
+# nightly stateful-hypothesis runs) so only a genuine hang can trip it.
+faulthandler_timeout = 600
+faulthandler_exit_on_timeout = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
@@ -443,7 +452,7 @@ addopts = [
     "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
     "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
-    "-ra", "--strict-config", "--strict-markers",
+    "-ra",
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
     "--ignore=src/zarr/_cli",
@@ -456,6 +465,18 @@ filterwarnings = [
     # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
     # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
     "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
+    # pytest-asyncio implicitly creates an event loop in _get_event_loop_no_warn during
+    # fixture setup/teardown and never closes it (allocation site verified with
+    # PYTHONTRACEMALLOC: pytest_asyncio/plugin.py). When the garbage collector reclaims
+    # that loop (and its self-pipe socketpair: AF_UNIX family=1 on POSIX, emulated with
+    # AF_INET family=2 on Windows) mid-test, the unraisable hook fails whichever unrelated
+    # test happens to be running — the long-standing "random cross-file failure" in the
+    # pipeline suites. The message contains only the __del__ repr, so these patterns cannot
+    # scope to pytest-asyncio specifically: a loop/socketpair leak in zarr's own sync
+    # machinery would also be silenced. Accepted tradeoff — revisit if zarr.core.sync grows
+    # loop-lifecycle changes.
+    "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",

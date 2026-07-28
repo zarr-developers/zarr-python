@@ -1,7 +1,11 @@
-This section will help you get up and running with
-the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+# Quick start
 
-### Creating an Array
+This page will help you get up and running with
+the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+Zarr must be installed first -- see the [installation guide](user-guide/installation.md)
+if you have not installed it yet.
+
+## Creating an Array
 
 To get started, you can create a simple Zarr array:
 
@@ -42,12 +46,11 @@ Here, we created a 2D array of shape `(100, 100)`, chunked into blocks of
 `(10, 10)`, and filled it with random floating-point data. This array was
 written to a `LocalStore` in the `data/example-1.zarr` directory.
 
-#### Compression and Filters
+### Compression and Filters
 
 Zarr supports data compression and filters. For example, to use Blosc compression:
 
-
-```python exec="true" session="quickstart" source="above" result="code"
+```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create a 2D Zarr array with Blosc compression
 z = zarr.create_array(
@@ -69,8 +72,7 @@ print(z.info)
 
 This compresses the data using the Blosc codec with shuffle enabled for better compression.
 
-
-### Hierarchical Groups
+## Hierarchical Groups
 
 Zarr allows you to create hierarchical groups, similar to directories:
 
@@ -94,12 +96,12 @@ print(root.tree())
 
 This creates a group hierarchy with a group (`foo`) and two arrays (`bar` and `spam`).
 
-#### Batch Hierarchy Creation
+### Batch Hierarchy Creation
 
 Zarr provides tools for creating a collection of arrays and groups with a single function call.
 Suppose we want to copy existing groups and arrays into a new storage backend:
 
-```python exec="true" session="quickstart" source="above" result="html"
+```python exec="true" session="quickstart" source="above" result="code"
 
 # Create nested groups and add arrays
 root = zarr.group("data/example-4.zarr", attributes={'name': 'root'})
@@ -122,7 +124,7 @@ assert new_root.attrs == root.attrs
 Note that [`zarr.create_hierarchy`][] will only initialize arrays and groups -- copying array data must
 be done in a separate step.
 
-### Persistent Storage
+## Persistent Storage
 
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
 utilized a [`zarr.storage.LocalStore`][], a number of other storage options are available.
@@ -150,7 +152,7 @@ store.close()
 
 To open an existing array from a ZIP file:
 
-```python exec="true" session="quickstart" source="above" result="code"
+```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Open the ZipStore in read-only mode
 store = zarr.storage.ZipStore("data/example-5.zip", read_only=True)
@@ -163,7 +165,9 @@ print(z[:])
 
 Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google
 Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io) or
-[gcsfs](https://gcsfs.readthedocs.io):
+[gcsfs](https://gcsfs.readthedocs.io). Remote storage support requires the `remote`
+optional dependencies (`pip install "zarr[remote]"`) as well as a filesystem library
+for your storage service, such as `s3fs` for S3:
 
 ```python test="true" session="s3demo" markers="s3" source="above"
 import zarr
@@ -175,4 +179,13 @@ z = zarr.create_array(
 z[:, :] = np.random.random((100, 100))
 ```
 
-Read more about Zarr's storage options in the [User Guide](user-guide/index.md).
+See the [Remote Store](user-guide/storage.md#remote-store) section of the storage guide
+for more detail, including how to configure the underlying filesystem with `storage_options`.
+
+## Next steps
+
+This page only scratches the surface. Continue with the [User Guide](user-guide/index.md), in particular:
+
+- **[Arrays](user-guide/arrays.md)** - creating, reading, and writing arrays in depth
+- **[Groups](user-guide/groups.md)** - organizing arrays into hierarchies
+- **[Storage](user-guide/storage.md)** - the full range of local, remote, and in-memory storage options

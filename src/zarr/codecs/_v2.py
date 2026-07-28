@@ -23,7 +23,7 @@ class V2Codec(ArrayBytesCodec):
 
     is_fixed_size = False
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -31,14 +31,14 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
+            chunk = self.compressor.decode(cdata)
         else:
             chunk = cdata
 
         # apply filters
         if self.filters:
             for f in reversed(self.filters):
-                chunk = await asyncio.to_thread(f.decode, chunk)
+                chunk = f.decode(chunk)
 
         # view as numpy array with correct dtype
         chunk = ensure_ndarray_like(chunk)
@@ -70,7 +70,7 @@ class V2Codec(ArrayBytesCodec):
 
         return get_ndbuffer_class().from_ndarray_like(chunk)
 
-    async def _encode_single(
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -83,18 +83,32 @@ class V2Codec(ArrayBytesCodec):
         # apply filters
         if self.filters:
             for f in self.filters:
-                chunk = await asyncio.to_thread(f.encode, chunk)
+                chunk = f.encode(chunk)
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError("cannot write object array without object codec")
 
         # compress
         if self.compressor:
-            cdata = await asyncio.to_thread(self.compressor.encode, chunk)
+            cdata = self.compressor.encode(chunk)
         else:
             cdata = chunk
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
+
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
+
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return await asyncio.to_thread(self._encode_sync, chunk_array, chunk_spec)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

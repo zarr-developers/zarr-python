@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, gpu
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype, gpu
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
@@ -75,6 +75,108 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
 
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
+
+    @pytest.mark.parametrize("method", ["set", "set_sync", "set_if_not_exists"])
+    async def test_set_does_not_retain_caller_buffer(self, store: MemoryStore, method: str) -> None:
+        """Writing a buffer must not alias the caller's memory.
+
+        MemoryStore keeps whatever it is handed alive in a dict, so retaining
+        the caller's buffer lets a later mutation of that buffer rewrite data
+        already committed to the store.
+        """
+        source = np.frombuffer(bytearray(b"\x01\x02\x03\x04"), dtype="B")
+        value = cpu.Buffer.from_array_like(source)
+
+        if method == "set_sync":
+            store.set_sync("k", value)
+        else:
+            await getattr(store, method)("k", value)
+
+        source[:] = 0xF  # mutate the caller's memory after the write
+        stored = await store.get("k", prototype=default_buffer_prototype())
+        assert stored is not None
+        assert stored.to_bytes() == b"\x01\x02\x03\x04"
+
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            "zarr.core.codec_pipeline.BatchedCodecPipeline",
+            "zarr.core.codec_pipeline.FusedCodecPipeline",
+        ],
+    )
+    @pytest.mark.parametrize(("shape", "chunks"), [((30,), (10,)), ((8,), (4,)), ((4,), (4,))])
+    def test_write_does_not_alias_source_array(
+        self, pipeline: str, shape: tuple[int], chunks: tuple[int]
+    ) -> None:
+        """Mutating the source array after a write must not corrupt stored chunks.
+
+        Without compression the encoded buffer is a zero-copy view of the
+        caller's array all the way down to the store, so this covers both the
+        single-chunk and multi-chunk write paths.
+        """
+        with zarr.config.set({"codec_pipeline.path": pipeline}):
+            array = zarr.create_array(
+                store=MemoryStore(), shape=shape, chunks=chunks, dtype="i4", compressors=None
+            )
+            source = np.arange(shape[0], dtype="i4")
+            expected = source.copy()
+            array[:] = source
+            source[:] = -1
+
+            np.testing.assert_array_equal(array[:], expected)
+
+    # --- byte-range-write tests: disabled ---
+    # Byte-range-write support (set_range / set_range_sync / SupportsSetRange)
+    # was removed from this PR pending a decision on the store interface. These
+    # tests are known-good and kept commented out to restore once that lands.
+    # def test_supports_set_range(self, store: MemoryStore) -> None:
+    #     """MemoryStore should implement SupportsSetRange."""
+    #     assert isinstance(store, SupportsSetRange)
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # async def test_set_range(
+    #     self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range should overwrite bytes at the given offset."""
+    #     await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+    #     await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = await store.get("test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # def test_set_range_sync(
+    #     self, store: MemoryStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range_sync should overwrite bytes at the given offset."""
+    #     store._is_open = True
+    #     store._store_dict["test/key"] = cpu.Buffer.from_bytes(b"AAAAAAAAAA")
+    #     store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
 
 
 # TODO: fix this warning

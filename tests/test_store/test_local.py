@@ -108,6 +108,58 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         ):
             await store2.move(destination)
 
+    # --- byte-range-write tests: disabled ---
+    # Byte-range-write support (set_range / set_range_sync / SupportsSetRange)
+    # was removed from this PR pending a decision on the store interface. These
+    # tests are known-good and kept commented out to restore once that lands.
+    # def test_supports_set_range(self, store: LocalStore) -> None:
+    #     """LocalStore should implement SupportsSetRange."""
+    #     assert isinstance(store, SupportsSetRange)
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # async def test_set_range(
+    #     self, store: LocalStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range should overwrite bytes at the given offset."""
+    #     await store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA"))
+    #     await store.set_range("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = await store.get("test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
+    #
+    # @pytest.mark.parametrize(
+    #     ("start", "patch", "expected"),
+    #     [
+    #         (0, b"XX", b"XXAAAAAAAA"),
+    #         (3, b"XX", b"AAAXXAAAAA"),
+    #         (8, b"XX", b"AAAAAAAAXX"),
+    #         (0, b"ZZZZZZZZZZ", b"ZZZZZZZZZZ"),
+    #         (5, b"B", b"AAAAABAAAA"),
+    #         (0, b"BCDE", b"BCDEAAAAAA"),
+    #     ],
+    #     ids=["start", "middle", "end", "full-overwrite", "single-byte", "multi-byte-start"],
+    # )
+    # def test_set_range_sync(
+    #     self, store: LocalStore, start: int, patch: bytes, expected: bytes
+    # ) -> None:
+    #     """set_range_sync should overwrite bytes at the given offset."""
+    #     sync(store.set("test/key", cpu.Buffer.from_bytes(b"AAAAAAAAAA")))
+    #     store.set_range_sync("test/key", cpu.Buffer.from_bytes(patch), start=start)
+    #     result = store.get_sync(key="test/key", prototype=cpu.buffer_prototype)
+    #     assert result is not None
+    #     assert result.to_bytes() == expected
+
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
