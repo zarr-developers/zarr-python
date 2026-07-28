@@ -69,6 +69,15 @@ Pass `background=True` to start the server in a daemon thread and return
 immediately.  The returned `BackgroundServer`
 can be used as a context manager for automatic shutdown:
 
+The example below also *reads back* over HTTP, which is a client-side
+concern: `zarr.open_array(server.url)` goes through `FsspecStore`, which needs
+an HTTP-capable fsspec that `zarr-server` does not pull in.
+
+```bash
+pip install "fsspec[http]"
+```
+
+
 ```python
 import numpy as np
 
@@ -136,12 +145,16 @@ A `PUT` request stores the request body at the given path and returns 204 (No Co
 `serve_node`, and fetches the `zarr.json` metadata document and a raw chunk
 using `httpx`.
 
-```bash
-python examples/serve.py
-```
-
-Or run with uv:
+Running it with uv is the simplest route — the script declares its own
+dependencies inline, so uv installs them for you:
 
 ```bash
 uv run examples/serve.py
+```
+
+To run it with a plain interpreter, install its `httpx` dependency first:
+
+```bash
+pip install httpx
+python examples/serve.py
 ```
