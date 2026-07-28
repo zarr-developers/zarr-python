@@ -1,7 +1,7 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
-#   "zarr[server] @ git+https://github.com/zarr-developers/zarr-python.git@main",
+#   "zarr-server @ git+https://github.com/zarr-developers/zarr-python.git@main#subdirectory=packages/zarr-server",
 #   "httpx",
 # ]
 # ///
@@ -17,10 +17,10 @@ import json
 
 import httpx
 import numpy as np
-
 import zarr
-from zarr.experimental.serve import serve_node
 from zarr.storage import MemoryStore
+
+from zarr_server import serve_node
 
 # -- create an array --------------------------------------------------------
 store = MemoryStore()

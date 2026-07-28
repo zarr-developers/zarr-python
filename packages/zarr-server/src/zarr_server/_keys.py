@@ -17,11 +17,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON
+ZARR_JSON = "zarr.json"
+ZARRAY_JSON = ".zarray"
+ZGROUP_JSON = ".zgroup"
+ZATTRS_JSON = ".zattrs"
+ZMETADATA_V2_JSON = ".zmetadata"
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array
-    from zarr.core.group import Group
+    from zarr import Array, Group
 
 _METADATA_KEYS_V3 = frozenset({ZARR_JSON})
 _METADATA_KEYS_V2 = frozenset({ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON})
@@ -59,30 +62,34 @@ def decode_chunk_key(array: Array[Any], key: str) -> tuple[int, ...] | None:
     tuple of int, or None
         The decoded coordinates, or ``None`` if *key* is not a valid chunk key.
     """
-    from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-    from zarr.core.metadata.v2 import ArrayV2Metadata
-
     try:
-        if isinstance(array.metadata, ArrayV2Metadata):
+        if array.metadata.zarr_format == 2:
             parts = key.split(array.metadata.dimension_separator)
             return tuple(int(p) for p in parts)
 
         encoding = array.metadata.chunk_key_encoding
-        if isinstance(encoding, DefaultChunkKeyEncoding):
+        separator = getattr(encoding, "separator", "/")
+        if encoding.name == "default":
             # Default v3 keys have the form "c<sep>0<sep>1<sep>2".
-            prefix = "c" + encoding.separator
+            prefix = "c" + separator
             if key == "c":
                 return ()
             if not key.startswith(prefix):
                 return None
-            return tuple(int(p) for p in key[len(prefix) :].split(encoding.separator))
-        if isinstance(encoding, V2ChunkKeyEncoding):
-            return tuple(int(p) for p in key.split(encoding.separator))
+            return tuple(int(p) for p in key[len(prefix) :].split(separator))
+        if encoding.name == "v2":
+            return tuple(int(p) for p in key.split(separator))
 
         # Unknown encoding — fall back to the encoding's own decode.
         return encoding.decode_chunk_key(key)
     except (ValueError, TypeError, NotImplementedError):
         return None
+
+
+def _shard_grid_shape(array: Array[Any]) -> tuple[int, ...]:
+    """Shape of the shard grid, falling back to the chunk grid when unsharded."""
+    shard_shape = array.shards if array.shards is not None else array.chunks
+    return tuple(-(-s // c) for s, c in zip(array.shape, shard_shape, strict=True))
 
 
 def is_valid_chunk_key(array: Array[Any], key: str) -> bool:
@@ -106,7 +113,7 @@ def is_valid_chunk_key(array: Array[Any], key: str) -> bool:
     coords = decode_chunk_key(array, key)
     if coords is None:
         return False
-    grid = array._shard_grid_shape
+    grid = _shard_grid_shape(array)
     if len(coords) != len(grid):
         return False
     return all(0 <= c < g for c, g in zip(coords, grid, strict=True))
@@ -153,7 +160,7 @@ def is_valid_node_key(node: Array[Any] | Group, key: str) -> bool:
     -------
     bool
     """
-    from zarr.core.array import Array
+    from zarr import Array
 
     if isinstance(node, Array):
         return is_valid_array_key(node, key)

@@ -87,6 +87,19 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "truthy-iterable"]
 
+[tool.numpydoc_validation]
+# Mirrors the root zarr-python config so moved docstrings (written for that
+# config) don't trip stricter defaults just because this package has its own
+# pyproject.toml. See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks
+checks = [
+    "GL10",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
+
 [tool.towncrier]
 # Fragments for this package live alongside the package source, separate
 # from the parent zarr-python `changes/` directory, so a PR touching only

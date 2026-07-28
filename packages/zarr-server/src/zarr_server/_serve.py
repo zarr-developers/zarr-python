@@ -5,18 +5,17 @@ import time
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, overload
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
-from zarr.core.buffer import cpu
-from zarr.core.keys import is_valid_node_key
+from zarr.buffer import cpu
+
+from zarr_server._keys import is_valid_node_key
 
 if TYPE_CHECKING:
     import uvicorn
     from starlette.applications import Starlette
     from starlette.requests import Request
     from starlette.responses import Response
-
+    from zarr import Array, Group
     from zarr.abc.store import ByteRequest, Store
-    from zarr.core.array import Array
-    from zarr.core.group import Group
 
 __all__ = [
     "BackgroundServer",
@@ -170,15 +169,9 @@ def _make_starlette_app(
     cors_options: CorsOptions | None = None,
 ) -> Starlette:
     """Create a Starlette app with the request handler."""
-    try:
-        from starlette.applications import Starlette
-        from starlette.middleware.cors import CORSMiddleware
-        from starlette.routing import Route
-    except ImportError as e:
-        raise ImportError(
-            "The zarr server requires the 'starlette' package. "
-            "Install it with: pip install zarr[server]"
-        ) from e
+    from starlette.applications import Starlette
+    from starlette.middleware.cors import CORSMiddleware
+    from starlette.routing import Route
 
     if methods is None:
         methods = {"GET"}
@@ -204,13 +197,7 @@ def _start_server(
     background: bool,
 ) -> BackgroundServer | None:
     """Create a uvicorn server for *app* and either block or run in a daemon thread."""
-    try:
-        import uvicorn
-    except ImportError as e:
-        raise ImportError(
-            "The zarr server requires the 'uvicorn' package. "
-            "Install it with: pip install zarr[server]"
-        ) from e
+    import uvicorn
 
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)

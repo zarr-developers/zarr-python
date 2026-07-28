@@ -1,24 +1,27 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
-
 import zarr
-from zarr.core.buffer import cpu
-from zarr.core.sync import sync
+from starlette.testclient import TestClient
+from zarr.buffer import cpu
+
+from zarr_server._serve import CorsOptions, _parse_range_header, node_app, store_app
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
     from zarr.abc.store import Store
-    from zarr.core.common import ZarrFormat
 
-pytest.importorskip("starlette")
-pytest.importorskip("httpx")
+ZarrFormat = Literal[2, 3]
 
-from starlette.testclient import TestClient
 
-from zarr.experimental.serve import CorsOptions, _parse_range_header, node_app, store_app
+def sync[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run a store coroutine to completion (tests use MemoryStore only)."""
+    return asyncio.run(coro)
 
 
 @pytest.fixture
@@ -599,7 +602,7 @@ class TestServeBackground:
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr.experimental.serve import serve_store
+        from zarr_server import serve_store
 
         buf = cpu.buffer_prototype.buffer.from_bytes(b"hello")
         sync(store.set("key", buf))
@@ -619,7 +622,7 @@ class TestServeBackground:
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr.experimental.serve import serve_node
+        from zarr_server import serve_node
 
         arr = zarr.create_array(store, shape=(4,), chunks=(2,), dtype="f8")
         arr[:] = np.arange(4, dtype="f8")
