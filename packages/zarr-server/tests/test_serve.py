@@ -693,6 +693,52 @@ class TestPathTraversalProtection:
         assert response.status_code == 404
         assert not pwned.exists()
 
+    @pytest.mark.parametrize(
+        "encoded_path",
+        [
+            "/..%5C..%5Cwin.ini",
+            "/%5CWindows%5Cwin.ini",
+            "/C:/Windows/win.ini",
+            "/C:%5CWindows",
+            "/%5C%5Chost%5Cshare%5Cx",
+        ],
+    )
+    def test_backslash_and_drive_traversal_variants_return_404(self, encoded_path: str) -> None:
+        """Backslash is a path separator on Windows, and a drive-qualified or
+        root-relative key discards a filesystem store's root entirely on
+        Windows, even though POSIX only ever treats '/' as a separator. The
+        guard must reject these purely from the string, before the store is
+        ever touched -- verified here by making the store raise if called."""
+        from unittest.mock import AsyncMock
+
+        from zarr.storage import MemoryStore
+
+        store = MemoryStore()
+        store.get = AsyncMock(side_effect=AssertionError("store.get should not be called"))  # type: ignore[method-assign]
+        store.set = AsyncMock(side_effect=AssertionError("store.set should not be called"))  # type: ignore[method-assign]
+
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        response = client.get(encoded_path)
+        assert response.status_code == 404
+
+    def test_put_backslash_traversal_returns_404(self) -> None:
+        """A PUT to a backslash-encoded '..\\..\\pwned.txt' must be rejected
+        before the store is touched, mirroring the GET case above."""
+        from unittest.mock import AsyncMock
+
+        from zarr.storage import MemoryStore
+
+        store = MemoryStore()
+        store.set = AsyncMock(side_effect=AssertionError("store.set should not be called"))  # type: ignore[method-assign]
+
+        app = store_app(store, methods={"GET", "PUT"})
+        client = TestClient(app)
+
+        response = client.put("/..%5C..%5Cpwned.txt", content=b"pwned")
+        assert response.status_code == 404
+
 
 def _get_free_port() -> int:
     """Return an unused TCP port on localhost."""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ntpath
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, overload
@@ -144,8 +145,13 @@ async def _handle_request(request: Request) -> Response:
     # Starlette percent-decodes path params, so "..%2f" arrives as a literal
     # ".." segment and "%2f"-encoded leading slashes arrive as an empty leading
     # segment (making the key absolute, which escapes a filesystem store root).
-    # Legitimate zarr keys never contain empty, ".", or ".." segments.
-    if any(segment in ("", ".", "..") for segment in path.split("/")):
+    # Backslashes are separators on Windows and drive-qualified or
+    # root-relative keys discard a filesystem store's root entirely, so fold
+    # separators before checking segments -- mirroring zarr's normalize_path
+    # (src/zarr/storage/_utils.py) plus a drive check it doesn't need. Legitimate
+    # zarr keys never contain empty, ".", or ".." segments, or a drive letter.
+    segments = path.replace("\\", "/").split("/")
+    if any(segment in ("", ".", "..") for segment in segments) or ntpath.splitdrive(path)[0]:
         return Response(status_code=404)
 
     # If serving a node, validate the key before touching the store.
