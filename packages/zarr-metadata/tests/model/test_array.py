@@ -5,7 +5,7 @@ import dataclasses
 import json
 from collections import UserDict
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import pytest
 from typing_extensions import Unpack
@@ -62,6 +62,25 @@ def test_guards_exported_from_package() -> None:
     ):
         assert name in zarr_metadata.model.__all__
         assert hasattr(zarr_metadata.model, name)
+
+
+def test_store_key_pairs_exported_from_package() -> None:
+    """Each store-key constant is exported together with its Literal type
+    alias, and the pair cannot drift apart."""
+    import zarr_metadata.model as m
+
+    pairs = [
+        ("ARRAY_METADATA_STORE_KEY_V2", "ZarrV2ArrayMetadataStoreKey"),
+        ("ARRAY_METADATA_STORE_KEY_V3", "ZarrV3ArrayMetadataStoreKey"),
+        ("ATTRIBUTES_STORE_KEY_V2", "ZarrV2AttributesStoreKey"),
+        ("GROUP_METADATA_STORE_KEY_V2", "ZarrV2GroupMetadataStoreKey"),
+        ("GROUP_METADATA_STORE_KEY_V3", "ZarrV3GroupMetadataStoreKey"),
+        ("CONSOLIDATED_METADATA_STORE_KEY_V2", "ZarrV2ConsolidatedMetadataStoreKey"),
+    ]
+    for const_name, alias_name in pairs:
+        assert const_name in m.__all__
+        assert alias_name in m.__all__
+        assert (getattr(m, const_name),) == get_args(getattr(m, alias_name))
 
 
 def test_validation_diagnostics_exported_from_package() -> None:

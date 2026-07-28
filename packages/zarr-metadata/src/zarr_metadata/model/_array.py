@@ -321,7 +321,9 @@ class ZarrV3ArrayMetadata:
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V3))
 
-    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
         return {ARRAY_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
 
 
@@ -481,12 +483,16 @@ class ZarrV2ArrayMetadata:
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 
-    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        out = {ARRAY_METADATA_STORE_KEY_V2: dump_store_json(zarray, indent=indent)}
+        out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
+            ARRAY_METADATA_STORE_KEY_V2: dump_store_json(zarray, indent=indent)
+        }
         if self.attributes is not UNSET:
             out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
         return out

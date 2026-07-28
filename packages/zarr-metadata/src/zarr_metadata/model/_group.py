@@ -31,6 +31,7 @@ from zarr_metadata.model._validation import (
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
+    from zarr_metadata.model._array import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
     from zarr_metadata.v3.array import ZarrV3ExtensionField
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
@@ -186,7 +187,9 @@ class ZarrV3GroupMetadata:
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3GroupMetadata:
         return cls.from_json(load_store_json(mapping, GROUP_METADATA_STORE_KEY_V3))
 
-    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
         return {GROUP_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
 
 
@@ -338,12 +341,16 @@ class ZarrV2GroupMetadata:
             return cls.from_json({**zgroup, "attributes": zattrs})
         return cls.from_json(zgroup)
 
-    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zgroup`
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file.
         zgroup = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        out = {GROUP_METADATA_STORE_KEY_V2: dump_store_json(zgroup, indent=indent)}
+        out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
+            GROUP_METADATA_STORE_KEY_V2: dump_store_json(zgroup, indent=indent)
+        }
         if self.attributes is not UNSET:
             out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
         return out
@@ -429,5 +436,7 @@ class ZarrV2ConsolidatedMetadata:
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ConsolidatedMetadata:
         return cls.from_json(load_store_json(mapping, CONSOLIDATED_METADATA_STORE_KEY_V2))
 
-    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
         return {CONSOLIDATED_METADATA_STORE_KEY_V2: dump_store_json(self.to_json(), indent=indent)}
