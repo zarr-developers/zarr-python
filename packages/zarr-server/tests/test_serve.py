@@ -623,19 +623,30 @@ class TestPathTraversalProtection:
         assert not pwned.exists()
 
     @pytest.mark.parametrize(
-        "encoded_path",
+        ("encoded_path", "climb_depth"),
         [
-            "/..%2fsecret.txt",
-            "/%2e%2e/secret.txt",
-            "/..%2f..%2fsecret.txt",
+            ("/..%2fsecret.txt", 1),
+            ("/%2e%2e/secret.txt", 1),
+            ("/..%2f..%2fsecret.txt", 2),
         ],
     )
-    def test_encoded_traversal_variants_return_404(self, tmp_path: Any, encoded_path: str) -> None:
-        """Various percent-encoded traversal spellings must all be rejected."""
+    def test_encoded_traversal_variants_return_404(
+        self, tmp_path: Any, encoded_path: str, climb_depth: int
+    ) -> None:
+        """Various percent-encoded traversal spellings must all be rejected.
+
+        The store root is nested exactly ``climb_depth`` directories below
+        ``tmp_path`` and the secret lives at ``tmp_path/secret.txt`` -- the
+        exact location each traversal's ".." segments resolve to -- so a
+        case with a missing or deleted guard would actually reach the
+        secret instead of just returning 404 for an unrelated reason (e.g.
+        a two-level climb landing on a directory that happens to be empty).
+        """
         from zarr.storage import LocalStore
 
-        root = tmp_path / "store_root"
-        root.mkdir()
+        parts = [f"level{i}" for i in range(climb_depth - 1)] + ["store_root"]
+        root = tmp_path.joinpath(*parts)
+        root.mkdir(parents=True)
         secret = tmp_path / "secret.txt"
         secret.write_text("top secret contents")
 
