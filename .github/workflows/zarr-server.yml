@@ -41,10 +41,13 @@ jobs:
           enable-cache: true
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
-      - name: Sync test dependency group
-        run: uv sync --group test --python ${{ matrix.python-version }}
+      - name: Sync test dependency groups
+        # The docs group carries the deps the README examples need, so the
+        # test that reads a served array back with a zarr client runs here
+        # instead of silently skipping.
+        run: uv sync --group test --group docs --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --group test pytest tests
+        run: uv run --group test --group docs pytest tests
 
   ruff:
     name: ruff

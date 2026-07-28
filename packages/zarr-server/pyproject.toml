@@ -45,6 +45,13 @@ Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packag
 
 [dependency-groups]
 test = ["pytest", "httpx", "httpx2"]
+docs = [
+    # Optional dependencies to run the README examples. Reading a served
+    # array back with `zarr.open_array(url)` goes through FsspecStore, which
+    # needs an HTTP-capable fsspec; `examples/serve.py` uses httpx.
+    "fsspec[http]",
+    "httpx",
+]
 
 # Dev-only: resolve zarr from the repo root so package tests run against
 # in-repo zarr. Affects uv resolution only, not published metadata.

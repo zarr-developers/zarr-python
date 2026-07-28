@@ -830,6 +830,33 @@ class TestServeBackground:
             assert response.status_code == 200
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestReadBackWithZarrClient:
+    """The round-trip the README leads with: serve an array, then open it
+    with a zarr client over HTTP.
+
+    This needs an HTTP-capable fsspec, which is a client-side concern that
+    `zarr-server` deliberately does not depend on -- it lives in the `docs`
+    dependency group, alongside the other deps the README examples need.
+    """
+
+    def test_served_array_reads_back_identically(self, store: Store) -> None:
+        """`zarr.open_array(server.url)` should return the same data that was
+        served, so the README's headline example stays true."""
+        pytest.importorskip("fsspec")
+        pytest.importorskip("aiohttp")
+
+        from zarr_server import serve_node
+
+        expected = np.arange(100, dtype="uint8").reshape(10, 10)
+        arr = zarr.create_array(store, data=expected, chunks=(5, 5), write_data=True)
+
+        port = _get_free_port()
+        with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
+            remote = zarr.open_array(server.url, mode="r")
+            np.testing.assert_array_equal(remote[:], expected)
+
+
 class TestBackgroundServerBoundedShutdown:
     """BackgroundServer.shutdown() must not hang forever on a slow or stuck
     in-flight request."""
