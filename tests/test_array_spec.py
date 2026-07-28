@@ -80,7 +80,7 @@ SPECS = [
 ]
 
 
-# Mutations: each mutate kwargs to an uneqal version
+# Mutations: each mutate kwargs to an unequal version
 def _grow_shape(kw: dict[str, Any]) -> dict[str, Any]:
     return {"shape": (*kw.get("shape", (4, 4)), 1)}
 
