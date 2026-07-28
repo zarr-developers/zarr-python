@@ -1,5 +1,7 @@
 """Test that the curated front-door names are accessible from the top-level zarr_metadata package."""
 
+import importlib
+import pkgutil
 import re
 from typing import get_args
 
@@ -23,12 +25,12 @@ EXPECTED = [
     # Category A — metadata-document types
     "ZarrV2ArrayMetadataJSON",
     "ZarrV2ArrayMetadataJSONPartial",
-    "ZArrayMetadata",
+    "ZarrV2ZArrayJSON",
     "ZarrV2GroupMetadataJSON",
     "ZarrV2GroupMetadataJSONPartial",
-    "ZGroupMetadata",
+    "ZarrV2ZGroupJSON",
     "ZarrV2ConsolidatedMetadataJSON",
-    "ZAttrsMetadata",
+    "ZarrV2ZAttrsJSON",
     "ZarrV2CodecMetadata",
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ArrayMetadataJSONPartial",
@@ -215,6 +217,109 @@ def test_all_is_grouped_and_unique() -> None:
     ranks = [_group_rank(n) for n in zm.__all__]
     assert ranks == sorted(ranks), "`__all__` groups out of order (SCREAMING, TitleCase, dunder)"
     assert len(zm.__all__) == len(set(zm.__all__))
+
+
+# --- naming grammar ---------------------------------------------------------
+
+# Core document/model names: the format version comes first (`ZarrV2` /
+# `ZarrV3`), then the CamelCase entity, then an optional role suffix
+# (`JSON`, `JSONPartial`, `Partial`, `StoreKey`) — validated loosely here
+# because `JSON` decomposes into single-letter words under any strict
+# word-splitting regex.
+_CORE_NAME = re.compile(r"^ZarrV[23](?:[A-Z][a-z0-9]*)+$")
+
+# Zarr v3 extension-entity names: the registered entity comes first (`Blosc`,
+# `Uint8`, ... — `V2` here is the *entity name* of the v2-compatibility chunk
+# key encoding, not a format-version marker, which is always spelled
+# `ZarrV2`/`ZarrV3`), followed by exactly one role suffix.
+_EXTENSION_ROLES = (
+    "CodecConfiguration",
+    "CodecMetadata",
+    "CodecName",
+    "CodecObject",
+    "ChunkGridConfiguration",
+    "ChunkGridMetadata",
+    "ChunkGridName",
+    "ChunkGridObject",
+    "ChunkKeyEncodingConfiguration",
+    "ChunkKeyEncodingMetadata",
+    "ChunkKeyEncodingName",
+    "ChunkKeyEncodingObject",
+    "ChunkKeyEncodingSeparator",
+    "DataTypeName",
+    "FillValue",
+    "Configuration",
+    "Component",
+)
+_EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
+
+# Standalone vocabulary: scalar Literal aliases, structural helper shapes, and
+# the validation diagnostics. Closed by hand — a new name belongs here only if
+# it is genuinely role-less; anything document- or entity-shaped must fit the
+# grammars above instead.
+_STANDALONE_VOCAB = frozenset(
+    {
+        "Base64Bytes",
+        "BloscCName",
+        "BloscShuffle",
+        "CastOutOfRangeMode",
+        "CastRoundingMode",
+        "Endianness",
+        "HexFloat16",
+        "HexFloat32",
+        "HexFloat64",
+        "JSONValue",
+        "MetadataValidationError",
+        "NumpyDatetime64",
+        "NumpyTimeUnit",
+        "NumpyTimedelta64",
+        "ProblemKind",
+        "RectilinearDimSpec",
+        "ScalarMap",
+        "ScalarMapEntry",
+        "ShardingIndexLocation",
+        "Struct",
+        "StructField",
+        "ValidationProblem",
+    }
+)
+
+
+def _public_type_names() -> set[tuple[str, str]]:
+    """Every (module, CamelCase name) pair exported via a public `__all__`."""
+    module_names = {"zarr_metadata"}
+    for info in pkgutil.walk_packages(zm.__path__, prefix="zarr_metadata."):
+        if not any(part.startswith("_") for part in info.name.split(".")[1:]):
+            module_names.add(info.name)
+    out: set[tuple[str, str]] = set()
+    for module_name in module_names:
+        module = importlib.import_module(module_name)
+        for name in getattr(module, "__all__", ()):
+            if name.startswith("_") or name.isupper() or name.islower():
+                continue
+            out.add((module_name, name))
+    return out
+
+
+def test_public_type_names_comply_with_naming_grammar() -> None:
+    """Every public type name parses against the package naming grammar:
+    version-first core names, entity-plus-role extension names, or the closed
+    standalone vocabulary."""
+    exported = _public_type_names()
+    violations = [
+        f"{module}.{name}"
+        for module, name in sorted(exported)
+        if name not in _STANDALONE_VOCAB
+        and not _CORE_NAME.match(name)
+        and not _EXTENSION_NAME.match(name)
+    ]
+    assert not violations, f"names outside the naming grammar: {violations}"
+
+
+def test_standalone_vocab_is_not_stale() -> None:
+    """Every allowlisted vocabulary name is still actually exported."""
+    exported_names = {name for _, name in _public_type_names()}
+    assert exported_names >= _STANDALONE_VOCAB
 
 
 def test_promoted_pairs_drift() -> None:

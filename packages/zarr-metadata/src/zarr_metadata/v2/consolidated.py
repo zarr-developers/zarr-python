@@ -10,9 +10,9 @@ from collections.abc import Mapping
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v2.array import ZArrayMetadata
-from zarr_metadata.v2.attributes import ZAttrsMetadata
-from zarr_metadata.v2.group import ZGroupMetadata
+from zarr_metadata.v2.array import ZarrV2ZArrayJSON
+from zarr_metadata.v2.attributes import ZarrV2ZAttrsJSON
+from zarr_metadata.v2.group import ZarrV2ZGroupJSON
 
 
 class ZarrV2ConsolidatedMetadataJSON(TypedDict):
@@ -24,9 +24,9 @@ class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     that path. The keys include the filename suffix, not just the node
     path; the value's shape is determined by which file the key points at:
 
-    - `<path>/.zarray` -> `ZArrayMetadata`
-    - `<path>/.zgroup` -> `ZGroupMetadata`
-    - `<path>/.zattrs` -> `ZAttrsMetadata`
+    - `<path>/.zarray` -> `ZarrV2ZArrayJSON`
+    - `<path>/.zgroup` -> `ZarrV2ZGroupJSON`
+    - `<path>/.zattrs` -> `ZarrV2ZAttrsJSON`
 
     The TypedDict cannot discriminate the value shape on the key suffix
     at the type level; consumers should narrow at runtime by inspecting
@@ -34,7 +34,7 @@ class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     """
 
     zarr_consolidated_format: int
-    metadata: Mapping[str, ZArrayMetadata | ZGroupMetadata | ZAttrsMetadata]
+    metadata: Mapping[str, ZarrV2ZArrayJSON | ZarrV2ZGroupJSON | ZarrV2ZAttrsJSON]
 
 
 __all__ = [

@@ -11,14 +11,14 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 
 
-class ZGroupMetadata(TypedDict):
+class ZarrV2ZGroupJSON(TypedDict):
     """
     On-disk `.zgroup` file content.
 
     Strict shape of the JSON document persisted at `<path>/.zgroup` for
     a v2 group. The spec defines exactly one field. User attributes live
     in a sibling `.zattrs` file and are NOT part of this type; see
-    `ZAttrsMetadata`.
+    `ZarrV2ZAttrsJSON`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -34,8 +34,8 @@ class ZarrV2GroupMetadataJSON(TypedDict):
     and `.zattrs` (user attributes). On disk these are persisted as two
     separate files; this type folds them so a single TypedDict represents
     the complete in-memory state of a v2 group node. Consumers that read
-    or write the real on-disk files should use `ZGroupMetadata` (strict
-    `.zgroup`) plus `ZAttrsMetadata` directly.
+    or write the real on-disk files should use `ZarrV2ZGroupJSON` (strict
+    `.zgroup`) plus `ZarrV2ZAttrsJSON` directly.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -75,7 +75,7 @@ class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False):
 
 
 __all__ = [
-    "ZGroupMetadata",
     "ZarrV2GroupMetadataJSON",
     "ZarrV2GroupMetadataJSONPartial",
+    "ZarrV2ZGroupJSON",
 ]

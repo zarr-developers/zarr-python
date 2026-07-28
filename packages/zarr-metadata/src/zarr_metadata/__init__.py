@@ -22,20 +22,20 @@ from zarr_metadata.model import (
 from zarr_metadata.v2.array import (
     ARRAY_DIMENSION_SEPARATOR_V2,
     ARRAY_ORDER_V2,
-    ZArrayMetadata,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
     ZarrV2ArrayMetadataJSONPartial,
     ZarrV2ArrayOrder,
     ZarrV2DataTypeMetadata,
+    ZarrV2ZArrayJSON,
 )
-from zarr_metadata.v2.attributes import ZAttrsMetadata
+from zarr_metadata.v2.attributes import ZarrV2ZAttrsJSON
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
 from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataJSON,
     ZarrV2GroupMetadataJSONPartial,
-    ZGroupMetadata,
+    ZarrV2ZGroupJSON,
 )
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import (
@@ -338,9 +338,6 @@ __all__ = [
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingSeparator",
     "ValidationProblem",
-    "ZArrayMetadata",
-    "ZAttrsMetadata",
-    "ZGroupMetadata",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataJSON",
@@ -355,6 +352,9 @@ __all__ = [
     "ZarrV2GroupMetadataJSON",
     "ZarrV2GroupMetadataJSONPartial",
     "ZarrV2GroupMetadataPartial",
+    "ZarrV2ZArrayJSON",
+    "ZarrV2ZAttrsJSON",
+    "ZarrV2ZGroupJSON",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ArrayMetadataJSONPartial",

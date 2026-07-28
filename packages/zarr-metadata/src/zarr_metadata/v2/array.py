@@ -55,13 +55,13 @@ ARRAY_DIMENSION_SEPARATOR_V2: Final = (".", "/")
 """Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
 
 
-class ZArrayMetadata(TypedDict):
+class ZarrV2ZArrayJSON(TypedDict):
     """
     On-disk `.zarray` file content.
 
     Strict shape of the JSON document persisted at `<path>/.zarray` for
     a v2 array. User attributes live in a sibling `.zattrs` file and are
-    NOT part of this type; see `ZAttrsMetadata`.
+    NOT part of this type; see `ZarrV2ZAttrsJSON`.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -87,7 +87,7 @@ class ZarrV2ArrayMetadataJSON(TypedDict):
     `attributes` field so a single TypedDict represents the complete
     in-memory state of a v2 array node. Consumers that read or write a
     real `.zarray` file should split / merge `attributes` accordingly,
-    or use `ZArrayMetadata` (strict on-disk) plus `ZAttrsMetadata` directly.
+    or use `ZarrV2ZArrayJSON` (strict on-disk) plus `ZarrV2ZAttrsJSON` directly.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
@@ -152,10 +152,10 @@ class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False):
 __all__ = [
     "ARRAY_DIMENSION_SEPARATOR_V2",
     "ARRAY_ORDER_V2",
-    "ZArrayMetadata",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadataJSON",
     "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ArrayOrder",
     "ZarrV2DataTypeMetadata",
+    "ZarrV2ZArrayJSON",
 ]
