@@ -337,6 +337,35 @@ class TestWriteViaPut:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestMethodValidation:
+    """Only the methods the handler implements may be served."""
+
+    def test_supported_methods_are_served(self, store: Store) -> None:
+        """GET, PUT and HEAD each behave as their verb implies."""
+        app = store_app(store, methods={"GET", "PUT", "HEAD"})
+        client = TestClient(app)
+
+        assert client.put("/zarr.json", content=b'{"a":1}').status_code == 204
+        assert client.get("/zarr.json").content == b'{"a":1}'
+
+        # HEAD reports the same status as GET but carries no body.
+        head = client.head("/zarr.json")
+        assert head.status_code == 200
+        assert head.content == b""
+
+    @pytest.mark.parametrize("method", ["DELETE", "POST", "PATCH", "OPTIONS", "TRACE"])
+    def test_unsupported_method_raises(self, store: Store, method: str) -> None:
+        """A verb the handler cannot implement is rejected when the app is
+        built, rather than silently answering as if it were a GET."""
+        for build in (
+            lambda: store_app(store, methods={"GET", method}),  # type: ignore[arg-type]
+            lambda: node_app(zarr.open_group(store, mode="a"), methods={"GET", method}),  # type: ignore[arg-type]
+        ):
+            with pytest.raises(ValueError, match=method):
+                build()
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 class TestStoreAppEdgeCases:
     """Edge cases for store_app."""
 

@@ -34,7 +34,15 @@ class CorsOptions(TypedDict):
     allow_methods: list[str]
 
 
-HTTPMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+HTTPMethod = Literal["GET", "PUT", "HEAD"]
+"""An HTTP method this server implements.
+
+`GET` and `HEAD` read a key; `PUT` writes one. Other verbs are not accepted:
+the handler has no behavior for them, so serving them would silently answer
+as if they were `GET`.
+"""
+
+_SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
 
 
 class BackgroundServer:
@@ -204,13 +212,26 @@ def _make_starlette_app(
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
 ) -> Starlette:
-    """Create a Starlette app with the request handler."""
+    """Create a Starlette app with the request handler.
+
+    Raises
+    ------
+    ValueError
+        If `methods` contains anything outside `GET`, `PUT`, and `HEAD`.
+    """
     from starlette.applications import Starlette
     from starlette.middleware.cors import CORSMiddleware
     from starlette.routing import Route
 
     if methods is None:
         methods = {"GET"}
+
+    unsupported = sorted(set(methods) - _SUPPORTED_METHODS)
+    if unsupported:
+        raise ValueError(
+            f"Unsupported HTTP method(s): {', '.join(unsupported)}. "
+            f"Accepted methods are {', '.join(sorted(_SUPPORTED_METHODS))}."
+        )
 
     app = Starlette(
         routes=[Route("/{path:path}", _handle_request, methods=list(methods))],
@@ -276,7 +297,8 @@ def store_app(
     store : Store
         The zarr store to serve.
     methods : set of HTTPMethod, optional
-        The HTTP methods to accept. Defaults to ``{"GET"}``.
+        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
+        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
 
@@ -316,7 +338,8 @@ def node_app(
     node : Array or Group
         The zarr array or group to serve.
     methods : set of HTTPMethod, optional
-        The HTTP methods to accept. Defaults to ``{"GET"}``.
+        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
+        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
 
@@ -382,7 +405,8 @@ def serve_store(
     port : int, optional
         The port to bind to. Defaults to ``8000``.
     methods : set of HTTPMethod, optional
-        The HTTP methods to accept. Defaults to ``{"GET"}``.
+        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
+        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     background : bool, optional
@@ -469,7 +493,8 @@ def serve_node(
     port : int, optional
         The port to bind to. Defaults to ``8000``.
     methods : set of HTTPMethod, optional
-        The HTTP methods to accept. Defaults to ``{"GET"}``.
+        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
+        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     background : bool, optional
