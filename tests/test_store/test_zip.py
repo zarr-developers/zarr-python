@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import os
+import pickle
 import shutil
 import tempfile
 import zipfile
@@ -186,6 +188,163 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+
+class TestZipStoreFileObj:
+    """ZipStore backed by an open binary file-like object instead of a path."""
+
+    @pytest.fixture
+    def zip_bytes(self, tmp_path: Path) -> bytes:
+        path = tmp_path / "data.zip"
+        store = ZipStore(path, mode="w")
+        zarr.create_array(store, data=np.arange(10), chunks=(5,))
+        store.close()
+        return path.read_bytes()
+
+    def test_read_from_fileobj(self, zip_bytes: bytes) -> None:
+        # an existing archive can be read through any seekable binary reader
+        store = ZipStore(io.BytesIO(zip_bytes), mode="r")
+        array = zarr.open_array(store, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+        assert store.path is None
+
+    def test_write_to_fileobj(self) -> None:
+        # a writable file object receives the archive; the bytes it holds
+        # after close() are a complete, reopenable zip
+        buffer = io.BytesIO()
+        store = ZipStore(buffer, mode="w", read_only=False)
+        zarr.create_array(store, data=np.arange(4))
+        store.close()
+
+        roundtrip = ZipStore(io.BytesIO(buffer.getvalue()), mode="r")
+        array = zarr.open_array(roundtrip, mode="r")
+        assert np.array_equal(array[...], np.arange(4))
+
+    async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
+        # clear() requires a filesystem location, so it raises a clear error
+        # for file-object-backed stores
+        store = ZipStore(io.BytesIO(zip_bytes), mode="a", read_only=False)
+        store._sync_open()
+        with pytest.raises(NotImplementedError, match="clear.*file-like"):
+            await store.clear()
+
+    async def test_move_unsupported(self, zip_bytes: bytes) -> None:
+        # move() requires a filesystem location, so it raises a clear error
+        # for file-object-backed stores
+        store = ZipStore(io.BytesIO(zip_bytes), mode="a", read_only=False)
+        store._sync_open()
+        with pytest.raises(NotImplementedError, match="move.*file-like"):
+            await store.move("elsewhere.zip")
+
+    def test_invalid_file_object_rejected(self) -> None:
+        # objects without read/seek/tell are rejected at construction, not
+        # deep inside zipfile
+        with pytest.raises(TypeError, match="read/seek/tell"):
+            ZipStore(42, mode="r")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("mode", ["w", "a", "x"])
+    def test_non_iobase_reader_write_modes_rejected(self, zip_bytes: bytes, mode: str) -> None:
+        # readers that are not io.IOBase instances are adapted for reading
+        # only; write modes are rejected at construction with a clear error
+        class MinimalReader:
+            def __init__(self, data: bytes) -> None:
+                self._buffer = io.BytesIO(data)
+
+            def read(self, size: int, /) -> bytes:
+                return self._buffer.read(size)
+
+            def seek(self, pos: int, whence: int = 0, /) -> int:
+                return self._buffer.seek(pos, whence)
+
+            def tell(self) -> int:
+                return self._buffer.tell()
+
+        with pytest.raises(TypeError, match="opened for reading"):
+            ZipStore(MinimalReader(zip_bytes), mode=mode, read_only=False)  # type: ignore[arg-type]
+
+    def test_fsspec_file(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # a file opened through fsspec (already an io.IOBase) is used directly;
+        # fsspec's local filesystem stands in for a remote one
+        fsspec = pytest.importorskip("fsspec")
+
+        path = tmp_path / "fsspec.zip"
+        path.write_bytes(zip_bytes)
+        with fsspec.open(f"local://{path}", "rb") as fileobj:
+            store = ZipStore(fileobj, mode="r")
+            array = zarr.open_array(store, mode="r")
+            assert np.array_equal(array[...], np.arange(10))
+            assert store.path is None
+
+    def test_obstore_reader(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # obstore's ReadableFile is not an io.IOBase and its read() returns a
+        # buffer-protocol object; ZipStore adapts it via _RawReaderAdapter
+        obstore = pytest.importorskip("obstore")
+        from obstore.store import LocalStore as ObstoreLocalStore
+
+        (tmp_path / "obstore.zip").write_bytes(zip_bytes)
+        reader = obstore.open_reader(ObstoreLocalStore(str(tmp_path)), "obstore.zip")
+        store = ZipStore(reader, mode="r")
+        array = zarr.open_array(store, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+
+    def test_raw_reader_adapter_eof(self) -> None:
+        from zarr.storage._zip import _RawReaderAdapter
+
+        class MinimalReader:
+            """Non-io.IOBase reader exposing only read/seek/tell, like obstore."""
+
+            def __init__(self, data: bytes) -> None:
+                self._buffer = io.BytesIO(data)
+
+            def read(self, size: int, /) -> bytes:
+                return self._buffer.read(size)
+
+            def seek(self, pos: int, whence: int = 0, /) -> int:
+                return self._buffer.seek(pos, whence)
+
+            def tell(self) -> int:
+                return self._buffer.tell()
+
+        # the adapter must clamp reads to EOF: some readers (obstore < 0.6)
+        # raise on short reads instead of returning fewer bytes
+        data = b"0123456789"
+        adapter = _RawReaderAdapter(MinimalReader(data))  # type: ignore[arg-type]
+
+        # A read straddling EOF returns only the remaining bytes.
+        adapter.seek(len(data) - 3)
+        buf = bytearray(8)
+        assert adapter.readinto(buf) == 3
+        assert bytes(buf[:3]) == data[-3:]
+
+        # A read at EOF returns 0.
+        assert adapter.tell() == len(data)
+        assert adapter.readinto(bytearray(8)) == 0
+
+    def test_pickle_fileobj_raises(self, zip_bytes: bytes) -> None:
+        # an open file object cannot be reliably serialized, so pickling a
+        # file-object-backed store raises with a pointer at the alternative
+        store = ZipStore(io.BytesIO(zip_bytes), mode="r")
+        with pytest.raises(TypeError, match="cannot pickle a ZipStore backed by a file-like"):
+            pickle.dumps(store)
+
+    def test_pickle_path_backed_roundtrip(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # path-backed stores remain picklable: the path is serialized and the
+        # archive is reopened on unpickling
+        path = tmp_path / "pickled.zip"
+        path.write_bytes(zip_bytes)
+        store = ZipStore(path, mode="r")
+        unpickled = pickle.loads(pickle.dumps(store))
+        array = zarr.open_array(unpickled, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+
+    def test_str_and_eq(self, zip_bytes: bytes) -> None:
+        # file-object-backed stores stringify with the object repr and
+        # compare equal only when backed by the very same file object
+        fileobj = io.BytesIO(zip_bytes)
+        store = ZipStore(fileobj, mode="r")
+        assert str(store).startswith("zip://<")
+        assert store == ZipStore(fileobj, mode="r")
+        assert store != ZipStore(io.BytesIO(zip_bytes), mode="r")
 
 
 class ZipStoreLifecycleMachine(RuleBasedStateMachine):
