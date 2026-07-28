@@ -41,17 +41,21 @@ group = zarr.create_group(store=data)
 print(group)
 ```
 
+<!-- markdownlint-disable-next-line MD042 -- empty link is an intentional MkDocs anchor target -->
 [](){#user-guide-store-like}
+
 ### StoreLike
 
 `StoreLike` values can be:
 
 - a `Path` or string indicating a location on the local file system.
   This will create a [local store](#local-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    from pathlib import Path
    group = zarr.open_group(store=Path('data/foo/bar'))
@@ -59,6 +63,7 @@ print(group)
    ```
 
 - an FSSpec URI string, indicating a [remote store](#remote-store) location:
+
    ```python exec="true" session="storage" source="above" result="ansi"
    # Note: requires s3fs to be installed
    group = zarr.open_group(
@@ -70,10 +75,12 @@ print(group)
    ```
 
 - an empty dictionary or None, which will create a new [memory store](#memory-store):
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store={})
    print(group)
    ```
+
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store=None)
    print(group)
@@ -117,6 +124,19 @@ array = zarr.create_array(store=store, shape=(2,), dtype='float64')
 print(array)
 ```
 
+In place of a path, `ZipStore` also accepts an open binary file object (for
+example a file opened with `fsspec`, or an `obstore` reader), enabling zip
+archives on remote storage. The file must stay open for as long as the store
+is in use:
+
+```python exec="true" session="storage" source="above" result="ansi"
+store.close()
+f = open('data.zip', mode='rb')  # must stay open while the store is used
+array = zarr.open_array(store=zarr.storage.ZipStore(f), mode='r')
+print(array[:])
+f.close()
+```
+
 ### Remote Store
 
 The [`zarr.storage.FsspecStore`][] stores the contents of a Zarr hierarchy following the same
@@ -151,7 +171,6 @@ print(store)
 
 When using an S3-compatible service other than AWS, pass the service endpoint to the
 filesystem via `client_kwargs={'endpoint_url': 'https://...'}`.
-
 
 ### Memory Store
 

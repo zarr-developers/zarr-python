@@ -6,7 +6,6 @@
 [Developer Chat](https://ossci.zulipchat.com/) |
 [Zarr specifications](https://zarr-specs.readthedocs.io)
 
-
 Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking,
 compression, and various backends, making it a versatile choice for scientific and
 large-scale data.
@@ -37,22 +36,20 @@ conda install -c conda-forge zarr
 
 <div class="grid cards" markdown>
 
--   [:material-clock-fast:{ .lg .middle } __Quick start__](quick-start.md)
+- [:material-clock-fast:{ .lg .middle } __Quick start__](quick-start.md)
 
     ---
 
     New to Zarr? Check out the quick start guide. It contains a brief
     introduction to Zarr's main concepts and links to additional tutorials.
 
-
--   [:material-book-open:{ .lg .middle } __User guide__](user-guide/index.md)
+- [:material-book-open:{ .lg .middle } __User guide__](user-guide/index.md)
 
     ---
 
     A detailed guide for how to use Zarr-Python.
 
-
--   [:material-api:{ .lg .middle } __API Reference__](api/zarr/index.md)
+- [:material-api:{ .lg .middle } __API Reference__](api/zarr/index.md)
 
     ---
 
@@ -61,8 +58,7 @@ conda install -c conda-forge zarr
     which parameters can be used. It assumes that you have an understanding of the
     key concepts.
 
-
--   [:material-account-group:{ .lg .middle } __Contributor's Guide__](contributing.md)
+- [:material-account-group:{ .lg .middle } __Contributor's Guide__](contributing.md)
 
     ---
 
@@ -72,7 +68,6 @@ conda install -c conda-forge zarr
 
 </div>
 
-
 ## Project Status
 
 More information about the Zarr format can be found on the [main website](https://zarr.dev).
@@ -80,6 +75,7 @@ More information about the Zarr format can be found on the [main website](https:
 If you are using Zarr-Python, we would [love to hear about it](https://github.com/zarr-developers/community/issues/19).
 
 ### Funding and Support
+
 The project is fiscally sponsored by [NumFOCUS](https://numfocus.org/), a US
 501(c)(3) public charity, and development has been supported by the
 [MRC Centre for Genomics and Global Health](https://github.com/cggh/)

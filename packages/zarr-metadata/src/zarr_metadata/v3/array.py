@@ -1,73 +1,49 @@
 """Zarr v3 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired
+from typing import Literal, NotRequired, TypeAlias
 
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._common import MetadataV3
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+
+ZarrV3ExtensionField: TypeAlias = JSONValue
+"""The JSON value of an unknown top-level v3 metadata field.
+
+An object carrying the literal member `must_understand: false` may be ignored.
+Every other JSON shape implicitly requires understanding; recognition itself
+belongs to the reader rather than this structural type.
+"""
 
 
-class ExtensionFieldV3(TypedDict, extra_items=JSONValue):  # type: ignore[call-arg]
-    """
-    Required shape of any extension field on a v3 metadata document.
-
-    The Zarr v3 spec permits extra keys on array and group metadata
-    documents, provided each value is an object with a `must_understand`
-    boolean key. This TypedDict captures that constraint and is used as
-    the `extra_items=` parameter on `ArrayMetadataV3` and `GroupMetadataV3`.
-
-    `must_understand` is typed as `bool` rather than `Literal[False]` so
-    that applications which understand a particular extension can produce
-    or consume it with `must_understand: true` (signalling that readers
-    that don't recognize the extension MUST refuse to open the document).
-    The common case is still `false`, signalling that unknown readers may
-    safely ignore the field.
-
-    Spec interpretation: this type follows the original Zarr v3.0 reading
-    of the spec, under which any object with a `must_understand` key is a
-    valid extension field. The v3.1 spec rewrite added language requiring
-    extension fields to also include a `name: str` key (the "Extension
-    definition" form). Under the strict v3.1 reading, real-world extension
-    fields written by zarr-python and zarrs (notably `consolidated_metadata`,
-    which has no `name` field) are out of spec. The community consensus at
-    the time of writing is that this is a regression to be reverted; this
-    package models the v3.0 / pre-revert interpretation. See
-    https://github.com/zarr-developers/zarr-specs/issues/371 for the
-    ongoing discussion.
-    """
-
-    must_understand: bool
-
-
-class ArrayMetadataV3(TypedDict, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
-    Extra keys are permitted if they conform to `ExtensionFieldV3`.
+    Extra keys may contain arbitrary JSON values.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: MetadataV3
+    data_type: ZarrV3MetadataFieldJSON
     shape: tuple[int, ...]
-    chunk_grid: MetadataV3
-    chunk_key_encoding: MetadataV3
+    chunk_grid: ZarrV3MetadataFieldJSON
+    chunk_key_encoding: ZarrV3MetadataFieldJSON
     fill_value: JSONValue
-    codecs: tuple[MetadataV3, ...]
+    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[MetadataV3, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3MetadataFieldJSON, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
-class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV3):  # type: ignore[call-arg]
+class ZarrV3ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3ExtensionField):
     """
-    Partial form of `ArrayMetadataV3`: every field is `NotRequired`.
+    Partial form of `ZarrV3ArrayMetadataJSON`: every field is `NotRequired`.
 
-    Field annotations and `extra_items=` mirror `ArrayMetadataV3` exactly.
+    Field annotations and `extra_items=` mirror `ZarrV3ArrayMetadataJSON` exactly.
     The only difference is `total=False`, which makes every key optional
     at the type level.
 
@@ -78,29 +54,29 @@ class ArrayMetadataV3Partial(TypedDict, total=False, extra_items=ExtensionFieldV
 
     The `NotRequired[...]` wrappers on `attributes`, `storage_transformers`,
     and `dimension_names` are intentional: keeping them preserves byte-identical
-    `__annotations__` with `ArrayMetadataV3` so the `==` check in
+    `__annotations__` with `ZarrV3ArrayMetadataJSON` so the `==` check in
     `tests/test_partial_equivalence.py` passes without special-casing those
     fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
 
-    Drift between this type and `ArrayMetadataV3` is prevented by
+    Drift between this type and `ZarrV3ArrayMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.
     """
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: MetadataV3
+    data_type: ZarrV3MetadataFieldJSON
     shape: tuple[int, ...]
-    chunk_grid: MetadataV3
-    chunk_key_encoding: MetadataV3
+    chunk_grid: ZarrV3MetadataFieldJSON
+    chunk_key_encoding: ZarrV3MetadataFieldJSON
     fill_value: JSONValue
-    codecs: tuple[MetadataV3, ...]
+    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[MetadataV3, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3MetadataFieldJSON, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
 __all__ = [
-    "ArrayMetadataV3",
-    "ArrayMetadataV3Partial",
-    "ExtensionFieldV3",
+    "ZarrV3ArrayMetadataJSON",
+    "ZarrV3ArrayMetadataJSONPartial",
+    "ZarrV3ExtensionField",
 ]

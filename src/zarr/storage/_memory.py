@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
+def _copy_buffer(value: Buffer) -> Buffer:
+    """Copy `value` so the store does not retain the caller's memory.
+
+    Encoding a chunk can hand the store a zero-copy view of the user's array
+    (an uncompressed write is the common case), and unlike stores that
+    serialize on write, this one keeps whatever it is given alive in a dict.
+    Without this copy a later mutation of the user's array would rewrite
+    chunks already committed to the store.
+    """
+    return type(value).from_array_like(value.as_array_like().copy())
+
+
 class MemoryStore(Store):
     """
     Store for local memory.
@@ -42,6 +54,12 @@ class MemoryStore(Store):
     supports_writes
     supports_deletes
     supports_listing
+
+    Notes
+    -----
+    Writes copy the buffer they are given, so the store never aliases the
+    caller's memory. Buffers passed via `store_dict` are the caller's
+    responsibility and are stored as-is.
     """
 
     supports_writes: bool = True
@@ -117,7 +135,7 @@ class MemoryStore(Store):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
-        self._store_dict[key] = value
+        self._store_dict[key] = _copy_buffer(value)
 
     def delete_sync(self, key: str) -> None:
         self._check_writable()
@@ -178,13 +196,13 @@ class MemoryStore(Store):
             buf[byte_range[0] : byte_range[1]] = value
             self._store_dict[key] = buf
         else:
-            self._store_dict[key] = value
+            self._store_dict[key] = _copy_buffer(value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        self._store_dict.setdefault(key, value)
+        self._store_dict.setdefault(key, _copy_buffer(value))
 
     async def delete(self, key: str) -> None:
         # docstring inherited

@@ -42,40 +42,40 @@ the following actions in order:
    will be compatible in Zarr-Python 3. However, the following breaking API changes are
    planned:
 
-   - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
-     directly from `numcodecs`:
+    - `numcodecs.*` will no longer be available in `zarr.*`. To migrate, import codecs
+      directly from `numcodecs`:
 
-     ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
-     from numcodecs import Blosc
-     # instead of:
-     # from zarr import Blosc
-     ```
+        ```python exec="false" reason="intentionally shows the old/incorrect import for contrast"
+        from numcodecs import Blosc
+        # instead of:
+        # from zarr import Blosc
+        ```
 
-   - The `zarr.v3_api_available` feature flag is being removed. In Zarr-Python 3
-     the v3 API is always available, so you shouldn't need to use this flag.
-   - `zarr.errors` has been consolidated. Several exception classes from
-     Zarr-Python 2 (such as `zarr.errors.PathNotFoundError`) have been removed
-     or replaced. For example, missing nodes now raise `zarr.errors.NodeNotFoundError`
-     (which subclasses both `BaseZarrError` and `FileNotFoundError`) instead of
-     `zarr.errors.PathNotFoundError`. Review any code that catches exceptions
-     from `zarr.errors` after migrating.
-   - The following internal modules are being removed or significantly changed. If
-     your application relies on imports from any of the below modules, you will need
-     to either a) modify your application to no longer rely on these imports or b)
-     vendor the parts of the specific modules that you need.
+    - The `zarr.v3_api_available` feature flag is being removed. In Zarr-Python 3
+      the v3 API is always available, so you shouldn't need to use this flag.
+    - `zarr.errors` has been consolidated. Several exception classes from
+      Zarr-Python 2 (such as `zarr.errors.PathNotFoundError`) have been removed
+      or replaced. For example, missing nodes now raise `zarr.errors.NodeNotFoundError`
+      (which subclasses both `BaseZarrError` and `FileNotFoundError`) instead of
+      `zarr.errors.PathNotFoundError`. Review any code that catches exceptions
+      from `zarr.errors` after migrating.
+    - The following internal modules are being removed or significantly changed. If
+      your application relies on imports from any of the below modules, you will need
+      to either a) modify your application to no longer rely on these imports or b)
+      vendor the parts of the specific modules that you need.
 
-     * `zarr.attrs` has gone, with no replacement
-     * `zarr.codecs` has changed, see "Codecs" section below for more information
-     * `zarr.context` has gone, with no replacement
-     * `zarr.core` remains but should be considered private API
-     * `zarr.hierarchy` has gone, with no replacement (use `zarr.Group` in place of `zarr.hierarchy.Group`)
-     * `zarr.indexing` has gone, with no replacement
-     * `zarr.meta` has gone, with no replacement
-     * `zarr.meta_v1` has gone, with no replacement
-     * `zarr.sync` has gone, with no replacement
-     * `zarr.types` has gone, with no replacement
-     * `zarr.util` has gone, with no replacement
-     * `zarr.n5` has gone, see below for an alternative N5 option
+        * `zarr.attrs` has gone, with no replacement
+        * `zarr.codecs` has changed, see "Codecs" section below for more information
+        * `zarr.context` has gone, with no replacement
+        * `zarr.core` remains but should be considered private API
+        * `zarr.hierarchy` has gone, with no replacement (use `zarr.Group` in place of `zarr.hierarchy.Group`)
+        * `zarr.indexing` has gone, with no replacement
+        * `zarr.meta` has gone, with no replacement
+        * `zarr.meta_v1` has gone, with no replacement
+        * `zarr.sync` has gone, with no replacement
+        * `zarr.types` has gone, with no replacement
+        * `zarr.util` has gone, with no replacement
+        * `zarr.n5` has gone, see below for an alternative N5 option
 
 3. Test that your package works with version 3.
 4. Update the pin to include `zarr>=3,<4`.
@@ -123,8 +123,9 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 2. The h5py compatibility methods `create_dataset` and `require_dataset` have been removed.
    Use the following replacements:
 
-   - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
-   - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
+    - [`zarr.Group.create_array`][] in place of `Group.create_dataset`
+    - [`zarr.Group.require_array`][] in place of `Group.require_dataset`
+
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
 4. The `zarr.storage.init_group` low-level helper function has been removed. Use

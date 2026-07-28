@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
       - name: Set up Python ${{ matrix.python-version }}
@@ -58,7 +58,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Run ruff
         run: uvx ruff check .
 
@@ -74,7 +74,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
       - name: Set up Python
@@ -82,7 +82,10 @@ jobs:
       - name: Sync test dependency group
         run: uv sync --group test --python 3.11
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        # Pinned to the last version that types PEP 661 sentinels in class
+        # attributes correctly; 1.1.405+ regressed (microsoft/pyright#11115).
+        # Unpin when the fix lands.
+        run: uv run --group test --with 'pyright==1.1.404' pyright src
 
   zarr-metadata-complete:
     name: zarr-metadata complete
