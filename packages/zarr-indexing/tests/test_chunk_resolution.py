@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
 
-import zarr_indexing.chunk_resolution as chunk_resolution
+from zarr_indexing import chunk_resolution
 from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
