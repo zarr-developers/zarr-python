@@ -70,11 +70,6 @@ gpu = [
 ]
 cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
-server = [
-    "starlette",
-    "httpx",
-    "uvicorn",
-]
 optional = ["universal-pathlib"]
 
 [project.scripts]
@@ -111,7 +106,6 @@ test = [
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.0",
     "uv==0.11.26",
-    "httpx2==2.9.1",
 ]
 remote-tests = [
     {include-group = "test"},

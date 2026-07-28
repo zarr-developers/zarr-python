@@ -31,7 +31,6 @@ nav:
   - Examples:
       - user-guide/examples/custom_dtype.md
       - user-guide/examples/rectilinear_chunks.md
-      - user-guide/examples/serve.md
   - API Reference:
       - api/zarr/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc</code>':
