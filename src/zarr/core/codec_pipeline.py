@@ -1039,10 +1039,14 @@ class FusedCodecPipeline(CodecPipeline):
 
         # Partial-decode fast path: the AB codec owns IO (read only the
         # byte ranges needed for the requested selection). Same condition
-        # and dispatch as BatchedCodecPipeline.read_batch.
-        if self.supports_partial_decode:
-            codec = self.array_bytes_codec
-            assert hasattr(codec, "_decode_partial_sync")
+        # and dispatch as BatchedCodecPipeline.read_batch, plus a gate on the
+        # sync partial method: the public partial-decode contract
+        # (`ArrayBytesCodecPartialDecodeMixin`) only requires the async
+        # `_decode_partial_single`, so a codec may support partial decode
+        # without `_decode_partial_sync` — such codecs take the full-chunk
+        # path below instead.
+        codec = self.array_bytes_codec
+        if self.supports_partial_decode and hasattr(codec, "_decode_partial_sync"):
 
             def _read_one(
                 item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
@@ -1111,10 +1115,14 @@ class FusedCodecPipeline(CodecPipeline):
 
         # Partial-encode path: the AB codec owns IO (read, merge, encode,
         # write).  Same condition and calling convention as
-        # BatchedCodecPipeline.write_batch.
-        if self.supports_partial_encode:
-            codec = self.array_bytes_codec
-            assert hasattr(codec, "_encode_partial_sync")
+        # BatchedCodecPipeline.write_batch, plus a gate on the sync partial
+        # method: the public partial-encode contract
+        # (`ArrayBytesCodecPartialEncodeMixin`) only requires the async
+        # `_encode_partial_single`, so a codec may support partial encode
+        # without `_encode_partial_sync` — such codecs take the full-chunk
+        # path below instead.
+        codec = self.array_bytes_codec
+        if self.supports_partial_encode and hasattr(codec, "_encode_partial_sync"):
             scalar = len(value.shape) == 0
 
             def _write_one(
