@@ -411,11 +411,7 @@ class ShardingCodec(
         object.__setattr__(self, "subchunk_write_order", subchunk_write_order)
 
         # Use instance-local lru_cache to avoid memory leaks
-
-        # numpy void scalars are not hashable, which means an array spec with a fill value that is
-        # a numpy void scalar will break the lru_cache. This is commented for now but should be
-        # fixed. See https://github.com/zarr-developers/zarr-python/issues/3054
-        # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
         object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
@@ -441,7 +437,7 @@ class ShardingCodec(
         object.__setattr__(self, "subchunk_write_order", state["subchunk_write_order"])
 
         # Use instance-local lru_cache to avoid memory leaks
-        # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
         object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
