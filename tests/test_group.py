@@ -41,8 +41,10 @@ from zarr.core.group import (
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
     ZarrUserWarning,
 )
@@ -101,7 +103,7 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     root = await zarr.api.asynchronous.open_group(
         store=store,
     )
-    agroup = await root.getitem("a")
+    agroup = await root.get_group("a")
     assert agroup.attrs == {"key": "value"}
 
     # create a child node with a couple intermediates
@@ -444,6 +446,77 @@ def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
         subgroup.attrs["foo"] = "bar"
     result = group.get("subgroup", 8)
     assert result.attrs["foo"] == "bar"
+
+
+def test_group_get_array(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` returns the array at the given path, for both direct child names
+    and nested paths, and the result is statically typed as an Array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+
+    observed = group.get_array("subarray")
+    assert isinstance(observed, Array)
+    assert observed == subarray
+    assert group.get_array("subgroup/subarray") == subsubarray
+
+
+def test_group_get_array_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ArrayNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(ArrayNotFoundError, match="No array found in store"):
+        group.get_array("missing")
+
+
+def test_group_get_array_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ContainsGroupError` when the node at the given path is a
+    group rather than an array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_group(name="subgroup")
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+        group.get_array("subgroup")
+
+
+def test_group_get_group(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` returns the group at the given path, for both direct child names
+    and nested paths, and the result is statically typed as a Group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subsubgroup = subgroup.create_group(name="subsubgroup")
+
+    observed = group.get_group("subgroup")
+    assert isinstance(observed, Group)
+    assert observed == subgroup
+    assert group.get_group("subgroup/subsubgroup") == subsubgroup
+
+
+def test_group_get_group_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `GroupNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(GroupNotFoundError, match="No group found in store"):
+        group.get_group("missing")
+
+
+def test_group_get_group_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `ContainsArrayError` when the node at the given path is an
+    array rather than a group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+        group.get_group("subarray")
 
 
 @pytest.mark.parametrize("consolidated", [True, False])
@@ -1469,7 +1542,7 @@ class TestConsolidated:
 
         # On disk, we've consolidated all the metadata in the root zarr.json
         group = await zarr.api.asynchronous.open(store=store)
-        rg0 = await group.getitem("g0")
+        rg0 = await group.get_group("g0")
 
         expected = ConsolidatedMetadata(
             metadata={
@@ -1490,10 +1563,10 @@ class TestConsolidated:
         )
         assert rg0.metadata.consolidated_metadata == expected
 
-        rg1 = await rg0.getitem("g1")
+        rg1 = await rg0.get_group("g1")
         assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
 
-        rg2 = await rg1.getitem("g2")
+        rg2 = await rg1.get_group("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_group_delitem_consolidated(self, store: Store) -> None:
