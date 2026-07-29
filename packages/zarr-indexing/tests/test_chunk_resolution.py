@@ -329,17 +329,16 @@ class TestChunkResolutionTouchedOnly:
         assert coords == [(0, 0), (0, 999), (999, 0), (999, 999)]
         assert calls["n"] == 4
 
-    def test_2d_correlated_vindex_enumerates_per_dim_distinct_chunks(
+    def test_2d_correlated_vindex_enumerates_joint_touched_chunks(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Two correlated (vindex) coordinate arrays scatter to 2 diagonal chunks.
 
         The two points (1, 2) and (3997, 3998) touch chunks (0, 0) and
-        (999, 999). Per-dimension distinct touched chunks are {0, 999} on each
-        axis, so enumeration intersects the 2x2 = 4 combinations; the two
-        off-diagonal combinations are filtered out by `intersect`, leaving 2
-        surviving chunks. The key guarantee is that the work is bounded by the
-        per-dimension distinct touched chunks (4), not the dense 1e6 grid.
+        (999, 999). Correlated coordinate arrays are grouped *jointly*, so
+        enumeration intersects exactly the 2 touched chunks — never the 2x2
+        cartesian product of per-dimension distinct chunks, and never the dense
+        1e6 grid.
         """
         grid = ChunkGrid(
             dimensions=(
@@ -356,8 +355,34 @@ class TestChunkResolutionTouchedOnly:
 
         coords = sorted(r[0] for r in results)
         assert coords == [(0, 0), (999, 999)]
-        # 2x2 per-dim-distinct combinations enumerated; 2 survive intersection.
-        assert calls["n"] == 4
+        assert calls["n"] == 2
+
+    def test_2d_correlated_vindex_diagonal_is_linear_in_points(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A diagonal of P correlated points touches P chunks with O(P) intersections.
+
+        Enumerating the cartesian product of per-dimension distinct chunk sets
+        would cost P**2 intersections (2500 here) — quadratic in the number of
+        selected points for the scattered selections of zarr-python gh-4174.
+        Joint grouping keeps resolution work proportional to the touched chunks.
+        """
+        p = 50
+        grid = ChunkGrid(
+            dimensions=(
+                FixedDimension(size=4, extent=4000),
+                FixedDimension(size=4, extent=4000),
+            )
+        )
+        # point i lands in chunk (2i, 2i): all per-dimension chunks distinct
+        coords_1d = np.arange(p, dtype=np.intp) * 8
+        t = IndexTransform.from_shape((4000, 4000)).vindex[coords_1d, coords_1d]
+
+        calls = _count_intersect_calls(monkeypatch)
+        results = list(iter_chunk_transforms(t, grid._dimensions))
+
+        assert sorted(r[0] for r in results) == [(2 * i, 2 * i) for i in range(p)]
+        assert calls["n"] == p
 
 
 class TestSubTransformToSelections:

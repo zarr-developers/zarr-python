@@ -138,35 +138,42 @@ def iter_chunk_transforms(
                 yield from _iter_sorted_1d_array_map(sorted_map, storage, dim_grid)
                 return
 
-    # Enumerate candidate chunks via the cartesian product of per-dimension
-    # candidate chunk ids, then for each candidate intersect the transform with
-    # the chunk domain (`transform.intersect` handles orthogonal and vectorized
-    # cases alike, filtering out combinations it does not actually touch).
+    # Enumerate candidate chunks via the cartesian product of per-slot candidate
+    # chunk ids, then for each candidate intersect the transform with the chunk
+    # domain (`transform.intersect` handles orthogonal and vectorized cases
+    # alike, filtering out combinations it does not actually touch).
     #
-    # Each dimension contributes exactly the chunk ids it can touch:
+    # A slot covers one or more output dimensions and contributes exactly the
+    # chunk-coordinate tuples those dimensions can touch:
     #
-    # - `ConstantMap`/`DimensionMap` dims contribute a contiguous `range` — a
-    #   single chunk for a constant, and the span between the first and last
-    #   chunk for a slice. These are already tight (or nearly so).
-    # - `ArrayMap` (fancy) dims contribute only the *distinct* chunk ids the
-    #   index array actually lands in (`np.unique`), never the dense
-    #   `range(min_chunk, max_chunk + 1)` between them. A sparse fancy selection
-    #   (e.g. two far-apart coordinates) would otherwise enumerate every chunk
-    #   in the bounding box, making resolution scale with grid size instead of
-    #   with the number of selected coordinates.
-    #
-    # For >= 2 correlated (vindex) ArrayMaps the per-dimension distinct sets
-    # over-approximate the *joint* touched set (their cartesian product includes
-    # combinations no single point lands in), but `intersect` filters those out,
-    # so the yielded chunks are identical either way — and the work stays bounded
-    # by the per-dimension distinct chunk counts, not the grid size.
-    chunk_candidates: list[Sequence[int]] = []
+    # - `ConstantMap`/`DimensionMap` dims each form their own slot with a
+    #   contiguous range — a single chunk for a constant, and the span between
+    #   the first and last chunk for a slice. These are already tight (or
+    #   nearly so).
+    # - Orthogonal `ArrayMap` (fancy) dims each form their own slot with only
+    #   the *distinct* chunk ids the index array actually lands in
+    #   (`np.unique`), never the dense `range(min_chunk, max_chunk + 1)`
+    #   between them. A sparse fancy selection (e.g. two far-apart coordinates)
+    #   would otherwise enumerate every chunk in the bounding box, making
+    #   resolution scale with grid size instead of with the number of selected
+    #   coordinates.
+    # - Correlated (vindex) `ArrayMap` dims share one *joint* slot holding the
+    #   distinct chunk-coordinate tuples the points actually land in. The
+    #   cartesian product of their per-dimension distinct sets would include
+    #   combinations no point touches — quadratic in the number of selected
+    #   points for a diagonal selection — while the joint distinct set is
+    #   bounded by the point count (see zarr-python gh-4174).
+    correlated_dims: list[int] = []
+    correlated_chunk_ids: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+    slot_dims: list[tuple[int, ...]] = []
+    slot_candidates: list[Sequence[tuple[int, ...]]] = []
     for out_dim, m in enumerate(transform.output):
         dg = dim_grids[out_dim]
         if isinstance(m, ConstantMap):
             # Single chunk
             c = dg.index_to_chunk(m.offset)
-            chunk_candidates.append((c,))
+            slot_dims.append((out_dim,))
+            slot_candidates.append(((c,),))
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             dim_lo = transform.domain.inclusive_min[d]
@@ -181,25 +188,48 @@ def iter_chunk_transforms(
                 s_max = m.offset + m.stride * dim_lo
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
-            chunk_candidates.append(range(first, last + 1))
+            slot_dims.append((out_dim,))
+            slot_candidates.append([(c,) for c in range(first, last + 1)])
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap).
             # Storage coordinates were already computed for a correlated 1-D map.
             storage = (
                 array_map_1d[1] if array_map_1d is not None else m.offset + m.stride * m.index_array
             )
-            flat = storage.ravel().astype(np.intp)
-            if flat.size == 0:
+            if storage.size == 0:
                 # Empty fancy selection: no coordinates, so no chunks are touched.
                 return
-            chunk_ids = dg.indices_to_chunks(flat)
-            # Enumerate only the distinct chunks the coordinates land in.
-            chunk_candidates.append([int(c) for c in np.unique(chunk_ids)])
+            # Keep the index-array shape: correlated maps broadcast against each
+            # other below, and raveling first would lose the singleton axes.
+            chunk_ids = dg.indices_to_chunks(storage.astype(np.intp))
+            if m.input_dimension is None:
+                correlated_dims.append(out_dim)
+                correlated_chunk_ids.append(chunk_ids)
+            else:
+                slot_dims.append((out_dim,))
+                slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
+
+    if len(correlated_dims) == 1:
+        slot_dims.append((correlated_dims[0],))
+        slot_candidates.append([(int(c),) for c in np.unique(correlated_chunk_ids[0])])
+    elif len(correlated_dims) >= 2:
+        # Group the points jointly: distinct rows of the per-point chunk
+        # coordinates, O(points log points) regardless of grid size.
+        broadcast = np.broadcast_arrays(*correlated_chunk_ids)
+        stacked = np.stack([b.ravel() for b in broadcast], axis=1)
+        joint = np.unique(stacked, axis=0)
+        slot_dims.append(tuple(correlated_dims))
+        slot_candidates.append([tuple(int(c) for c in row) for row in joint])
 
     import itertools
 
-    for chunk_coords_tuple in itertools.product(*chunk_candidates):
-        chunk_coords = tuple(int(c) for c in chunk_coords_tuple)
+    output_rank = len(transform.output)
+    for combo in itertools.product(*slot_candidates):
+        chunk_coords_list = [0] * output_rank
+        for dims, part in zip(slot_dims, combo, strict=True):
+            for d, c in zip(dims, part, strict=True):
+                chunk_coords_list[d] = c
+        chunk_coords = tuple(chunk_coords_list)
 
         # Build the chunk domain in storage space
         chunk_min: list[int] = []
