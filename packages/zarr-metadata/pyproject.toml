@@ -44,7 +44,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"
 Issues = "https://github.com/zarr-developers/zarr-python/issues"
 Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md"
-Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/README.md"
+Documentation = "https://zarr.readthedocs.io/en/latest/api/zarr_metadata/"
 
 [dependency-groups]
 test = ["pytest", "pydantic>=2.13", "jsonschema"]

@@ -92,6 +92,17 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.utils</code>': api/zarr/testing/utils.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros</code>': api/zarr/functions/zeros.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros_like</code>': api/zarr/functions/zeros_like.md
+      - zarr-metadata:
+        - api/zarr_metadata/index.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/zarr_metadata/model.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/zarr_metadata/pydantic.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/zarr_metadata/v2.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3</code>':
+          - api/zarr_metadata/v3/index.md
+          - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_grid</code>': api/zarr_metadata/v3/chunk_grid.md
+          - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_key_encoding</code>': api/zarr_metadata/v3/chunk_key_encoding.md
+          - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.codec</code>': api/zarr_metadata/v3/codec.md
+          - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.data_type</code>': api/zarr_metadata/v3/data_type.md
   - release-notes.md
   - contributing.md
 hooks:
@@ -99,6 +110,7 @@ hooks:
 
 watch:
   - src/zarr
+  - packages/zarr-metadata/src
   - docs
 
 theme:
@@ -158,7 +170,7 @@ plugins:
       enable_inventory: true
       handlers:
         python:
-          paths: [src/zarr]
+          paths: [src/zarr, packages/zarr-metadata/src]
           options:
             allow_inspection: true
             docstring_section_style: list
