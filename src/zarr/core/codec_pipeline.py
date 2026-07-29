@@ -143,10 +143,10 @@ def pipeline_supports_partial_decode(
     selection non-contiguous, a BB codec can rewrite the bytes), making partial
     decode infeasible.
 
-    NOTE: the two pipelines currently pass different ``require_no_aa_bb`` values
-    (Batched: True; Fused: False). That divergence is intentional-for-now and
-    tracked separately; this function centralizes the predicate without changing
-    either pipeline's behavior.
+    Both pipelines pass `require_no_aa_bb=True`: an outer AA/BB codec (e.g. a
+    compressor wrapping a sharding serializer) must see every byte of the
+    chunk, so a partial branch that only re-decodes/re-encodes the inner
+    sharding codec would silently bypass it.
     """
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
@@ -162,8 +162,7 @@ def pipeline_supports_partial_encode(
 ) -> bool:
     """Whether a codec pipeline can encode a partial selection without a full rewrite.
 
-    Mirror of ``pipeline_supports_partial_decode`` for encoding. See its note re:
-    the per-pipeline ``require_no_aa_bb`` divergence.
+    Mirror of `pipeline_supports_partial_decode` for encoding.
     """
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
@@ -934,14 +933,11 @@ class FusedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
-        # NOTE: unlike BatchedCodecPipeline this does NOT require the AA/BB codec
-        # lists to be empty (require_no_aa_bb=False). That divergence is tracked
-        # separately; see pipeline_supports_partial_decode.
         return pipeline_supports_partial_decode(
             self.array_bytes_codec,
             array_array_codecs=self.array_array_codecs,
             bytes_bytes_codecs=self.bytes_bytes_codecs,
-            require_no_aa_bb=False,
+            require_no_aa_bb=True,
         )
 
     @property
@@ -950,7 +946,7 @@ class FusedCodecPipeline(CodecPipeline):
             self.array_bytes_codec,
             array_array_codecs=self.array_array_codecs,
             bytes_bytes_codecs=self.bytes_bytes_codecs,
-            require_no_aa_bb=False,
+            require_no_aa_bb=True,
         )
 
     def validate(
