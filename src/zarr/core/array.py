@@ -2181,7 +2181,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.filters
 
     @property
-    def serializer(self) -> None | ArrayBytesCodec:
+    def serializer(self) -> ArrayBytesCodec | None:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
@@ -4072,7 +4072,7 @@ async def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: ChunksLike | Literal["auto", "keep"] = "keep",
-    shards: ShardsLike | None | Literal["keep"] = "keep",
+    shards: ShardsLike | Literal["keep"] | None = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
@@ -4763,7 +4763,7 @@ async def create_array(
 def _parse_keep_array_attr(
     data: AnyArray | npt.ArrayLike,
     chunks: ChunksLike | Literal["auto", "keep"],
-    shards: ShardsLike | None | Literal["keep"],
+    shards: ShardsLike | Literal["keep"] | None,
     filters: FiltersLike | Literal["keep"],
     compressors: CompressorsLike | Literal["keep"],
     serializer: SerializerLike | Literal["keep"],

@@ -998,7 +998,7 @@ def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: ChunksLike | Literal["auto", "keep"] = "keep",
-    shards: ShardsLike | None | Literal["keep"] = "keep",
+    shards: ShardsLike | Literal["keep"] | None = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",

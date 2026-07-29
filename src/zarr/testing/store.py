@@ -113,7 +113,7 @@ class StoreTests[S: Store, B: Buffer]:
 
     def test_store_eq(self, store: S, store_kwargs: dict[str, Any]) -> None:
         # check self equality
-        assert store == store
+        assert store == store  # noqa: PLR0124 -- self-equality is the property under test
 
         # check store equality with same inputs
         # asserting this is important for being able to compare (de)serialized stores
