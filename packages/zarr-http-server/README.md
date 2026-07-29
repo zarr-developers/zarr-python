@@ -126,7 +126,10 @@ forms defined by [RFC 7233](https://httpwg.org/specs/rfc7233.html) are supported
 | `bytes=100-`         | Everything from byte 100       |
 | `bytes=-50`          | Last 50 bytes                  |
 
-A successful range request returns HTTP 206 (Partial Content).
+A successful range request returns HTTP 206 (Partial Content) with a
+`Content-Range` header. A range that cannot be satisfied -- one lying wholly
+beyond the end of the object, or an inverted one such as `bytes=5-2` --
+returns 416 (Range Not Satisfiable).
 
 ### Write Support
 
@@ -137,7 +140,36 @@ By default only `GET` requests are accepted.  To enable writes, pass
 app = store_app(store, methods={"GET", "PUT"})
 ```
 
-A `PUT` request stores the request body at the given path and returns 204 (No Content).
+Accepted methods are `GET`, `HEAD`, and `PUT`; anything else raises
+`ValueError` when the app is built, since the handler has no behavior for it.
+
+A `PUT` request stores the request body at the given path and returns 204 (No
+Content). Bodies are capped at `DEFAULT_MAX_BODY_SIZE` (256 MiB) and a larger
+one returns 413 (Content Too Large) -- `Store.set` takes a whole buffer, so an
+accepted body is held in memory in full. Raise or remove the cap with
+`max_body_size`:
+
+```python
+from zarr_http_server import DEFAULT_MAX_BODY_SIZE, store_app
+
+app = store_app(store, methods={"GET", "PUT"}, max_body_size=None)
+```
+
+Note that `store_app` exposes every key in the store, so `PUT` grants
+unrestricted write access to all of it. `node_app` confines writes to keys
+belonging to the node -- though a client that can write a node's metadata can
+change what that node contains, and so what it will serve.
+
+### Shutting Down
+
+`BackgroundServer.shutdown()` (and leaving the `with` block) waits up to
+`shutdown_timeout` seconds -- 5 by default -- for in-flight requests to finish
+before forcing the server closed:
+
+```python
+with serve_node(arr, background=True, shutdown_timeout=30) as server:
+    ...
+```
 
 ## Example
 

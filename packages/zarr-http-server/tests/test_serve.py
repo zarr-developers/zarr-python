@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -14,7 +15,7 @@ from zarr_http_server._serve import CorsOptions, _parse_range_header, node_app, 
 
 if TYPE_CHECKING:
     import pathlib
-    from collections.abc import Coroutine
+    from collections.abc import Coroutine, Iterator
 
     from zarr.abc.store import Store
 
@@ -234,6 +235,13 @@ class TestMalformedRangeHeaders:
 
 
 class TestParseRangeHeader:
+    def test_parser_rejects_an_inverted_range(self) -> None:
+        """Pin the parser itself: on a MemoryStore an unguarded inverted range
+        happens to return b"" and still yields 416, so the status code alone
+        cannot tell whether the guard is present."""
+        assert _parse_range_header("bytes=5-2") is None
+        assert _parse_range_header("bytes=0-0") is not None
+
     """Unit tests for _parse_range_header."""
 
     def test_valid_range(self) -> None:
@@ -855,6 +863,119 @@ class TestServeBackground:
         with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
             response = httpx.get(f"{server.url}/zarr.json")
             assert response.status_code == 200
+
+
+class TestStoreFailuresAreNotReportedAsMisses:
+    """Under the v3 spec an absent chunk is an uninitialized one, and a reader
+    is right to substitute the array's fill value for it. A 404 therefore
+    asserts something about the store's contents, and an I/O failure must not
+    borrow it -- that would have a correct client materialize fill values over
+    data that exists."""
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses the permission bits under test")
+    def test_unreadable_key_is_a_server_error(self, tmp_path: pathlib.Path) -> None:
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "key").write_bytes(b"real data")
+        os.chmod(root / "key", 0o000)
+
+        client = TestClient(store_app(LocalStore(str(root))), raise_server_exceptions=False)
+        try:
+            assert client.get("/key").status_code >= 500
+        finally:
+            os.chmod(root / "key", 0o600)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses the permission bits under test")
+    def test_unwritable_store_is_a_server_error(self, tmp_path: pathlib.Path) -> None:
+        root = tmp_path / "ro"
+        root.mkdir()
+        os.chmod(root, 0o500)
+
+        client = TestClient(
+            store_app(LocalStore(str(root)), methods={"GET", "PUT"}),
+            raise_server_exceptions=False,
+        )
+        try:
+            assert client.put("/key", content=b"data").status_code >= 500
+        finally:
+            os.chmod(root, 0o700)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestShardGridBounds:
+    """A sharded array's storage grid is its shard grid, not its chunk grid."""
+
+    def test_out_of_shard_grid_key_returns_404(self, store: Store) -> None:
+        arr = zarr.create_array(store, shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="i4")
+        arr[:] = np.arange(64, dtype="i4").reshape(8, 8)
+
+        # (8,8) with (4,4) shards has a 2x2 shard grid, so c/3/3 is out of it.
+        # Plant data there so the 404 must come from the bounds check.
+        sync(store.set("c/3/3", cpu.buffer_prototype.buffer.from_bytes(b"PLANTED")))
+        assert sync(store.get("c/3/3", cpu.buffer_prototype)) is not None
+
+        client = TestClient(node_app(arr))
+        assert client.get("/c/0/0").status_code == 200
+        assert client.get("/c/3/3").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestWrongArityChunkKeys:
+    """A chunk key with the wrong number of coordinates is invalid, and must
+    not reach the grid comparison -- zip(strict=True) would raise there."""
+
+    @pytest.mark.parametrize("key", ["c/0", "c/0/0/0", "c/0/0/0/0"])
+    def test_wrong_arity_returns_404(self, store: Store, key: str) -> None:
+        arr = zarr.create_array(store, shape=(4, 4), chunks=(2, 2), dtype="f8")
+        arr[:] = np.ones((4, 4))
+
+        sync(store.set(key, cpu.buffer_prototype.buffer.from_bytes(b"PLANTED")))
+
+        client = TestClient(node_app(arr), raise_server_exceptions=False)
+        assert client.get(f"/{key}").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestNodeNamesContainingAColon:
+    """A leading `<x>:` is a drive reference to `ntpath`, so the guard rejects
+    it on every platform to keep it a pure string gate in front of any store.
+    The documented cost is that such a name is unreachable in the first
+    segment -- but only there."""
+
+    def test_colon_named_node_in_a_later_segment_is_served(self, store: Store) -> None:
+        root = zarr.open_group(store, mode="w")
+        sub = root.create_group("sub")
+        sub.create_array("a:b", shape=(2,), chunks=(2,), dtype="f8")
+
+        client = TestClient(node_app(root))
+        assert client.get("/sub/a:b/zarr.json").status_code == 200
+
+    def test_colon_named_node_in_the_first_segment_is_rejected(self, store: Store) -> None:
+        root = zarr.open_group(store, mode="w")
+        root.create_array("a:b", shape=(2,), chunks=(2,), dtype="f8")
+
+        client = TestClient(node_app(root))
+        assert client.get("/a:b/zarr.json").status_code == 404
+
+
+class TestChunkedBodyIsCapped:
+    """A chunked request carries no Content-Length, so the cap has to hold
+    while the body is being read rather than after it is buffered."""
+
+    def test_chunked_body_over_cap_is_rejected(self, tmp_path: pathlib.Path) -> None:
+        store = LocalStore(str(tmp_path / "root"))
+        client = TestClient(
+            store_app(store, methods={"GET", "PUT"}, max_body_size=64),
+            raise_server_exceptions=False,
+        )
+
+        def body() -> Iterator[bytes]:
+            for _ in range(20):
+                yield b"x" * 32
+
+        # httpx sends an iterator body with Transfer-Encoding: chunked.
+        assert client.put("/key", content=body()).status_code == 413
+        assert not (tmp_path / "root" / "key").exists()
 
 
 class TestHostileKeysAreNotServerErrors:

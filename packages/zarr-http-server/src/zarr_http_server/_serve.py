@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import ntpath
 import threading
 import time
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest, Store
 
 __all__ = [
+    "DEFAULT_MAX_BODY_SIZE",
     "BackgroundServer",
     "CorsOptions",
     "HTTPMethod",
@@ -48,9 +50,10 @@ _SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
 DEFAULT_MAX_BODY_SIZE = 256 * 1024 * 1024
 """Default cap on a `PUT` body, in bytes.
 
-`Store.set` takes a whole `Buffer`, so a body cannot be streamed and is held
-in memory in full. Without a cap, one request sizes the server's memory use.
-Pass `max_body_size=None` to lift it.
+`Store.set` takes a whole `Buffer`, so an accepted body is held in memory in
+full; the body is read incrementally and abandoned once it passes this cap,
+so one request cannot size the server's memory use. Pass
+`max_body_size=None` to lift the cap and read the body whole.
 """
 
 
@@ -110,7 +113,9 @@ class BackgroundServer:
         self._thread.join(timeout=self._shutdown_timeout)
         if self._thread.is_alive():
             self._server.force_exit = True
-            self._thread.join()
+            # Bounded again: force_exit is observed by uvicorn's loop, so a
+            # request wedged outside it would otherwise block here forever.
+            self._thread.join(timeout=self._shutdown_timeout)
 
     def __enter__(self) -> Self:
         return self
@@ -160,6 +165,53 @@ def _parse_range_header(range_header: str) -> ByteRequest | None:
         return None
 
 
+def _is_drive_qualified(path: str) -> bool:
+    """Whether *path* carries a drive or UNC prefix that would discard a store root.
+
+    A drive-qualified key such as `C:/Windows`, or the drive-relative `a:b`,
+    replaces the root it is joined to rather than extending it. This is
+    rejected on every platform, not just Windows: the check is a string-level
+    gate in front of an arbitrary `Store`, and this package cannot know how a
+    given implementation resolves keys.
+
+    The cost is that a node whose *first* path segment looks like `<x>:...`
+    is unreachable -- `ntpath` treats any single character before a colon as
+    a drive, so there is no safe subset to admit. Such names are legal but
+    rare, and later segments are unaffected (`sub/a:b` is served normally).
+
+    Parameters
+    ----------
+    path : str
+        The candidate key, with separators already folded to `/`.
+
+    Returns
+    -------
+    bool
+    """
+    return ntpath.splitdrive(path)[0] != ""
+
+
+def _names_nothing(exc: OSError) -> bool:
+    """Whether an `OSError` says the key cannot name anything, not that I/O failed.
+
+    A key longer than the filesystem permits, or containing bytes it forbids,
+    can never identify a stored object, so a miss is the honest answer. Every
+    other `errno` -- a full disk, a read-only mount, a permissions problem, a
+    device error -- describes a failure to complete the operation and must
+    surface as such.
+
+    Parameters
+    ----------
+    exc : OSError
+        The error raised by the store.
+
+    Returns
+    -------
+    bool
+    """
+    return exc.errno in (errno.ENAMETOOLONG, errno.EINVAL)
+
+
 def _content_range(byte_range: ByteRequest, length: int) -> str | None:
     """Build a `Content-Range` value for a 206 response, if the offsets are known.
 
@@ -195,10 +247,20 @@ async def _get_response(store: Store, path: str, byte_range: ByteRequest | None 
 
     try:
         buf = await store.get(path, proto, byte_range=byte_range)
-    except (ValueError, OSError):
-        # The key passed the shape guard but the store cannot express it --
-        # an embedded NUL, or a name longer than the filesystem allows. It
-        # names nothing that exists, so it is a miss, not a server fault.
+    except MemoryError:
+        # A range so wide the store cannot allocate for it cannot be
+        # satisfied; that is the client's range, not a server fault.
+        return Response(status_code=416)
+    except OSError as exc:
+        if not _names_nothing(exc):
+            # A real I/O failure, which must not be reported as a miss. Under
+            # the v3 spec an absent chunk is an uninitialized one, and a
+            # reader is right to substitute the array's fill value for it --
+            # so 404 asserts something about the store's contents. An
+            # unreadable chunk is not an uninitialized chunk, and answering
+            # 404 would have a correct client silently materialize fill
+            # values over data that exists.
+            raise
         return Response(status_code=404)
     if buf is None:
         return Response(status_code=404)
@@ -235,7 +297,13 @@ async def _handle_request(request: Request) -> Response:
     # (src/zarr/storage/_utils.py) plus a drive check it doesn't need. Legitimate
     # zarr keys never contain empty, ".", or ".." segments, or a drive letter.
     segments = path.replace("\\", "/").split("/")
-    if any(segment in ("", ".", "..") for segment in segments) or ntpath.splitdrive(path)[0]:
+    if any(segment in ("", ".", "..") for segment in segments) or _is_drive_qualified(path):
+        return Response(status_code=404)
+
+    # A NUL can never appear in a store key, and reaches the filesystem layer
+    # as a raised error rather than a miss. Rejecting it here keeps that out
+    # of the store, so the store's own errors always mean real I/O trouble.
+    if "\x00" in path:
         return Response(status_code=404)
 
     # If serving a node, validate the key before touching the store. Group
@@ -251,21 +319,34 @@ async def _handle_request(request: Request) -> Response:
 
     if request.method == "PUT":
         max_body_size: int | None = request.app.state.max_body_size
-        if max_body_size is not None:
+        if max_body_size is None:
+            body = await request.body()
+        else:
             declared = request.headers.get("content-length")
             if declared is not None and declared.isdigit() and int(declared) > max_body_size:
                 return Response(status_code=413)
 
-        body = await request.body()
-        if max_body_size is not None and len(body) > max_body_size:
-            return Response(status_code=413)
+            # Read incrementally and stop at the cap. `request.body()` would
+            # buffer the whole body first, which a chunked request can use to
+            # exceed the cap by any amount before it is ever checked.
+            chunks: list[bytes] = []
+            received = 0
+            async for chunk in request.stream():
+                received += len(chunk)
+                if received > max_body_size:
+                    return Response(status_code=413)
+                chunks.append(chunk)
+            body = b"".join(chunks)
 
         buf = cpu.buffer_prototype.buffer.from_bytes(body)
         try:
             await store.set(store_key, buf)
-        except (ValueError, OSError):
-            # As on the read path: a key the store cannot express names
-            # nothing writable, rather than indicating a server fault.
+        except OSError as exc:
+            if not _names_nothing(exc):
+                # A real write failure -- a full disk, a read-only mount, a
+                # permissions problem. Reporting it as 404 would tell the
+                # client the write is pointless rather than failed.
+                raise
             return Response(status_code=404)
         return Response(status_code=204)
 
@@ -283,7 +364,6 @@ def _make_starlette_app(
     *,
     methods: set[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
-    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
     """Create a Starlette app with the request handler.
 
