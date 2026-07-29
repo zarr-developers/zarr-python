@@ -33,6 +33,8 @@ The matrix axes are:
 
 from __future__ import annotations
 
+import warnings
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -48,7 +50,9 @@ from zarr.codecs.sharding import (
     ShardingCodec,
     SubchunkWriteOrder,
 )
+from zarr.codecs.transpose import TransposeCodec
 from zarr.core.config import config as zarr_config
+from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -107,11 +111,15 @@ LAYOUT_CONFIGS: list[tuple[str, LayoutConfig]] = [
     ("2d-unsharded", {"shape": (20, 20), "chunks": (5, 5), "shards": None}),
     ("2d-sharded", {"shape": (20, 20), "chunks": (5, 5), "shards": (10, 10)}),
     # Nested sharding: outer chunk (10,10) sharded into inner chunks (5,5).
-    # Restricted to bytes-only codec because combining an outer ShardingCodec
-    # with a compressor (gzip) triggers a ZarrUserWarning and results in a
-    # checksum mismatch inside the inner shard index — a known limitation, not
-    # a pipeline-parity bug.  The bytes-only path still exercises the full
-    # two-level shard encoding/decoding in both pipelines.
+    # Restricted to the codec configs that don't set their own `serializer`
+    # (bytes-only, gzip): this layout supplies an explicit nested-ShardingCodec
+    # `serializer`, and a codec config that also sets `serializer` (e.g.
+    # bytes-big-endian) would silently clobber it via dict merge, dropping
+    # sharding from the test entirely rather than exercising it. The gzip
+    # config applies as an outer bytes-bytes codec around the outer
+    # ShardingCodec -- this is the regression coverage for the fused pipeline
+    # applying outer AA/BB codecs around sharding (see
+    # `pipeline_supports_partial_decode`/`pipeline_supports_partial_encode`).
     (
         "2d-nested-sharded",
         {
@@ -122,9 +130,7 @@ LAYOUT_CONFIGS: list[tuple[str, LayoutConfig]] = [
                 chunk_shape=(10, 10),
                 codecs=[ShardingCodec(chunk_shape=(5, 5))],
             ),
-            # Only run with the bytes-only codec config; gzip is incompatible
-            # with nested sharding (see comment above).
-            "_codec_ids": {"bytes-only"},
+            "_codec_ids": {"bytes-only", "gzip"},
         },
     ),
 ]
@@ -226,6 +232,23 @@ def _matrix() -> Iterator[Any]:
 # ---------------------------------------------------------------------------
 
 
+@contextmanager
+def _ignore_sharding_combo_warning() -> Iterator[None]:
+    """Suppress the "combining sharding_indexed disables partial reads" warning.
+
+    Only the nested-sharded-plus-outer-codec matrix cell emits this; scoping the
+    ignore filter to just its message/category (rather than blanket-disabling
+    warnings) keeps every other warning in the run promoted to an error as usual.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Combining a `sharding_indexed` codec.*",
+            category=ZarrUserWarning,
+        )
+        yield
+
+
 def _write_under_pipeline(
     pipeline_path: str,
     codec_kwargs: CodecConfig,
@@ -244,12 +267,13 @@ def _write_under_pipeline(
     create_kwargs = {"dtype": "float64", **array_layout, **codec_kwargs}
     store = MemoryStore()
     with zarr_config.set({"codec_pipeline.path": pipeline_path}):
-        arr = zarr.create_array(
-            store=store,
-            fill_value=0,
-            config={"write_empty_chunks": write_empty_chunks},
-            **create_kwargs,
-        )
+        with _ignore_sharding_combo_warning():
+            arr = zarr.create_array(
+                store=store,
+                fill_value=0,
+                config={"write_empty_chunks": write_empty_chunks},
+                **create_kwargs,
+            )
         for sel, val in sequence:
             arr[sel] = val
         contents = arr[...]
@@ -259,7 +283,8 @@ def _write_under_pipeline(
 def _read_under_pipeline(pipeline_path: str, store: MemoryStore) -> Any:
     """Re-open an existing store under the chosen pipeline and read it whole."""
     with zarr_config.set({"codec_pipeline.path": pipeline_path}):
-        arr = zarr.open_array(store=store, mode="r")
+        with _ignore_sharding_combo_warning():
+            arr = zarr.open_array(store=store, mode="r")
         return arr[...]
 
 
@@ -418,3 +443,81 @@ def test_pipeline_parity_subchunk_write_order(
         f"(index_location={index_location!r}) — byte-range write fast path likely assumed "
         f"the wrong physical chunk order"
     )
+
+
+# ---------------------------------------------------------------------------
+# Outer array-array / bytes-bytes codecs around a sharding serializer
+# ---------------------------------------------------------------------------
+#
+# Regression coverage for FusedCodecPipeline.supports_partial_decode/encode:
+# it used to allow AA/BB codecs outside the sharding codec, so its partial
+# branches called ShardingCodec._decode_partial_sync/_encode_partial_sync
+# directly on the raw stored value, skipping any outer filter/compressor.
+# That corrupted on-disk bytes for an outer bytes-bytes codec (unreadable by
+# the other pipeline) and silently produced wrong data for an outer
+# array-array codec. Both configs below force the partial branches: a
+# region write and a region read are included alongside the full ones.
+
+_OUTER_AA_BB_CONFIGS: list[tuple[str, CodecConfig]] = [
+    (
+        "outer-gzip-around-sharding",
+        {
+            "serializer": ShardingCodec(chunk_shape=(2, 2)),
+            "compressors": [GzipCodec(level=1)],
+        },
+    ),
+    (
+        "outer-transpose-around-sharding",
+        {
+            "filters": [TransposeCodec(order=(1, 0))],
+            "serializer": ShardingCodec(chunk_shape=(2, 2)),
+            "compressors": None,
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize(("config_id", "codec_kwargs"), _OUTER_AA_BB_CONFIGS)
+@pytest.mark.parametrize(
+    ("writer", "reader"),
+    [(_BATCHED, _FUSED), (_FUSED, _BATCHED)],
+    ids=["batched-write-fused-read", "fused-write-batched-read"],
+)
+def test_pipeline_parity_outer_aa_bb_codecs(
+    config_id: str,
+    codec_kwargs: CodecConfig,
+    writer: str,
+    reader: str,
+) -> None:
+    """Data written under one pipeline with outer AA/BB codecs must read back
+    correctly under the other, including through a partial write and a
+    partial read.
+    """
+    shape = (8, 8)
+    data = (np.arange(int(np.prod(shape))).reshape(shape) + 1).astype("uint16")
+    store = MemoryStore()
+
+    with zarr_config.set({"codec_pipeline.path": writer}):
+        with _ignore_sharding_combo_warning():
+            arr = zarr.create_array(
+                store=store,
+                shape=shape,
+                chunks=(4, 4),
+                dtype=data.dtype,
+                fill_value=0,
+                **codec_kwargs,
+            )
+        arr[...] = data
+        arr[2:5, 1:3] = 99  # region write -- exercises the partial-encode branch
+
+    expected = data.copy()
+    expected[2:5, 1:3] = 99
+
+    with zarr_config.set({"codec_pipeline.path": reader}):
+        with _ignore_sharding_combo_warning():
+            arr2 = zarr.open_array(store=store, mode="r")
+        full = arr2[...]
+        partial = arr2[1:3, 2:7]  # region read -- exercises the partial-decode branch
+
+    np.testing.assert_array_equal(full, expected)
+    np.testing.assert_array_equal(partial, expected[1:3, 2:7])
