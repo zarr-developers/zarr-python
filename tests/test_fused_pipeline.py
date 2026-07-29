@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -32,6 +33,67 @@ def test_construction(codecs: tuple[Any, ...]) -> None:
     """FusedCodecPipeline can be constructed from valid codec combinations."""
     pipeline = FusedCodecPipeline.from_codecs(codecs)
     assert pipeline.codecs == codecs
+
+
+def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codec compute must never run on the thread driving the event loop.
+
+    Every sync-API call, from every user thread, is serviced by the one global
+    `zarr_io` event loop. Running decode/encode inline on that loop's thread
+    turns it into a mutex around codec compute: concurrent readers serialize,
+    and the penalty grows with codec cost (observed as "fused pipeline is
+    slower for zstd data" under dask-style multi-threaded single-chunk reads).
+    """
+    import asyncio
+
+    from zarr.core.chunk_utils import ChunkTransform
+
+    compute_on_loop = {"decode": False, "encode": False}
+    calls = {"decode": 0, "encode": 0}
+    real_decode = ChunkTransform.decode_chunk
+    real_encode = ChunkTransform.encode_chunk
+
+    def _running_loop() -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def traced_decode(self: ChunkTransform, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        calls["decode"] += 1
+        compute_on_loop["decode"] = compute_on_loop["decode"] or _running_loop()
+        return real_decode(self, chunk_bytes, chunk_spec)
+
+    def traced_encode(self: ChunkTransform, chunk_array: Any, chunk_spec: Any) -> Any:
+        calls["encode"] += 1
+        compute_on_loop["encode"] = compute_on_loop["encode"] or _running_loop()
+        return real_encode(self, chunk_array, chunk_spec)
+
+    monkeypatch.setattr(ChunkTransform, "decode_chunk", traced_decode)
+    monkeypatch.setattr(ChunkTransform, "encode_chunk", traced_encode)
+
+    with zarr_config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(
+            MemoryStore(),
+            shape=(8, 8),
+            chunks=(4, 4),
+            dtype="float64",
+            compressors=ZstdCodec(level=1),
+        )
+        data = np.arange(64, dtype="float64").reshape(8, 8)
+        arr[:4, :4] = data[:4, :4]  # single-chunk write (batch of 1)
+        arr[:] = data  # multi-chunk write
+        # Guard against vacuity: if the sync fast path stops triggering, the
+        # traced ChunkTransform methods are never called (the async fallback
+        # uses AsyncChunkTransform) and the on-loop flags stay trivially False.
+        assert calls["encode"] > 0
+        assert compute_on_loop["encode"] is False
+
+        np.testing.assert_array_equal(arr[:4, :4], data[:4, :4])  # single-chunk read
+        np.testing.assert_array_equal(arr[:], data)  # multi-chunk read
+        assert calls["decode"] > 0
+        assert compute_on_loop["decode"] is False
 
 
 def test_evolve_from_array_spec() -> None:
@@ -580,6 +642,93 @@ def test_write_over_sync_byte_setter_takes_sync_path() -> None:
     np.testing.assert_array_equal(
         np.frombuffer(written.to_bytes(), dtype="uint8"), np.arange(10, dtype="uint8")
     )
+
+
+# ---------------------------------------------------------------------------
+# Async-only codecs inside a shard's inner codec chain
+# ---------------------------------------------------------------------------
+
+
+class _AsyncOnlyNoopCodec(BytesBytesCodec):  # type: ignore[misc,unused-ignore]
+    """A no-op BB codec implementing ONLY the async codec interface.
+
+    Deliberately does NOT satisfy `SupportsSyncCodec` (no `_decode_sync` /
+    `_encode_sync`), modelling a third-party codec that predates the sync
+    protocol. Class-level counters prove the codec actually ran.
+    """
+
+    is_fixed_size = True
+    encode_calls = 0
+    decode_calls = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "test-async-only-noop", "configuration": {}}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> _AsyncOnlyNoopCodec:
+        return cls()
+
+    def compute_encoded_size(self, input_byte_length: int, _spec: Any) -> int:
+        return input_byte_length
+
+    async def _encode_single(self, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        type(self).encode_calls += 1
+        return chunk_bytes
+
+    async def _decode_single(self, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        type(self).decode_calls += 1
+        return chunk_bytes
+
+
+def test_sharded_roundtrip_with_async_only_inner_codec() -> None:
+    """A sharded array whose INNER codec chain contains an async-only codec
+    round-trips under FusedCodecPipeline (full write, partial write, full read,
+    partial read).
+
+    Regression: the pipeline's top-level guard (evolve_from_array_spec ->
+    sync_transform=None) only inspected the top-level chain. ShardingCodec
+    structurally satisfies SupportsSyncCodec, so a sync transform was built and
+    the sync fast path dove into ShardingCodec's sync shard paths, which raised
+    TypeError from the inner ChunkTransform. The pipeline must instead decline
+    the sync fast path and fall back to the async inner pipeline, like
+    BatchedCodecPipeline.
+    """
+    _AsyncOnlyNoopCodec.encode_calls = 0
+    _AsyncOnlyNoopCodec.decode_calls = 0
+
+    with zarr_config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(16, 16),
+            shards=(8, 8),
+            chunks=(4, 4),
+            dtype="int32",
+            compressors=[_AsyncOnlyNoopCodec()],
+            fill_value=-1,
+        )
+        assert isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline)
+
+        data = np.arange(256, dtype="int32").reshape(16, 16)
+        arr[:] = data  # full write
+        np.testing.assert_array_equal(arr[:], data)  # full read
+        np.testing.assert_array_equal(arr[2:11, 3:14], data[2:11, 3:14])  # partial read
+
+        arr[5:7, 5:13] = 0  # partial write (read-merge-write of existing shards)
+        data[5:7, 5:13] = 0
+        np.testing.assert_array_equal(arr[:], data)
+
+    assert _AsyncOnlyNoopCodec.encode_calls > 0, "async-only inner codec never encoded"
+    assert _AsyncOnlyNoopCodec.decode_calls > 0, "async-only inner codec never decoded"
+
+    # The stored bytes are valid for the default pipeline too: read them back
+    # under BatchedCodecPipeline (default codec_pipeline.path). Opening from
+    # metadata needs the codec name in the registry.
+    from zarr.registry import register_codec
+
+    register_codec("test-async-only-noop", _AsyncOnlyNoopCodec)
+    reread = zarr.open_array(store=store, mode="r")
+    np.testing.assert_array_equal(reread[:], data)
 
 
 # ---------------------------------------------------------------------------
