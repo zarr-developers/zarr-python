@@ -1207,12 +1207,10 @@ class CoordinateIndexer(Indexer):
                 f"got {selection!r}"
             )
 
-        # Fast path: a single sorted, in-bounds, 1-D integer coordinate array over a regular
-        # (fixed-size) chunk grid -- the common "gather many disjoint ranges" case.
-        # The path below does several full O(n_elements) numpy passes over the flat selection;
-        # when the selection carries only O(#runs) of information that is wasteful.
-        # Here we locate chunk boundaries with a single searchsorted
-        # over the touched chunk edges -> O(#chunks_touched * log n_elements), skipping the passes.
+        # Optimization for a single sorted, in-bounds, 1-D integer coordinate array over a
+        # regular (fixed-size) chunk grid. The general path below makes several full passes over
+        # the flat selection. For sufficiently dense selections, locating the internal chunk
+        # boundaries with searchsorted is cheaper.
         if len(selection_normalized) == 1:
             (coords,) = selection_normalized
             g0 = dim_grids[0]
@@ -1232,8 +1230,8 @@ class CoordinateIndexer(Indexer):
                 first = int(coords[0]) // size
                 last = int(coords[-1]) // size
                 chunk_span = last - first + 1
-                # searchsorted does O(log n) work per boundary. Fall through when directly
-                # processing the coordinates is expected to be cheaper.
+                # searchsorted does O(log n) work per chunk in the spanned range. Fall through
+                # when directly processing the coordinates is expected to be cheaper.
                 if (
                     chunk_span * coords.size.bit_length() < coords.size
                     and bool((coords[:-1] <= coords[1:]).all())  # sorted -> grouped by chunk
