@@ -51,4 +51,19 @@ docs-serve port="":
     s.close()
     ')
     fi
-    exec env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port"
+    # Job control gives the server its own process group, so the trap can kill
+    # the whole uv->mkdocs tree, not just the uv wrapper.
+    set -m
+    env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port" &
+    server=$!
+    trap 'kill -- "-$server" 2>/dev/null' INT TERM EXIT
+    # mkdocs's own "Serving on" line points at the site root, which is the
+    # zarr-python landing page; print this package's corner of the site once
+    # the server is accepting connections.
+    while kill -0 "$server" 2>/dev/null && ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+        sleep 1
+    done
+    if kill -0 "$server" 2>/dev/null; then
+        echo "zarr-metadata API reference: http://localhost:$port/api/zarr_metadata/"
+    fi
+    wait "$server"
