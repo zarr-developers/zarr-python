@@ -190,3 +190,51 @@ def test_read_array(
         return (arr, Ellipsis), {}
 
     benchmark.pedantic(getitem, setup=setup, rounds=3)  # type: ignore[no-untyped-call]
+
+
+_CONCURRENT_READ_THREADS = 8
+_concurrent_layout = Layout(shape=(64_000_000,), chunks=(4_000_000,), shards=None)
+
+
+@pytest.mark.parametrize("pipeline", ["batched", "fused_full_threaded"], indirect=True)
+@pytest.mark.parametrize("compression_name", ["zstd", None])
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_read_array_concurrent(
+    bench_store: Store,
+    compression_name: CompressorName,
+    pipeline: str,
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Dask-style access: several user threads each reading one chunk per call.
+
+    All sync-API calls are serviced by the one global event loop, so this
+    measures how much of each read's IO+compute the pipeline runs while
+    holding the loop: anything inline serializes the readers.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    layout = _concurrent_layout
+    arr = create_array(
+        bench_store,
+        dtype="uint8",
+        shape=layout.shape,
+        chunks=layout.chunks,
+        shards=layout.shards,
+        compressors=compressors[compression_name],  # type: ignore[arg-type]
+        fill_value=0,
+    )
+    arr[:] = _data(layout.shape)
+    selections = [
+        slice(start, start + layout.chunks[0])
+        for start in range(0, layout.shape[0], layout.chunks[0])
+    ]
+
+    def read_all_chunks_concurrently() -> None:
+        with ThreadPoolExecutor(max_workers=_CONCURRENT_READ_THREADS) as executor:
+            list(executor.map(lambda sel: arr[sel], selections))
+
+    def setup() -> tuple[tuple[()], dict]:  # type: ignore[type-arg]
+        clear_cache()
+        return (), {}
+
+    benchmark.pedantic(read_all_chunks_concurrently, setup=setup, rounds=3)  # type: ignore[no-untyped-call]

@@ -1182,7 +1182,15 @@ class FusedCodecPipeline(CodecPipeline):
             (isinstance(first_bg, StorePath) and isinstance(first_bg.store, SupportsGetSync))
             or (not isinstance(first_bg, StorePath) and isinstance(first_bg, SyncByteGetter))
         ):
-            return self.read_sync(batch, out, drop_axes, max_workers=_resolve_max_workers())
+            # One thread hop for the WHOLE batch — not per chunk, so the fused
+            # design's win over per-chunk async scheduling is preserved. Running
+            # read_sync inline here would block the event loop for the duration
+            # of the batch's IO+compute; every sync-API call from every user
+            # thread shares this one loop, so inline execution serializes
+            # concurrent callers behind each other's codec compute.
+            return await asyncio.to_thread(
+                self.read_sync, batch, out, drop_axes, max_workers=_resolve_max_workers()
+            )
 
         # Non-sync store (e.g. ZipStore): can't use the sync fast path. But if the
         # array-bytes codec supports partial decoding (sharding), still route
@@ -1235,7 +1243,11 @@ class FusedCodecPipeline(CodecPipeline):
             (isinstance(first_bs, StorePath) and isinstance(first_bs.store, SupportsSetSync))
             or (not isinstance(first_bs, StorePath) and isinstance(first_bs, SyncByteSetter))
         ):
-            self.write_sync(batch, value, drop_axes, max_workers=_resolve_max_workers())
+            # One thread hop for the whole batch; see the matching comment in
+            # `read` for why write_sync must not run inline on the event loop.
+            await asyncio.to_thread(
+                self.write_sync, batch, value, drop_axes, max_workers=_resolve_max_workers()
+            )
             return
 
         await _async_write_fallback(self, batch, value, drop_axes)
