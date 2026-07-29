@@ -1199,6 +1199,27 @@ def test_coordinate_indexer_1d_last_chunk_boundary_does_not_overflow() -> None:
     assert projection.out_selection == slice(0, 4)
 
 
+@pytest.mark.parametrize("coord_dtype", [np.int8, np.uint8, np.uint32])
+def test_coordinate_selection_1d_narrow_dtype_large_chunk(
+    store: StorePath, coord_dtype: type[np.integer[Any]]
+) -> None:
+    source = np.arange(1_000)
+    coords = np.arange(10, dtype=coord_dtype)
+    z = zarr_array_from_numpy_array(store, source, chunk_shape=(1_000,))
+
+    assert_array_equal(z.get_coordinate_selection(coords), source[coords])
+    assert_array_equal(z.vindex[coords], source[coords])
+    assert_array_equal(z[coords], source[coords])
+
+    expected = source.copy()
+    expected[coords] = -1
+    z.set_coordinate_selection(coords, -1)
+    assert_array_equal(z[:], expected)
+    z[:] = source
+    z.vindex[coords] = -1
+    assert_array_equal(z[:], expected)
+
+
 def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

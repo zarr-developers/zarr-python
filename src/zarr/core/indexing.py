@@ -1227,7 +1227,6 @@ class CoordinateIndexer(Indexer):
                 and coords[0] >= 0
                 and coords[-1] < shape[0]
                 and coords[0] <= coords[-1]
-                and bool((coords[:-1] <= coords[1:]).all())  # sorted -> grouped by chunk
             ):
                 size = g0.size
                 first = int(coords[0]) // size
@@ -1235,12 +1234,18 @@ class CoordinateIndexer(Indexer):
                 chunk_span = last - first + 1
                 # searchsorted does O(log n) work per boundary. Fall through when directly
                 # processing the coordinates is expected to be cheaper.
-                if chunk_span * coords.size.bit_length() < coords.size:
+                if (
+                    chunk_span * coords.size.bit_length() < coords.size
+                    and bool((coords[:-1] <= coords[1:]).all())  # sorted -> grouped by chunk
+                ):
                     # Search only internal boundaries. Derive the first and last counts from the
                     # selection bounds so that the boundary after the last chunk cannot overflow.
-                    edges = np.arange(first + 1, last + 1, dtype=coords.dtype) * size
-                    cuts = np.searchsorted(coords, edges)
-                    counts = np.diff(cuts, prepend=0, append=coords.size)
+                    if first == last:
+                        counts = np.array([coords.size], dtype=np.intp)
+                    else:
+                        edges = np.arange(first + 1, last + 1, dtype=coords.dtype) * size
+                        cuts = np.searchsorted(coords, edges)
+                        counts = np.diff(cuts, prepend=0, append=coords.size)
                     chunk_rixs = (first + np.nonzero(counts)[0]).astype(np.intp)
                     chunk_nitems = np.zeros(nchunks, dtype=np.intp)
                     chunk_nitems[first : last + 1] = counts
