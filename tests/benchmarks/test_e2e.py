@@ -4,8 +4,10 @@ Benchmarks for end-to-end read/write performance of Zarr
 
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
+import warnings
 from functools import lru_cache
 from operator import getitem, setitem
 from typing import TYPE_CHECKING, Any, Literal
@@ -21,12 +23,27 @@ from zarr.testing.store import LatencyStore
 
 
 def clear_cache() -> None:
+    """Drop the OS page cache between benchmark rounds.
+
+    Requires passwordless sudo, so it is opt-in: set `ZARR_BENCHMARK_CLEAR_CACHE=1`
+    to enable it (as the benchmark CI jobs do). By default this is a no-op, so a
+    plain `pytest` run never prompts for a sudo password (see issue #4199).
+    `sudo -n` guarantees we fail instead of blocking on a password prompt even
+    when the variable is set.
+    """
+    if os.environ.get("ZARR_BENCHMARK_CLEAR_CACHE", "") not in ("1", "true"):
+        return
     if platform.system() == "Darwin":
-        subprocess.call(["sync", "&&", "sudo", "purge"])
+        subprocess.call(["sync"])
+        subprocess.call(["sudo", "-n", "purge"])
     elif platform.system() == "Linux":
-        subprocess.call(["sudo", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
+        subprocess.call(["sudo", "-n", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
     else:
-        raise Exception("Unsupported platform")  # noqa: TRY002
+        warnings.warn(
+            f"ZARR_BENCHMARK_CLEAR_CACHE is set but cache clearing is not supported on "
+            f"{platform.system()}; skipping.",
+            stacklevel=2,
+        )
 
 
 if TYPE_CHECKING:
