@@ -763,7 +763,6 @@ class ShardingCodec(
         """
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        nominal_chunk_spec = self._get_chunk_spec(shard_spec)
         get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
@@ -818,7 +817,7 @@ class ShardingCodec(
 
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
             chunk_spec = get_chunk_spec(chunk_coords)
-            if is_scalar and is_complete_chunk and chunk_spec is nominal_chunk_spec:
+            if is_scalar and is_complete_chunk and chunk_spec.shape == self.chunk_shape:
                 if scalar_complete_result is _sentinel:
                     scalar_complete_result = merge_and_encode_chunk(
                         None,
@@ -1510,9 +1509,12 @@ class ShardingCodec(
 
         Inner chunks clipped by the shard boundary are encoded at their clipped
         shape, so their spec differs from the nominal `chunk_shape` spec.
-        Chunks with the nominal shape all share one spec object, which keeps
-        per-spec caches downstream (e.g. `ChunkTransform._resolve_specs`)
-        effective and makes `spec is nominal_spec` a valid uniformity check.
+        Within one getter, chunks with the nominal shape all share one spec
+        object, which keeps per-spec caches downstream (e.g.
+        `ChunkTransform._resolve_specs`) effective. Note that `_get_chunk_spec`
+        is not cached (see #3054), so the nominal spec here is NOT the same
+        object as one obtained from a separate `_get_chunk_spec` call — callers
+        must compare specs by shape, not identity.
         """
         nominal = self._get_chunk_spec(shard_spec)
         if self._is_evenly_divided(shard_spec.shape):

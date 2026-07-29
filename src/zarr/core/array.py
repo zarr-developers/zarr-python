@@ -5345,8 +5345,10 @@ async def _nchunks_initialized(
     if array.shards is None:
         chunks_per_shard = 1
     else:
+        # Inner chunks are clipped by the shard shape, so the count per shard
+        # is the ceiling division of the shard shape by the chunk shape.
         chunks_per_shard = product(
-            tuple(a // b for a, b in zip(array.shards, array.chunks, strict=True))
+            tuple(ceildiv(a, b) for a, b in zip(array.shards, array.chunks, strict=True))
         )
     return (await _nshards_initialized(array)) * chunks_per_shard
 

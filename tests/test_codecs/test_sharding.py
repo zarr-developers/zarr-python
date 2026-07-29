@@ -887,17 +887,27 @@ def test_sharding_clipped_inner_chunks_byte_layout() -> None:
 
 def test_sharding_clipped_inner_chunks_rectilinear() -> None:
     """A rectilinear outer grid whose shard edges are not divisible by the inner
-    chunk shape round-trips: the inner grid is clipped per shard."""
-    arr = zarr.create_array(
-        {}, shape=(10,), shards=[[6, 4]], chunks=(4,), dtype="uint8", fill_value=0
-    )
+    chunk shape round-trips: the inner grid is clipped per shard.
+
+    Shard edges `[4, 6]` cannot be normalized to a regular grid (the larger edge
+    comes last), so this exercises `RectilinearChunkGridMetadata` for real —
+    unlike e.g. `[6, 4]`, which coincides with a clipped regular grid of size 6.
+    """
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
+
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        arr = zarr.create_array(
+            {}, shape=(10,), shards=[[4, 6]], chunks=(4,), dtype="uint8", fill_value=0
+        )
+    assert isinstance(arr.metadata, ArrayV3Metadata)
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGridMetadata)
     data = np.arange(10, dtype="uint8")
     arr[...] = data
     assert np.array_equal(arr[...], data)
-    assert arr.read_chunk_sizes == ((4, 2, 4),)
+    assert arr.read_chunk_sizes == ((4, 4, 2),)
 
-    arr[5:9] = 42
-    data[5:9] = 42
+    arr[3:9] = 42
+    data[3:9] = 42
     assert np.array_equal(arr[...], data)
 
 
@@ -933,6 +943,55 @@ def test_sharding_clipped_inner_chunk_sizes() -> None:
     assert arr.read_chunk_sizes == ((5, 5, 2, 5, 5, 1),)
     assert arr.cdata_shape == (6,)
     assert arr.nchunks == 6
+
+
+def test_sharding_clipped_nchunks_initialized() -> None:
+    """`nchunks_initialized` counts ceiling-division inner chunks per shard.
+
+    Regression test: it previously used floor division, which undercounts for
+    clipped grids and reports 0 when the inner chunk shape exceeds the shard
+    shape.
+    """
+    arr = zarr.create_array({}, shape=(16,), shards=(8,), chunks=(3,), dtype="uint8", fill_value=0)
+    arr[...] = np.arange(16, dtype="uint8")
+    # 2 shards, each holding ceil(8/3) = 3 inner chunks
+    assert arr.nchunks_initialized == 6
+
+    arr2 = zarr.create_array({}, shape=(11,), shards=(4,), chunks=(9,), dtype="uint8", fill_value=0)
+    arr2[...] = np.arange(11, dtype="uint8")
+    # 3 shards, each holding one inner chunk clipped to the shard shape
+    assert arr2.nchunks_initialized == 3
+
+
+def test_sharding_scalar_write_memoizes_complete_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A scalar broadcast partial write encodes the repeated complete inner
+    chunk once, not once per chunk.
+
+    Regression test: the memo gate must compare chunk specs by shape — an
+    object-identity gate never fires because `_get_chunk_spec` is uncached.
+    """
+    from zarr.core import chunk_utils
+
+    calls = 0
+    real_encode = chunk_utils.ChunkTransform.encode_chunk
+
+    def counting_encode(self: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return real_encode(self, *args, **kwargs)
+
+    with zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(
+            {}, shape=(100,), shards=(100,), chunks=(10,), dtype="uint8", fill_value=0
+        )
+        monkeypatch.setattr(chunk_utils.ChunkTransform, "encode_chunk", counting_encode)
+        arr[5:] = 7
+        expected = np.full(100, 7, dtype="uint8")
+        expected[:5] = 0
+        assert np.array_equal(arr[...], expected)
+    # one merge for the partial edge chunk, one memoized encode shared by the
+    # nine complete chunks, one shard-index encode
+    assert calls <= 4, f"scalar write encoded {calls} times; memo is not firing"
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
