@@ -594,6 +594,14 @@ In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is
 This means that `10*10` chunks are stored in each shard, and there are `10*10` shards in total.
 Without the `shards` argument, there would be 10,000 chunks stored as individual files.
 
+The chunk shape does not need to evenly divide the shard shape. Chunks are laid
+out on a regular grid within each shard and clipped by the shard boundary, so a
+shard shape of `(1000,)` with a chunk shape of `(300,)` stores four chunks per
+shard with sizes `300, 300, 300, 100`. Note that arrays that rely on this
+clipping (version 1.1 of the `sharding_indexed` specification) cannot be read by
+implementations that only support version 1.0, which requires the chunk shape
+to evenly divide the shard shape.
+
 ## Rectilinear (variable) chunk grids
 
 !!! warning "Experimental"
@@ -728,8 +736,9 @@ print("Roundtrip OK")
 
 Rectilinear chunk grids can also be used for shard boundaries when combined
 with sharding. In this case, the outer grid (shards) is rectilinear while the
-inner chunks remain regular. Each shard dimension must be divisible by the
-corresponding inner chunk size:
+inner chunks remain regular. The inner chunk size does not need to divide the
+shard sizes evenly: inner chunks are clipped by each shard's boundary, so every
+shard holds a semi-regular grid of inner chunks:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 z = zarr.create_array(
