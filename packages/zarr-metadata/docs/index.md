@@ -1,7 +1,3 @@
----
-title: zarr-metadata
----
-
 # zarr-metadata
 
 Basic tools for modelling Zarr metadata, with minimal dependencies.
