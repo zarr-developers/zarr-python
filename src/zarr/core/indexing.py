@@ -1240,14 +1240,14 @@ class CoordinateIndexer(Indexer):
                 chunk_nitems[first : last + 1] = counts
                 chunk_nitems_cumsum = np.cumsum(chunk_nitems)
 
-                object.__setattr__(self, "sel_shape", coords.shape or (1,))
+                object.__setattr__(self, "sel_shape", coords.shape)
                 object.__setattr__(self, "selection", (coords,))
                 object.__setattr__(self, "sel_sort", None)
                 object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
                 object.__setattr__(self, "chunk_rixs", chunk_rixs)
                 object.__setattr__(self, "chunk_mixs", (chunk_rixs,))
                 object.__setattr__(self, "dim_grids", dim_grids)
-                object.__setattr__(self, "shape", coords.shape or (1,))
+                object.__setattr__(self, "shape", coords.shape)
                 object.__setattr__(self, "drop_axes", ())
                 return
 
