@@ -1189,14 +1189,29 @@ def test_get_coordinate_selection_1d_fast_path(
 def test_coordinate_indexer_1d_last_chunk_boundary_does_not_overflow() -> None:
     max_intp = np.iinfo(np.intp).max
     chunk_size = max_intp // 2 + 1
-    coords = np.array([max_intp - 1], dtype=np.intp)
+    coords = np.arange(max_intp - 4, max_intp, dtype=np.intp)
     chunk_grid = ChunkGrid.from_sizes((max_intp,), (chunk_size,))
 
     (projection,) = tuple(CoordinateIndexer((coords,), (max_intp,), chunk_grid))
 
     assert projection.chunk_coords == (1,)
     assert_array_equal(projection.chunk_selection[0], coords - chunk_size)
-    assert projection.out_selection == slice(0, 1)
+    assert projection.out_selection == slice(0, 4)
+
+
+def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coords = np.array([0, 99])
+    chunk_grid = ChunkGrid.from_sizes((100,), (1,))
+
+    def unexpected_searchsorted(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("sparse coordinate selection should not call searchsorted")
+
+    monkeypatch.setattr(np, "searchsorted", unexpected_searchsorted)
+    projections = tuple(CoordinateIndexer((coords,), (100,), chunk_grid))
+
+    assert tuple(projection.chunk_coords for projection in projections) == ((0,), (99,))
 
 
 def test_get_coordinate_selection_1d_irregular_grid(store: StorePath) -> None:
