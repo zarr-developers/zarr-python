@@ -4,7 +4,7 @@ title: zarr-metadata
 
 # zarr-metadata
 
-Spec-defined metadata types, models, and validators for Zarr v2 and v3.
+Basic tools for modelling Zarr metadata, with minimal dependencies.
 
 `zarr-metadata` is developed in the
 [zarr-python repository](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata)
@@ -14,9 +14,14 @@ and released independently of `zarr` itself. Install it with:
 pip install zarr-metadata
 ```
 
+## Who needs this
+
+This library might be useful to you if your software interacts with Zarr metadata documents.
+
 ## What this is
 
-Two layers and an optional integration:
+This library is *not* a full Zarr implementation. Instead, it's a collection of data structures and routines that
+closely model the content of the Zarr specifications, such as:
 
 - **Typed JSON shapes** ([`zarr_metadata.v2`](api/v2.md) and
   [`zarr_metadata.v3`](api/v3/index.md)): `TypedDict` definitions and
