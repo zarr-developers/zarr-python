@@ -1,0 +1,34 @@
+# Development verbs for the zarr-metadata package. Recipes run with this
+# directory as the working directory regardless of where `just` is invoked.
+
+# List available recipes
+default:
+    @just --list
+
+# Run the test suite; extra args are passed to pytest
+test *args:
+    uv run --group test pytest tests {{ args }}
+
+# Lint with the same invocation CI uses
+lint:
+    uvx ruff check .
+
+# Pinned to the last pyright that types PEP 661 sentinels in class attributes
+# correctly; 1.1.405+ regressed (microsoft/pyright#11115). Unpin when fixed.
+pyright_version := "1.1.404"
+
+# Type-check the package sources. CI runs pyright on python 3.11; the pinned
+# pyright predates 3.14, whose stdlib it cannot parse, so match CI's python.
+typecheck:
+    uv run --python 3.11 --group test --with 'pyright=={{ pyright_version }}' pyright src
+
+# Run everything CI runs for this package
+check: lint typecheck test
+
+# Preview the changelog that the next release would generate
+changelog-draft:
+    uvx towncrier build --draft --version Unreleased
+
+# Serve the zarr-python docs site, which includes this package's API reference
+docs-serve:
+    cd ../.. && DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve

@@ -82,6 +82,21 @@ store I/O. The models begin and end at the metadata documents themselves —
 `from_key_value` / `to_key_value` map documents to store keys and bytes,
 and everything past that belongs to consumer libraries.
 
+## Developing
+
+Package-scoped development commands live in the [`justfile`](./justfile)
+(requires [just](https://github.com/casey/just)):
+
+```
+just test        # run the test suite (extra args go to pytest)
+just lint        # ruff, same invocation as CI
+just typecheck   # pyright, pinned to the version CI uses
+just check       # all of the above
+```
+
+Run them from this directory, or from anywhere in the repository as
+`just packages/zarr-metadata/<recipe>`.
+
 ## Releasing
 
 The package version is derived from git tags by `hatch-vcs`. Tags must
