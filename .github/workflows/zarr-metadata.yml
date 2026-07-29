@@ -87,9 +87,31 @@ jobs:
         # Unpin when the fix lands.
         run: uv run --group test --with 'pyright==1.1.404' pyright src
 
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - name: Sync docs dependency group
+        run: uv sync --group docs
+      - name: Build docs
+        run: uv run --group docs mkdocs build --strict
+        env:
+          DISABLE_MKDOCS_2_WARNING: "true"
+
   zarr-metadata-complete:
     name: zarr-metadata complete
-    needs: [test, ruff, pyright]
+    needs: [test, ruff, pyright, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:

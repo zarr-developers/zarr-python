@@ -17,25 +17,29 @@ lint:
 # correctly; 1.1.405+ regressed (microsoft/pyright#11115). Unpin when fixed.
 pyright_version := "1.1.404"
 
-# Type-check the package sources. CI runs pyright on python 3.11; the pinned
-# pyright predates 3.14, whose stdlib it cannot parse, so match CI's python.
+# CI runs pyright on python 3.11; the pinned pyright predates 3.14, whose
+# stdlib it cannot parse, so pin the interpreter to match CI.
+# Type-check the package sources
 typecheck:
     uv run --python 3.11 --group test --with 'pyright=={{ pyright_version }}' pyright src
 
 # Run everything CI runs for this package
-check: lint typecheck test
+check: lint typecheck test docs-check
 
 # Preview the changelog that the next release would generate
 changelog-draft:
     uvx towncrier build --draft --version Unreleased
 
-# Serve the zarr-python docs site, which includes this package's API reference.
+# Build this package's documentation site, warnings as errors
+docs-check:
+    env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs build --strict
+
 # With no argument, uses port 8000 if free, otherwise an ephemeral free port;
 # an explicitly requested port is used as-is so a conflict fails loudly.
+# Serve this package's documentation site
 docs-serve port="":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ../..
     port="{{ port }}"
     if [ -z "$port" ]; then
         port=$(uv run --group docs python -c '
@@ -51,19 +55,4 @@ docs-serve port="":
     s.close()
     ')
     fi
-    # Job control gives the server its own process group, so the trap can kill
-    # the whole uv->mkdocs tree, not just the uv wrapper.
-    set -m
-    env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port" &
-    server=$!
-    trap 'kill -- "-$server" 2>/dev/null' INT TERM EXIT
-    # mkdocs's own "Serving on" line points at the site root, which is the
-    # zarr-python landing page; print this package's corner of the site once
-    # the server is accepting connections.
-    while kill -0 "$server" 2>/dev/null && ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
-        sleep 1
-    done
-    if kill -0 "$server" 2>/dev/null; then
-        echo "zarr-metadata API reference: http://localhost:$port/api/zarr_metadata/"
-    fi
-    wait "$server"
+    exec env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port"

@@ -2,6 +2,8 @@
 
 Python types, models, and validators for Zarr v2 and v3 metadata.
 
+Documentation: <https://zarr-metadata.readthedocs.io/>
+
 ## What this is
 
 Two layers and an optional integration:
@@ -91,7 +93,9 @@ Package-scoped development commands live in the [`justfile`](./justfile)
 just test        # run the test suite (extra args go to pytest)
 just lint        # ruff, same invocation as CI
 just typecheck   # pyright, pinned to the version CI uses
+just docs-check  # strict build of the docs site
 just check       # all of the above
+just docs-serve  # serve the docs site locally
 ```
 
 Run them from this directory, or from anywhere in the repository as
