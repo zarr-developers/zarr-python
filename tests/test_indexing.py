@@ -1337,6 +1337,26 @@ def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
     assert tuple(projection.chunk_coords for projection in projections) == ((0,), (99,))
 
 
+def test_deprecated_dense_indexer_attributes() -> None:
+    """`chunk_nitems` / `chunk_nitems_cumsum` keep their original dense per-chunk semantics
+    for external code that introspected indexers, but warn: they allocate O(nchunks) and the
+    indexers no longer use them internally (see gh-4174)."""
+    chunk_grid = ChunkGrid.from_sizes((20,), (3,))  # 7 chunks
+    coords = np.array([1, 4, 4, 19])
+    expected_nitems = np.bincount(coords // 3, minlength=7)
+
+    indexer = CoordinateIndexer((coords,), (20,), chunk_grid)
+    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
+        assert_array_equal(indexer.chunk_nitems_cumsum, np.cumsum(expected_nitems))
+
+    (dim_grid,) = chunk_grid._dimensions
+    dim_indexer = IntArrayDimIndexer(coords, 20, dim_grid)
+    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
+        assert_array_equal(dim_indexer.chunk_nitems, expected_nitems)
+    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
+        assert_array_equal(dim_indexer.chunk_nitems_cumsum, np.cumsum(expected_nitems))
+
+
 def test_sparse_selections_on_arrays_with_many_chunks(store: StorePath) -> None:
     """Coordinate and orthogonal selections must scale with the number of selected points,
     not the total number of chunks in the array. This array has 2**44 chunks, so any dense
