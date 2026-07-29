@@ -48,6 +48,7 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
     from zarr.core.chunk_utils import ChunkTransform
 
     compute_on_loop = {"decode": False, "encode": False}
+    calls = {"decode": 0, "encode": 0}
     real_decode = ChunkTransform.decode_chunk
     real_encode = ChunkTransform.encode_chunk
 
@@ -59,10 +60,12 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
         return True
 
     def traced_decode(self: ChunkTransform, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        calls["decode"] += 1
         compute_on_loop["decode"] = compute_on_loop["decode"] or _running_loop()
         return real_decode(self, chunk_bytes, chunk_spec)
 
     def traced_encode(self: ChunkTransform, chunk_array: Any, chunk_spec: Any) -> Any:
+        calls["encode"] += 1
         compute_on_loop["encode"] = compute_on_loop["encode"] or _running_loop()
         return real_encode(self, chunk_array, chunk_spec)
 
@@ -80,10 +83,15 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
         data = np.arange(64, dtype="float64").reshape(8, 8)
         arr[:4, :4] = data[:4, :4]  # single-chunk write (batch of 1)
         arr[:] = data  # multi-chunk write
+        # Guard against vacuity: if the sync fast path stops triggering, the
+        # traced ChunkTransform methods are never called (the async fallback
+        # uses AsyncChunkTransform) and the on-loop flags stay trivially False.
+        assert calls["encode"] > 0
         assert compute_on_loop["encode"] is False
 
         np.testing.assert_array_equal(arr[:4, :4], data[:4, :4])  # single-chunk read
         np.testing.assert_array_equal(arr[:], data)  # multi-chunk read
+        assert calls["decode"] > 0
         assert compute_on_loop["decode"] is False
 
 
