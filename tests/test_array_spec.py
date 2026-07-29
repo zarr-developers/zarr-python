@@ -100,83 +100,80 @@ MUTATIONS = [
 ]
 
 
-class TestArraySpecHashEq:
-    @pytest.mark.parametrize("kwargs", SPECS)
-    def test_hashable(self, kwargs: dict[str, Any]) -> None:
-        """Every ArraySpec is hashable, including structured (np.void) fill values."""
-        assert isinstance(hash(_make_spec(**kwargs)), int)
+@pytest.mark.parametrize("kwargs", SPECS)
+def test_hashable(kwargs: dict[str, Any]) -> None:
+    """Every ArraySpec is hashable, including structured (np.void) fill values."""
+    assert isinstance(hash(_make_spec(**kwargs)), int)
 
-    @pytest.mark.parametrize("kwargs", SPECS)
-    def test_equal_specs_hash_equal(self, kwargs: dict[str, Any]) -> None:
-        """Independently built specs with identical fields are equal and hash equal."""
-        a = _make_spec(**kwargs)
-        b = _make_spec(**kwargs)
-        assert a == b
-        assert hash(a) == hash(b)
 
-    @pytest.mark.parametrize("kwargs", SPECS)
-    @pytest.mark.parametrize("mutate", MUTATIONS)
-    def test_distinct_specs_unequal(
-        self,
-        mutate: Callable[[dict[str, Any]], dict[str, Any]],
-        kwargs: dict[str, Any],
-    ) -> None:
-        """Changing one dtype-independent field makes a spec unequal to its base."""
-        base = _make_spec(**kwargs)
-        variant = _make_spec(**{**kwargs, **mutate(kwargs)})
-        assert base != variant
-        assert hash(base) != hash(variant)
+@pytest.mark.parametrize("kwargs", SPECS)
+def test_equal_specs_hash_equal(kwargs: dict[str, Any]) -> None:
+    """Independently built specs with identical fields are equal and hash equal."""
+    a = _make_spec(**kwargs)
+    b = _make_spec(**kwargs)
+    assert a == b
+    assert hash(a) == hash(b)
 
-    @pytest.mark.parametrize(
-        ("base", "variant"),
-        [
-            pytest.param({"fill_value": 0}, {"fill_value": 1}, id="fill_value"),
-            pytest.param({"native_dtype": "int16"}, {"native_dtype": "int32"}, id="dtype"),
-            pytest.param(
-                {"native_dtype": "float32", "fill_value": 1.0},
-                {"native_dtype": "float64", "fill_value": 1.0},
-                id="dtype-float-promote",
-            ),
-        ],
-    )
-    def test_dtype_and_fill_value_matter(
-        self, base: dict[str, Any], variant: dict[str, Any]
-    ) -> None:
-        """dtype and fill_value participate in equality; they can't join the cross
-        product because fill_value is coupled to dtype."""
-        assert _make_spec(**base) != _make_spec(**variant)
 
-    @pytest.mark.parametrize(
-        ("native_dtype", "neg_fill", "pos_fill"),
-        [
-            pytest.param("float16", -0.0, 0.0, id="float16"),
-            pytest.param("float32", -0.0, 0.0, id="float32"),
-            pytest.param("float64", -0.0, 0.0, id="float64"),
-            pytest.param("complex128", complex(-0.0, -0.0), 0j, id="complex128-both"),
-            pytest.param("complex128", complex(0.0, -0.0), 0j, id="complex128-imag"),
-            pytest.param("complex128", complex(-0.0, 0.0), 0j, id="complex128-real"),
-            pytest.param([("a", "f8")], (-0.0,), (0.0,), id="structured"),
-        ],
-    )
-    def test_signed_zero_fills_are_distinct(
-        self, native_dtype: Any, neg_fill: Any, pos_fill: Any
-    ) -> None:
-        """A -0.0 fill writes different bytes than +0.0, so the specs are not equal."""
-        neg = _make_spec(native_dtype=native_dtype, fill_value=neg_fill)
-        pos = _make_spec(native_dtype=native_dtype, fill_value=pos_fill)
-        assert neg != pos
-        assert hash(neg) != hash(pos)
+@pytest.mark.parametrize("kwargs", SPECS)
+@pytest.mark.parametrize("mutate", MUTATIONS)
+def test_distinct_specs_unequal(
+    mutate: Callable[[dict[str, Any]], dict[str, Any]],
+    kwargs: dict[str, Any],
+) -> None:
+    """Changing one dtype-independent field makes a spec unequal to its base."""
+    base = _make_spec(**kwargs)
+    variant = _make_spec(**{**kwargs, **mutate(kwargs)})
+    assert base != variant
 
-    @pytest.mark.parametrize(
-        ("obj"),
-        [
-            pytest.param(None, id="None"),
-            pytest.param(42, id="int"),
-            pytest.param("hello", id="str"),
-            pytest.param([1, 2, 3], id="list"),
-            pytest.param({"a": 1}, id="dict"),
-        ],
-    )
-    def test_unequal_with_invalid_type(self, obj: Any) -> None:
-        assert (_make_spec() == obj) is False
-        assert _make_spec() != obj
+
+@pytest.mark.parametrize(
+    ("base", "variant"),
+    [
+        pytest.param({"fill_value": 0}, {"fill_value": 1}, id="fill_value"),
+        pytest.param({"native_dtype": "int16"}, {"native_dtype": "int32"}, id="dtype"),
+        pytest.param(
+            {"native_dtype": "float32", "fill_value": 1.0},
+            {"native_dtype": "float64", "fill_value": 1.0},
+            id="dtype-float-promote",
+        ),
+    ],
+)
+def test_dtype_and_fill_value_matter(base: dict[str, Any], variant: dict[str, Any]) -> None:
+    """dtype and fill_value participate in equality; they can't join the cross
+    product because fill_value is coupled to dtype."""
+    assert _make_spec(**base) != _make_spec(**variant)
+
+
+@pytest.mark.parametrize(
+    ("native_dtype", "neg_fill", "pos_fill"),
+    [
+        pytest.param("float16", -0.0, 0.0, id="float16"),
+        pytest.param("float32", -0.0, 0.0, id="float32"),
+        pytest.param("float64", -0.0, 0.0, id="float64"),
+        pytest.param("complex128", complex(-0.0, -0.0), 0j, id="complex128-both"),
+        pytest.param("complex128", complex(0.0, -0.0), 0j, id="complex128-imag"),
+        pytest.param("complex128", complex(-0.0, 0.0), 0j, id="complex128-real"),
+        pytest.param([("a", "f8")], (-0.0,), (0.0,), id="structured"),
+    ],
+)
+def test_signed_zero_fills_are_distinct(native_dtype: Any, neg_fill: Any, pos_fill: Any) -> None:
+    """A -0.0 fill writes different bytes than +0.0, so the specs are not equal."""
+    neg = _make_spec(native_dtype=native_dtype, fill_value=neg_fill)
+    pos = _make_spec(native_dtype=native_dtype, fill_value=pos_fill)
+    assert neg != pos
+
+
+@pytest.mark.parametrize(
+    ("obj"),
+    [
+        pytest.param(None, id="None"),
+        pytest.param(42, id="int"),
+        pytest.param("hello", id="str"),
+        pytest.param([1, 2, 3], id="list"),
+        pytest.param({"a": 1}, id="dict"),
+    ],
+)
+def test_unequal_with_invalid_type(obj: Any) -> None:
+    assert (_make_spec() == obj) is False
+    assert _make_spec() != obj
