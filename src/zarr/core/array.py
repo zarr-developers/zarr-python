@@ -197,6 +197,25 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
+def _inner_chunk_sizes_from_outer(
+    outer_chunk_sizes: tuple[tuple[int, ...], ...], inner_chunk_shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], ...]:
+    """Compute dask-style inner (sub-shard) chunk sizes from outer chunk sizes.
+
+    The inner chunk grid restarts at every shard boundary and inner chunks are
+    clipped by the shard shape, so along each dimension the sizes are the
+    ceiling partition of each outer chunk's data size by the inner chunk size,
+    concatenated across the outer chunks.
+    """
+    result: list[tuple[int, ...]] = []
+    for outer_sizes, c in zip(outer_chunk_sizes, inner_chunk_shape, strict=True):
+        sizes: list[int] = []
+        for outer_size in outer_sizes:
+            sizes.extend(min(c, outer_size - i * c) for i in range(ceildiv(outer_size, c)))
+        result.append(tuple(sizes))
+    return tuple(result)
+
+
 def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
@@ -883,8 +902,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
         if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            # The inner chunk grid restarts at every shard boundary (inner
+            # chunks are clipped by the shard shape), so derive the sizes from
+            # the outer chunk sizes rather than the array shape alone.
             inner_chunk_shape = codecs[0].chunk_shape
-            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+            return _inner_chunk_sizes_from_outer(self._chunk_grid.chunk_sizes, inner_chunk_shape)
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -1121,9 +1143,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
         if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            # When sharding, count inner chunks across the whole array
+            # When sharding, count inner chunks across the whole array. The
+            # inner chunk grid restarts at every shard boundary (inner chunks
+            # are clipped by the shard shape), so count per outer chunk.
             chunk_shape = codecs[0].chunk_shape
-            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+            return tuple(
+                sum(ceildiv(outer_size, c) for outer_size in outer_sizes)
+                for outer_sizes, c in zip(self._chunk_grid.chunk_sizes, chunk_shape, strict=True)
+            )
         return self._chunk_grid.grid_shape
 
     @property

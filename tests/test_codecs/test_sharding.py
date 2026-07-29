@@ -32,6 +32,7 @@ from zarr.codecs.sharding import (
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.core.indexing import lexicographic_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -808,34 +809,130 @@ def test_invalid_metadata(store: Store) -> None:
             dtype=np.dtype("uint8"),
             fill_value=0,
         )
-    spath2 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        zarr.create_array(
-            spath2,
-            shape=(16, 16),
-            shards=(16, 16),
-            chunks=(8, 7),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-        )
 
 
-def test_invalid_shard_shape() -> None:
-    with pytest.raises(
-        ValueError,
-        match=(
-            f"Chunk edge length {16} in dimension {0} is not "
-            f"divisible by the shard's inner chunk size {9}\\."
-        ),
-    ):
-        zarr.create_array(
-            {},
-            shape=(16, 16),
-            shards=(16, 16),
-            chunks=(9, 9),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-        )
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [
+        ((24,), (12,), (5,)),  # trailing inner chunk clipped to 2 elements
+        ((10,), (4,), (6,)),  # inner chunk larger than the shard: one clipped chunk per shard
+        ((23, 17), (12, 12), (5, 5)),  # array shape not divisible by the shard shape either
+        ((16, 16), (16, 16), (9, 9)),  # single shard, clipped in both dimensions
+        ((16, 16), (8, 16), (4, 4)),  # evenly divisible control case
+    ],
+)
+@pytest.mark.parametrize("index_location", ["start", "end"])
+def test_sharding_clipped_inner_chunks(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...],
+    chunk_shape: tuple[int, ...],
+    index_location: IndexLocation,
+) -> None:
+    """`chunk_shape` does not need to evenly divide the shard shape
+    (`sharding_indexed` v1.1): inner chunks are clipped by the shard boundary.
+
+    Full and partial reads and writes round-trip for reasonable combinations of
+    array, shard, and inner chunk shape.
+    """
+    data = np.arange(np.prod(array_shape), dtype="uint16").reshape(array_shape)
+    arr = zarr.create_array(
+        {},
+        shape=array_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        chunks=chunk_shape,
+        dtype=data.dtype,
+        fill_value=0,
+    )
+    arr[...] = data
+    assert np.array_equal(arr[...], data)
+
+    # partial read crossing clipped inner chunk boundaries
+    sel = tuple(slice(1, s - 1) for s in array_shape)
+    assert np.array_equal(arr[sel], data[sel])
+
+    # partial write crossing clipped inner chunk boundaries
+    arr[sel] = 0
+    expected = data.copy()
+    expected[sel] = 0
+    assert np.array_equal(arr[...], expected)
+
+
+def test_sharding_clipped_inner_chunks_byte_layout() -> None:
+    """Spec example: a shard of shape [12] with inner chunk shape [5] holds 3
+    inner chunks stored at their clipped shapes ([5], [5], and [2]).
+
+    With an uncompressed inner codec chain the shard blob holds exactly 12 data
+    bytes (not 15) plus a 3-entry shard index.
+    """
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store,
+        shape=(12,),
+        shards=(12,),
+        chunks=(5,),
+        dtype="uint8",
+        fill_value=255,
+        compressors=None,
+    )
+    arr[...] = np.arange(12, dtype="uint8")
+
+    shard_buffer = sync(store.get("c/0", prototype=default_buffer_prototype()))
+    assert shard_buffer is not None
+    raw = shard_buffer.to_bytes()
+    index_size = 3 * 16 + 4  # ceil(12/5) = 3 index entries plus the crc32c checksum
+    assert len(raw) == 12 + index_size
+    offsets_and_lengths = np.frombuffer(raw[-index_size:-4], dtype="<u8").reshape(3, 2)
+    assert sorted(int(length) for length in offsets_and_lengths[:, 1]) == [2, 5, 5]
+
+
+def test_sharding_clipped_inner_chunks_rectilinear() -> None:
+    """A rectilinear outer grid whose shard edges are not divisible by the inner
+    chunk shape round-trips: the inner grid is clipped per shard."""
+    arr = zarr.create_array(
+        {}, shape=(10,), shards=[[6, 4]], chunks=(4,), dtype="uint8", fill_value=0
+    )
+    data = np.arange(10, dtype="uint8")
+    arr[...] = data
+    assert np.array_equal(arr[...], data)
+    assert arr.read_chunk_sizes == ((4, 2, 4),)
+
+    arr[5:9] = 42
+    data[5:9] = 42
+    assert np.array_equal(arr[...], data)
+
+
+def test_sharding_clipped_inner_chunks_nested() -> None:
+    """Clipping composes through nested sharding: 12-element shards split into
+    clipped 5-element inner chunks, each split into clipped 2-element chunks."""
+    inner = ShardingCodec(chunk_shape=(2,), codecs=(BytesCodec(),))
+    outer = ShardingCodec(chunk_shape=(5,), codecs=(inner,))
+    arr = zarr.create_array(
+        {},
+        shape=(24,),
+        chunks=(12,),
+        dtype="uint8",
+        fill_value=0,
+        serializer=outer,
+        compressors=None,
+        filters=None,
+    )
+    data = np.arange(24, dtype="uint8")
+    arr[...] = data
+    assert np.array_equal(arr[...], data)
+
+    arr[4:11] = 9
+    data[4:11] = 9
+    assert np.array_equal(arr[...], data)
+
+
+def test_sharding_clipped_inner_chunk_sizes() -> None:
+    """Inner chunk grids restart at each shard boundary, so the reported inner
+    chunk sizes are clipped per shard (and by the array extent in the last
+    shard)."""
+    arr = zarr.create_array({}, shape=(23,), shards=(12,), chunks=(5,), dtype="uint8", fill_value=0)
+    assert arr.read_chunk_sizes == ((5, 5, 2, 5, 5, 1),)
+    assert arr.cdata_shape == (6,)
+    assert arr.nchunks == 6
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])

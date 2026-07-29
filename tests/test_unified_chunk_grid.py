@@ -1048,8 +1048,9 @@ def test_sharding_accepts_rectilinear_outer_grid() -> None:
     )
 
 
-def test_sharding_rejects_non_divisible_rectilinear() -> None:
-    """Rectilinear shard sizes not divisible by inner chunk_shape should raise."""
+def test_sharding_accepts_non_divisible_rectilinear() -> None:
+    """Rectilinear shard sizes not divisible by inner chunk_shape are accepted:
+    inner chunks are clipped by the shard shape (sharding_indexed v1.1)."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
     from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
@@ -1057,12 +1058,11 @@ def test_sharding_rejects_non_divisible_rectilinear() -> None:
     codec = ShardingCodec(chunk_shape=(5, 5))
     grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 20, 17), (50, 50)))
 
-    with pytest.raises(ValueError, match="divisible"):
-        codec.validate(
-            shape=(47, 100),
-            dtype=Float32(),
-            chunk_grid=grid_meta,
-        )
+    codec.validate(
+        shape=(47, 100),
+        dtype=Float32(),
+        chunk_grid=grid_meta,
+    )
 
 
 def test_sharding_accepts_divisible_rectilinear() -> None:
@@ -1081,17 +1081,18 @@ def test_sharding_accepts_divisible_rectilinear() -> None:
     )
 
 
-def test_sharding_rejects_non_divisible_among_repeated_edges() -> None:
-    """Shard validation catches a non-divisible edge even among many repeated valid ones."""
+def test_sharding_accepts_non_divisible_among_repeated_edges() -> None:
+    """Shard validation accepts a non-divisible edge among repeated divisible
+    ones: inner chunks are clipped per shard (sharding_indexed v1.1)."""
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.dtype import Float32
     from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 
-    # edges (10, 10, 7) — 7 is not divisible by 5
+    # edges (10, 10, 7) — 7 is not divisible by 5; the last shard holds
+    # inner chunks of sizes (5, 2)
     codec = ShardingCodec(chunk_shape=(5,))
     grid_meta = RectilinearChunkGridMetadata(chunk_shapes=((10, 10, 7),))
-    with pytest.raises(ValueError, match="divisible"):
-        codec.validate(shape=(27,), dtype=Float32(), chunk_grid=grid_meta)
+    codec.validate(shape=(27,), dtype=Float32(), chunk_grid=grid_meta)
 
 
 def test_sharding_accepts_all_repeated_divisible_edges() -> None:
@@ -1761,16 +1762,20 @@ def test_pipeline_rectilinear_shards_partial_read(tmp_path: Path) -> None:
     np.testing.assert_array_equal(result, data[50:70, 40:60])
 
 
-def test_pipeline_rectilinear_shards_validates_divisibility(tmp_path: Path) -> None:
-    """Inner chunk_shape must divide every shard's dimensions."""
-    with pytest.raises(ValueError, match="divisible"):
-        zarr.create_array(
-            store=tmp_path / "bad.zarr",
-            shape=(120, 100),
-            chunks=(10, 10),
-            shards=[[60, 45, 15], [50, 50]],
-            dtype="int32",
-        )
+def test_pipeline_rectilinear_shards_non_divisible(tmp_path: Path) -> None:
+    """Inner chunk_shape need not divide the shard dimensions: inner chunks are
+    clipped per shard (sharding_indexed v1.1) and data round-trips."""
+    arr = zarr.create_array(
+        store=tmp_path / "clipped.zarr",
+        shape=(120, 100),
+        chunks=(10, 10),
+        shards=[[60, 45, 15], [50, 50]],
+        dtype="int32",
+    )
+    data = np.arange(120 * 100, dtype="int32").reshape(120, 100)
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+    np.testing.assert_array_equal(arr[55:70, 40:60], data[55:70, 40:60])
 
 
 def test_pipeline_nchunks(tmp_path: Path) -> None:
