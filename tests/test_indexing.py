@@ -14,8 +14,10 @@ import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.indexing import (
     BasicSelection,
+    CoordinateIndexer,
     CoordinateSelection,
     OrthogonalSelection,
     Selection,
@@ -1182,6 +1184,19 @@ def test_get_coordinate_selection_1d_fast_path(
     for sel in selections:
         assert_array_equal(a[sel], z.get_coordinate_selection(sel))
         assert_array_equal(a[sel], z.vindex[sel])
+
+
+def test_coordinate_indexer_1d_last_chunk_boundary_does_not_overflow() -> None:
+    max_intp = np.iinfo(np.intp).max
+    chunk_size = max_intp // 2 + 1
+    coords = np.array([max_intp - 1], dtype=np.intp)
+    chunk_grid = ChunkGrid.from_sizes((max_intp,), (chunk_size,))
+
+    (projection,) = tuple(CoordinateIndexer((coords,), (max_intp,), chunk_grid))
+
+    assert projection.chunk_coords == (1,)
+    assert_array_equal(projection.chunk_selection[0], coords - chunk_size)
+    assert projection.out_selection == slice(0, 1)
 
 
 def test_get_coordinate_selection_1d_irregular_grid(store: StorePath) -> None:

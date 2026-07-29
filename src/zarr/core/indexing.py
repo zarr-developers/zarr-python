@@ -1232,9 +1232,11 @@ class CoordinateIndexer(Indexer):
                 size = g0.size
                 first = int(coords[0]) // size
                 last = int(coords[-1]) // size
-                # count selected points per chunk in [first, last] via boundary searchsorted
-                edges = np.arange(first, last + 2, dtype=np.intp) * size
-                counts = np.diff(np.searchsorted(coords, edges))
+                # Search only internal boundaries. Derive the first and last counts from the
+                # selection bounds so that the boundary after the last chunk cannot overflow.
+                edges = np.arange(first + 1, last + 1, dtype=coords.dtype) * size
+                cuts = np.searchsorted(coords, edges)
+                counts = np.diff(cuts, prepend=0, append=coords.size)
                 chunk_rixs = (first + np.nonzero(counts)[0]).astype(np.intp)
                 chunk_nitems = np.zeros(nchunks, dtype=np.intp)
                 chunk_nitems[first : last + 1] = counts
