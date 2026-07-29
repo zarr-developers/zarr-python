@@ -32,6 +32,8 @@ watch:
 theme:
   language: en
   name: material
+  logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
 
   palette:
     # Light mode
