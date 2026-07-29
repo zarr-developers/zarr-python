@@ -1,7 +1,10 @@
 site_name: zarr-metadata
-repo_name: zarr-developers/zarr-python
-repo_url: https://github.com/zarr-developers/zarr-python
-edit_uri: edit/main/packages/zarr-metadata/docs/
+# The package lives in the zarr-python monorepo; point the header source
+# widget at the package directory rather than the repository root.
+repo_name: zarr-python/packages/zarr-metadata
+repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata
+# Absolute because mkdocs would otherwise append this to repo_url's subpath.
+edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-metadata/docs/
 site_description: Spec-defined metadata types, models, and validators for Zarr v2 and v3.
 site_author: Davis Bennett
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io/']
@@ -29,6 +32,8 @@ watch:
 theme:
   language: en
   name: material
+  logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
 
   palette:
     # Light mode
