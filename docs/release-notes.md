@@ -37,6 +37,13 @@
   the array's shape), and `None` as a per-dimension chunk size. These all now
   raise informative errors. Also fix chunk handling for 0-length array dimensions,
   and add explicit rejection of 0-length chunks. ([#3899](https://github.com/zarr-developers/zarr-python/issues/3899))
+- Further hardened chunk normalization: a per-dimension `None` chunk size now
+  raises an informative `ValueError` directing users to the `-1` sentinel
+  (previously an uninformative `TypeError`), per-dimension boolean chunk sizes
+  are rejected instead of `True` silently producing size-1 chunks, and strings
+  and other non-iterable chunk inputs raise informative `TypeError`s instead of
+  bare crashes. Generator inputs to chunk normalization are now materialized
+  and accepted. ([#4177](https://github.com/zarr-developers/zarr-python/issues/4177))
 - Handle missing consolidated metadata in leaf Group nodes. ([#3954](https://github.com/zarr-developers/zarr-python/issues/3954))
 - Corrected the JSON type definitions for the `numpy.datetime64` and
   `numpy.timedelta64` data types in Zarr V3 metadata: the `configuration` object
