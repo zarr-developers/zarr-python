@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 import zarr
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+    BytesBytesCodec,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.core.config import config as zarr_config
+from zarr.registry import register_codec
 from zarr.storage import MemoryStore, StorePath
+
+if TYPE_CHECKING:
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, NDBuffer
 
 
 @pytest.mark.parametrize(
@@ -261,7 +272,7 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
     """
     from zarr.abc.codec import BytesBytesCodec
     from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+    from zarr.core.buffer import BufferPrototype, default_buffer_prototype
     from zarr.core.chunk_utils import ChunkTransform
     from zarr.core.dtype import get_data_type_from_native_dtype
 
@@ -831,3 +842,127 @@ def test_async_decode_encode_passes_through_none_chunks() -> None:
     assert decoded[1] is None
     assert decoded[0] is not None
     np.testing.assert_array_equal(decoded[0].as_numpy_array(), data)
+
+
+# ---------------------------------------------------------------------------
+# Graceful fallback for partial-mixin codecs without private sync-partial hooks
+#
+# The public partial-decode/encode contract (`ArrayBytesCodecPartialDecodeMixin`
+# / `ArrayBytesCodecPartialEncodeMixin`) only requires the async
+# `_decode_partial_single` / `_encode_partial_single`. The fused pipeline must
+# route such codecs through its full-chunk sync path instead of asserting on
+# the private `_decode_partial_sync` / `_encode_partial_sync` hooks. The double
+# below is a minimal conforming implementer of that contract; it guards the
+# public extension API, so it must not grow the private sync-partial methods.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PartialMixinCodec(
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+):
+    """Serializer with sync whole-chunk methods plus ONLY async partial methods.
+
+    This is the pre-fused public contract for partial-capable codecs: the
+    mixins' `_decode_partial_single` / `_encode_partial_single`. It must not
+    implement `_decode_partial_sync` / `_encode_partial_sync`.
+    """
+
+    inner: BytesCodec = field(default_factory=BytesCodec)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PartialMixinCodec:
+        return cls()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "test-partial-mixin"}
+
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> PartialMixinCodec:
+        return replace(self, inner=self.inner.evolve_from_array_spec(array_spec))
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        return self.inner.compute_encoded_size(input_byte_length, chunk_spec)
+
+    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return self.inner._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        return self.inner._encode_sync(chunk_array, chunk_spec)
+
+    async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
+
+    async def _decode_partial_single(
+        self, byte_getter: Any, selection: Any, chunk_spec: ArraySpec
+    ) -> NDBuffer | None:
+        chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
+        if chunk_bytes is None:
+            return None
+        return self._decode_sync(chunk_bytes, chunk_spec)[selection]
+
+    async def _encode_partial_single(
+        self, byte_setter: Any, chunk_array: NDBuffer, selection: Any, chunk_spec: ArraySpec
+    ) -> None:
+        existing = await byte_setter.get(prototype=chunk_spec.prototype)
+        if existing is None:
+            full = chunk_spec.prototype.nd_buffer.create(
+                shape=chunk_spec.shape,
+                dtype=chunk_spec.dtype.to_native_dtype(),
+                fill_value=chunk_spec.fill_value,
+            )
+        else:
+            full = self._decode_sync(existing, chunk_spec)
+        full[selection] = chunk_array
+        encoded = self._encode_sync(full, chunk_spec)
+        assert encoded is not None
+        await byte_setter.set(encoded)
+
+
+register_codec("test-partial-mixin", PartialMixinCodec)
+
+_FUSED = {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+_BATCHED = {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+@pytest.mark.parametrize("dtype", ["uint8", "float64"])
+def test_partial_mixin_codec_async_partial_only_round_trip(dtype: str) -> None:
+    """A serializer advertising the partial mixins with only async partial
+    methods must round-trip under the fused pipeline: full write, full read,
+    partial read, partial write, plus cross-pipeline parity with
+    BatchedCodecPipeline."""
+    data = np.arange(64, dtype=dtype).reshape(8, 8)
+
+    with zarr_config.set(_FUSED):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store,
+            shape=(8, 8),
+            chunks=(4, 4),
+            dtype=dtype,
+            serializer=PartialMixinCodec(),
+            compressors=None,
+            filters=None,
+            fill_value=0,
+        )
+
+        pipeline = arr._async_array.codec_pipeline
+        assert isinstance(pipeline, FusedCodecPipeline)
+        assert pipeline.supports_partial_decode
+        assert pipeline.supports_partial_encode
+        assert pipeline.sync_transform is not None
+
+        arr[:] = data
+        np.testing.assert_array_equal(arr[:], data)
+        np.testing.assert_array_equal(arr[1:5, 2:7], data[1:5, 2:7])
+
+        expected = data.copy()
+        expected[2:6, 1:3] = 7
+        arr[2:6, 1:3] = expected[2:6, 1:3]
+        np.testing.assert_array_equal(arr[:], expected)
+
+    with zarr_config.set(_BATCHED):
+        np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], expected)
