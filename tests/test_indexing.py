@@ -16,7 +16,9 @@ from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
+    BoundsCheckError,
     CoordinateSelection,
+    Order,
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
@@ -1783,6 +1785,63 @@ def test_numpy_int_indexing(store: StorePath) -> None:
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
     assert a[42] == z[42]
     assert a[np.int64(42)] == z[np.int64(42)]
+
+
+_INDEX_ARRAY_ORDERS = {
+    "ascending": [1, 5, 9, 90],
+    "descending": [90, 9, 5, 1],
+    "unordered": [9, 1, 90, 5],
+    "duplicates": [9, 9, 1, 1, 90],
+}
+
+
+@pytest.mark.parametrize("path", ["oindex", "vindex"])
+@pytest.mark.parametrize("order", list(_INDEX_ARRAY_ORDERS))
+@pytest.mark.parametrize("dtype", ["uint8", "uint16", "uint32", "uint64", "int64"])
+def test_integer_index_array_dtypes(store: StorePath, dtype: str, order: str, path: str) -> None:
+    """Fancy indexing with signed *and* unsigned integer index arrays matches the numpy result,
+    for every ordering of the index array."""
+    a = np.arange(120, dtype="i4")
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    idx = np.array(_INDEX_ARRAY_ORDERS[order], dtype=dtype)
+    expected = a[idx.astype(np.intp)]
+
+    observed = z.oindex[idx] if path == "oindex" else z.vindex[idx]
+
+    assert_array_equal(observed, expected)
+    # the index array must not be mutated by the indexing machinery
+    assert_array_equal(idx, np.array(_INDEX_ARRAY_ORDERS[order], dtype=dtype))
+
+
+@pytest.mark.parametrize("path", ["oindex", "vindex"])
+def test_index_array_exceeding_intp_raises(store: StorePath, path: str) -> None:
+    """An unsigned index array holding a value larger than the largest signed index raises
+    `BoundsCheckError` rather than silently wrapping around."""
+    a = np.arange(120, dtype="i4")
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
+    idx = np.array([0, 2**63], dtype=np.uint64)
+
+    with pytest.raises(BoundsCheckError):
+        _ = z.oindex[idx] if path == "oindex" else z.vindex[idx]
+
+
+@pytest.mark.parametrize("dtype", ["uint8", "uint16", "uint32", "uint64", "int64"])
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ([], Order.INCREASING),
+        ([5], Order.INCREASING),
+        ([1, 2, 3], Order.INCREASING),
+        ([2, 2], Order.INCREASING),
+        ([1, 1, 2], Order.INCREASING),
+        ([3, 2, 1], Order.DECREASING),
+        ([2, 1, 3], Order.UNORDERED),
+        ([3, 3, 1], Order.UNORDERED),
+    ],
+)
+def test_order_check(values: list[int], expected: Order, dtype: str) -> None:
+    """`Order.check` classifies index arrays identically for signed and unsigned dtypes."""
+    assert Order.check(np.array(values, dtype=dtype)) == expected
 
 
 @pytest.mark.parametrize(

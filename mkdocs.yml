@@ -15,6 +15,7 @@ nav:
       - user-guide/index.md
       - user-guide/installation.md
       - user-guide/arrays.md
+      - user-guide/lazy_indexing.md
       - user-guide/groups.md
       - user-guide/attributes.md
       - user-guide/data_types.md

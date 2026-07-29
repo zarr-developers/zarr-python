@@ -1,0 +1,23 @@
+[
+  { "name": "error/step-zero", "input": { "kind": "slice", "start": [0], "stop": [4], "step": [0] }, "error": "step_zero" },
+  { "name": "error/negative-step", "input": { "kind": "slice", "start": [9], "stop": [0], "step": [-2] }, "error": "negative_step_unsupported" },
+  { "name": "error/multiple-upper-bounds", "input": { "kind": "box", "shape": [3], "exclusive_max": [3] }, "error": "multiple_upper_bounds" },
+  { "name": "error/rank-mismatch", "input": { "kind": "slice", "start": [0, 0], "stop": [4] }, "error": "rank_mismatch" },
+  { "name": "error/unknown-kind", "input": { "kind": "bogus" }, "error": "unknown_kind" },
+  { "name": "error/transform-multiple-upper-bounds", "input": { "kind": "transform", "input_shape": [3], "input_exclusive_max": [3] }, "error": "multiple_upper_bounds" },
+  { "name": "error/transform-rank-mismatch", "input": { "kind": "transform", "input_rank": 2, "input_inclusive_min": [0] }, "error": "rank_mismatch" },
+  { "name": "error/missing-kind", "input": { "coords": [1, 2] }, "error": "invalid_json" },
+  { "name": "error/point-missing-coords", "input": { "kind": "point" }, "error": "invalid_json" },
+  { "name": "error/point-bool-coord", "input": { "kind": "point", "coords": [true] }, "error": "invalid_json" },
+  { "name": "error/slice-missing-stop", "input": { "kind": "slice", "start": [0] }, "error": "invalid_json" },
+  { "name": "error/box-non-list-bound", "input": { "kind": "box", "inclusive_min": 5 }, "error": "invalid_json" },
+  { "name": "error/points-bool-coord", "input": { "kind": "points", "coords": [[true]] }, "error": "invalid_json" },
+  { "name": "error/integer-out-of-i64-range", "input": { "kind": "point", "coords": [99999999999999999999] }, "error": "invalid_json" },
+  { "name": "error/box-inverted-bounds", "input": { "kind": "box", "inclusive_min": [5], "exclusive_max": [3] }, "error": "bounds_out_of_order" },
+  { "name": "error/box-negative-shape", "input": { "kind": "box", "shape": [-3] }, "error": "bounds_out_of_order" },
+  { "name": "error/transform-inverted-bounds", "input": { "kind": "transform", "input_inclusive_min": [0], "input_exclusive_max": [-1] }, "error": "bounds_out_of_order" },
+  { "name": "error/output-map-conflict", "input": { "kind": "transform", "output": [{ "input_dimension": 0, "index_array": [1, 2] }] }, "error": "output_map_conflict" },
+  { "name": "error/box-unknown-field", "input": { "kind": "box", "shapee": [3] }, "error": "unknown_field" },
+  { "name": "error/point-unknown-field", "input": { "kind": "point", "coords": [1], "extra": true }, "error": "unknown_field" },
+  { "name": "error/output-map-unknown-field", "input": { "kind": "transform", "output": [{ "offset": 0, "bogus": 1 }] }, "error": "unknown_field" }
+]

@@ -713,10 +713,12 @@ class Order(Enum):
 
     @staticmethod
     def check(a: npt.NDArray[Any]) -> Order:
-        diff = np.diff(a)
-        diff_positive = diff >= 0
-        n_diff_positive = np.count_nonzero(diff_positive)
-        all_increasing = n_diff_positive == len(diff_positive)
+        # compare adjacent elements instead of differencing them: for unsigned dtypes a
+        # descending difference wraps around to a huge positive value, which would classify a
+        # descending selection as increasing.
+        nondecreasing = a[1:] >= a[:-1]
+        n_diff_positive = np.count_nonzero(nondecreasing)
+        all_increasing = n_diff_positive == len(nondecreasing)
         any_increasing = n_diff_positive > 0
         if all_increasing:
             order = Order.INCREASING
@@ -733,10 +735,31 @@ def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
         x[loc_neg] += dim_len
 
 
+def _out_of_bounds_error(dim_len: int) -> BoundsCheckError:
+    return BoundsCheckError(f"index out of bounds for dimension with length {dim_len}")
+
+
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     if np.any(x < 0) or np.any(x >= dim_len):
-        msg = f"index out of bounds for dimension with length {dim_len}"
-        raise BoundsCheckError(msg)
+        raise _out_of_bounds_error(dim_len)
+
+
+def to_signed_indices(x: npt.NDArray[Any], dim_len: int) -> npt.NDArray[np.intp]:
+    """Return `x` with an unsigned integer dtype replaced by `np.intp`.
+
+    The chunk-relative arithmetic applied to index arrays is signed: subtracting a chunk offset
+    from an unsigned array wraps around instead of going negative, and numpy promotes `uint64`
+    mixed with a signed integer to `float64`, which is not a valid index dtype. Arrays with a
+    signed dtype are returned unchanged.
+
+    A value too large for `np.intp` cannot index any array, so it is rejected here rather than
+    wrapping around to a negative index during the cast.
+    """
+    if x.dtype.kind != "u":
+        return x
+    if x.size > 0 and x.max() > np.iinfo(np.intp).max:
+        raise _out_of_bounds_error(dim_len)
+    return x.astype(np.intp)
 
 
 @dataclass(frozen=True)
@@ -767,6 +790,9 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
+
+        # normalize the dtype before the order check and any chunk arithmetic
+        dim_sel = to_signed_indices(dim_sel, dim_len)
 
         nitems = len(dim_sel)
         g = dim_grid
@@ -1029,6 +1055,7 @@ class AsyncOIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
+        self.array._require_identity_for_async("oindex.getitem")
         # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
             selection = _zarr_array_to_int_or_bool_array(selection)
@@ -1206,6 +1233,12 @@ class CoordinateIndexer(Indexer):
                 f"got {selection!r}"
             )
 
+        # normalize the dtype before any chunk arithmetic
+        selection_normalized = tuple(
+            to_signed_indices(dim_sel, dim_len)
+            for dim_sel, dim_len in zip(selection_normalized, shape, strict=True)
+        )
+
         # handle wraparound, boundscheck
         for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
             # handle wraparound
@@ -1239,6 +1272,8 @@ class CoordinateIndexer(Indexer):
         )
 
         # group points by chunk
+        # np.ravel_multi_index always returns a signed intp array, so differencing it here cannot
+        # wrap around the way it would for an unsigned dtype
         if np.any(np.diff(chunks_raveled_indices) < 0):
             # optimisation, only sort if needed
             sel_sort = np.argsort(chunks_raveled_indices)
@@ -1377,6 +1412,7 @@ class AsyncVIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448
         from zarr.core.array import Array
 
+        self.array._require_identity_for_async("vindex.getitem")
         # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
             selection = _zarr_array_to_int_or_bool_array(selection)
@@ -1442,8 +1478,16 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         return None, cast("Selection", selection)
     else:
         # multiple items, split fields from selection items
-        fields: Fields = [f for f in selection if isinstance(f, str)]
-        fields = fields[0] if len(fields) == 1 else fields
+        field_names = [f for f in selection if isinstance(f, str)]
+        # No fields -> None (consistent with the non-tuple branch above), so callers
+        # can use `fields is not None` to mean "a field was requested".
+        fields: Fields | None
+        if len(field_names) == 0:
+            fields = None
+        elif len(field_names) == 1:
+            fields = field_names[0]
+        else:
+            fields = field_names
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
             "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
