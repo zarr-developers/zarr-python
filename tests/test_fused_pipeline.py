@@ -34,6 +34,67 @@ def test_construction(codecs: tuple[Any, ...]) -> None:
     assert pipeline.codecs == codecs
 
 
+def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codec compute must never run on the thread driving the event loop.
+
+    Every sync-API call, from every user thread, is serviced by the one global
+    `zarr_io` event loop. Running decode/encode inline on that loop's thread
+    turns it into a mutex around codec compute: concurrent readers serialize,
+    and the penalty grows with codec cost (observed as "fused pipeline is
+    slower for zstd data" under dask-style multi-threaded single-chunk reads).
+    """
+    import asyncio
+
+    from zarr.core.chunk_utils import ChunkTransform
+
+    compute_on_loop = {"decode": False, "encode": False}
+    calls = {"decode": 0, "encode": 0}
+    real_decode = ChunkTransform.decode_chunk
+    real_encode = ChunkTransform.encode_chunk
+
+    def _running_loop() -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def traced_decode(self: ChunkTransform, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        calls["decode"] += 1
+        compute_on_loop["decode"] = compute_on_loop["decode"] or _running_loop()
+        return real_decode(self, chunk_bytes, chunk_spec)
+
+    def traced_encode(self: ChunkTransform, chunk_array: Any, chunk_spec: Any) -> Any:
+        calls["encode"] += 1
+        compute_on_loop["encode"] = compute_on_loop["encode"] or _running_loop()
+        return real_encode(self, chunk_array, chunk_spec)
+
+    monkeypatch.setattr(ChunkTransform, "decode_chunk", traced_decode)
+    monkeypatch.setattr(ChunkTransform, "encode_chunk", traced_encode)
+
+    with zarr_config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(
+            MemoryStore(),
+            shape=(8, 8),
+            chunks=(4, 4),
+            dtype="float64",
+            compressors=ZstdCodec(level=1),
+        )
+        data = np.arange(64, dtype="float64").reshape(8, 8)
+        arr[:4, :4] = data[:4, :4]  # single-chunk write (batch of 1)
+        arr[:] = data  # multi-chunk write
+        # Guard against vacuity: if the sync fast path stops triggering, the
+        # traced ChunkTransform methods are never called (the async fallback
+        # uses AsyncChunkTransform) and the on-loop flags stay trivially False.
+        assert calls["encode"] > 0
+        assert compute_on_loop["encode"] is False
+
+        np.testing.assert_array_equal(arr[:4, :4], data[:4, :4])  # single-chunk read
+        np.testing.assert_array_equal(arr[:], data)  # multi-chunk read
+        assert calls["decode"] > 0
+        assert compute_on_loop["decode"] is False
+
+
 def test_evolve_from_array_spec() -> None:
     """evolve_from_array_spec creates a sync transform."""
     from zarr.core.array_spec import ArrayConfig, ArraySpec
