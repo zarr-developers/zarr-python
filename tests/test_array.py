@@ -1091,7 +1091,7 @@ def test_auto_partition_auto_shards(
                 shard_shape="auto",
                 item_size=dtype.itemsize,
             )
-    auto_shards = tuple(dim[0] for dim in outer_chunks)
+    auto_shards = outer_chunks.chunk_shape
     assert auto_shards == expected_shards
 
 
@@ -1106,7 +1106,7 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     chunks_normalized = guess_chunks(
         array_shape, item_size, max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES
     )
-    chunk_shape = tuple(dim[0] for dim in chunks_normalized)
+    chunk_shape = chunks_normalized.chunk_shape
     chunk_bytes = np.prod(chunk_shape) * item_size
     assert chunk_bytes <= SHARDED_INNER_CHUNK_MAX_BYTES
     assert chunk_bytes > SHARDED_INNER_CHUNK_MAX_BYTES // 4  # should be in the right ballpark
@@ -1123,7 +1123,7 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
                 item_size=item_size,
             )
     assert inner is not None
-    shard_shape = tuple(dim[0] for dim in outer_chunks)
+    shard_shape = outer_chunks.chunk_shape
     # Shard dimensions must be multiples of chunk dimensions
     assert all(s % c == 0 for s, c in zip(shard_shape, chunk_shape, strict=True))
 
@@ -2386,3 +2386,15 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+async def test_create_array_huge_chunk_count() -> None:
+    """Array creation must be O(1) in the number of chunks per dimension.
+
+    With `shape=(2**62,)` and `chunks=(1,)` this dimension has 2**62 chunks;
+    materializing one entry per chunk would raise ("array is too big").
+    Companion to the indexing-time fix from gh-4174.
+    """
+    arr = await create_array(store={}, shape=(2**62,), chunks=(1,), dtype="int32")
+    assert arr.shape == (2**62,)
+    assert arr.chunks == (1,)
