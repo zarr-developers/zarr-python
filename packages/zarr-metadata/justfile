@@ -29,6 +29,26 @@ check: lint typecheck test
 changelog-draft:
     uvx towncrier build --draft --version Unreleased
 
-# Serve the zarr-python docs site, which includes this package's API reference
-docs-serve:
-    cd ../.. && DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve
+# Serve the zarr-python docs site, which includes this package's API reference.
+# With no argument, uses port 8000 if free, otherwise an ephemeral free port;
+# an explicitly requested port is used as-is so a conflict fails loudly.
+docs-serve port="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ../..
+    port="{{ port }}"
+    if [ -z "$port" ]; then
+        port=$(uv run --group docs python -c '
+    import socket
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 8000))
+    except OSError:
+        s.close()
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+    s.close()
+    ')
+    fi
+    exec env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port"
