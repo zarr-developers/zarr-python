@@ -512,7 +512,8 @@ def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormali
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
     return tuple(
-        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
+        cast("ArrayOfIntOrBool", np.asarray(dim_sel)) if isinstance(dim_sel, list) else dim_sel
+        for dim_sel in selection
     )
 
 
@@ -1193,7 +1194,7 @@ class CoordinateIndexer(Indexer):
         # some initial normalization
         selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
         selection_normalized = tuple(
-            np.asarray([i]) if is_integer(i) else i for i in selection_normalized
+            np.asarray([i], dtype=np.intp) if is_integer(i) else i for i in selection_normalized
         )
         selection_normalized = cast(
             "CoordinateSelectionNormalized", replace_lists(selection_normalized)

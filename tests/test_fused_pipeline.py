@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
@@ -25,8 +26,9 @@ from zarr.registry import register_codec
 from zarr.storage import MemoryStore, StorePath
 
 if TYPE_CHECKING:
+    from zarr.abc.store import ByteRequest
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
 
 
 @pytest.mark.parametrize(
@@ -437,6 +439,103 @@ def test_thread_pool_read_worker_exception_propagates() -> None:
             pytest.raises(RuntimeError, match="simulated store error"),
         ):
             arr[:]
+
+
+def test_resolve_max_workers_warns_and_falls_back_on_invalid_config() -> None:
+    """`codec_pipeline.max_workers` arrives via the config/env layer (e.g.
+    `ZARR_CODEC_PIPELINE__MAX_WORKERS`), so garbage input should warn and fall
+    back to the default rather than raising mid-read.
+    """
+    import os
+
+    import zarr.core.codec_pipeline as cp_mod
+    from zarr.errors import ZarrUserWarning
+
+    default = os.cpu_count() or 1
+    with zarr_config.set({"codec_pipeline.max_workers": "fast"}):
+        with pytest.warns(ZarrUserWarning, match="max_workers"):
+            result = cp_mod._resolve_max_workers()
+    assert result == default
+
+
+async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -> None:
+    """A failing write must not leave sibling writes running in the background.
+
+    `_encode_and_write_as_completed` fires one write task per chunk as soon as
+    its encode completes, then `gather`s them. Plain `gather` (without
+    `return_exceptions=True`) re-raises the first exception without cancelling
+    the other in-flight tasks, so a still-running write would keep going after
+    the caller has already seen the exception -- and its eventual outcome is
+    never retrieved (an unraisable "Task exception was never retrieved"
+    warning if it later fails).
+    """
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+    from zarr.core.chunk_utils import ChunkTransform
+    from zarr.core.codec_pipeline import _encode_and_write_as_completed
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    write_started = asyncio.Event()
+    write_finished = False
+
+    class _SlowByteSetter:
+        async def get(
+            self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        ) -> Buffer | None:
+            return None
+
+        async def set(self, value: Buffer) -> None:
+            nonlocal write_finished
+            write_started.set()
+            await asyncio.sleep(0.2)
+            write_finished = True
+
+        async def delete(self) -> None:
+            pass
+
+        async def set_if_not_exists(self, default: Buffer) -> None:
+            pass
+
+    class _FailingByteSetter:
+        async def get(
+            self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        ) -> Buffer | None:
+            return None
+
+        async def set(self, value: Buffer) -> None:
+            raise RuntimeError("simulated write failure")
+
+        async def delete(self) -> None:
+            pass
+
+        async def set_if_not_exists(self, default: Buffer) -> None:
+            pass
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("uint8"))
+    chunk_spec = ArraySpec(
+        shape=(1,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    chunk_array = CPUNDBuffer.from_numpy_array(np.zeros(1, dtype="uint8"))
+    transform = ChunkTransform(codecs=(BytesCodec(),))
+
+    batch = [
+        (_SlowByteSetter(), chunk_array, chunk_spec),
+        (_FailingByteSetter(), chunk_array, chunk_spec),
+    ]
+
+    with pytest.raises(RuntimeError, match="simulated write failure"):
+        await _encode_and_write_as_completed(batch, transform)  # type: ignore[arg-type]
+
+    assert write_started.is_set()
+    # Give the slow write's sleep long enough to finish if it were left
+    # running unattended in the background instead of being cancelled.
+    await asyncio.sleep(0.3)
+    assert not write_finished, "the slow write should have been cancelled, not left running"
 
 
 def test_concurrent_reads_shared_transform_with_pool() -> None:

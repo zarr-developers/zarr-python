@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +23,7 @@ from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coord
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
-from zarr.storage import StorePath
+from zarr.storage import MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -373,6 +374,49 @@ def test_invalid_metadata_create_array() -> None:
                 GzipCodec(),
             ],
         )
+
+
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+    ],
+)
+def test_sharding_warning_fires_once_per_open(pipeline_path: str) -> None:
+    """Construction-time codec warnings (e.g. sharding's partial-reads warning)
+    must fire exactly once per array open, not once per internal codec-chain
+    reconstruction.
+
+    `create_codec_pipeline` builds a throwaway pipeline via `from_codecs` (which
+    warns) and then calls `evolve_from_array_spec` on it, which re-splits the
+    (already-warned-about) codec chain against the evolved spec. That re-split
+    goes through `codecs_from_list_unchecked` rather than `codecs_from_list`, so
+    it does not re-emit the warning. `FusedCodecPipeline` additionally builds a
+    `ChunkTransform` (and, on the async fallback path, an `AsyncChunkTransform`
+    per call) from the same evolved codec chain, which must use the same quiet
+    variant.
+    """
+    with config.set({"codec_pipeline.path": pipeline_path}):
+        store = MemoryStore()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            zarr.create_array(
+                store,
+                shape=(16, 16),
+                chunks=(16, 16),
+                dtype=np.dtype("uint8"),
+                fill_value=0,
+                serializer=ShardingCodec(chunk_shape=(8, 8)),
+                compressors=[GzipCodec()],
+            )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            zarr.open_array(store, mode="r")
+
+        matches = [w for w in caught if "disables partial reads" in str(w.message)]
+        assert len(matches) == 1
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
