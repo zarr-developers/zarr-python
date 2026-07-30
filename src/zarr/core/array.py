@@ -228,6 +228,12 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
+        # The pipeline built here is a throwaway: `evolve_from_array_spec` below
+        # reconstructs codecs against the evolved spec. `from_codecs` is the
+        # chain's first construction, so its advisory warnings (e.g. sharding's
+        # "disables partial reads" warning) fire here; `evolve_from_array_spec`
+        # re-splits the same already-warned-about chain via
+        # `codecs_from_list_unchecked`, so it does not re-emit them.
         pipeline = get_pipeline_class().from_codecs(metadata.codecs)
         from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
