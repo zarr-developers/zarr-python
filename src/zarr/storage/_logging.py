@@ -204,6 +204,27 @@ class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
         with self.log(key):
             return await self._store.delete(key=key)
 
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        # docstring inherited
+        with self.log(key):
+            return super().get_sync(key, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        with self.log(key):
+            return super().set_sync(key, value)
+
+    def delete_sync(self, key: str) -> None:
+        # docstring inherited
+        with self.log(key):
+            return super().delete_sync(key)
+
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log():

@@ -16,6 +16,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     BytesBytesCodec,
 )
+from zarr.abc.store import Store, _store_supports_sync_io
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -23,9 +24,13 @@ from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.core.config import config as zarr_config
 from zarr.registry import register_codec
-from zarr.storage import MemoryStore, StorePath
+from zarr.storage import MemoryStore, StorePath, WrapperStore
+from zarr.storage._utils import _normalize_byte_range_index
+from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable, Iterable
+
     from zarr.abc.store import ByteRequest
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
@@ -1065,3 +1070,166 @@ def test_partial_mixin_codec_async_partial_only_round_trip(dtype: str) -> None:
 
     with zarr_config.set(_BATCHED):
         np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], expected)
+
+
+# Sync-IO capability gating (`zarr.abc.store._store_supports_sync_io`)
+#
+# The fused read/write fast paths must engage iff the store advertises the
+# FULL synchronous IO surface (get_sync + set_sync + delete_sync): write_sync
+# needs get_sync for partial-chunk read-modify-write and delete_sync for
+# all-fill chunk cleanup, so gating on any single protocol can crash
+# mid-batch. Wrappers must forward the capability of the wrapped store.
+# ---------------------------------------------------------------------------
+
+
+class AsyncOnlyStore(Store):
+    """Dict-backed store implementing only the async `Store` surface (no `*_sync`)."""
+
+    def __init__(self) -> None:
+        super().__init__(read_only=False)
+        self._data: dict[str, Buffer] = {}
+
+    def __eq__(self, other: object) -> bool:
+        return other is self
+
+    @property
+    def supports_writes(self) -> bool:
+        return True
+
+    @property
+    def supports_deletes(self) -> bool:
+        return True
+
+    @property
+    def supports_listing(self) -> bool:
+        return True
+
+    async def get(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    ) -> Buffer | None:
+        try:
+            value = self._data[key]
+        except KeyError:
+            return None
+        start, stop = _normalize_byte_range_index(value, byte_range)
+        return prototype.buffer.from_buffer(value[start:stop])
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
+    ) -> list[Buffer | None]:
+        return [await self.get(key, prototype, byte_range) for key, byte_range in key_ranges]
+
+    async def exists(self, key: str) -> bool:
+        return key in self._data
+
+    async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        self._data[key] = value
+
+    async def delete(self, key: str) -> None:
+        self._check_writable()
+        self._data.pop(key, None)
+
+    async def list(self) -> AsyncIterator[str]:
+        for key in list(self._data):
+            yield key
+
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
+        for key in list(self._data):
+            if key.startswith(prefix):
+                yield key
+
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
+        if prefix and not prefix.endswith("/"):
+            prefix += "/"
+        seen: set[str] = set()
+        for key in list(self._data):
+            if key.startswith(prefix):
+                head = key.removeprefix(prefix).split("/")[0]
+                if head not in seen:
+                    seen.add(head)
+                    yield head
+
+
+class SetOnlySyncStore(AsyncOnlyStore):
+    """Implements `set_sync` but not `get_sync`/`delete_sync` (partial sync surface)."""
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        self._data[key] = value
+
+
+@pytest.mark.parametrize(
+    ("store_factory", "expect_sync_path"),
+    [
+        (MemoryStore, True),
+        (lambda: WrapperStore(MemoryStore()), True),
+        (lambda: LatencyStore(MemoryStore()), True),
+        (SetOnlySyncStore, False),
+        (lambda: WrapperStore(AsyncOnlyStore()), False),
+    ],
+    ids=[
+        "full-sync",
+        "wrapper-of-sync",
+        "latency-wrapper-of-sync",
+        "set-sync-only",
+        "wrapper-of-async-only",
+    ],
+)
+def test_sync_io_capability_gates_fused_paths(
+    store_factory: Callable[[], Store], expect_sync_path: bool
+) -> None:
+    """The fused pipeline takes the sync fast path iff the store satisfies
+    `_store_supports_sync_io`,
+    and every store round-trips correctly through full writes, partial
+    (read-modify-write) writes, and all-fill (delete) writes — a store with a
+    partial sync surface must get a clean async fallback, never a mid-batch
+    error."""
+    from unittest.mock import patch
+
+    store = store_factory()
+    assert _store_supports_sync_io(store) is expect_sync_path
+
+    calls = {"read_sync": 0, "write_sync": 0}
+    orig_read_sync = FusedCodecPipeline.read_sync
+    orig_write_sync = FusedCodecPipeline.write_sync
+
+    def spy_read_sync(self: FusedCodecPipeline, *args: Any, **kwargs: Any) -> Any:
+        calls["read_sync"] += 1
+        return orig_read_sync(self, *args, **kwargs)
+
+    def spy_write_sync(self: FusedCodecPipeline, *args: Any, **kwargs: Any) -> Any:
+        calls["write_sync"] += 1
+        return orig_write_sync(self, *args, **kwargs)
+
+    with zarr_config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(
+            store=store,
+            shape=(8,),
+            chunks=(4,),
+            dtype="uint8",
+            compressors=None,
+            fill_value=0,
+        )
+        assert isinstance(arr._async_array.codec_pipeline, FusedCodecPipeline)
+        with (
+            patch.object(FusedCodecPipeline, "read_sync", spy_read_sync),
+            patch.object(FusedCodecPipeline, "write_sync", spy_write_sync),
+        ):
+            data = np.arange(8, dtype="uint8")
+            arr[:] = data  # complete-chunk writes
+            arr[:3] = 7  # partial write -> read-modify-write needs get
+            data[:3] = 7
+            np.testing.assert_array_equal(arr[:], data)
+            arr[4:8] = 0  # all-fill chunk -> delete needed
+            data[4:8] = 0
+            np.testing.assert_array_equal(arr[:], data)
+
+    if expect_sync_path:
+        assert calls["write_sync"] > 0, "sync-capable store did not take the sync write path"
+        assert calls["read_sync"] > 0, "sync-capable store did not take the sync read path"
+    else:
+        assert calls["write_sync"] == 0, "non-sync store took the sync write path"
+        assert calls["read_sync"] == 0, "non-sync store took the sync read path"
