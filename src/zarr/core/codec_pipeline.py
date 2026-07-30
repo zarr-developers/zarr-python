@@ -143,10 +143,10 @@ def pipeline_supports_partial_decode(
     selection non-contiguous, a BB codec can rewrite the bytes), making partial
     decode infeasible.
 
-    NOTE: the two pipelines currently pass different ``require_no_aa_bb`` values
-    (Batched: True; Fused: False). That divergence is intentional-for-now and
-    tracked separately; this function centralizes the predicate without changing
-    either pipeline's behavior.
+    Both pipelines pass `require_no_aa_bb=True`: an outer AA/BB codec (e.g. a
+    compressor wrapping a sharding serializer) must see every byte of the
+    chunk, so a partial branch that only re-decodes/re-encodes the inner
+    sharding codec would silently bypass it.
     """
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
@@ -162,8 +162,7 @@ def pipeline_supports_partial_encode(
 ) -> bool:
     """Whether a codec pipeline can encode a partial selection without a full rewrite.
 
-    Mirror of ``pipeline_supports_partial_decode`` for encoding. See its note re:
-    the per-pipeline ``require_no_aa_bb`` divergence.
+    Mirror of `pipeline_supports_partial_decode` for encoding.
     """
     if require_no_aa_bb and (len(array_array_codecs) + len(bytes_bytes_codecs)) != 0:
         return False
@@ -934,14 +933,11 @@ class FusedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
-        # NOTE: unlike BatchedCodecPipeline this does NOT require the AA/BB codec
-        # lists to be empty (require_no_aa_bb=False). That divergence is tracked
-        # separately; see pipeline_supports_partial_decode.
         return pipeline_supports_partial_decode(
             self.array_bytes_codec,
             array_array_codecs=self.array_array_codecs,
             bytes_bytes_codecs=self.bytes_bytes_codecs,
-            require_no_aa_bb=False,
+            require_no_aa_bb=True,
         )
 
     @property
@@ -950,7 +946,7 @@ class FusedCodecPipeline(CodecPipeline):
             self.array_bytes_codec,
             array_array_codecs=self.array_array_codecs,
             bytes_bytes_codecs=self.bytes_bytes_codecs,
-            require_no_aa_bb=False,
+            require_no_aa_bb=True,
         )
 
     def validate(
@@ -1039,10 +1035,14 @@ class FusedCodecPipeline(CodecPipeline):
 
         # Partial-decode fast path: the AB codec owns IO (read only the
         # byte ranges needed for the requested selection). Same condition
-        # and dispatch as BatchedCodecPipeline.read_batch.
-        if self.supports_partial_decode:
-            codec = self.array_bytes_codec
-            assert hasattr(codec, "_decode_partial_sync")
+        # and dispatch as BatchedCodecPipeline.read_batch, plus a gate on the
+        # sync partial method: the public partial-decode contract
+        # (`ArrayBytesCodecPartialDecodeMixin`) only requires the async
+        # `_decode_partial_single`, so a codec may support partial decode
+        # without `_decode_partial_sync` — such codecs take the full-chunk
+        # path below instead.
+        codec = self.array_bytes_codec
+        if self.supports_partial_decode and hasattr(codec, "_decode_partial_sync"):
 
             def _read_one(
                 item: tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool],
@@ -1111,10 +1111,14 @@ class FusedCodecPipeline(CodecPipeline):
 
         # Partial-encode path: the AB codec owns IO (read, merge, encode,
         # write).  Same condition and calling convention as
-        # BatchedCodecPipeline.write_batch.
-        if self.supports_partial_encode:
-            codec = self.array_bytes_codec
-            assert hasattr(codec, "_encode_partial_sync")
+        # BatchedCodecPipeline.write_batch, plus a gate on the sync partial
+        # method: the public partial-encode contract
+        # (`ArrayBytesCodecPartialEncodeMixin`) only requires the async
+        # `_encode_partial_single`, so a codec may support partial encode
+        # without `_encode_partial_sync` — such codecs take the full-chunk
+        # path below instead.
+        codec = self.array_bytes_codec
+        if self.supports_partial_encode and hasattr(codec, "_encode_partial_sync"):
             scalar = len(value.shape) == 0
 
             def _write_one(
@@ -1182,7 +1186,15 @@ class FusedCodecPipeline(CodecPipeline):
             (isinstance(first_bg, StorePath) and isinstance(first_bg.store, SupportsGetSync))
             or (not isinstance(first_bg, StorePath) and isinstance(first_bg, SyncByteGetter))
         ):
-            return self.read_sync(batch, out, drop_axes, max_workers=_resolve_max_workers())
+            # One thread hop for the WHOLE batch — not per chunk, so the fused
+            # design's win over per-chunk async scheduling is preserved. Running
+            # read_sync inline here would block the event loop for the duration
+            # of the batch's IO+compute; every sync-API call from every user
+            # thread shares this one loop, so inline execution serializes
+            # concurrent callers behind each other's codec compute.
+            return await asyncio.to_thread(
+                self.read_sync, batch, out, drop_axes, max_workers=_resolve_max_workers()
+            )
 
         # Non-sync store (e.g. ZipStore): can't use the sync fast path. But if the
         # array-bytes codec supports partial decoding (sharding), still route
@@ -1235,7 +1247,11 @@ class FusedCodecPipeline(CodecPipeline):
             (isinstance(first_bs, StorePath) and isinstance(first_bs.store, SupportsSetSync))
             or (not isinstance(first_bs, StorePath) and isinstance(first_bs, SyncByteSetter))
         ):
-            self.write_sync(batch, value, drop_axes, max_workers=_resolve_max_workers())
+            # One thread hop for the whole batch; see the matching comment in
+            # `read` for why write_sync must not run inline on the event loop.
+            await asyncio.to_thread(
+                self.write_sync, batch, value, drop_axes, max_workers=_resolve_max_workers()
+            )
             return
 
         await _async_write_fallback(self, batch, value, drop_axes)

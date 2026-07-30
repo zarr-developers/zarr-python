@@ -618,6 +618,71 @@ class StoreTests[S: Store, B: Buffer]:
         # should not raise
         deleter.delete_sync("nonexistent_sync")
 
+    # -------------------------------------------------------------------
+    # Sync/async parity laws
+    # -------------------------------------------------------------------
+    # A store's sync and async methods must observe the same key the same
+    # way. This is stronger than the individual test_get_sync/test_set_sync/
+    # test_delete_sync tests above: those write and read back through the
+    # *same* API (sync-only or, via `self.set`/`self.get`, bypassing the
+    # store entirely), so a sync method that skips logic the async method
+    # applies (e.g. a path prefix) can still pass them. These laws write
+    # through one API and observe through the other.
+
+    @pytest.mark.parametrize("direction", ["set_async_get_sync", "set_sync_get_async"])
+    async def test_sync_async_set_get_parity(self, store: S, direction: str) -> None:
+        setter = self._require_set_sync(store)
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_set_get"
+        if direction == "set_async_get_sync":
+            await store.set(key, data_buf)
+            result = getter.get_sync(key)
+        else:
+            setter.set_sync(key, data_buf)
+            result = await store.get(key, prototype=default_buffer_prototype())
+        assert result is not None
+        assert_bytes_equal(result, data_buf)
+
+    async def test_delete_sync_visible_to_async_get(self, store: S) -> None:
+        deleter = self._require_delete_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_delete"
+        await store.set(key, data_buf)
+        deleter.delete_sync(key)
+        result = await store.get(key, prototype=default_buffer_prototype())
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "byte_range",
+        [
+            None,
+            RangeByteRequest(1, 4),
+            OffsetByteRequest(1),
+            SuffixByteRequest(1),
+            RangeByteRequest(10, 20),
+        ],
+        ids=["none", "range", "offset", "suffix", "range-past-eof"],
+    )
+    async def test_get_sync_byte_range_parity(
+        self, store: S, byte_range: ByteRequest | None
+    ) -> None:
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_byte_range"
+        await store.set(key, data_buf)
+        sync_result = getter.get_sync(key, byte_range=byte_range)
+        async_result = await store.get(
+            key, prototype=default_buffer_prototype(), byte_range=byte_range
+        )
+        if async_result is None:
+            assert sync_result is None
+        else:
+            assert sync_result is not None
+            assert_bytes_equal(sync_result, async_result)
+
 
 class LatencyStore(WrapperStore[Store]):
     """
