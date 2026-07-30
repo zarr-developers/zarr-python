@@ -44,10 +44,21 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"
 Issues = "https://github.com/zarr-developers/zarr-python/issues"
 Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md"
-Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/README.md"
+Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
 test = ["pytest", "pydantic>=2.13", "jsonschema"]
+docs = [
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so the two sites render with the same toolchain.
+    "mkdocs-material==9.7.6",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.4",
+    "mkdocstrings-python==2.0.5",
+    "griffe-inherited-docstrings==1.1.3",
+    # mkdocstrings uses ruff to format rendered signatures
+    "ruff==0.15.20",
+]
 
 [tool.hatch.version]
 source = "vcs"
@@ -104,5 +115,5 @@ filename = "CHANGELOG.md"
 package = "zarr_metadata"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
-issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/pull/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"

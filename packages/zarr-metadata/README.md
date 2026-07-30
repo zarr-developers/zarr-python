@@ -2,6 +2,8 @@
 
 Python types, models, and validators for Zarr v2 and v3 metadata.
 
+Documentation: <https://zarr-metadata.readthedocs.io/en/stable/>
+
 ## What this is
 
 Two layers and an optional integration:
@@ -81,6 +83,23 @@ chunks, resolves codec or data type names to implementations, or performs
 store I/O. The models begin and end at the metadata documents themselves —
 `from_key_value` / `to_key_value` map documents to store keys and bytes,
 and everything past that belongs to consumer libraries.
+
+## Developing
+
+Package-scoped development commands live in the [`justfile`](./justfile)
+(requires [just](https://github.com/casey/just)):
+
+```
+just test        # run the test suite (extra args go to pytest)
+just lint        # ruff, same invocation as CI
+just typecheck   # pyright, pinned to the version CI uses
+just docs-check  # strict build of the docs site
+just check       # all of the above
+just docs-serve  # serve the docs site locally
+```
+
+Run them from this directory, or from anywhere in the repository as
+`just packages/zarr-metadata/<recipe>`.
 
 ## Releasing
 

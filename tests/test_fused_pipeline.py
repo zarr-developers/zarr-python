@@ -2,20 +2,33 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 import zarr
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+    BytesBytesCodec,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
 from zarr.core.config import config as zarr_config
+from zarr.registry import register_codec
 from zarr.storage import MemoryStore, StorePath
+
+if TYPE_CHECKING:
+    from zarr.abc.store import ByteRequest
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
 
 
 @pytest.mark.parametrize(
@@ -261,7 +274,7 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
     """
     from zarr.abc.codec import BytesBytesCodec
     from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+    from zarr.core.buffer import BufferPrototype, default_buffer_prototype
     from zarr.core.chunk_utils import ChunkTransform
     from zarr.core.dtype import get_data_type_from_native_dtype
 
@@ -426,6 +439,103 @@ def test_thread_pool_read_worker_exception_propagates() -> None:
             pytest.raises(RuntimeError, match="simulated store error"),
         ):
             arr[:]
+
+
+def test_resolve_max_workers_warns_and_falls_back_on_invalid_config() -> None:
+    """`codec_pipeline.max_workers` arrives via the config/env layer (e.g.
+    `ZARR_CODEC_PIPELINE__MAX_WORKERS`), so garbage input should warn and fall
+    back to the default rather than raising mid-read.
+    """
+    import os
+
+    import zarr.core.codec_pipeline as cp_mod
+    from zarr.errors import ZarrUserWarning
+
+    default = os.cpu_count() or 1
+    with zarr_config.set({"codec_pipeline.max_workers": "fast"}):
+        with pytest.warns(ZarrUserWarning, match="max_workers"):
+            result = cp_mod._resolve_max_workers()
+    assert result == default
+
+
+async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -> None:
+    """A failing write must not leave sibling writes running in the background.
+
+    `_encode_and_write_as_completed` fires one write task per chunk as soon as
+    its encode completes, then `gather`s them. Plain `gather` (without
+    `return_exceptions=True`) re-raises the first exception without cancelling
+    the other in-flight tasks, so a still-running write would keep going after
+    the caller has already seen the exception -- and its eventual outcome is
+    never retrieved (an unraisable "Task exception was never retrieved"
+    warning if it later fails).
+    """
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer import default_buffer_prototype
+    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+    from zarr.core.chunk_utils import ChunkTransform
+    from zarr.core.codec_pipeline import _encode_and_write_as_completed
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    write_started = asyncio.Event()
+    write_finished = False
+
+    class _SlowByteSetter:
+        async def get(
+            self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        ) -> Buffer | None:
+            return None
+
+        async def set(self, value: Buffer) -> None:
+            nonlocal write_finished
+            write_started.set()
+            await asyncio.sleep(0.2)
+            write_finished = True
+
+        async def delete(self) -> None:
+            pass
+
+        async def set_if_not_exists(self, default: Buffer) -> None:
+            pass
+
+    class _FailingByteSetter:
+        async def get(
+            self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        ) -> Buffer | None:
+            return None
+
+        async def set(self, value: Buffer) -> None:
+            raise RuntimeError("simulated write failure")
+
+        async def delete(self) -> None:
+            pass
+
+        async def set_if_not_exists(self, default: Buffer) -> None:
+            pass
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("uint8"))
+    chunk_spec = ArraySpec(
+        shape=(1,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    chunk_array = CPUNDBuffer.from_numpy_array(np.zeros(1, dtype="uint8"))
+    transform = ChunkTransform(codecs=(BytesCodec(),))
+
+    batch = [
+        (_SlowByteSetter(), chunk_array, chunk_spec),
+        (_FailingByteSetter(), chunk_array, chunk_spec),
+    ]
+
+    with pytest.raises(RuntimeError, match="simulated write failure"):
+        await _encode_and_write_as_completed(batch, transform)  # type: ignore[arg-type]
+
+    assert write_started.is_set()
+    # Give the slow write's sleep long enough to finish if it were left
+    # running unattended in the background instead of being cancelled.
+    await asyncio.sleep(0.3)
+    assert not write_finished, "the slow write should have been cancelled, not left running"
 
 
 def test_concurrent_reads_shared_transform_with_pool() -> None:
@@ -831,3 +941,127 @@ def test_async_decode_encode_passes_through_none_chunks() -> None:
     assert decoded[1] is None
     assert decoded[0] is not None
     np.testing.assert_array_equal(decoded[0].as_numpy_array(), data)
+
+
+# ---------------------------------------------------------------------------
+# Graceful fallback for partial-mixin codecs without private sync-partial hooks
+#
+# The public partial-decode/encode contract (`ArrayBytesCodecPartialDecodeMixin`
+# / `ArrayBytesCodecPartialEncodeMixin`) only requires the async
+# `_decode_partial_single` / `_encode_partial_single`. The fused pipeline must
+# route such codecs through its full-chunk sync path instead of asserting on
+# the private `_decode_partial_sync` / `_encode_partial_sync` hooks. The double
+# below is a minimal conforming implementer of that contract; it guards the
+# public extension API, so it must not grow the private sync-partial methods.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PartialMixinCodec(
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+):
+    """Serializer with sync whole-chunk methods plus ONLY async partial methods.
+
+    This is the pre-fused public contract for partial-capable codecs: the
+    mixins' `_decode_partial_single` / `_encode_partial_single`. It must not
+    implement `_decode_partial_sync` / `_encode_partial_sync`.
+    """
+
+    inner: BytesCodec = field(default_factory=BytesCodec)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PartialMixinCodec:
+        return cls()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "test-partial-mixin"}
+
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> PartialMixinCodec:
+        return replace(self, inner=self.inner.evolve_from_array_spec(array_spec))
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        return self.inner.compute_encoded_size(input_byte_length, chunk_spec)
+
+    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return self.inner._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        return self.inner._encode_sync(chunk_array, chunk_spec)
+
+    async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
+
+    async def _decode_partial_single(
+        self, byte_getter: Any, selection: Any, chunk_spec: ArraySpec
+    ) -> NDBuffer | None:
+        chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
+        if chunk_bytes is None:
+            return None
+        return self._decode_sync(chunk_bytes, chunk_spec)[selection]
+
+    async def _encode_partial_single(
+        self, byte_setter: Any, chunk_array: NDBuffer, selection: Any, chunk_spec: ArraySpec
+    ) -> None:
+        existing = await byte_setter.get(prototype=chunk_spec.prototype)
+        if existing is None:
+            full = chunk_spec.prototype.nd_buffer.create(
+                shape=chunk_spec.shape,
+                dtype=chunk_spec.dtype.to_native_dtype(),
+                fill_value=chunk_spec.fill_value,
+            )
+        else:
+            full = self._decode_sync(existing, chunk_spec)
+        full[selection] = chunk_array
+        encoded = self._encode_sync(full, chunk_spec)
+        assert encoded is not None
+        await byte_setter.set(encoded)
+
+
+register_codec("test-partial-mixin", PartialMixinCodec)
+
+_FUSED = {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+_BATCHED = {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+@pytest.mark.parametrize("dtype", ["uint8", "float64"])
+def test_partial_mixin_codec_async_partial_only_round_trip(dtype: str) -> None:
+    """A serializer advertising the partial mixins with only async partial
+    methods must round-trip under the fused pipeline: full write, full read,
+    partial read, partial write, plus cross-pipeline parity with
+    BatchedCodecPipeline."""
+    data = np.arange(64, dtype=dtype).reshape(8, 8)
+
+    with zarr_config.set(_FUSED):
+        store = MemoryStore()
+        arr = zarr.create_array(
+            store,
+            shape=(8, 8),
+            chunks=(4, 4),
+            dtype=dtype,
+            serializer=PartialMixinCodec(),
+            compressors=None,
+            filters=None,
+            fill_value=0,
+        )
+
+        pipeline = arr._async_array.codec_pipeline
+        assert isinstance(pipeline, FusedCodecPipeline)
+        assert pipeline.supports_partial_decode
+        assert pipeline.supports_partial_encode
+        assert pipeline.sync_transform is not None
+
+        arr[:] = data
+        np.testing.assert_array_equal(arr[:], data)
+        np.testing.assert_array_equal(arr[1:5, 2:7], data[1:5, 2:7])
+
+        expected = data.copy()
+        expected[2:6, 1:3] = 7
+        arr[2:6, 1:3] = expected[2:6, 1:3]
+        np.testing.assert_array_equal(arr[:], expected)
+
+    with zarr_config.set(_BATCHED):
+        np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], expected)
