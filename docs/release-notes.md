@@ -4,7 +4,7 @@
 
 <!-- towncrier release notes start -->
 
-## 3.3.0 (2026-07-15)
+## 3.3.0 (2026-07-30)
 
 ### Features
 
@@ -14,13 +14,19 @@
   concurrently. ([#3004](https://github.com/zarr-developers/zarr-python/pull/3004))
 - Added a `subchunk_write_order` option to `ShardingCodec` to control the physical order of subchunks within a shard. Supported values are `morton`, `unordered`, `lexicographic`, and `colexicographic`. `unordered` makes no guarantee about subchunk layout. This setting affects only on-disk layout, not the data read back, and is not persisted in array metadata: it applies per codec instance and is not recovered when reopening a sharded array. ([#3826](https://github.com/zarr-developers/zarr-python/pull/3826))
 - Added `SyncByteGetter` and `SyncByteSetter` runtime-checkable protocols and a `get_ranges_sync` method on the `Store` ABC. These let custom byte getters/setters opt into the synchronous codec pipeline's fast path for in-memory IO, which the sharding codec uses for its inner chunks. ([#3885](https://github.com/zarr-developers/zarr-python/pull/3885))
-- Added `FusedCodecPipeline`, an opt-in codec pipeline that runs codec compute synchronously and in bulk (avoiding the per-chunk async scheduling overhead of the default `BatchedCodecPipeline`), giving large speedups for sharded arrays (up to ~24x writes / ~14x reads on many-chunks-per-shard layouts, more with compression) and no regressions on compute-bound workloads. The default `BatchedCodecPipeline` is unchanged for standard configurations, so existing code keeps working unless you opt in; enable the new pipeline with `zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"})`. ([#3885](https://github.com/zarr-developers/zarr-python/pull/3885))
+- Added `FusedCodecPipeline`, an opt-in codec pipeline that runs codec compute synchronously and in bulk (avoiding the per-chunk async scheduling overhead of the default `BatchedCodecPipeline`), giving large speedups for sharded arrays. The default `BatchedCodecPipeline` is unchanged for standard configurations, so existing code keeps working unless you opt in; enable the new pipeline with `zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"})`. ([#3885](https://github.com/zarr-developers/zarr-python/pull/3885))
 - Add `zarr.abc.store.Store.get_ranges` for concurrent, coalesced multi-range reads from a single key. The method is defined on the `Store` ABC with a default implementation built on `Store.get`, so every store inherits a working version; stores with native multi-range backends (e.g. `FsspecStore`) can override for efficiency. Coalescing knobs (`max_concurrency`, `max_gap_bytes`, `max_coalesced_bytes`) are passed as keyword arguments to `get_ranges`. Failures from underlying fetches surface as a `BaseExceptionGroup` (PEP 654); callers should use `except*` to filter for specific exception types such as `FileNotFoundError`. ([#3925](https://github.com/zarr-developers/zarr-python/pull/3925))
 - Two new fields on `ArrayConfig` control how the sharding codec coalesces partial-shard reads: `sharding_coalesce_max_gap_bytes` (default 1 MiB) and `sharding_coalesce_max_bytes` (default 16 MiB). When reading multiple chunks from the same shard, nearby byte ranges are merged into a single request to the store if separated by no more than `sharding_coalesce_max_gap_bytes` and the merged read stays within `sharding_coalesce_max_bytes`. Defaults are seeded from the matching `array.sharding_coalesce_max_gap_bytes` / `array.sharding_coalesce_max_bytes` keys in [`zarr.config`][] at array-creation time, and can be overridden per array by passing `config={...}` to [`zarr.create_array`][]. ([#3987](https://github.com/zarr-developers/zarr-python/pull/3987))
 
+- Added `Group.get_array`, `Group.get_group`, `AsyncGroup.get_array`, and `AsyncGroup.get_group`: type-safe accessors that return the child array or group at a given path, raising `ArrayNotFoundError` / `GroupNotFoundError` if no node exists there, and `ContainsGroupError` / `ContainsArrayError` if the node is not of the requested kind. Unlike `Group.__getitem__`, which returns `Array | Group`, these methods have precise return types. Nested paths like `"subgroup/subarray"` are supported. ([#4128](https://github.com/zarr-developers/zarr-python/pull/4128))
+- `ZipStore` now accepts an open binary file-like object in place of a path, enabling
+  zip archives on remote storage (e.g. a file opened with `fsspec` or an
+  `obstore.ReadableFile`). Operations that require a filesystem location
+  (`clear`, `move`) raise `NotImplementedError` for file-object-backed stores. ([#4187](https://github.com/zarr-developers/zarr-python/pull/4187))
+
 ### Bugfixes
 
-- Stop emitting an `UnstableSpecificationWarning` when serializing the `struct` data type to Zarr V3 metadata. The `struct` data type now has a stable Zarr V3 specification. The legacy `structured` alias and the unspecified `null_terminated_bytes`, `raw_bytes`, and `variable_length_bytes` data types continue to warn. ([#202](https://github.com/zarr-developers/zarr-python/issues/202))
+- Stop emitting an `UnstableSpecificationWarning` when serializing the `struct` data type to Zarr V3 metadata. The `struct` data type now has a stable Zarr V3 specification. The legacy `structured` alias and the unspecified `null_terminated_bytes`, `raw_bytes`, and `variable_length_bytes` data types continue to warn. ([#4100](https://github.com/zarr-developers/zarr-python/pull/4100))
 - Fix equality comparison of `ArrayV2Metadata` and `ArrayV3Metadata` objects with a
   `NaN` fill value. Such objects are now compared by their JSON-serialized form, so two
   otherwise-identical metadata objects with a `NaN` (or infinite) fill value compare equal. ([#2929](https://github.com/zarr-developers/zarr-python/issues/2929))
@@ -46,25 +52,11 @@
 - Fixed writing to 0-dimensional arrays that use the sharding codec. Previously
   assigning to a 0-dimensional sharded array raised an error. ([#3966](https://github.com/zarr-developers/zarr-python/pull/3966))
 - Fix flaky stateful test bookkeeping when `delete_dir` matches string prefixes instead of true directory descendants. Previously a path such as `6/faNT…` could be incorrectly removed when deleting `6/f`. (See [issue #3977](https://github.com/zarr-developers/zarr-python/issues/3977).) ([#3977](https://github.com/zarr-developers/zarr-python/issues/3977))
-- `FsspecStore.from_url()` and `from_mapper()` now close the async filesystem
-  they create when `store.close()` is called. Previously the underlying aiohttp
-  `ClientSession` was left open until garbage collection, producing
-  `"Unclosed client session"` `ResourceWarning`s from aiohttp.
-
-    The fix introduces `FsspecStore._owns_fs`, a boolean that is ``True`` only when
-    `FsspecStore` itself created the filesystem (via `from_url` or `from_mapper`
-    when a sync→async conversion was performed). When `_owns_fs` is ``True``,
-    `store.close()` calls the new `_close_fs()` helper, which invokes
-    `fs.set_session()` and closes the returned client. Callers who supply their own
-    filesystem instance to `FsspecStore()` directly remain responsible for its
-    lifecycle; `_owns_fs` is ``False`` for those stores.
-
-    **Scope note**: This fix closes the S3 client session that is active at the time
-    `store.close()` is called. Some S3-backed filesystem implementations (e.g.
-    s3fs with ``cache_regions=True``) may internally refresh and replace their
-    client during I/O operations, abandoning prior sessions before ``store.close()``
-    is invoked. Those intermediate sessions are outside the scope of this fix and
-    are an issue in the upstream filesystem library. ([#4003](https://github.com/zarr-developers/zarr-python/pull/4003))
+- `FsspecStore.close()` no longer closes the underlying fsspec filesystem or its
+  network session. fsspec caches and shares filesystem instances across callers,
+  so the store cannot know whether it is the only user, and closing a shared
+  session would break other stores; the filesystem's lifecycle belongs to
+  whoever created it. ([#4165](https://github.com/zarr-developers/zarr-python/pull/4165))
 
 - Fixed an invalid `zarr.create_array` example in the quick-start documentation (it passed an unsupported `mode` argument) and made the cloud-storage example execute against a mock S3 backend in CI. Added a test ensuring every Python code block in the documentation is either executed or explicitly opted out with a documented reason, so an invalid example can no longer go untested. ([#4016](https://github.com/zarr-developers/zarr-python/issues/4016))
 - Fixed `ObjectStore.list_dir` for object-store listings that include a directory-marker object matching the requested non-root prefix. ([#4032](https://github.com/zarr-developers/zarr-python/issues/4032))
@@ -81,6 +73,82 @@
 
 - Fixed writing Fortran-ordered (F-contiguous) arrays through the variable-length string and bytes codecs and through numcodecs array-array filters such as `Delta`, `FixedScaleOffset` and `PackBits`. Chunks are now passed to numcodecs as C-contiguous arrays, so elements are no longer stored in transposed order. ([#4116](https://github.com/zarr-developers/zarr-python/pull/4116))
 - Fix silent byte-order corruption for structured dtypes with the `bytes` codec: multi-byte fields are now byte-swapped to the codec's configured `endian` on write and decoded honoring it on read, so non-native-endian structured data (e.g. big-endian fields, as produced by virtual references to external data) round-trips correctly. ([#4141](https://github.com/zarr-developers/zarr-python/issues/4141))
+
+- Fix `zarr.api.asynchronous.open_like` so it can create a new array by default when the
+  target path does not already exist. It now defaults to `mode="a"`; when using a read-only
+  store to open an existing array, pass `mode="r"` explicitly. ([#3352](https://github.com/zarr-developers/zarr-python/pull/3352))
+- `MemoryStore` now copies buffers as they are written, so it never retains the
+  caller's memory. Previously an uncompressed write handed the store a zero-copy
+  view of the user's array, and mutating that array afterwards would silently
+  rewrite chunks already committed to the store.
+
+    Only `MemoryStore` is affected: stores that serialize on write, such as
+    `LocalStore` and `ZipStore`, never aliased the caller's memory. Uncompressed
+    writes to a `MemoryStore` are correspondingly slower, since the copy that makes
+    the stored data independent is now actually performed; compressed writes are
+    unchanged. Buffers supplied through the `store_dict` argument remain the
+    caller's responsibility and are stored as-is. ([#4157](https://github.com/zarr-developers/zarr-python/pull/4157))
+
+- Fixed the opt-in `FusedCodecPipeline` for sharded arrays whose inner or index codec chain contains a codec implementing only the async codec interface (no `SupportsSyncCodec`). Such arrays previously raised `TypeError: All codecs must implement SupportsSyncCodec` on both read and write; the pipeline now declines its synchronous fast path for them and falls back to the async path, matching the behavior of the default `BatchedCodecPipeline`. Fully sync-capable codec chains keep the fast path unchanged. ([#4179](https://github.com/zarr-developers/zarr-python/pull/4179))
+- Fixed `TypeError: unhashable type: 'writeable void-scalar'` when writing to sharded arrays whose fill value is a `np.void` scalar, e.g. arrays with a structured dtype.
+
+    `ArraySpec` equality and hashing now compare the fill value by its byte representation rather than numeric equality. As a result, two specs with a `NaN` (or `NaT`) fill value now compare equal, while fill values of `-0.0` and `0.0` now compare unequal. This also restores the sharding codec's per-chunk spec cache, which had been disabled because of this bug. ([#4183](https://github.com/zarr-developers/zarr-python/pull/4183))
+
+- `FusedCodecPipeline` no longer runs chunk IO and codec compute on the thread
+  driving zarr's internal event loop. Previously each read/write executed its
+  synchronous fast path inline on that loop thread, and because every sync-API
+  call from every user thread is serviced by the same loop, concurrent
+  operations serialized behind each other's codec work — reported as the fused
+  pipeline being slower than `BatchedCodecPipeline` for zstd-compressed data
+  under multi-threaded (e.g. dask) access. The synchronous batch now runs on a
+  worker thread (one hop per batch, not per chunk), keeping the loop free.
+  Multi-threaded single-chunk reads of compressed data now scale with reader
+  threads; single-threaded performance is unchanged. ([#4194](https://github.com/zarr-developers/zarr-python/pull/4194))
+- The end-to-end benchmarks no longer invoke `sudo` to drop the OS page cache during a regular `pytest` run. Cache clearing is now opt-in via the `ZARR_BENCHMARK_CLEAR_CACHE` environment variable, which the benchmark CI jobs set. ([#4199](https://github.com/zarr-developers/zarr-python/pull/4199))
+- Fixed the opt-in `FusedCodecPipeline` for serializers that advertise the partial-decode/encode mixins with only the documented async partial methods: the partial dispatch previously asserted on the private `_decode_partial_sync`/`_encode_partial_sync` hooks (an `AssertionError`, or an `AttributeError` mid-IO under `python -O`); such codecs now take the full-chunk sync path. ([#4201](https://github.com/zarr-developers/zarr-python/pull/4201))
+- Fixed `FusedCodecPipeline` (the opt-in synchronous pipeline) silently skipping
+  array-array/bytes-bytes codecs placed outside a sharding serializer on its
+  partial-decode/partial-encode fast paths. With an outer compressor (e.g.
+  `compressors=[GzipCodec()]` around a `ShardingCodec` serializer), the fused
+  pipeline wrote non-conforming stored bytes that `BatchedCodecPipeline` (and any
+  other conforming reader) could not read, and could fail to read data that
+  `BatchedCodecPipeline` had written. With an outer array-array codec (e.g.
+  `TransposeCodec`), it silently returned wrong data in both directions with no
+  error. Only the opt-in `FusedCodecPipeline` was affected; the default
+  `BatchedCodecPipeline` was never impacted. ([#4202](https://github.com/zarr-developers/zarr-python/pull/4202))
+- Fixed silent data corruption in the experimental `FusedCodecPipeline`: reordering or duplicating fancy-index reads (e.g. `arr[perm, :]`, `arr.oindex[[0, 0, 1], :]`) on uncompressed, crc-free sharded arrays could return the shard in natural order because the vectorized whole-shard decode accepted any selection whose output shape matched the shard shape. The bulk decode now fires only for identity full-shard reads, declines structured dtypes (whose byte-order handling it lacks), and requires shard-index offsets to exactly tile the data section, so corrupt indexes with overlapping or out-of-range offsets can no longer be served as array data. ([#4203](https://github.com/zarr-developers/zarr-python/pull/4203))
+- `ManagedMemoryStore.get_sync`/`set_sync`/`delete_sync` now apply the store's
+  `path` prefix, matching the async `get`/`set`/`delete` methods. Previously the
+  sync methods were inherited unchanged from `MemoryStore` and used the raw key,
+  so code that takes the sync fast path (e.g. `FusedCodecPipeline`) would read
+  and write chunks outside the store's `path` prefix, silently returning fill
+  values when the data was re-read through a fresh handle. `GpuMemoryStore.set_sync`
+  now converts its value to a `gpu.Buffer`, matching `set`, so writes through the
+  sync API keep the store's all-values-are-GPU invariant. Also fixed
+  `ManagedMemoryStore.get_partial_values` applying its `path` prefix twice
+  whenever `path` is non-empty, which made it always return `None` for every
+  requested key.
+
+    The shared store test suite (`zarr.testing.store.StoreTests`) gained
+    sync/async parity checks — comparing sync and async observations of the same
+    key on the same store instance, including with a `byte_range` — so every
+    store subclass now exercises this invariant. The suite's former
+    `test_get_bytes`/`test_get_json` methods (and their `_sync` variants) were
+    folded into these parity tests and no longer exist as separate methods. ([#4204](https://github.com/zarr-developers/zarr-python/pull/4204))
+
+- Fixed several small correctness issues from the codec-pipeline performance work: construction-time
+  codec warnings (e.g. sharding's "disables partial reads" warning) no longer fire twice per array
+  open — including for `FusedCodecPipeline`, which previously re-warned via its own codec-chain
+  reconstruction and, on the async fallback path, on every decode/encode call; `concurrent_iter` now
+  schedules its tasks eagerly, matching its documented contract; an invalid
+  `codec_pipeline.max_workers` config/environment value now warns and falls back to the default
+  instead of raising mid-read; and `FusedCodecPipeline`'s async fallback helpers now cancel
+  already-spawned fetch/decode/write tasks instead of abandoning them in the background when one
+  fails. ([#4205](https://github.com/zarr-developers/zarr-python/pull/4205))
+- Fixed `FusedCodecPipeline`'s gating of its synchronous fast paths: stores exposing only part of the sync surface (e.g. `set_sync` without `get_sync`) now fall back cleanly to the async path instead of failing mid-write, and `WrapperStore` now forwards `get_sync`/`set_sync`/`delete_sync` to the wrapped store so wrapped sync-capable stores keep the fast path. The capability decision uses a private, interim convention (`zarr.abc.store._store_supports_sync_io`) rather than new public API, pending a formal sync/async store architecture. Also fixed `LatencyStore`: synchronous reads and writes now pay the configured latency, `get_ranges`/`get_partial_values` no longer bypass latency injection, and derived stores (e.g. from `with_read_only`) keep a stochastic `(loc, scale)` latency configuration instead of freezing a single sample. ([#4206](https://github.com/zarr-developers/zarr-python/pull/4206))
+- `DefaultChunkKeyEncoding.decode_chunk_key` now validates that a chunk key
+  starts with the configured `c<separator>` prefix and raises `ValueError` for
+  malformed keys, instead of silently decoding them incorrectly. ([#4219](https://github.com/zarr-developers/zarr-python/pull/4219))
 
 ### Improved Documentation
 
@@ -120,13 +188,30 @@
   enumeration, bulk attribute updates, and the `use_consolidated` keyword. ([#4132](https://github.com/zarr-developers/zarr-python/pull/4132))
 - Fixed the documented default of ``max_age_seconds`` in the ``CacheStore`` docstring: the default is ``"infinity"`` (no expiration), not ``None``, which is rejected. Also noted that ``cache_store`` must support deletes. ([#4133](https://github.com/zarr-developers/zarr-python/pull/4133))
 
+- Added a blog section to the documentation, with a post covering two performance
+  highlights of the 3.3.0 release: the opt-in `FusedCodecPipeline` and byte-range
+  coalescing for partial reads of sharded arrays.
+
+    Added two runnable examples that accompany the post:
+    `examples/codec_pipeline_performance` compares the `BatchedCodecPipeline` and
+    `FusedCodecPipeline` on a sharded array across two stores and two codec
+    regimes, showing when the fused pipeline's thread pool helps and when it does
+    not, and `examples/sharding_coalescing` demonstrates how read coalescing
+    reduces the number of store requests when reading subregions of a sharded
+    array.
+
+    Also removed the hardware-specific speedup figures from the `FusedCodecPipeline`
+    release note, since they depend on the array layout, codec, and machine. ([#4191](https://github.com/zarr-developers/zarr-python/pull/4191))
+
 ### Deprecations and Removals
 
 - The ``BloscShuffle`` and ``BloscCname`` enums (``zarr.codecs.BloscShuffle``,
   ``zarr.codecs.BloscCname``) are now deprecated. Pass the equivalent literal
   string (e.g. ``"zstd"``, ``"bitshuffle"``) when constructing a ``BloscCodec``.
   The enum classes remain importable but emit ``DeprecationWarning`` on member
-  access, and will be removed in a future release. ``BloscCodec.cname`` and
+  access, and will be removed in a future release. They are no longer ``Enum``
+  subclasses: constructor calls (e.g. ``BloscCname("zstd")``), iteration, and
+  ``.value`` access no longer work. ``BloscCodec.cname`` and
   ``BloscCodec.shuffle`` are now plain strings rather than enum members.
 
     Additional renames in ``zarr.codecs.blosc`` from the same change: the type
@@ -162,8 +247,9 @@
 
 ### Misc
 
-- [#214](https://github.com/zarr-developers/zarr-python/issues/214), [#215](https://github.com/zarr-developers/zarr-python/pull/215), [#3908](https://github.com/zarr-developers/zarr-python/pull/3908), [#3972](https://github.com/zarr-developers/zarr-python/pull/3972), [#3975](https://github.com/zarr-developers/zarr-python/pull/3975), [#3979](https://github.com/zarr-developers/zarr-python/pull/3979), [#3990](https://github.com/zarr-developers/zarr-python/pull/3990), [#3998](https://github.com/zarr-developers/zarr-python/pull/3998), [#4000](https://github.com/zarr-developers/zarr-python/pull/4000), [#4001](https://github.com/zarr-developers/zarr-python/pull/4001), [#4046](https://github.com/zarr-developers/zarr-python/pull/4046), [#4054](https://github.com/zarr-developers/zarr-python/pull/4054), [#4073](https://github.com/zarr-developers/zarr-python/issues/4073), [#4086](https://github.com/zarr-developers/zarr-python/issues/4086), [#4138](https://github.com/zarr-developers/zarr-python/pull/4138)
+- [#4139](https://github.com/zarr-developers/zarr-python/pull/4139), [#4140](https://github.com/zarr-developers/zarr-python/pull/4140), [#3908](https://github.com/zarr-developers/zarr-python/pull/3908), [#3972](https://github.com/zarr-developers/zarr-python/pull/3972), [#3975](https://github.com/zarr-developers/zarr-python/pull/3975), [#3979](https://github.com/zarr-developers/zarr-python/pull/3979), [#3990](https://github.com/zarr-developers/zarr-python/pull/3990), [#3998](https://github.com/zarr-developers/zarr-python/pull/3998), [#4000](https://github.com/zarr-developers/zarr-python/pull/4000), [#4001](https://github.com/zarr-developers/zarr-python/pull/4001), [#4012](https://github.com/zarr-developers/zarr-python/pull/4012), [#4046](https://github.com/zarr-developers/zarr-python/pull/4046), [#4054](https://github.com/zarr-developers/zarr-python/pull/4054), [#4073](https://github.com/zarr-developers/zarr-python/issues/4073), [#4086](https://github.com/zarr-developers/zarr-python/issues/4086), [#4138](https://github.com/zarr-developers/zarr-python/pull/4138)
 
+- [#4172](https://github.com/zarr-developers/zarr-python/pull/4172)
 
 ## 3.2.1 (2026-05-05)
 
