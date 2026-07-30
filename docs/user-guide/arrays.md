@@ -199,7 +199,7 @@ print(arr_f.config)
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
 Zstandard and Gzip compressors. Additional compressors are available through
-a separate package called [NumCodecs](https://numcodecs.readthedocs.io/) which provides various
+a separate package called [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) which provides various
 compressor libraries including LZ4, Zlib, BZ2 and LZMA.
 Different compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
@@ -256,7 +256,7 @@ z[:] = data
 print(f"Compressors: {z.compressors}")
 ```
 
-Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/) with a custom filter pipeline including LZMA's
+Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) with a custom filter pipeline including LZMA's
 built-in delta filter:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -295,7 +295,7 @@ z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.
 print(z.info_complete())
 ```
 
-For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/) documentation.
+For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/en/stable/) documentation.
 
 ## Advanced indexing
 
