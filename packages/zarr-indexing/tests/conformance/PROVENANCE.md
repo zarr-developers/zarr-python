@@ -4,8 +4,8 @@ The JSON fixtures in this directory (`point.json`, `box.json`, `slice.json`,
 `points.json`, `transform.json`, `errors.json`) and `README.md` are **vendored,
 unmodified**, from the ndsel reference repository.
 
-- **Source:** <https://github.com/d-v-b/ndsel>
-- **Branch:** `main` (merge of PR #1, `fix/slice-origin-trunc`)
+- **Source:** <https://github.com/zarr-developers/ndsel>
+- **Branch:** `main` (merge of d-v-b/ndsel#1, `fix/slice-origin-trunc`)
 - **Commit:** `c59bc556c` (fixtures byte-identical to the previously vendored
   `c132b4c1caa3205830ce35a42502363171f650a7`)
 - **Path in source:** `conformance/`

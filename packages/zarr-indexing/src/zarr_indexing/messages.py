@@ -1,6 +1,6 @@
 """The ndsel message layer — pure JSON in, canonical JSON out.
 
-This module implements the [ndsel](https://github.com/d-v-b/ndsel) draft wire
+This module implements the [ndsel](https://github.com/zarr-developers/ndsel) draft wire
 format: a JSON-serializable representation of NumPy-style n-dimensional
 selections that adapts TensorStore's `IndexTransform` model. It is a **pure
 JSON→JSON** layer: it depends on nothing but the standard library, imposes no
