@@ -146,15 +146,6 @@ dev = [
     "mypy==2.3.0",
 ]
 
-# The repo is a uv workspace so the in-tree `packages/zarr-indexing` package
-# resolves from a checkout during development and CI. zarr itself does not
-# (yet) depend on zarr-indexing — the runtime wiring lands separately.
-[tool.uv.workspace]
-members = ["packages/zarr-indexing"]
-
-[tool.uv.sources]
-zarr-indexing = { workspace = true }
-
 [tool.coverage.report]
 exclude_also = [
     'if TYPE_CHECKING:',

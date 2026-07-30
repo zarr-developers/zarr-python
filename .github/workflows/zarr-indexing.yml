@@ -41,13 +41,13 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       # The transform tests exercise chunk resolution against zarr's ChunkGrid,
-      # so they run from the repo root against the full workspace (which installs
-      # both `zarr` and the `zarr-indexing` workspace member) rather than in
+      # so they run from the repo root against the root environment (which
+      # provides `zarr`) with this package as an editable overlay rather than in
       # package isolation.
       - name: Sync test dependency group
-        run: uv sync --all-packages --group test --python ${{ matrix.python-version }}
+        run: uv sync --group test --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --no-sync --group test pytest packages/zarr-indexing/tests
+        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing python -m pytest packages/zarr-indexing/tests
 
   ruff:
     name: ruff
