@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   # pull_request:
   schedule:
-    - cron: "00 18 * * *"
+    - cron: "00 18 * * 1" # weekly, Mondays at 18:00 UTC
 
 jobs:
   linkChecker:

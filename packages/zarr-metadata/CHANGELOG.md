@@ -159,7 +159,7 @@
 
 ### Deprecations and Removals
 
-- Introduces a new `JSONValue` type that models python objects that serialize directly to JSON. This type is used to annotate the contents of `attributes` and `fill_value` fields, replacing the use of the overly wide `object` type. This is technically a breaking change. ([#4037](https://github.com/zarr-developers/zarr-python/issues/4037))
+- Introduces a new `JSONValue` type that models python objects that serialize directly to JSON. This type is used to annotate the contents of `attributes` and `fill_value` fields, replacing the use of the overly wide `object` type. This is technically a breaking change. ([#4037](https://github.com/zarr-developers/zarr-python/pull/4037))
 - Promoted a curated "front door" of names to the top-level `zarr_metadata`
   namespace, so consumers can write e.g. `from zarr_metadata import
   ArrayMetadataV3, ShardingIndexLocation, BLOSC_CNAME` instead of importing from
@@ -180,7 +180,7 @@
   `name`-or-`{name, configuration}` shape).
 
   Also added the `NUMPY_TIME_UNIT` runtime constant (a `Final` tuple paired with
-  the `NumpyTimeUnit` Literal) in `zarr_metadata.v3.data_type.numpy_timedelta64`. ([#4083](https://github.com/zarr-developers/zarr-python/issues/4083))
+  the `NumpyTimeUnit` Literal) in `zarr_metadata.v3.data_type.numpy_timedelta64`. ([#4083](https://github.com/zarr-developers/zarr-python/pull/4083))
 
 
 ## 0.2.0 (2026-05-19)
@@ -193,13 +193,13 @@
   identify the chunk bytes produced by a writer. **Breaking** for consumers
   that previously typed gzip codec metadata as the bare string or
   constructed a `GzipCodecConfiguration` without `level`.
-  ([#3978](https://github.com/zarr-developers/zarr-python/issues/3978))
+  ([#3978](https://github.com/zarr-developers/zarr-python/pull/3978))
 - `BytesCodecObject.configuration` is now `NotRequired`. The configuration
   has no required keys (`endian` is conditionally required at runtime
   based on data type), so the object form may omit it entirely — matching
   the bare-string short-hand. **Soft-breaking** for consumers that
   previously relied on `configuration` always being present.
-  ([#3978](https://github.com/zarr-developers/zarr-python/issues/3978))
+  ([#3978](https://github.com/zarr-developers/zarr-python/pull/3978))
 - Better modelling of Zarr v2 stored metadata. Zarr v2 splits a node's
   metadata across two JSON documents (`.zarray`/`.zgroup` and `.zattrs`),
   but `GroupMetadataV2` had no `attributes` field while `ArrayMetadataV2`
@@ -207,7 +207,7 @@
   `attributes` field, and `ArrayMetadataV2.attributes` is now
   `NotRequired` for symmetry. **Soft-breaking** for consumers that
   relied on `ArrayMetadataV2.attributes` always being present.
-  ([#3962](https://github.com/zarr-developers/zarr-python/issues/3962))
+  ([#3962](https://github.com/zarr-developers/zarr-python/pull/3962))
 
 ### Features
 
@@ -219,7 +219,7 @@
   (test fixtures, fragment templates, in-progress builders). An
   equivalence test pins each `Partial` to the keys and value types of
   its full sibling so the two cannot drift.
-  ([#3982](https://github.com/zarr-developers/zarr-python/issues/3982))
+  ([#3982](https://github.com/zarr-developers/zarr-python/pull/3982))
 - Added three new top-level types modelling the **strict on-disk** shape
   of Zarr v2 metadata documents: `ZArrayMetadata` (the `.zarray` file),
   `ZGroupMetadata` (the `.zgroup` file), and `ZAttrsMetadata` (the
@@ -227,13 +227,13 @@
   what's stored on disk; use the merged `ArrayMetadataV2`/`GroupMetadataV2`
   when you want the in-memory representation a Python program typically
   works with.
-  ([#3962](https://github.com/zarr-developers/zarr-python/issues/3962))
+  ([#3962](https://github.com/zarr-developers/zarr-python/pull/3962))
 - Added typed constants exposing the spec-permitted values of constrained
   Literal fields, importable at the per-codec module level. For example,
   `from zarr_metadata.v3.codec.bytes import ENDIAN` provides
   `("little", "big")` as a tuple, enabling runtime iteration or validator
   generation without re-stating the Literal values by hand.
-  ([#3978](https://github.com/zarr-developers/zarr-python/issues/3978))
+  ([#3978](https://github.com/zarr-developers/zarr-python/pull/3978))
 
 ## 0.1.1 (2026-05-06)
 
@@ -242,7 +242,7 @@
 - First usable release on PyPI. Version 0.1.0 was uploaded then deleted to
   reserve the project name; this version is the first one PyPI will install.
   No source changes from 0.1.0.
-  ([#3949](https://github.com/zarr-developers/zarr-python/issues/3949))
+  ([#3949](https://github.com/zarr-developers/zarr-python/pull/3949))
 
 ## 0.1.0 (2026-05-01)
 
@@ -253,4 +253,4 @@
   of `zarr-extensions` types and the un-specified-but-widely-used
   consolidated metadata documents. Pair with a runtime validator like
   `pydantic` to check JSON loaded from disk.
-  ([#3919](https://github.com/zarr-developers/zarr-python/issues/3919))
+  ([#3919](https://github.com/zarr-developers/zarr-python/pull/3919))
