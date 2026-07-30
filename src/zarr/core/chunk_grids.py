@@ -334,9 +334,7 @@ def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
         return False
 
 
-def is_regular_1d(
-    dim_chunks: Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
-) -> bool:
+def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
     """Check if a single dimension's chunk sizes represent a regular grid.
 
     A regular dimension has either all chunks the same size, or all
@@ -346,9 +344,6 @@ def is_regular_1d(
     if len(dim_chunks) <= 1:
         return True
     first = dim_chunks[0]
-    if isinstance(dim_chunks, np.ndarray):
-        # Vectorized comparison avoids per-element Python iteration over int64 arrays.
-        return bool((dim_chunks[1:-1] == first).all() and dim_chunks[-1] <= first)
     for c in dim_chunks[1:-1]:
         if c != first:
             return False
@@ -356,9 +351,7 @@ def is_regular_1d(
     return dim_chunks[-1] <= first
 
 
-def is_regular_nd(
-    chunks: Iterable[Sequence[int] | np.ndarray[tuple[int], np.dtype[np.int64]]],
-) -> bool:
+def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
     """Check if an N-dimensional chunk specification represents a regular grid."""
     return all(is_regular_1d(d) for d in chunks)
 

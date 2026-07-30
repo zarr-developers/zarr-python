@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
 
 from tests.conftest import Expect, ExpectFail
@@ -110,9 +109,6 @@ def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 # Chunk-grid regularity helpers
 # ---------------------------------------------------------------------------
 
-# Cases used for both list/tuple (Python-sequence path) and ndarray (vectorized
-# path) of `is_regular_1d`. Parametrizing the input form ensures both branches
-# are exercised by the same suite of edge cases.
 _REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
     Expect(input=[], output=True, id="empty"),
     Expect(input=[10], output=True, id="single-chunk"),
@@ -129,17 +125,9 @@ _REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
 
 @pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
 def test_is_regular_1d_sequence(case: Expect[list[int], bool]) -> None:
-    """`is_regular_1d` accepts plain Python sequences and uses the iterative path."""
-    # list and tuple both go through the non-ndarray branch.
+    """`is_regular_1d` accepts plain Python sequences."""
     assert is_regular_1d(case.input) is case.output
     assert is_regular_1d(tuple(case.input)) is case.output
-
-
-@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
-def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
-    """`is_regular_1d` accepts int64 ndarrays and uses the vectorized path."""
-    arr = np.asarray(case.input, dtype=np.int64)
-    assert is_regular_1d(arr) is case.output
 
 
 @pytest.mark.parametrize(
@@ -156,8 +144,6 @@ def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
 def test_is_regular_nd_sequence(case: Expect[list[list[int]], bool]) -> None:
     """`is_regular_nd` returns True iff every per-dim spec is regular."""
     assert is_regular_nd(case.input) is case.output
-    # Same result via ndarray inputs.
-    assert is_regular_nd([np.asarray(d, dtype=np.int64) for d in case.input]) is case.output
 
 
 # ---------------------------------------------------------------------------
