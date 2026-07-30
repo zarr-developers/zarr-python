@@ -39,7 +39,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
 Issues = "https://github.com/zarr-developers/zarr-python/issues"
 Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md"
-Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/README.md"
+Documentation = "https://zarr-indexing.readthedocs.io/"
 
 [dependency-groups]
 # The transform tests exercise chunk resolution against zarr's ChunkGrid
@@ -48,6 +48,17 @@ Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packag
 # listed here to avoid a workspace dependency cycle; run these tests from the
 # repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
 test = ["pytest"]
+docs = [
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so the two sites render with the same toolchain.
+    "mkdocs-material==9.7.6",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.4",
+    "mkdocstrings-python==2.0.5",
+    "griffe-inherited-docstrings==1.1.3",
+    # mkdocstrings uses ruff to format rendered signatures
+    "ruff==0.15.20",
+]
 
 [tool.hatch.version]
 source = "vcs"

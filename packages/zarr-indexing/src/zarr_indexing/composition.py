@@ -1,3 +1,23 @@
+"""Composition — chaining two transforms into one.
+
+`compose(outer, inner)` is the operation that makes views stack. `outer` maps
+user coordinates to intermediate coordinates, `inner` maps those intermediate
+coordinates to storage, and the result maps user coordinates straight to
+storage — so a view of a view of an array is still a single
+`IndexTransform`, and indexing never accumulates layers to walk at read time.
+
+Composition works one output map at a time, and each case reduces to
+substituting the outer map into the inner one:
+
+- A `ConstantMap` inner map ignores its input, so it survives unchanged.
+- A `DimensionMap` inner map is affine, so composing it with an outer
+  `ConstantMap` or `DimensionMap` folds into new `offset`/`stride` values;
+  composing it with an outer `ArrayMap` leaves the index array alone and
+  rescales around it.
+- An `ArrayMap` inner map must be *evaluated* at the coordinates the outer
+  transform produces, which is the only case that touches array data.
+"""
+
 from __future__ import annotations
 
 import numpy as np

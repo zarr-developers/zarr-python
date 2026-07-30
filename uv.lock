@@ -3619,6 +3619,14 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+docs = [
+    { name = "griffe-inherited-docstrings" },
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings" },
+    { name = "mkdocstrings-python" },
+    { name = "ruff" },
+]
 test = [
     { name = "pytest" },
 ]
@@ -3627,4 +3635,12 @@ test = [
 requires-dist = [{ name = "numpy", specifier = ">=2" }]
 
 [package.metadata.requires-dev]
+docs = [
+    { name = "griffe-inherited-docstrings", specifier = "==1.1.3" },
+    { name = "mkdocs", specifier = "==1.6.1" },
+    { name = "mkdocs-material", specifier = "==9.7.6" },
+    { name = "mkdocstrings", specifier = "==1.0.4" },
+    { name = "mkdocstrings-python", specifier = "==2.0.5" },
+    { name = "ruff", specifier = "==0.15.20" },
+]
 test = [{ name = "pytest" }]
