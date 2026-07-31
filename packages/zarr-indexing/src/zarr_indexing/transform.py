@@ -125,6 +125,18 @@ class IndexTransform:
                             f"axis it names, and a correlated one names none"
                         )
 
+    def __eq__(self, other: object) -> bool:
+        """Value equality. `ArrayMap` compares its index array element-wise, so
+        a transform holding one can be compared at all — the generated `__eq__`
+        raised `ValueError: the truth value of an array ... is ambiguous`."""
+        if not isinstance(other, IndexTransform):
+            return NotImplemented
+        return self.domain == other.domain and self.output == other.output
+
+    def __hash__(self) -> int:
+        """Hashed by value, so a transform can key a cache or enter a set."""
+        return hash((self.domain, self.output))
+
     @property
     def input_rank(self) -> int:
         return self.domain.ndim

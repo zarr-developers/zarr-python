@@ -25,7 +25,7 @@ built on that walk:
 
 ```python
 for part in view.parts():
-    out[part.out_selection] = part.array.result()
+    out[part.out_selection] = part.view.result()
 ```
 
 Each box is therefore read once, and whatever the source could not do itself is
@@ -43,8 +43,8 @@ rather than materializing a block first.
 
 ```python
 view.with_parts((64, 64))       # uniform boxes, tail clipped
-view.with_parts(((3, 3, 1),))   # explicit per-axis sizes
-view.with_parts(None)           # one whole-array part; resolve in one shot
+view.with_parts_per_axis(((3, 3, 1),))   # explicit per-axis sizes
+view.unpartitioned()           # one whole-array part; resolve in one shot
 ```
 
 Repartitioning changes how the read is divided, not what `result()` returns.
@@ -141,7 +141,7 @@ the resolver's scatter indices are host-side integer arrays. Wrapping a device
 array that advertises parts therefore returns host memory, and any information
 carried by the wrapped array's own type is lost with it — a `numpy.ma` mask is
 the exception, kept by allocating a masked buffer. A wrapper with **no**
-partitioning (`with_parts(None)`) skips that buffer and stays in the wrapped
+partitioning (`unpartitioned()`) skips that buffer and stays in the wrapped
 array's own namespace.
 
 `result()` never returns memory shared with the wrapped array. That is settled
@@ -157,6 +157,7 @@ import json
 import math
 import operator
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -171,7 +172,7 @@ from zarr_indexing.chunk_resolution import (
     iter_chunk_transforms,
     sub_transform_to_selections,
 )
-from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
+from zarr_indexing.grid import DimensionGridLike, EdgeDimensionGrid, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.support import (
@@ -186,7 +187,7 @@ from zarr_indexing.transform import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator
 
     SelectFn = Callable[[Any, SelectionMode], "LazyArray"]
 
@@ -953,8 +954,8 @@ class Partition:
 
     Yielded by [`LazyArray.parts`][zarr_indexing.lazy_array.LazyArray.parts].
     The parts of a view tile it exactly and disjointly: assembling every
-    `array.result()` at its `out_selection` reproduces the view's `result()`,
-    and each part can be resolved independently and concurrently.
+    `view.result()` at its `out_selection` reproduces the whole view's
+    `result()`, and each part can be resolved independently and concurrently.
 
     Attributes
     ----------
@@ -964,27 +965,31 @@ class Partition:
     box
         The box itself, in the global storage coordinates of the wrapped
         array: one `[inclusive_min, exclusive_max)` interval per dimension.
-        `array.bounding_box()` is part-local and so cannot distinguish two
+        `view.bounding_box()` is part-local and so cannot distinguish two
         parts; this attribute can, and together with `is_complete` it decides a
         read-modify-write.
-    array
+    view
         A `LazyArray` covering exactly the cells of the view that live in this
         box. Resolving it reads the box once with basic slicing and applies the
-        selection to the block in memory.
+        selection to the block in memory. Named `view` rather than `array`
+        because `LazyArray.array` is the opposite thing — the raw wrapped source
+        — and the two sat next to each other meaning inverses.
     out_selection
-        Where `array.result()` belongs in an array of the view's shape — a
+        Where `view.result()` belongs in an array of the whole view's shape — a
         NumPy index tuple with one entry per dimension of the view, usable
         directly as `out[part.out_selection] = ...`.
     is_complete
         Whether the view covers the whole box. Useful to a writer deciding
         between a blind overwrite and a read-modify-write. True for a reversing
         view, which reads every cell of the box back to front; false for every
-        fancy-indexed axis, which is conservative rather than exact.
+        fancy-indexed axis, which is conservative rather than exact — so it may
+        be `False` for a part it does in fact cover, but never `True` for one it
+        does not.
     """
 
     base_coords: tuple[int, ...]
     box: tuple[tuple[int, int], ...]
-    array: LazyArray
+    view: LazyArray
     out_selection: tuple[Any, ...]
     is_complete: bool
 
@@ -1146,6 +1151,19 @@ class LazyArray:
     def array(self) -> ArrayLike:
         """The wrapped array."""
         return self._array
+
+    @property
+    def base_shape(self) -> tuple[int, ...]:
+        """The shape the partitioning is expressed in — not this view's shape.
+
+        `with_parts` and `with_parts_per_axis` describe boxes of the array being
+        read, not of the view reading it, so a narrowed view still partitions
+        the extents named here. For a part's own `array`, this is the part's
+        box, which is why the same call means different sizes there. Without
+        somewhere to read it, the frame in force could only be inferred from an
+        error message.
+        """
+        return self._base_shape
 
     @property
     def transform(self) -> IndexTransform:
@@ -1390,22 +1408,26 @@ class LazyArray:
 
     # -- partitioning -------------------------------------------------------
 
-    def with_parts(self, parts: Sequence[int] | Sequence[Sequence[int]] | None) -> LazyArray:
-        """Return the same view, read in different parts.
+    def with_parts(self, parts: Sequence[int]) -> LazyArray:
+        """Return the same view, read in uniform boxes of shape `parts`.
 
-        The transform, the wrapped array, and therefore `result()` are all
-        unchanged; only the boxes the read is broken into differ. Nothing is
-        copied and nothing is read.
+        One integer per dimension of `base_shape`, with the trailing box in each
+        dimension clipped to the extent. The transform, the wrapped array, and
+        therefore `result()` are all unchanged; only the boxes the read is
+        broken into differ. Nothing is copied and nothing is read.
+
+        For per-axis sizes see
+        [`with_parts_per_axis`][zarr_indexing.lazy_array.LazyArray.with_parts_per_axis],
+        and to read in one pass see
+        [`unpartitioned`][zarr_indexing.lazy_array.LazyArray.unpartitioned].
+        The three were one parameter whose meaning was decided by inspecting the
+        type of what it was given, which left no way to ask for one of them and
+        be told when you had spelled it wrong.
 
         Parameters
         ----------
         parts
-            Either a uniform box shape (one integer per dimension of the base
-            array, with the trailing box clipped to the extent), dask-convention
-            per-axis sizes (one sequence of box extents per dimension, each
-            summing to the base extent), or `None` for a single part covering
-            the whole array, which makes `result()` lower the view in one pass
-            instead of assembling it block by block.
+            The box shape, one integer per dimension of `base_shape`.
 
         Returns
         -------
@@ -1415,10 +1437,9 @@ class LazyArray:
         Raises
         ------
         ValueError
-            If `parts` has the wrong length, mixes the two conventions, contains
-            a non-positive extent, or declares per-axis sizes that do not sum to
-            the base shape. Unlike partition discovery, this is a public API and
-            validates strictly.
+            If `parts` has the wrong length or contains a non-positive extent.
+            Unlike partition discovery, this is a public API and validates
+            strictly.
 
         Examples
         --------
@@ -1427,11 +1448,69 @@ class LazyArray:
         >>> [part.base_coords for part in view.with_parts((2, 3)).parts()]
         [(0, 0), (0, 1), (1, 0), (1, 1)]
         """
-        grids = None if parts is None else dimension_grids_from_chunks(parts, self._base_shape)
+        if any(isinstance(entry, Sequence) for entry in parts):
+            raise ValueError(
+                "with_parts takes one integer per dimension; for per-axis box "
+                "sizes use with_parts_per_axis"
+            )
+        return self._with_grids(dimension_grids_from_chunks(parts, self._base_shape))
+
+    def with_parts_per_axis(self, sizes: Sequence[Sequence[int]]) -> LazyArray:
+        """Return the same view, read in boxes of explicitly listed sizes.
+
+        The dask convention: one sequence of box extents per dimension of
+        `base_shape`, each summing to that dimension's extent. Use it when the
+        boxes are not uniform — a partitioning discovered from a store, or one
+        whose last box differs by more than clipping.
+
+        Parameters
+        ----------
+        sizes
+            One sequence of box extents per dimension of `base_shape`.
+
+        Returns
+        -------
+        LazyArray
+            The same view with a new partitioning.
+
+        Raises
+        ------
+        ValueError
+            If `sizes` has the wrong length, contains a non-positive extent, or
+            declares sizes that do not sum to `base_shape`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> view = LazyArray(np.arange(12).reshape(3, 4))
+        >>> [part.box for part in view.with_parts_per_axis(((1, 2), (4,))).parts()]
+        [((0, 1), (0, 4)), ((1, 3), (0, 4))]
+        """
+        return self._with_grids(dimension_grids_from_chunks(sizes, self._base_shape))
+
+    def unpartitioned(self) -> LazyArray:
+        """Return the same view, read in one pass.
+
+        `result()` then lowers the whole view to array operations directly
+        rather than allocating an output buffer and assembling it box by box.
+        `parts()` still yields a single part covering everything.
+
+        Returns
+        -------
+        LazyArray
+            The same view with no partitioning.
+        """
+        return self._with_grids(None)
+
+    def _with_grids(self, grids: tuple[DimensionGridLike, ...] | None) -> LazyArray:
         return LazyArray._derive(self._array, self._transform, grids, self._window, self._support)
 
     def parts(self) -> Iterator[Partition]:
         """Iterate the base partitioning, projected through this view.
+
+        Single-use: this is a generator, so it is consumed by the first walk and
+        a second `for` over the same object yields nothing. Call `parts()` again
+        for a fresh walk, or keep a `list` of it if you need to revisit.
 
         Yields one [`Partition`][zarr_indexing.lazy_array.Partition] per box the
         view actually touches. The parts tile the view exactly and disjointly,
@@ -1451,7 +1530,7 @@ class LazyArray:
         >>> import numpy as np
         >>> view = LazyArray(np.arange(12).reshape(3, 4)).with_parts((2, 2))
         >>> part = next(view.lazy[:, 1:].parts())
-        >>> (part.base_coords, part.array.shape, part.is_complete)
+        >>> (part.base_coords, part.view.shape, part.is_complete)
         ((0, 0), (2, 1), False)
         """
         base_shape = self._base_shape
@@ -1485,7 +1564,7 @@ class LazyArray:
             yield Partition(
                 base_coords=base_coords,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
-                array=LazyArray._derive(self._array, local, None, window, self._support),
+                view=LazyArray._derive(self._array, local, None, window, self._support),
                 out_selection=_partition_out_selection(local, out_indices, out_shape),
                 is_complete=_covers_whole_part(local, extent),
             )
@@ -1526,7 +1605,7 @@ class LazyArray:
         """Materialize this view.
 
         Assembles the view from its `parts()`, reading each box once. A wrapper
-        with **no partitioning** — `with_parts(None)`, and the default for a
+        with **no partitioning** — `unpartitioned()`, and the default for a
         source that advertises none — skips the output buffer and lowers the
         whole view directly to array operations. A partitioning with a single
         whole-array box still goes through the buffer: the branch is on whether
@@ -1569,7 +1648,7 @@ class LazyArray:
                 # number of axes is named rather than reported as a broadcast
                 # failure against the buffer.
                 written += _out_selection_cell_count(part.out_selection, out_shape)
-                out[part.out_selection] = np.asanyarray(part.array.result())
+                out[part.out_selection] = np.asanyarray(part.view.result())
             if written != size:
                 # The buffer is uninitialized where no part wrote, so a partition
                 # walk that does not tile the view exactly would otherwise hand

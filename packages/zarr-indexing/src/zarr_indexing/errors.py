@@ -1,10 +1,12 @@
 """Canonical index-error types raised by the transform algebra.
 
-These are the authoritative class definitions. `zarr.errors` re-exports the
-same objects (`from zarr_indexing.errors import ...`) so that, e.g.,
-`zarr.errors.BoundsCheckError is zarr_indexing.errors.BoundsCheckError`.
-Both subclass the built-in `IndexError`, so existing `except IndexError` (or
-`except zarr.errors.BoundsCheckError`) catch sites keep working unchanged.
+Both subclass the built-in `IndexError`, so an `except IndexError` catch site
+keeps working unchanged whichever library raised.
+
+`zarr.errors` defines classes of the same names, and they are *not* these
+objects: `zarr.errors.BoundsCheckError is BoundsCheckError` is false. Catching
+zarr's around a call into this package therefore catches nothing but their
+shared `IndexError` base. Import these from here.
 """
 
 from __future__ import annotations

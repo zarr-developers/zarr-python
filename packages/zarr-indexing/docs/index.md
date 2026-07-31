@@ -227,14 +227,14 @@ part = next(iter(lazy.lazy[0:35, 0:10].parts()))
 
 part.base_coords    # (0, 0)                — which box of the base grid
 part.box            # ((0, 30), (0, 40))    — that box in the array's own coordinates
-part.array.shape    # (30, 10)              — a LazyArray for this box's cells
+part.view.shape    # (30, 10)              — a LazyArray for this box's cells
 part.out_selection  # (slice(0, 30, None), slice(0, 10, None))
 part.is_complete    # False                 — the view does not cover the whole box
 ```
 
-Each `part.array` is an ordinary `LazyArray`, so parts can be resolved
+Each `part.view` is an ordinary `LazyArray`, so parts can be resolved
 independently and concurrently, and `result()` assembles that walk.
-`part.array.bounding_box()` is part-local; `part.box` gives the box in the
+`part.view.bounding_box()` is part-local; `part.box` gives the box in the
 wrapped array's coordinates, which is what distinguishes two parts.
 
 The partitioning is discovered from the wrapped array — `read_chunk_sizes`, then
@@ -248,10 +248,10 @@ view = lazy.lazy[10:50, ::4]
 [part.base_coords for part in view.with_parts((50, 20)).parts()]
 # [(0, 0), (0, 1), (0, 2), (0, 3)]      — uniform boxes, tail clipped
 
-[part.base_coords for part in view.with_parts(((50, 50), (20, 20, 20, 20))).parts()]
+[part.base_coords for part in view.with_parts_per_axis(((50, 50), (20, 20, 20, 20))).parts()]
 # [(0, 0), (0, 1), (0, 2), (0, 3)]      — explicit per-axis sizes
 
-[part.base_coords for part in view.with_parts(None).parts()]
+[part.base_coords for part in view.unpartitioned().parts()]
 # [(0, 0)]                              — one whole-array part; resolve in one shot
 ```
 

@@ -30,6 +30,7 @@ from zarr_indexing import (
 )
 from zarr_indexing.lazy_array import _out_selection_cell_count
 from zarr_indexing.support import IndexingSupport
+from zarr_indexing.testing import repartition
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -205,7 +206,7 @@ def make_source(flavor: str) -> LazyArray:
     if flavor == "numpy-whole":
         return LazyArray(data)
     if flavor == "numpy-explicit-parts":
-        return LazyArray(data).with_parts(EXPLICIT_PARTS)
+        return LazyArray(data).with_parts_per_axis(EXPLICIT_PARTS)
     if flavor == "numpy-uniform-parts":
         return LazyArray(data).with_parts(PART_SHAPE)
     if flavor == "zarr":
@@ -718,7 +719,7 @@ def test_random_chains_match_numpy(flavor: str) -> None:
         )
         for parts in partitionings:
             np.testing.assert_array_equal(
-                np.asarray(view.with_parts(parts).result()),
+                np.asarray(repartition(view, parts).result()),
                 np.asarray(expected),
                 err_msg=f"{flavor} parts={parts}: {chain}",
             )
@@ -749,7 +750,7 @@ def test_a_slice_only_fancy_step_after_a_fancy_step_reads_real_data() -> None:
 
     for parts in (None, (2, 4), (1, 8), (3, 3)):
         view = (
-            LazyArray(base).with_parts(parts).lazy.oindex[np.array([0, 2]), :].lazy.oindex[:, 2:8]
+            repartition(LazyArray(base), parts).lazy.oindex[np.array([0, 2]), :].lazy.oindex[:, 2:8]
         )
         assert view.shape == expected.shape, f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
@@ -832,7 +833,7 @@ def test_a_domain_axis_no_output_map_depends_on_still_resolves(
     """The value, the shape and the tiling all hold when an axis is unreferenced."""
     data = unreferenced_axis_reference()
     expected = np.asarray(oracle(data))
-    view = build(LazyArray(data).with_parts(parts))
+    view = build(repartition(LazyArray(data), parts))
 
     assert view.shape == expected.shape
     np.testing.assert_array_equal(np.asarray(view.result()), expected)
@@ -840,7 +841,7 @@ def test_a_domain_axis_no_output_map_depends_on_still_resolves(
     hits = np.zeros(view.shape, dtype=np.int64)
     assembled = np.zeros(view.shape, dtype=view.dtype)
     for part in view.parts():
-        assembled[part.out_selection] = np.asarray(part.array.result())
+        assembled[part.out_selection] = np.asarray(part.view.result())
         np.add.at(hits, part.out_selection, 1)
     np.testing.assert_array_equal(assembled, expected)
     np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64))
@@ -856,7 +857,7 @@ def test_an_unreferenced_domain_axis_of_extent_zero_stays_empty() -> None:
     data = np.arange(140, dtype=np.int64).reshape(7, 5, 4)
     coords = np.array([[6], [3], [0]])
     for parts in (None, (1, 1, 1), (3, 2, 3), (7, 5, 4)):
-        view = LazyArray(data).with_parts(parts).lazy.vindex[coords, -4].lazy[0, 0:0]
+        view = repartition(LazyArray(data), parts).lazy.vindex[coords, -4].lazy[0, 0:0]
         expected = data[coords, -4][0, 0:0]
         assert view.shape == expected.shape == (0, 4), f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
@@ -870,8 +871,7 @@ def test_a_zero_length_axis_resolves_the_same_way_under_every_partitioning() -> 
 
     for parts in (None, ((1, 1, 1), ()), ((3,), ())):
         view = (
-            LazyArray(base)
-            .with_parts(parts)
+            repartition(LazyArray(base), parts)
             .lazy.oindex[np.array([1, -3, -3]), :]
             .lazy.oindex[:, :]
         )
@@ -891,7 +891,7 @@ def test_an_empty_slice_of_a_length_one_correlated_axis_has_no_parts() -> None:
     mask = np.array([False, True, False, False, False])
 
     for parts in PARTITIONINGS_1D:
-        view = LazyArray(base).with_parts(parts).lazy.vindex[mask].lazy[1:-2]
+        view = repartition(LazyArray(base), parts).lazy.vindex[mask].lazy[1:-2]
         assert view.shape == (0,), f"parts={parts}"
         assert list(view.parts()) == [], f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), base[mask][1:-2])
@@ -902,7 +902,9 @@ def test_an_empty_slice_of_a_length_one_vindex_pair_has_no_parts() -> None:
     base = np.arange(35).reshape(7, 5)
 
     for parts in (None, (2, 2), (7, 5)):
-        view = LazyArray(base).with_parts(parts).lazy.vindex[np.array([6]), np.array([0])].lazy[0:0]
+        view = (
+            repartition(LazyArray(base), parts).lazy.vindex[np.array([6]), np.array([0])].lazy[0:0]
+        )
         assert view.shape == (0,), f"parts={parts}"
         assert list(view.parts()) == [], f"parts={parts}"
         np.testing.assert_array_equal(
@@ -913,7 +915,7 @@ def test_an_empty_slice_of_a_length_one_vindex_pair_has_no_parts() -> None:
 def test_a_correlated_view_narrowed_to_one_point_has_parts_of_the_views_rank() -> None:
     """A rank-0 broadcast block survives intersection without gaining an axis.
 
-    `Partition` documents `out[part.out_selection] = part.array.result()` as the
+    `Partition` documents `out[part.out_selection] = part.view.result()` as the
     assembly, so a part's values must arrive at the rank the view has — including
     the rank 0 a correlated selection reaches once every coordinate is a scalar.
     """
@@ -928,13 +930,13 @@ def test_a_correlated_view_narrowed_to_one_point_has_parts_of_the_views_rank() -
     for parts in (None, (2, 2, 2), (3, 3, 3), (7, 5, 4)):
         for selection, tail in cases:
             expected = base[selection][tail]
-            view = LazyArray(base).with_parts(parts).lazy.vindex[selection].lazy[tail]
+            view = repartition(LazyArray(base), parts).lazy.vindex[selection].lazy[tail]
             assert view.shape == expected.shape, f"parts={parts}, {selection}"
 
             assembled = np.zeros(view.shape, dtype=view.dtype)
             hits = np.zeros(view.shape, dtype=np.int64)
             for part in view.parts():
-                assembled[part.out_selection] = np.asarray(part.array.result())
+                assembled[part.out_selection] = np.asarray(part.view.result())
                 np.add.at(hits, part.out_selection, 1)
 
             err = f"parts={parts}, {selection}"
@@ -1195,7 +1197,7 @@ def test_parts_tile_the_view_exactly_and_disjointly(
     assembled = np.zeros(view.shape, dtype=view.dtype)
     hits = np.zeros(view.shape, dtype=np.int64)
     for part in view.parts():
-        assembled[part.out_selection] = np.asarray(part.array.result())
+        assembled[part.out_selection] = np.asarray(part.view.result())
         # `np.add.at` accumulates per element; `+= 1` on a fancy index would
         # count a repeated position once and hide a real overlap.
         np.add.at(hits, part.out_selection, 1)
@@ -1211,7 +1213,7 @@ def test_parts_resolve_independently_and_concurrently() -> None:
     assert len(parts) > 1
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        values = list(pool.map(lambda part: np.asarray(part.array.result()), parts))
+        values = list(pool.map(lambda part: np.asarray(part.view.result()), parts))
 
     assembled = np.zeros(view.shape, dtype=view.dtype)
     for part, value in zip(parts, values, strict=True):
@@ -1243,7 +1245,7 @@ def test_partition_boxes_are_global_and_tile_the_base() -> None:
     # The reviewer's repro: two parts of the same view whose part-local
     # bounding boxes coincide but which cover different regions of the base.
     first, second = parts[0, 0, 0], parts[0, 1, 0]
-    assert first.array.bounding_box() == second.array.bounding_box()
+    assert first.view.bounding_box() == second.view.bounding_box()
     assert first.box != second.box
     assert first.box == ((0, 3), (0, 2), (0, 3))
     assert second.box == ((0, 3), (2, 4), (0, 3))
@@ -1277,9 +1279,9 @@ def test_an_unpartitioned_wrapper_has_a_single_whole_array_part() -> None:
     parts = list(view.parts())
     assert len(parts) == 1
     assert parts[0].base_coords == (0, 0, 0)
-    assert parts[0].array.shape == SHAPE
+    assert parts[0].view.shape == SHAPE
     assert parts[0].is_complete
-    np.testing.assert_array_equal(np.asarray(parts[0].array.result()), reference())
+    np.testing.assert_array_equal(np.asarray(parts[0].view.result()), reference())
 
 
 def test_with_parts_keeps_the_view_and_the_base() -> None:
@@ -1297,7 +1299,7 @@ def test_with_parts_keeps_the_view_and_the_base() -> None:
 
 def test_with_parts_none_forces_one_shot_resolution() -> None:
     view = make_source("zarr").lazy.oindex[[4, 0, 0], :, :]
-    whole = view.with_parts(None)
+    whole = view.unpartitioned()
     assert len(list(whole.parts())) == 1
     np.testing.assert_array_equal(np.asarray(whole.result()), np.asarray(view.result()))
 
@@ -1320,7 +1322,7 @@ def test_with_parts_none_forces_one_shot_resolution() -> None:
 def test_with_parts_validates_strictly(parts: Any, match: str) -> None:
     """`with_parts` is our own API, so a malformed partitioning raises."""
     with pytest.raises(ValueError, match=match):
-        make_source("numpy-whole").with_parts(parts)
+        repartition(make_source("numpy-whole"), parts)
 
 
 # ---------------------------------------------------------------------------
@@ -1707,7 +1709,7 @@ def test_a_source_is_never_asked_for_more_than_it_declares(
     expected = np.asarray(oracle(reference()))
     source = STRICT_SOURCES[level](reference())
     for parts in (None, PART_SHAPE):
-        view = build(LazyArray(source).with_parts(parts))
+        view = build(repartition(LazyArray(source), parts))
         np.testing.assert_array_equal(
             np.asarray(view.result()), expected, err_msg=f"{level} parts={parts}"
         )
@@ -1725,7 +1727,7 @@ def test_random_chains_agree_across_levels() -> None:
 
         for level in LEVELS:
             for parts in (None, (2, 2, 2)):
-                view = LazyArray(data).with_indexing_support(level).with_parts(parts)
+                view = repartition(LazyArray(data).with_indexing_support(level), parts)
                 for mode, selection in chain:
                     view = _apply_view(view, mode, selection)
                 np.testing.assert_array_equal(
@@ -1803,9 +1805,7 @@ def test_with_indexing_support_keeps_the_view_and_the_parts() -> None:
     ]
     np.testing.assert_array_equal(np.asarray(renegotiated.result()), np.asarray(view.result()))
     # Parts inherit the level, so a part never exceeds it either.
-    assert all(
-        part.array.indexing_support is IndexingSupport.OUTER for part in renegotiated.parts()
-    )
+    assert all(part.view.indexing_support is IndexingSupport.OUTER for part in renegotiated.parts())
 
 
 @pytest.mark.parametrize("bogus", ["vectorized", 3, None])
@@ -1888,7 +1888,7 @@ def test_materializing_never_hands_back_the_wrapped_array(
     result, so detaching has to decide from the result's own buffer instead.
     """
     data = reference()
-    view = build(LazyArray(wrap(data)).with_parts(parts))
+    view = build(repartition(LazyArray(wrap(data)), parts))
 
     for materialize in (
         lambda v: v.result(),
@@ -1997,7 +1997,7 @@ def test_a_source_meeting_only_the_basic_floor_resolves_any_selection(
 ) -> None:
     """The floor is a promise about the source; its blocks are coerced, not trusted."""
     expected = np.asarray(oracle(reference()))
-    view = build(LazyArray(DuckBlock(reference())).with_parts(parts))
+    view = build(repartition(LazyArray(DuckBlock(reference())), parts))
     assert view.shape == expected.shape
     np.testing.assert_array_equal(np.asarray(view.result()), expected)
 
@@ -2023,7 +2023,7 @@ def test_numpy_matrix_is_refused() -> None:
 @pytest.mark.parametrize("parts", [None, (2, 2), (1, 4), (3, 4)])
 def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> None:
     data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
-    got = LazyArray(data).with_parts(parts).lazy[:, 1:].result()
+    got = repartition(LazyArray(data), parts).lazy[:, 1:].result()
     expected = data[:, 1:]
     assert isinstance(got, np.ma.MaskedArray), parts
     np.testing.assert_array_equal(np.ma.getmaskarray(got), np.ma.getmaskarray(expected))
@@ -2108,14 +2108,14 @@ def test_a_strided_reversal_is_still_incomplete() -> None:
 def test_a_zero_length_axis_accepts_every_spelling_of_no_chunks(parts: Any) -> None:
     """`(0,)`, `(0, 0)`, `()` and a uniform shape all describe an axis with no cells."""
     data = np.zeros((0, 3))
-    view = LazyArray(data).with_parts(parts)
+    view = repartition(LazyArray(data), parts)
     assert view.result().shape == (0, 3)
     assert list(view.parts()) == []
 
 
 def test_a_zero_chunk_on_a_nonempty_axis_is_still_rejected() -> None:
     with pytest.raises(ValueError, match="chunk sizes must be positive"):
-        LazyArray(np.zeros((4, 3))).with_parts(((0, 4), (3,)))
+        LazyArray(np.zeros((4, 3))).with_parts_per_axis(((0, 4), (3,)))
 
 
 @pytest.mark.parametrize(

@@ -29,6 +29,7 @@ from zarr_indexing.testing.stateful import (
     ChainedIndexingStateMachine,
     apply_selection,
     outer_selection,
+    repartition,
     state_machine_test,
 )
 from zarr_indexing.testing.strategies import (
@@ -49,6 +50,7 @@ __all__ = [
     "masks",
     "orthogonal_selections",
     "outer_selection",
+    "repartition",
     "slice_selections",
     "state_machine_test",
     "vectorized_selections",

@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from zarr_indexing.errors import BoundsCheckError
+
 
 @dataclass(frozen=True, slots=True)
 class IndexDomain:
@@ -127,8 +129,22 @@ class IndexDomain:
 
     def narrow(self, selection: Any) -> IndexDomain:
         """Apply a basic selection and return a narrowed domain.
-        Indices are absolute coordinates. Integer indices produce length-1 extent.
-        Strided slices are not supported — use IndexTransform for strides.
+
+        Indices are absolute coordinates, not NumPy-style offsets: `-3` names
+        the coordinate `-3`, and is out of bounds unless the domain contains it.
+        Integer indices produce a length-1 extent. Strided slices are not
+        supported — use `IndexTransform` for strides.
+
+        Raises
+        ------
+        BoundsCheckError
+            If a bound lies outside this domain. A slice bound used to be
+            clamped instead, so `narrow(slice(-3, None))` on `[0, 10)` quietly
+            returned the whole axis — reading as the NumPy spelling of "the last
+            three" and answering with something else — and `narrow(slice(20,
+            30))` returned a domain its own parent did not contain. The rest of
+            the algebra states no clamping and no negative wrapping as an
+            invariant and enforces it; this is the one place that did not.
         """
         normalized = _normalize_selection(selection, self.ndim)
         new_inclusive_min: list[int] = []
@@ -138,7 +154,7 @@ class IndexDomain:
         ):
             if isinstance(sel, int):
                 if sel < dim_lo or sel >= dim_hi:
-                    raise IndexError(
+                    raise BoundsCheckError(
                         f"index {sel} is out of bounds for dimension {dim_idx} "
                         f"with domain [{dim_lo}, {dim_hi})"
                     )
@@ -147,17 +163,24 @@ class IndexDomain:
             else:
                 start, stop, step = sel.start, sel.stop, sel.step
                 if step is not None and step != 1:
-                    raise IndexError(
+                    raise ValueError(
                         "IndexDomain.narrow only supports step=1 slices. "
                         f"Got step={step}. Use IndexTransform for strided access."
                     )
                 abs_start = dim_lo if start is None else start
                 abs_stop = dim_hi if stop is None else stop
-                abs_start = max(abs_start, dim_lo)
-                abs_stop = min(abs_stop, dim_hi)
-                abs_stop = max(abs_stop, abs_start)
+                for bound, name in ((abs_start, "start"), (abs_stop, "stop")):
+                    if bound < dim_lo or bound > dim_hi:
+                        raise BoundsCheckError(
+                            f"slice {name} {bound} is out of bounds for dimension "
+                            f"{dim_idx} with domain [{dim_lo}, {dim_hi}); indices "
+                            f"here are absolute coordinates, so they are neither "
+                            f"clamped to the domain nor counted from its end"
+                        )
+                # An empty interval is legal; a reversed one is the same request
+                # spelled backwards, and reads as empty rather than as an error.
                 new_inclusive_min.append(abs_start)
-                new_exclusive_max.append(abs_stop)
+                new_exclusive_max.append(max(abs_stop, abs_start))
         return IndexDomain(
             inclusive_min=tuple(new_inclusive_min),
             exclusive_max=tuple(new_exclusive_max),

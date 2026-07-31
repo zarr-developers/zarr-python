@@ -27,8 +27,16 @@ case bypasses candidate enumeration and repeated intersection.
 
 `sub_transform_to_selections` bridges from the transform representation
 back to the raw `(chunk_selection, out_selection, drop_axes)` tuples that
-the current codec pipeline expects. This bridge will go away when the codec
-pipeline accepts transforms natively.
+the current codec pipeline expects.
+
+That bridge is **provisional**. Its return shape is a codec pipeline's
+internal vocabulary rather than anything this package wants to keep saying, and
+it is expected to go away once a pipeline accepts transforms natively. It is
+exported because zarr's read path consumes it today; it is not covered by
+whatever compatibility promise the rest of this API carries, and a consumer
+outside zarr should expect to follow it through a change. The contract while it
+exists is exactly `out[out_selection] = chunk[chunk_selection]`, with the axes
+named in `drop_axes` squeezed out of the block first.
 """
 
 from __future__ import annotations

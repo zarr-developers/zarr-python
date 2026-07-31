@@ -54,8 +54,9 @@ and the wire format built on top of it.
 
 **Errors**
 
-- [`zarr_indexing.errors`](errors.md) — the canonical index-error types, which
-  `zarr.errors` re-exports by identity
+- [`zarr_indexing.errors`](errors.md) — the index-error types this package
+  raises, also exported at the top level. `zarr.errors` defines classes of the
+  same names, which are different objects; both subclass `IndexError`
 
 **Test support** (needs the `testing` extra)
 

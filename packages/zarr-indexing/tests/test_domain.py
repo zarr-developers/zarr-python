@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError
 
 
 class TestIndexDomainConstruction:
@@ -171,19 +172,32 @@ class TestIndexDomainNarrow:
 
     def test_narrow_int_out_of_bounds(self) -> None:
         d = IndexDomain.from_shape((10,))
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
             d.narrow((10,))
 
     def test_narrow_int_below_origin(self) -> None:
         d = IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
             d.narrow((4,))
 
-    def test_narrow_clamps_to_domain(self) -> None:
+    def test_narrow_refuses_a_bound_outside_the_domain(self) -> None:
+        """Clamping made two different requests answer alike, and neither well.
+
+        Indices here are absolute coordinates, so `-5` is a coordinate this
+        domain does not contain rather than NumPy's "five from the end" — and
+        clamping returned the whole axis for it, which is what a caller writing
+        the NumPy spelling would least expect. A stop past the end produced a
+        domain the parent did not contain.
+        """
         d = IndexDomain.from_shape((10,))
-        result = d.narrow((slice(-5, 100),))
-        assert result.inclusive_min == (0,)
-        assert result.exclusive_max == (10,)
+        with pytest.raises(BoundsCheckError, match="absolute coordinates"):
+            d.narrow((slice(-5, 100),))
+        with pytest.raises(BoundsCheckError, match="out of bounds"):
+            d.narrow((slice(20, 30),))
+
+    def test_narrow_accepts_the_bounds_of_the_domain_itself(self) -> None:
+        d = IndexDomain.from_shape((10,))
+        assert d.narrow((slice(0, 10),)) == d
 
     def test_narrow_bare_slice(self) -> None:
         d = IndexDomain.from_shape((10,))
@@ -197,6 +211,8 @@ class TestIndexDomainNarrow:
             d.narrow((1, 2))
 
     def test_narrow_step_not_one(self) -> None:
+        """A stride is not a bounds failure — the rest of the algebra raises
+        `ValueError` for a request it does not implement, and so does this."""
         d = IndexDomain.from_shape((10,))
-        with pytest.raises(IndexError, match="step=1"):
+        with pytest.raises(ValueError, match="step=1"):
             d.narrow((slice(0, 10, 2),))

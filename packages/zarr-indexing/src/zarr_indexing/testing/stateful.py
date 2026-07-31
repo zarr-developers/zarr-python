@@ -30,7 +30,7 @@ What it is checking
 -------------------
 The parts invariant is the one with teeth.
 [`Partition`][zarr_indexing.lazy_array.Partition] documents
-`out[part.out_selection] = part.array.result()` as the assembly procedure, so
+`out[part.out_selection] = part.view.result()` as the assembly procedure, so
 this checks that literally: a part's values must arrive at exactly the shape its
 `out_selection` addresses — not merely a shape that broadcasts into it — land
 there, and cover the view once. Checking through `result()` alone would prove
@@ -53,6 +53,7 @@ Requires the `testing` extra (`pip install zarr-indexing[testing]`).
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -70,8 +71,6 @@ from zarr_indexing.testing.strategies import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from zarr_indexing.boundary import SelectionMode
 
 __all__ = [
@@ -81,6 +80,7 @@ __all__ = [
     "ChainedIndexingStateMachine",
     "apply_selection",
     "outer_selection",
+    "repartition",
     "state_machine_test",
 ]
 
@@ -169,6 +169,21 @@ def state_machine_test(
     case = machine.TestCase
     case.settings = config
     return case
+
+
+def repartition(view: LazyArray, parts: Any) -> LazyArray:
+    """Apply one of `partitionings` to a view.
+
+    The three partitioning spellings are three named methods, so a list holding
+    a mix of them needs a dispatch somewhere. Choosing among them is what a test
+    harness drawing from that list is doing, so it lives here rather than being
+    pushed back into the public API as a type-inspecting parameter.
+    """
+    if parts is None:
+        return view.unpartitioned()
+    if any(isinstance(entry, Sequence) for entry in parts):
+        return view.with_parts_per_axis(parts)
+    return view.with_parts(parts)
 
 
 # --------------------------------------------------------------------------- #
@@ -261,7 +276,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
     def choose_partitioning(self, data: st.DataObject) -> None:
         """Fix how the read is broken up, before any indexing."""
         parts = data.draw(st.sampled_from(list(type(self).partitionings)))
-        self.view = self.view.with_parts(parts)
+        self.view = repartition(self.view, parts)
         self.chain.append(("parts", parts))
 
     @precondition(lambda self: self._indexable())
@@ -308,7 +323,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         collapsed correlated selection reaches.
         """
         parts = data.draw(st.sampled_from(list(type(self).partitionings)))
-        self.view = self.view.with_parts(parts)
+        self.view = repartition(self.view, parts)
         self.chain.append(("parts", parts))
 
     # -- invariants ---------------------------------------------------------
@@ -334,7 +349,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         assembled = np.zeros(self.view.shape, dtype=self.view.dtype)
         hits = np.zeros(self.view.shape, dtype=np.int64)
         for part in self.view.parts():
-            value = np.asarray(part.array.result())
+            value = np.asarray(part.view.result())
             assert value.shape == assembled[part.out_selection].shape, (
                 f"part {part.base_coords} carries {value.shape} for an out_selection "
                 f"addressing {assembled[part.out_selection].shape}: {self.chain}"

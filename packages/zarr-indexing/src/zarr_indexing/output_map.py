@@ -37,8 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
 
 
@@ -100,6 +101,57 @@ class ArrayMap:
     offset: int = 0
     stride: int = 1
     input_dimension: int | None = None
+
+    def __post_init__(self) -> None:
+        """Hold the index array through a read-only view.
+
+        A map is frozen, but the array inside it was not: reaching through a
+        view's transform to `index_array[0] = 9` silently changed what the view
+        returned, in a package whose whole contract is that a view is a
+        description of a read and resolving it twice answers alike. The view is
+        taken rather than the caller's array being marked, so constructing a map
+        does not take away the ability to write to an array you still own.
+        """
+        # `asarray` first: a NumPy scalar reaches here from paths that index an
+        # array down to one element, and a scalar has no flags to set.
+        frozen = np.asarray(self.index_array).view()
+        frozen.flags.writeable = False
+        object.__setattr__(self, "index_array", frozen)
+
+    def __eq__(self, other: object) -> bool:
+        """Value equality, comparing index arrays element-wise.
+
+        The generated `__eq__` compares them with `==`, whose result for two
+        arrays is an array — so asking whether two maps are equal raised
+        `ValueError: the truth value of an array ... is ambiguous`. `frozen=True`
+        reads as a promise that a value can be compared and hashed, and this is
+        what makes good on it.
+        """
+        if not isinstance(other, ArrayMap):
+            return NotImplemented
+        return (
+            self.offset == other.offset
+            and self.stride == other.stride
+            and self.input_dimension == other.input_dimension
+            and self.index_array.shape == other.index_array.shape
+            and bool(np.array_equal(self.index_array, other.index_array))
+        )
+
+    def __hash__(self) -> int:
+        """Hashed by the array's contents, so equal maps hash alike.
+
+        The generated `__hash__` hashed the ndarray itself, which is unhashable;
+        a map could therefore not go in a set, or key a cache.
+        """
+        return hash(
+            (
+                self.offset,
+                self.stride,
+                self.input_dimension,
+                self.index_array.shape,
+                self.index_array.tobytes(),
+            )
+        )
 
 
 OutputIndexMap = ConstantMap | DimensionMap | ArrayMap
