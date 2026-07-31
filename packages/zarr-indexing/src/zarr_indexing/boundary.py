@@ -79,19 +79,23 @@ def _normalize_int(value: int, size: int, axis: int) -> int:
 
 
 def _normalize_slice(sel: slice, size: int, axis: int) -> tuple[int, int, int]:
-    """Resolve a positional slice to `(start, stop, step)` within `[0, size]`."""
+    """Resolve a positional slice to `(start, stop, step)`, either direction.
+
+    `slice.indices` already applies NumPy's rules — negative bounds count from
+    the end, out-of-range bounds clamp, and a reversed slice runs downward with
+    `stop` one *below* the last selected position. The one thing it does not do
+    is canonicalize an empty result: it can hand back a stop on the far side of
+    the start (`5:2` going up, `2:5` going down), which the transform layer
+    reads as a direction error rather than an empty selection. Collapsing it to
+    `stop == start` keeps NumPy's "empty, not an error" answer.
+    """
     if sel.step is not None and not isinstance(sel.step, (int, np.integer)):
         raise IndexError(f"slice step must be an integer; got {sel.step!r}")
     step = 1 if sel.step is None else int(sel.step)
-    if step < 1:
-        raise IndexError(
-            f"slice step must be positive; got {step} for axis {axis}. Reversed "
-            "and zero-step slices are not supported."
-        )
+    if step == 0:
+        raise IndexError(f"slice step cannot be zero (axis {axis})")
     start, stop, step = sel.indices(size)
-    # `slice.indices` can hand back stop < start for an empty forward slice
-    # (e.g. `5:2`); the transform layer wants a canonical empty interval.
-    stop = max(stop, start)
+    stop = max(stop, start) if step > 0 else min(stop, start)
     return start, stop, step
 
 

@@ -845,7 +845,9 @@ class LazyArray:
         The magnitude only. A reversing view (`lazy[::-1]`) selects the same
         *set* of coordinates as its forward twin, so it reports the same
         bounding box and the same strides; the traversal direction lives in the
-        transform, not in this description of the region touched.
+        transform, not in this description of the region touched. A consumer
+        that cares about order reads the transform, or simply reverses the block
+        it gets back.
 
         Examples
         --------

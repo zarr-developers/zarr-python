@@ -54,6 +54,9 @@ REASON_CODES = frozenset(
         "output_map_conflict",
         "rank_mismatch",
         "step_zero",
+        # Retired in 1.0-draft.2, when negative `step` became specified. Kept in
+        # the set so a message carrying the code is still recognized, but no
+        # condition in this implementation emits it.
         "negative_step_unsupported",
     }
 )
@@ -408,17 +411,27 @@ def _normalize_slice(obj: dict[str, Any]) -> dict[str, Any]:
     for k, s in enumerate(step):
         if s == 0:
             raise NdselError("step_zero", f"step[{k}] is zero")
-        if s < 0:
-            raise NdselError("negative_step_unsupported", f"step[{k}] is negative ({s})")
 
     inclusive_min: list[Any] = []
     exclusive_max: list[Any] = []
     output: list[dict[str, Any]] = []
     for k in range(n):
         a, b, s = start[k], stop[k], step[k]
-        m = max(0, -(-(b - a) // s))  # ceil((b - a) / s)
-        o = _trunc_div(a, s)  # trunc(a / s), toward zero
-        offset = a - s * o  # lattice phase, in (-s, s)
+        # One rule for both signs (spec 5.3): the traversal runs from `a`
+        # toward `b`, so the source interval's length is `b - a` going up and
+        # `a - b` going down.
+        length = (b - a) if s > 0 else (a - b)
+        if length < 0:
+            # A reversed interval is a mistake about the direction of travel,
+            # not an empty selection. `b == a` is the way to select nothing.
+            raise NdselError(
+                "bounds_out_of_order",
+                f"start[{k}]={a} and stop[{k}]={b} with step {s} run the wrong "
+                "way; an empty selection is spelled stop == start",
+            )
+        m = -(-length // abs(s))  # ceil(length / |s|)
+        o = _trunc_div(a, s)  # trunc(a / s), toward zero, both signs
+        offset = a - s * o  # lattice phase, |offset| < |s|
         inclusive_min.append(o)
         exclusive_max.append(o + m)
         output.append({"offset": offset, "stride": s, "input_dimension": k})

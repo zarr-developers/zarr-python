@@ -608,6 +608,20 @@ def _normalize_basic_selection(selection: Any, ndim: int) -> tuple[int | slice |
     return tuple(result)
 
 
+def _positional_slice(pos: int, size: int, step: int) -> slice:
+    """A NumPy slice selecting `size` elements from `pos`, walking by `step`.
+
+    The stop is `pos + size*step`, except that a downward walk reaching the
+    start of the array must stop at `None`: NumPy would read a negative stop as
+    counting from the end, so `slice(6, -1, -1)` selects **nothing** where
+    `slice(6, None, -1)` selects the first seven elements in reverse.
+    """
+    stop = pos + size * step
+    if step < 0 and stop < 0:
+        return slice(pos, None, step)
+    return slice(pos, stop, step)
+
+
 def _reindex_array(
     m: ArrayMap,
     normalized: tuple[int | slice | None, ...],
@@ -658,7 +672,7 @@ def _reindex_array(
                     # indexed positionally, so shift by the domain origin.
                     start, step, _origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
                     pos = start - lo
-                    idx.append(slice(pos, pos + size * step, step))
+                    idx.append(_positional_slice(pos, size, step))
                 else:
                     # Broadcast axis: preserve the singleton (it still broadcasts
                     # over the narrowed domain), regardless of the slice bounds.
@@ -724,7 +738,7 @@ def _reindex_array_oindex(
             hi = domain.exclusive_max[old_dim]
             start, step, _origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
             pos = start - lo
-            idx.append(slice(pos, pos + size * step, step))
+            idx.append(_positional_slice(pos, size, step))
         else:
             idx.append(slice(None))
 
@@ -1276,39 +1290,56 @@ def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int,
     """Resolve a slice against domain `[lo, hi)` with TensorStore semantics.
 
     Slice bounds are **literal domain coordinates** — never from-the-end, never
-    clamped. Rules (each verified against tensorstore 0.1.84):
+    clamped. One rule covers both signs of the step (each part verified against
+    tensorstore 0.1.84, and matching ndsel 1.0-draft.2 section 5.3):
 
-    - defaults: `start = lo`, `stop = hi`;
+    - defaults follow the direction of travel: `start = lo`, `stop = hi` going
+      up; `start = hi - 1`, `stop = lo - 1` going down;
+    - the traversal runs from `start` toward `stop`, which is excluded, so the
+      source interval is `[start, stop)` going up and `[stop + 1, start + 1)`
+      going down;
     - a non-empty interval must be contained in the domain (no clamping — a
       NumPy-style out-of-range or negative bound is an error, not a shorter or
       wrapped result);
-    - an **empty** interval (`start == stop`) is valid anywhere;
-    - reversed bounds (`start > stop` with positive step) are an error, not
-      an empty result;
-    - the result's domain origin is `trunc(start/step)` (rounded toward
-      zero) and coordinate `origin + k` maps to input `start + k*step`.
+    - an **empty** interval is valid anywhere, for either sign;
+    - an interval running the wrong way (`stop` on the far side of `start` from
+      the direction of travel) is an error, not an empty result;
+    - the result's domain origin is `trunc(start/step)` — toward zero, for both
+      signs — and coordinate `origin + k` maps to input `start + k*step`.
+
+    A negative step normally produces a **negative origin**: reversing a
+    zero-origin axis of length 20 gives the domain `[-19, 1)`. That is the
+    coordinate frame staying anchored to the source; a caller that needs
+    non-negative coordinates re-bases explicitly (`translate_domain_to`).
 
     Returns `(start, step, origin, size)` in domain coordinates.
     """
     step = 1 if sel.step is None else sel.step
-    if step <= 0:
-        # Negative steps are valid in TensorStore but not yet supported here;
-        # step 0 is invalid everywhere.
-        raise IndexError("slice step must be positive")
-    start = lo if sel.start is None else sel.start
-    stop = hi if sel.stop is None else sel.stop
-    if stop < start:
+    if step == 0:
+        raise IndexError("slice step must not be zero")
+    if step > 0:
+        start = lo if sel.start is None else sel.start
+        stop = hi if sel.stop is None else sel.stop
+        interval_lo, interval_hi = start, stop
+    else:
+        start = hi - 1 if sel.start is None else sel.start
+        stop = lo - 1 if sel.stop is None else sel.stop
+        interval_lo, interval_hi = stop + 1, start + 1
+    length = interval_hi - interval_lo
+    if length < 0:
         raise IndexError(
-            f"slice interval [{start}, {stop}) with step {step} does not specify "
-            f"a valid interval for dimension {dim} (start > stop)"
+            f"slice from {start} to {stop} with step {step} does not specify a "
+            f"valid interval for dimension {dim}: the derived interval "
+            f"[{interval_lo}, {interval_hi}) runs the wrong way. An empty "
+            "selection is spelled stop == start."
         )
-    size = -(-(stop - start) // step)  # ceil((stop - start) / step)
-    if size > 0 and (start < lo or stop > hi):
+    if length > 0 and (interval_lo < lo or interval_hi > hi):
         hint = _LITERAL_HINT if (start < 0 or stop < 0) and lo >= 0 else ""
         raise BoundsCheckError(
-            f"slice interval [{start}, {stop}) is not contained within domain "
-            f"[{lo}, {hi}) for dimension {dim}{hint}"
+            f"slice interval [{interval_lo}, {interval_hi}) is not contained "
+            f"within domain [{lo}, {hi}) for dimension {dim}{hint}"
         )
+    size = -(-length // abs(step))  # ceil(length / |step|)
     origin = _trunc_div(start, step)
     return start, step, origin, size
 

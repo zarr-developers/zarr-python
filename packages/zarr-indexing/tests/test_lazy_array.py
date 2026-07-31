@@ -396,6 +396,51 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
         lambda a: a.lazy.oindex[[3, 1, 0], 3:5, [2, 0, 2]].lazy[0],
         lambda r: outer(r, ([3, 1, 0], slice(3, 5), [2, 0, 2]))[0],
     ),
+    # Negative steps: the positional dialect is NumPy's, including the empty
+    # cases NumPy allows where the transform algebra alone would object.
+    ("reverse", lambda a: a.lazy[::-1], lambda r: r[::-1]),
+    ("reverse-every-axis", lambda a: a.lazy[::-1, ::-1, ::-1], lambda r: r[::-1, ::-1, ::-1]),
+    ("reverse-strided", lambda a: a.lazy[::-2], lambda r: r[::-2]),
+    ("reverse-nondivisible", lambda a: a.lazy[::-3], lambda r: r[::-3]),
+    ("reverse-bounded", lambda a: a.lazy[5:1:-1], lambda r: r[5:1:-1]),
+    ("reverse-negative-start", lambda a: a.lazy[-1:None:-1], lambda r: r[-1:None:-1]),
+    ("reverse-past-the-start", lambda a: a.lazy[:-8:-1], lambda r: r[:-8:-1]),
+    ("reverse-empty", lambda a: a.lazy[2:2:-1], lambda r: r[2:2:-1]),
+    # NumPy reads a reversed *positional* interval as empty; only the literal
+    # layer calls it a direction error.
+    ("reverse-inverted-is-empty", lambda a: a.lazy[2:5:-1], lambda r: r[2:5:-1]),
+    ("reverse-with-int-drop", lambda a: a.lazy[::-2, 2, ::-1], lambda r: r[::-2, 2, ::-1]),
+    ("reverse-trailing-axis", lambda a: a.lazy[..., ::-1], lambda r: r[..., ::-1]),
+    (
+        "compose-reverse-then-reverse",
+        lambda a: a.lazy[::-1].lazy[::-1],
+        lambda r: r[::-1][::-1],
+    ),
+    (
+        "compose-strided-then-reverse",
+        lambda a: a.lazy[::2].lazy[::-1],
+        lambda r: r[::2][::-1],
+    ),
+    (
+        "compose-reverse-then-strided",
+        lambda a: a.lazy[::-1].lazy[::2],
+        lambda r: r[::-1][::2],
+    ),
+    (
+        "compose-reverse-then-oindex",
+        lambda a: a.lazy[::-1].lazy.oindex[[3, 0, 0], :, :],
+        lambda r: outer(r[::-1], ([3, 0, 0], slice(None), slice(None))),
+    ),
+    (
+        "compose-oindex-then-reverse",
+        lambda a: a.lazy.oindex[[3, 1, 2], :, :].lazy[::-1],
+        lambda r: outer(r, ([3, 1, 2], slice(None), slice(None)))[::-1],
+    ),
+    (
+        "compose-reverse-then-vindex",
+        lambda a: a.lazy[::-1].lazy.vindex[..., np.array([1, 3, 0])],
+        lambda r: r[::-1][..., np.array([1, 3, 0])],
+    ),
     (
         "compose-vindex-trailing-then-scalar-and-slice",
         lambda a: a.lazy.vindex[..., np.array([3, 0, 1])].lazy[-1, 1:4],
@@ -432,10 +477,17 @@ def _random_basic(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[Any
         roll = rng.random()
         if roll < 0.3:
             selection.append(int(rng.integers(-size, size)))
-        elif roll < 0.7:
+        elif roll < 0.55:
             start = int(rng.integers(0, size))
             stop = int(rng.integers(start, size + 1))
             selection.append(slice(start, stop, int(rng.integers(1, 4))))
+        elif roll < 0.8:
+            # Downward: `start >= stop` and the stop may fall off the front,
+            # which is spelled `None`.
+            start = int(rng.integers(0, size))
+            stop_choice = int(rng.integers(-1, start + 1))
+            stop = None if stop_choice < 0 else stop_choice
+            selection.append(slice(start, stop, -int(rng.integers(1, 4))))
         else:
             selection.append(slice(None))
     return tuple(selection)
@@ -795,8 +847,13 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
         lambda a: a.lazy[1:6, :, 1:],
         lambda a: a.lazy.oindex[[4, 0, 0], :, [3, 1]],
         lambda a: a.lazy.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
+        # A reversing view drives the negative-stride branches of
+        # `_intersect_dimension_map` and `iter_chunk_transforms`, which were
+        # written defensively long before anything could reach them.
+        lambda a: a.lazy[::-1, ::-2, :],
+        lambda a: a.lazy[5:1:-1, :, ::-1],
     ],
-    ids=["identity", "basic", "oindex", "vindex"],
+    ids=["identity", "basic", "oindex", "vindex", "reversed", "reversed-bounded"],
 )
 def test_parts_tile_the_view_exactly_and_disjointly(
     flavour: str, build: Callable[[LazyArray], LazyArray]
@@ -1088,3 +1145,53 @@ def test_copy_false_conversion_is_rejected() -> None:
     array = make_source("numpy-uniform-parts")
     with pytest.raises(ValueError, match="cannot be converted to a NumPy array without a copy"):
         np.array(array, copy=False)
+
+
+# ---------------------------------------------------------------------------
+# Negative steps
+# ---------------------------------------------------------------------------
+
+
+def test_reversed_box_reports_a_positive_stride(source: LazyArray) -> None:
+    """A reversal is still a box; `strides()` is magnitudes, so it matches the forward twin."""
+    reversed_view = source.lazy[::-2]
+    forward = source.lazy[::2]
+    assert reversed_view.is_box
+    assert reversed_view.strides() == forward.strides() == (2, 1, 1)
+    assert reversed_view.bounding_box() == ((0, 7), (0, 5), (0, 4))
+
+
+def test_a_reversed_view_is_re_based_to_origin_zero() -> None:
+    """The literal domain of a reversal is negative; the positional dialect hides it."""
+    view = make_source("numpy-whole").lazy[::-1]
+    # The algebra's own answer keeps the source frame.
+    assert IndexTransform.from_shape(SHAPE)[::-1].domain.inclusive_min[0] == -6
+    # The wrapper re-bases, so positions start at 0 as NumPy expects.
+    assert view.transform.domain.inclusive_min == (0, 0, 0)
+    assert view.shape == SHAPE
+    np.testing.assert_array_equal(np.asarray(view.result()), reference()[::-1])
+
+
+def test_zero_step_is_rejected() -> None:
+    with pytest.raises(IndexError, match="step cannot be zero"):
+        make_source("numpy-whole").lazy[::0]
+
+
+def test_reversed_positional_interval_is_empty_not_an_error() -> None:
+    """NumPy's rule at the boundary; the literal layer keeps TensorStore's."""
+    view = make_source("numpy-uniform-parts").lazy[2:5:-1]
+    assert view.shape == (0, 5, 4)
+    np.testing.assert_array_equal(np.asarray(view.result()), reference()[2:5:-1])
+    # Literal coordinates, on the other hand, call it a direction error.
+    with pytest.raises(IndexError, match="valid interval"):
+        IndexTransform.from_shape(SHAPE)[2:5:-1]
+
+
+def test_negative_step_over_a_fancy_axis_reverses_the_coordinates(source: LazyArray) -> None:
+    """Reversing a gathered axis materializes, rather than attaching a stride."""
+    view = source.lazy.oindex[[3, 1, 2], :, :].lazy[::-1]
+    expected = outer(reference(), ([3, 1, 2], slice(None), slice(None)))[::-1]
+    np.testing.assert_array_equal(np.asarray(view.result()), expected)
+    m = view.transform.output[0]
+    assert isinstance(m, ArrayMap)
+    np.testing.assert_array_equal(m.index_array.reshape(-1), np.array([2, 1, 3]))

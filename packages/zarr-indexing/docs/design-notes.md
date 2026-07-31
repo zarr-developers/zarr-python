@@ -149,12 +149,19 @@ speculatively; `is_box` is the runtime answer until then.
 
 ## Current scope
 
-Three limits are known, intentional, and expected to lift:
+Negative steps are supported as of ndsel 1.0-draft.2: `a[::-1]` reverses, one
+desugaring rule covers both signs, and a reversed interval is an error rather
+than a silently empty selection. One consequence is worth stating loudly:
+**a negative step normally produces a negative domain origin.** Reversing a
+length-20 zero-origin axis gives the domain `[-19, 1)`, because the result stays
+anchored to the source coordinate frame and a reversing map runs that frame
+backwards. `LazyArray` re-bases every view to origin 0, so the positional
+dialect never shows it; a caller working with `IndexTransform` directly will,
+and re-bases explicitly with `translate_domain_to` if it wants NumPy-shaped
+coordinates.
 
-- **No negative steps.** `a[::-1]` raises rather than reversing. The transform
-  algebra can represent a negative stride and the lowering engine resolves one,
-  but the slice boundary rejects it while the ndsel spec change pinning the
-  domain-origin rule for negative steps is in flight. *Planned.*
+Two limits remain, both intentional and expected to lift:
+
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.
