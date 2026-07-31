@@ -47,6 +47,11 @@ from zarr_indexing.json import (
 from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.support import (
+    IndexingSupport,
+    infer_indexing_support,
+    resolve_indexing_support,
+)
 from zarr_indexing.transform import (
     IndexTransform,
     array_map_dependent_axis,
@@ -65,6 +70,7 @@ __all__ = [
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
+    "IndexingSupport",
     "LazyArray",
     "NdselError",
     "OutputIndexMap",
@@ -78,9 +84,11 @@ __all__ = [
     "index_domain_to_json",
     "index_transform_from_json",
     "index_transform_to_json",
+    "infer_indexing_support",
     "iter_chunk_transforms",
     "normalize_ndsel",
     "parse_ndsel",
+    "resolve_indexing_support",
     "selection_to_transform",
     "sub_transform_to_selections",
     "transform_from_canonical",

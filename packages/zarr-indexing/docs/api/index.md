@@ -38,6 +38,10 @@ and the wire format built on top of it.
   gives any array-API-like array (NumPy, zarr, CuPy, …) a `.lazy` accessor for
   TensorStore-style deferred indexing, plus `Partition` and `parts()` /
   `with_parts()`, which determine the boxes a read is broken into
+- [`zarr_indexing.support`](support.md) — `IndexingSupport`, the four levels of
+  indexing a wrapped array may accept, and the detection that picks one, which
+  together decide how much of a selection `LazyArray` hands to its source and
+  how much it finishes in memory
 - [`zarr_indexing.boundary`](boundary.md) — the translation between NumPy's
   positional dialect and the transform algebra's literal coordinates
 

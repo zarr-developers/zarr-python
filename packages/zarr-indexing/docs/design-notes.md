@@ -148,6 +148,25 @@ rectangular-only view is a plausible next step, but it should be introduced by
 a consumer that needs the guarantee in its signatures rather than
 speculatively; `is_box` is the runtime check until then.
 
+## Related work
+
+The closest neighbour to this package in the Python ecosystem is xarray's
+[`xarray/core/indexing.py`](https://github.com/pydata/xarray/blob/main/xarray/core/indexing.py).
+It solves the same problem — carrying a selection around as a value, and
+deciding how much of it a given backend can be asked to perform — and the
+`IndexingSupport` taxonomy here (`BASIC`, `OUTER`, `OUTER_1VECTOR`,
+`VECTORIZED`) is taken from it, member names and meanings included, so that a
+reader who knows one knows the other. The split of a selection into a part
+pushed to the source and a part finished with NumPy follows xarray's
+`decompose_indexer`, and the heuristic for choosing which axis keeps its
+coordinate array when only one can is xarray's.
+
+This package is a standalone implementation rather than a port: no code is
+shared, the selection is carried as an `IndexTransform` rather than as xarray's
+explicit indexer classes, and the decomposition is applied per chunk partition
+as well as per array, so a source is asked for one key per box rather than one
+key per read.
+
 ## Current scope
 
 Negative steps are supported as of ndsel 1.0-draft.2: `a[::-1]` reverses, one

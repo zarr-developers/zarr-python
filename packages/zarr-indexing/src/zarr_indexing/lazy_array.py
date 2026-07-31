@@ -28,7 +28,7 @@ for part in view.parts():
     out[part.out_selection] = part.array.result()
 ```
 
-Each box is therefore read once, with basic slicing, and the selection is
+Each box is therefore read once, and whatever the source could not do itself is
 applied to the block in memory.
 
 The partitioning is discovered from the wrapped array at construction — first
@@ -36,9 +36,8 @@ The partitioning is discovered from the wrapped array at construction — first
 `chunks`, read as per-axis sizes if its entries are sequences and as a uniform
 box shape if they are integers. Those attribute names belong to the wrapped
 array; this API refers only to parts. An array that advertises neither gets a
-single whole-array part, and resolving it lowers the whole view to one pass of
-array operations (`take`, basic slicing, a flat gather) rather than
-materializing a block first.
+single whole-array part, and resolving it lowers the whole view in one pass
+rather than materializing a block first.
 
 `with_parts` replaces the partitioning without touching the data or the view:
 
@@ -52,6 +51,29 @@ Repartitioning changes how the read is divided, not what `result()` returns.
 Parts that do not align with the source's own boxes are permitted and can be
 useful (to bound peak memory, or to batch small reads); they cost extra I/O but
 do not affect correctness.
+
+What the source is asked for
+---------------------------
+Sources differ in what their indexing surface accepts, so a read is negotiated
+rather than assumed. Each wrapper carries an
+[`IndexingSupport`](support.md) level, and every request is split in two: the
+largest part of the selection that level can express is asked of the source in a
+single call — through `oindex` or `vindex` when the source has them — and the
+remainder is applied to the block that comes back, with NumPy.
+
+The level is detected at construction (a NumPy array or zarr's
+`oindex`/`vindex` pair reads as `VECTORIZED`, a source's own
+`__zarr_indexing_support__` declaration is honored, and anything else is
+`BASIC`, which is the only assumption that is always safe).
+`with_indexing_support` overrides the detection:
+
+```python
+view.with_indexing_support(IndexingSupport.OUTER)
+```
+
+The level changes how much data crosses the boundary, never what `result()`
+returns. Declaring `BASIC` on a NumPy array answers exactly what `VECTORIZED`
+answers, having read the enclosing slab and gathered from it instead.
 
 Boxes and queries
 -----------------
@@ -111,7 +133,7 @@ Device caveat
 Resolving a partitioned view builds its output buffer with NumPy, because the
 resolver's scatter indices are host-side integer arrays. Wrapping a device array
 that advertises parts therefore returns host memory. A single whole-array part
-lowers directly and stays in the wrapped array's own namespace.
+skips that buffer and stays in the wrapped array's own namespace.
 """
 
 from __future__ import annotations
@@ -136,7 +158,12 @@ from zarr_indexing.chunk_resolution import (
 )
 from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.support import (
+    IndexingSupport,
+    has_accessor,
+    resolve_indexing_support,
+)
 from zarr_indexing.transform import (
     IndexTransform,
     array_map_dependent_axis,
@@ -489,6 +516,217 @@ def _lower_correlated(array: Any, transform: IndexTransform) -> Any:
 
 
 # --------------------------------------------------------------------------- #
+# Source-capability negotiation
+# --------------------------------------------------------------------------- #
+#
+# `_lower` is exact but assumes the array under it accepts anything NumPy
+# accepts. Most sources do not, and the ones that do would rather be asked for
+# what is wanted in one request than be walked axis by axis. So a read is split
+# in two: a *pushed key*, the largest part of the selection the source can
+# express, and a *residual transform*, whatever is left, which `_lower` applies
+# to the block that comes back. The split is the same idea as xarray's
+# `decompose_indexer`, expressed over `IndexTransform` rather than over
+# xarray's explicit indexer classes.
+#
+# The pushed key holds exactly one selector per storage dimension, always a
+# slice or a one-dimensional integer array and never a bare integer, so the
+# block has one axis per storage dimension whatever the level. That invariant is
+# what lets the residual be built by rewriting output maps in place: only the
+# coordinates change, from storage coordinates to positions within the block.
+
+
+def _push_slice_for_dimension_map(
+    m: DimensionMap, transform: IndexTransform
+) -> tuple[slice, DimensionMap]:
+    """The positive-step slice covering a `DimensionMap`, and its block-local map.
+
+    A negative step is read forwards and reversed by the residual: a source is
+    only ever asked for a slice that walks upwards, which is the one form every
+    array-like agrees on.
+    """
+    d = m.input_dimension
+    lo = transform.domain.inclusive_min[d]
+    hi = max(transform.domain.exclusive_max[d], lo)
+    if hi == lo:
+        return slice(0, 0, 1), DimensionMap(input_dimension=d, offset=-lo, stride=1)
+    first = m.offset + m.stride * lo
+    last = m.offset + m.stride * (hi - 1)
+    if m.stride > 0:
+        return (
+            slice(first, last + 1, m.stride),
+            DimensionMap(input_dimension=d, offset=-lo, stride=1),
+        )
+    # Descending: the block holds the same coordinates in ascending order, so
+    # the residual walks it backwards from the last block position.
+    return (
+        slice(last, first + 1, -m.stride),
+        DimensionMap(input_dimension=d, offset=hi - 1, stride=-1),
+    )
+
+
+def _push_gain(coords: np.ndarray[Any, np.dtype[np.intp]]) -> float:
+    """How much a slab read of `coords` would over-read, as a ratio.
+
+    xarray's heuristic for choosing which axis keeps its array when only one
+    can: the span of the coordinates divided by how many distinct ones there
+    are. An axis whose coordinates are dense and contiguous scores 1 and loses
+    nothing to a slab; a sparse axis scores high and is the one worth spending
+    the single array slot on.
+    """
+    if coords.size == 0:
+        return 0.0
+    span = int(coords.max()) - int(coords.min()) + 1
+    return span / int(np.unique(coords).size)
+
+
+def _array_push_capacity(support: IndexingSupport, has_oindex: bool, wanted: int) -> int:
+    """How many axes may carry an integer array in one request to the source."""
+    if support is IndexingSupport.BASIC:
+        return 0
+    if support is IndexingSupport.OUTER_1VECTOR:
+        return 1
+    # OUTER and VECTORIZED both accept several array axes, but only through an
+    # `oindex` accessor: a bare `__getitem__` key with two arrays means an outer
+    # product to HDF5 and a correlated gather to NumPy, and nothing about the
+    # source says which reading applies. One array is the key both readings
+    # agree on, so that is the fallback.
+    return wanted if has_oindex else 1
+
+
+def _decompose(
+    transform: IndexTransform, support: IndexingSupport, has_oindex: bool
+) -> tuple[tuple[Any, ...], IndexTransform, int]:
+    """Split `transform` into a key for the source and a transform for the block.
+
+    Returns `(key, residual, n_arrays)`. `key` has one selector per storage
+    dimension; `n_arrays` is how many of them are integer arrays, which decides
+    whether the request goes to `oindex` or to `__getitem__`. Applying `residual`
+    to the block the key returns is equivalent to applying `transform` to the
+    source.
+    """
+    outputs = transform.output
+    coords: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {
+        d: (m.offset + m.stride * m.index_array).astype(np.intp)
+        for d, m in enumerate(outputs)
+        if isinstance(m, ArrayMap)
+    }
+    # An empty axis carries no coordinates to push and needs no array slot.
+    array_axes = [d for d, c in coords.items() if c.size > 0]
+    capacity = _array_push_capacity(support, has_oindex, len(array_axes))
+    if capacity >= len(array_axes):
+        pushed_axes = set(array_axes)
+    else:
+        ranked = sorted(array_axes, key=lambda d: _push_gain(coords[d]), reverse=True)
+        pushed_axes = set(ranked[:capacity])
+
+    key: list[Any] = []
+    residual: list[OutputIndexMap] = []
+    for d, m in enumerate(outputs):
+        if isinstance(m, ConstantMap):
+            # A slice rather than the integer: every axis survives into the
+            # block, so residual output `d` addresses block axis `d`.
+            key.append(slice(m.offset, m.offset + 1, 1))
+            residual.append(ConstantMap(offset=0))
+        elif isinstance(m, DimensionMap):
+            pushed, local = _push_slice_for_dimension_map(m, transform)
+            key.append(pushed)
+            residual.append(local)
+        else:
+            full = coords[d]
+            if full.size == 0:
+                key.append(slice(0, 0, 1))
+                local_index = full
+            elif d in pushed_axes:
+                # Sorted and deduplicated: a source is never asked for the same
+                # coordinate twice, and the residual looks positions back up.
+                unique = np.unique(full)
+                key.append(unique)
+                local_index = np.searchsorted(unique, full).astype(np.intp)
+            else:
+                # No array slot for this axis: read the slab it spans and
+                # gather from that instead.
+                origin = int(full.min())
+                key.append(slice(origin, int(full.max()) + 1, 1))
+                local_index = (full - origin).astype(np.intp)
+            residual.append(ArrayMap(index_array=local_index, input_dimension=m.input_dimension))
+    return (
+        tuple(key),
+        IndexTransform(domain=transform.domain, output=tuple(residual)),
+        len(pushed_axes),
+    )
+
+
+def _point_key(transform: IndexTransform) -> tuple[Any, ...] | None:
+    """The whole selection as one flat coordinate array per axis, or None.
+
+    Defined only when every storage dimension is addressed by a correlated
+    `ArrayMap` or fixed by a `ConstantMap`, which is what a plain `vindex[i, j,
+    k]` composes to. The points are then exactly the cells the view wants, in
+    the view's own order, so a source that can gather points has nothing left to
+    do — whereas the outer superset those same points span can be very much
+    larger than the points themselves.
+
+    A selection with a sliced axis is not expressible this way without
+    enumerating the slice, so it goes through `_decompose` instead.
+    """
+    shape = transform.domain.shape
+    if math.prod(shape) == 0:
+        return None
+    key: list[Any] = []
+    for m in transform.output:
+        if isinstance(m, ConstantMap):
+            key.append(np.full(math.prod(shape), m.offset, dtype=np.intp))
+        elif isinstance(m, ArrayMap) and m.input_dimension is None:
+            coords = (m.offset + m.stride * m.index_array).astype(np.intp)
+            key.append(np.broadcast_to(coords, shape).reshape(-1))
+        else:
+            return None
+    return tuple(key)
+
+
+def _shift_key(key: tuple[Any, ...], window: tuple[slice, ...] | None) -> tuple[Any, ...]:
+    """Rebase a key built in part-local coordinates onto the wrapped array."""
+    if window is None:
+        return key
+    shifted: list[Any] = []
+    for selector, w in zip(key, window, strict=True):
+        if isinstance(selector, slice):
+            shifted.append(slice(w.start + selector.start, w.start + selector.stop, selector.step))
+        else:
+            shifted.append(selector + w.start)
+    return tuple(shifted)
+
+
+def _read(
+    source: Any,
+    window: tuple[slice, ...] | None,
+    transform: IndexTransform,
+    support: IndexingSupport,
+) -> Any:
+    """Materialize `transform` over `source`, asking for no more than `support` allows.
+
+    `window` restricts the read to one part's box, in the wrapped array's
+    coordinates; it is folded into the key rather than materialized first, so a
+    part costs one request whatever its selection looks like.
+    """
+    has_vindex = has_accessor(source, "vindex")
+    has_oindex = has_accessor(source, "oindex")
+
+    if support is IndexingSupport.VECTORIZED and _is_correlated(transform):
+        points = _point_key(transform)
+        if points is not None:
+            gathered = source.vindex if has_vindex else source
+            # The key is flat so that a `vindex` accepting only one-dimensional
+            # coordinate lists is served too; the shape is restored here.
+            return _reshape(gathered[_shift_key(points, window)], transform.domain.shape)
+
+    key, residual, n_arrays = _decompose(transform, support, has_oindex)
+    key = _shift_key(key, window)
+    block = source.oindex[key] if n_arrays > 0 and has_oindex else source[key]
+    return _lower(block, residual)
+
+
+# --------------------------------------------------------------------------- #
 # Partitions
 # --------------------------------------------------------------------------- #
 
@@ -643,8 +881,10 @@ class LazyArray:
     Indexing through `.lazy` composes an `IndexTransform` and returns another
     `LazyArray`; `result()` materializes.
 
-    Selections use the **positional NumPy dialect**, and reads are broken up
-    along a **partitioning** discovered from the wrapped array — see the module
+    Selections use the **positional NumPy dialect**; reads are broken up along a
+    **partitioning** discovered from the wrapped array; and how much of a
+    selection each read hands to that array is **negotiated** from an
+    [`IndexingSupport`](support.md) level, also detected here. See the module
     docstring, which also covers how the dialect differs from `zarr.Array.lazy`
     and why every non-indexing NumPy operation materializes the view.
 
@@ -652,8 +892,10 @@ class LazyArray:
     ----------
     array
         The array to wrap. It must expose `shape`, `dtype`, and `__getitem__`
-        with basic (integer/slice) indexing. Its partitioning, if it advertises
-        one, is discovered here; use `with_parts` to choose a different one.
+        with basic (integer/slice) indexing; anything beyond that is used only
+        if detected or declared. Its partitioning, if it advertises one, is
+        discovered here; use `with_parts` to choose a different one, and
+        `with_indexing_support` to choose a different level.
 
     Examples
     --------
@@ -667,7 +909,7 @@ class LazyArray:
            [ 8, 10]])
     """
 
-    __slots__ = ("_array", "_parts", "_transform", "_window")
+    __slots__ = ("_array", "_parts", "_support", "_transform", "_window")
 
     def __init__(self, array: ArrayLike) -> None:
         shape = tuple(int(s) for s in array.shape)
@@ -675,6 +917,7 @@ class LazyArray:
         self._window: tuple[slice, ...] | None = None
         self._transform = IndexTransform.from_shape(shape)
         self._parts = _discover_parts(array, shape)
+        self._support = resolve_indexing_support(array)
 
     @classmethod
     def _derive(
@@ -683,6 +926,7 @@ class LazyArray:
         transform: IndexTransform,
         parts: tuple[EdgeDimensionGrid, ...] | None,
         window: tuple[slice, ...] | None,
+        support: IndexingSupport,
     ) -> LazyArray:
         """Build a wrapper sharing `array` but carrying a new transform or partitioning."""
         view = cls.__new__(cls)
@@ -692,6 +936,7 @@ class LazyArray:
         view._transform = transform.translate_domain_to((0,) * transform.input_rank)
         view._parts = parts
         view._window = window
+        view._support = support
         return view
 
     @property
@@ -700,12 +945,6 @@ class LazyArray:
         if self._window is None:
             return tuple(int(s) for s in self._array.shape)
         return tuple(s.stop - s.start for s in self._window)
-
-    def _read_base(self) -> Any:
-        """The base array, materializing the window if this wrapper has one."""
-        if self._window is None:
-            return self._array
-        return np.asarray(self._array[self._window])
 
     # -- array-API surface --------------------------------------------------
 
@@ -736,6 +975,83 @@ class LazyArray:
     def dtype(self) -> Any:
         """The wrapped array's dtype; views never change it."""
         return self._array.dtype
+
+    # -- source capability --------------------------------------------------
+
+    @property
+    def indexing_support(self) -> IndexingSupport:
+        """How much of a selection this wrapper hands to the array it wraps.
+
+        Read-only; use
+        [`with_indexing_support`][zarr_indexing.lazy_array.LazyArray.with_indexing_support]
+        to change it. Resolved once, at construction, in this order:
+
+        1. an explicit `with_indexing_support` on this wrapper or the one it was
+           derived from;
+        2. the wrapped array's own `__zarr_indexing_support__` declaration;
+        3. inference from the wrapped array — `VECTORIZED` for a NumPy array or
+           for anything carrying zarr's `oindex`/`vindex` pair,
+           [`BASIC`][zarr_indexing.support.IndexingSupport] otherwise.
+
+        See [`zarr_indexing.support`](support.md) for what each level means and
+        why the default is the most restrictive one.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> LazyArray(np.arange(6)).indexing_support
+        <IndexingSupport.VECTORIZED: 'vectorized'>
+        """
+        return self._support
+
+    def with_indexing_support(self, support: IndexingSupport) -> LazyArray:
+        """Return the same view, negotiating differently with the wrapped array.
+
+        The transform, the wrapped array, the partitioning, and therefore
+        `result()` are all unchanged; only how much of a selection is asked of
+        the source, and how much is finished in memory, differs. Nothing is
+        copied and nothing is read.
+
+        Use this when the wrapped array supports more than can be detected from
+        the outside, or when it supports less than it appears to and a request
+        it cannot answer must not be made.
+
+        Parameters
+        ----------
+        support
+            The level to use, overriding both the source's own declaration and
+            inference.
+
+        Returns
+        -------
+        LazyArray
+            The same view, read through a differently-negotiated source.
+
+        Raises
+        ------
+        TypeError
+            If `support` is not an `IndexingSupport`. Unlike detection, which
+            treats a malformed declaration as absent, this is a public API and
+            validates strictly.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from zarr_indexing.support import IndexingSupport
+        >>> view = LazyArray(np.arange(6)).with_indexing_support(IndexingSupport.BASIC)
+        >>> view.indexing_support
+        <IndexingSupport.BASIC: 'basic'>
+        >>> view.lazy.oindex[[4, 1, 1]].result()
+        array([4, 1, 1])
+        """
+        # The annotation already says this, but the check is for callers who are
+        # not type-checked: a bare string is the obvious mistake to make here,
+        # and it would otherwise be read as "no arrays" and silently over-read.
+        if not isinstance(support, IndexingSupport):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(
+                f"indexing support must be an IndexingSupport, got {type(support).__name__}"
+            )
+        return LazyArray._derive(self._array, self._transform, self._parts, self._window, support)
 
     # -- shape of the selection ---------------------------------------------
 
@@ -918,7 +1234,7 @@ class LazyArray:
         [(0, 0), (0, 1), (1, 0), (1, 1)]
         """
         grids = None if parts is None else dimension_grids_from_chunks(parts, self._base_shape)
-        return LazyArray._derive(self._array, self._transform, grids, self._window)
+        return LazyArray._derive(self._array, self._transform, grids, self._window, self._support)
 
     def parts(self) -> Iterator[Partition]:
         """Iterate the base partitioning, projected through this view.
@@ -975,7 +1291,7 @@ class LazyArray:
             yield Partition(
                 base_coords=base_coords,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
-                array=LazyArray._derive(self._array, local, None, window),
+                array=LazyArray._derive(self._array, local, None, window, self._support),
                 out_selection=_partition_out_selection(local, out_indices, out_shape),
                 is_complete=_covers_whole_part(local, extent),
             )
@@ -1001,7 +1317,7 @@ class LazyArray:
                 transform = transform.translate_domain_to((0,) * transform.input_rank)
         literal = normalize_positional_selection(selection, transform.domain, mode)
         composed = selection_to_transform(literal, transform, mode)
-        return LazyArray._derive(self._array, composed, self._parts, self._window)
+        return LazyArray._derive(self._array, composed, self._parts, self._window, self._support)
 
     def __getitem__(self, selection: Any) -> Any:
         """Read a basic selection eagerly, like `numpy.ndarray.__getitem__`.
@@ -1029,7 +1345,7 @@ class LazyArray:
             zero-rank domain returns a zero-dimensional array, not a scalar.
         """
         if self._parts is None:
-            return _lower(self._read_base(), self._transform)
+            return _read(self._array, self._window, self._transform, self._support)
 
         out_shape = self.shape
         out = np.empty(out_shape, dtype=np.dtype(self.dtype))
@@ -1060,6 +1376,11 @@ class LazyArray:
         representation produce the same token. See `_wrapped_token` for the
         determinism scope of the wrapped array's contribution; dask is imported
         lazily and is never a requirement of this package.
+
+        The `IndexingSupport` level is deliberately absent. It decides which
+        requests are made of the source, not which values come back, so two
+        wrappers that differ only in their level describe the same data and
+        should token alike.
         """
         return (
             type(self).__qualname__,
