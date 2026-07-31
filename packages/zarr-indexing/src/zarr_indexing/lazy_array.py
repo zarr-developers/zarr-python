@@ -177,6 +177,8 @@ def _namespace(x: Any) -> Any:
         return None
     try:
         return getter()
+    # A foreign namespace may fail in arbitrary ways; discovery must degrade
+    # to "no information", never raise.
     except Exception:  # pragma: no cover - a namespace that refuses to load
         return None
 
@@ -231,6 +233,8 @@ def _read_source_attribute(array: Any, name: str) -> Any:
     """
     try:
         return getattr(array, name, None)
+    # Guarded properties (e.g. zarr's LazyViewError) and broken foreign
+    # attributes may raise anything; discovery must degrade to None.
     except Exception:
         return None
 
@@ -597,6 +601,7 @@ def _wrapped_token(array: Any) -> Any:
     if hook is not None:
         try:
             return hook()
+        # A token must never raise; fall through to the structural fallback.
         except Exception:  # pragma: no cover - a hook that refuses to run
             pass
     try:
@@ -620,6 +625,7 @@ def _wrapped_token(array: Any) -> Any:
         return structural
     try:
         contents = np.ascontiguousarray(array)
+    # A token must never raise; an unreadable source keeps the structural token.
     except Exception:
         return structural
     return (*structural, hashlib.sha256(contents.tobytes()).hexdigest())

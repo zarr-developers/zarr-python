@@ -75,6 +75,14 @@ packages = ["src/zarr_indexing"]
 extend = "../../pyproject.toml"
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+# Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
+# foreign source's attributes may fail arbitrarily and discovery must degrade
+# to "no information"; a token call must never raise. Configured here (not as
+# noqa comments) because the pinned pre-commit ruff and the floating CI ruff
+# disagree on whether these rules fire, and RUF100 strips the comments.
+"src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
+
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
