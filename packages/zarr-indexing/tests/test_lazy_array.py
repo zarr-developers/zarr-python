@@ -447,6 +447,24 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
         lambda a: a.lazy.vindex[..., np.array([3, 0, 1])].lazy[-1, 1:4],
         lambda r: r[..., np.array([3, 0, 1])][-1, 1:4],
     ),
+    # A downward walk that begins off the front of the axis selects nothing.
+    # Written against an oindex axis and a vindex axis, where the selection is
+    # carried by an index array rather than by the domain.
+    (
+        "compose-oindex-then-empty-downward-walk",
+        lambda a: a.lazy.oindex[np.array([3, 1, 4]), :, :].lazy[-8::-1],
+        lambda r: r[np.array([3, 1, 4])][-8::-1],
+    ),
+    (
+        "compose-vindex-then-empty-downward-walk",
+        lambda a: a.lazy.vindex[np.array([3, 1]), np.array([2, 0])].lazy[-9::-2],
+        lambda r: r[np.array([3, 1]), np.array([2, 0])][-9::-2],
+    ),
+    (
+        "empty-downward-walk-on-a-plain-axis",
+        lambda a: a.lazy[-11::-1],
+        lambda r: r[-11::-1],
+    ),
 ]
 
 
@@ -484,9 +502,11 @@ def _random_basic(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[Any
             selection.append(slice(start, stop, int(rng.integers(1, 4))))
         elif roll < 0.8:
             # Downward: `start >= stop` and the stop may fall off the front,
-            # which is spelled `None`.
-            start = int(rng.integers(0, size))
-            stop_choice = int(rng.integers(-1, start + 1))
+            # which is spelled `None`. The start is drawn from below `-size` as
+            # well, where the walk begins off the front and selects nothing —
+            # a case that reads as an ordinary negative index but is empty.
+            start = int(rng.integers(-2 * size - 1, size)) if size else 0
+            stop_choice = int(rng.integers(-1, max(start, 0) + 1))
             stop = None if stop_choice < 0 else stop_choice
             selection.append(slice(start, stop, -int(rng.integers(1, 4))))
         else:

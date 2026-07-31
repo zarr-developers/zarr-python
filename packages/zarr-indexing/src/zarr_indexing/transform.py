@@ -611,11 +611,15 @@ def _normalize_basic_selection(selection: Any, ndim: int) -> tuple[int | slice |
 def _positional_slice(pos: int, size: int, step: int) -> slice:
     """A NumPy slice selecting `size` elements from `pos`, walking by `step`.
 
-    The stop is `pos + size*step`, except that a downward walk reaching the
-    start of the array must stop at `None`: NumPy reads a negative stop as
-    counting from the end, so `slice(6, -1, -1)` selects nothing where
-    `slice(6, None, -1)` selects the first seven elements in reverse.
+    The stop is `pos + size*step`, except in two cases. An empty selection is
+    written out explicitly, because the arithmetic form can be a negative stop
+    that NumPy would read as counting from the end. And a downward walk
+    reaching the start of the array must stop at `None`, for the same reason:
+    `slice(6, -1, -1)` selects nothing where `slice(6, None, -1)` selects the
+    first seven elements in reverse.
     """
+    if size <= 0:
+        return slice(0, 0, 1)
     stop = pos + size * step
     if step < 0 and stop < 0:
         return slice(pos, None, step)
