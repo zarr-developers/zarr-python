@@ -20,8 +20,11 @@ substituting the outer map into the inner one:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
+from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform
 
@@ -95,6 +98,37 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     )
 
 
+def _checked_position(position: int, size: int, axis: int) -> int:
+    """A single positional index into an inner index array, bounds-checked.
+
+    The intermediate coordinate comes from the outer transform's outputs, which
+    nothing here has established lie inside the inner domain. Unchecked, a
+    negative one wraps NumPy-style and reads a cell at the far end of the axis —
+    silently, and with no way for a caller to tell.
+    """
+    if position < 0 or position >= size:
+        raise BoundsCheckError(
+            f"composing reads position {position} on axis {axis} of an index "
+            f"array of extent {size}; the outer transform's output lies outside "
+            f"the inner transform's domain"
+        )
+    return position
+
+
+def _checked_positions(
+    positions: np.ndarray[Any, np.dtype[np.intp]], size: int
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """The same check, for a whole array of positional indices."""
+    if positions.size > 0 and (int(positions.min()) < 0 or int(positions.max()) >= size):
+        raise BoundsCheckError(
+            f"composing reads positions in "
+            f"[{int(positions.min())}, {int(positions.max())}] of an index array "
+            f"of extent {size}; the outer transform's output lies outside the "
+            f"inner transform's domain"
+        )
+    return positions
+
+
 def _compose_array(
     outer: IndexTransform, inner_map: ArrayMap, inner_origin: tuple[int, ...]
 ) -> OutputIndexMap:
@@ -118,11 +152,19 @@ def _compose_array(
     all_constant = all(isinstance(m, ConstantMap) for m in outer.output)
 
     if all_constant:
-        # Evaluate arr_i at the single constant point
+        # Evaluate arr_i at the single constant point. A non-dependency axis of
+        # the inner array is a singleton that broadcasts over the whole domain,
+        # so the coordinate there is always 0 whatever the intermediate names —
+        # indexing such an axis by the raw coordinate walked off the end of it.
         idx = tuple(
-            m.offset - lo
-            for m, lo in zip(
-                (m for m in outer.output if isinstance(m, ConstantMap)), inner_origin, strict=True
+            0 if size == 1 else _checked_position(m.offset - lo, size, axis)
+            for axis, (m, lo, size) in enumerate(
+                zip(
+                    (m for m in outer.output if isinstance(m, ConstantMap)),
+                    inner_origin,
+                    arr_i.shape,
+                    strict=True,
+                )
             )
         )
         value = int(arr_i[idx])
@@ -131,6 +173,7 @@ def _compose_array(
     # For 1D inner array with a single outer output (simple case)
     if arr_i.ndim == 1 and len(outer.output) == 1:
         outer_map = outer.output[0]
+        rank = outer.input_rank
 
         if isinstance(outer_map, DimensionMap):
             dim = outer_map.input_dimension
@@ -138,13 +181,29 @@ def _compose_array(
                 outer.domain.inclusive_min[dim], outer.domain.exclusive_max[dim], dtype=np.intp
             )
             intermediate_vals = outer_map.offset + outer_map.stride * user_indices
-            new_arr = arr_i[intermediate_vals - inner_origin[0]]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
+            positions = _checked_positions(intermediate_vals - inner_origin[0], arr_i.shape[0])
+            # Shaped to the *outer* input rank, not left 1-D. The gate above is on
+            # the output rank, so a rank-2 outer reached here and built an array
+            # of the wrong rank for the domain it belongs to.
+            shape = (1,) * dim + (len(positions),) + (1,) * (rank - dim - 1)
+            return ArrayMap(
+                index_array=arr_i[positions].reshape(shape),
+                offset=offset_i,
+                stride=stride_i,
+                input_dimension=dim,
+            )
 
         if isinstance(outer_map, ArrayMap):
             intermediate_vals = outer_map.offset + outer_map.stride * outer_map.index_array
-            new_arr = arr_i[intermediate_vals - inner_origin[0]]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
+            positions = _checked_positions(intermediate_vals - inner_origin[0], arr_i.shape[0])
+            # The outer array already carries the outer input rank, so indexing
+            # with it keeps that rank; the dependency travels with it.
+            return ArrayMap(
+                index_array=arr_i[positions],
+                offset=offset_i,
+                stride=stride_i,
+                input_dimension=outer_map.input_dimension,
+            )
 
     # General multi-dim case: not yet implemented
     raise NotImplementedError(

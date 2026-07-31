@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
+import pytest
 from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
 
 from zarr_indexing import chunk_resolution
 from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.grid import dimension_grids_from_chunks
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class TestChunkResolutionIdentity:
@@ -387,7 +386,14 @@ class TestChunkResolutionTouchedOnly:
 
 class TestSubTransformToSelections:
     def test_constant_map(self) -> None:
-        """ConstantMap produces an int chunk selection and no drop axis.
+        """ConstantMap reads one cell through a length-one slice, and says so.
+
+        Not the bare integer this used to emit. NumPy counts an integer among
+        the *advanced* indices whenever the tuple also holds an index array, and
+        moves the broadcast axis to the front when a slice separates them, while
+        `out_selection` is built positionally — so the two sides described
+        transposed blocks. A slice is basic wherever it sits, and the size-one
+        axis it leaves behind is named in `drop_axes` for the caller to squeeze.
 
         The domain dimension here is referenced by no output map, so its
         out-selection cannot come from a map: it is the whole axis, taken from
@@ -400,9 +406,9 @@ class TestSubTransformToSelections:
             output=(ConstantMap(offset=5),),
         )
         chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel == (5,)
+        assert chunk_sel == (slice(5, 6),)
         assert out_sel == (slice(0, 10),)
-        assert drop_axes == ()
+        assert drop_axes == (0,)
 
     def test_dimension_map_stride_1(self) -> None:
         """DimensionMap with stride=1 produces contiguous slice."""
@@ -516,10 +522,12 @@ class TestSubTransformToSelections:
             ),
         )
         chunk_sel, _out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel[0] == 5
+        assert chunk_sel[0] == slice(5, 6)
         assert chunk_sel[1] == slice(0, 10, 1)
-        # drop_axes is empty — integer in chunk_sel naturally drops the dim via numpy
-        assert drop_axes == ()
+        # The constant's axis survives the read at size one and is squeezed by
+        # the caller; letting NumPy drop it through an integer index put the
+        # constant in the advanced-index group, where it reordered the block.
+        assert drop_axes == (0,)
 
 
 class TestChunkResolutionArrayMapFlavors:
@@ -580,3 +588,72 @@ class TestChunkResolutionArrayMapFlavors:
         # Output side: a single flat scatter index of shape (points, slice) = (2, 5).
         assert len(out_sel) == 1
         assert np.asarray(out_sel[0]).shape == (2, 5)
+
+
+class TestBridgeBlockOrder:
+    """`out[out_sel] = chunk[chunk_sel]` must address the same block on both sides.
+
+    Nothing exercised this pairing before: `LazyArray` resolves a part by
+    lowering its own transform and only ever reads `out_selection`, so a
+    `chunk_selection` describing a differently-ordered block went unnoticed by
+    the whole suite while corrupting any consumer that followed the contract.
+    """
+
+    @staticmethod
+    def _assemble(
+        data: np.ndarray[Any, Any], chunks: tuple[int, ...], transform: IndexTransform
+    ) -> np.ndarray[Any, Any]:
+        grids = dimension_grids_from_chunks(chunks, data.shape)
+        out = np.zeros(transform.domain.shape, dtype=data.dtype)
+        for coords, local, out_indices in iter_chunk_transforms(transform, grids):
+            chunk_sel, out_sel, drop_axes = sub_transform_to_selections(local, out_indices)
+            block_slice = tuple(
+                slice(c * size, c * size + grid.chunk_size(c))
+                for c, size, grid in zip(coords, chunks, grids, strict=True)
+            )
+            block = data[block_slice][chunk_sel]
+            if len(drop_axes) > 0:
+                block = np.squeeze(block, axis=drop_axes)
+            if len(out_sel) == 1 and isinstance(out_sel[0], np.ndarray):
+                out.reshape(-1)[out_sel[0]] = block
+            else:
+                out[out_sel] = block
+        return out
+
+    @pytest.mark.parametrize("chunks", [(2, 3, 3), (1, 2, 2)], ids=["one-chunk", "many-chunks"])
+    def test_a_constant_before_an_array_keeps_the_blocks_axis_order(
+        self, chunks: tuple[int, int, int]
+    ) -> None:
+        """`oindex[int, :, array]` — a constant, a slice, then an index array.
+
+        NumPy folds an integer into the advanced-index group, and moves the
+        broadcast axis to the front when a slice separates the two. Emitting the
+        constant as an integer therefore transposed the chunk block against an
+        `out_selection` built positionally.
+        """
+        data = np.arange(18).reshape(2, 3, 3)
+        transform = (
+            IndexTransform.from_shape(data.shape)[1]
+            .translate_domain_to((0, 0))
+            .oindex[:, np.array([0, 1, 2])]
+        )
+        np.testing.assert_array_equal(
+            self._assemble(data, chunks, transform), data[1][:, [0, 1, 2]]
+        )
+
+    def test_a_residual_slice_before_the_points_keeps_the_scatter_in_step(self) -> None:
+        """A correlated read whose residual dimension precedes its coordinates.
+
+        The scatter enumerates points-major, but NumPy leaves the points axis
+        where the coordinate arrays sit, so the block arrived slice-major. Equal
+        extents transposed the values silently; unequal ones raised.
+        """
+        data = np.arange(12).reshape(3, 4)
+        transform = IndexTransform.from_shape(data.shape).vindex[..., np.array([0, 1, 2])]
+        np.testing.assert_array_equal(self._assemble(data, (3, 4), transform), data[..., [0, 1, 2]])
+
+    def test_a_residual_slice_before_the_points_of_a_different_length(self) -> None:
+        """The same shape, with extents that cannot coincide — this one raised."""
+        data = np.arange(8).reshape(2, 4)
+        transform = IndexTransform.from_shape(data.shape).vindex[..., np.array([0, 1, 2])]
+        np.testing.assert_array_equal(self._assemble(data, (2, 4), transform), data[..., [0, 1, 2]])

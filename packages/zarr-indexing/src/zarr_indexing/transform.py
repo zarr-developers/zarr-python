@@ -101,6 +101,29 @@ class IndexTransform:
                         f"(index_array shape {m.index_array.shape}, "
                         f"domain shape {self.domain.shape})"
                     )
+                # `input_dimension` claims which axis the map varies over, and
+                # readers fall back to it when the shape alone cannot say. A
+                # value that names no axis, or names one the array does not
+                # actually vary over, is a claim the array contradicts — and it
+                # survives to be believed much later, by a scatter that files
+                # positions under the wrong axis. `DimensionMap` has always been
+                # range-checked here; this is the same check for the same field.
+                if m.input_dimension is not None:
+                    if m.input_dimension < 0 or m.input_dimension >= self.domain.ndim:
+                        raise ValueError(
+                            f"output[{i}].input_dimension = {m.input_dimension} "
+                            f"is out of range for input rank {self.domain.ndim}"
+                        )
+                    dependency = _array_map_dependency_axes(m.index_array)
+                    if len(dependency) > 1 or (
+                        len(dependency) == 1 and dependency[0] != m.input_dimension
+                    ):
+                        raise ValueError(
+                            f"output[{i}] claims input_dimension="
+                            f"{m.input_dimension} but its index array varies over "
+                            f"{dependency}; an orthogonal map varies over the one "
+                            f"axis it names, and a correlated one names none"
+                        )
 
     @property
     def input_rank(self) -> int:
@@ -763,8 +786,17 @@ def _reindex_array_oindex(
     m: ArrayMap,
     normalized: tuple[Any, ...] | list[Any],
     domain: IndexDomain,
+    *,
+    outer: bool,
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Apply an oindex/vindex selection to an existing ArrayMap's index_array.
+
+    `outer` says which dialect the caller is in, and the two disagree whenever
+    more than one entry is an index array. Orthogonal indexing means the outer
+    product of the per-axis selections; vectorized indexing means the arrays
+    broadcast against each other into one axis. Applying the tuple positionally
+    gives NumPy's vectorized answer, so an orthogonal caller was getting a
+    selection one rank smaller than it asked for.
 
     Dependency-aware in exactly the way `_reindex_array` is: an entry applies to
     the array only along the axes the map genuinely varies over (its dependency
@@ -804,7 +836,22 @@ def _reindex_array_oindex(
         else:
             idx.append(slice(None))
 
-    result = arr[tuple(idx)] if idx else arr
+    if len(idx) == 0:
+        return np.asarray(arr, dtype=np.intp)
+    if outer and sum(isinstance(entry, np.ndarray) for entry in idx) > 1:
+        # An open mesh, so each axis's selection applies independently. Only
+        # built when it would differ from the positional form, to leave the
+        # single-array path — every existing orthogonal selection — untouched.
+        selectors = [
+            entry
+            if isinstance(entry, np.ndarray)
+            else np.arange(arr.shape[axis])[entry]  # a slice, resolved on its own axis
+            for axis, entry in enumerate(idx)
+        ]
+        selectors.extend(np.arange(arr.shape[axis]) for axis in range(len(idx), arr.ndim))
+        result = arr[np.ix_(*selectors)]
+    else:
+        result = arr[tuple(idx)]
     return np.asarray(result, dtype=np.intp)
 
 
@@ -1123,7 +1170,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, list(dim_array.keys()))
-            new_arr = _reindex_array_oindex(m, normalized, transform.domain)
+            new_arr = _reindex_array_oindex(m, normalized, transform.domain, outer=True)
             array_input_dim: int | None = None
             if m.input_dimension is not None:
                 array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
@@ -1323,13 +1370,26 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, array_dims)
-            new_arr = _reindex_array_oindex(m, processed, transform.domain)
+            new_arr = _reindex_array_oindex(m, processed, transform.domain, outer=False)
+            # Read the dependency back off the array that was just built, rather
+            # than carrying the one the old array had. The selection can change
+            # which axes a map varies over — a vectorized index applied to an
+            # orthogonal map makes it correlated — and the stale value outlived
+            # the shape that justified it, to be believed later by readers that
+            # trust it when the shape alone cannot say.
+            dependency = _array_map_dependency_axes(new_arr)
+            broadcast_axes = range(n_before, n_before + n_broadcast_dims)
+            new_input_dim = (
+                dependency[0]
+                if len(dependency) == 1 and dependency[0] not in broadcast_axes
+                else None
+            )
             new_output.append(
                 ArrayMap(
                     index_array=new_arr,
                     offset=m.offset,
                     stride=m.stride,
-                    input_dimension=m.input_dimension,
+                    input_dimension=new_input_dim,
                 )
             )
 

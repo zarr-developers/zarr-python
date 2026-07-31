@@ -91,8 +91,21 @@ _BOX_UPPER = ("exclusive_max", "inclusive_max", "shape")
 _TRANSFORM_UPPER = ("input_exclusive_max", "input_inclusive_max", "input_shape")
 
 _OUTPUT_MAP_FIELDS = frozenset(
-    {"offset", "stride", "input_dimension", "index_array", "index_array_bounds"}
+    {
+        "offset",
+        "stride",
+        "input_dimension",
+        "index_array",
+        "index_array_bounds",
+        "index_array_shape",
+    }
 )
+
+# An upper bound on `input_rank`, because normalization allocates proportionally
+# to it — an identity `output`, a bound per dimension, a label per dimension —
+# from a document that carries no data behind the number. Matches the rank
+# TensorStore accepts, which is well above any real array.
+_MAX_RANK = 32
 
 
 # ---------------------------------------------------------------------------
@@ -262,28 +275,50 @@ def _resolve_upper_bound(
         implicit = _bound_is_implicit(raw)
         value = _bound_value(raw)
         if kind_of == "inclusive":
-            new = _inclusive_to_exclusive(value)
+            new = _inclusive_to_exclusive(value, f"{upper_field}[{k}]")
         else:  # shape
-            new = _shape_to_exclusive(_bound_value(inclusive_min[k]), value)
+            new = _shape_to_exclusive(_bound_value(inclusive_min[k]), value, f"{upper_field}[{k}]")
         result.append(_rewrap(new, implicit=implicit))
     return result
 
 
-def _inclusive_to_exclusive(value: int | str) -> int | str:
+def _checked_i64(value: int, where: str) -> int:
+    """An arithmetic result that must still be a 64-bit signed integer.
+
+    Normalization is idempotent (spec section 4.3): whatever it emits must pass
+    the same validation on the way back in. Desugaring adds — `inclusive_max + 1`,
+    `inclusive_min + shape` — so a bound at the top of the range would otherwise
+    be emitted one past it and rejected by the next call on our own output.
+    """
+    if value < _I64_MIN or value > _I64_MAX:
+        raise NdselError(
+            "invalid_json",
+            f"{where} is {value}, which is outside the 64-bit signed range; the "
+            f"normalized form cannot represent it",
+        )
+    return value
+
+
+def _inclusive_to_exclusive(value: int | str, where: str) -> int | str:
     if value == "+inf" or value == "-inf":
         return value
     assert isinstance(value, int)
-    return value + 1
+    return _checked_i64(value + 1, f"{where} converted to an exclusive bound")
 
 
-def _shape_to_exclusive(min_value: int | str, shape_value: int | str) -> int | str:
+def _shape_to_exclusive(min_value: int | str, shape_value: int | str, where: str) -> int | str:
+    if shape_value == "-inf":
+        raise NdselError(
+            "invalid_json",
+            f"{where} is '-inf'; a shape counts cells and cannot be negatively infinite",
+        )
     if shape_value == "+inf" or min_value == "+inf":
         return "+inf"
     if min_value == "-inf":
         return "-inf"
     assert isinstance(min_value, int)
     assert isinstance(shape_value, int)
-    return min_value + shape_value
+    return _checked_i64(min_value + shape_value, f"{where} added to its inclusive_min")
 
 
 def _validate_domain(inclusive_min: list[Any], exclusive_max: list[Any], *, prefix: str) -> None:
@@ -512,12 +547,17 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
             else ["-inf", "+inf"]
         )
         # index_array is carried verbatim (spec section 7 defers shape validation).
-        return {
+        normalized: dict[str, Any] = {
             "offset": offset,
             "stride": stride,
             "index_array": raw["index_array"],
             "index_array_bounds": bounds,
         }
+        if "index_array_shape" in raw:
+            normalized["index_array_shape"] = _check_index_array_shape(
+                raw["index_array_shape"], where
+            )
+        return normalized
 
     if has_input_dim:
         input_dim = _check_int(raw["input_dimension"], f"{where}.input_dimension")
@@ -541,10 +581,41 @@ def _check_index_array_bounds(value: Any, where: str) -> list[int | str]:
             "invalid_json",
             f"{where}.index_array_bounds must be a two-element array, got {value!r}",
         )
-    return [
-        _check_index_value(value[0], f"{where}.index_array_bounds[0]"),
-        _check_index_value(value[1], f"{where}.index_array_bounds[1]"),
-    ]
+    lo = _check_index_value(value[0], f"{where}.index_array_bounds[0]")
+    hi = _check_index_value(value[1], f"{where}.index_array_bounds[1]")
+    if _ext_key(lo) > _ext_key(hi):
+        raise NdselError(
+            "bounds_out_of_order",
+            f"{where}.index_array_bounds: lower bound {lo!r} > upper bound {hi!r}",
+        )
+    return [lo, hi]
+
+
+def _check_index_array_shape(value: Any, where: str) -> list[int]:
+    """Validate an `index_array_shape`: non-negative extents, one per input dimension.
+
+    Carried because JSON nested lists cannot express the shape of an array with
+    no elements — `[]` is the only spelling of every empty shape, so a leading
+    zero axis loses both its rank and which dimension it varies over. See the
+    `json` module docstring.
+    """
+    if not isinstance(value, list):
+        raise NdselError(
+            "invalid_json", f"{where}.index_array_shape must be an array, got {value!r}"
+        )
+    if len(value) > _MAX_RANK:
+        raise NdselError(
+            "invalid_json",
+            f"{where}.index_array_shape has rank {len(value)}, above the maximum {_MAX_RANK}",
+        )
+    extents = [_check_int(v, f"{where}.index_array_shape[{i}]") for i, v in enumerate(value)]
+    for i, extent in enumerate(extents):
+        if extent < 0:
+            raise NdselError(
+                "invalid_json",
+                f"{where}.index_array_shape[{i}] must be >= 0, got {extent}",
+            )
+    return extents
 
 
 def _normalize_transform(obj: dict[str, Any]) -> dict[str, Any]:
@@ -567,6 +638,14 @@ def _normalize_transform(obj: dict[str, Any]) -> dict[str, Any]:
         declared_rank = _check_int(obj["input_rank"], "input_rank")
         if declared_rank < 0:
             raise NdselError("invalid_json", f"input_rank must be >= 0, got {declared_rank}")
+        if declared_rank > _MAX_RANK:
+            # Normalization fills a bound, a label and an identity output map per
+            # dimension, so an unbacked rank is a request to allocate from a
+            # document that carries nothing.
+            raise NdselError(
+                "invalid_json",
+                f"input_rank must be <= {_MAX_RANK}, got {declared_rank}",
+            )
 
     inclusive_min_raw = (
         _check_bound_list(obj["input_inclusive_min"], "input_inclusive_min")
@@ -603,6 +682,23 @@ def _normalize_transform(obj: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(obj["output"], list):
             raise NdselError("invalid_json", f"output must be an array, got {obj['output']!r}")
         output = [_normalize_output_map(m, f"output[{i}]") for i, m in enumerate(obj["output"])]
+        for i, m in enumerate(output):
+            # An `input_dimension` names one of *this* transform's input
+            # dimensions, so the rank is what bounds it. Checked here rather than
+            # in `_normalize_output_map`, which sees one map and not the rank.
+            if "input_dimension" in m and m["input_dimension"] >= rank:
+                raise NdselError(
+                    "rank_mismatch",
+                    f"output[{i}].input_dimension is {m['input_dimension']}, "
+                    f"outside the valid range [0, {rank}) for input_rank {rank}",
+                )
+            declared = m.get("index_array_shape")
+            if declared is not None and len(declared) != rank:
+                raise NdselError(
+                    "rank_mismatch",
+                    f"output[{i}].index_array_shape has rank {len(declared)} but "
+                    f"input_rank is {rank}",
+                )
     else:
         output = _identity_output(rank)
 

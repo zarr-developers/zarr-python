@@ -47,6 +47,7 @@ variants) are these canonical converters under their historical names.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from typing import Any, Required, TypedDict
 
@@ -108,6 +109,7 @@ class OutputIndexMapJSON(TypedDict, total=False):
     input_dimension: int
     index_array: NestedIntList
     index_array_bounds: list[IndexValueJSON]
+    index_array_shape: list[int]
 
 
 class IndexTransformJSON(TypedDict, total=False):
@@ -126,12 +128,18 @@ class IndexTransformJSON(TypedDict, total=False):
 
 
 def _lower_bound(bound: BoundJSON, where: str) -> int:
-    """Lower a canonical bound to a finite integer, rejecting infinities."""
+    """Lower a canonical bound to a finite integer, rejecting infinities.
+
+    Reached only with a bound the message layer has already validated as an
+    `index-value`, so the one thing left to rule out is a sentinel: an
+    `IndexDomain` addresses a finite array.
+    """
     value = bound[0] if isinstance(bound, list) else bound
     if value == "-inf" or value == "+inf":
-        raise ValueError(
+        raise NdselError(
+            "invalid_json",
             f"{where} is infinite ({value!r}); an IndexDomain addresses a finite "
-            f"array and cannot lower an infinite bound"
+            f"array and cannot lower an infinite bound",
         )
     return int(value)
 
@@ -145,6 +153,13 @@ def _lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp
     `[0.9, 1.9]` would silently read cells 0 and 1, and `[true, false]` cells 1
     and 0. Strings raise here rather than leaking NumPy's own conversion error.
     """
+    if not isinstance(raw, list):
+        # A bare integer would become a rank-0 array and then be widened into a
+        # length-1 map, so a document that names no cells would select one.
+        raise NdselError(
+            "invalid_json",
+            f"{where} must be an array of integers, got {raw!r}",
+        )
     try:
         arr = np.asarray(raw)
     except (TypeError, ValueError) as exc:
@@ -188,17 +203,29 @@ def index_domain_to_json(domain: IndexDomain) -> IndexDomainJSON:
 
 
 def index_domain_from_json(data: IndexDomainJSON) -> IndexDomain:
-    """Construct an IndexDomain from its canonical JSON representation."""
+    """Construct an IndexDomain from its canonical JSON representation.
+
+    The document is validated by the message layer first, exactly as a transform
+    body is. Reading the keys directly would be a second, undefended way into
+    the same objects: `int(value)` alone accepts `3.9`, `"3"` and `True`, and
+    each of those builds a domain that is not the document's.
+    """
+    if not isinstance(data, dict):
+        raise NdselError("invalid_json", f"an index domain must be a JSON object, got {data!r}")
+    body = normalize_ndsel({**data, "kind": "transform"})
     inclusive_min = tuple(
         _lower_bound(b, f"input_inclusive_min[{i}]")
-        for i, b in enumerate(data["input_inclusive_min"])
+        for i, b in enumerate(body["input_inclusive_min"])
     )
     exclusive_max = tuple(
         _lower_bound(b, f"input_exclusive_max[{i}]")
-        for i, b in enumerate(data["input_exclusive_max"])
+        for i, b in enumerate(body["input_exclusive_max"])
     )
-    labels = _lower_labels(list(data["input_labels"]))
-    return IndexDomain(inclusive_min=inclusive_min, exclusive_max=exclusive_max, labels=labels)
+    return IndexDomain(
+        inclusive_min=inclusive_min,
+        exclusive_max=exclusive_max,
+        labels=_lower_labels(body["input_labels"]),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +250,20 @@ def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
     if m.index_array.size == 1:
         value = int(m.index_array.reshape(-1)[0])
         return {"offset": m.offset + m.stride * value}
-    return {
+    body: OutputIndexMapJSON = {
         "offset": m.offset,
         "stride": m.stride,
         "index_array": m.index_array.tolist(),
         "index_array_bounds": ["-inf", "+inf"],
     }
+    if m.index_array.size == 0:
+        # `tolist()` renders every empty array as `[]` once the leading axis is
+        # the zero-length one, so rank — and with it the axis the map varies
+        # over — does not survive the trip. Nested lists cannot express it
+        # either: `[[]]` is shape (1, 0) and nothing spells (0, 1). Carry the
+        # shape alongside so the map that comes back is the map that went out.
+        body["index_array_shape"] = list(m.index_array.shape)
+    return body
 
 
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
@@ -264,6 +299,54 @@ def _solo_dependency_axis(arr: np.ndarray[Any, Any]) -> int | None:
     return dep[0] if len(dep) == 1 else None
 
 
+def _full_rank_index_array(
+    arr: np.ndarray[Any, np.dtype[np.intp]],
+    declared_shape: list[int] | None,
+    domain: IndexDomain,
+    where: str,
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Give an incoming `index_array` the input rank the engine requires.
+
+    Three cases, in order of how much the document tells us:
+
+    - An explicit `index_array_shape` settles it. This is what our own emitter
+      writes for an empty array, whose shape nested lists cannot carry.
+    - An empty array with no declared shape has to be reconstructed from the
+      domain: it can only be empty because some input dimension is, so that
+      dimension takes the zero and every other takes a broadcast singleton.
+      Ambiguous when the domain is empty on more than one axis, and impossible
+      when it is empty on none — both are rejected rather than guessed at.
+    - A lower-rank non-empty array is aligned to the *trailing* input
+      dimensions, which is how NumPy broadcasts and how a producer that omits
+      leading singletons means it to be read.
+    """
+    if declared_shape is not None:
+        if math.prod(declared_shape) != arr.size:
+            raise NdselError(
+                "invalid_json",
+                f"{where}.index_array_shape is {declared_shape}, which holds "
+                f"{math.prod(declared_shape)} entries, but index_array holds {arr.size}",
+            )
+        return arr.reshape(tuple(declared_shape))
+
+    if arr.size == 0 and arr.ndim != domain.ndim:
+        empty_axes = [k for k, extent in enumerate(domain.shape) if extent == 0]
+        if len(empty_axes) != 1:
+            raise NdselError(
+                "invalid_json",
+                f"{where}.index_array is empty, but the input domain has "
+                f"{len(empty_axes)} zero-length dimensions, so the axis it varies "
+                f"over cannot be recovered; send 'index_array_shape' to say which",
+            )
+        shape = [1] * domain.ndim
+        shape[empty_axes[0]] = 0
+        return arr.reshape(tuple(shape))
+
+    if arr.ndim < domain.ndim:
+        return arr.reshape((1,) * (domain.ndim - arr.ndim) + arr.shape)
+    return arr
+
+
 # ---------------------------------------------------------------------------
 # IndexTransform serialization
 # ---------------------------------------------------------------------------
@@ -294,7 +377,17 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     `input_dimension` values are reconstructed by global dependency-axis
     ownership (see the module docstring).
     """
-    body = normalize_ndsel({"kind": "transform", **data})
+    if not isinstance(data, dict):
+        raise NdselError("invalid_json", f"a transform body must be a JSON object, got {data!r}")
+    if data.get("kind", "transform") != "transform":
+        # Spelled last below, so a body carrying its own `kind` cannot reinterpret
+        # the document as some other message and return a selection this function
+        # never promised.
+        raise NdselError(
+            "invalid_json",
+            f"a transform body cannot carry kind {data['kind']!r}",
+        )
+    body = normalize_ndsel({**data, "kind": "transform"})
 
     inclusive_min = tuple(
         _lower_bound(b, f"input_inclusive_min[{i}]")
@@ -320,13 +413,13 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     axis_owners: Counter[int] = Counter()
     for i, om in enumerate(output_raw):
         if "index_array" in om:
-            arr = _lower_index_array(om["index_array"], f"output[{i}].index_array")
+            where = f"output[{i}]"
+            arr = _lower_index_array(om["index_array"], f"{where}.index_array")
             # ndsel leaves index-array rank unvalidated, so an external producer
             # may send an array of lower rank that broadcasts against the domain.
             # Widen it here, on the way in, so every transform that exists holds
             # the full-rank invariant the engine reads dependency axes from.
-            if arr.ndim < domain.ndim:
-                arr = arr.reshape((1,) * (domain.ndim - arr.ndim) + arr.shape)
+            arr = _full_rank_index_array(arr, om.get("index_array_shape"), domain, where)
             arrays[i] = arr
             dep = _array_map_dependency_axes(arr)
             array_axes[i] = dep
@@ -356,7 +449,14 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
         else:
             output.append(ConstantMap(offset=om.get("offset", 0)))
 
-    return IndexTransform(domain=domain, output=tuple(output))
+    try:
+        return IndexTransform(domain=domain, output=tuple(output))
+    except ValueError as exc:
+        # The engine's invariants are the last gate a document passes, and they
+        # speak in the engine's vocabulary. A document that fails them is invalid
+        # input, so it leaves here as one — with the engine's account of what was
+        # wrong kept, since it names the offending output map and axis.
+        raise NdselError("rank_mismatch", str(exc)) from exc
 
 
 # Historical names, now pointing at the canonical converters.

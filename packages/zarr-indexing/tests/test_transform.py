@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.lazy_array import LazyArray
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
     IndexTransform,
@@ -644,3 +645,70 @@ class TestIntersectArrayMapClassification:
         assert result is not None
         _restricted, out_indices = result
         assert isinstance(out_indices, dict)
+
+
+class TestDerivedMapDependency:
+    """A map's `input_dimension` must describe the array it is built with.
+
+    Three separate failures came from one stale value: a vectorized index applied
+    to an orthogonal map makes it correlated, but the old dependency was carried
+    onto the new array anyway. Readers fall back to that field when the shape
+    alone cannot say, so the wrong axis was believed much later — by a scatter
+    that filed positions under it, which is why the answer depended on how the
+    read was partitioned.
+    """
+
+    def test_a_vindex_over_a_fancy_view_is_marked_correlated(self) -> None:
+        base = np.arange(6)
+        view = (
+            LazyArray(base)
+            .lazy.oindex[np.array([0, 1])]
+            .lazy.vindex[np.array([[0, 1, 0], [1, 0, 1]])]
+        )
+        np.testing.assert_array_equal(
+            np.asarray(view.result()), base[[0, 1]][[[0, 1, 0], [1, 0, 1]]]
+        )
+
+    def test_the_same_view_resolves_alike_however_it_is_partitioned(self) -> None:
+        base = np.arange(36).reshape(6, 6)
+
+        def build(array: LazyArray) -> LazyArray:
+            return array.lazy.oindex[np.array([-3, -6, -4]), -4].lazy.vindex[np.array([[-2, -3]])]
+
+        unpartitioned = np.asarray(build(LazyArray(base)).result())
+        partitioned = np.asarray(build(LazyArray(base).with_parts((3, 3))).result())
+        np.testing.assert_array_equal(partitioned, unpartitioned)
+        np.testing.assert_array_equal(unpartitioned, np.array([[2, 20]]))
+
+    def test_an_array_map_claiming_an_axis_it_does_not_vary_over_is_rejected(self) -> None:
+        """The validation that would have caught the two above at their source."""
+        with pytest.raises(ValueError, match="varies over"):
+            IndexTransform(
+                domain=IndexDomain.from_shape((2, 3)),
+                output=(
+                    ArrayMap(index_array=np.array([[0, 1, 2]], dtype=np.intp), input_dimension=0),
+                ),
+            )
+
+    def test_an_array_map_input_dimension_out_of_range_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="out of range"):
+            IndexTransform(
+                domain=IndexDomain.from_shape((3,)),
+                output=(ArrayMap(index_array=np.array([0], dtype=np.intp), input_dimension=99),),
+            )
+
+
+def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
+    """`oindex` after `vindex` means the outer product, not a joint gather.
+
+    The reindexing applied its index tuple positionally, which is NumPy's
+    *vectorized* rule, so two arrays collapsed into one axis and the result came
+    back a rank short of what was asked for.
+    """
+    base = np.arange(14).reshape(7, 2)
+    view = LazyArray(base).lazy.vindex[
+        np.array([[5, 5], [1, 2], [0, 4]]), np.array([[1, 1], [1, 0], [1, 0]])
+    ]
+    result = np.asarray(view.lazy.oindex[np.array([1, 1, 0]), np.array([1, 1, 0, 1])].result())
+    assert result.shape == (3, 4)
+    np.testing.assert_array_equal(result, np.array([[4, 4, 3, 4], [4, 4, 3, 4], [11, 11, 11, 11]]))

@@ -820,19 +820,28 @@ def _detach(value: Any, source: Any) -> Any:
     fresh buffer. `result()` is answering "what does this view hold", not "lend
     me the storage", and its answer must not depend on how the read was divided.
 
-    NumPy is the namespace whose sharing can be settled here, from the arrays'
-    memory bounds; a foreign namespace whose basic indexing returns views is out
-    of reach, and its blocks are handed back as they come (see the module
-    docstring's device caveat).
+    Sharing is settled two ways, because the source is not always something
+    `may_share_memory` can be pointed at. When the wrapped array is itself a
+    NumPy array the two are compared directly, and the copy is made only when
+    they really overlap. When it is not — a duck array that stores its data in
+    NumPy and returns views from `__getitem__`, which is exactly the `BASIC`
+    source this package invites people to wrap — there is nothing to compare
+    against, so the question becomes whether the result owns its buffer. A NumPy
+    array that does not own its buffer is a view of something, and the only
+    thing it can be a view of here is storage the source lent us.
+
+    Deciding it that way means the answer never depends on knowing what the
+    source is: memory is released only when sharing is *disproved*, never merely
+    because it could not be established. An array whose namespace is foreign
+    enough that it is not a NumPy array at all is still handed back as it comes
+    (see the module docstring's device caveat).
     """
+    if not isinstance(value, np.ndarray):
+        return value
     base = _wrapped_base(source)
-    if (
-        isinstance(value, np.ndarray)
-        and isinstance(base, np.ndarray)
-        and np.may_share_memory(value, base)
-    ):
-        return value.copy()
-    return value
+    if isinstance(base, np.ndarray):
+        return value.copy() if np.may_share_memory(value, base) else value
+    return value if value.flags.owndata else value.copy()
 
 
 def _partition_out_selection(
@@ -845,18 +854,24 @@ def _partition_out_selection(
     A correlated sub-transform scatters through flat offsets into the row-major
     result; unravelling them turns that into an index tuple for the result's own
     shape, so callers never need a flat working buffer.
+
+    The correlated scatter is taken directly rather than through
+    `sub_transform_to_selections`, whose business is to match a scatter to the
+    block a *NumPy chunk read* returns — which is not the block a part produces.
+    A part is resolved by lowering its own transform, and that lowering keeps the
+    points axis first; the bridge has to answer for NumPy's placement rules
+    instead, and permutes its scatter to suit. Reading the bridge's answer here
+    would apply a correction for a block this path never sees.
     """
-    _chunk_selection, out_selection, _drop_axes = sub_transform_to_selections(
-        sub_transform, out_indices
-    )
     if not _is_correlated(sub_transform):
-        return out_selection
+        return sub_transform_to_selections(sub_transform, out_indices)[1]
     if len(out_shape) == 0:
         return ()
-    flat = out_selection[0]
-    if isinstance(flat, slice):
-        flat = np.arange(flat.start, flat.stop, dtype=np.intp)
-    return tuple(np.unravel_index(np.asarray(flat, dtype=np.intp), out_shape))
+    if out_indices is None:
+        flat = np.arange(math.prod(sub_transform.domain.shape), dtype=np.intp)
+    else:
+        flat = np.asarray(out_indices, dtype=np.intp)
+    return tuple(np.unravel_index(flat, out_shape))
 
 
 def _out_selection_cell_count(selection: tuple[Any, ...], out_shape: tuple[int, ...]) -> int:
@@ -1518,7 +1533,11 @@ class LazyArray:
         a partitioning is in force, not on how many boxes it has.
 
         The result never shares memory with the wrapped array, so writing to it
-        is safe whichever of those two routes it came by.
+        is safe whichever of those two routes it came by. That holds for a
+        source that stores its data in NumPy whether or not the source is itself
+        a NumPy array; a source whose namespace is foreign enough that its
+        blocks are not NumPy arrays is out of reach (see the module docstring's
+        device caveat).
 
         Returns
         -------

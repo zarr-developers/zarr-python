@@ -5,6 +5,7 @@ import pytest
 
 from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
 
@@ -251,3 +252,56 @@ class TestComposeChain:
         assert isinstance(abc.output[0], DimensionMap)
         assert abc.output[0].offset == 25
         assert abc.output[0].stride == 2
+
+
+def test_composing_an_inner_array_with_a_broadcast_axis_wider_than_one_cell() -> None:
+    """A non-dependency axis is a singleton that broadcasts, so its coordinate is 0.
+
+    Indexing it by the raw intermediate coordinate walked off the end of an axis
+    the array only has one entry for.
+    """
+    outer = IndexTransform(
+        domain=IndexDomain(inclusive_min=(-2,), exclusive_max=(0,)),
+        output=(ConstantMap(offset=1), ConstantMap(offset=0)),
+    )
+    inner = IndexTransform(
+        domain=IndexDomain(inclusive_min=(0, 0), exclusive_max=(2, 1)),
+        output=(ArrayMap(index_array=np.array([[13]], dtype=np.intp), offset=-2, stride=2),),
+    )
+    composed = compose(outer, inner)
+    assert composed.output[0] == ConstantMap(offset=24)
+
+
+def test_composing_a_one_dimensional_inner_array_under_a_higher_rank_outer() -> None:
+    """The shortcut gated on the output rank but sized by the input rank.
+
+    A rank-2 outer therefore built a rank-1 array for a rank-2 domain, which the
+    engine's own invariant then rejected.
+    """
+    outer = IndexTransform(
+        domain=IndexDomain.from_shape((2, 3)),
+        output=(DimensionMap(input_dimension=0, offset=1, stride=1),),
+    )
+    inner = IndexTransform(
+        domain=IndexDomain.from_shape((4,)),
+        output=(ArrayMap(index_array=np.array([7, 3, 5, 1], dtype=np.intp), input_dimension=0),),
+    )
+    composed = compose(outer, inner)
+    array_map = composed.output[0]
+    assert isinstance(array_map, ArrayMap)
+    assert array_map.index_array.shape == (2, 1)
+    np.testing.assert_array_equal(array_map.index_array, np.array([[3], [5]]))
+
+
+def test_composing_out_of_the_inner_domain_is_refused() -> None:
+    """An intermediate outside the inner domain wrapped NumPy-style and read a cell."""
+    outer = IndexTransform(
+        domain=IndexDomain.from_shape((1,)),
+        output=(ConstantMap(offset=-3),),
+    )
+    inner = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(ArrayMap(index_array=np.array([7, 3], dtype=np.intp), input_dimension=0),),
+    )
+    with pytest.raises(BoundsCheckError, match="outside the inner transform's domain"):
+        compose(outer, inner)

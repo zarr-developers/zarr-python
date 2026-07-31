@@ -33,6 +33,7 @@ pipeline accepts transforms natively.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -290,6 +291,46 @@ def _dimension_map_slice(m: DimensionMap, dim_lo: int, dim_hi: int) -> slice:
     return _positional_slice(m.offset + m.stride * dim_lo, dim_hi - dim_lo, m.stride)
 
 
+def _scatter_in_block_order(
+    scatter: np.ndarray[Any, np.dtype[np.intp]],
+    *,
+    residual_extents: list[int],
+    basic_before_arrays: int,
+    array_positions: list[int],
+    has_points_axis: bool,
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Reorder a points-major scatter to match the block the chunk read returns.
+
+    The scatter enumerates the correlated selection points-major: point varying
+    slowest, then the residual sliced axes in their own order. NumPy does not
+    always hand the block back that way. With the coordinate arrays adjacent it
+    places the points axis where they sit, so a residual slice *before* them puts
+    a residual axis first; only when a slice separates the arrays does the points
+    axis lead. Assigning one order into the other transposed the values silently
+    when the extents happened to agree, and raised a broadcast error when they
+    did not.
+
+    Nothing is read here: the scatter is an index array, so matching the block is
+    a permutation of it.
+    """
+    if not has_points_axis or len(array_positions) == 0:
+        return scatter
+    separated = array_positions[-1] - array_positions[0] + 1 != len(array_positions)
+    points_axis = 0 if separated else basic_before_arrays
+    if points_axis == 0:
+        return scatter
+
+    residual_cells = math.prod(residual_extents) if len(residual_extents) > 0 else 0
+    if residual_cells == 0:
+        return scatter
+    n_points = scatter.size // residual_cells
+    # Points-major, then move the points axis to where the block carries it. The
+    # scatter keeps the block's shape rather than being flattened: the caller
+    # assigns the block into it directly, so the two must agree axis for axis.
+    grid = scatter.reshape((n_points, *residual_extents))
+    return np.moveaxis(grid, 0, points_axis)
+
+
 def _array_input_dim(m: ArrayMap, out_dim: int) -> int:
     """The input dimension an orthogonal `ArrayMap` places its values along."""
     axis = array_map_dependent_axis(m)
@@ -383,14 +424,30 @@ def sub_transform_to_selections(
         has_points_axis = any(d not in bound for d in range(sub_transform.input_rank))
         points_shape: tuple[int, ...] = (-1,) if has_points_axis else ()
         chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+        # Where each entry lands in the block, so the scatter below can be put in
+        # the same order: the residual slices in the order they appear, and the
+        # positions the coordinate arrays occupy.
+        residual_extents: list[int] = []
+        array_positions: list[int] = []
+        basic_before_arrays = 0
         for m in sub_transform.output:
             if isinstance(m, ConstantMap):
-                chunk_sel.append(m.offset)
+                # See the basic branch below on why this is a slice: an integer
+                # would join the advanced indices and move the points axis.
+                chunk_sel.append(slice(m.offset, m.offset + 1))
+                if len(array_positions) == 0:
+                    basic_before_arrays += 1
+                residual_extents.append(1)
             elif isinstance(m, DimensionMap):
                 d = m.input_dimension
-                chunk_sel.append(_dimension_map_slice(m, inclusive_min[d], exclusive_max[d]))
+                sl = _dimension_map_slice(m, inclusive_min[d], exclusive_max[d])
+                chunk_sel.append(sl)
+                if len(array_positions) == 0:
+                    basic_before_arrays += 1
+                residual_extents.append(exclusive_max[d] - inclusive_min[d])
             else:  # ArrayMap
                 idx = m.index_array.reshape(points_shape)
+                array_positions.append(len(chunk_sel))
                 chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
         # Chunk resolution always supplies the flat scatter index for a
         # correlated transform. Absent one (a bare sub-transform), fall back to an
@@ -404,17 +461,33 @@ def sub_transform_to_selections(
                 n *= s
             out_scatter = slice(0, n)
         else:
-            out_scatter = out_indices
+            out_scatter = _scatter_in_block_order(
+                out_indices,
+                residual_extents=residual_extents,
+                basic_before_arrays=basic_before_arrays,
+                array_positions=array_positions,
+                has_points_axis=has_points_axis,
+            )
         return tuple(chunk_sel), (out_scatter,), ()
 
     chunk_sel = []  # annotated in the correlated branch above (same function scope)
     out_by_dim: dict[int, slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = {}
+    basic_drop_axes: list[int] = []
 
     # Single-pass build for the basic / single-orthogonal-array cases.
-    # ConstantMap dims are dropped (no out_sel entry).
+    # ConstantMap dims read one cell and are reported in drop_axes.
     for out_dim, m in enumerate(sub_transform.output):
         if isinstance(m, ConstantMap):
-            chunk_sel.append(m.offset)
+            # A length-one slice, not the bare integer this used to emit. NumPy
+            # counts an integer among the *advanced* indices when the tuple also
+            # holds an index array, and moves the broadcast axis to the front
+            # whenever a slice separates the two — while `out_selection` below is
+            # built positionally and keeps the original order. The two sides then
+            # described transposed blocks. A slice is a basic index wherever it
+            # sits, so the order is the one it looks like, and the axis it leaves
+            # behind is squeezed by the caller through drop_axes.
+            chunk_sel.append(slice(m.offset, m.offset + 1))
+            basic_drop_axes.append(out_dim)
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             dim_lo = inclusive_min[d]
@@ -435,4 +508,4 @@ def sub_transform_to_selections(
     out_sel = [
         out_by_dim.get(d, slice(inclusive_min[d], exclusive_max[d])) for d in range(input_rank)
     ]
-    return tuple(chunk_sel), tuple(out_sel), ()
+    return tuple(chunk_sel), tuple(out_sel), tuple(basic_drop_axes)

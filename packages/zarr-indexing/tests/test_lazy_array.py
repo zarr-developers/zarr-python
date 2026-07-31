@@ -1835,7 +1835,31 @@ def test_the_strict_doubles_notice_an_over_broad_key() -> None:
 # ---------------------------------------------------------------------------
 
 
+class NumpyBackedSource:
+    """A duck array that stores its data in NumPy and returns views from reads.
+
+    Not an `np.ndarray`, so nothing about the source can be compared against the
+    result's memory — but its blocks are NumPy views of storage the caller must
+    not be handed. The `BASIC` source this package invites people to wrap.
+    """
+
+    def __init__(self, data: np.ndarray[Any, Any]) -> None:
+        self.data = data
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.data.shape
+
+    @property
+    def dtype(self) -> Any:
+        return self.data.dtype
+
+    def __getitem__(self, selection: Any) -> Any:
+        return self.data[selection]
+
+
 @pytest.mark.parametrize("parts", [None, (2, 2, 2), SHAPE])
+@pytest.mark.parametrize("wrap", [lambda d: d, NumpyBackedSource], ids=["ndarray", "duck"])
 @pytest.mark.parametrize(
     ("build", "description"),
     [
@@ -1846,7 +1870,10 @@ def test_the_strict_doubles_notice_an_over_broad_key() -> None:
     ],
 )
 def test_materializing_never_hands_back_the_wrapped_array(
-    parts: Any, build: Callable[[LazyArray], LazyArray], description: str
+    parts: Any,
+    wrap: Callable[[np.ndarray[Any, Any]], Any],
+    build: Callable[[LazyArray], LazyArray],
+    description: str,
 ) -> None:
     """Writing to a materialized result must never reach the source.
 
@@ -1854,9 +1881,13 @@ def test_materializing_never_hands_back_the_wrapped_array(
     the wrapped array, and NumPy 2 hands whatever `__array__` returns straight to
     the caller. Every route out of the wrapper detaches, so the answer does not
     depend on how the read happened to be divided.
+
+    Run over both a raw `ndarray` and a duck array that merely stores its data in
+    NumPy: the second is the case where the source cannot be compared against the
+    result, so detaching has to decide from the result's own buffer instead.
     """
     data = reference()
-    view = build(LazyArray(data).with_parts(parts))
+    view = build(LazyArray(wrap(data)).with_parts(parts))
 
     for materialize in (
         lambda v: v.result(),
