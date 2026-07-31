@@ -52,6 +52,7 @@ Requires the `testing` extra (`pip install zarr-indexing[testing]`).
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -338,6 +339,20 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
                 f"part {part.base_coords} carries {value.shape} for an out_selection "
                 f"addressing {assembled[part.out_selection].shape}: {self.chain}"
             )
+            # `is_complete` is what a consumer reads to decide it may take a
+            # whole-box read and skip assembling anything, so a wrongly-`True`
+            # one is the silent-corruption case. Asserted one way only: the flag
+            # is documented as conservative, free to say `False` about a part it
+            # does cover (a strided walk over a one-cell box, a fancy axis that
+            # happens to enumerate everything), and only the claim to cover
+            # everything has to be earned. Both quantities are already in hand
+            # here, and nothing else in the suite compares them.
+            if part.is_complete:
+                box_cells = math.prod(stop - start for start, stop in part.box)
+                assert value.size == box_cells, (
+                    f"part {part.base_coords} reports is_complete but carries "
+                    f"{value.size} of its box's {box_cells} cells: {self.chain}"
+                )
             assembled[part.out_selection] = value
             np.add.at(hits, part.out_selection, 1)
 

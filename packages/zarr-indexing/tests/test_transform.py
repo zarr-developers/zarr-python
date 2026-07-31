@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.lazy_array import LazyArray
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
@@ -712,3 +713,29 @@ def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None
     result = np.asarray(view.lazy.oindex[np.array([1, 1, 0]), np.array([1, 1, 0, 1])].result())
     assert result.shape == (3, 4)
     np.testing.assert_array_equal(result, np.array([[4, 4, 3, 4], [4, 4, 3, 4], [11, 11, 11, 11]]))
+
+
+@pytest.mark.parametrize(
+    ("value", "description"),
+    [(1, "one below the lower bound"), (10, "the exclusive upper bound itself")],
+)
+def test_an_index_array_value_just_outside_the_domain_is_refused(
+    value: int, description: str
+) -> None:
+    """The bound checks are probed at the boundary, not comfortably past it.
+
+    Both were only ever exercised from well outside the domain, so relaxing
+    either by one — `lo - 1` instead of `lo` — went unnoticed while letting a
+    view read a cell it does not address.
+    """
+    transform = IndexTransform.from_shape((12,))[2:10]
+    with pytest.raises(BoundsCheckError, match="out of bounds"):
+        transform.oindex[np.array([value, 3])]
+
+
+def test_an_index_array_value_at_each_end_of_the_domain_is_accepted() -> None:
+    """The other side of the same boundary: the extremes themselves are in range."""
+    transform = IndexTransform.from_shape((12,))[2:10]
+    array_map = transform.oindex[np.array([2, 9])].output[0]
+    assert isinstance(array_map, ArrayMap)
+    np.testing.assert_array_equal(array_map.index_array, np.array([2, 9]))

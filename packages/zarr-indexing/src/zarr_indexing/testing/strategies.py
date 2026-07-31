@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "basic_selections",
+    "empty_masks",
     "masks",
     "orthogonal_selections",
     "slice_selections",
@@ -68,12 +69,29 @@ def _basic_entry(size: int) -> st.SearchStrategy[Any]:
 
 
 def _orthogonal_entry(size: int) -> st.SearchStrategy[Any]:
+    """One axis of an `oindex` selection.
+
+    The slices carry a step and are free to stop early. Drawing them as
+    `slice(start, size)` alone meant no strided or reversed slice ever reached
+    `oindex`, and no orthogonal selection ever stopped short of the axis end.
+
+    An empty coordinate list is drawn too. It selects nothing, which is legal
+    and is exactly the shape that lost its axis on the way through JSON — but
+    with `min_size=1` no fancy selection was ever empty.
+    """
     coordinate = st.integers(-size, size - 1)
     return st.one_of(
         coordinate,
         st.lists(coordinate, min_size=1, max_size=4),
+        st.just([]),
         masks((size,)),
-        st.builds(slice, st.integers(0, size - 1), st.just(size)),
+        empty_masks((size,)),
+        st.builds(
+            slice,
+            st.integers(0, size - 1),
+            st.integers(0, size) | st.none(),
+            st.integers(1, 3) | st.integers(-3, -1),
+        ),
     )
 
 
@@ -97,6 +115,17 @@ def masks(draw: st.DrawFn, shape: tuple[int, ...]) -> np.ndarray[Any, np.dtype[n
     flags = np.array(draw(st.lists(st.booleans(), min_size=size, max_size=size)))
     flags[draw(st.integers(0, size - 1))] = True
     return flags.reshape(shape)
+
+
+def empty_masks(shape: tuple[int, ...]) -> st.SearchStrategy[np.ndarray[Any, np.dtype[np.bool_]]]:
+    """The all-False mask over `shape` — a fancy selection that empties the view.
+
+    Split out from `masks`, which forces a cell True so a chain has something
+    left to index at the next step. Drawn on its own because an empty fancy
+    selection is a shape the code paths treat separately, and nothing generated
+    one.
+    """
+    return st.just(np.zeros(shape, dtype=np.bool_))
 
 
 def basic_selections(shape: tuple[int, ...]) -> st.SearchStrategy[tuple[Any, ...]]:
@@ -150,14 +179,27 @@ def vectorized_selections(draw: st.DrawFn, shape: tuple[int, ...]) -> tuple[Any,
     if draw(st.booleans()):
         entries = [draw(masks(tuple(sizes)))]
     else:
-        length = draw(st.integers(1, 4))
+        # The coordinate arrays share one shape, which is what makes the
+        # selection correlated. That shape is not always one-dimensional: a
+        # vectorized read of a (2, 3) block of points is an ordinary thing to
+        # ask for and produces a result of that rank. Drawing only 1-D arrays
+        # meant no rank-raising vindex was ever generated — and a length of 0
+        # covers the empty case the same way `_orthogonal_entry` does.
+        coordinate_shape = draw(
+            st.one_of(
+                st.integers(0, 4).map(lambda length: (length,)),
+                st.tuples(st.integers(1, 2), st.integers(1, 3)),
+            )
+        )
         entries = [
             draw(
                 st.one_of(
                     st.integers(-size, size - 1),
-                    st.lists(st.integers(-size, size - 1), min_size=length, max_size=length).map(
-                        lambda values: np.array(values, dtype=np.intp)
-                    ),
+                    st.lists(
+                        st.integers(-size, size - 1),
+                        min_size=int(np.prod(coordinate_shape)),
+                        max_size=int(np.prod(coordinate_shape)),
+                    ).map(lambda values: np.array(values, dtype=np.intp).reshape(coordinate_shape)),
                 )
             )
             for size in sizes

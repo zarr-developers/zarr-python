@@ -47,6 +47,12 @@ def _as_index_array(sel: Any) -> np.ndarray[Any, np.dtype[Any]] | None:
         return sel
     if isinstance(sel, (list, tuple)):
         arr = np.asarray(sel)
+        if arr.size == 0 and arr.dtype.kind == "f":
+            # An empty Python list carries no element type and NumPy defaults it
+            # to float64. Selecting nothing is legal — NumPy takes `a[np.ix_([])]`
+            # — so read it as the empty integer selection it spells, rather than
+            # rejecting it for a dtype it never had a chance to have.
+            return np.zeros(arr.shape, dtype=np.intp)
         if arr.dtype.kind in "biu":
             return arr
         raise IndexError(

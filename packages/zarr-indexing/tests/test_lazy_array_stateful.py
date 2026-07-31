@@ -20,8 +20,9 @@ cross-flavor coverage this does not attempt.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
+import numpy as np
 import pytest
 from hypothesis import settings
 
@@ -33,6 +34,40 @@ from zarr_indexing.testing import (
 )
 
 TestNumpyIndexing = state_machine_test(ChainedIndexingStateMachine)
+
+
+class OneDimensionalIndexing(ChainedIndexingStateMachine):
+    """The same chains over a rank-1 source.
+
+    The sorted one-dimensional fancy path in `chunk_resolution` is entered only
+    when both the input and output ranks are 1, and the output rank is the
+    *source's* — so the rank-3 default walls that path off from the machine
+    entirely, and from every downstream project told to subclass it. That path
+    is where reordering and duplicate coordinates are partitioned, which is the
+    corruption class this whole harness exists to catch.
+    """
+
+    data = np.arange(30, dtype=np.int64)
+    partitionings: ClassVar[tuple[Any, ...]] = (None, (4,), (30,), ((7, 8, 15),))
+
+
+TestOneDimensionalIndexing = state_machine_test(OneDimensionalIndexing)
+
+
+class SingletonAxisIndexing(ChainedIndexingStateMachine):
+    """A source with an extent-1 axis, which the code must not read as a broadcast one.
+
+    An index array's axis is a singleton either because the map broadcasts over
+    it or because the domain is genuinely one cell wide there, and the two are
+    told apart by the domain rather than the array. Nothing generated the second
+    kind.
+    """
+
+    data = np.arange(2 * 1 * 3, dtype=np.int64).reshape(2, 1, 3)
+    partitionings: ClassVar[tuple[Any, ...]] = (None, (1, 1, 1), (2, 1, 2))
+
+
+TestSingletonAxisIndexing = state_machine_test(SingletonAxisIndexing)
 
 
 class ZarrIndexing(ChainedIndexingStateMachine):

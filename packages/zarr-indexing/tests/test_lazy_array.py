@@ -28,6 +28,7 @@ from zarr_indexing import (
     array_map_dependent_axis,
     dimension_grids_from_chunks,
 )
+from zarr_indexing.lazy_array import _out_selection_cell_count
 from zarr_indexing.support import IndexingSupport
 
 if TYPE_CHECKING:
@@ -2115,3 +2116,62 @@ def test_a_zero_length_axis_accepts_every_spelling_of_no_chunks(parts: Any) -> N
 def test_a_zero_chunk_on_a_nonempty_axis_is_still_rejected() -> None:
     with pytest.raises(ValueError, match="chunk sizes must be positive"):
         LazyArray(np.zeros((4, 3))).with_parts(((0, 4), (3,)))
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        (slice(None, None, -1), slice(None), slice(None)),
+        (slice(3, 1, -1), slice(None), slice(None)),
+        (slice(None, None, -2), slice(None, None, -1), slice(None)),
+    ],
+    ids=["reversed", "reversed-partial", "reversed-strided"],
+)
+def test_the_coverage_count_agrees_with_numpy_for_reversed_selections(
+    selection: tuple[Any, ...],
+) -> None:
+    """The safety net behind `result()`'s coverage assertion, checked on its own.
+
+    `_out_selection_cell_count` sizes a partition's `out_selection` without
+    materializing it, and `result()` trusts that count to decide whether the
+    walk covered the view. Nothing pinned it for a reversed slice, so dropping
+    its `start <= stop` guard — or wrapping the subtraction in `abs()` — left
+    the suite green. A net nobody tests only matters once something else breaks,
+    which is exactly when it needs to be right.
+    """
+    data = reference()
+    view = LazyArray(data).with_parts((2, 2, 2)).lazy[selection]
+    out_shape = view.shape
+    for part in view.parts():
+        counted = _out_selection_cell_count(part.out_selection, out_shape)
+        assert counted == np.empty(out_shape)[part.out_selection].size
+
+
+@pytest.mark.parametrize(
+    ("selection", "out_shape", "expected"),
+    [
+        (((slice(2, 5)),), (10,), 3),
+        # A backwards interval selects nothing. The fast path subtracts, which
+        # would make this negative and let an incomplete walk sum to the view's
+        # own size — so the count falls back to `range` whenever the interval is
+        # not a forward, in-bounds one.
+        (((slice(5, 2)),), (10,), 0),
+        # Counts from the end, to index 8 — past the stop, so nothing.
+        (((slice(-2, 5)),), (10,), 0),
+        ((slice(5, 2), slice(0, 3)), (10, 10), 0),
+    ],
+    ids=["forward", "backwards", "negative-start", "backwards-in-a-pair"],
+)
+def test_the_coverage_count_matches_numpy_for_intervals_the_fast_path_declines(
+    selection: tuple[Any, ...], out_shape: tuple[int, ...], expected: int
+) -> None:
+    """The guard on `result()`'s safety net, exercised where the walk cannot reach it.
+
+    A partition walk only ever produces concrete forward in-bounds intervals, so
+    the guard that keeps everything else off the subtraction fast path is not
+    reachable through `parts()` at all — which is why removing it left the whole
+    suite green. It is the net's own contract, so it is checked directly.
+    """
+    counted = _out_selection_cell_count(selection, out_shape)
+    assert counted == np.empty(out_shape)[selection].size
+    assert counted == expected
