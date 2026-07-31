@@ -78,7 +78,7 @@ class ArrayMap:
     enclosing transform: `index_array` has the enclosing domain's rank, sized
     fully on the axes it varies over and singleton (size 1) elsewhere. The
     dependency axes are therefore derivable from the shape (see
-    `transform._array_map_dependency_axes`), which distinguishes the two flavours
+    `transform._array_map_dependency_axes`), which distinguishes the two flavors
     of multi-array fancy indexing:
 
     - **orthogonal** (`oindex`): each array varies along a single, *distinct*

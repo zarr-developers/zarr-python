@@ -16,7 +16,7 @@ parts are intentionally identical:
 
 - **The model.** An `IndexTransform` pairs an input `IndexDomain` — a
   rectangular region with an explicit, possibly non-zero origin — with one
-  output index map per storage dimension, in the three flavours TensorStore
+  output index map per storage dimension, in the three flavors TensorStore
   defines: constant, single-input-dimension (affine), and index array.
   Composition is the single operation that stacks views.
 - **Slice semantics.** Slice bounds are literal domain coordinates: no

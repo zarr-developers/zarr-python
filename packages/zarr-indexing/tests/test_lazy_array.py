@@ -2,7 +2,7 @@
 
 The happy-path suite is a single oracle test: every selection case is applied
 both to a `LazyArray` and to the NumPy array it wraps, and the results must
-match. The case list is crossed with four source flavours — an unchunked NumPy
+match. The case list is crossed with four source flavors — an unchunked NumPy
 array, NumPy with each of the two declared chunk conventions, and a zarr array
 whose chunking is auto-discovered — so the chunked and unchunked resolution
 strategies are held to the same answers.
@@ -38,7 +38,7 @@ EXPLICIT_PARTS = ((3, 3, 1), (2, 2, 1), (3, 1))
 
 
 def reference() -> np.ndarray[Any, np.dtype[np.int64]]:
-    """The array every source flavour holds, and the oracle for every case."""
+    """The array every source flavor holds, and the oracle for every case."""
     return np.arange(int(np.prod(SHAPE)), dtype=np.int64).reshape(SHAPE)
 
 
@@ -197,24 +197,24 @@ def make_zarr_source() -> Any:
     return array
 
 
-def make_source(flavour: str) -> LazyArray:
+def make_source(flavor: str) -> LazyArray:
     """Build a `LazyArray` over `reference()` with the requested partitioning."""
     data = reference()
-    if flavour == "numpy-whole":
+    if flavor == "numpy-whole":
         return LazyArray(data)
-    if flavour == "numpy-explicit-parts":
+    if flavor == "numpy-explicit-parts":
         return LazyArray(data).with_parts(EXPLICIT_PARTS)
-    if flavour == "numpy-uniform-parts":
+    if flavor == "numpy-uniform-parts":
         return LazyArray(data).with_parts(PART_SHAPE)
-    if flavour == "zarr":
+    if flavor == "zarr":
         return LazyArray(make_zarr_source())
-    if flavour == "zarr-misaligned":
+    if flavor == "zarr-misaligned":
         # Parts that deliberately straddle the zarr array's own chunks.
         return LazyArray(make_zarr_source()).with_parts((4, 3, 3))
-    raise AssertionError(f"unknown source flavour {flavour!r}")
+    raise AssertionError(f"unknown source flavor {flavor!r}")
 
 
-FLAVOURS = [
+FLAVORS = [
     "numpy-whole",
     "numpy-explicit-parts",
     "numpy-uniform-parts",
@@ -223,7 +223,7 @@ FLAVOURS = [
 ]
 
 
-@pytest.fixture(params=FLAVOURS)
+@pytest.fixture(params=FLAVORS)
 def source(request: pytest.FixtureRequest) -> LazyArray:
     return make_source(request.param)
 
@@ -576,8 +576,8 @@ def _random_chain(rng: np.random.Generator) -> list[tuple[str, tuple[Any, ...]]]
     return chain
 
 
-@pytest.mark.parametrize("flavour", FLAVOURS)
-def test_random_chains_match_numpy(flavour: str) -> None:
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_random_chains_match_numpy(flavor: str) -> None:
     """A seeded sweep of composed chains, under every partitioning.
 
     The partitioning invariant as a property: `result()` is identical whatever
@@ -585,11 +585,11 @@ def test_random_chains_match_numpy(flavour: str) -> None:
     the source's own.
     """
     rng = np.random.default_rng(20260730)
-    source = make_source(flavour)
+    source = make_source(flavor)
     partitionings: list[Any] = [None, (2, 2, 2), (7, 5, 4), ((4, 3), (1, 3, 1), (3, 1))]
-    # Reads against a real store cost more per chain; the NumPy flavours carry
+    # Reads against a real store cost more per chain; the NumPy flavors carry
     # the bulk of the sweep and exercise the identical code path.
-    n_chains = 120 if flavour.startswith("zarr") else 400
+    n_chains = 120 if flavor.startswith("zarr") else 400
 
     for _ in range(n_chains):
         chain = _random_chain(rng)
@@ -601,15 +601,15 @@ def test_random_chains_match_numpy(flavour: str) -> None:
         for mode, selection in chain:
             view = _apply_view(view, mode, selection)
 
-        assert view.shape == expected.shape, f"{flavour}: {chain}"
+        assert view.shape == expected.shape, f"{flavor}: {chain}"
         np.testing.assert_array_equal(
-            np.asarray(view.result()), np.asarray(expected), err_msg=f"{flavour}: {chain}"
+            np.asarray(view.result()), np.asarray(expected), err_msg=f"{flavor}: {chain}"
         )
         for parts in partitionings:
             np.testing.assert_array_equal(
                 np.asarray(view.with_parts(parts).result()),
                 np.asarray(expected),
-                err_msg=f"{flavour} parts={parts}: {chain}",
+                err_msg=f"{flavor} parts={parts}: {chain}",
             )
 
 
@@ -839,7 +839,7 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("flavour", FLAVOURS)
+@pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize(
     "build",
     [
@@ -856,10 +856,10 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
     ids=["identity", "basic", "oindex", "vindex", "reversed", "reversed-bounded"],
 )
 def test_parts_tile_the_view_exactly_and_disjointly(
-    flavour: str, build: Callable[[LazyArray], LazyArray]
+    flavor: str, build: Callable[[LazyArray], LazyArray]
 ) -> None:
     """Assembling the parts reproduces `result()`; the placements cover with no overlap."""
-    view = build(make_source(flavour))
+    view = build(make_source(flavor))
     expected = np.asarray(view.result())
 
     assembled = np.zeros(view.shape, dtype=view.dtype)

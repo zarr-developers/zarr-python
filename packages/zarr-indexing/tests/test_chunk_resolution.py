@@ -461,7 +461,7 @@ class TestSubTransformToSelections:
         assert drop_axes == ()
 
 
-class TestChunkResolutionArrayMapFlavours:
+class TestChunkResolutionArrayMapFlavors:
     """Chunk resolution must yield outer-product (np.ix_) selectors for
     orthogonal ArrayMaps and shared flat-scatter selectors for correlated ones,
     and must return early for empty fancy selections."""

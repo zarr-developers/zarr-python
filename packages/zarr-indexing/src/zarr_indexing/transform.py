@@ -263,7 +263,7 @@ def _intersect(
     For each output dimension, restrict to storage coordinates within
     `[output_domain.inclusive_min[d], output_domain.exclusive_max[d])`.
 
-    Two flavours of fancy indexing require different treatment, distinguished by
+    Two flavors of fancy indexing require different treatment, distinguished by
     the ArrayMaps' dependency axes (see `_array_map_dependency_axes`):
 
     - **orthogonal** (`oindex`): each ArrayMap varies over a single, distinct

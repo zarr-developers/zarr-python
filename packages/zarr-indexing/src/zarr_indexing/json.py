@@ -34,7 +34,7 @@ This module bridges the gap:
   single non-singleton axis is orthogonal (`input_dimension = that axis`); arrays
   that share non-singleton axes, or vary over several, are correlated (`vindex`,
   `input_dimension = None`). A single 1-D array over a rank-1 domain is
-  inherently ambiguous between the two flavours; it reconstructs as orthogonal,
+  inherently ambiguous between the two flavors; it reconstructs as orthogonal,
   which is behaviorally identical for the single-array case.
 
 `index_transform_to_json` / `index_transform_from_json` (and the `*_domain_*`

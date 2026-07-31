@@ -109,7 +109,7 @@ varies over. The serializer bridges that gap in both directions:
   solely owns a single non-singleton axis is orthogonal; arrays that share
   non-singleton axes, or vary over several, are correlated (`vindex`), and get
   `input_dimension = None`. A single 1-D array over a rank-1 domain is
-  inherently ambiguous between the two flavours and reconstructs as
+  inherently ambiguous between the two flavors and reconstructs as
   orthogonal, which is behaviorally identical in that case.
 
 There is one deliberate exception, and it is the only place a round trip changes

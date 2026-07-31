@@ -52,7 +52,7 @@ per-dimension grids satisfy structurally.
 The model is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
 index transform, reimplemented in Python against NumPy: index domains with
 explicit origins, output index maps of constant / single-input-dimension /
-index-array flavour, and composition as the single operation that stacks
+index-array flavor, and composition as the single operation that stacks
 views. Names and semantics follow TensorStore where they overlap: in
 particular, negative indices are literal coordinates, not Python-style offsets
 from the end, and the caller is responsible for normalizing them.
@@ -88,7 +88,7 @@ The domain describes the coordinates the user sees (here a single dimension of
 length 40 with origin 10); the output maps describe the storage coordinates (a
 stride-1 `DimensionMap` and a `ConstantMap` for the dropped dimension).
 
-Fancy indexing works the same way in both flavours, and materializes nothing but
+Fancy indexing works the same way in both flavors, and materializes nothing but
 the index arrays themselves:
 
 ```python
@@ -177,7 +177,7 @@ In the transform algebra underneath, indices are literal coordinates in a view's
 own (possibly shifted) domain. `LazyArray` instead uses **positional NumPy
 semantics**: a view is re-zeroed, `-1` is the last element, and boolean masks
 must match the view's shape. `.lazy.oindex` and `.lazy.vindex` give the
-orthogonal and vectorized flavours:
+orthogonal and vectorized flavors:
 
 ```python
 LazyArray(np.arange(12).reshape(3, 4)).lazy.vindex[[0, 2], [1, 3]].result()
