@@ -208,10 +208,12 @@ LazyArray(x).lazy.vindex[..., [3, 0]].result()
 Use a length-1 list (`oindex[[1]]`) to keep an axis.
 
 Plain `lazy[...]` (no `.lazy`) reads eagerly, which makes a `LazyArray` usable
-as a source for `dask.array.from_array`. Every other NumPy operation —
-arithmetic, `numpy.sum`, `numpy.stack` — materializes the whole view through
-`__array__` and returns a plain NumPy array. Laziness here applies to indexing,
-not to deferred computation.
+as a source for `dask.array.from_array`. Any NumPy *function* given a view —
+`numpy.sum(view)`, `numpy.add(view, 1)`, `numpy.stack([view, view])` —
+materializes the whole thing through `__array__` and works on the result.
+Python's arithmetic operators do not: `view + 1` raises `TypeError`, because the
+wrapper defines no arithmetic dunders. Laziness here applies to indexing, not to
+deferred computation.
 
 ### Parts
 
@@ -254,7 +256,8 @@ view = lazy.lazy[10:50, ::4]
 ```
 
 `result()` returns the same values under any of them: repartitioning changes how
-the read is divided, not what it returns. Boxes that straddle the source's own
+the read is divided, not what it returns, and the result never shares memory
+with the wrapped array. Parts that do not line up with the source's own boxes
 (to bound peak memory, for example) are permitted; they cost extra I/O but do
 not affect correctness.
 
@@ -285,8 +288,11 @@ a consumer that wants one rectangular read has to apply `strides()` too.
 
 The category is structural, not a heuristic: basic indexing always composes to a
 box, and one `oindex`, `vindex`, or mask anywhere in the chain makes the
-selection a query permanently. The [design notes](design-notes.md) explain why
-that matters to consumers of a selection.
+selection a query permanently. A *second* fancy step is limited — it may
+re-index the axes the first one varies over, but not the axes it broadcasts
+along, and raises `NotImplementedError` if it tries. The
+[design notes](design-notes.md) list that limit with the others and explain why
+the category matters to consumers of a selection.
 
 ## Reference
 

@@ -11,6 +11,10 @@ I/O until you explicitly read or write.
 
 Key types:
 
+- `LazyArray` — wraps any array-API-like array (NumPy, zarr, CuPy, ...) and adds
+  a `.lazy` accessor: `LazyArray(x).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]`
+  composes a transform and returns a new view without reading data, and
+  `result()` materializes it
 - `IndexDomain` — a rectangular region of integer coordinates
 - `IndexTransform` — maps input coordinates to storage coordinates
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single output

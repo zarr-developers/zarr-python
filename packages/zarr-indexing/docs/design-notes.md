@@ -30,15 +30,24 @@ parts are intentionally identical:
   `tensorstore.IndexTransform(json=...)` and round-trips them back through our
   engine layer.
 
-The representations differ in one place: index arrays. Ours are normalized to
-the transform's full input rank — full-sized on the axis a map varies over,
-singleton elsewhere — so the orthogonal/vectorized distinction is derivable
-from the shape. TensorStore permits a lower-rank array that broadcasts
-against the input domain; we accept those on load and normalize them.
-`ArrayMap` also records the input dimension an *orthogonal* (`oindex`) array
-varies over, a field TensorStore's format has no slot for, so
-[the serializer](api/json.md) collapses it on the way out and reconstructs it on
-the way in.
+The representations differ in one place: index arrays. Both models want an index
+array at the transform's full input rank, with singleton axes for the dimensions
+a map does not vary over. TensorStore enforces it — its JSON parser rejects a
+rank-1 array over a rank-2 domain outright, with `Index array for output
+dimension 0 has rank 1 but must have rank 2` (checked against tensorstore
+0.1.84) — while our loader is the more permissive of the two and also accepts a
+lower-rank array that broadcasts against the input domain. That is a
+compatibility affordance, not a difference in the model: ndsel leaves index-array
+rank to [the engine layer](ndsel.md#lowering-to-a-transform), and everything the
+algebra builds itself is at full rank.
+
+The reason full rank matters here is that we *derive* meaning from those
+singletons rather than merely tolerating them: an array full-sized on one axis
+and singleton elsewhere is orthogonal, and one varying over several shared axes
+is vectorized, so the distinction is readable off the shape. `ArrayMap` also
+records the input dimension an *orthogonal* (`oindex`) array varies over, a field
+TensorStore's format has no slot for, so [the serializer](api/json.md) collapses
+it on the way out and reconstructs it on the way in.
 
 Four deliberate differences:
 
@@ -74,7 +83,8 @@ table of coordinates. It costs `O(n)` to store, it has no locality (the
 coordinates may repeat, reverse, or scatter arbitrarily), and intersecting it
 with a region means scanning it. `oindex`, `vindex`, and boolean masks all
 produce one, and once an axis is a query, subsequent basic indexing cannot make
-it a box again.
+it a box again. Nor can a second query be composed onto the axes an existing one
+broadcasts along — see [Current scope](#current-scope).
 
 [ndsel](ndsel.md) encodes the same split in its message kinds: `point`, `box`,
 and `slice` desugar to constant and affine output maps and are always boxes;
@@ -102,8 +112,10 @@ rectangles; a query cannot, and has to be resolved into a gather. A box can also
 be served as a single strided slab read, but the read has to be strided: reading
 its bounding box and discarding the rest transfers proportionally more data as
 soon as any stride exceeds 1. The two also behave differently under
-partitioning: a box touches a contiguous run of parts, while a query can touch
-any subset of them, in any order, more than once.
+partitioning: a box touches a regularly-spaced run of parts, in increasing
+order, each at most once — a stride larger than a part's extent skips parts
+outright, so the run is not contiguous — while a query can touch any subset of
+them, in any order, more than once.
 
 [`LazyArray`](api/lazy_array.md) exposes the category directly:
 
@@ -139,9 +151,10 @@ Both are needed, because a box is dense in its hull only when every stride is
 1. The slab above spans a 40x77 hull over the 40x20 cells it selects, so a
 consumer that issued one rectangular read of the hull and discarded the rest
 would transfer 3.85x the data. A query's hull is looser still and carries no
-stride at all: 88 rows of hull over three selected rows. An empty selection
-returns `None` from both, because it touches no coordinate to report an interval
-around.
+stride at all: 88 rows of hull over three selected rows. An empty *box* touches
+no coordinate to report an interval around, so `bounding_box()` is `None` while
+`strides()` still answers — the step is a property of the selection's shape, not
+of the region it reaches. Only a query returns `None` from both.
 
 There is deliberately no separate `BoxView` type today. A statically-typed
 rectangular-only view is a plausible next step, but it should be introduced by
@@ -179,8 +192,24 @@ re-bases every view to origin 0, so the positional dialect never exposes it; a
 caller working with `IndexTransform` directly will see it, and re-bases
 explicitly with `translate_domain_to` for NumPy-shaped coordinates.
 
-Two limits remain, both intentional and expected to be lifted:
+Five limits remain, all intentional and all expected to be lifted. The first
+three raise `NotImplementedError` at the point of use rather than returning
+something approximate:
 
+- **Fancy after fancy.** A second `oindex`/`vindex`/mask step may re-index the
+  axes an existing index array *varies over*, but not the axes it merely
+  broadcasts along, so `lazy.oindex[[2, 0], :].lazy.oindex[:, [1, 3]]` raises.
+  Composing the two index arrays means either an outer product of lookup tables
+  or a joint gather, and which one is meant depends on how the axes line up.
+  A step spelled through `oindex` but carrying only slices is *not* a fancy
+  step: it narrows the view's own axes and composes like basic indexing.
+  *Planned.*
+- **Diagonal views.** A transform whose output maps share an input dimension —
+  reachable by building one directly, not through `LazyArray`'s selection
+  surface — cannot be resolved. *Planned.*
+- **Mixed correlated and orthogonal index arrays.** No single selection produces
+  a transform holding both a `vindex`-style and an `oindex`-style `ArrayMap`, so
+  resolving one is not implemented. *Planned.*
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.

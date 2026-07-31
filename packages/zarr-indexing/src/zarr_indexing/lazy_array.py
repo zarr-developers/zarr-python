@@ -81,10 +81,11 @@ A selection is either **rectangular** — an interval and a stride per dimension
 which is what basic indexing composes to at any depth — or a **query**, an
 explicit list of coordinates, which is what `oindex`, `vindex`, and masks
 produce and which subsequent basic indexing cannot undo. `is_box` reports the
-category and `bounding_box()` reports the storage region touched: exact for a
-box, a hull for a query. The distinction is structural rather than an
-optimization; [the design notes](../design-notes.md) describe why it matters to
-consumers of a selection.
+category and `bounding_box()` reports the storage region touched: the exact
+interval per dimension for a box, a hull for a query. A box is only *dense* in
+that interval when every entry of `strides()` is 1. The distinction is
+structural rather than an optimization; [the design
+notes](../design-notes.md) describe why it matters to consumers of a selection.
 
 The positional dialect
 ----------------------
@@ -119,21 +120,34 @@ Two more NumPy rules the dialect keeps, in every mode:
 Materializing on fallback
 -------------------------
 `LazyArray` implements `__array__` but deliberately implements neither
-`__array_ufunc__`/`__array_function__` nor `__array_namespace__`. Every NumPy
-operation other than indexing therefore materializes the whole view:
-`numpy.sum(view)`, `view + 1`, `numpy.stack([view, view])` all convert through
-`__array__` first and return a plain NumPy array. That is intentional: laziness
-here applies to indexing, not to building a deferred compute graph. It does mean
-a `LazyArray` is not a drop-in for arithmetic on a large array. Use `.lazy[...]`
-to narrow the view first, or pass the wrapper to `dask.array.from_array` so that
-dask owns the compute graph.
+`__array_ufunc__`/`__array_function__` nor `__array_namespace__`. A NumPy
+*function* given a view therefore materializes the whole thing through
+`__array__` and works on the resulting array: `numpy.sum(view)`,
+`numpy.add(view, 1)` and `numpy.stack([view, view])` all do, and so does
+`numpy.ones(view.shape) + view`, where the ndarray on the left dispatches.
+
+Python's arithmetic *operators* do not: `view + 1` raises `TypeError`, because
+the wrapper defines no arithmetic dunders and an `int` has nothing to dispatch
+to. Both facts follow from the same intent — laziness here applies to indexing,
+not to building a deferred compute graph — and a `LazyArray` is not a drop-in
+for arithmetic on a large array either way. Use `.lazy[...]` to narrow the view
+first, or pass the wrapper to `dask.array.from_array` so that dask owns the
+compute graph.
 
 Device caveat
 -------------
-Resolving a partitioned view builds its output buffer with NumPy, because the
-resolver's scatter indices are host-side integer arrays. Wrapping a device array
-that advertises parts therefore returns host memory. A single whole-array part
-skips that buffer and stays in the wrapped array's own namespace.
+Resolving a **partitioned** view builds its output buffer with NumPy, because
+the resolver's scatter indices are host-side integer arrays. Wrapping a device
+array that advertises parts therefore returns host memory, and any information
+carried by the wrapped array's own type is lost with it — a `numpy.ma` mask is
+the exception, kept by allocating a masked buffer. A wrapper with **no**
+partitioning (`with_parts(None)`) skips that buffer and stays in the wrapped
+array's own namespace.
+
+`result()` never returns memory shared with the wrapped array. That is settled
+from the arrays' memory bounds, which only NumPy exposes: a foreign namespace
+whose basic indexing returns views is beyond reach here, and an unpartitioned
+read of such a source can hand back one of its views.
 """
 
 from __future__ import annotations
