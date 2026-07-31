@@ -30,6 +30,8 @@ nav:
       - user-guide/glossary.md
   - Examples:
       - user-guide/examples/custom_dtype.md
+      - user-guide/examples/lazy_indexing_dask.md
+      - user-guide/examples/lazy_indexing_numpy.md
       - user-guide/examples/rectilinear_chunks.md
       - user-guide/examples/codec_pipeline_performance.md
       - user-guide/examples/sharding_coalescing.md
