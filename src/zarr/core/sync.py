@@ -50,6 +50,12 @@ def _get_executor() -> ThreadPoolExecutor:
     The executor is allocated on first use.
     """
     global _executor
+    if IS_WASM:
+        raise RuntimeError(
+            "Thread pool executor not available in WASM environment. "
+            "Use zarr.api.asynchronous or ensure sync() handles WASM case."
+        )
+
     if not _executor:
         max_workers = config.get("threading.max_workers", None)
         logger.debug("Creating Zarr ThreadPoolExecutor with max_workers=%s", max_workers)
