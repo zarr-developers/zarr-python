@@ -91,6 +91,8 @@ def _get_pool(max_workers: int) -> ThreadPoolExecutor:
     should run the task list inline. `max_workers` must be >= 1.
     """
     global _pool, _pool_size
+    if IS_WASM:
+        raise RuntimeError("Thread pools are not available in Pyodide/WASM environments")
     if max_workers < 1:
         raise ValueError(f"max_workers must be >= 1, got {max_workers}")
     if _pool is None or _pool_size < max_workers:
