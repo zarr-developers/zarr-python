@@ -69,7 +69,7 @@ class IndexTransform:
                         f"output[{i}].input_dimension = {m.input_dimension} "
                         f"is out of range for input rank {self.domain.ndim}"
                     )
-            elif isinstance(m, ArrayMap) and m.index_array.ndim != self.domain.ndim:
+            elif isinstance(m, ArrayMap):
                 # An index array carries the transform's full input rank: the axis
                 # a map varies over is full-sized, every other axis a singleton.
                 # The rank is what makes the dependency axes readable from the
@@ -77,10 +77,30 @@ class IndexTransform:
                 # JSON may use a lower-rank array that broadcasts against the
                 # domain; `transform_from_canonical` widens those on the way in,
                 # so the invariant holds for every transform that exists.
-                raise ValueError(
-                    f"output[{i}].index_array has {m.index_array.ndim} dims "
-                    f"but input domain has {self.domain.ndim} dims"
-                )
+                if m.index_array.ndim != self.domain.ndim:
+                    raise ValueError(
+                        f"output[{i}].index_array has {m.index_array.ndim} dims "
+                        f"but input domain has {self.domain.ndim} dims"
+                    )
+                # Every axis is either the domain's extent or a singleton it
+                # broadcasts over. Any other size addresses input coordinates the
+                # array has no entry for, which reads as a smaller selection
+                # rather than as the error it is.
+                bad = [
+                    (axis, size, extent)
+                    for axis, (size, extent) in enumerate(
+                        zip(m.index_array.shape, self.domain.shape, strict=True)
+                    )
+                    if size not in (1, extent)
+                ]
+                if len(bad) > 0:
+                    axis, size, extent = bad[0]
+                    raise ValueError(
+                        f"output[{i}].index_array has {size} entries on axis {axis}, "
+                        f"which is neither 1 nor the domain's extent of {extent} "
+                        f"(index_array shape {m.index_array.shape}, "
+                        f"domain shape {self.domain.shape})"
+                    )
 
     @property
     def input_rank(self) -> int:

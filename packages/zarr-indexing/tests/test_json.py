@@ -329,11 +329,11 @@ class TestCanonicalRoundTrips:
         assert _transforms_equal(rt, t)
 
 
-def _index_array_body(index_array: Any, rank: int = 1) -> IndexTransformJSON:
+def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> IndexTransformJSON:
     return {
         "input_rank": rank,
         "input_inclusive_min": [0] * rank,
-        "input_exclusive_max": [2] * rank,
+        "input_exclusive_max": [extent] * rank,
         "input_labels": [""] * rank,
         "output": [{"offset": 0, "stride": 1, "index_array": index_array}],
     }
@@ -373,11 +373,18 @@ def test_a_ragged_index_array_is_rejected() -> None:
 
 
 @pytest.mark.parametrize(
-    ("index_array", "rank"), [([0, 1], 1), ([[0], [1]], 2), ([], 1)], ids=["1d", "2d", "empty"]
+    ("index_array", "rank", "extent"),
+    [([0, 1], 1, 2), ([[0], [1]], 2, 2), ([], 1, 0)],
+    ids=["1d", "2d", "empty"],
 )
-def test_an_integer_index_array_is_accepted(index_array: Any, rank: int) -> None:
-    """Integers of any nesting still lower, including an empty selection."""
-    t = index_transform_from_json(_index_array_body(index_array, rank))
+def test_an_integer_index_array_is_accepted(index_array: Any, rank: int, extent: int) -> None:
+    """Integers of any nesting still lower, including an empty selection.
+
+    An empty array selects nothing, so the domain it is read over is empty too;
+    a domain with room for coordinates the array does not supply is rejected
+    (see `test_an_index_array_that_does_not_span_its_domain_is_rejected`).
+    """
+    t = index_transform_from_json(_index_array_body(index_array, rank, extent))
     m = t.output[0]
     assert isinstance(m, ArrayMap)
     assert m.index_array.dtype == np.intp
@@ -409,15 +416,17 @@ def test_a_lower_rank_index_array_is_widened_on_the_way_in() -> None:
     an array of lower rank. It is widened at the boundary, which keeps the
     full-rank invariant true of every transform the engine builds.
     """
+    # A rank-1 array widens into the trailing axis, so it spans that axis's
+    # extent of four.
     body: IndexTransformJSON = {
         "input_inclusive_min": [0, 0],
         "input_exclusive_max": [3, 4],
-        "output": [{"index_array": [1, 2, 0]}, {"input_dimension": 1}],
+        "output": [{"index_array": [1, 2, 0, 2]}, {"input_dimension": 1}],
     }
     transform = index_transform_from_json(body)
     array_map = transform.output[0]
     assert isinstance(array_map, ArrayMap)
-    assert array_map.index_array.shape == (1, 3)
+    assert array_map.index_array.shape == (1, 4)
     assert array_map.index_array.ndim == transform.domain.ndim
 
 
@@ -427,4 +436,20 @@ def test_an_index_array_of_the_wrong_rank_is_rejected() -> None:
         IndexTransform(
             domain=IndexDomain.from_shape((3, 4)),
             output=(ArrayMap(index_array=np.array([1, 2, 0], dtype=np.intp)),),
+        )
+
+
+def test_an_index_array_that_does_not_span_its_domain_is_rejected() -> None:
+    """An array with entries for only part of an axis is not a smaller selection.
+
+    Reading it that way is how a truncated index array turned into a partially
+    written result rather than an error.
+    """
+    with pytest.raises(ValueError, match="neither 1 nor the domain's extent"):
+        IndexTransform(
+            domain=IndexDomain.from_shape((3, 2)),
+            output=(
+                ArrayMap(index_array=np.zeros((3, 0), dtype=np.intp)),
+                DimensionMap(input_dimension=1),
+            ),
         )
