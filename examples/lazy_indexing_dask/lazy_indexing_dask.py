@@ -15,6 +15,7 @@ Demonstrate using zarr_indexing.LazyArray with Dask
 """
 
 import sys
+import time
 
 import dask
 import dask.array as da
@@ -95,6 +96,69 @@ def test_tokenize(source: zarr.Array) -> None:
     # Selections that describe the same region are the same task, however they
     # were composed.
     assert tokenize(lazy.lazy[0:20].lazy[5:10]) == tokenize(lazy.lazy[5:10])
+
+
+def test_indexing_only_workload() -> None:
+    """Compare an accumulating task graph with a fused transform.
+
+    Dask records each indexing operation as another graph layer, and slices the
+    chunk grid to build it, so composing selections costs time proportional to
+    the number of selections and the number of chunks. `LazyArray` composes each
+    selection into the single transform it already holds, so the cost of
+    composing does not grow with the depth of the chain, and reading resolves
+    that one transform rather than walking a graph.
+
+    Timings are printed rather than asserted, since they depend on the machine.
+    """
+    data = np.zeros((2000, 4), dtype="i4")  # 2000 chunks, one row each
+
+    def dask_chain(depth: int) -> da.Array:
+        array = da.from_array(data, chunks=(1, 4))
+        for _ in range(depth):
+            array = array[1:]
+        return array
+
+    def lazy_chain(depth: int) -> LazyArray:
+        view = LazyArray(data)
+        for _ in range(depth):
+            view = view.lazy[1:]
+        return view
+
+    # Read once through each path first, so the timings below exclude the cost
+    # of importing and initializing the machinery.
+    dask_chain(1)[:2].compute(scheduler="synchronous")
+    lazy_chain(1).lazy[:2].result()
+
+    header = (
+        f"{'selections':>10} {'dask compose':>13} {'dask read':>10} {'layers':>7}"
+        f" {'LazyArray compose':>18} {'LazyArray read':>15}"
+    )
+    print(header)
+    for depth in (1, 5, 20):
+        start = time.perf_counter()
+        chained = dask_chain(depth)
+        dask_compose = time.perf_counter() - start
+
+        start = time.perf_counter()
+        from_dask = chained[:2].compute(scheduler="synchronous")
+        dask_read = time.perf_counter() - start
+
+        start = time.perf_counter()
+        view = lazy_chain(depth)
+        lazy_compose = time.perf_counter() - start
+
+        start = time.perf_counter()
+        from_lazy = view.lazy[:2].result()
+        lazy_read = time.perf_counter() - start
+
+        # Both paths describe the same selection, so they read the same data.
+        assert np.array_equal(from_dask, from_lazy)
+
+        layers = len(chained.__dask_graph__().layers)
+        print(
+            f"{depth:>10} {dask_compose * 1e3:>12.2f}ms {dask_read * 1e3:>9.2f}ms {layers:>7}"
+            f" {lazy_compose * 1e3:>17.3f}ms {lazy_read * 1e3:>14.3f}ms"
+        )
 
 
 if __name__ == "__main__":
