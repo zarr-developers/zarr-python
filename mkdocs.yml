@@ -95,6 +95,7 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros</code>': api/zarr/functions/zeros.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros_like</code>': api/zarr/functions/zeros_like.md
       - 'zarr-metadata ↪': https://zarr-metadata.readthedocs.io/
+      - 'zarr-indexing ↪': https://zarr-indexing.readthedocs.io/
   - release-notes.md
   - contributing.md
   - Blog:
