@@ -311,7 +311,7 @@ run = [
     "pyodide venv .venv-pyodide --clear",
     ".venv-pyodide/bin/pip install dist/*.whl",
     ".venv-pyodide/bin/pip install --group test",
-    ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks {args:tests}",
+    ".venv-pyodide/bin/python -m pytest --ignore tests/benchmarks -o faulthandler_timeout=0 {args:tests}",
 ]
 list-env = "pip list"
 
