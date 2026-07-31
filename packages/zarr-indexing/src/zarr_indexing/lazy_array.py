@@ -334,17 +334,49 @@ def _array_map_coords(m: ArrayMap) -> np.ndarray[Any, np.dtype[np.intp]]:
     return (m.offset + m.stride * m.index_array).astype(np.intp).reshape(-1)
 
 
-def _restore_domain_axis_order(result: Any, axis_input_dims: list[int], rank: int) -> Any:
+def _correlated_map_coords(
+    m: ArrayMap, broadcast_axes: list[int], broadcast_shape: tuple[int, ...], input_rank: int
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """One storage coordinate per point of the correlated block, flattened.
+
+    A correlated `ArrayMap`'s index array carries the transform's full input
+    rank, with a singleton on every axis it does not vary over — including
+    broadcast axes it shares with the *other* correlated maps but is itself
+    constant along. Flattening it directly would then yield fewer coordinates
+    than there are points, so it is reduced to the broadcast block and
+    broadcast up to it explicitly.
+    """
+    coords = (m.offset + m.stride * m.index_array).astype(np.intp)
+    if coords.ndim == input_rank:
+        # Drop the axes bound by a slice, which the map is singleton along.
+        # Removing size-1 axes by reshape preserves element order wherever they
+        # sit, so no transpose is needed.
+        coords = coords.reshape(tuple(coords.shape[axis] for axis in broadcast_axes))
+    return np.ascontiguousarray(np.broadcast_to(coords, broadcast_shape)).reshape(-1)
+
+
+def _restore_domain_axis_order(
+    result: Any, axis_input_dims: list[int], domain_shape: tuple[int, ...]
+) -> Any:
     """Permute `result`'s axes into input-domain order, restoring dropped axes.
 
     `axis_input_dims[k]` is the input (domain) dimension that axis `k` of
     `result` corresponds to. Axes are permuted so that they appear in increasing
-    domain-dimension order, and any domain dimension no output map depends on
-    (only reachable via `newaxis`) is reinserted as a singleton.
+    domain-dimension order, and any domain dimension no output map depends on is
+    reinserted at **its own extent**.
 
-    This is where NumPy's advanced-index placement rules are absorbed: whatever
-    order the gather produced, the lowered result always comes back in the
-    view's own axis order.
+    An unreferenced dimension is not always a singleton. A `vindex` coordinate
+    array with a broadcast axis it does not vary over leaves that axis in the
+    domain; a later basic index that consumes the axis the array *does* vary
+    over collapses the map to a `ConstantMap` and leaves the broadcast axis
+    behind, with whatever extent the basic index gave it — including 0. Every
+    position along such an axis holds the same values, so it is restored by
+    repeating the block, and an extent of 0 restores an empty result rather than
+    fabricating a row.
+
+    This is also where NumPy's advanced-index placement rules are absorbed:
+    whatever order the gather produced, the lowered result always comes back in
+    the view's own axis order.
     """
     if len(set(axis_input_dims)) != len(axis_input_dims):
         raise NotImplementedError(
@@ -354,10 +386,13 @@ def _restore_domain_axis_order(result: Any, axis_input_dims: list[int], rank: in
     order = sorted(range(len(axis_input_dims)), key=lambda k: axis_input_dims[k])
     if order != list(range(len(order))):
         result = _transpose(result, tuple(order))
-    covered = sorted(axis_input_dims)
-    for dim in range(rank):
-        if dim not in covered:
-            result = _expand_dims(result, dim)
+    covered = set(axis_input_dims)
+    for dim, extent in enumerate(domain_shape):
+        if dim in covered:
+            continue
+        result = _expand_dims(result, dim)
+        if extent != 1:
+            result = _take(result, np.zeros(extent, dtype=np.intp), axis=dim)
     return result
 
 
@@ -425,7 +460,7 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
         else:
             axis_input_dims.append(m.input_dimension)
     result = result[tuple(selection)]
-    return _restore_domain_axis_order(result, axis_input_dims, transform.input_rank)
+    return _restore_domain_axis_order(result, axis_input_dims, transform.domain.shape)
 
 
 def _lower_correlated(array: Any, transform: IndexTransform) -> Any:
@@ -505,13 +540,16 @@ def _lower_correlated(array: Any, transform: IndexTransform) -> Any:
     for position in range(n_corr - 1, -1, -1):
         m = outputs[correlated_dims[position]]
         assert isinstance(m, ArrayMap)
-        flat_index = flat_index + _array_map_coords(m) * stride
+        flat_index = flat_index + (
+            _correlated_map_coords(m, broadcast_axes, broadcast_shape, transform.input_rank)
+            * stride
+        )
         stride *= corr_sizes[position]
 
     result = _take(result, flat_index, axis=0)
     result = _reshape(result, broadcast_shape + tail_shape)
     return _restore_domain_axis_order(
-        result, list(broadcast_axes) + residual_axis_dims, transform.input_rank
+        result, list(broadcast_axes) + residual_axis_dims, transform.domain.shape
     )
 
 

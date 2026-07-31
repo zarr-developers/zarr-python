@@ -42,6 +42,7 @@ from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
     IndexTransform,
     _positional_slice,  # pyright: ignore[reportPrivateUsage]
+    array_map_dependent_axis,
 )
 
 # `_positional_slice` is a leading-underscore helper in `transform.py`, shared
@@ -289,6 +290,17 @@ def _dimension_map_slice(m: DimensionMap, dim_lo: int, dim_hi: int) -> slice:
     return _positional_slice(m.offset + m.stride * dim_lo, dim_hi - dim_lo, m.stride)
 
 
+def _array_input_dim(m: ArrayMap, out_dim: int) -> int:
+    """The input dimension an orthogonal `ArrayMap` places its values along."""
+    axis = array_map_dependent_axis(m)
+    if axis is None:
+        raise ValueError(
+            f"output[{out_dim}] is an ArrayMap that varies over no input dimension; "
+            "a map with no dependency axis should have been collapsed to a ConstantMap"
+        )
+    return axis
+
+
 def sub_transform_to_selections(
     sub_transform: IndexTransform,
     out_indices: OutIndices = None,
@@ -312,9 +324,19 @@ def sub_transform_to_selections(
     -------
     tuple
         `(chunk_selection, out_selection, drop_axes)`
+
+    Notes
+    -----
+    `out_selection` carries one entry per **input (domain)** dimension, not one
+    per output map. The two counts usually agree, but a domain dimension that no
+    output map depends on — a `vindex` broadcast axis whose partner a later basic
+    index consumed — has no map to be derived from and is filled in from the
+    domain. Emitting fewer entries than the buffer has axes would place the
+    values against the leading axes instead.
     """
     inclusive_min = sub_transform.domain.inclusive_min
     exclusive_max = sub_transform.domain.exclusive_max
+    input_rank = sub_transform.input_rank
 
     # Orthogonal outer product: >= 2 ArrayMaps each bound to a distinct input
     # dimension. out_indices is a per-output-dim dict of surviving positions. The
@@ -324,7 +346,7 @@ def sub_transform_to_selections(
     # size-1 in chunk space and squeezed out via drop_axes.
     if isinstance(out_indices, dict):
         chunk_arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
-        out_arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+        by_input_dim: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
         drop_axes: list[int] = []
         for out_dim, m in enumerate(sub_transform.output):
             if isinstance(m, ConstantMap):
@@ -333,11 +355,15 @@ def sub_transform_to_selections(
             elif isinstance(m, DimensionMap):
                 rng = np.arange(inclusive_min[m.input_dimension], exclusive_max[m.input_dimension])
                 chunk_arrays.append((m.offset + m.stride * rng).astype(np.intp))
-                out_arrays.append(rng.astype(np.intp))
+                by_input_dim[m.input_dimension] = rng.astype(np.intp)
             else:  # ArrayMap
                 idx = m.index_array.ravel()
                 chunk_arrays.append((m.offset + m.stride * idx).astype(np.intp))
-                out_arrays.append(out_indices[out_dim])
+                by_input_dim[_array_input_dim(m, out_dim)] = out_indices[out_dim]
+        out_arrays = [
+            by_input_dim.get(d, np.arange(inclusive_min[d], exclusive_max[d], dtype=np.intp))
+            for d in range(input_rank)
+        ]
         return np.ix_(*chunk_arrays), np.ix_(*out_arrays), tuple(drop_axes)
 
     # Correlated (vindex) sub-transforms carry ArrayMaps with `input_dimension`
@@ -375,11 +401,11 @@ def sub_transform_to_selections(
         return tuple(chunk_sel), (out_scatter,), ()
 
     chunk_sel = []  # annotated in the correlated branch above (same function scope)
-    out_sel: list[slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
+    out_by_dim: dict[int, slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = {}
 
     # Single-pass build for the basic / single-orthogonal-array cases.
     # ConstantMap dims are dropped (no out_sel entry).
-    for m in sub_transform.output:
+    for out_dim, m in enumerate(sub_transform.output):
         if isinstance(m, ConstantMap):
             chunk_sel.append(m.offset)
         elif isinstance(m, DimensionMap):
@@ -387,7 +413,7 @@ def sub_transform_to_selections(
             dim_lo = inclusive_min[d]
             dim_hi = exclusive_max[d]
             chunk_sel.append(_dimension_map_slice(m, dim_lo, dim_hi))
-            out_sel.append(slice(dim_lo, dim_hi))
+            out_by_dim[d] = slice(dim_lo, dim_hi)
         else:  # ArrayMap (orthogonal: full-rank, raveled to its 1-D fancy coords)
             idx = m.index_array.reshape(-1)
             if m.offset == 0 and m.stride == 1:
@@ -395,6 +421,11 @@ def sub_transform_to_selections(
             else:
                 chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
             # Orthogonal ArrayMap: out_indices holds the surviving positions.
-            out_sel.append(out_indices if out_indices is not None else slice(0, idx.size))
+            out_by_dim[_array_input_dim(m, out_dim)] = (
+                out_indices if out_indices is not None else slice(0, idx.size)
+            )
 
+    out_sel = [
+        out_by_dim.get(d, slice(inclusive_min[d], exclusive_max[d])) for d in range(input_rank)
+    ]
     return tuple(chunk_sel), tuple(out_sel), ()

@@ -560,6 +560,30 @@ def _random_oindex(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[An
     return tuple(selection)
 
 
+def _broadcast_singleton_axes(
+    rng: np.random.Generator, entries: list[Any], length: int
+) -> list[Any]:
+    """Reshape 1-D coordinate arrays so the selection carries singleton axes.
+
+    A coordinate array of shape `(1, n)` or `(n, 1)` contributes a broadcast axis
+    it does not vary over. That axis stays in the view's domain, and a later
+    basic index that consumes its partner leaves it referenced by no output map
+    at all — the shape that makes a broadcast axis and a genuine extent-1 axis
+    indistinguishable from the index array alone.
+    """
+    rank = int(rng.integers(2, 4))
+    reshaped: list[Any] = []
+    for entry in entries:
+        if not isinstance(entry, np.ndarray):
+            reshaped.append(entry)
+            continue
+        varying = int(rng.integers(0, rank))
+        reshaped.append(
+            entry.reshape(tuple(length if axis == varying else 1 for axis in range(rank)))
+        )
+    return reshaped
+
+
 def _random_vindex(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[Any, ...]:
     ndim = len(shape)
     count = int(rng.integers(1, ndim + 1))
@@ -581,6 +605,8 @@ def _random_vindex(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[An
             else rng.integers(-size, size, size=length)
             for size in sizes
         ]
+        if rng.random() < 0.35:
+            entries = _broadcast_singleton_axes(rng, entries, length)
     return (Ellipsis, *entries) if trailing else tuple(entries)
 
 
@@ -770,6 +796,100 @@ def test_a_genuine_fancy_step_after_a_fancy_step_is_still_rejected() -> None:
         view.lazy.oindex[:, np.array([1, 3])]
     with pytest.raises(NotImplementedError, match="fancy-after-fancy"):
         view.lazy.vindex[np.array([0, 1]), np.array([1, 3])]
+
+
+# ---------------------------------------------------------------------------
+# Domain dimensions no output map depends on
+# ---------------------------------------------------------------------------
+#
+# A `vindex` coordinate array with a *singleton* broadcast axis leaves that axis
+# in the view's domain while the map varies only over its partner. A later basic
+# index that consumes the partner collapses the map to a `ConstantMap`, and the
+# singleton axis survives with nothing referencing it. Every stage of resolution
+# has to keep counting it: the lowered block needs the axis back at its true
+# extent, and a part has to say where its values belong along it.
+
+UNREFERENCED_AXIS_PARTITIONINGS: list[Any] = [None, (1, 1, 1), (2, 2, 2), (3, 4, 5), (3, 1, 2)]
+
+# (id, view builder, NumPy oracle) over `np.arange(60).reshape(3, 4, 5)`.
+UNREFERENCED_AXIS_CASES: list[
+    tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]
+] = [
+    (
+        "leading-singleton-row",
+        lambda a: a.lazy.vindex[np.array([[2, 0]])].lazy[:, 0],
+        lambda r: r[np.array([[2, 0]])][:, 0],
+    ),
+    (
+        "trailing-singleton-column",
+        lambda a: a.lazy.vindex[np.array([[2], [0]])].lazy[0],
+        lambda r: r[np.array([[2], [0]])][0],
+    ),
+    (
+        "repeated-coordinates-over-a-singleton",
+        lambda a: a.lazy.vindex[np.array([[1, 1]]), np.array([[3, 3]])].lazy[:, 0],
+        lambda r: r[np.array([[1, 1]]), np.array([[3, 3]])][:, 0],
+    ),
+    (
+        "unreferenced-axis-emptied",
+        lambda a: a.lazy.vindex[np.array([[2, 0]])].lazy[0:0, 0],
+        lambda r: r[np.array([[2, 0]])][0:0, 0],
+    ),
+    (
+        "partial-vindex-with-a-residual-slice",
+        lambda a: a.lazy.vindex[np.array([[2, 0]]), np.array([[1, 3]])].lazy[:, 0, 1:4],
+        lambda r: r[np.array([[2, 0]]), np.array([[1, 3]])][:, 0, 1:4],
+    ),
+]
+
+
+def unreferenced_axis_reference() -> np.ndarray[Any, np.dtype[np.int64]]:
+    return np.arange(60, dtype=np.int64).reshape(3, 4, 5)
+
+
+@pytest.mark.parametrize(
+    ("build", "oracle"),
+    [case[1:] for case in UNREFERENCED_AXIS_CASES],
+    ids=[case[0] for case in UNREFERENCED_AXIS_CASES],
+)
+@pytest.mark.parametrize("parts", UNREFERENCED_AXIS_PARTITIONINGS)
+def test_a_domain_axis_no_output_map_depends_on_still_resolves(
+    build: Callable[[LazyArray], LazyArray],
+    oracle: Callable[[Any], Any],
+    parts: Any,
+) -> None:
+    """The value, the shape and the tiling all hold when an axis is unreferenced."""
+    data = unreferenced_axis_reference()
+    expected = np.asarray(oracle(data))
+    view = build(LazyArray(data).with_parts(parts))
+
+    assert view.shape == expected.shape
+    np.testing.assert_array_equal(np.asarray(view.result()), expected)
+
+    hits = np.zeros(view.shape, dtype=np.int64)
+    assembled = np.zeros(view.shape, dtype=view.dtype)
+    for part in view.parts():
+        assembled[part.out_selection] = np.asarray(part.array.result())
+        np.add.at(hits, part.out_selection, 1)
+    np.testing.assert_array_equal(assembled, expected)
+    np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64))
+
+
+def test_an_unreferenced_domain_axis_of_extent_zero_stays_empty() -> None:
+    """An emptied broadcast axis must not be restored as a fabricated row.
+
+    The lowered block has no axis for a dimension nothing depends on, so the
+    resolver puts one back. Putting it back at extent 1 invents a row of data
+    for a selection whose own `shape` says it is empty.
+    """
+    data = np.arange(140, dtype=np.int64).reshape(7, 5, 4)
+    coords = np.array([[6], [3], [0]])
+    for parts in (None, (1, 1, 1), (3, 2, 3), (7, 5, 4)):
+        view = LazyArray(data).with_parts(parts).lazy.vindex[coords, -4].lazy[0, 0:0]
+        expected = data[coords, -4][0, 0:0]
+        assert view.shape == expected.shape == (0, 4), f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
+        assert list(view.parts()) == []
 
 
 def test_a_zero_length_axis_resolves_the_same_way_under_every_partitioning() -> None:

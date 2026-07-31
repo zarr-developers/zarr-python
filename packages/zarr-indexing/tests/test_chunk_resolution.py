@@ -387,14 +387,21 @@ class TestChunkResolutionTouchedOnly:
 
 class TestSubTransformToSelections:
     def test_constant_map(self) -> None:
-        """ConstantMap produces int selection + drop axis."""
+        """ConstantMap produces an int chunk selection and no drop axis.
+
+        The domain dimension here is referenced by no output map, so its
+        out-selection cannot come from a map: it is the whole axis, taken from
+        the domain. One entry per domain dimension is what `out[out_sel] = value`
+        needs — an empty tuple would leave the buffer's rank unaddressed and
+        place a lower-rank part against the leading axes.
+        """
         t = IndexTransform(
             domain=IndexDomain.from_shape((10,)),
             output=(ConstantMap(offset=5),),
         )
         chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
         assert chunk_sel == (5,)
-        assert out_sel == ()
+        assert out_sel == (slice(0, 10),)
         assert drop_axes == ()
 
     def test_dimension_map_stride_1(self) -> None:
