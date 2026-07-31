@@ -105,7 +105,7 @@ config = Config(
                 "sharding_coalesce_max_bytes": 16 << 20,  # 16 MiB
             },
             "async": {"concurrency": 10, "timeout": None},
-            "threading": {"max_workers": 1 if IS_WASM else None},
+            "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
                 # FusedCodecPipeline is the faster synchronous pipeline, but it stays

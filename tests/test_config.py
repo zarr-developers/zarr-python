@@ -62,7 +62,7 @@ def test_config_defaults_set() -> None:
                     "sharding_coalesce_max_bytes": 16 << 20,
                 },
                 "async": {"concurrency": 10, "timeout": None},
-                "threading": {"max_workers": 1 if IS_WASM else None},
+                "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
