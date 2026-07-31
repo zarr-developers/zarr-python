@@ -1173,7 +1173,7 @@ def test_a_reversed_view_is_re_based_to_origin_zero() -> None:
 
 
 def test_zero_step_is_rejected() -> None:
-    with pytest.raises(IndexError, match="step cannot be zero"):
+    with pytest.raises(ValueError, match="step cannot be zero"):
         make_source("numpy-whole").lazy[::0]
 
 

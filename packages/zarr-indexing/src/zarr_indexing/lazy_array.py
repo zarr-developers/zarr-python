@@ -538,7 +538,7 @@ def _covers_whole_part(local_transform: IndexTransform, part_shape: tuple[int, .
     return True
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Partition:
     """One box of a `LazyArray`'s partitioning, as it falls through the view.
 
@@ -838,7 +838,11 @@ class LazyArray:
         tuple of int, or None
             One positive stride per storage dimension, or `None` when
             [`is_box`][zarr_indexing.lazy_array.LazyArray.is_box] is false: a
-            query's coordinates are a lookup table and have no step.
+            query's coordinates are a lookup table and have no step. An
+            **empty** box still reports its strides even though
+            [`bounding_box`][zarr_indexing.lazy_array.LazyArray.bounding_box]
+            returns `None` — the step is a property of the selection's shape,
+            not of the (empty) region it touches.
 
         Notes
         -----

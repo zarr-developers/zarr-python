@@ -93,7 +93,7 @@ def _normalize_slice(sel: slice, size: int, axis: int) -> tuple[int, int, int]:
         raise IndexError(f"slice step must be an integer; got {sel.step!r}")
     step = 1 if sel.step is None else int(sel.step)
     if step == 0:
-        raise IndexError(f"slice step cannot be zero (axis {axis})")
+        raise ValueError(f"slice step cannot be zero (axis {axis})")  # ValueError: NumPy parity
     start, stop, step = sel.indices(size)
     stop = max(stop, start) if step > 0 else min(stop, start)
     return start, stop, step
