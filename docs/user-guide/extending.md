@@ -14,6 +14,7 @@ in the following ways:
     [numcodecs.registry.register_codec](https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec).
 
 There are three types of codecs in Zarr:
+
 - array-to-array
 - array-to-bytes
 - bytes-to-bytes

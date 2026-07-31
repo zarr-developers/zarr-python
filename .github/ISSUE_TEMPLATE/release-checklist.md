@@ -18,8 +18,8 @@ assignees: ''
 
 - [ ] Check [SPEC 0](https://scientific-python.org/specs/spec-0000/#support-window) to see if the minimum supported version of Python or NumPy needs bumping.
 - [ ] Verify that the latest CI workflows on `main` are passing: [Tests](https://github.com/zarr-developers/zarr-python/actions/workflows/test.yml), [GPU Tests](https://github.com/zarr-developers/zarr-python/actions/workflows/gpu_test.yml), [Hypothesis](https://github.com/zarr-developers/zarr-python/actions/workflows/hypothesis.yaml), [Docs](https://github.com/zarr-developers/zarr-python/actions/workflows/docs.yml), [Lint](https://github.com/zarr-developers/zarr-python/actions/workflows/lint.yml), [Wheels](https://github.com/zarr-developers/zarr-python/actions/workflows/releases.yml).
-- [ ] Run the ["Prepare release" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/prepare_release.yml) with the target version. This will build the changelog and open a release PR with the `run-downstream` label.
-- [ ] Verify that the [downstream tests](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) (triggered automatically by the `run-downstream` label) pass on the release PR.
+- [ ] Run the [downstream tests](https://github.com/zarr-developers/zarr-python/actions/workflows/downstream.yml) against `main`: go to the workflow page, click "Run workflow", and select the `main` branch. Verify that the Xarray and numcodecs integration tests pass.
+- [ ] Open a release PR with the changelog entries for the upcoming release, generated with `uv run --only-group release towncrier build --version x.y.z`.
 - [ ] Review the release PR and verify the changelog in `docs/release-notes.md` looks correct.
 - [ ] Merge the release PR.
 
@@ -45,7 +45,8 @@ In rare cases (e.g. patch releases for an older minor version), you may need to 
 
 - Create the release branch from the appropriate tag if it doesn't already exist.
 - Cherry-pick or backport the necessary commits onto the branch.
-- Run `towncrier build --version x.y.z` and commit the result to the release branch instead of `main`.
+- Run `towncrier build --version x.y.z` and open the release PR against the release branch instead of `main`.
+- Run the downstream tests against the release branch instead of `main`.
 - When drafting the GitHub Release, set the target to the release branch instead of `main`.
 - After the release, ensure any relevant changelog updates are also reflected on `main`.
 

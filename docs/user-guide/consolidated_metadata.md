@@ -119,7 +119,6 @@ removed, or modified, consolidated metadata may not be desirable.
    `use_consolidated=False` to [`zarr.open_group`][] to always read child
    metadata directly from the store.
 
-
 ## Stores Without Support for Consolidated Metadata
 
 Some stores may want to opt out of the consolidated metadata mechanism. This

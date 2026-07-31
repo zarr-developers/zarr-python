@@ -5,12 +5,12 @@
 Required dependencies include:
 
 - [Python](https://docs.python.org/3/) (3.12 or later)
-- [packaging](https://packaging.pypa.io) (22.0 or later)
+- [packaging](https://packaging.pypa.io/en/stable/) (22.0 or later)
 - [numpy](https://numpy.org) (2.0 or later)
-- [numcodecs](https://numcodecs.readthedocs.io) (0.14 or later)
+- [numcodecs](https://numcodecs.readthedocs.io/en/stable/) (0.14 or later)
 - [google-crc32c](https://github.com/googleapis/python-crc32c) (1.5 or later)
-- [typing_extensions](https://typing-extensions.readthedocs.io) (4.14 or later)
-- [donfig](https://donfig.readthedocs.io) (0.8 or later)
+- [typing_extensions](https://typing-extensions.readthedocs.io/en/latest/) (4.14 or later)
+- [donfig](https://donfig.readthedocs.io/en/latest/) (0.8 or later)
 
 ## pip
 
