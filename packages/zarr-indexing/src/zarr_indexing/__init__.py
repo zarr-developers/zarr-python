@@ -28,7 +28,11 @@ from zarr_indexing.chunk_resolution import (
 )
 from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.grid import DimensionGridLike
+from zarr_indexing.grid import (
+    DimensionGridLike,
+    EdgeDimensionGrid,
+    dimension_grids_from_chunks,
+)
 from zarr_indexing.json import (
     IndexDomainJSON,
     IndexTransformJSON,
@@ -40,9 +44,14 @@ from zarr_indexing.json import (
     transform_from_canonical,
     transform_to_canonical,
 )
+from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_indexing.transform import IndexTransform, selection_to_transform
+from zarr_indexing.transform import (
+    IndexTransform,
+    array_map_dependent_axis,
+    selection_to_transform,
+)
 
 __version__ = version("zarr-indexing")
 
@@ -51,15 +60,20 @@ __all__ = [
     "ConstantMap",
     "DimensionGridLike",
     "DimensionMap",
+    "EdgeDimensionGrid",
     "IndexDomain",
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
+    "LazyArray",
     "NdselError",
     "OutputIndexMap",
     "OutputIndexMapJSON",
+    "Partition",
     "__version__",
+    "array_map_dependent_axis",
     "compose",
+    "dimension_grids_from_chunks",
     "index_domain_from_json",
     "index_domain_to_json",
     "index_transform_from_json",

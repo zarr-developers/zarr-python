@@ -1,0 +1,165 @@
+---
+title: Design notes
+---
+
+# Design notes
+
+Three things that are easier to explain once than to infer from the API: where
+this library sits relative to TensorStore, why rectangular selections are a
+category rather than a fast path, and what is deliberately not implemented yet.
+
+## Relationship to TensorStore
+
+The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
+index-transform model, reimplemented in Python against NumPy. The parts that
+are the same are the same on purpose:
+
+- **The model.** An `IndexTransform` pairs an input `IndexDomain` — a
+  rectangular region with an explicit, possibly non-zero origin — with one
+  output index map per storage dimension, in the three flavours TensorStore
+  defines: constant, single-input-dimension (affine), and index array.
+  Composition is the single operation that stacks views.
+- **Slice semantics.** Slice bounds are literal domain coordinates: no
+  clamping, no negative wrapping, non-empty intervals must be contained in the
+  domain, and a strided slice's domain origin is `trunc(start/step)` rounded
+  toward zero. Every one of those rules was executed against tensorstore 0.1.84
+  and is pinned in `tests/test_tensorstore_parity.py`.
+- **The wire format.** A canonical [ndsel](ndsel.md) transform body is,
+  field-for-field, a TensorStore `IndexTransform` minus the `kind`
+  discriminator, and `tests/test_ndsel_tensorstore.py` loads our bodies into
+  `tensorstore.IndexTransform(json=...)` and round-trips them back through our
+  engine layer.
+
+Index arrays are the one place the representations differ in practice. Ours are
+normalized to the transform's full input rank — full-sized on the axis a map
+varies over, singleton elsewhere — so the orthogonal/vectorized distinction is
+derivable from the shape. TensorStore permits a lower-rank array that broadcasts
+against the input domain; we accept those on load and normalize them.
+`ArrayMap` also records the input dimension an *orthogonal* (`oindex`) array
+varies over, a field TensorStore's format has no slot for, so
+[the serializer](api/json.md) collapses it on the way out and reconstructs it on
+the way in.
+
+Four deliberate inversions:
+
+| | TensorStore | `zarr-indexing` |
+| --- | --- | --- |
+| Dialect | One strict dialect everywhere: literal coordinates, no negative wrapping | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `zarr.Array.lazy` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
+| Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) hands the partition structure to whatever scheduler the caller already has — dask, a thread pool, a task queue |
+| Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
+| Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
+
+The asymmetries run the other way too, and are worth stating plainly.
+TensorStore is a mature, heavily optimized C++ system with a performance
+ceiling this cannot approach: our resolution is Python-level bookkeeping over
+NumPy, and the per-part overhead is real. What this library has instead is
+small size and no dependency beyond NumPy, which is what makes the algebra
+adoptable by a Python project that wants the model without the runtime.
+
+## Bounding-box selections vs query selections
+
+Every selection this library can express falls into exactly one of two
+categories, and the boundary between them is structural, not a heuristic:
+
+**A box** is a transform whose output maps are all `ConstantMap` or
+`DimensionMap` — no `ArrayMap`. Such a map is affine and monotone: storage
+coordinate `offset + stride * i` for `i` running over an interval. The whole
+selection is therefore described by `O(ndim)` integers — an interval and a
+stride per dimension — composition and intersection are interval arithmetic,
+and the coordinates it touches form a regular lattice. Basic indexing produces
+one, and composing basic indexing with basic indexing keeps one.
+
+**A query** is a transform with at least one `ArrayMap` — an explicit lookup
+table of coordinates. It costs `O(n)` to store, it has no locality (the
+coordinates may repeat, reverse, or scatter arbitrarily), and intersecting it
+with a region means scanning it. `oindex`, `vindex`, and boolean masks all
+produce one, and once an axis is a query no amount of subsequent basic
+indexing makes it a box again.
+
+[ndsel](ndsel.md) encodes the same split in its message kinds: `point`, `box`,
+and `slice` desugar to constant and affine output maps and are always boxes;
+`points` desugars to `index_array` maps, and a `transform` body is a box
+exactly when none of its output maps carries an `index_array`. A consumer can
+therefore classify a selection off the wire without materializing anything:
+
+```python
+from zarr_indexing import IndexTransform, transform_to_canonical
+
+transform_to_canonical(IndexTransform.from_shape((100, 80))[10:50, ::4])["output"]
+# [{'offset': 0, 'stride': 1, 'input_dimension': 0},
+#  {'offset': 0, 'stride': 4, 'input_dimension': 1}]
+
+import numpy as np
+gather = IndexTransform.from_shape((100, 80)).oindex[np.array([90, 3, 3]), slice(None)]
+transform_to_canonical(gather)["output"][0]
+# {'offset': 0, 'stride': 1, 'index_array': [[90], [3], [3]],
+#  'index_array_bounds': ['-inf', '+inf']}
+```
+
+The distinction matters to anyone downstream of a selection. A box can be
+tiled into rectangular dask chunks or handed to a viewer or tile server that
+only understands rectangles; a query cannot, and has to be resolved into a
+gather. A box is also servable as a single strided slab read — but only a
+strided one: reading its bounding box and discarding the rest is a
+proportionally larger transfer as soon as any stride exceeds 1. The two also behave differently under
+partitioning: a box touches a contiguous run of parts, while a query can touch
+any subset of them, in any order, more than once.
+
+[`LazyArray`](api/lazy_array.md) exposes the category directly:
+
+```python
+import numpy as np
+import zarr
+
+from zarr_indexing import LazyArray
+
+arr = zarr.create_array({}, shape=(100, 80), chunks=(30, 40), dtype="int32")
+arr[:] = np.arange(8000).reshape(100, 80)
+lazy = LazyArray(arr)
+
+slab = lazy.lazy[10:50, ::4]
+slab.is_box            # True
+slab.bounding_box()    # ((10, 50), (0, 77))
+slab.strides()         # (1, 4)
+slab.shape             # (40, 20)
+
+gather = lazy.lazy.oindex[[90, 3, 3], :]
+gather.is_box          # False
+gather.bounding_box()  # ((3, 91), (0, 80))
+gather.strides()       # None
+gather.shape           # (3, 80)
+```
+
+`bounding_box()` is defined for both — it is the hull, the smallest interval per
+storage dimension containing everything the selection reaches. `strides()` is
+defined only for a box, and is the other half of the description: the hull says
+*where*, the strides say *how densely*.
+
+Both halves matter, because a box is dense in its hull only when every stride is
+1. The slab above spans a 40x77 hull over the 40x20 cells it actually selects —
+a consumer that issued one rectangular read of the hull and discarded the rest
+would move 3.85x the data. A query's hull is looser still and carries no stride
+at all: 88 rows of hull over three selected rows. An empty selection returns
+`None` from both, having no coordinate to report an interval around.
+
+There is deliberately no separate `BoxView` type today. A statically-typed
+rectangular-only view is the obvious next step, but it should be introduced by
+a consumer that actually needs the guarantee in its signatures rather than
+speculatively; `is_box` is the runtime answer until then.
+
+## Current scope
+
+Three limits are known, intentional, and expected to lift:
+
+- **No negative steps.** `a[::-1]` raises rather than reversing. The transform
+  algebra can represent a negative stride and the lowering engine resolves one,
+  but the slice boundary rejects it while the ndsel spec change pinning the
+  domain-origin rule for negative steps is in flight. *Planned.*
+- **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
+  dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
+  bounds, but the engine layer refuses to lower one into a transform.
+  TensorStore supports both. *Planned.*
+- **Labels are carried, not propagated.** `IndexDomain` holds optional
+  dimension labels and the wire format round-trips them, but indexing
+  operations build new domains without them, so a label does not survive a
+  slice. *Planned.*

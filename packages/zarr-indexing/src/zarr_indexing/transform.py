@@ -30,13 +30,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,7 +366,14 @@ def _intersect_orthogonal(
             # axis, or `input_dimension` for a degenerate length-1 array). Filter
             # along that axis and keep the array at full input rank so the
             # singleton axes it broadcasts over are preserved.
-            d = _array_map_dependent_axis(m)
+            axis = array_map_dependent_axis(m)
+            if axis is None:
+                raise ValueError(
+                    f"output[{out_dim}] is an ArrayMap that varies over no input "
+                    "dimension; a map with no dependency axis should have been "
+                    "collapsed to a ConstantMap"
+                )
+            d = axis
             storage = m.offset + m.stride * m.index_array
             mask = (storage >= lo) & (storage < hi)
             # The array is singleton on every axis but `d`, so its mask reduces
@@ -421,8 +431,6 @@ def _intersect_correlated(
     `out_indices` is the flat scatter index into the (row-major flattened)
     output buffer, of shape `(surviving_points,) + (residual slice sizes)`.
     """
-    corr_maps = [cast("ArrayMap", transform.output[i]) for i in correlated_dims]
-
     # Mixing correlated and orthogonal ArrayMaps in one transform is not produced
     # by any single selection and is not supported here.
     orthogonal_array_dims = [
@@ -436,10 +444,15 @@ def _intersect_correlated(
             "ArrayMaps is not supported"
         )
 
-    # The broadcast (dependency) axes are shared by every correlated map; they are
-    # the leading axes of the domain, followed by the residual slice axes.
-    broadcast_axes = _array_map_dependency_axes(corr_maps[0].index_array)
-    broadcast_shape = tuple(corr_maps[0].index_array.shape[a] for a in broadcast_axes)
+    # The broadcast axes are exactly the input axes no `DimensionMap` binds: a
+    # correlated transform's input domain is its residual slice axes plus the
+    # collapsed broadcast block. Deriving them by complement rather than from the
+    # index array's non-singleton axes keeps this correct when a broadcast axis
+    # is itself size 1, and when NumPy's placement rule puts the broadcast block
+    # somewhere other than the front (see `_broadcast_insertion_point`).
+    bound_axes = {m.input_dimension for m in transform.output if isinstance(m, DimensionMap)}
+    broadcast_axes = tuple(a for a in range(transform.input_rank) if a not in bound_axes)
+    broadcast_shape = tuple(transform.domain.shape[a] for a in broadcast_axes)
 
     # Joint bounds mask over the broadcast block.
     combined: np.ndarray[Any, np.dtype[np.bool_]] | None = None
@@ -523,23 +536,35 @@ def _intersect_correlated(
             )
     result = IndexTransform(domain=new_domain, output=tuple(new_output))
 
-    # Flat scatter index into the row-major output buffer of shape
-    # (broadcast points, residual slice sizes...): flat = point * prod(slice) +
-    # (row-major offset within the slice block).
-    prod_slice = 1
-    for _d, _lo, _hi, full, _m in slice_dims:
-        prod_slice *= full
-    out_indices: np.ndarray[Any, np.dtype[np.intp]] = (surviving * prod_slice).reshape(
+    # Flat scatter index into the caller's row-major output buffer, whose shape
+    # is the *input* domain's shape. The buffer is addressed positionally, so
+    # this assumes a zero-origin domain — the resolvers normalize with
+    # `translate_domain_to` before resolving.
+    #
+    # Each surviving point is a flat index into the broadcast block; unravel it
+    # to per-axis coordinates so the buffer stride of each broadcast axis is
+    # applied at its real position, wherever NumPy's placement rule put it.
+    domain_shape = transform.domain.shape
+    buffer_strides = [1] * len(domain_shape)
+    for axis in range(len(domain_shape) - 2, -1, -1):
+        buffer_strides[axis] = buffer_strides[axis + 1] * domain_shape[axis + 1]
+
+    point_offsets = np.zeros(n_points, dtype=np.intp)
+    if len(broadcast_shape) > 0:
+        for axis, coords_along_axis in zip(
+            broadcast_axes, np.unravel_index(surviving, broadcast_shape), strict=True
+        ):
+            point_offsets = point_offsets + coords_along_axis.astype(np.intp) * buffer_strides[axis]
+
+    out_indices: np.ndarray[Any, np.dtype[np.intp]] = point_offsets.reshape(
         (n_points,) + (1,) * n_slice
     )
-    running = 1
-    for j in range(n_slice - 1, -1, -1):
-        _d, nlo, nhi, full, _m = slice_dims[j]
-        coords = np.arange(nlo, nhi, dtype=np.intp) * running
+    for j in range(n_slice):
+        d, nlo, nhi, _full, _m = slice_dims[j]
+        coords = np.arange(nlo, nhi, dtype=np.intp) * buffer_strides[d]
         shape = [1] * (1 + n_slice)
         shape[1 + j] = coords.size
         out_indices = out_indices + coords.reshape(shape)
-        running *= full
     return (result, out_indices.astype(np.intp))
 
 
@@ -792,18 +817,31 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-            new_arr = _reindex_array(m, normalized, transform.domain)
-            array_input_dim: int | None = None
+            old_axes = set(_array_map_dependency_axes(m.index_array))
             if m.input_dimension is not None:
-                array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
-            new_output.append(
-                ArrayMap(
-                    index_array=new_arr,
-                    offset=m.offset,
-                    stride=m.stride,
-                    input_dimension=array_input_dim,
+                old_axes.add(m.input_dimension)
+            new_arr = _reindex_array(m, normalized, transform.domain)
+            if len(old_axes) > 0 and old_axes <= dropped_dims and new_arr.size == 1:
+                # Degenerate collapse: every input axis this map varied over was
+                # consumed by an integer index, so it now designates exactly one
+                # storage coordinate. Keeping it as an ArrayMap would leave a
+                # dangling `input_dimension` pointing at an axis that no longer
+                # exists — and, after renumbering, aliasing a *different* axis.
+                new_output.append(
+                    ConstantMap(offset=m.offset + m.stride * int(new_arr.reshape(-1)[0]))
                 )
-            )
+            else:
+                array_input_dim: int | None = None
+                if m.input_dimension is not None:
+                    array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
+                new_output.append(
+                    ArrayMap(
+                        index_array=new_arr,
+                        offset=m.offset,
+                        stride=m.stride,
+                        input_dimension=array_input_dim,
+                    )
+                )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
@@ -821,18 +859,35 @@ def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, 
     return tuple(axis for axis, size in enumerate(index_array.shape) if size != 1)
 
 
-def _array_map_dependent_axis(m: ArrayMap) -> int:
+def array_map_dependent_axis(m: ArrayMap) -> int | None:
     """Return the single input axis an orthogonal `ArrayMap` varies over.
 
     Normally this is the array's one non-singleton axis. A degenerate length-1
     orthogonal selection normalizes to an all-singleton shape (its dependency
     axes are empty and indistinguishable by shape from a scalar), so
-    `input_dimension` breaks the tie — it records the axis the map binds.
+    `input_dimension` breaks the tie — it records the *live* axis the map binds.
+
+    Returns
+    -------
+    int or None
+        The axis the map varies over, or `None` when it varies over no input
+        axis at all — a correlated (`vindex`) map, or a map that has become
+        constant. `None` is a real answer, not an error: callers that need an
+        axis must handle it rather than reading a stale `input_dimension`.
+        Indexing operations collapse a map whose every dependency axis is
+        consumed by an integer index into a `ConstantMap`, so an
+        `input_dimension` surviving here always names a live axis.
+
+    Raises
+    ------
+    ValueError
+        If the map varies over more than one axis, which makes it correlated
+        rather than orthogonal.
     """
     dep = _array_map_dependency_axes(m.index_array)
     if len(dep) == 1:
         return dep[0]
-    if m.input_dimension is not None:
+    if len(dep) == 0:
         return m.input_dimension
     raise ValueError(
         f"orthogonal ArrayMap must vary over exactly one axis; got dependency "
@@ -1014,6 +1069,27 @@ class _VIndexHelper:
         return _apply_vindex(self._transform, selection)
 
 
+def _broadcast_insertion_point(array_dims: Sequence[int], slice_dims: Sequence[int]) -> int:
+    """Where the broadcast dimensions land, as a count of leading slice dimensions.
+
+    NumPy's advanced-indexing placement rule: when the advanced indices are all
+    next to each other in the index tuple, the broadcast dimensions are inserted
+    at the spot they occupied; when a slice separates them, they lead. So
+    `a[:, i, j]` has shape `(len(a), *broadcast)` while `a[i, :, j]` has shape
+    `(*broadcast, a.shape[1])`.
+
+    Returns the number of slice dimensions that precede the broadcast block; `0`
+    means the broadcast dimensions lead.
+    """
+    if len(array_dims) == 0:
+        return 0
+    first, last = array_dims[0], array_dims[-1]
+    separated = any(first < d < last for d in slice_dims)
+    if separated:
+        return 0
+    return sum(1 for d in slice_dims if d < first)
+
+
 def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     """Apply vectorized indexing to an IndexTransform.
 
@@ -1092,26 +1168,29 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         broadcast_arrays = []
         broadcast_shape = ()
 
-    # Build new domain: broadcast dims first, then slice dims
-    new_inclusive_min: list[int] = []
-    new_exclusive_max: list[int] = []
-
-    # Broadcast dimensions
-    for s in broadcast_shape:
-        new_inclusive_min.append(0)
-        new_exclusive_max.append(s)
-
     # Slice dimensions (preserved-domain literal semantics, like basic indexing)
     slice_dim_params: dict[int, tuple[int, int, int]] = {}
+    slice_bounds: list[tuple[int, int]] = []
     for old_dim in slice_dims:
         sel = processed[old_dim]
         assert isinstance(sel, slice)
         lo = transform.domain.inclusive_min[old_dim]
         hi = transform.domain.exclusive_max[old_dim]
         start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
-        new_inclusive_min.append(origin)
-        new_exclusive_max.append(origin + size)
+        slice_bounds.append((origin, origin + size))
         slice_dim_params[old_dim] = (start, step, origin)
+
+    n_before = _broadcast_insertion_point(array_dims, slice_dims)
+
+    # Build the new domain with NumPy's placement rule: the broadcast
+    # (correlated) dimensions sit where the advanced indices sat when those are
+    # adjacent, and lead when a slice separates them.
+    new_inclusive_min = [lo for lo, _ in slice_bounds[:n_before]]
+    new_exclusive_max = [hi for _, hi in slice_bounds[:n_before]]
+    new_inclusive_min.extend([0] * len(broadcast_shape))
+    new_exclusive_max.extend(broadcast_shape)
+    new_inclusive_min.extend(lo for lo, _ in slice_bounds[n_before:])
+    new_exclusive_max.extend(hi for _, hi in slice_bounds[n_before:])
 
     new_domain = IndexDomain(
         inclusive_min=tuple(new_inclusive_min),
@@ -1139,7 +1218,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 # dependency axes derived from the shape coincide — the signature
                 # of a pointwise scatter rather than an outer product.
                 broadcast_arr = array_dim_to_broadcast[d]
-                full_arr = broadcast_arr.reshape(broadcast_shape + (1,) * len(slice_dims))
+                full_arr = broadcast_arr.reshape(
+                    (1,) * n_before + broadcast_shape + (1,) * (len(slice_dims) - n_before)
+                )
                 new_output.append(
                     ArrayMap(
                         index_array=full_arr,
@@ -1152,7 +1233,8 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 start, step, origin = slice_dim_params[d]
                 new_offset = m.offset + m.stride * (start - step * origin)
                 new_stride = m.stride * step
-                new_input_dim = n_broadcast_dims + slice_dims.index(d)
+                position = slice_dims.index(d)
+                new_input_dim = position if position < n_before else position + n_broadcast_dims
                 new_output.append(
                     DimensionMap(
                         input_dimension=new_input_dim, offset=new_offset, stride=new_stride

@@ -28,7 +28,18 @@ and the wire format built on top of it.
   current codec pipeline expects)
 - [`zarr_indexing.grid`](grid.md) — `DimensionGridLike`, the Protocol
   describing the narrow chunk-grid surface chunk resolution consumes, so that
-  nothing here imports `zarr`
+  nothing here imports `zarr`, plus `EdgeDimensionGrid` and
+  `dimension_grids_from_chunks`, a concrete per-axis grid for callers with no
+  zarr grid to hand
+
+**Lazy arrays**
+
+- [`zarr_indexing.lazy_array`](lazy_array.md) — `LazyArray`, a wrapper that
+  gives any array-API-like array (NumPy, zarr, CuPy, …) a `.lazy` accessor for
+  TensorStore-style deferred indexing, plus `Partition` and the `parts()` /
+  `with_parts()` pair that decide the boxes a read is broken into
+- [`zarr_indexing.boundary`](boundary.md) — the translation between NumPy's
+  positional dialect and the transform algebra's literal coordinates
 
 **The ndsel wire format** (see [the guide](../ndsel.md))
 
