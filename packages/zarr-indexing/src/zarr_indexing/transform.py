@@ -69,15 +69,14 @@ class IndexTransform:
                         f"output[{i}].input_dimension = {m.input_dimension} "
                         f"is out of range for input rank {self.domain.ndim}"
                     )
-            elif isinstance(m, ArrayMap) and m.index_array.ndim > self.domain.ndim:
-                # ArrayMap index arrays produced by indexing and chunk resolution
-                # are normalized to the full input rank (an axis the array varies
-                # over is full-sized, every other axis a singleton). A rank
-                # *exceeding* the domain is always a bug. A rank *below* it is
-                # tolerated: TensorStore-format JSON (external input) may supply a
-                # lower-rank index array that broadcasts against the input domain,
-                # and `_array_map_dependency_axes` treats any missing leading axes
-                # as singleton dependencies.
+            elif isinstance(m, ArrayMap) and m.index_array.ndim != self.domain.ndim:
+                # An index array carries the transform's full input rank: the axis
+                # a map varies over is full-sized, every other axis a singleton.
+                # The rank is what makes the dependency axes readable from the
+                # shape, so a mismatch is a bug rather than a spelling. External
+                # JSON may use a lower-rank array that broadcasts against the
+                # domain; `transform_from_canonical` widens those on the way in,
+                # so the invariant holds for every transform that exists.
                 raise ValueError(
                     f"output[{i}].index_array has {m.index_array.ndim} dims "
                     f"but input domain has {self.domain.ndim} dims"

@@ -260,7 +260,9 @@ class TestIndexTransformJSON:
             "output": [
                 {"offset": 5},
                 {"offset": 10, "stride": 2, "input_dimension": 1},
-                {"offset": 0, "stride": 1, "index_array": [1, 2, 0]},
+                # Full input rank, which is what TensorStore itself requires:
+                # it rejects a rank-1 array over a rank-3 domain outright.
+                {"offset": 0, "stride": 1, "index_array": [[[1, 2, 0]]]},
             ],
         }
         t = index_transform_from_json(json)
@@ -273,7 +275,7 @@ class TestIndexTransformJSON:
         assert t.output[1].stride == 2
         assert t.output[1].input_dimension == 1
         assert isinstance(t.output[2], ArrayMap)
-        np.testing.assert_array_equal(t.output[2].index_array, [1, 2, 0])
+        np.testing.assert_array_equal(t.output[2].index_array, [[[1, 2, 0]]])
 
         # Roundtrip
         json_rt = index_transform_to_json(t)
@@ -398,3 +400,31 @@ def test_infinite_bound_rejected_on_lowering() -> None:
     }
     with pytest.raises(ValueError, match="infinite"):
         index_transform_from_json(body)
+
+
+def test_a_lower_rank_index_array_is_widened_on_the_way_in() -> None:
+    """External JSON may broadcast a lower-rank array; the engine never holds one.
+
+    ndsel leaves index-array rank unvalidated, so a conformant producer may send
+    an array of lower rank. It is widened at the boundary, which keeps the
+    full-rank invariant true of every transform the engine builds.
+    """
+    body: IndexTransformJSON = {
+        "input_inclusive_min": [0, 0],
+        "input_exclusive_max": [3, 4],
+        "output": [{"index_array": [1, 2, 0]}, {"input_dimension": 1}],
+    }
+    transform = index_transform_from_json(body)
+    array_map = transform.output[0]
+    assert isinstance(array_map, ArrayMap)
+    assert array_map.index_array.shape == (1, 3)
+    assert array_map.index_array.ndim == transform.domain.ndim
+
+
+def test_an_index_array_of_the_wrong_rank_is_rejected() -> None:
+    """Inside the engine, a rank that does not match the domain is a bug."""
+    with pytest.raises(ValueError, match="index_array has 1 dims"):
+        IndexTransform(
+            domain=IndexDomain.from_shape((3, 4)),
+            output=(ArrayMap(index_array=np.array([1, 2, 0], dtype=np.intp)),),
+        )

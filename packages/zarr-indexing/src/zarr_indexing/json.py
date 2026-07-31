@@ -321,6 +321,12 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     for i, om in enumerate(output_raw):
         if "index_array" in om:
             arr = _lower_index_array(om["index_array"], f"output[{i}].index_array")
+            # ndsel leaves index-array rank unvalidated, so an external producer
+            # may send an array of lower rank that broadcasts against the domain.
+            # Widen it here, on the way in, so every transform that exists holds
+            # the full-rank invariant the engine reads dependency axes from.
+            if arr.ndim < domain.ndim:
+                arr = arr.reshape((1,) * (domain.ndim - arr.ndim) + arr.shape)
             arrays[i] = arr
             dep = _array_map_dependency_axes(arr)
             array_axes[i] = dep
