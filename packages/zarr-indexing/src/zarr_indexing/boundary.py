@@ -1,15 +1,15 @@
 """The positional (NumPy) selection dialect, lowered onto the transform algebra.
 
-The transform algebra speaks **literal domain coordinates**: an index is a
-point in the view's own coordinate system, which after `view = arr[10:50]` runs
-from 10 to 49, and a negative index is genuinely negative rather than counted
+The transform algebra uses **literal domain coordinates**: an index is a point
+in the view's own coordinate system, which after `view = arr[10:50]` runs from
+10 to 49, and a negative index is a negative coordinate rather than an offset
 from the end (TensorStore's convention — see `zarr_indexing.transform`).
 
-NumPy speaks **positions**: index 0 always means the first element of the thing
-you are indexing, and `-1` means the last. This module is the translation layer
-between the two. It validates a selection against the view's shape with NumPy
-semantics, then shifts every coordinate by the domain's origin so the transform
-layer sees literal coordinates.
+NumPy uses **positions**: index 0 always means the first element of the object
+being indexed, and `-1` means the last. This module translates between the two.
+It validates a selection against the view's shape with NumPy semantics, then
+shifts every coordinate by the domain's origin so the transform layer sees
+literal coordinates.
 
 Note
 ----
@@ -157,7 +157,7 @@ def split_scalar_axes(
 ) -> tuple[tuple[Any, ...] | None, Any]:
     """Peel scalar integer indices out of a fancy selection.
 
-    In NumPy, a scalar integer is a *basic* index wherever it appears: it drops
+    In NumPy, a scalar integer is a basic index wherever it appears: it drops
     its axis, and is applied before the advanced indices rather than broadcast
     against them. `a[0, [1, 2], :]` is `a[0][[1, 2], :]`. Neither the orthogonal
     nor the vectorized path of the transform algebra models that — both widen a
@@ -219,7 +219,7 @@ def normalize_positional_selection(
 ) -> Any:
     """Translate a positional (NumPy-dialect) selection into literal coordinates.
 
-    Positions are zero-based offsets into the *current view*; negatives wrap
+    Positions are zero-based offsets into the current view; negatives wrap
     from the end. The returned selection addresses the same cells in the
     literal coordinate system `domain` uses, ready for
     `zarr_indexing.transform.selection_to_transform`.

@@ -612,8 +612,8 @@ def _positional_slice(pos: int, size: int, step: int) -> slice:
     """A NumPy slice selecting `size` elements from `pos`, walking by `step`.
 
     The stop is `pos + size*step`, except that a downward walk reaching the
-    start of the array must stop at `None`: NumPy would read a negative stop as
-    counting from the end, so `slice(6, -1, -1)` selects **nothing** where
+    start of the array must stop at `None`: NumPy reads a negative stop as
+    counting from the end, so `slice(6, -1, -1)` selects nothing where
     `slice(6, None, -1)` selects the first seven elements in reverse.
     """
     stop = pos + size * step
@@ -631,7 +631,7 @@ def _reindex_array(
 
     The array's axes correspond to the transform's input dimensions (0-indexed
     over the domain shape). Each axis is either a **dependency axis** — the array
-    genuinely varies with that input dimension — or a **singleton** axis it
+    varies with that input dimension — or a **singleton** axis it
     broadcasts over. Integer indexing, slicing, or newaxis is applied to the
     array only along its dependency axes; a selection on a singleton axis does not
     touch the array's values (it just narrows or drops that broadcast axis).
@@ -879,14 +879,14 @@ def array_map_dependent_axis(m: ArrayMap) -> int | None:
     Normally this is the array's one non-singleton axis. A degenerate length-1
     orthogonal selection normalizes to an all-singleton shape (its dependency
     axes are empty and indistinguishable by shape from a scalar), so
-    `input_dimension` breaks the tie — it records the *live* axis the map binds.
+    `input_dimension` breaks the tie — it records the live axis the map binds.
 
     Returns
     -------
     int or None
         The axis the map varies over, or `None` when it varies over no input
         axis at all — a correlated (`vindex`) map, or a map that has become
-        constant. `None` is a real answer, not an error: callers that need an
+        constant. `None` is a valid result, not an error: callers that need an
         axis must handle it rather than reading a stale `input_dimension`.
         Indexing operations collapse a map whose every dependency axis is
         consumed by an integer index into a `ConstantMap`, so an
@@ -1301,16 +1301,16 @@ def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int,
     - a non-empty interval must be contained in the domain (no clamping — a
       NumPy-style out-of-range or negative bound is an error, not a shorter or
       wrapped result);
-    - an **empty** interval is valid anywhere, for either sign;
+    - an empty interval is valid anywhere, for either sign;
     - an interval running the wrong way (`stop` on the far side of `start` from
       the direction of travel) is an error, not an empty result;
     - the result's domain origin is `trunc(start/step)` — toward zero, for both
       signs — and coordinate `origin + k` maps to input `start + k*step`.
 
-    A negative step normally produces a **negative origin**: reversing a
-    zero-origin axis of length 20 gives the domain `[-19, 1)`. That is the
-    coordinate frame staying anchored to the source; a caller that needs
-    non-negative coordinates re-bases explicitly (`translate_domain_to`).
+    A negative step normally produces a negative origin: reversing a
+    zero-origin axis of length 20 gives the domain `[-19, 1)`. The coordinate
+    frame stays anchored to the source; a caller that needs non-negative
+    coordinates re-bases explicitly with `translate_domain_to`.
 
     Returns `(start, step, origin, size)` in domain coordinates.
     """

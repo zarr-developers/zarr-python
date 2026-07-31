@@ -4,15 +4,15 @@ title: Design notes
 
 # Design notes
 
-Three things that are easier to explain once than to infer from the API: where
-this library sits relative to TensorStore, why rectangular selections are a
-category rather than a fast path, and what is deliberately not implemented yet.
+Three topics the API does not state directly: how this library relates to
+TensorStore, why rectangular selections are a category rather than a fast path,
+and what is deliberately not implemented yet.
 
 ## Relationship to TensorStore
 
 The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
-index-transform model, reimplemented in Python against NumPy. The parts that
-are the same are the same on purpose:
+index-transform model, reimplemented in Python against NumPy. The following
+parts are intentionally identical:
 
 - **The model.** An `IndexTransform` pairs an input `IndexDomain` — a
   rectangular region with an explicit, possibly non-zero origin — with one
@@ -30,36 +30,36 @@ are the same are the same on purpose:
   `tensorstore.IndexTransform(json=...)` and round-trips them back through our
   engine layer.
 
-Index arrays are the one place the representations differ in practice. Ours are
-normalized to the transform's full input rank — full-sized on the axis a map
-varies over, singleton elsewhere — so the orthogonal/vectorized distinction is
-derivable from the shape. TensorStore permits a lower-rank array that broadcasts
+The representations differ in one place: index arrays. Ours are normalized to
+the transform's full input rank — full-sized on the axis a map varies over,
+singleton elsewhere — so the orthogonal/vectorized distinction is derivable
+from the shape. TensorStore permits a lower-rank array that broadcasts
 against the input domain; we accept those on load and normalize them.
 `ArrayMap` also records the input dimension an *orthogonal* (`oindex`) array
 varies over, a field TensorStore's format has no slot for, so
 [the serializer](api/json.md) collapses it on the way out and reconstructs it on
 the way in.
 
-Four deliberate inversions:
+Four deliberate differences:
 
 | | TensorStore | `zarr-indexing` |
 | --- | --- | --- |
 | Dialect | One strict dialect everywhere: literal coordinates, no negative wrapping | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `zarr.Array.lazy` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
-| Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) hands the partition structure to whatever scheduler the caller already has — dask, a thread pool, a task queue |
+| Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) exposes the partition structure so the caller's own scheduler — dask, a thread pool, a task queue — drives it |
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
 | Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
 
-The asymmetries run the other way too, and are worth stating plainly.
-TensorStore is a mature, heavily optimized C++ system with a performance
-ceiling this cannot approach: our resolution is Python-level bookkeeping over
-NumPy, and the per-part overhead is real. What this library has instead is
-small size and no dependency beyond NumPy, which is what makes the algebra
-adoptable by a Python project that wants the model without the runtime.
+The comparison also runs the other way. TensorStore is a mature, heavily
+optimized C++ system whose performance this library cannot approach: resolution
+here is Python-level bookkeeping over NumPy, and the per-part overhead is
+significant. This library is small and depends on nothing beyond NumPy, so the
+algebra can be adopted by a Python project that wants the model without the C++
+runtime.
 
 ## Bounding-box selections vs query selections
 
 Every selection this library can express falls into exactly one of two
-categories, and the boundary between them is structural, not a heuristic:
+categories. The boundary between them is structural, not a heuristic:
 
 **A box** is a transform whose output maps are all `ConstantMap` or
 `DimensionMap` — no `ArrayMap`. Such a map is affine and monotone: storage
@@ -73,8 +73,8 @@ one, and composing basic indexing with basic indexing keeps one.
 table of coordinates. It costs `O(n)` to store, it has no locality (the
 coordinates may repeat, reverse, or scatter arbitrarily), and intersecting it
 with a region means scanning it. `oindex`, `vindex`, and boolean masks all
-produce one, and once an axis is a query no amount of subsequent basic
-indexing makes it a box again.
+produce one, and once an axis is a query, subsequent basic indexing cannot make
+it a box again.
 
 [ndsel](ndsel.md) encodes the same split in its message kinds: `point`, `box`,
 and `slice` desugar to constant and affine output maps and are always boxes;
@@ -96,12 +96,12 @@ transform_to_canonical(gather)["output"][0]
 #  'index_array_bounds': ['-inf', '+inf']}
 ```
 
-The distinction matters to anyone downstream of a selection. A box can be
-tiled into rectangular dask chunks or handed to a viewer or tile server that
-only understands rectangles; a query cannot, and has to be resolved into a
-gather. A box is also servable as a single strided slab read — but only a
-strided one: reading its bounding box and discarding the rest is a
-proportionally larger transfer as soon as any stride exceeds 1. The two also behave differently under
+The distinction matters to consumers of a selection. A box can be tiled into
+rectangular dask chunks or passed to a viewer or tile server that only accepts
+rectangles; a query cannot, and has to be resolved into a gather. A box can also
+be served as a single strided slab read, but the read has to be strided: reading
+its bounding box and discarding the rest transfers proportionally more data as
+soon as any stride exceeds 1. The two also behave differently under
 partitioning: a box touches a contiguous run of parts, while a query can touch
 any subset of them, in any order, more than once.
 
@@ -130,37 +130,37 @@ gather.strides()       # None
 gather.shape           # (3, 80)
 ```
 
-`bounding_box()` is defined for both — it is the hull, the smallest interval per
-storage dimension containing everything the selection reaches. `strides()` is
-defined only for a box, and is the other half of the description: the hull says
-*where*, the strides say *how densely*.
+`bounding_box()` is defined for both: it is the hull, the smallest interval per
+storage dimension containing every coordinate the selection reaches.
+`strides()` is defined only for a box and gives the step per dimension.
+Together the two describe a box selection completely.
 
-Both halves matter, because a box is dense in its hull only when every stride is
-1. The slab above spans a 40x77 hull over the 40x20 cells it actually selects —
-a consumer that issued one rectangular read of the hull and discarded the rest
-would move 3.85x the data. A query's hull is looser still and carries no stride
-at all: 88 rows of hull over three selected rows. An empty selection returns
-`None` from both, having no coordinate to report an interval around.
+Both are needed, because a box is dense in its hull only when every stride is
+1. The slab above spans a 40x77 hull over the 40x20 cells it selects, so a
+consumer that issued one rectangular read of the hull and discarded the rest
+would transfer 3.85x the data. A query's hull is looser still and carries no
+stride at all: 88 rows of hull over three selected rows. An empty selection
+returns `None` from both, because it touches no coordinate to report an interval
+around.
 
 There is deliberately no separate `BoxView` type today. A statically-typed
-rectangular-only view is the obvious next step, but it should be introduced by
-a consumer that actually needs the guarantee in its signatures rather than
-speculatively; `is_box` is the runtime answer until then.
+rectangular-only view is a plausible next step, but it should be introduced by
+a consumer that needs the guarantee in its signatures rather than
+speculatively; `is_box` is the runtime check until then.
 
 ## Current scope
 
 Negative steps are supported as of ndsel 1.0-draft.2: `a[::-1]` reverses, one
 desugaring rule covers both signs, and a reversed interval is an error rather
-than a silently empty selection. One consequence is worth stating loudly:
-**a negative step normally produces a negative domain origin.** Reversing a
-length-20 zero-origin axis gives the domain `[-19, 1)`, because the result stays
-anchored to the source coordinate frame and a reversing map runs that frame
-backwards. `LazyArray` re-bases every view to origin 0, so the positional
-dialect never shows it; a caller working with `IndexTransform` directly will,
-and re-bases explicitly with `translate_domain_to` if it wants NumPy-shaped
-coordinates.
+than a silently empty selection. One consequence: a negative step normally
+produces a negative domain origin. Reversing a length-20 zero-origin axis gives
+the domain `[-19, 1)`, because the result stays anchored to the source
+coordinate frame and a reversing map traverses that frame backwards. `LazyArray`
+re-bases every view to origin 0, so the positional dialect never exposes it; a
+caller working with `IndexTransform` directly will see it, and re-bases
+explicitly with `translate_domain_to` for NumPy-shaped coordinates.
 
-Two limits remain, both intentional and expected to lift:
+Two limits remain, both intentional and expected to be lifted:
 
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
