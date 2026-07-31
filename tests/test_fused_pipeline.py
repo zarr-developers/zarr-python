@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -361,6 +362,7 @@ _FUSED_POOL_CONFIG = {
 }
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_read_write_with_thread_pool() -> None:
     """With max_workers > 1, multi-chunk reads and writes dispatch through the
     thread pool (pool.map in read_sync/write_sync) and produce the same results
@@ -401,6 +403,7 @@ def test_read_write_with_thread_pool() -> None:
         np.testing.assert_array_equal(arr[:], data)
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_thread_pool_write_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during write_sync surfaces to
     the caller (write_sync consumes pool.map, so worker exceptions re-raise)."""
@@ -423,6 +426,7 @@ def test_thread_pool_write_worker_exception_propagates() -> None:
             arr[:] = np.arange(100, dtype="float64")
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_thread_pool_read_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during read_sync surfaces to
     the caller (read_sync consumes pool.map into a tuple)."""
@@ -543,6 +547,7 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
     assert not write_finished, "the slow write should have been cancelled, not left running"
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_concurrent_reads_shared_transform_with_pool() -> None:
     """Concurrent decode through the shared ChunkTransform produces correct data.
 
