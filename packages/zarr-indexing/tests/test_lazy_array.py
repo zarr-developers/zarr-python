@@ -1825,3 +1825,259 @@ def test_the_strict_doubles_notice_an_over_broad_key() -> None:
         Outer1VectorSource(data).oindex[np.array([0, 1]), np.array([0, 1]), slice(None)]
     with pytest.raises(TypeError, match="coordinate arrays only"):
         VectorizedSource(data).vindex[np.array([0, 1]), slice(None), slice(None)]
+
+
+# ---------------------------------------------------------------------------
+# Materializing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("parts", [None, (2, 2, 2), SHAPE])
+@pytest.mark.parametrize(
+    ("build", "description"),
+    [
+        (lambda a: a.lazy[1:3, :, :], "a basic slice"),
+        (lambda a: a.lazy[:, :, :], "the whole array"),
+        (lambda a: a.lazy[::-1, :, :], "a reversal"),
+        (lambda a: a.lazy.oindex[[2, 0], :, :], "a gather"),
+    ],
+)
+def test_materializing_never_hands_back_the_wrapped_array(
+    parts: Any, build: Callable[[LazyArray], LazyArray], description: str
+) -> None:
+    """Writing to a materialized result must never reach the source.
+
+    An unpartitioned read of a basic selection can be answered with a *view* of
+    the wrapped array, and NumPy 2 hands whatever `__array__` returns straight to
+    the caller. Every route out of the wrapper detaches, so the answer does not
+    depend on how the read happened to be divided.
+    """
+    data = reference()
+    view = build(LazyArray(data).with_parts(parts))
+
+    for materialize in (
+        lambda v: v.result(),
+        lambda v: np.array(v, copy=True),
+        lambda v: np.asarray(v),
+        lambda v: np.array(v),
+    ):
+        before = data.copy()
+        materialized = np.asarray(materialize(view))
+        assert not np.shares_memory(materialized, data), description
+        materialized[...] = -1
+        np.testing.assert_array_equal(data, before, err_msg=description)
+
+
+def test_an_eager_getitem_never_hands_back_the_wrapped_array() -> None:
+    data = reference()
+    block = LazyArray(data)[1:3]
+    block[...] = -1
+    np.testing.assert_array_equal(data, reference())
+
+
+def test_result_refuses_to_return_a_partly_written_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partition walk that leaves a gap must raise, not return process memory.
+
+    `result()` scatters into an uninitialized buffer, which is only safe because
+    the parts tile the view. This is the guard that turns any future break of
+    that contract into a failure instead of into plausible-looking numbers.
+    """
+    view = LazyArray(reference()).with_parts(PART_SHAPE).lazy[:, 1:, :]
+    complete = LazyArray.parts
+
+    def drop_one(self: LazyArray) -> Any:
+        return list(complete(self))[:-1]
+
+    monkeypatch.setattr(LazyArray, "parts", drop_one)
+    with pytest.raises(AssertionError, match="partition walk addressed"):
+        view.result()
+
+
+def test_result_refuses_a_partition_of_the_wrong_rank(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A part addressing fewer axes than the view has is caught by name."""
+    view = LazyArray(reference()).with_parts(PART_SHAPE).lazy[:, 1:, :]
+    complete = LazyArray.parts
+
+    def truncate(self: LazyArray) -> Any:
+        from dataclasses import replace
+
+        return [replace(part, out_selection=part.out_selection[:-1]) for part in complete(self)]
+
+    monkeypatch.setattr(LazyArray, "parts", truncate)
+    with pytest.raises(AssertionError, match="of the view's 3 dimensions"):
+        view.result()
+
+
+class DuckBlock:
+    """An array-like meeting exactly the documented `BASIC` floor and no more.
+
+    `shape`, `dtype`, and a `__getitem__` that understands integers and slices.
+    Anything else — an integer array, `take`, `reshape` — raises, and indexing it
+    yields another one of itself, so a block that comes back from it is as
+    limited as the source was.
+    """
+
+    __zarr_indexing_support__ = IndexingSupport.BASIC
+
+    def __init__(self, data: np.ndarray[Any, Any]) -> None:
+        self._data = data
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self._data.shape
+
+    @property
+    def dtype(self) -> Any:
+        return self._data.dtype
+
+    def __array__(self, dtype: Any = None, copy: bool | None = None) -> Any:
+        return np.array(self._data, dtype=dtype, copy=True if copy is None else copy)
+
+    def __getitem__(self, key: Any) -> DuckBlock:
+        selectors = key if isinstance(key, tuple) else (key,)
+        for selector in selectors:
+            if not isinstance(selector, (int, np.integer, slice)):
+                raise TypeError(f"basic indexing only, got {selector!r}")
+        return DuckBlock(self._data[key])
+
+
+@pytest.mark.parametrize(
+    ("build", "oracle"),
+    [
+        (lambda a: a.lazy[1:5, ::2, :], lambda r: r[1:5, ::2, :]),
+        (
+            lambda a: a.lazy.oindex[[4, 0, 0], :, :],
+            lambda r: r[np.ix_([4, 0, 0], range(5), range(4))],
+        ),
+        (lambda a: a.lazy.vindex[[4, 0], [1, 1]], lambda r: r[[4, 0], [1, 1]]),
+        (lambda a: a.lazy[::-1, :, :], lambda r: r[::-1, :, :]),
+    ],
+    ids=["basic", "oindex", "vindex", "reversal"],
+)
+@pytest.mark.parametrize("parts", [None, PART_SHAPE])
+def test_a_source_meeting_only_the_basic_floor_resolves_any_selection(
+    build: Callable[[LazyArray], LazyArray], oracle: Callable[[Any], Any], parts: Any
+) -> None:
+    """The floor is a promise about the source; its blocks are coerced, not trusted."""
+    expected = np.asarray(oracle(reference()))
+    view = build(LazyArray(DuckBlock(reference())).with_parts(parts))
+    assert view.shape == expected.shape
+    np.testing.assert_array_equal(np.asarray(view.result()), expected)
+
+
+def test_the_duck_block_double_refuses_a_fancy_key() -> None:
+    """A negative control: the floor test only means something if the double bites."""
+    with pytest.raises(TypeError, match="basic indexing only"):
+        DuckBlock(reference())[np.array([1, 0])]
+
+
+# ---------------------------------------------------------------------------
+# Sources with their own opinions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.filterwarnings("ignore::PendingDeprecationWarning")
+def test_numpy_matrix_is_refused() -> None:
+    """`np.matrix` never reduces rank, so a view's shape could not be honored."""
+    with pytest.raises(TypeError, match="numpy.matrix cannot be wrapped"):
+        LazyArray(np.matrix(np.arange(12).reshape(3, 4)))
+
+
+@pytest.mark.parametrize("parts", [None, (2, 2), (1, 4), (3, 4)])
+def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> None:
+    data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
+    got = LazyArray(data).with_parts(parts).lazy[:, 1:].result()
+    expected = data[:, 1:]
+    assert isinstance(got, np.ma.MaskedArray), parts
+    np.testing.assert_array_equal(np.ma.getmaskarray(got), np.ma.getmaskarray(expected))
+    np.testing.assert_array_equal(np.ma.filled(got, 0), np.ma.filled(expected, 0))
+
+
+def test_a_look_alike_enum_declaration_is_honored_not_upgraded() -> None:
+    """xarray's `IndexingSupport` has these member names; it must not read as absent.
+
+    Falling through to inference would answer `VECTORIZED` for this source, which
+    carries the `oindex`/`vindex` pair — a *more* permissive level than the one
+    it declared.
+    """
+    import enum as _enum
+
+    foreign = _enum.Enum("IndexingSupport", ["BASIC", "OUTER", "OUTER_1VECTOR", "VECTORIZED"])
+
+    class Declaring(VectorizedSource):
+        __zarr_indexing_support__ = foreign.BASIC  # type: ignore[assignment]
+
+    source = Declaring(reference())
+    assert LazyArray(source).indexing_support is IndexingSupport.BASIC
+
+
+def test_an_unrecognized_foreign_enum_still_falls_back_to_inference() -> None:
+    import enum as _enum
+
+    unrelated = _enum.Enum("Colour", ["RED", "GREEN"])
+
+    class Declaring(MinimalSource):
+        __zarr_indexing_support__ = unrelated.RED
+
+    assert LazyArray(Declaring(reference())).indexing_support is IndexingSupport.BASIC
+
+
+def test_a_large_array_without_dask_refuses_to_claim_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Above the digest limit the fallback must miss a cache rather than lie.
+
+    Two arrays differing in one element used to token identically, because the
+    fallback described the shape and dtype and gave up on the contents.
+    """
+    import sys
+
+    monkeypatch.setitem(sys.modules, "dask.base", None)
+    big = np.zeros(1 << 19, dtype=np.int64)
+    other = big.copy()
+    other[0] = 1
+
+    assert LazyArray(big).__dask_tokenize__() != LazyArray(other).__dask_tokenize__()
+    assert LazyArray(big).__dask_tokenize__() != LazyArray(big).__dask_tokenize__()
+
+    # Below the limit the contents are digested, so equal data still tokens alike.
+    small = np.zeros(8, dtype=np.int64)
+    assert LazyArray(small).__dask_tokenize__() == LazyArray(small.copy()).__dask_tokenize__()
+
+
+# ---------------------------------------------------------------------------
+# Completeness and partition spellings
+# ---------------------------------------------------------------------------
+
+
+def test_a_reversing_view_covers_its_parts() -> None:
+    """A reversal reads every cell of every box, back to front."""
+    data = np.arange(48).reshape(8, 6)
+    forward = LazyArray(data).with_parts((2, 2)).lazy[:, :]
+    reversed_view = LazyArray(data).with_parts((2, 2)).lazy[::-1, ::-1]
+    assert [part.is_complete for part in reversed_view.parts()] == [
+        part.is_complete for part in forward.parts()
+    ]
+    assert all(part.is_complete for part in reversed_view.parts())
+
+
+def test_a_strided_reversal_is_still_incomplete() -> None:
+    data = np.arange(48).reshape(8, 6)
+    view = LazyArray(data).with_parts((2, 2)).lazy[::-2, :]
+    assert not any(part.is_complete for part in view.parts())
+
+
+@pytest.mark.parametrize("parts", [((0,), (3,)), ((), (3,)), (1, 1), ((0, 0), (3,))])
+def test_a_zero_length_axis_accepts_every_spelling_of_no_chunks(parts: Any) -> None:
+    """`(0,)`, `(0, 0)`, `()` and a uniform shape all describe an axis with no cells."""
+    data = np.zeros((0, 3))
+    view = LazyArray(data).with_parts(parts)
+    assert view.result().shape == (0, 3)
+    assert list(view.parts()) == []
+
+
+def test_a_zero_chunk_on_a_nonempty_axis_is_still_rejected() -> None:
+    with pytest.raises(ValueError, match="chunk sizes must be positive"):
+        LazyArray(np.zeros((4, 3))).with_parts(((0, 4), (3,)))

@@ -67,7 +67,9 @@ class EdgeDimensionGrid:
         for i, s in enumerate(normalized):
             if s <= 0:
                 raise ValueError(
-                    f"chunk sizes must be positive; got {s} at position {i} of {normalized}"
+                    f"chunk sizes must be positive; got {s} at position {i} of "
+                    f"{normalized}. A zero-length axis is spelled as no chunks "
+                    f"at all: EdgeDimensionGrid(())"
                 )
         self.sizes = normalized
         # Exclusive prefix sums, length len(sizes) + 1: `_offsets[c]` is the
@@ -247,5 +249,11 @@ def dimension_grids_from_chunks(
                 f"per-axis chunk sizes for dimension {axis} sum to {total}, "
                 f"but the array extent is {extent}"
             )
+        if extent == 0 and all(size == 0 for size in sizes):
+            # A zero-length axis has no chunks. `(0,)` and `(0, 0)` say the same
+            # thing as `()`, and the uniform convention spells it `(n,)` for any
+            # `n`, so all three spellings are accepted rather than one of them
+            # being a positivity error.
+            sizes = ()
         grids.append(EdgeDimensionGrid(sizes))
     return tuple(grids)

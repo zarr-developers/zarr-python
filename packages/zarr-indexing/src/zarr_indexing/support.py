@@ -22,7 +22,11 @@ Declaring a level
 A source can declare its own level by exposing a `__zarr_indexing_support__`
 attribute holding an `IndexingSupport`. That attribute is read defensively — a
 value of the wrong type, or an attribute access that raises, means "no
-declaration" rather than an error.
+declaration" rather than an error. A member of a *different* enum naming one of
+these four levels (xarray's own `IndexingSupport`, whose members these are
+borrowed from) is honored: falling through to inference would answer with a
+level the source never asked for, and inference is the more permissive of the
+two.
 
 Otherwise the level is inferred, conservatively:
 
@@ -138,9 +142,29 @@ def declared_indexing_support(array: Any) -> IndexingSupport | None:
     Reads `__zarr_indexing_support__` defensively: a missing attribute, an
     attribute of the wrong type, and an attribute access that raises are all
     "no declaration".
+
+    One wrong type is read rather than discarded: a member of a *different*
+    enum that names one of these four levels. This module borrows xarray's
+    taxonomy and its member names, and xarray's own `IndexingSupport` is the
+    obvious thing for a source to reach for. Discarding it would fall through to
+    inference, which for a source carrying `oindex`/`vindex` answers
+    `VECTORIZED` — a *more* permissive level than the source asked for, which is
+    the one direction detection must never take.
     """
     declared = _read_attribute(array, SUPPORT_ATTRIBUTE)
-    return declared if isinstance(declared, IndexingSupport) else None
+    if isinstance(declared, IndexingSupport):
+        return declared
+    return _foreign_indexing_support(declared)
+
+
+def _foreign_indexing_support(declared: Any) -> IndexingSupport | None:
+    """The `IndexingSupport` a member of a look-alike enum names, if any."""
+    if not isinstance(declared, enum.Enum):
+        return None
+    try:
+        return IndexingSupport[declared.name]
+    except KeyError:
+        return None
 
 
 def infer_indexing_support(array: Any) -> IndexingSupport:

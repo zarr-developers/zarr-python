@@ -142,6 +142,7 @@ import hashlib
 import json
 import math
 import operator
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -735,6 +736,25 @@ def _shift_key(key: tuple[Any, ...], window: tuple[slice, ...] | None) -> tuple[
     return tuple(shifted)
 
 
+def _gatherable(block: Any) -> Any:
+    """The block the residual is applied to, as something that can be gathered from.
+
+    The residual finishes the read with `take`, `reshape` and `transpose`, which
+    is more than the `BASIC` floor asks of a *source*: that floor is `shape`,
+    `dtype` and a `__getitem__` understanding integers and slices, and a source
+    meeting exactly it may hand back a block that understands no more. Such a
+    block is converted, so that the floor is a promise about the source alone.
+
+    A block that is already a NumPy array, or that answers with an array-API
+    namespace of its own, is left where it is: the namespace is how a device
+    array keeps a read on its own device (see the module docstring's device
+    caveat), and converting it would defeat that.
+    """
+    if isinstance(block, np.ndarray) or _namespace(block) is not None:
+        return block
+    return np.asarray(block)
+
+
 def _read(
     source: Any,
     window: tuple[slice, ...] | None,
@@ -756,17 +776,49 @@ def _read(
             gathered = source.vindex if has_vindex else source
             # The key is flat so that a `vindex` accepting only one-dimensional
             # coordinate lists is served too; the shape is restored here.
-            return _reshape(gathered[_shift_key(points, window)], transform.domain.shape)
+            block = _gatherable(gathered[_shift_key(points, window)])
+            return _reshape(block, transform.domain.shape)
 
     key, residual, n_arrays = _decompose(transform, support, has_oindex)
     key = _shift_key(key, window)
     block = source.oindex[key] if n_arrays > 0 and has_oindex else source[key]
-    return _lower(block, residual)
+    return _lower(_gatherable(block), residual)
 
 
 # --------------------------------------------------------------------------- #
 # Partitions
 # --------------------------------------------------------------------------- #
+
+
+def _wrapped_base(array: Any) -> Any:
+    """The concrete array at the bottom of a (possibly nested) wrapper."""
+    while isinstance(array, LazyArray):
+        array = array.array
+    return array
+
+
+def _detach(value: Any, source: Any) -> Any:
+    """Return `value` sharing no memory with the array `source` reads from.
+
+    An unpartitioned read of a selection that lowers to basic slicing hands back
+    a *view* of the wrapped array, so writing to it would reach through and
+    change the source — while the same read under any partitioning returns a
+    fresh buffer. `result()` is answering "what does this view hold", not "lend
+    me the storage", and its answer must not depend on how the read was divided.
+
+    NumPy is the namespace whose sharing can be settled here, from the arrays'
+    memory bounds; a foreign namespace whose basic indexing returns views is out
+    of reach, and its blocks are handed back as they come (see the module
+    docstring's device caveat).
+    """
+    base = _wrapped_base(source)
+    if (
+        isinstance(value, np.ndarray)
+        and isinstance(base, np.ndarray)
+        and np.may_share_memory(value, base)
+    ):
+        return value.copy()
+    return value
 
 
 def _partition_out_selection(
@@ -793,12 +845,52 @@ def _partition_out_selection(
     return tuple(np.unravel_index(np.asarray(flat, dtype=np.intp), out_shape))
 
 
+def _out_selection_cell_count(selection: tuple[Any, ...], out_shape: tuple[int, ...]) -> int:
+    """How many cells of an array of shape `out_shape` a `Partition.out_selection` writes.
+
+    Counted from the selectors' own shapes, so nothing is read and no index
+    array is materialized. The selectors are slices and integer arrays: the
+    slices contribute their lengths, and the arrays broadcast against each other
+    exactly as NumPy's advanced indexing broadcasts them, whether they arrive as
+    an open mesh (`numpy.ix_`) or as parallel coordinates (`unravel_index`).
+    """
+    total = 1
+    array_shapes: list[tuple[int, ...]] = []
+    if len(selection) != len(out_shape):
+        raise AssertionError(
+            f"a partition addressed {len(selection)} of the view's {len(out_shape)} "
+            "dimensions; this is a bug in zarr-indexing's partition walk"
+        )
+    for selector, extent in zip(selection, out_shape, strict=True):
+        if isinstance(selector, slice):
+            start: Any = selector.start
+            stop: Any = selector.stop
+            step: Any = selector.step
+            if step is None and start is not None and stop is not None and 0 <= start <= stop:
+                # The shape a partition walk actually produces: a concrete,
+                # forward, in-bounds interval. Sized directly, so the common
+                # path allocates neither a tuple nor a range.
+                total *= int(stop) - int(start)
+            else:
+                total *= len(range(*selector.indices(extent)))
+        else:
+            array_shapes.append(tuple(int(s) for s in np.shape(selector)))
+    if len(array_shapes) > 0:
+        total *= math.prod(np.broadcast_shapes(*array_shapes))
+    return total
+
+
 def _covers_whole_part(local_transform: IndexTransform, part_shape: tuple[int, ...]) -> bool:
     """Whether a part-local transform addresses every cell of its part.
 
-    Conservative: an `ArrayMap` could in principle enumerate a whole part, but
-    checking that costs more than the answer is worth, so a fancy-indexed axis
-    always reports incomplete.
+    Direction does not matter: a reversing view (`lazy[::-1]`) reads every cell
+    of the box, just back to front, so a stride of -1 covers a part exactly as a
+    stride of 1 does. Only the set of coordinates is asked about here, which is
+    the same question `bounding_box()` and `strides()` answer.
+
+    Conservative in one place: an `ArrayMap` could in principle enumerate a whole
+    part, but checking that costs more than the answer is worth, so a
+    fancy-indexed axis always reports incomplete.
     """
     domain = local_transform.domain
     for out_dim, m in enumerate(local_transform.output):
@@ -807,12 +899,19 @@ def _covers_whole_part(local_transform: IndexTransform, part_shape: tuple[int, .
             if extent != 1 or m.offset != 0:
                 return False
         elif isinstance(m, DimensionMap):
-            if m.stride != 1:
+            if abs(m.stride) != 1:
                 return False
             d = m.input_dimension
-            if m.offset + domain.inclusive_min[d] != 0:
-                return False
-            if m.offset + domain.exclusive_max[d] != extent:
+            lo = domain.inclusive_min[d]
+            hi = domain.exclusive_max[d]
+            if hi <= lo:
+                # An empty walk covers only an empty part.
+                if extent != 0:
+                    return False
+                continue
+            first = m.offset + m.stride * lo
+            last = m.offset + m.stride * (hi - 1)
+            if min(first, last) != 0 or max(first, last) != extent - 1:
                 return False
         else:
             return False
@@ -845,10 +944,13 @@ class Partition:
         selection to the block in memory.
     out_selection
         Where `array.result()` belongs in an array of the view's shape — a
-        NumPy index tuple, usable directly as `out[part.out_selection] = ...`.
+        NumPy index tuple with one entry per dimension of the view, usable
+        directly as `out[part.out_selection] = ...`.
     is_complete
         Whether the view covers the whole box. Useful to a writer deciding
-        between a blind overwrite and a read-modify-write.
+        between a blind overwrite and a read-modify-write. True for a reversing
+        view, which reads every cell of the box back to front; false for every
+        fancy-indexed axis, which is conservative rather than exact.
     """
 
     base_coords: tuple[int, ...]
@@ -864,14 +966,24 @@ class Partition:
 
 
 def _wrapped_token(array: Any) -> Any:
-    """A deterministic token for the wrapped array.
+    """A token for the wrapped array.
 
-    Determinism scope, in order of preference: the array's own
-    `__dask_tokenize__`; `dask.base.tokenize` when dask is importable (imported
-    lazily — this package never requires it); otherwise a local fallback that
-    digests the contents of a small array and, above `_TOKEN_DIGEST_LIMIT`,
-    falls back to a structural description that is stable across processes but
-    not sensitive to the array's contents.
+    In order of preference: the array's own `__dask_tokenize__`;
+    `dask.base.tokenize` when dask is importable (imported lazily — this package
+    never requires it); otherwise a local fallback that digests the contents of
+    a small array.
+
+    The two environments do not agree, and neither is a translation of the
+    other: a token taken with dask installed is meaningless to a process without
+    it, and the reverse. A token is an identifier within one process, not a
+    portable name.
+
+    Above `_TOKEN_DIGEST_LIMIT` the local fallback has nothing left to identify
+    the contents with — reading them is exactly what a token call must not do —
+    so it declines to claim equality at all and returns a value that matches
+    nothing, including itself. A cache keyed on it misses; the alternative, a
+    structural description, is a cache that hands one array's result to a
+    different array of the same shape and dtype.
     """
     hook = getattr(array, "__dask_tokenize__", None)
     if hook is not None:
@@ -892,18 +1004,22 @@ def _wrapped_token(array: Any) -> Any:
     shape = tuple(int(s) for s in getattr(array, "shape", ()))
     dtype = getattr(array, "dtype", None)
     structural = (type(array).__qualname__, shape, str(dtype))
+    # A token nothing can equal, for when the contents cannot be identified. It
+    # is the shape and dtype that would otherwise be mistaken for an identity,
+    # so they are kept alongside it for a reader looking at a graph.
+    unidentified = (*structural, "unidentified", uuid.uuid4().hex)
 
     # Decide whether to digest the contents from the *declared* size. Measuring
     # it by converting first would read the whole array — a multi-gigabyte store
     # pulled into memory by a token call, which is the opposite of the point.
     itemsize = getattr(dtype, "itemsize", None)
     if not isinstance(itemsize, int) or itemsize * math.prod(shape) > _TOKEN_DIGEST_LIMIT:
-        return structural
+        return unidentified
     try:
         contents = np.ascontiguousarray(array)
-    # A token must never raise; an unreadable source keeps the structural token.
+    # A token must never raise; an unreadable source is simply unidentified.
     except Exception:
-        return structural
+        return unidentified
     return (*structural, hashlib.sha256(contents.tobytes()).hexdigest())
 
 
@@ -950,6 +1066,17 @@ class LazyArray:
     __slots__ = ("_array", "_parts", "_support", "_transform", "_window")
 
     def __init__(self, array: ArrayLike) -> None:
+        if isinstance(array, np.matrix):
+            # `np.matrix` keeps every result two-dimensional, so `m[1]` has shape
+            # `(1, n)` where every other array-like gives `(n,)`. A view's shape
+            # comes from the transform, which follows NumPy's rule, so the two
+            # disagree on every rank-reducing selection. Refused at the door
+            # rather than resolved into a shape the view did not promise.
+            raise TypeError(
+                "numpy.matrix cannot be wrapped: it never reduces rank, so a "
+                "view's shape and its result would disagree. Convert it first, "
+                "with numpy.asarray(m)."
+            )
         shape = tuple(int(s) for s in array.shape)
         self._array = array
         self._window: tuple[slice, ...] | None = None
@@ -1370,38 +1497,91 @@ class LazyArray:
         """Materialize this view.
 
         Assembles the view from its `parts()`, reading each box once. A wrapper
-        with a single whole-array part skips the output buffer and lowers
-        directly to array operations.
+        with **no partitioning** — `with_parts(None)`, and the default for a
+        source that advertises none — skips the output buffer and lowers the
+        whole view directly to array operations. A partitioning with a single
+        whole-array box still goes through the buffer: the branch is on whether
+        a partitioning is in force, not on how many boxes it has.
+
+        The result never shares memory with the wrapped array, so writing to it
+        is safe whichever of those two routes it came by.
 
         Returns
         -------
         array
             An array of shape `self.shape`, identical whatever partitioning is
             in force. A partitioned view produces a NumPy array (see the module
-            docstring's device caveat); a single whole-array part produces
-            whatever the wrapped array's namespace produces. A view with a
-            zero-rank domain returns a zero-dimensional array, not a scalar.
+            docstring's device caveat); an unpartitioned one produces whatever
+            the wrapped array's namespace produces. A view with a zero-rank
+            domain returns a zero-dimensional array, not a scalar.
+
+        Raises
+        ------
+        AssertionError
+            If the partition walk does not cover the view. The output buffer is
+            uninitialized where nothing was written, so an incomplete walk is
+            reported rather than returned.
         """
         if self._parts is None:
-            return _read(self._array, self._window, self._transform, self._support)
+            block = _read(self._array, self._window, self._transform, self._support)
+            return _detach(block, self._array)
 
         out_shape = self.shape
-        out = np.empty(out_shape, dtype=np.dtype(self.dtype))
-        if math.prod(out_shape) > 0:
+        out = self._output_buffer(out_shape)
+        size = math.prod(out_shape)
+        if size > 0:
+            written = 0
             for part in self.parts():
-                value = np.asarray(part.array.result())
+                # Counted before the scatter, so a part addressing the wrong
+                # number of axes is named rather than reported as a broadcast
+                # failure against the buffer.
+                written += _out_selection_cell_count(part.out_selection, out_shape)
+                value = np.asanyarray(part.array.result())
                 if len(out_shape) == 0:
                     value = value.reshape(())
                 out[part.out_selection] = value
+            if written != size:
+                # The buffer is uninitialized where no part wrote, so a partition
+                # walk that does not tile the view exactly would otherwise hand
+                # back process memory dressed as data. The parts are disjoint by
+                # contract, so counting the cells each addresses is enough:
+                # a gap undercounts and an overlap overcounts.
+                raise AssertionError(
+                    f"the partition walk addressed {written} of the view's {size} "
+                    "cells; this is a bug in zarr-indexing's partition walk"
+                )
         return out
+
+    def _output_buffer(self, out_shape: tuple[int, ...]) -> Any:
+        """The buffer `result()` scatters parts into.
+
+        Deliberately uninitialized: every cell is written by exactly one part,
+        and `result()` verifies that before returning. A masked source gets a
+        masked buffer so that scattering preserves the mask; nothing else about
+        the wrapped array's own type survives a partitioned read (see the module
+        docstring's device caveat).
+        """
+        dtype = np.dtype(self.dtype)
+        if isinstance(self._array, np.ma.MaskedArray):
+            return np.ma.masked_all(out_shape, dtype=dtype)
+        return np.empty(out_shape, dtype=dtype)
 
     # -- protocols ----------------------------------------------------------
 
     def __array__(self, dtype: Any = None, copy: bool | None = None) -> Any:
+        """Materialize the view as a NumPy array.
+
+        The result never shares memory with the wrapped array, whatever `copy`
+        asks for: `result()` already detaches, so `copy=True` gets an array the
+        caller owns and `copy=None` gets the same one rather than a second
+        allocation. `copy=False` is refused, because materializing means reading
+        — the values do not exist as a NumPy array until this call makes them.
+        """
         if copy is False:
             raise ValueError(
                 "a LazyArray cannot be converted to a NumPy array without a "
-                "copy: materializing a view always produces new data"
+                "copy: a view is a description of a read, and the values only "
+                "exist once the read is made"
             )
         return np.asarray(self.result(), dtype=dtype)
 
