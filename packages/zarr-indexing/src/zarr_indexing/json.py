@@ -5,12 +5,16 @@ no array constraints, this module converts a *canonical* ndsel transform body
 (spec section 4.3, as produced by `zarr_indexing.messages.normalize_ndsel`)
 into the numpy-backed `IndexTransform` the chunk engine runs on, and back.
 
-Two engine constraints live **here and only here**:
+Three engine constraints live **here and only here**:
 
 - **Finite bounds.** An `IndexDomain` addresses a finite array, so a canonical
   body carrying a `"-inf"`/`"+inf"` bound cannot be lowered; `from_json` raises.
 - **Implicit bounds lower by value.** The `[n]`-bracket implicit/explicit flag
   is a message-layer concern; the engine keeps only the integer value.
+- **Integer `index_array` content.** The message layer carries `index_array`
+  verbatim (the spec defers its shape and type), so lowering is where a float,
+  boolean or string array is rejected — as an `NdselError`, rather than
+  truncating `[0.9, 1.9]` to cells 0 and 1 or leaking a raw NumPy error.
 
 ## The `index_array` wire format (and the degenerate-collapse it documents)
 
@@ -49,7 +53,7 @@ from typing import Any, Required, TypedDict
 import numpy as np
 
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.messages import normalize_ndsel
+from zarr_indexing.messages import NdselError, normalize_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import (
     IndexTransform,
@@ -132,6 +136,33 @@ def _lower_bound(bound: BoundJSON, where: str) -> int:
     return int(value)
 
 
+def _lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Lower a canonical `index_array` to `intp`, rejecting non-integer content.
+
+    The message layer carries `index_array` verbatim — the spec defers its shape
+    and type to the engine — so this is where the content is checked. An index
+    array names storage cells, and nothing but an integer names one: converting
+    `[0.9, 1.9]` would silently read cells 0 and 1, and `[true, false]` cells 1
+    and 0. Strings raise here rather than leaking NumPy's own conversion error.
+    """
+    try:
+        arr = np.asarray(raw)
+    except (TypeError, ValueError) as exc:
+        raise NdselError("invalid_json", f"{where} is not an array: {exc}") from exc
+    if arr.size == 0 and arr.dtype.kind == "f":
+        # An empty JSON list carries no element type and NumPy defaults it to
+        # float64. An empty selection is legal, so take it as an empty index array.
+        return np.zeros(arr.shape, dtype=np.intp)
+    if arr.dtype.kind not in "iu":
+        raise NdselError(
+            "invalid_json",
+            f"{where} must hold integers, got an array of {arr.dtype.name}; an "
+            f"index array names storage cells, which floats, booleans and "
+            f"strings do not",
+        )
+    return np.asarray(arr, dtype=np.intp)
+
+
 def _lower_labels(labels: list[str]) -> tuple[str, ...] | None:
     """All-empty labels collapse to `None` so a label-free domain round-trips."""
     return None if all(label == "" for label in labels) else tuple(labels)
@@ -209,7 +240,7 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     share axes.
     """
     if "index_array" in data:
-        arr = np.asarray(data["index_array"], dtype=np.intp)
+        arr = _lower_index_array(data["index_array"], "index_array")
         return ArrayMap(
             index_array=arr,
             offset=data.get("offset", 0),
@@ -284,11 +315,13 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     # Classify index_array maps globally: an axis owned by exactly one array map
     # (and the map's sole non-singleton axis) marks that map orthogonal; shared
     # or multiple non-singleton axes mark the maps correlated (vindex).
+    arrays: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
     array_axes: dict[int, tuple[int, ...]] = {}
     axis_owners: Counter[int] = Counter()
     for i, om in enumerate(output_raw):
         if "index_array" in om:
-            arr = np.asarray(om["index_array"], dtype=np.intp)
+            arr = _lower_index_array(om["index_array"], f"output[{i}].index_array")
+            arrays[i] = arr
             dep = _array_map_dependency_axes(arr)
             array_axes[i] = dep
             axis_owners.update(dep)
@@ -300,7 +333,7 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
             input_dim = dep[0] if len(dep) == 1 and axis_owners[dep[0]] == 1 else None
             output.append(
                 ArrayMap(
-                    index_array=np.asarray(om["index_array"], dtype=np.intp),
+                    index_array=arrays[i],
                     offset=om.get("offset", 0),
                     stride=om.get("stride", 1),
                     input_dimension=input_dim,

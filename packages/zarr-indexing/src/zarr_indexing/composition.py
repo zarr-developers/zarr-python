@@ -41,12 +41,16 @@ def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
             f"({inner.domain.ndim})"
         )
 
-    result_output = [_compose_single(outer, inner_map) for inner_map in inner.output]
+    result_output = [
+        _compose_single(outer, inner_map, inner.domain.inclusive_min) for inner_map in inner.output
+    ]
 
     return IndexTransform(domain=outer.domain, output=tuple(result_output))
 
 
-def _compose_single(outer: IndexTransform, inner_map: OutputIndexMap) -> OutputIndexMap:
+def _compose_single(
+    outer: IndexTransform, inner_map: OutputIndexMap, inner_origin: tuple[int, ...]
+) -> OutputIndexMap:
     """Compose a single inner output map with the full outer transform."""
     if isinstance(inner_map, ConstantMap):
         return ConstantMap(offset=inner_map.offset)
@@ -55,7 +59,7 @@ def _compose_single(outer: IndexTransform, inner_map: OutputIndexMap) -> OutputI
         return _compose_dimension(outer, inner_map)
 
     # inner_map: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-    return _compose_array(outer, inner_map)
+    return _compose_array(outer, inner_map, inner_origin)
 
 
 def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> OutputIndexMap:
@@ -91,11 +95,20 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     )
 
 
-def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap:
+def _compose_array(
+    outer: IndexTransform, inner_map: ArrayMap, inner_origin: tuple[int, ...]
+) -> OutputIndexMap:
     """Compose when inner is an ArrayMap.
 
     storage = offset_i + stride_i * arr_i[intermediate]
     We need to evaluate arr_i at the intermediate coordinates produced by outer.
+
+    Both domains carry their own origin, and neither is necessarily 0 — a step-1
+    slice keeps its literal bounds and a negative step produces a negative
+    origin, so non-zero origins are the ordinary case here rather than the exotic
+    one. The intermediate coordinates are read over the *outer* domain's own
+    range, and the inner array is addressed positionally from the *inner*
+    domain's origin.
     """
     arr_i = inner_map.index_array
     offset_i = inner_map.offset
@@ -106,7 +119,12 @@ def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap
 
     if all_constant:
         # Evaluate arr_i at the single constant point
-        idx = tuple(m.offset for m in outer.output if isinstance(m, ConstantMap))
+        idx = tuple(
+            m.offset - lo
+            for m, lo in zip(
+                (m for m in outer.output if isinstance(m, ConstantMap)), inner_origin, strict=True
+            )
+        )
         value = int(arr_i[idx])
         return ConstantMap(offset=offset_i + stride_i * value)
 
@@ -115,15 +133,17 @@ def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap
         outer_map = outer.output[0]
 
         if isinstance(outer_map, DimensionMap):
-            dim_size = outer.domain.shape[outer_map.input_dimension]
-            user_indices = np.arange(dim_size, dtype=np.intp)
+            dim = outer_map.input_dimension
+            user_indices = np.arange(
+                outer.domain.inclusive_min[dim], outer.domain.exclusive_max[dim], dtype=np.intp
+            )
             intermediate_vals = outer_map.offset + outer_map.stride * user_indices
-            new_arr = arr_i[intermediate_vals]
+            new_arr = arr_i[intermediate_vals - inner_origin[0]]
             return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
 
         if isinstance(outer_map, ArrayMap):
             intermediate_vals = outer_map.offset + outer_map.stride * outer_map.index_array
-            new_arr = arr_i[intermediate_vals]
+            new_arr = arr_i[intermediate_vals - inner_origin[0]]
             return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
 
     # General multi-dim case: not yet implemented

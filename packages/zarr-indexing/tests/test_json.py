@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -13,6 +15,7 @@ from zarr_indexing.json import (
     output_index_map_from_json,
     output_index_map_to_json,
 )
+from zarr_indexing.messages import NdselError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
 
@@ -322,6 +325,67 @@ class TestCanonicalRoundTrips:
         t = IndexTransform.from_shape((10, 20, 30))[2:8:2, 5, :]
         rt = index_transform_from_json(index_transform_to_json(t))
         assert _transforms_equal(rt, t)
+
+
+def _index_array_body(index_array: Any, rank: int = 1) -> IndexTransformJSON:
+    return {
+        "input_rank": rank,
+        "input_inclusive_min": [0] * rank,
+        "input_exclusive_max": [2] * rank,
+        "input_labels": [""] * rank,
+        "output": [{"offset": 0, "stride": 1, "index_array": index_array}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("index_array", "detail"),
+    [
+        ([0.9, 1.9], "float64"),
+        ([0, 1.5], "float64"),
+        ([True, False], "bool"),
+        (["a", "b"], "str"),
+        ("abc", "str"),
+        ([None, None], "object"),
+    ],
+    ids=["floats", "mixed", "bools", "strings", "string", "nulls"],
+)
+def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) -> None:
+    """An `index_array` addresses storage cells, so it must be integral.
+
+    Lowering a float array silently truncated it (`[0.9, 1.9]` selected cells 0
+    and 1), a bool array coerced to 0/1, and a string array leaked a raw NumPy
+    `ValueError` from the middle of the conversion.
+    """
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(_index_array_body(index_array))
+    assert excinfo.value.reason == "invalid_json"
+    assert "index_array" in str(excinfo.value)
+    assert detail in str(excinfo.value)
+
+
+def test_a_ragged_index_array_is_rejected() -> None:
+    """A nested list that is not rectangular is not an array at all."""
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(_index_array_body([[0, 1], [2]]))
+    assert excinfo.value.reason == "invalid_json"
+
+
+@pytest.mark.parametrize(
+    ("index_array", "rank"), [([0, 1], 1), ([[0], [1]], 2), ([], 1)], ids=["1d", "2d", "empty"]
+)
+def test_an_integer_index_array_is_accepted(index_array: Any, rank: int) -> None:
+    """Integers of any nesting still lower, including an empty selection."""
+    t = index_transform_from_json(_index_array_body(index_array, rank))
+    m = t.output[0]
+    assert isinstance(m, ArrayMap)
+    assert m.index_array.dtype == np.intp
+
+
+def test_a_non_integer_index_array_is_rejected_by_the_map_loader() -> None:
+    """The single-map loader enforces the same constraint as the transform one."""
+    with pytest.raises(NdselError) as excinfo:
+        output_index_map_from_json({"index_array": [0.5, 1.5]})
+    assert excinfo.value.reason == "invalid_json"
 
 
 def test_infinite_bound_rejected_on_lowering() -> None:

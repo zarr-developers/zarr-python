@@ -285,6 +285,14 @@ def _intersect(
             f"transform output rank ({transform.output_rank})"
         )
 
+    if any(size == 0 for size in transform.domain.shape):
+        # An empty input domain addresses no coordinates at all, so it meets no
+        # output domain. Deciding it here keeps the per-flavor intersections from
+        # having to reconcile an empty domain with an index array that is *not*
+        # empty: a genuine extent-1 axis is stored as a broadcast singleton, so
+        # emptying its domain leaves the array at size 1.
+        return None
+
     correlated_dims = [
         i
         for i, m in enumerate(transform.output)
@@ -720,19 +728,37 @@ def _guard_fancy_after_fancy(m: ArrayMap, fancy_dims: set[int] | list[int]) -> N
 
 
 def _reindex_array_oindex(
-    arr: np.ndarray[Any, np.dtype[np.intp]],
+    m: ArrayMap,
     normalized: tuple[Any, ...] | list[Any],
     domain: IndexDomain,
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
-    """Apply oindex/vindex selection to an existing ArrayMap's index_array.
+    """Apply an oindex/vindex selection to an existing ArrayMap's index_array.
 
-    Each old input dimension gets either an array (fancy index that axis)
-    or a slice applied to the corresponding array axis.
+    Dependency-aware in exactly the way `_reindex_array` is: an entry applies to
+    the array only along the axes the map genuinely varies over (its dependency
+    axes, plus the `input_dimension` recorded for a degenerate length-1
+    orthogonal selection). An entry landing on a **singleton** axis the map
+    merely broadcasts over does not touch its values — the singleton still
+    broadcasts over the narrowed domain, so it is preserved. Applying such a
+    slice positionally instead would index a size-1 axis out of range and
+    truncate the whole array to size 0.
+
+    Only slices ever take the broadcast path: `_guard_fancy_after_fancy` rejects
+    coordinates aimed at a broadcast axis before this is called.
     """
+    arr = m.index_array
+    dependent = set(_array_map_dependency_axes(arr))
+    if m.input_dimension is not None:
+        dependent.add(m.input_dimension)
+
     idx: list[Any] = []
     for old_dim, sel in enumerate(normalized):
         if old_dim >= arr.ndim:
             break
+        if old_dim not in dependent:
+            # Broadcast axis: keep the singleton whatever the entry says.
+            idx.append(slice(None))
+            continue
         lo = domain.inclusive_min[old_dim]
         if isinstance(sel, np.ndarray):
             # Values are literal domain coordinates; the stored array is
@@ -870,11 +896,15 @@ def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, 
     Normalized `ArrayMap` index arrays carry the full input rank of their
     enclosing transform: an axis the array varies over has its full size, while
     an axis the array is independent of is a singleton (size 1). The dependency
-    axes are therefore exactly the non-singleton axes. An orthogonal (`oindex`)
-    array depends on a single axis; a vectorized (`vindex`) array depends on all
-    of the (shared) broadcast axes.
+    axes are therefore exactly the axes of size 2 or more. An orthogonal
+    (`oindex`) array depends on a single axis; a vectorized (`vindex`) array
+    depends on all of the (shared) broadcast axes.
+
+    A size-**0** axis carries no dependency either: the array has no values to
+    vary, so an empty selection stays the flavor it was made as rather than
+    reading as correlated with every other axis.
     """
-    return tuple(axis for axis, size in enumerate(index_array.shape) if size != 1)
+    return tuple(axis for axis, size in enumerate(index_array.shape) if size > 1)
 
 
 def array_map_dependent_axis(m: ArrayMap) -> int | None:
@@ -1061,7 +1091,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, list(dim_array.keys()))
-            new_arr = _reindex_array_oindex(m.index_array, normalized, transform.domain)
+            new_arr = _reindex_array_oindex(m, normalized, transform.domain)
             array_input_dim: int | None = None
             if m.input_dimension is not None:
                 array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
@@ -1261,7 +1291,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
             _guard_fancy_after_fancy(m, array_dims)
-            new_arr = _reindex_array_oindex(m.index_array, processed, transform.domain)
+            new_arr = _reindex_array_oindex(m, processed, transform.domain)
             new_output.append(
                 ArrayMap(
                     index_array=new_arr,

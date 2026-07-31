@@ -39,7 +39,16 @@ import numpy as np
 
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_indexing.transform import IndexTransform
+from zarr_indexing.transform import (
+    IndexTransform,
+    _positional_slice,  # pyright: ignore[reportPrivateUsage]
+)
+
+# `_positional_slice` is a leading-underscore helper in `transform.py`, shared
+# with this module on purpose: the slice an `ArrayMap` axis is reindexed by and
+# the slice a `DimensionMap` is lowered to are the same walk, and the two must
+# agree on where a downward one stops. See `json.py` for the same suppression
+# and the same open question about promoting these helpers out of "private".
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -127,6 +136,13 @@ def iter_chunk_transforms(
     - `out_indices`: for vectorized/array indexing, the output scatter
       indices (integer array). `None` for basic/slice indexing.
     """
+
+    if any(size == 0 for size in transform.domain.shape):
+        # An empty view touches no chunk. Checked on the domain rather than on
+        # the index arrays: an axis of genuine extent 1 is stored as a broadcast
+        # singleton, so a slice that empties the domain does not shrink the
+        # array, and the emptiness shows only here.
+        return
 
     array_map_1d = _one_dimensional_correlated_array_map(transform)
     if array_map_1d is not None:
@@ -261,6 +277,18 @@ def iter_chunk_transforms(
         yield (chunk_coords, local, surviving)
 
 
+def _dimension_map_slice(m: DimensionMap, dim_lo: int, dim_hi: int) -> slice:
+    """The NumPy slice a `DimensionMap` reads over input range `[dim_lo, dim_hi)`.
+
+    The walk starts at the storage coordinate of `dim_lo` and takes `dim_hi -
+    dim_lo` steps of `m.stride`. A downward walk that reaches the start of the
+    axis must stop at `None`: an integer stop below zero counts from the end
+    instead, and swapping the endpoints while keeping the negative step (which
+    this did) produces a slice that selects nothing at all.
+    """
+    return _positional_slice(m.offset + m.stride * dim_lo, dim_hi - dim_lo, m.stride)
+
+
 def sub_transform_to_selections(
     sub_transform: IndexTransform,
     out_indices: OutIndices = None,
@@ -327,11 +355,7 @@ def sub_transform_to_selections(
                 chunk_sel.append(m.offset)
             elif isinstance(m, DimensionMap):
                 d = m.input_dimension
-                start = m.offset + m.stride * inclusive_min[d]
-                stop = m.offset + m.stride * exclusive_max[d]
-                if m.stride < 0:
-                    start, stop = stop + 1, start + 1
-                chunk_sel.append(slice(start, stop, m.stride))
+                chunk_sel.append(_dimension_map_slice(m, inclusive_min[d], exclusive_max[d]))
             else:  # ArrayMap
                 idx = m.index_array.reshape(-1)
                 chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
@@ -362,11 +386,7 @@ def sub_transform_to_selections(
             d = m.input_dimension
             dim_lo = inclusive_min[d]
             dim_hi = exclusive_max[d]
-            start = m.offset + m.stride * dim_lo
-            stop = m.offset + m.stride * dim_hi
-            if m.stride < 0:
-                start, stop = stop + 1, start + 1
-            chunk_sel.append(slice(start, stop, m.stride))
+            chunk_sel.append(_dimension_map_slice(m, dim_lo, dim_hi))
             out_sel.append(slice(dim_lo, dim_hi))
         else:  # ArrayMap (orthogonal: full-rank, raveled to its 1-D fancy coords)
             idx = m.index_array.reshape(-1)

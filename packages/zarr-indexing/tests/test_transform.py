@@ -5,7 +5,11 @@ import pytest
 
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_indexing.transform import IndexTransform, selection_to_transform
+from zarr_indexing.transform import (
+    IndexTransform,
+    array_map_dependent_axis,
+    selection_to_transform,
+)
 
 
 class TestIndexTransformConstruction:
@@ -576,6 +580,20 @@ class TestArrayMapDependencyAxes:
         from zarr_indexing.transform import _array_map_dependency_axes
 
         assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()
+
+    def test_zero_length_axis_has_no_dependency(self) -> None:
+        """An axis of size 0 carries no dependency either: it selects nothing, so
+        the array does not vary along it any more than along a singleton."""
+        from zarr_indexing.transform import _array_map_dependency_axes
+
+        assert _array_map_dependency_axes(np.zeros((0, 4), dtype=np.intp)) == (1,)
+        assert _array_map_dependency_axes(np.zeros((3, 0), dtype=np.intp)) == (0,)
+        assert _array_map_dependency_axes(np.zeros((0, 1), dtype=np.intp)) == ()
+
+    def test_zero_length_axis_does_not_make_a_map_correlated(self) -> None:
+        """An empty orthogonal selection is legal, so it must classify as one."""
+        m = ArrayMap(index_array=np.zeros((0, 4), dtype=np.intp), input_dimension=1)
+        assert array_map_dependent_axis(m) == 1
 
 
 class TestIntersectArrayMapClassification:

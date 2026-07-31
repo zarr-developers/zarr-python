@@ -445,6 +445,60 @@ class TestSubTransformToSelections:
         np.testing.assert_array_equal(chunk_sel[0], np.array([10, 15, 20]))
         assert drop_axes == ()
 
+    def test_dimension_map_reversed(self) -> None:
+        """A negative stride walks the axis backwards, stopping off the front.
+
+        `slice(0, 8, -1)` — the endpoints swapped while the step stays negative —
+        selects nothing; the axis reversed is `slice(7, None, -1)`.
+        """
+        t = IndexTransform.identity(IndexDomain.from_shape((8,)))[::-1].translate_domain_to((0,))
+        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
+        assert chunk_sel == (slice(7, None, -1),)
+        assert out_sel == (slice(0, 8),)
+        assert drop_axes == ()
+        np.testing.assert_array_equal(np.arange(8)[chunk_sel[0]], np.arange(8)[::-1])
+
+    def test_dimension_map_reversed_bounded(self) -> None:
+        """A reversed walk that stops short keeps an ordinary integer stop."""
+        t = IndexTransform.identity(IndexDomain.from_shape((8,)))[6:2:-1].translate_domain_to((0,))
+        chunk_sel, _out_sel, _drop = sub_transform_to_selections(t)
+        np.testing.assert_array_equal(np.arange(8)[chunk_sel[0]], np.arange(8)[6:2:-1])
+
+    def test_dimension_map_reversed_strided(self) -> None:
+        """The same, with a stride whose walk does not land on the origin."""
+        t = IndexTransform.identity(IndexDomain.from_shape((9,)))[::-3].translate_domain_to((0,))
+        chunk_sel, _out_sel, _drop = sub_transform_to_selections(t)
+        np.testing.assert_array_equal(np.arange(9)[chunk_sel[0]], np.arange(9)[::-3])
+
+    def test_dimension_map_slice_reads_the_coordinates_the_map_names(self) -> None:
+        """Over every offset/stride/extent in range, the emitted slice picks out
+        exactly `offset + stride * i` for `i` in the input range."""
+        extent = 12
+        cells = np.arange(extent)
+        for stride in (-4, -3, -2, -1, 1, 2, 3, 4):
+            for size in range(extent + 1):
+                span = 0 if size == 0 else abs(stride) * (size - 1)
+                offsets = range(extent - span) if span < extent else ()
+                for offset in offsets:
+                    start = offset if stride > 0 else offset + span
+                    t = IndexTransform(
+                        domain=IndexDomain.from_shape((size,)),
+                        output=(DimensionMap(input_dimension=0, offset=start, stride=stride),),
+                    )
+                    chunk_sel, _out_sel, _drop = sub_transform_to_selections(t)
+                    expected = np.array([start + stride * i for i in range(size)])
+                    np.testing.assert_array_equal(
+                        cells[chunk_sel[0]], expected, err_msg=f"{stride=} {size=} {start=}"
+                    )
+
+    def test_correlated_residual_dimension_map_reversed(self) -> None:
+        """The correlated branch builds the same reversed slice for its residual dim."""
+        t = IndexTransform.from_shape((4, 3, 5)).vindex[np.array([1, 3]), np.array([2, 0])]
+        reversed_slice = t[:, ::-1].translate_domain_to((0, 0))
+        chunk_sel, _out_sel, _drop = sub_transform_to_selections(reversed_slice)
+        assert chunk_sel[2] == slice(4, None, -1)
+        np.testing.assert_array_equal(np.arange(5)[chunk_sel[2]], np.arange(5)[::-1])
+
     def test_mixed_maps_2d(self) -> None:
         """Mix of ConstantMap and DimensionMap."""
         t = IndexTransform(

@@ -465,6 +465,33 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
         lambda a: a.lazy[-11::-1],
         lambda r: r[-11::-1],
     ),
+    # A fancy *spelling* whose entries are all slices is not a fancy selection:
+    # it narrows the view's own axes and must compose exactly like basic
+    # indexing. The slices start past 0, so a step that applied them to the
+    # broadcast (singleton) axes of the existing index array would truncate it.
+    (
+        "compose-oindex-then-oindex-slices-only",
+        lambda a: a.lazy.oindex[[4, 0, 0], :, :].lazy.oindex[:, 2:5, 1:],
+        lambda r: outer(r, ([4, 0, 0], slice(None), slice(None)))[:, 2:5, 1:],
+    ),
+    (
+        "compose-oindex-then-oindex-slices-only-strided",
+        lambda a: a.lazy.oindex[:, [3, 1, 1], :].lazy.oindex[1::2, :, ::-1],
+        lambda r: outer(r, (slice(None), [3, 1, 1], slice(None)))[1::2, :, ::-1],
+    ),
+    (
+        "compose-vindex-then-oindex-slices-only",
+        lambda a: a.lazy.vindex[np.array([4, 0, 2]), np.array([1, 3, 0])].lazy.oindex[1:, 2:],
+        lambda r: r[np.array([4, 0, 2]), np.array([1, 3, 0])][1:, 2:],
+    ),
+    (
+        "compose-oindex-then-oindex-array-on-its-own-axis",
+        lambda a: a.lazy.oindex[[4, 0, 0], :, :].lazy.oindex[[2, 0], 3:, :],
+        lambda r: outer(
+            outer(r, ([4, 0, 0], slice(None), slice(None))),
+            ([2, 0], slice(3, None), slice(None)),
+        ),
+    ),
 ]
 
 
@@ -574,11 +601,44 @@ def _apply_view(view: LazyArray, mode: str, selection: tuple[Any, ...]) -> LazyA
     return view.lazy.vindex[selection]
 
 
+def _random_slices_only(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[Any, ...]:
+    """A selection of slices alone, spelled through `oindex`.
+
+    `oindex` entries that are all slices are not a fancy selection — they narrow
+    the view's own axes and must compose like basic indexing. A start past 0 is
+    what distinguishes a step that walks the index array's dependency axes from
+    one that walks its broadcast singletons, so slices are drawn to reach past
+    the origin. (`vindex` is coordinate-only and rejects a slice outright, so
+    this spelling has no vectorized counterpart.)
+    """
+    selection: list[Any] = []
+    for size in shape:
+        roll = rng.random()
+        if roll < 0.4:
+            start = int(rng.integers(0, size)) if size else 0
+            selection.append(slice(start, size))
+        elif roll < 0.7:
+            start = int(rng.integers(0, size)) if size else 0
+            selection.append(slice(start, size, int(rng.integers(1, 3))))
+        elif roll < 0.85:
+            selection.append(slice(None, None, -1))
+        else:
+            selection.append(slice(None))
+    return tuple(selection)
+
+
 def _random_chain(rng: np.random.Generator) -> list[tuple[str, tuple[Any, ...]]]:
-    """A chain of 2-4 steps with at most one fancy step, in either order."""
+    """A chain of 2-4 steps with at most one fancy step, in either order.
+
+    A step spelled through `oindex` but carrying only slices is drawn separately
+    (`slices-only`): it is legal after a fancy step — genuine fancy-after-fancy
+    is not, and raises — and it exercises the reindexing of an existing index
+    array by a *slice* rather than by coordinates.
+    """
     n_steps = int(rng.integers(2, 5))
     fancy_at = int(rng.integers(0, n_steps))
     fancy_mode = "orthogonal" if rng.random() < 0.5 else "vectorized"
+    slices_only_at = int(rng.integers(0, n_steps)) if rng.random() < 0.4 else -1
 
     chain: list[tuple[str, tuple[Any, ...]]] = []
     running = reference()
@@ -586,7 +646,10 @@ def _random_chain(rng: np.random.Generator) -> list[tuple[str, tuple[Any, ...]]]
         if running.ndim == 0 or running.size == 0:
             break
         mode = fancy_mode if step == fancy_at else "basic"
-        if mode == "basic":
+        if step == slices_only_at and step != fancy_at:
+            mode = "orthogonal"
+            selection = _random_slices_only(rng, running.shape)
+        elif mode == "basic":
             selection = _random_basic(rng, running.shape)
         elif mode == "orthogonal":
             selection = _random_oindex(rng, running.shape)
@@ -632,6 +695,128 @@ def test_random_chains_match_numpy(flavor: str) -> None:
                 np.asarray(expected),
                 err_msg=f"{flavor} parts={parts}: {chain}",
             )
+
+
+@pytest.mark.parametrize("flavor", ["numpy-whole", "numpy-uniform-parts"])
+def test_random_chains_have_parts_that_tile_the_view(flavor: str) -> None:
+    """The seeded sweep, read through `parts()` rather than through `result()`.
+
+    `result()` can absorb a defect that `parts()` cannot — an empty view assembles
+    correctly from no parts at all — so the iteration contract needs its own
+    sweep: every part places its own values, and together they cover the view
+    exactly once.
+    """
+    rng = np.random.default_rng(20260731)
+    source = make_source(flavor)
+
+    for _ in range(300):
+        chain = _random_chain(rng)
+        expected = reference()
+        for mode, selection in chain:
+            expected = _apply_oracle(expected, mode, selection)
+
+        view = source
+        for mode, selection in chain:
+            view = _apply_view(view, mode, selection)
+
+        assembled = np.zeros(view.shape, dtype=view.dtype)
+        hits = np.zeros(view.shape, dtype=np.int64)
+        for part in view.parts():
+            value = np.asarray(part.array.result())
+            if len(view.shape) == 0:
+                # A zero-rank view is assembled the way `result()` assembles it:
+                # its single part still carries the collapsed correlated axis, so
+                # the value arrives with rank 1.
+                value = value.reshape(())
+            assembled[part.out_selection] = value
+            np.add.at(hits, part.out_selection, 1)
+
+        np.testing.assert_array_equal(assembled, np.asarray(expected), err_msg=f"{chain}")
+        np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64), err_msg=f"{chain}")
+
+
+PARTITIONINGS_1D: list[Any] = [None, (1,), (2,), (5,)]
+
+
+def test_a_slice_only_fancy_step_after_a_fancy_step_reads_real_data() -> None:
+    """`oindex[:, 2:8]` after an `oindex` narrows the view, it does not re-index it.
+
+    The second step carries no coordinates, so it is not fancy-after-fancy: it
+    must compose like basic indexing. Applying its slices to the *broadcast*
+    axes of the first step's index array instead truncates that array to size 0,
+    which leaves the resolver with no parts to read and `result()` handing back
+    an unwritten buffer.
+    """
+    base = np.arange(24).reshape(3, 8)
+    expected = base[np.ix_([0, 2], range(8))][:, 2:8]
+
+    for parts in (None, (2, 4), (1, 8), (3, 3)):
+        view = (
+            LazyArray(base).with_parts(parts).lazy.oindex[np.array([0, 2]), :].lazy.oindex[:, 2:8]
+        )
+        assert view.shape == expected.shape, f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
+
+
+def test_a_genuine_fancy_step_after_a_fancy_step_is_still_rejected() -> None:
+    """Coordinates landing on a broadcast axis of an existing selection raise.
+
+    The documented limit: a second fancy step may re-index the axes the first one
+    varies over, but not the axes it merely broadcasts along.
+    """
+    base = np.arange(24).reshape(3, 8)
+    view = LazyArray(base).lazy.oindex[np.array([0, 2]), :]
+    with pytest.raises(NotImplementedError, match="fancy-after-fancy"):
+        view.lazy.oindex[:, np.array([1, 3])]
+    with pytest.raises(NotImplementedError, match="fancy-after-fancy"):
+        view.lazy.vindex[np.array([0, 1]), np.array([1, 3])]
+
+
+def test_a_zero_length_axis_resolves_the_same_way_under_every_partitioning() -> None:
+    """A size-0 axis carries no dependency, so it cannot make a map correlated."""
+    base = np.zeros((3, 0))
+    expected = base[np.ix_([1, 0, 0], np.arange(0, dtype=int))]
+
+    for parts in (None, ((1, 1, 1), ()), ((3,), ())):
+        view = (
+            LazyArray(base)
+            .with_parts(parts)
+            .lazy.oindex[np.array([1, -3, -3]), :]
+            .lazy.oindex[:, :]
+        )
+        assert view.shape == expected.shape, f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
+        assert list(view.parts()) == []
+
+
+def test_an_empty_slice_of_a_length_one_correlated_axis_has_no_parts() -> None:
+    """`parts()` agrees with `result()` that an emptied view selects nothing.
+
+    A correlated selection of exactly one point normalizes to an all-singleton
+    index array, indistinguishable by shape from an axis the map broadcasts
+    over — so a later slice that empties the domain leaves the array at size 1.
+    """
+    base = np.arange(5)
+    mask = np.array([False, True, False, False, False])
+
+    for parts in PARTITIONINGS_1D:
+        view = LazyArray(base).with_parts(parts).lazy.vindex[mask].lazy[1:-2]
+        assert view.shape == (0,), f"parts={parts}"
+        assert list(view.parts()) == [], f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(view.result()), base[mask][1:-2])
+
+
+def test_an_empty_slice_of_a_length_one_vindex_pair_has_no_parts() -> None:
+    """The same emptied view, spelled with explicit coordinates over two axes."""
+    base = np.arange(35).reshape(7, 5)
+
+    for parts in (None, (2, 2), (7, 5)):
+        view = LazyArray(base).with_parts(parts).lazy.vindex[np.array([6]), np.array([0])].lazy[0:0]
+        assert view.shape == (0,), f"parts={parts}"
+        assert list(view.parts()) == [], f"parts={parts}"
+        np.testing.assert_array_equal(
+            np.asarray(view.result()), base[np.array([6]), np.array([0])][0:0]
+        )
 
 
 def test_eager_getitem_returns_data(source: LazyArray) -> None:
