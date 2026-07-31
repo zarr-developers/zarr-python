@@ -54,6 +54,10 @@ def test_construction(codecs: tuple[Any, ...]) -> None:
     assert pipeline.codecs == codecs
 
 
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide runs to_thread inline on WebLoop, which is always the running loop",
+)
 def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     """Codec compute must never run on the thread driving the event loop.
 
