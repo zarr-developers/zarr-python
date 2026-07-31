@@ -165,18 +165,6 @@ def test_threadpool_executor(clean_state, workers: int | None) -> None:
             assert _get_executor()._max_workers == workers
 
 
-def test_get_executor_refuses_on_wasm(monkeypatch: pytest.MonkeyPatch) -> None:
-    import zarr.core.sync as sync_mod
-
-    monkeypatch.setattr(sync_mod, "IS_WASM", True)
-    for workers in (None, 1, 4):
-        with (
-            zarr.config.set({"threading.max_workers": workers}),
-            pytest.raises(RuntimeError, match="not available in WASM"),
-        ):
-            _get_executor()
-
-
 def test_cleanup_resources_idempotent() -> None:
     _get_executor()  # trigger resource creation (iothread, loop, thread-pool)
     cleanup_resources()

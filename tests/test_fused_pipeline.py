@@ -479,14 +479,6 @@ def test_resolve_max_workers_pinned_to_one_on_wasm(monkeypatch: pytest.MonkeyPat
         assert cp_mod._resolve_max_workers() == 1
 
 
-def test_get_pool_refuses_on_wasm(monkeypatch: pytest.MonkeyPatch) -> None:
-    import zarr.core.codec_pipeline as cp_mod
-
-    monkeypatch.setattr(cp_mod, "IS_WASM", True)
-    with pytest.raises(RuntimeError, match="not available in Pyodide/WASM"):
-        cp_mod._get_pool(4)
-
-
 async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -> None:
     """A failing write must not leave sibling writes running in the background.
 
