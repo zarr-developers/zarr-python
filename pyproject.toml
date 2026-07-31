@@ -306,7 +306,7 @@ python = "3.14"
 extra-dependencies = ["pyodide-build"]
 
 [tool.hatch.envs.pyodide.scripts]
-setup-xbuildenv = "pyodide xbuildenv install 314.0.0"
+setup-xbuildenv = "pyodide xbuildenv install 314.0.3"
 run = [
     "pyodide venv .venv-pyodide --clear",
     ".venv-pyodide/bin/pip install dist/*.whl",
