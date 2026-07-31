@@ -1000,7 +1000,7 @@ def test_with_parts_validates_strictly(parts: Any, match: str) -> None:
 
 
 def test_dask_token_is_deterministic_and_discriminating() -> None:
-    """Same data, same view, same parts token alike; anything else differs."""
+    """Same data and same view token alike; a different selection differs."""
     data = reference()
     base = LazyArray(data)
     assert base.__dask_tokenize__() == LazyArray(reference()).__dask_tokenize__()
@@ -1009,12 +1009,29 @@ def test_dask_token_is_deterministic_and_discriminating() -> None:
         "base": base.__dask_tokenize__(),
         "view": base.lazy[1:3].__dask_tokenize__(),
         "other view": base.lazy[2:4].__dask_tokenize__(),
-        "parts": base.with_parts((2, 2, 2)).__dask_tokenize__(),
         "other data": LazyArray(data + 1).__dask_tokenize__(),
     }
     assert len({repr(token) for token in tokens.values()}) == len(tokens)
     # Equivalent transforms reached different ways still token alike.
     assert base.lazy[1:5].lazy[0:2].__dask_tokenize__() == base.lazy[1:3].__dask_tokenize__()
+
+
+def test_dask_token_ignores_how_the_data_is_read() -> None:
+    """Partitioning and indexing support are read strategies, not data."""
+    base = LazyArray(reference())
+    token = base.__dask_tokenize__()
+
+    assert base.with_parts((2, 2, 2)).__dask_tokenize__() == token
+    assert base.with_parts((3, 5, 4)).__dask_tokenize__() == token
+    assert base.with_indexing_support(IndexingSupport.BASIC).__dask_tokenize__() == token
+    assert base.with_indexing_support(IndexingSupport.OUTER).__dask_tokenize__() == token
+
+    # The same holds for a view, where both strategies also apply.
+    view = base.lazy[1:6, 2:7]
+    assert (
+        view.with_parts((2, 2, 2)).with_indexing_support(IndexingSupport.BASIC).__dask_tokenize__()
+        == view.__dask_tokenize__()
+    )
 
 
 def test_iteration_yields_eager_slices(source: LazyArray) -> None:

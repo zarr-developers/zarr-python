@@ -1368,26 +1368,27 @@ class LazyArray:
         return np.asarray(self.result(), dtype=dtype)
 
     def __dask_tokenize__(self) -> Any:
-        """A deterministic token: the wrapped array, the view, and the parts.
+        """A deterministic token: the wrapped array and the view.
 
-        Two wrappers produce equal tokens when they wrap the same data, address
-        the same cells, and read them in the same boxes. The view contributes
-        its canonical ndsel body, so transforms that differ only in
-        representation produce the same token. See `_wrapped_token` for the
-        determinism scope of the wrapped array's contribution; dask is imported
-        lazily and is never a requirement of this package.
+        Two wrappers produce equal tokens when they wrap the same data and
+        address the same cells. The view contributes its canonical ndsel body,
+        so transforms that differ only in representation produce the same
+        token. See `_wrapped_token` for the determinism scope of the wrapped
+        array's contribution; dask is imported lazily and is never a
+        requirement of this package.
 
-        The `IndexingSupport` level is deliberately absent. It decides which
-        requests are made of the source, not which values come back, so two
-        wrappers that differ only in their level describe the same data and
-        should token alike.
+        The partitioning and the `IndexingSupport` level are deliberately
+        absent. Both decide how the data is read — in which boxes, and through
+        which requests to the source — and neither changes the values that come
+        back, so two wrappers differing only in those describe the same data.
+        A token identifies data, so they token alike and a consumer that caches
+        on tokens reuses one result for both.
         """
         return (
             type(self).__qualname__,
             _wrapped_token(self._array),
             None if self._window is None else tuple((s.start, s.stop) for s in self._window),
             json.dumps(transform_to_canonical(self._transform), sort_keys=True),
-            None if self._parts is None else tuple(grid.sizes for grid in self._parts),
         )
 
     def __len__(self) -> int:
