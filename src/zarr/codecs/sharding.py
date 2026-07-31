@@ -23,7 +23,7 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
-    SupportsGetSync,
+    _store_supports_sync_io,
 )
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.codecs.bytes import BytesCodec
@@ -1721,7 +1721,7 @@ class ShardingCodec(
 
         shard_dict: ShardMutableMapping = {}
         store = byte_getter.store if hasattr(byte_getter, "store") else None
-        if isinstance(store, Store) and isinstance(store, SupportsGetSync):
+        if isinstance(store, Store) and _store_supports_sync_io(store):
             # External store: coalesce via get_ranges_sync (mirrors get_ranges).
             byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
             try:

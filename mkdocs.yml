@@ -31,6 +31,8 @@ nav:
   - Examples:
       - user-guide/examples/custom_dtype.md
       - user-guide/examples/rectilinear_chunks.md
+      - user-guide/examples/codec_pipeline_performance.md
+      - user-guide/examples/sharding_coalescing.md
   - API Reference:
       - api/zarr/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc</code>':
@@ -96,6 +98,8 @@ nav:
       - 'zarr-indexing ↪': https://zarr-indexing.readthedocs.io/
   - release-notes.md
   - contributing.md
+  - Blog:
+    - blog/index.md
 hooks:
   - mkdocs_hooks.py
 
@@ -154,6 +158,14 @@ extra_css:
 
 plugins:
   - autorefs
+  - blog:
+      blog_dir: blog
+      post_dir: "{blog}/posts"
+      post_url_format: "{slug}"
+      # The blog is a simple reverse-chronological list of posts; the archive
+      # and category indexes add navigation we don't have the volume to justify.
+      archive: false
+      categories: false
   - search
   - markdown-exec
   - mkdocstrings:
