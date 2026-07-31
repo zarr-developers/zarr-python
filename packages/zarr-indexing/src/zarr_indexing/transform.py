@@ -457,6 +457,12 @@ def _intersect_correlated(
     The surviving broadcast axes collapse to a single axis; the returned
     `out_indices` is the flat scatter index into the (row-major flattened)
     output buffer, of shape `(surviving_points,) + (residual slice sizes)`.
+
+    A rank-0 broadcast block — every coordinate array a scalar, as after
+    `vindex[...]` narrowed to a single point — has no axis to collapse and stays
+    rank 0: the block either survives whole or the intersection is empty. The
+    result keeps only the residual slice axes and `out_indices` loses its leading
+    points axis, so the sub-transform's rank still matches the view's.
     """
     # Mixing correlated and orthogonal ArrayMaps in one transform is not produced
     # by any single selection and is not supported here.
@@ -528,17 +534,23 @@ def _intersect_correlated(
         for out_dim in correlated_dims
     }
 
-    # New domain: the collapsed broadcast axis, then one axis per residual slice.
-    new_min = [0]
-    new_max = [n_points]
+    # A rank-0 broadcast block contributes no axis: the leading `(n_points,)` of
+    # the domain, of every index array, and of `out_indices` is present only when
+    # there was a block to collapse.
+    points_shape = (n_points,) if len(broadcast_shape) > 0 else ()
+
+    # New domain: the collapsed broadcast axis if there is one, then one axis per
+    # residual slice.
+    new_min = [0] * len(points_shape)
+    new_max = list(points_shape)
     new_input_dim_of = {}
-    for new_axis, (d, nlo, nhi, _full, _m) in enumerate(slice_dims, start=1):
+    for new_axis, (d, nlo, nhi, _full, _m) in enumerate(slice_dims, start=len(points_shape)):
         new_min.append(nlo)
         new_max.append(nhi)
         new_input_dim_of[d] = new_axis
     new_domain = IndexDomain(inclusive_min=tuple(new_min), exclusive_max=tuple(new_max))
 
-    corr_shape = (n_points,) + (1,) * n_slice
+    corr_shape = points_shape + (1,) * n_slice
     new_output: list[OutputIndexMap] = []
     for out_dim, m in enumerate(transform.output):
         if out_dim in correlated_dims:
@@ -583,14 +595,15 @@ def _intersect_correlated(
         ):
             point_offsets = point_offsets + coords_along_axis.astype(np.intp) * buffer_strides[axis]
 
+    n_lead = len(points_shape)
     out_indices: np.ndarray[Any, np.dtype[np.intp]] = point_offsets.reshape(
-        (n_points,) + (1,) * n_slice
+        points_shape + (1,) * n_slice
     )
     for j in range(n_slice):
         d, nlo, nhi, _full, _m = slice_dims[j]
         coords = np.arange(nlo, nhi, dtype=np.intp) * buffer_strides[d]
-        shape = [1] * (1 + n_slice)
-        shape[1 + j] = coords.size
+        shape = [1] * (n_lead + n_slice)
+        shape[n_lead + j] = coords.size
         out_indices = out_indices + coords.reshape(shape)
     return (result, out_indices.astype(np.intp))
 

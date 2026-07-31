@@ -723,42 +723,12 @@ def test_random_chains_match_numpy(flavor: str) -> None:
             )
 
 
-@pytest.mark.parametrize("flavor", ["numpy-whole", "numpy-uniform-parts"])
-def test_random_chains_have_parts_that_tile_the_view(flavor: str) -> None:
-    """The seeded sweep, read through `parts()` rather than through `result()`.
-
-    `result()` can absorb a defect that `parts()` cannot — an empty view assembles
-    correctly from no parts at all — so the iteration contract needs its own
-    sweep: every part places its own values, and together they cover the view
-    exactly once.
-    """
-    rng = np.random.default_rng(20260731)
-    source = make_source(flavor)
-
-    for _ in range(300):
-        chain = _random_chain(rng)
-        expected = reference()
-        for mode, selection in chain:
-            expected = _apply_oracle(expected, mode, selection)
-
-        view = source
-        for mode, selection in chain:
-            view = _apply_view(view, mode, selection)
-
-        assembled = np.zeros(view.shape, dtype=view.dtype)
-        hits = np.zeros(view.shape, dtype=np.int64)
-        for part in view.parts():
-            value = np.asarray(part.array.result())
-            if len(view.shape) == 0:
-                # A zero-rank view is assembled the way `result()` assembles it:
-                # its single part still carries the collapsed correlated axis, so
-                # the value arrives with rank 1.
-                value = value.reshape(())
-            assembled[part.out_selection] = value
-            np.add.at(hits, part.out_selection, 1)
-
-        np.testing.assert_array_equal(assembled, np.asarray(expected), err_msg=f"{chain}")
-        np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64), err_msg=f"{chain}")
+# `result()` can absorb a defect that `parts()` cannot — an empty view assembles
+# correctly from no parts at all, and a rank-0 one can be reshaped into place —
+# so the iteration contract needs its own sweep, asserting the documented
+# assembly literally rather than through `result()`. That sweep is the
+# `ChainedIndexing` state machine in `test_lazy_array_stateful.py`, which drives
+# the same operations and shrinks a failure to the chain that caused it.
 
 
 PARTITIONINGS_1D: list[Any] = [None, (1,), (2,), (5,)]
@@ -937,6 +907,39 @@ def test_an_empty_slice_of_a_length_one_vindex_pair_has_no_parts() -> None:
         np.testing.assert_array_equal(
             np.asarray(view.result()), base[np.array([6]), np.array([0])][0:0]
         )
+
+
+def test_a_correlated_view_narrowed_to_one_point_has_parts_of_the_views_rank() -> None:
+    """A rank-0 broadcast block survives intersection without gaining an axis.
+
+    `Partition` documents `out[part.out_selection] = part.array.result()` as the
+    assembly, so a part's values must arrive at the rank the view has — including
+    the rank 0 a correlated selection reaches once every coordinate is a scalar.
+    """
+    base = np.arange(140).reshape(7, 5, 4)
+    cases = [
+        # No residual slice: the whole view is the one gathered point.
+        ((np.array([-1]), np.array([-1]), np.array([2])), 0),
+        # One residual slice dimension survives alongside the collapsed block.
+        ((np.array([6, 1]), np.array([4, 0])), 1),
+    ]
+
+    for parts in (None, (2, 2, 2), (3, 3, 3), (7, 5, 4)):
+        for selection, tail in cases:
+            expected = base[selection][tail]
+            view = LazyArray(base).with_parts(parts).lazy.vindex[selection].lazy[tail]
+            assert view.shape == expected.shape, f"parts={parts}, {selection}"
+
+            assembled = np.zeros(view.shape, dtype=view.dtype)
+            hits = np.zeros(view.shape, dtype=np.int64)
+            for part in view.parts():
+                assembled[part.out_selection] = np.asarray(part.array.result())
+                np.add.at(hits, part.out_selection, 1)
+
+            err = f"parts={parts}, {selection}"
+            np.testing.assert_array_equal(assembled, expected, err_msg=err)
+            np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64), err_msg=err)
+            np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=err)
 
 
 def test_eager_getitem_returns_data(source: LazyArray) -> None:

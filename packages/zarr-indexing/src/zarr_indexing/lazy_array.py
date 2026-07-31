@@ -1550,10 +1550,7 @@ class LazyArray:
                 # number of axes is named rather than reported as a broadcast
                 # failure against the buffer.
                 written += _out_selection_cell_count(part.out_selection, out_shape)
-                value = np.asanyarray(part.array.result())
-                if len(out_shape) == 0:
-                    value = value.reshape(())
-                out[part.out_selection] = value
+                out[part.out_selection] = np.asanyarray(part.array.result())
             if written != size:
                 # The buffer is uninitialized where no part wrote, so a partition
                 # walk that does not tile the view exactly would otherwise hand

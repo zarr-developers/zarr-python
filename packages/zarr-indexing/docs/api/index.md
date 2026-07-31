@@ -57,6 +57,17 @@ and the wire format built on top of it.
 - [`zarr_indexing.errors`](errors.md) — the canonical index-error types, which
   `zarr.errors` re-exports by identity
 
+**Test support** (needs the `testing` extra)
+
+- [`zarr_indexing.testing.stateful`](testing_stateful.md) —
+  `ChainedIndexingStateMachine`, a Hypothesis state machine that composes
+  indexing steps onto a `LazyArray` wrapping your array and checks every step
+  against NumPy, plus `apply_selection`, the NumPy model it checks against
+- [`zarr_indexing.testing.strategies`](testing_strategies.md) — the selection
+  strategies the machine draws from, for a project that has its own harness
+
 Every name listed in `zarr_indexing.__all__` is re-exported at the top level,
 so `from zarr_indexing import IndexTransform` and
 `from zarr_indexing.transform import IndexTransform` are equivalent.
+`zarr_indexing.testing` is deliberately not among them: it imports
+`hypothesis`, which the rest of the package does not.

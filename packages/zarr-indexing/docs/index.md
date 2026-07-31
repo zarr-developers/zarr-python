@@ -294,6 +294,37 @@ along, and raises `NotImplementedError` if it tries. The
 [design notes](design-notes.md) list that limit with the others and explain why
 the category matters to consumers of a selection.
 
+## Checking your own array
+
+If your array is one `LazyArray` will be asked to read, you can check that it
+holds up under composed selections without writing the generators yourself.
+`zarr_indexing.testing` ships the Hypothesis state machine this package tests
+itself with: it composes indexing steps onto a view of your array — basic,
+orthogonal, vectorized, each applied to the view the last one produced — and
+after every step checks the view's shape, its `result()`, and the assembly of
+its `parts()` against a NumPy array holding the same values.
+
+```python
+from zarr_indexing.testing import ChainedIndexingStateMachine, state_machine_test
+
+class MyArrayIndexing(ChainedIndexingStateMachine):
+    def make_source(self, data):
+        array = my_format.create(shape=data.shape, dtype=data.dtype)
+        array[:] = data
+        return array
+
+TestMyArrayIndexing = state_machine_test(MyArrayIndexing)
+```
+
+That is the whole subclass. `data`, `partitionings`, and `supports` are class
+attributes if you want to widen or narrow what is drawn — `supports` in
+particular names the [`IndexingSupport`](api/support.md) levels your source
+really serves, and a chain read at one level must answer what the same chain
+answers at every other. A failure shrinks to the shortest chain that causes it.
+
+Install with `pip install zarr-indexing[testing]`; the rest of the package does
+not depend on Hypothesis.
+
 ## Reference
 
 - [The ndsel wire format](ndsel.md)

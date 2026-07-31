@@ -375,6 +375,13 @@ def sub_transform_to_selections(
         isinstance(m, ArrayMap) and m.input_dimension is None for m in sub_transform.output
     )
     if correlated:
+        # The broadcast block is the input axis no `DimensionMap` binds. It is
+        # absent when the block is rank 0 (every coordinate a scalar), and then
+        # the coordinate arrays index as scalars: the block carries the residual
+        # slice axes alone, matching a domain that has no points axis either.
+        bound = {m.input_dimension for m in sub_transform.output if isinstance(m, DimensionMap)}
+        has_points_axis = any(d not in bound for d in range(sub_transform.input_rank))
+        points_shape: tuple[int, ...] = (-1,) if has_points_axis else ()
         chunk_sel: list[int | slice | np.ndarray[tuple[int, ...], np.dtype[np.intp]]] = []
         for m in sub_transform.output:
             if isinstance(m, ConstantMap):
@@ -383,7 +390,7 @@ def sub_transform_to_selections(
                 d = m.input_dimension
                 chunk_sel.append(_dimension_map_slice(m, inclusive_min[d], exclusive_max[d]))
             else:  # ArrayMap
-                idx = m.index_array.reshape(-1)
+                idx = m.index_array.reshape(points_shape)
                 chunk_sel.append((m.offset + m.stride * idx).astype(np.intp))
         # Chunk resolution always supplies the flat scatter index for a
         # correlated transform. Absent one (a bare sub-transform), fall back to an

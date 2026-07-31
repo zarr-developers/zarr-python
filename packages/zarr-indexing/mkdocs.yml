@@ -29,6 +29,8 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.json</code>': api/json.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.messages</code>': api/messages.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.errors</code>': api/errors.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.stateful</code>': api/testing_stateful.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.strategies</code>': api/testing_strategies.md
   - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md
 
 watch:

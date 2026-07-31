@@ -34,6 +34,12 @@ dependencies = [
     "numpy>=2",
 ]
 
+[project.optional-dependencies]
+# `zarr_indexing.testing` — a Hypothesis state machine and selection strategies
+# for projects checking their own array against this package. Nothing else in
+# the package imports hypothesis.
+testing = ["hypothesis>=6.160.0"]
+
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
@@ -47,7 +53,10 @@ Documentation = "https://zarr-indexing.readthedocs.io/"
 # test suite, which already has zarr installed. `zarr` is intentionally NOT
 # listed here to avoid a workspace dependency cycle; run these tests from the
 # repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
-test = ["pytest"]
+# `hypothesis` arrives via the `testing` extra, which is what
+# `zarr_indexing.testing` needs; the repo-root `test` group pins the exact
+# version CI runs against. Bump the two together.
+test = ["pytest", "hypothesis>=6.160.0"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so the two sites render with the same toolchain.
