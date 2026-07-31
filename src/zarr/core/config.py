@@ -117,7 +117,7 @@ config = Config(
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
                 # Only read by FusedCodecPipeline (BatchedCodecPipeline ignores it).
-                "max_workers": None,
+                "max_workers": 1 if IS_WASM else None,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
