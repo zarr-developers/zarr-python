@@ -1182,7 +1182,7 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
         lambda a: a.lazy.oindex[[4, 0, 0], :, [3, 1]],
         lambda a: a.lazy.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
         # A reversing view drives the negative-stride branches of
-        # `_intersect_dimension_map` and `iter_chunk_transforms`, which were
+        # `_intersect_dimension_map` and chunk projection, which were
         # written defensively long before anything could reach them.
         lambda a: a.lazy[::-1, ::-2, :],
         lambda a: a.lazy[5:1:-1, :, ::-1],

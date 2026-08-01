@@ -119,7 +119,7 @@ works:
 ```python
 from dataclasses import dataclass
 
-from zarr_indexing import iter_chunk_transforms
+from zarr_indexing import plan_chunks
 
 
 @dataclass(frozen=True)
@@ -134,16 +134,19 @@ class RegularDimensionGrid:
 
 grids = [RegularDimensionGrid(32), RegularDimensionGrid(32)]
 
-for chunk_coords, sub_transform, out_indices in iter_chunk_transforms(view, grids):
-    print(chunk_coords, sub_transform.selection_repr)
+for projection in plan_chunks(view, grids):
+    print(projection.chunk_coords, projection.chunk_transform.selection_repr)
 # (0, 0) { [10, 32), 5 }
 # (1, 0) { [0, 18), 5 }
 ```
 
-Each yielded `sub_transform` is the original transform restricted to one chunk
-and translated into chunk-local coordinates, which is what a codec pipeline
-needs to decode that chunk and scatter the result. `out_indices` carries the
-output scatter indices for array selections, and is `None` for basic indexing.
+`plan_chunks` returns a lazy, reusable plan. Each projection has two transforms
+over the same compact domain: `chunk_transform` locates cells in chunk-local
+storage, while `cell_transform` places those cells in the original request.
+This paired representation works unchanged for slices, orthogonal indexing, and
+vectorized indexing. `chunk_domain` describes the selected grid cell in global
+storage coordinates, and `coverage` tells a writer whether full replacement is
+proven safe.
 
 ## Lazy views over any array
 

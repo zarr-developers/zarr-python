@@ -23,9 +23,8 @@ and the wire format built on top of it.
 **Chunk resolution**
 
 - [`zarr_indexing.chunk_resolution`](chunk_resolution.md) —
-  `iter_chunk_transforms` (transform + chunk grid → per-chunk transforms) and
-  `sub_transform_to_selections` (the bridge back to the selection tuples the
-  current codec pipeline expects)
+  `plan_chunks`, which lazily projects a request through a caller-selected grid,
+  plus the reusable `ChunkPlan` and paired-transform `ChunkProjection` values
 - [`zarr_indexing.grid`](grid.md) — `DimensionGridLike`, the Protocol
   describing the narrow chunk-grid surface chunk resolution consumes, so that
   nothing here imports `zarr`, plus `EdgeDimensionGrid` and

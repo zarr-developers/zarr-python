@@ -58,6 +58,24 @@ Four deliberate differences:
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
 | Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
 
+Chunk planning deliberately follows TensorStore's paired-transform boundary.
+TensorStore exposes a transform from a shared cell domain into a decoded chunk
+and another into the request; `ChunkProjection.chunk_transform` and
+`ChunkProjection.cell_transform` preserve the same directionality. This is more
+general than returning a NumPy read key plus scatter indices: slices, outer
+products, and correlated gathers remain ordinary transforms, and a consumer can
+lower them to its own execution vocabulary.
+
+The ownership boundary differs. `plan_chunks` retains only the logical request
+and a caller-supplied grid, and lazily yields source-independent projections. It
+does not own reads, writes, buffers, locks, or scheduling. Zarr can therefore
+plan reads against an inner codec-chunk grid and writes against an atomic shard
+grid; napari or dask can turn the same projections into tasks without putting a
+dask dependency in this package. `coverage` is relative to that selected grid:
+`full` proves a blind replacement safe, `partial` proves it is not, and
+`unknown` conservatively covers fancy selections whose duplicates would require
+additional work to classify.
+
 The comparison also runs the other way. TensorStore is a mature, heavily
 optimized C++ system whose performance this library cannot approach: resolution
 here is Python-level bookkeeping over NumPy, and the per-part overhead is

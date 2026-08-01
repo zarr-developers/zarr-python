@@ -18,10 +18,10 @@ Parts
 -----
 A `LazyArray` carries a **partitioning** of the array it wraps: a grid of boxes
 that a read is broken into. `parts()` walks those boxes as they fall through the
-view, yielding a [`Partition`](#zarr_indexing.lazy_array.Partition) per box —
-the base coordinates of the box, a `LazyArray` covering exactly the cells of the
-view that live in it, and where those cells belong in the result. `result()` is
-built on that walk:
+view, yielding a [`Partition`](#zarr_indexing.lazy_array.Partition) per box. Its
+paired projection describes the chunk-local read and where its cells land in the
+request; `view` is the directly resolvable form. `result()` is built on that
+walk:
 
 ```python
 for part in view.parts():
@@ -851,7 +851,7 @@ def _partition_out_selection(
     """Lower ``cell_transform`` to NumPy selectors on the request buffer."""
     domain = cell_transform.domain
     if _is_correlated(cell_transform):
-        selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+        correlated_selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
         for output_map in cell_transform.output:
             if isinstance(output_map, ConstantMap):
                 coordinates = np.full(domain.shape, output_map.offset, dtype=np.intp)
@@ -873,8 +873,8 @@ def _partition_out_selection(
                 coordinates = output_map.offset + output_map.stride * np.broadcast_to(
                     output_map.index_array, domain.shape
                 )
-            selectors.append(np.asarray(coordinates, dtype=np.intp))
-        return tuple(selectors)
+            correlated_selectors.append(np.asarray(coordinates, dtype=np.intp))
+        return tuple(correlated_selectors)
 
     selectors: list[int | slice | np.ndarray[Any, np.dtype[np.intp]]] = []
     n_array_maps = sum(isinstance(output_map, ArrayMap) for output_map in cell_transform.output)
@@ -959,6 +959,12 @@ class Partition:
 
     Attributes
     ----------
+    projection
+        The source-independent description of this part. Its paired
+        `chunk_transform` and `cell_transform` share one compact synthetic
+        domain, mapping each selected cell to chunk-local storage and request
+        coordinates respectively. This is the authoritative placement model;
+        `base_coords` and `is_complete` are conveniences derived from it.
     base_coords
         Which box of the base partitioning this is, one coordinate per dimension
         of the wrapped array.
@@ -966,8 +972,8 @@ class Partition:
         The box itself, in the global storage coordinates of the wrapped
         array: one `[inclusive_min, exclusive_max)` interval per dimension.
         `view.bounding_box()` is part-local and so cannot distinguish two
-        parts; this attribute can, and together with `is_complete` it decides a
-        read-modify-write.
+        parts; this attribute can. For a nested or repartitioned view this box
+        may be narrower than `projection.chunk_domain`.
     view
         A `LazyArray` covering exactly the cells of the view that live in this
         box. Resolving it reads the box once with basic slicing and applies the
@@ -980,11 +986,9 @@ class Partition:
         directly as `out[part.out_selection] = ...`.
     is_complete
         Whether the view covers the whole box. Useful to a writer deciding
-        between a blind overwrite and a read-modify-write. True for a reversing
-        view, which reads every cell of the box back to front; false for every
-        fancy-indexed axis, which is conservative rather than exact — so it may
-        be `False` for a part it does in fact cover, but never `True` for one it
-        does not.
+        between a blind overwrite and a read-modify-write. Fancy projections
+        report `False` because their coverage is deliberately `unknown` until
+        duplicate-aware proof is added.
     """
 
     projection: ChunkProjection

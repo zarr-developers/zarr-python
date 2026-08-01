@@ -17,6 +17,9 @@ Key types:
   `result()` materializes it
 - `IndexDomain` — a rectangular region of integer coordinates
 - `IndexTransform` — maps input coordinates to storage coordinates
+- `ChunkPlan` and `ChunkProjection` — lazily partition a selection over a
+  caller-selected grid and pair each chunk-local transform with its placement in
+  the request, without binding a storage backend or scheduler
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single output
   dimension can depend on the input
 - `compose` — chain two transforms into one
