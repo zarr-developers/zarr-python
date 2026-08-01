@@ -42,7 +42,8 @@ named in `drop_axes` squeezed out of the block first.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -74,6 +75,73 @@ ChunkTransformResult = tuple[
     IndexTransform,
     OutIndices,
 ]
+
+type ChunkCoverage = Literal["full", "partial", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkProjection:
+    """One source-independent projection of a request through a chunk.
+
+    Both transforms share a synthetic input domain. ``chunk_transform`` maps
+    that domain to chunk-local storage coordinates; ``cell_transform`` maps it
+    to the original request domain.
+    """
+
+    chunk_coords: tuple[int, ...]
+    chunk_domain: IndexDomain
+    chunk_transform: IndexTransform
+    cell_transform: IndexTransform
+    coverage: ChunkCoverage
+
+    def __post_init__(self) -> None:
+        if self.chunk_transform.domain != self.cell_transform.domain:
+            raise ValueError(
+                "chunk_transform and cell_transform must share an input domain; "
+                f"got {self.chunk_transform.domain!r} and {self.cell_transform.domain!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkPlan:
+    """A reusable, lazy partition of an index transform over a chunk grid."""
+
+    transform: IndexTransform
+    dimension_grids: tuple[DimensionGridLike, ...]
+
+    def projections(self) -> Iterator[ChunkProjection]:
+        """Return a fresh iterator over the chunks touched by this plan."""
+        return _iter_chunk_projections(self.transform, self.dimension_grids)
+
+    def __iter__(self) -> Iterator[ChunkProjection]:
+        return self.projections()
+
+
+def plan_chunks(
+    transform: IndexTransform,
+    dimension_grids: Sequence[DimensionGridLike],
+) -> ChunkPlan:
+    """Plan a transform against a caller-selected chunk grid.
+
+    Parameters
+    ----------
+    transform
+        Mapping from the request domain to storage coordinates.
+    dimension_grids
+        One storage grid per transform output dimension.
+
+    Returns
+    -------
+    ChunkPlan
+        A reusable plan whose projections are computed lazily.
+    """
+    grids = tuple(dimension_grids)
+    if len(grids) != transform.output_rank:
+        raise ValueError(
+            "dimension_grids must have one entry per transform output dimension; "
+            f"got {len(grids)} grids for output rank {transform.output_rank}"
+        )
+    return ChunkPlan(transform=transform, dimension_grids=grids)
 
 
 def _one_dimensional_correlated_array_map(
@@ -289,6 +357,66 @@ def iter_chunk_transforms(
         local = restricted.translate(tuple(chunk_shift))
 
         yield (chunk_coords, local, surviving)
+
+
+def _covers_whole_chunk(transform: IndexTransform, chunk_shape: tuple[int, ...]) -> bool:
+    """Whether an affine chunk-local transform addresses every chunk cell."""
+    domain = transform.domain
+    for out_dim, m in enumerate(transform.output):
+        extent = chunk_shape[out_dim]
+        if isinstance(m, ConstantMap):
+            if extent != 1 or m.offset != 0:
+                return False
+        elif isinstance(m, DimensionMap):
+            if abs(m.stride) != 1:
+                return False
+            lo = domain.inclusive_min[m.input_dimension]
+            hi = domain.exclusive_max[m.input_dimension]
+            if hi <= lo:
+                if extent != 0:
+                    return False
+                continue
+            first = m.offset + m.stride * lo
+            last = m.offset + m.stride * (hi - 1)
+            if min(first, last) != 0 or max(first, last) != extent - 1:
+                return False
+        else:
+            return False
+    return True
+
+
+def _iter_chunk_projections(
+    transform: IndexTransform,
+    dim_grids: Sequence[DimensionGridLike],
+) -> Iterator[ChunkProjection]:
+    """Convert private intersection results into public paired projections."""
+    for chunk_coords, chunk_transform, survivors in iter_chunk_transforms(transform, dim_grids):
+        chunk_min = tuple(
+            grid.chunk_offset(coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
+        )
+        chunk_shape = tuple(
+            grid.chunk_size(coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
+        )
+        chunk_domain = IndexDomain(
+            inclusive_min=chunk_min,
+            exclusive_max=tuple(
+                origin + extent for origin, extent in zip(chunk_min, chunk_shape, strict=True)
+            ),
+        )
+        cell_transform = IndexTransform.identity(chunk_transform.domain)
+        if survivors is not None or any(isinstance(m, ArrayMap) for m in chunk_transform.output):
+            coverage: ChunkCoverage = "unknown"
+        elif _covers_whole_chunk(chunk_transform, chunk_shape):
+            coverage = "full"
+        else:
+            coverage = "partial"
+        yield ChunkProjection(
+            chunk_coords=chunk_coords,
+            chunk_domain=chunk_domain,
+            chunk_transform=chunk_transform,
+            cell_transform=cell_transform,
+            coverage=coverage,
+        )
 
 
 def _dimension_map_slice(m: DimensionMap, dim_lo: int, dim_hi: int) -> slice:

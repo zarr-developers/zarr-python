@@ -27,7 +27,11 @@ consumes without importing zarr.
 from importlib.metadata import version
 
 from zarr_indexing.chunk_resolution import (
+    ChunkCoverage,
+    ChunkPlan,
+    ChunkProjection,
     iter_chunk_transforms,
+    plan_chunks,
     sub_transform_to_selections,
 )
 from zarr_indexing.composition import compose
@@ -68,6 +72,9 @@ __version__ = version("zarr-indexing")
 __all__ = [
     "ArrayMap",
     "BoundsCheckError",
+    "ChunkCoverage",
+    "ChunkPlan",
+    "ChunkProjection",
     "ConstantMap",
     "DimensionGridLike",
     "DimensionMap",
@@ -95,6 +102,7 @@ __all__ = [
     "iter_chunk_transforms",
     "normalize_ndsel",
     "parse_ndsel",
+    "plan_chunks",
     "resolve_indexing_support",
     "selection_to_transform",
     "sub_transform_to_selections",

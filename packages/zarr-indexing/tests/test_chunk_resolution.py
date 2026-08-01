@@ -6,12 +6,44 @@ import numpy as np
 import pytest
 from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
 
-from zarr_indexing import chunk_resolution
+from zarr_indexing import ChunkPlan, ChunkProjection, chunk_resolution, plan_chunks
 from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.grid import dimension_grids_from_chunks
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
+
+
+def test_basic_plan_is_reiterable_and_projects_both_spaces() -> None:
+    """A plan can be revisited without losing either side of each projection."""
+    transform = IndexTransform.from_shape((6,))[1:6]
+    grids = dimension_grids_from_chunks((3,), (6,))
+
+    plan = plan_chunks(transform, grids)
+    first = list(plan)
+    second = list(plan.projections())
+
+    assert isinstance(plan, ChunkPlan)
+    assert all(isinstance(projection, ChunkProjection) for projection in first)
+    assert [projection.chunk_coords for projection in first] == [(0,), (1,)]
+    assert [projection.chunk_domain for projection in first] == [
+        IndexDomain((0,), (3,)),
+        IndexDomain((3,), (6,)),
+    ]
+    assert [projection.coverage for projection in first] == ["partial", "full"]
+    assert first == second
+    assert all(
+        projection.chunk_transform.domain == projection.cell_transform.domain
+        for projection in first
+    )
+
+
+def test_plan_rejects_grid_rank_different_from_transform_output_rank() -> None:
+    """A missing storage grid dimension is rejected before iteration."""
+    transform = IndexTransform.from_shape((2, 3))
+
+    with pytest.raises(ValueError, match="1 grids for output rank 2"):
+        plan_chunks(transform, dimension_grids_from_chunks((2,), (2,)))
 
 
 class TestChunkResolutionIdentity:
