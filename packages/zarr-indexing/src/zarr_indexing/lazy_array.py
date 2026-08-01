@@ -1670,8 +1670,17 @@ class LazyArray:
         return out
 
     def _empty_result(self, out_shape: tuple[int, ...]) -> Any:
-        """Allocate an empty result without asking the source for any data."""
-        if self._parts is None:
+        """Allocate an empty result without asking the source for any data.
+
+        A masked source is answered from `_output_buffer`, which knows to build
+        a masked buffer, whatever partitioning is in force. Reaching for the
+        namespace's own `empty` first would hand back a plain array on the
+        unpartitioned path and a masked one on the partitioned path — the same
+        answer differing by how the read was divided, which `result()` promises
+        it never does. There are no cells either way, so this is about the type
+        the caller gets back rather than about any value.
+        """
+        if self._parts is None and not isinstance(self._array, np.ma.MaskedArray):
             xp = _namespace(self._array)
             empty = getattr(xp, "empty", None)
             if empty is not None:

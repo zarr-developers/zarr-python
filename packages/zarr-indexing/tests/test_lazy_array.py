@@ -2061,6 +2061,23 @@ def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> 
     np.testing.assert_array_equal(np.ma.filled(got, 0), np.ma.filled(expected, 0))
 
 
+@pytest.mark.parametrize("parts", [None, (2, 2), (3, 4)])
+def test_a_masked_source_keeps_its_mask_when_the_view_is_empty(parts: Any) -> None:
+    """An empty result is still a result, and its type must not depend on the parts.
+
+    An empty view is answered without reading the source at all, and that
+    shortcut reached for the array namespace's own `empty` — which knows nothing
+    about masks — so an unpartitioned empty view came back a plain array while
+    the same view partitioned came back masked. No cells either way, so nothing
+    about the values changed; the caller just got a different type depending on
+    how the read had been divided.
+    """
+    data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
+    got = repartition(LazyArray(data), parts).lazy[:, 2:2].result()
+    assert isinstance(got, np.ma.MaskedArray), parts
+    assert np.asarray(got).shape == (3, 0), parts
+
+
 def test_a_look_alike_enum_declaration_is_honored_not_upgraded() -> None:
     """xarray's `IndexingSupport` has these member names; it must not read as absent.
 
