@@ -385,6 +385,95 @@ def _covers_whole_chunk(transform: IndexTransform, chunk_shape: tuple[int, ...])
     return True
 
 
+def _orthogonal_cell_transform(
+    original: IndexTransform,
+    restricted: IndexTransform,
+    survivors: dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]],
+) -> IndexTransform:
+    """Map a compacted orthogonal intersection back to request coordinates."""
+    by_input_dimension: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
+    if isinstance(survivors, dict):
+        survivor_items = survivors.items()
+    else:
+        array_output_dimensions = [
+            output_dimension
+            for output_dimension, output_map in enumerate(original.output)
+            if isinstance(output_map, ArrayMap)
+        ]
+        if len(array_output_dimensions) != 1:
+            raise ValueError(
+                "one survivor array requires exactly one orthogonal ArrayMap; "
+                f"found output dimensions {array_output_dimensions}"
+            )
+        survivor_items = ((array_output_dimensions[0], survivors),)
+
+    for output_dimension, positions in survivor_items:
+        output_map = original.output[output_dimension]
+        if not isinstance(output_map, ArrayMap):
+            raise TypeError(
+                f"survivors for output dimension {output_dimension} do not describe an ArrayMap"
+            )
+        input_dimension = array_map_dependent_axis(output_map)
+        if input_dimension is None:
+            raise ValueError(
+                f"output dimension {output_dimension} has no orthogonal input dimension"
+            )
+        by_input_dimension[input_dimension] = np.asarray(positions, dtype=np.intp)
+
+    output: list[ConstantMap | DimensionMap | ArrayMap] = []
+    rank = original.input_rank
+    for input_dimension in range(rank):
+        positions = by_input_dimension.get(input_dimension)
+        if positions is None:
+            output.append(DimensionMap(input_dimension=input_dimension))
+            continue
+        shape = (1,) * input_dimension + (positions.size,) + (1,) * (rank - input_dimension - 1)
+        output.append(
+            ArrayMap(
+                index_array=positions.reshape(shape),
+                offset=original.domain.inclusive_min[input_dimension],
+                input_dimension=input_dimension,
+            )
+        )
+    return IndexTransform(domain=restricted.domain, output=tuple(output))
+
+
+def _correlated_cell_transform(
+    original: IndexTransform,
+    restricted: IndexTransform,
+    survivors: np.ndarray[Any, np.dtype[np.intp]],
+) -> IndexTransform:
+    """Map compacted correlated points back through the request's row-major domain."""
+    positions = np.asarray(survivors, dtype=np.intp)
+    coordinates = np.unravel_index(positions, original.domain.shape)
+    output = tuple(
+        ArrayMap(
+            index_array=np.asarray(coordinate, dtype=np.intp),
+            offset=origin,
+        )
+        for coordinate, origin in zip(coordinates, original.domain.inclusive_min, strict=True)
+    )
+    return IndexTransform(domain=restricted.domain, output=output)
+
+
+def _cell_transform(
+    original: IndexTransform,
+    restricted: IndexTransform,
+    survivors: OutIndices,
+) -> IndexTransform:
+    """Convert private survivor bookkeeping into a direction-neutral transform."""
+    if survivors is None:
+        return IndexTransform.identity(restricted.domain)
+    if any(
+        isinstance(output_map, ArrayMap) and output_map.input_dimension is None
+        for output_map in original.output
+    ):
+        if isinstance(survivors, dict):
+            raise ValueError("correlated intersections require one shared survivor array")
+        return _correlated_cell_transform(original, restricted, survivors)
+    return _orthogonal_cell_transform(original, restricted, survivors)
+
+
 def _iter_chunk_projections(
     transform: IndexTransform,
     dim_grids: Sequence[DimensionGridLike],
@@ -403,7 +492,7 @@ def _iter_chunk_projections(
                 origin + extent for origin, extent in zip(chunk_min, chunk_shape, strict=True)
             ),
         )
-        cell_transform = IndexTransform.identity(chunk_transform.domain)
+        cell_transform = _cell_transform(transform, chunk_transform, survivors)
         if survivors is not None or any(isinstance(m, ArrayMap) for m in chunk_transform.output):
             coverage: ChunkCoverage = "unknown"
         elif _covers_whole_chunk(chunk_transform, chunk_shape):

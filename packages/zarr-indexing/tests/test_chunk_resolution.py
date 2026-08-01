@@ -46,6 +46,86 @@ def test_plan_rejects_grid_rank_different_from_transform_output_rank() -> None:
         plan_chunks(transform, dimension_grids_from_chunks((2,), (2,)))
 
 
+def _storage_of(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
+    """Evaluate the three map forms at one point, independently of planning."""
+    result: list[int] = []
+    for output_map in transform.output:
+        if isinstance(output_map, ConstantMap):
+            result.append(output_map.offset)
+        elif isinstance(output_map, DimensionMap):
+            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
+        else:
+            index = tuple(
+                0
+                if output_map.index_array.shape[axis] == 1
+                else point[axis] - transform.domain.inclusive_min[axis]
+                for axis in range(output_map.index_array.ndim)
+            )
+            result.append(
+                output_map.offset + output_map.stride * int(output_map.index_array[index])
+            )
+    return tuple(result)
+
+
+@pytest.mark.parametrize(
+    ("transform", "grids"),
+    [
+        (
+            IndexTransform.from_shape((6,)).oindex[np.array([4, 0, 4, 2])],
+            dimension_grids_from_chunks((3,), (6,)),
+        ),
+        (
+            IndexTransform.from_shape((4, 5)).oindex[np.array([3, 0]), np.array([4, 1, 1])],
+            dimension_grids_from_chunks(((1, 3), (2, 3)), (4, 5)),
+        ),
+        (
+            IndexTransform.from_shape((2, 4, 5)).vindex[
+                ..., np.array([3, 0, 3]), np.array([4, 1, 1])
+            ],
+            dimension_grids_from_chunks((1, 2, 3), (2, 4, 5)),
+        ),
+    ],
+    ids=["repeated-oindex", "irregular-oindex", "vindex-with-residual"],
+)
+def test_projection_invariants_for_fancy_selections(
+    transform: IndexTransform, grids: tuple[Any, ...]
+) -> None:
+    """Both transforms agree pointwise and cell ranges tile request space once."""
+    plan = plan_chunks(transform, grids)
+    request_points: list[tuple[int, ...]] = []
+
+    for projection in plan:
+        assert projection.coverage == "unknown"
+        cell_domain = projection.cell_transform.domain
+        for positional_point in np.ndindex(*cell_domain.shape):
+            cell_point = tuple(
+                coordinate + origin
+                for coordinate, origin in zip(
+                    positional_point, cell_domain.inclusive_min, strict=True
+                )
+            )
+            request_point = _storage_of(projection.cell_transform, cell_point)
+            chunk_point = _storage_of(projection.chunk_transform, cell_point)
+            storage_point = _storage_of(plan.transform, request_point)
+            chunk_origin = projection.chunk_domain.inclusive_min
+
+            assert chunk_point == tuple(
+                value - origin for value, origin in zip(storage_point, chunk_origin, strict=True)
+            )
+            request_points.append(request_point)
+
+    expected_request_points = [
+        tuple(
+            coordinate + origin
+            for coordinate, origin in zip(
+                positional_point, transform.domain.inclusive_min, strict=True
+            )
+        )
+        for positional_point in np.ndindex(*transform.domain.shape)
+    ]
+    assert sorted(request_points) == sorted(expected_request_points)
+
+
 class TestChunkResolutionIdentity:
     def test_single_chunk(self) -> None:
         """Array fits in one chunk."""
