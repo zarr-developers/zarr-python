@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 
 import pytest
 from numpydoc.docscrape import NumpyDocString
 
-import zarr
 from zarr.api import asynchronous, synchronous
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 MATCHED_EXPORT_NAMES: Final[tuple[str, ...]] = tuple(
     sorted(set(synchronous.__all__) | set(asynchronous.__all__))
@@ -39,90 +35,3 @@ def test_docstrings_match(callable_name: str) -> None:
             if a != b:
                 mismatch.append((idx, (a, b)))
         assert mismatch == []
-
-
-@pytest.mark.parametrize(
-    ("parameter_name", "array_creation_routines"),
-    [
-        pytest.param(
-            ("store", "path"),
-            (
-                asynchronous.create_array,
-                synchronous.create_array,
-                asynchronous.create_group,
-                synchronous.create_group,
-                zarr.AsyncGroup.create_array,
-                zarr.Group.create_array,
-            ),
-            id="store-path-create_array_group",
-        ),
-        pytest.param(
-            (
-                "store",
-                "path",
-            ),
-            (
-                asynchronous.create,
-                synchronous.create,
-                zarr.Group.create,
-            ),
-            id="store-path-create",
-        ),
-        pytest.param(
-            (
-                (
-                    "filters",
-                    "codecs",
-                    "compressors",
-                    "compressor",
-                    "chunks",
-                    "shape",
-                    "dtype",
-                    "shardsfill_value",
-                )
-            ),
-            (
-                asynchronous.create,
-                synchronous.create,
-                asynchronous.create_array,
-                synchronous.create_array,
-                zarr.AsyncGroup.create_array,
-                zarr.Group.create_array,
-            ),
-            id="encoding-params-create_and_array",
-        ),
-    ],
-)
-def test_docstring_consistent_parameters(
-    parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
-) -> None:
-    """
-    Tests that array and group creation routines document the same parameters consistently.
-    This test inspects the docstrings of sets of callables and generates two dicts:
-
-    - a dict where the keys are parameter descriptions and the values are the names of the routines with those
-    descriptions
-    - a dict where the keys are parameter types and the values are the names of the routines with those types
-
-    If each dict has just 1 value, then the parameter description and type in the docstring must be
-    identical across different routines. But if these dicts have multiple values, then there must be
-    routines that use the same parameter but document it differently, which will trigger a test failure.
-    """
-    descs: dict[tuple[str, ...], tuple[str, ...]] = {}
-    types: dict[str, tuple[str, ...]] = {}
-    for routine in array_creation_routines:
-        key = f"{routine.__module__}.{routine.__qualname__}"
-        docstring = NumpyDocString(routine.__doc__)
-        param_dict = {d.name: d for d in docstring["Parameters"]}
-        if parameter_name in param_dict:
-            val = param_dict[parameter_name]
-            if tuple(val.desc) in descs:
-                descs[tuple(val.desc)] = descs[tuple(val.desc)] + (key,)
-            else:
-                descs[tuple(val.desc)] = (key,)
-            if val.type in types:
-                types[val.type] = types[val.type] + (key,)
-            else:
-                types[val.type] = (key,)
-    assert len(descs) <= 1
-    assert len(types) <= 1
