@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
-#   "zarr-indexing @ git+https://github.com/zarr-developers/zarr-python.git@main#subdirectory=packages/zarr-indexing",
+#   "zarr-indexing>=0.1",
 #   "dask[array]==2025.3.0",
 #   "numpy==2.4.3",
 #   "pytest==9.0.2"
@@ -65,7 +65,7 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     # the reads are independent and the placement needs no coordination.
     @dask.delayed
     def read(part: object) -> np.ndarray:
-        return part.array.result()
+        return part.view.result()
 
     blocks = dask.compute(*[read(part) for part in parts], scheduler="threads")
 

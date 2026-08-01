@@ -172,7 +172,7 @@ from zarr_indexing.chunk_resolution import (
     iter_chunk_transforms,
     sub_transform_to_selections,
 )
-from zarr_indexing.grid import DimensionGridLike, EdgeDimensionGrid, dimension_grids_from_chunks
+from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.support import (
@@ -1502,7 +1502,7 @@ class LazyArray:
         """
         return self._with_grids(None)
 
-    def _with_grids(self, grids: tuple[DimensionGridLike, ...] | None) -> LazyArray:
+    def _with_grids(self, grids: tuple[EdgeDimensionGrid, ...] | None) -> LazyArray:
         return LazyArray._derive(self._array, self._transform, grids, self._window, self._support)
 
     def parts(self) -> Iterator[Partition]:

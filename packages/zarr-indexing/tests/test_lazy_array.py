@@ -2175,3 +2175,36 @@ def test_the_coverage_count_matches_numpy_for_intervals_the_fast_path_declines(
     counted = _out_selection_cell_count(selection, out_shape)
     assert counted == np.empty(out_shape)[selection].size
     assert counted == expected
+
+
+def test_a_zero_dimensional_index_array_drops_its_axis_like_a_scalar() -> None:
+    """`a[np.array(2), :]` is `a[2, :]` in NumPy, and now here too.
+
+    Only Python and NumPy integers counted as scalars, so a 0-d array fell
+    through to the fancy path and was widened into a length-1 index array —
+    keeping an axis NumPy drops. That was a third answer, agreeing with neither
+    NumPy nor eager zarr, which rejects it.
+    """
+    data = np.arange(20).reshape(4, 5)
+    for mode, expected in (
+        ("oindex", data[np.array(2), :]),
+        ("vindex", data[np.array(2), np.array(3)]),
+    ):
+        view = (
+            LazyArray(data).lazy.oindex[np.array(2), slice(None)]
+            if mode == "oindex"
+            else LazyArray(data).lazy.vindex[np.array(2), np.array(3)]
+        )
+        assert view.shape == expected.shape, mode
+        np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=mode)
+
+
+def test_a_multidimensional_array_in_an_orthogonal_selection_is_refused() -> None:
+    """The rule belongs to the selection, so the message speaks its vocabulary.
+
+    Left to the engine, this surfaced as a rank complaint about an `index_array`
+    the caller never wrote — the transform layer's words for a mistake made two
+    layers above it.
+    """
+    with pytest.raises(IndexError, match="must be 1-dimensional"):
+        LazyArray(np.arange(20).reshape(4, 5)).lazy.oindex[[[0, 1], [2, 3]], slice(None)]

@@ -80,7 +80,7 @@ from zarr_indexing import IndexTransform
 transform = IndexTransform.from_shape((100, 100))
 
 view = transform[10:50, 5]
-view.domain          # IndexDomain(inclusive_min=(10,), exclusive_max=(50,))
+view.domain          # IndexDomain(inclusive_min=(10,), exclusive_max=(50,), labels=None)
 view.selection_repr  # '{ [10, 50), 5 }'
 ```
 
@@ -239,8 +239,10 @@ wrapped array's coordinates, which is what distinguishes two parts.
 
 The partitioning is discovered from the wrapped array — `read_chunk_sizes`, then
 `chunks`. Those attribute names belong to the source; this API refers only to
-parts. `with_parts` selects a different partitioning without touching the data or
-the view:
+parts. `with_parts`, `with_parts_per_axis` and `unpartitioned` select a
+different partitioning without touching the data or the view. The sizes are
+expressed in `base_shape`, the shape of the array being read, not of the view
+reading it:
 
 ```python
 view = lazy.lazy[10:50, ::4]

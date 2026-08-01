@@ -13,10 +13,14 @@ Key types:
   output dimension can depend on the input (see `output_map.py`)
 - `compose` — chain two transforms into one
 
+`LazyArray` wraps an array-API-like array and gives it deferred indexing
+through `.lazy[...]`, yielding its reads as `Partition`s.
+
 The chunk-resolution helpers (`iter_chunk_transforms`,
 `sub_transform_to_selections`) and `selection_to_transform` are also exported
 here: they form the surface the zarr integration layer (array indexing) depends
-on. The `*Like` grid Protocols describe the chunk-grid surface chunk resolution
+on — see `chunk_resolution` on why the second of those is provisional. The
+`DimensionGridLike` Protocol describes the chunk-grid surface chunk resolution
 consumes without importing zarr.
 """
 

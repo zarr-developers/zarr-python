@@ -21,9 +21,9 @@ Key operations:
 - **compose(outer, inner)** — chain two transforms. See `composition.py`.
 
 The transform is the atomic unit that connects user-facing indexing to
-chunk-level I/O. Every `Array` holds a transform (identity by default).
-`Array.lazy[...]` composes a new transform lazily. Reading resolves the
-transform against the chunk grid via intersect + translate.
+chunk-level I/O. A wrapper holds one — `LazyArray` starts from the identity —
+and `.lazy[...]` composes a new transform lazily rather than reading. Reading
+resolves the transform against the chunk grid via intersect + translate.
 """
 
 from __future__ import annotations
@@ -1522,6 +1522,17 @@ def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str)
         if sel is Ellipsis or isinstance(sel, (int, np.integer)):
             continue
         if isinstance(sel, (list, np.ndarray)):
+            if mode == "orthogonal":
+                array = np.asarray(sel)
+                # An orthogonal selection is per-axis, so an integer array names
+                # coordinates along one axis and can only be one-dimensional.
+                # Left to the engine, this surfaced much later as a rank
+                # complaint about an `index_array` the caller never wrote.
+                if array.dtype.kind in "iu" and array.ndim > 1:
+                    raise IndexError(
+                        f"integer arrays in an orthogonal selection must be "
+                        f"1-dimensional only; got one with {array.ndim} dimensions"
+                    )
             continue
         raise IndexError(f"unsupported selection type for {mode} indexing: {type(sel)!r}")
 

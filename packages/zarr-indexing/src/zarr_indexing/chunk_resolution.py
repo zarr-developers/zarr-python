@@ -143,8 +143,12 @@ def iter_chunk_transforms(
 
     - `chunk_coords`: which chunk to access.
     - `sub_transform`: maps output buffer coords to chunk-local coords.
-    - `out_indices`: for vectorized/array indexing, the output scatter
-      indices (integer array). `None` for basic/slice indexing.
+    - `out_indices`: where this chunk's values belong in the output. `None`
+      for basic/slice indexing, where the sub-transform says it on its own; an
+      integer array of scatter indices for a correlated (vectorized) selection;
+      and a `dict[int, ndarray]` of surviving positions per output dimension
+      for an orthogonal selection carrying more than one index array, which
+      `sub_transform_to_selections` turns into an open mesh.
     """
 
     if any(size == 0 for size in transform.domain.shape):

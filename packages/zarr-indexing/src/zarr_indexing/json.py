@@ -210,7 +210,10 @@ def index_domain_from_json(data: IndexDomainJSON) -> IndexDomain:
     the same objects: `int(value)` alone accepts `3.9`, `"3"` and `True`, and
     each of those builds a domain that is not the document's.
     """
-    if not isinstance(data, dict):
+    # The annotation says what a well-formed caller passes; this is a parser of
+    # documents that arrive from elsewhere, so the shape is checked rather than
+    # assumed.
+    if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise NdselError("invalid_json", f"an index domain must be a JSON object, got {data!r}")
     body = normalize_ndsel({**data, "kind": "transform"})
     inclusive_min = tuple(
@@ -377,15 +380,16 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     `input_dimension` values are reconstructed by global dependency-axis
     ownership (see the module docstring).
     """
-    if not isinstance(data, dict):
+    if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise NdselError("invalid_json", f"a transform body must be a JSON object, got {data!r}")
-    if data.get("kind", "transform") != "transform":
+    kind = data.get("kind", "transform")
+    if kind != "transform":
         # Spelled last below, so a body carrying its own `kind` cannot reinterpret
         # the document as some other message and return a selection this function
         # never promised.
         raise NdselError(
             "invalid_json",
-            f"a transform body cannot carry kind {data['kind']!r}",
+            f"a transform body cannot carry kind {kind!r}",
         )
     body = normalize_ndsel({**data, "kind": "transform"})
 

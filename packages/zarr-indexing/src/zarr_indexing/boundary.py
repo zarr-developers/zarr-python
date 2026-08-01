@@ -61,6 +61,22 @@ def _as_index_array(sel: Any) -> np.ndarray[Any, np.dtype[Any]] | None:
     return None
 
 
+def _is_scalar_index(sel: Any) -> bool:
+    """Whether an entry is a scalar integer index.
+
+    A zero-dimensional integer array counts. NumPy treats `a[np.array(2), :]`
+    exactly as `a[2, :]` — the axis is dropped — but this took only Python and
+    NumPy integers, so a 0-d array fell through to the fancy path and was widened
+    into a length-1 index array, keeping an axis NumPy drops. That was a third
+    answer, agreeing with neither NumPy nor zarr.
+    """
+    if _is_bool_scalar(sel):
+        return False
+    if isinstance(sel, (int, np.integer)):
+        return True
+    return isinstance(sel, np.ndarray) and sel.ndim == 0 and sel.dtype.kind in "iu"
+
+
 def _axes_consumed(sel: Any, mode: SelectionMode) -> int:
     """How many axes of the view a single selection entry consumes."""
     if sel is None:
@@ -163,12 +179,20 @@ def split_scalar_axes(
 ) -> tuple[tuple[Any, ...] | None, Any]:
     """Peel scalar integer indices out of a fancy selection.
 
-    In NumPy, a scalar integer is a basic index wherever it appears: it drops
-    its axis, and is applied before the advanced indices rather than broadcast
-    against them. `a[0, [1, 2], :]` is `a[0][[1, 2], :]`. Neither the orthogonal
-    nor the vectorized path of the transform algebra models that — both widen a
-    scalar into a length-1 index array, which keeps the axis — so the scalars
-    are split off here and applied as a separate basic step first.
+    A scalar integer drops its axis, and neither the orthogonal nor the
+    vectorized path of the transform algebra models that — both widen a scalar
+    into a length-1 index array, which keeps the axis — so the scalars are split
+    off here and applied as a separate basic step first.
+
+    Applying them *first* is this package's rule, not NumPy's. NumPy groups a
+    scalar with the advanced indices for the purpose of placing the broadcast
+    result, so the two disagree when a scalar and an index array are separated:
+    `a[0, ..., [1, 2]]` has shape `(2, 3)` for a `(2, 3, 4)` array, where
+    `a[0][..., [1, 2]]` has shape `(3, 2)`. The earlier claim here that they
+    always agree rested on `a[0, [1, 2], :]`, where the indices are adjacent and
+    they happen to. Scalar-first is the documented dialect (see the `lazy_array`
+    module docstring) — the divergence is deliberate, and this note exists so
+    that the correct end is not "fixed" later.
 
     Parameters
     ----------
@@ -200,7 +224,7 @@ def split_scalar_axes(
     scalar_axes: dict[int, int] = {}
     remaining: list[Any] = []
     for sel, axis in zip(entries, axes, strict=True):
-        if isinstance(sel, (int, np.integer)) and not _is_bool_scalar(sel):
+        if _is_scalar_index(sel):
             scalar_axes[axis] = _normalize_int(int(sel), domain.shape[axis], axis)
         else:
             remaining.append(sel)
