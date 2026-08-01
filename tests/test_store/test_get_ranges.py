@@ -16,12 +16,12 @@ import pytest
 
 from zarr.abc.store import RangeByteRequest
 from zarr.core.buffer import default_buffer_prototype
-from zarr.storage import MemoryStore
+from zarr.storage import MemoryStore, ZipStore
 from zarr.storage._wrapper import WrapperStore
-from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
+    from pathlib import Path
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -89,11 +89,11 @@ def test_get_ranges_sync_missing_key_raises() -> None:
         store.get_ranges_sync("does-not-exist", [RangeByteRequest(0, 10)], prototype=proto)
 
 
-def test_get_ranges_sync_on_non_sync_store_raises_type_error() -> None:
+def test_get_ranges_sync_on_non_sync_store_raises_type_error(tmp_path: Path) -> None:
     """`get_ranges_sync` requires the store to support synchronous reads
     (`SupportsGetSync`); a non-sync store raises TypeError rather than silently
     falling back."""
-    store = LatencyStore(MemoryStore(), get_latency=0.0, set_latency=0.0)
+    store = ZipStore(tmp_path / "store.zip", mode="w")
     proto = default_buffer_prototype()
     with pytest.raises(TypeError, match="does not support synchronous reads"):
         store.get_ranges_sync("k", [RangeByteRequest(0, 10)], prototype=proto)

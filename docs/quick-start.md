@@ -164,8 +164,8 @@ print(z[:])
 ```
 
 Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google
-Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io) or
-[gcsfs](https://gcsfs.readthedocs.io). Remote storage support requires the `remote`
+Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io/en/latest/) or
+[gcsfs](https://gcsfs.readthedocs.io/en/latest/). Remote storage support requires the `remote`
 optional dependencies (`pip install "zarr[remote]"`) as well as a filesystem library
 for your storage service, such as `s3fs` for S3:
 
