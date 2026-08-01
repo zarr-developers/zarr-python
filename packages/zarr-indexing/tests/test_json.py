@@ -460,14 +460,18 @@ def test_an_index_array_that_does_not_span_its_domain_is_rejected() -> None:
         )
 
 
-def test_an_empty_index_array_round_trips_with_its_axis_intact() -> None:
+def test_an_empty_index_array_collapses_to_a_constant() -> None:
     """Selecting nothing must survive a trip through JSON.
 
+    An empty index array names no cell, and can only be empty because an input
+    dimension is, so nothing is ever read through it. It is degenerate in
+    exactly the way a size-1 array is, and collapses the same way — which is
+    also what TensorStore emits for `t[ts.d[0][[]]]`.
+
+    Emitting the array instead produced a document nothing could load:
     `tolist()` renders every empty array as `[]` once the leading axis is the
-    zero-length one, so both the rank and the axis the map varies over were lost
-    on the way out — and the loader, widening by prepending singletons, put the
-    dependency back on a different axis. The body carries the shape for exactly
-    this case, so the map that comes back is the map that went out.
+    zero-length one, so the rank went with it, and the loader put the dependency
+    back on a different axis by prepending singletons.
     """
     for shape, selection in (
         ((5, 3), (np.array([], dtype=np.intp), slice(None))),
@@ -475,19 +479,18 @@ def test_an_empty_index_array_round_trips_with_its_axis_intact() -> None:
     ):
         transform = IndexTransform.from_shape(shape).oindex[selection]
         body = index_transform_to_json(transform)
-        reloaded = index_transform_from_json(body)
 
-        before = [m.index_array.shape for m in transform.output if isinstance(m, ArrayMap)]
-        after = [m.index_array.shape for m in reloaded.output if isinstance(m, ArrayMap)]
-        assert after == before
+        assert all("index_array" not in m for m in body["output"])
+        reloaded = index_transform_from_json(body)
+        assert reloaded.domain == transform.domain
         assert index_transform_to_json(reloaded) == body
 
 
-def test_an_empty_index_array_without_a_declared_shape_is_recovered_from_the_domain() -> None:
-    """A producer that omits the shape is still readable when the domain settles it.
+def test_an_empty_index_array_from_elsewhere_is_recovered_from_the_domain() -> None:
+    """A producer that does emit one is still readable when the domain settles it.
 
-    An index array can only be empty because an input dimension is, so a domain
-    with exactly one zero-length dimension names the axis unambiguously.
+    This package never writes such a document, but ndsel does not forbid it, and
+    the domain names the axis unambiguously when exactly one dimension is empty.
     """
     body: IndexTransformJSON = {
         "input_inclusive_min": [0, 0],
@@ -509,19 +512,7 @@ def test_an_ambiguous_empty_index_array_is_rejected() -> None:
     with pytest.raises(NdselError) as excinfo:
         index_transform_from_json(body)
     assert excinfo.value.reason == "invalid_json"
-    assert "index_array_shape" in str(excinfo.value)
-
-
-def test_a_declared_index_array_shape_that_does_not_fit_is_rejected() -> None:
-    body: IndexTransformJSON = {
-        "input_inclusive_min": [0, 0],
-        "input_exclusive_max": [3, 4],
-        "output": [{"index_array": [1, 2, 0, 2], "index_array_shape": [1, 3]}],
-    }
-    with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json(body)
-    assert excinfo.value.reason == "invalid_json"
-    assert "index_array_shape" in str(excinfo.value)
+    assert "zero-length" in str(excinfo.value)
 
 
 @pytest.mark.parametrize(

@@ -30,7 +30,17 @@ This module bridges the gap:
      domain, unconsumed — a valid transform. This makes a length-1 `oindex`
      selection round-trip *behaviorally* (an `ArrayMap` becomes a `ConstantMap`)
      rather than by object identity.
-  2. Non-degenerate `index_array` maps are emitted **without** `input_dimension`.
+  2. An **empty** `index_array` (size 0) collapses the same way, to
+     `{offset: 0}`. It names no cell, and it can only be empty because an input
+     dimension is — the full-rank invariant makes every axis either 1 or the
+     domain's extent — so nothing is ever read through it and the emptiness is
+     carried by the domain, which is emitted separately. TensorStore does the
+     same: `t[ts.d[0][[]]]` is `out[0] = 0`, emitted as `{}`. Emitting the array
+     instead would produce a document neither implementation could load, because
+     `ndarray.tolist()` renders every empty array as `[]` once the leading axis
+     is the zero-length one, and nested lists cannot spell the shape back —
+     `[[]]` is `(1, 0)` and nothing spells `(0, 1)`.
+  3. Non-degenerate `index_array` maps are emitted **without** `input_dimension`.
 
 - **On load** (`transform_from_canonical`): the in-memory `input_dimension` is
   reconstructed from the full-rank array's dependency axes (its non-singleton
@@ -47,7 +57,6 @@ variants) are these canonical converters under their historical names.
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from typing import Any, Required, TypedDict
 
@@ -109,7 +118,6 @@ class OutputIndexMapJSON(TypedDict, total=False):
     input_dimension: int
     index_array: NestedIntList
     index_array_bounds: list[IndexValueJSON]
-    index_array_shape: list[int]
 
 
 class IndexTransformJSON(TypedDict, total=False):
@@ -253,20 +261,28 @@ def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
     if m.index_array.size == 1:
         value = int(m.index_array.reshape(-1)[0])
         return {"offset": m.offset + m.stride * value}
-    body: OutputIndexMapJSON = {
+    if m.index_array.size == 0:
+        # An empty index array names no cell, and it can only be empty because
+        # an input dimension is — the full-rank invariant makes every axis
+        # either 1 or the domain's extent, so a 0 there means the domain has a 0
+        # there too. Nothing is ever read through this map, which makes it
+        # degenerate in exactly the way a size-1 array is, and it collapses the
+        # same way. The empty dimension stays in the domain, so the transform
+        # that comes back describes the same (empty) selection.
+        #
+        # This is also what the reference implementation does: TensorStore
+        # renders `t[ts.d[0][[]]]` as `out[0] = 0` and emits `{}`. Emitting the
+        # array instead would produce a document neither it nor this package
+        # could load, because `tolist()` renders every empty array as `[]` once
+        # the leading axis is the zero-length one — and nested lists cannot
+        # spell the shape back, `[[]]` being (1, 0) with nothing for (0, 1).
+        return {"offset": 0}
+    return {
         "offset": m.offset,
         "stride": m.stride,
         "index_array": m.index_array.tolist(),
         "index_array_bounds": ["-inf", "+inf"],
     }
-    if m.index_array.size == 0:
-        # `tolist()` renders every empty array as `[]` once the leading axis is
-        # the zero-length one, so rank — and with it the axis the map varies
-        # over — does not survive the trip. Nested lists cannot express it
-        # either: `[[]]` is shape (1, 0) and nothing spells (0, 1). Carry the
-        # shape alongside so the map that comes back is the map that went out.
-        body["index_array_shape"] = list(m.index_array.shape)
-    return body
 
 
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
@@ -304,34 +320,24 @@ def _solo_dependency_axis(arr: np.ndarray[Any, Any]) -> int | None:
 
 def _full_rank_index_array(
     arr: np.ndarray[Any, np.dtype[np.intp]],
-    declared_shape: list[int] | None,
     domain: IndexDomain,
     where: str,
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Give an incoming `index_array` the input rank the engine requires.
 
-    Three cases, in order of how much the document tells us:
+    ndsel leaves index-array rank unvalidated, so a conformant producer may send
+    an array of lower rank that broadcasts against the domain. A non-empty one
+    is aligned to the *trailing* input dimensions, which is how NumPy broadcasts
+    and how a producer omitting leading singletons means it to be read.
 
-    - An explicit `index_array_shape` settles it. This is what our own emitter
-      writes for an empty array, whose shape nested lists cannot carry.
-    - An empty array with no declared shape has to be reconstructed from the
-      domain: it can only be empty because some input dimension is, so that
-      dimension takes the zero and every other takes a broadcast singleton.
-      Ambiguous when the domain is empty on more than one axis, and impossible
-      when it is empty on none — both are rejected rather than guessed at.
-    - A lower-rank non-empty array is aligned to the *trailing* input
-      dimensions, which is how NumPy broadcasts and how a producer that omits
-      leading singletons means it to be read.
+    An empty array is a different matter: `[]` is the only spelling of every
+    empty shape once the leading axis is the zero-length one, so the axis it
+    varies over cannot be read off it. It is recovered from the domain, which
+    can only be empty on the axis in question — and rejected when the domain
+    leaves that ambiguous. This package never emits such a document (an empty
+    map is degenerate and collapses to a constant, as TensorStore's does), so
+    this path exists for external producers alone.
     """
-    if declared_shape is not None:
-        if math.prod(declared_shape) != arr.size:
-            raise NdselError(
-                "invalid_json",
-                f"{where}.index_array_shape is {declared_shape}, which holds "
-                f"{math.prod(declared_shape)} entries, but index_array holds {arr.size}",
-            )
-        return arr.reshape(tuple(declared_shape))
-
     if arr.size == 0 and arr.ndim != domain.ndim:
         empty_axes = [k for k, extent in enumerate(domain.shape) if extent == 0]
         if len(empty_axes) != 1:
@@ -339,7 +345,7 @@ def _full_rank_index_array(
                 "invalid_json",
                 f"{where}.index_array is empty, but the input domain has "
                 f"{len(empty_axes)} zero-length dimensions, so the axis it varies "
-                f"over cannot be recovered; send 'index_array_shape' to say which",
+                f"over cannot be recovered",
             )
         shape = [1] * domain.ndim
         shape[empty_axes[0]] = 0
@@ -423,7 +429,7 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
             # may send an array of lower rank that broadcasts against the domain.
             # Widen it here, on the way in, so every transform that exists holds
             # the full-rank invariant the engine reads dependency axes from.
-            arr = _full_rank_index_array(arr, om.get("index_array_shape"), domain, where)
+            arr = _full_rank_index_array(arr, domain, where)
             arrays[i] = arr
             dep = _array_map_dependency_axes(arr)
             array_axes[i] = dep

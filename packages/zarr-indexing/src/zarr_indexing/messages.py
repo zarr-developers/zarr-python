@@ -97,7 +97,6 @@ _OUTPUT_MAP_FIELDS = frozenset(
         "input_dimension",
         "index_array",
         "index_array_bounds",
-        "index_array_shape",
     }
 )
 
@@ -553,10 +552,6 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
             "index_array": raw["index_array"],
             "index_array_bounds": bounds,
         }
-        if "index_array_shape" in raw:
-            normalized["index_array_shape"] = _check_index_array_shape(
-                raw["index_array_shape"], where
-            )
         return normalized
 
     if has_input_dim:
@@ -589,33 +584,6 @@ def _check_index_array_bounds(value: Any, where: str) -> list[int | str]:
             f"{where}.index_array_bounds: lower bound {lo!r} > upper bound {hi!r}",
         )
     return [lo, hi]
-
-
-def _check_index_array_shape(value: Any, where: str) -> list[int]:
-    """Validate an `index_array_shape`: non-negative extents, one per input dimension.
-
-    Carried because JSON nested lists cannot express the shape of an array with
-    no elements — `[]` is the only spelling of every empty shape, so a leading
-    zero axis loses both its rank and which dimension it varies over. See the
-    `json` module docstring.
-    """
-    if not isinstance(value, list):
-        raise NdselError(
-            "invalid_json", f"{where}.index_array_shape must be an array, got {value!r}"
-        )
-    if len(value) > _MAX_RANK:
-        raise NdselError(
-            "invalid_json",
-            f"{where}.index_array_shape has rank {len(value)}, above the maximum {_MAX_RANK}",
-        )
-    extents = [_check_int(v, f"{where}.index_array_shape[{i}]") for i, v in enumerate(value)]
-    for i, extent in enumerate(extents):
-        if extent < 0:
-            raise NdselError(
-                "invalid_json",
-                f"{where}.index_array_shape[{i}] must be >= 0, got {extent}",
-            )
-    return extents
 
 
 def _normalize_transform(obj: dict[str, Any]) -> dict[str, Any]:
@@ -691,13 +659,6 @@ def _normalize_transform(obj: dict[str, Any]) -> dict[str, Any]:
                     "rank_mismatch",
                     f"output[{i}].input_dimension is {m['input_dimension']}, "
                     f"outside the valid range [0, {rank}) for input_rank {rank}",
-                )
-            declared = m.get("index_array_shape")
-            if declared is not None and len(declared) != rank:
-                raise NdselError(
-                    "rank_mismatch",
-                    f"output[{i}].index_array_shape has rank {len(declared)} but "
-                    f"input_rank is {rank}",
                 )
     else:
         output = _identity_output(rank)
