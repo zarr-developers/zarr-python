@@ -103,20 +103,29 @@ class ArrayMap:
     input_dimension: int | None = None
 
     def __post_init__(self) -> None:
-        """Hold the index array through a read-only view.
+        """Own the index array and expose it read-only.
 
         A map is frozen, but the array inside it was not: reaching through a
         view's transform to `index_array[0] = 9` silently changed what the view
         returned, in a package whose whole contract is that a view is a
-        description of a read and resolving it twice answers alike. The view is
-        taken rather than the caller's array being marked, so constructing a map
-        does not take away the ability to write to an array you still own.
+        description of a read and resolving it twice answers alike. Owning the
+        array also prevents the caller from changing the contents behind the
+        read-only view, which would invalidate this value object's hash.
         """
-        # `asarray` first: a NumPy scalar reaches here from paths that index an
-        # array down to one element, and a scalar has no flags to set.
-        frozen = np.asarray(self.index_array).view()
-        frozen.flags.writeable = False
+        # Immutable bytes are the ultimate owner so callers cannot re-enable
+        # the WRITEABLE flag, as they can on a read-only array that owns its
+        # allocation. `asarray` also accepts the NumPy scalars that reach here
+        # after indexing an array down to one element.
+        array = np.asarray(self.index_array)
+        frozen = np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
         object.__setattr__(self, "index_array", frozen)
+
+    def __reduce__(self) -> tuple[object, tuple[object, int, int, int | None]]:
+        """Reconstruct through `__init__`, preserving the ownership invariant."""
+        return (
+            type(self),
+            (self.index_array, self.offset, self.stride, self.input_dimension),
+        )
 
     def __eq__(self, other: object) -> bool:
         """Value equality, comparing index arrays element-wise.

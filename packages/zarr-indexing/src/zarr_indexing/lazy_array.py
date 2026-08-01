@@ -1589,7 +1589,13 @@ class LazyArray:
                 transform = selection_to_transform(scalar_selection, transform, "basic")
                 transform = transform.translate_domain_to((0,) * transform.input_rank)
         literal = normalize_positional_selection(selection, transform.domain, mode)
-        composed = selection_to_transform(literal, transform, mode)
+        if mode == "basic":
+            # IndexTransform's basic path includes NumPy's `None`/newaxis.
+            # `selection_to_transform` intentionally exposes a narrower basic
+            # selection contract and rejects it.
+            composed = transform[literal]
+        else:
+            composed = selection_to_transform(literal, transform, mode)
         return LazyArray._derive(self._array, composed, self._parts, self._window, self._support)
 
     def __getitem__(self, selection: Any) -> Any:
@@ -1634,32 +1640,43 @@ class LazyArray:
             uninitialized where nothing was written, so an incomplete walk is
             reported rather than returned.
         """
+        out_shape = self.shape
+        size = math.prod(out_shape)
+        if size == 0:
+            return self._empty_result(out_shape)
+
         if self._parts is None:
             block = _read(self._array, self._window, self._transform, self._support)
             return _detach(block, self._array)
 
-        out_shape = self.shape
         out = self._output_buffer(out_shape)
-        size = math.prod(out_shape)
-        if size > 0:
-            written = 0
-            for part in self.parts():
-                # Counted before the scatter, so a part addressing the wrong
-                # number of axes is named rather than reported as a broadcast
-                # failure against the buffer.
-                written += _out_selection_cell_count(part.out_selection, out_shape)
-                out[part.out_selection] = np.asanyarray(part.view.result())
-            if written != size:
-                # The buffer is uninitialized where no part wrote, so a partition
-                # walk that does not tile the view exactly would otherwise hand
-                # back process memory dressed as data. The parts are disjoint by
-                # contract, so counting the cells each addresses is enough:
-                # a gap undercounts and an overlap overcounts.
-                raise AssertionError(
-                    f"the partition walk addressed {written} of the view's {size} "
-                    "cells; this is a bug in zarr-indexing's partition walk"
-                )
+        written = 0
+        for part in self.parts():
+            # Counted before the scatter, so a part addressing the wrong
+            # number of axes is named rather than reported as a broadcast
+            # failure against the buffer.
+            written += _out_selection_cell_count(part.out_selection, out_shape)
+            out[part.out_selection] = np.asanyarray(part.view.result())
+        if written != size:
+            # The buffer is uninitialized where no part wrote, so a partition
+            # walk that does not tile the view exactly would otherwise hand
+            # back process memory dressed as data. The parts are disjoint by
+            # contract, so counting the cells each addresses is enough:
+            # a gap undercounts and an overlap overcounts.
+            raise AssertionError(
+                f"the partition walk addressed {written} of the view's {size} "
+                "cells; this is a bug in zarr-indexing's partition walk"
+            )
         return out
+
+    def _empty_result(self, out_shape: tuple[int, ...]) -> Any:
+        """Allocate an empty result without asking the source for any data."""
+        if self._parts is None:
+            xp = _namespace(self._array)
+            empty = getattr(xp, "empty", None)
+            if empty is not None:
+                return empty(out_shape, dtype=self.dtype)
+        return self._output_buffer(out_shape)
 
     def _output_buffer(self, out_shape: tuple[int, ...]) -> Any:
         """The buffer `result()` scatters parts into.

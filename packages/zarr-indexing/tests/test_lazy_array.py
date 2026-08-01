@@ -250,6 +250,7 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     ),
     ("basic-ellipsis", lambda a: a.lazy[..., -2], lambda r: r[..., -2]),
     ("basic-negative-scalar", lambda a: a.lazy[-3], lambda r: r[-3]),
+    ("basic-newaxis", lambda a: a.lazy[None, :, :, None], lambda r: r[None, :, :, None]),
     ("basic-empty", lambda a: a.lazy[:, 2:2, :], lambda r: r[:, 2:2, :]),
     ("basic-all-scalars", lambda a: a.lazy[-1, 0, 2], lambda r: r[-1, 0, 2]),
     (
@@ -1574,6 +1575,36 @@ class MinimalSource:
 
     def __getitem__(self, key: Any) -> Any:
         return self._data[key]
+
+
+class RecordingSource(MinimalSource):
+    """A minimal source that records every attempted data read."""
+
+    def __init__(self, data: np.ndarray[Any, Any]) -> None:
+        super().__init__(data)
+        self.reads: list[Any] = []
+
+    def __getitem__(self, key: Any) -> Any:
+        self.reads.append(key)
+        return super().__getitem__(key)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda a: a.lazy[:, 2:2, :],
+        lambda a: a.lazy.vindex[np.array([[6], [3], [0]]), -4].lazy[0, 0:0],
+    ],
+    ids=["ordinary", "unreferenced-axis"],
+)
+def test_an_empty_view_does_not_read_its_source(
+    build: Callable[[LazyArray], LazyArray],
+) -> None:
+    source = RecordingSource(reference())
+    result = build(LazyArray(source)).result()
+
+    assert result.size == 0
+    assert source.reads == []
 
 
 def _require_basic(key: tuple[Any, ...], channel: str) -> None:
