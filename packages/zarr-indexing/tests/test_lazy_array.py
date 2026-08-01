@@ -20,6 +20,7 @@ import pytest
 
 from zarr_indexing import (
     ArrayMap,
+    ChunkProjection,
     ConstantMap,
     DimensionMap,
     EdgeDimensionGrid,
@@ -1205,6 +1206,74 @@ def test_parts_tile_the_view_exactly_and_disjointly(
 
     np.testing.assert_array_equal(assembled, expected)
     np.testing.assert_array_equal(hits, np.ones(view.shape, dtype=np.int64))
+
+
+def _transform_point(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
+    """Evaluate a transform pointwise for projection placement assertions."""
+    result: list[int] = []
+    for output_map in transform.output:
+        if isinstance(output_map, ConstantMap):
+            result.append(output_map.offset)
+        elif isinstance(output_map, DimensionMap):
+            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
+        else:
+            index = tuple(
+                0
+                if output_map.index_array.shape[axis] == 1
+                else point[axis] - transform.domain.inclusive_min[axis]
+                for axis in range(output_map.index_array.ndim)
+            )
+            result.append(
+                output_map.offset + output_map.stride * int(output_map.index_array[index])
+            )
+    return tuple(result)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda array: array.lazy.oindex[[6, 0, 2], :, [3, 1]],
+        lambda array: array.lazy.vindex[..., np.array([4, 0, 4]), np.array([3, 1, 1])],
+    ],
+    ids=["orthogonal", "vectorized"],
+)
+def test_partition_exposes_projection_as_its_placement_authority(
+    build: Callable[[LazyArray], LazyArray],
+) -> None:
+    """A part's NumPy placement addresses exactly its cell-transform range."""
+    view = build(LazyArray(reference()).with_parts(PART_SHAPE))
+    assembled = np.zeros(view.shape, dtype=view.dtype)
+
+    for part in view.parts():
+        projection = part.projection
+        assert isinstance(projection, ChunkProjection)
+        assert part.view.transform == projection.chunk_transform
+        assert part.base_coords == projection.chunk_coords
+        assert part.box == tuple(
+            zip(
+                projection.chunk_domain.inclusive_min,
+                projection.chunk_domain.exclusive_max,
+                strict=True,
+            )
+        )
+
+        expected_hits = np.zeros(view.shape, dtype=np.int8)
+        cell_domain = projection.cell_transform.domain
+        for positional_point in np.ndindex(*cell_domain.shape):
+            cell_point = tuple(
+                coordinate + origin
+                for coordinate, origin in zip(
+                    positional_point, cell_domain.inclusive_min, strict=True
+                )
+            )
+            expected_hits[_transform_point(projection.cell_transform, cell_point)] = 1
+        actual_hits = np.zeros(view.shape, dtype=np.int8)
+        actual_hits[part.out_selection] = 1
+        np.testing.assert_array_equal(actual_hits, expected_hits)
+
+        assembled[part.out_selection] = np.asarray(part.view.result())
+
+    np.testing.assert_array_equal(assembled, np.asarray(view.result()))
 
 
 def test_parts_resolve_independently_and_concurrently() -> None:

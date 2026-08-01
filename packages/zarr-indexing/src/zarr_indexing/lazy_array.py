@@ -169,8 +169,8 @@ from zarr_indexing.boundary import (
     split_scalar_axes,
 )
 from zarr_indexing.chunk_resolution import (
-    iter_chunk_transforms,
-    sub_transform_to_selections,
+    ChunkProjection,
+    plan_chunks,
 )
 from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
@@ -846,33 +846,71 @@ def _detach(value: Any, source: Any) -> Any:
 
 
 def _partition_out_selection(
-    sub_transform: IndexTransform,
-    out_indices: Any,
-    out_shape: tuple[int, ...],
+    cell_transform: IndexTransform,
 ) -> tuple[Any, ...]:
-    """Where a partition's values belong in an array of shape `out_shape`.
+    """Lower ``cell_transform`` to NumPy selectors on the request buffer."""
+    domain = cell_transform.domain
+    if _is_correlated(cell_transform):
+        selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
+        for output_map in cell_transform.output:
+            if isinstance(output_map, ConstantMap):
+                coordinates = np.full(domain.shape, output_map.offset, dtype=np.intp)
+            elif isinstance(output_map, DimensionMap):
+                input_dimension = output_map.input_dimension
+                axis = np.arange(
+                    domain.inclusive_min[input_dimension],
+                    domain.exclusive_max[input_dimension],
+                    dtype=np.intp,
+                )
+                shape = (
+                    (1,) * input_dimension
+                    + (axis.size,)
+                    + ((1,) * (domain.ndim - input_dimension - 1))
+                )
+                coordinates = np.broadcast_to(axis.reshape(shape), domain.shape)
+                coordinates = output_map.offset + output_map.stride * coordinates
+            else:
+                coordinates = output_map.offset + output_map.stride * np.broadcast_to(
+                    output_map.index_array, domain.shape
+                )
+            selectors.append(np.asarray(coordinates, dtype=np.intp))
+        return tuple(selectors)
 
-    A correlated sub-transform scatters through flat offsets into the row-major
-    result; unravelling them turns that into an index tuple for the result's own
-    shape, so callers never need a flat working buffer.
-
-    The correlated scatter is taken directly rather than through
-    `sub_transform_to_selections`, whose business is to match a scatter to the
-    block a *NumPy chunk read* returns — which is not the block a part produces.
-    A part is resolved by lowering its own transform, and that lowering keeps the
-    points axis first; the bridge has to answer for NumPy's placement rules
-    instead, and permutes its scatter to suit. Reading the bridge's answer here
-    would apply a correction for a block this path never sees.
-    """
-    if not _is_correlated(sub_transform):
-        return sub_transform_to_selections(sub_transform, out_indices)[1]
-    if len(out_shape) == 0:
-        return ()
-    if out_indices is None:
-        flat = np.arange(math.prod(sub_transform.domain.shape), dtype=np.intp)
-    else:
-        flat = np.asarray(out_indices, dtype=np.intp)
-    return tuple(np.unravel_index(flat, out_shape))
+    selectors: list[int | slice | np.ndarray[Any, np.dtype[np.intp]]] = []
+    n_array_maps = sum(isinstance(output_map, ArrayMap) for output_map in cell_transform.output)
+    for output_map in cell_transform.output:
+        if isinstance(output_map, ConstantMap):
+            selectors.append(output_map.offset)
+        elif isinstance(output_map, DimensionMap):
+            input_dimension = output_map.input_dimension
+            lo = domain.inclusive_min[input_dimension]
+            hi = domain.exclusive_max[input_dimension]
+            selectors.append(
+                slice(
+                    output_map.offset + output_map.stride * lo,
+                    output_map.offset + output_map.stride * hi,
+                    output_map.stride,
+                )
+            )
+        else:
+            selectors.append(
+                (output_map.offset + output_map.stride * output_map.index_array.ravel()).astype(
+                    np.intp
+                )
+            )
+    if n_array_maps > 1:
+        axes = [
+            np.asarray([selector], dtype=np.intp)
+            if isinstance(selector, int)
+            else (
+                np.arange(selector.start, selector.stop, selector.step, dtype=np.intp)
+                if isinstance(selector, slice)
+                else selector
+            )
+            for selector in selectors
+        ]
+        return np.ix_(*axes)
+    return tuple(selectors)
 
 
 def _out_selection_cell_count(selection: tuple[Any, ...], out_shape: tuple[int, ...]) -> int:
@@ -908,44 +946,6 @@ def _out_selection_cell_count(selection: tuple[Any, ...], out_shape: tuple[int, 
     if len(array_shapes) > 0:
         total *= math.prod(np.broadcast_shapes(*array_shapes))
     return total
-
-
-def _covers_whole_part(local_transform: IndexTransform, part_shape: tuple[int, ...]) -> bool:
-    """Whether a part-local transform addresses every cell of its part.
-
-    Direction does not matter: a reversing view (`lazy[::-1]`) reads every cell
-    of the box, just back to front, so a stride of -1 covers a part exactly as a
-    stride of 1 does. Only the set of coordinates is asked about here, which is
-    the same question `bounding_box()` and `strides()` answer.
-
-    Conservative in one place: an `ArrayMap` could in principle enumerate a whole
-    part, but checking that costs more than the answer is worth, so a
-    fancy-indexed axis always reports incomplete.
-    """
-    domain = local_transform.domain
-    for out_dim, m in enumerate(local_transform.output):
-        extent = part_shape[out_dim]
-        if isinstance(m, ConstantMap):
-            if extent != 1 or m.offset != 0:
-                return False
-        elif isinstance(m, DimensionMap):
-            if abs(m.stride) != 1:
-                return False
-            d = m.input_dimension
-            lo = domain.inclusive_min[d]
-            hi = domain.exclusive_max[d]
-            if hi <= lo:
-                # An empty walk covers only an empty part.
-                if extent != 0:
-                    return False
-                continue
-            first = m.offset + m.stride * lo
-            last = m.offset + m.stride * (hi - 1)
-            if min(first, last) != 0 or max(first, last) != extent - 1:
-                return False
-        else:
-            return False
-    return True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -987,11 +987,20 @@ class Partition:
         does not.
     """
 
-    base_coords: tuple[int, ...]
+    projection: ChunkProjection
     box: tuple[tuple[int, int], ...]
     view: LazyArray
     out_selection: tuple[Any, ...]
-    is_complete: bool
+
+    @property
+    def base_coords(self) -> tuple[int, ...]:
+        """Coordinates of this partition in the selected base grid."""
+        return self.projection.chunk_coords
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether the projection proves it covers the entire selected cell."""
+        return self.projection.coverage == "full"
 
 
 # --------------------------------------------------------------------------- #
@@ -1535,10 +1544,11 @@ class LazyArray:
         """
         base_shape = self._base_shape
         grids = self._parts if self._parts is not None else _whole_array_grids(base_shape)
-        out_shape = self.shape
         rank = len(base_shape)
 
-        for base_coords, local, out_indices in iter_chunk_transforms(self._transform, grids):
+        for projection in plan_chunks(self._transform, grids):
+            base_coords = projection.chunk_coords
+            local = projection.chunk_transform
             origin = tuple(grid.chunk_offset(c) for grid, c in zip(grids, base_coords, strict=True))
             extent = tuple(grid.chunk_size(c) for grid, c in zip(grids, base_coords, strict=True))
             if origin == (0,) * rank and extent == base_shape:
@@ -1562,11 +1572,10 @@ class LazyArray:
                     w.start + o for w, o in zip(self._window, origin, strict=True)
                 )
             yield Partition(
-                base_coords=base_coords,
+                projection=projection,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
                 view=LazyArray._derive(self._array, local, None, window, self._support),
-                out_selection=_partition_out_selection(local, out_indices, out_shape),
-                is_complete=_covers_whole_part(local, extent),
+                out_selection=_partition_out_selection(projection.cell_transform),
             )
 
     # -- indexing -----------------------------------------------------------

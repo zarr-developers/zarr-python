@@ -493,6 +493,9 @@ def _iter_chunk_projections(
             ),
         )
         cell_transform = _cell_transform(transform, chunk_transform, survivors)
+        synthetic_origin = (0,) * chunk_transform.input_rank
+        chunk_transform = chunk_transform.translate_domain_to(synthetic_origin)
+        cell_transform = cell_transform.translate_domain_to(synthetic_origin)
         if survivors is not None or any(isinstance(m, ArrayMap) for m in chunk_transform.output):
             coverage: ChunkCoverage = "unknown"
         elif _covers_whole_chunk(chunk_transform, chunk_shape):
