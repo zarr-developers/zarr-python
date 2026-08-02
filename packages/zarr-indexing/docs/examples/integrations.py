@@ -1,6 +1,6 @@
 """Boundaries for chunked-source and viewport consumers."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -18,7 +18,7 @@ class ChunkDispatcher:
         self.chunk_coords.append(projection.chunk_coords)
 
 
-zarr_view = LazyArray(np.arange(48).reshape(6, 8)).with_parts((3, 4)).lazy[1:5, 2]
+zarr_view = LazyArray(cast(Any, np.arange(48).reshape(6, 8))).with_parts((3, 4)).lazy[1:5, 2]
 dispatcher = ChunkDispatcher()
 for part in zarr_view.parts():
     dispatcher.dispatch(part.projection)
