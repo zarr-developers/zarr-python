@@ -4,21 +4,24 @@ title: Design notes
 
 # Design notes
 
-Three topics the API does not state directly: how this library relates to
-TensorStore, why rectangular selections are a category rather than a fast path,
-and what is deliberately not implemented yet.
+This page records advanced rationale that the API does not state directly: how
+this library relates to TensorStore, why rectangular selections are a category
+rather than a fast path, and what is deliberately not implemented yet. The
+visual guide owns the mechanics of [literal coordinates](guide/02-transforms.md),
+[view composition](guide/03-composition.md), [chunk plans](guide/04-chunks.md),
+and [their paired projections](guide/05-projections.md).
 
 ## Relationship to TensorStore
 
 The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
-index-transform model, reimplemented in Python against NumPy. The following
-parts are intentionally identical:
+index-transform model, reimplemented in Python against NumPy. The visual guide
+introduces the shared coordinate model in [chapter 2](guide/02-transforms.md)
+and composition in [chapter 3](guide/03-composition.md); the comparison here is
+about the deliberately matching semantics:
 
-- **The model.** An `IndexTransform` pairs an input `IndexDomain` — a
-  rectangular region with an explicit, possibly non-zero origin — with one
-  output index map per storage dimension, in the three flavors TensorStore
-  defines: constant, single-input-dimension (affine), and index array.
-  Composition is the single operation that stacks views.
+- **The model.** Both use an `IndexTransform` made of an input domain and one
+  output index map per storage dimension, in constant, affine, and index-array
+  forms.
 - **Slice semantics.** Slice bounds are literal domain coordinates: no
   clamping, no negative wrapping, non-empty intervals must be contained in the
   domain, and a strided slice's domain origin is `trunc(start/step)` rounded
@@ -58,23 +61,21 @@ Four deliberate differences:
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
 | Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
 
-Chunk planning deliberately follows TensorStore's paired-transform boundary.
-TensorStore exposes a transform from a shared cell domain into a decoded chunk
-and another into the request; `ChunkProjection.chunk_transform` and
-`ChunkProjection.cell_transform` preserve the same directionality. This is more
-general than returning a NumPy read key plus scatter indices: slices, outer
-products, and correlated gathers remain ordinary transforms, and a consumer can
-lower them to its own execution vocabulary.
+The mechanics of a [chunk plan](guide/04-chunks.md) and its
+[paired projections](guide/05-projections.md) belong to the visual guide.
+The relevant comparison is that both libraries use the paired-transform
+boundary rather than a read key plus scatter indices, so slices, outer products,
+and correlated gathers remain ordinary transforms that a consumer can lower to
+its own execution vocabulary.
 
 The ownership boundary differs. `plan_chunks` retains only the logical request
-and a caller-supplied grid, and lazily yields source-independent projections. It
-does not own reads, writes, buffers, locks, or scheduling. Zarr can therefore
-plan reads against an inner codec-chunk grid and writes against an atomic shard
-grid; napari or dask can turn the same projections into tasks without putting a
-dask dependency in this package. `coverage` is relative to that selected grid:
-`full` proves a blind replacement safe, `partial` proves it is not, and
-`unknown` conservatively covers fancy selections whose duplicates would require
-additional work to classify.
+and caller-supplied grid; it does not own reads, writes, buffers, locks, or
+scheduling. Zarr can therefore plan reads against an inner codec-chunk grid and
+writes against an atomic shard grid; napari or dask can turn the same
+projections into tasks without putting a dask dependency in this package.
+`coverage` is relative to that selected grid: `full` proves a blind replacement
+safe, `partial` proves it is not, and `unknown` conservatively covers fancy
+selections whose duplicates would require additional work to classify.
 
 The comparison also runs the other way. TensorStore is a mature, heavily
 optimized C++ system whose performance this library cannot approach: resolution

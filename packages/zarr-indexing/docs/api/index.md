@@ -4,6 +4,17 @@ title: API reference
 
 # API reference
 
+Choose the guide stopping point that matches your job before following module
+links:
+
+- **Use lazy indexing:** finish [chapter 3: Lazy views compose](../guide/03-composition.md),
+  then open [`zarr_indexing.lazy_array`](lazy_array.md) for `LazyArray`.
+- **Integrate a chunked source:** finish
+  [chapter 5: One cell domain, two projections](../guide/05-projections.md),
+  then open [`zarr_indexing.chunk_resolution`](chunk_resolution.md) for
+  `plan_chunks`. Start with [chapter 2: Coordinates are addresses](../guide/02-transforms.md)
+  if literal coordinates are unfamiliar.
+
 The modules are layered: the transform algebra at the bottom, chunk resolution
 and the wire format built on top of it.
 
