@@ -39,15 +39,7 @@ Wrap an array, compose a lazy view through `.lazy`, and call `result()` when
 you want its values:
 
 ```python
-import numpy as np
-
-from zarr_indexing import LazyArray
-
-image = np.arange(48).reshape(6, 8)
-view = LazyArray(image).lazy[1:5, 2]
-
-view.result()
-# array([10, 18, 26, 34])
+--8<-- "examples/canonical_slice.py:landing-quickstart"
 ```
 
 Continue through [chapter 2: Coordinates are addresses](guide/02-transforms.md)

@@ -26,6 +26,7 @@ REGIONS = {
     "coordinate-origin": DOCS / "examples" / "coordinate_origins.py",
     "prepend-grid": DOCS / "examples" / "coordinate_origins.py",
     "canonical-slice": DOCS / "examples" / "canonical_slice.py",
+    "landing-quickstart": DOCS / "examples" / "canonical_slice.py",
     "lazy-composition": DOCS / "examples" / "lazy_composition.py",
     "chunk-projection": DOCS / "examples" / "chunk_projection.py",
     "advanced-projection": DOCS / "examples" / "chunk_projection.py",
@@ -72,6 +73,16 @@ def test_documentation_region_is_nonempty_and_balanced(region: str, path: Path) 
     )
     assert match is not None, f"region {region!r} is not balanced"
     assert match.group("body").strip(), f"region {region!r} must not be empty"
+
+
+def test_landing_quickstart_produces_the_shown_result() -> None:
+    """The landing snippet imports, selects, and materializes its promised values."""
+    namespace: dict[str, Any] = runpy.run_path(
+        str(DOCS / "examples" / "canonical_slice.py"), run_name="__main__"
+    )
+    np.testing.assert_array_equal(
+        namespace["LANDING_QUICKSTART_RESULT"], np.array([10, 18, 26, 34])
+    )
 
 
 def test_integration_consumers_touch_only_planned_source_chunks() -> None:
