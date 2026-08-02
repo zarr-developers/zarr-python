@@ -2,9 +2,9 @@
 
 import numpy as np
 from numpy.typing import NDArray
-from typing import cast
+from typing import Any, cast
 
-from zarr_indexing import DimensionGridLike, IndexTransform, plan_chunks
+from zarr_indexing import DimensionGridLike, IndexTransform, LazyArray, plan_chunks
 
 
 # --8<-- [start:chunk-projection]
@@ -28,21 +28,13 @@ class RegularGrid:
 
 
 transform = IndexTransform.from_shape((6, 8))[1:5, 2]
-PROJECTIONS = tuple(
-    projection
-    for size in (3, 4)
-    for projection in plan_chunks(
-        transform,
-        cast(tuple[DimensionGridLike, DimensionGridLike], (RegularGrid(size), RegularGrid(size))),
-    )
+grids = cast(
+    tuple[DimensionGridLike, DimensionGridLike],
+    (RegularGrid(3), RegularGrid(4)),
 )
-
-for size in (3, 4):
-    grids = cast(
-        tuple[DimensionGridLike, DimensionGridLike], (RegularGrid(size), RegularGrid(size))
-    )
-    projections = tuple(plan_chunks(transform, grids))
-    assert tuple(projection.chunk_coords for projection in projections) == ((0, 0), (1, 0))
+plan = plan_chunks(transform, grids)
+PROJECTIONS = tuple(plan)
+assert tuple(projection.chunk_coords for projection in plan) == ((0, 0), (1, 0))
 
 PAIRED_DOMAINS = tuple(
     (projection.chunk_transform.domain, projection.cell_transform.domain)
@@ -50,3 +42,16 @@ PAIRED_DOMAINS = tuple(
 )
 assert all(chunk_domain == cell_domain for chunk_domain, cell_domain in PAIRED_DOMAINS)
 # --8<-- [end:chunk-projection]
+
+
+# --8<-- [start:advanced-projection]
+image = np.arange(48).reshape(6, 8)
+advanced = LazyArray(cast(Any, image)).with_parts((3, 4)).lazy.oindex[[4, 1, 1], 2:6]
+
+ADVANCED_EXPECTED = image[[4, 1, 1]][:, 2:6]
+ADVANCED_RESULT = np.empty_like(ADVANCED_EXPECTED)
+for part in advanced.parts():
+    ADVANCED_RESULT[part.out_selection] = part.view.result()
+
+np.testing.assert_array_equal(ADVANCED_RESULT, ADVANCED_EXPECTED)
+# --8<-- [end:advanced-projection]

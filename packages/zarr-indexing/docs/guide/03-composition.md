@@ -41,5 +41,5 @@ example that materializes the selected data.
 <nav aria-label="Guide chapter navigation">
   <strong>Previous:</strong> <a href="../02-transforms/">Coordinates are addresses</a>
   ·
-  <strong>Next:</strong> <a href="../../api/">API reference</a>
+  <strong>Next:</strong> <a href="../04-chunks/">A request becomes a chunk plan</a>
 </nav>

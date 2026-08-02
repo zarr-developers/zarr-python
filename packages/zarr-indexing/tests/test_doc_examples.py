@@ -5,6 +5,7 @@ import runpy
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 DOCS = Path(__file__).parents[1] / "docs"
@@ -25,6 +26,7 @@ REGIONS = {
     "canonical-slice": DOCS / "examples" / "canonical_slice.py",
     "lazy-composition": DOCS / "examples" / "lazy_composition.py",
     "chunk-projection": DOCS / "examples" / "chunk_projection.py",
+    "advanced-projection": DOCS / "examples" / "chunk_projection.py",
     "indexing-patterns": DOCS / "examples" / "indexing_patterns.py",
     "zarr-consumer": DOCS / "examples" / "integrations.py",
     "viewport-consumer": DOCS / "examples" / "integrations.py",
@@ -63,3 +65,11 @@ def test_viewport_consumer_reads_only_touched_source_chunks() -> None:
         str(DOCS / "examples" / "integrations.py"), run_name="__main__"
     )
     assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (1, 0))
+
+
+def test_projection_example_exposes_paired_directions() -> None:
+    namespace = runpy.run_path(str(DOCS / "examples" / "chunk_projection.py"))
+    np.testing.assert_array_equal(namespace["ADVANCED_RESULT"], namespace["ADVANCED_EXPECTED"])
+    assert all(chunk == cell for chunk, cell in namespace["PAIRED_DOMAINS"])
+    assert all(p.chunk_transform.output_rank == 2 for p in namespace["PROJECTIONS"])
+    assert all(p.cell_transform.output_rank == 1 for p in namespace["PROJECTIONS"])
