@@ -5,7 +5,44 @@ from __future__ import annotations
 from typing import Literal, NotRequired, TypedDict
 
 
-type SemanticRole = Literal["request", "source", "selected", "chunk-local", "cell-domain", "text"]
+SemanticRole = Literal["request", "source", "selected", "chunk-local", "cell-domain", "text"]
+
+
+class RoleStyle(TypedDict):
+    """Explicit colours for one semantic role."""
+
+    fill: str
+    stroke: str
+    text: str
+
+
+PALETTES: dict[str, dict[SemanticRole, RoleStyle]] = {
+    "default": {
+        "request": {"fill": "#dbeafe", "stroke": "#0969da", "text": "#0b376d"},
+        "source": {"fill": "#f6f8fa", "stroke": "#57606a", "text": "#24292f"},
+        "selected": {"fill": "#fff1a8", "stroke": "#9a6700", "text": "#3d2b00"},
+        "chunk-local": {"fill": "#dafbe1", "stroke": "#1a7f37", "text": "#123d1c"},
+        "cell-domain": {"fill": "#fbefff", "stroke": "#8250df", "text": "#3b1764"},
+        "text": {"fill": "#ffffff", "stroke": "#57606a", "text": "#24292f"},
+    },
+    "slate": {
+        "request": {"fill": "#153a5b", "stroke": "#58a6ff", "text": "#e6f2ff"},
+        "source": {"fill": "#24282f", "stroke": "#9da7b3", "text": "#f4f7fb"},
+        "selected": {"fill": "#4a3b00", "stroke": "#e3b341", "text": "#fff4bd"},
+        "chunk-local": {"fill": "#153d29", "stroke": "#56d364", "text": "#dff7e7"},
+        "cell-domain": {"fill": "#392557", "stroke": "#a371f7", "text": "#f3e8ff"},
+        "text": {"fill": "#1f2329", "stroke": "#9da7b3", "text": "#f4f7fb"},
+    },
+}
+
+ROLE_CUES: dict[SemanticRole, str] = {
+    "request": "request label + double border",
+    "source": "source label + neutral single border",
+    "selected": "coordinate label + heavy outline",
+    "chunk-local": "chunk-local label + dashed border",
+    "cell-domain": "cell-domain label + rounded border",
+    "text": "text label",
+}
 
 
 class GridSpec(TypedDict):
@@ -85,7 +122,454 @@ class FigureSpec(TypedDict):
     elements: tuple[ElementSpec, ...]
 
 
-FIGURES: tuple[FigureSpec, ...] = ()
+FIGURES: tuple[FigureSpec, ...] = (
+    {
+        "id": "indexing-selection",
+        "title": "Basic indexing selects a one-dimensional request",
+        "description": "image[1:5, 2] maps four source cells to a length-four request.",
+        "width": 720,
+        "height": 390,
+        "elements": (
+            {
+                "id": "source-grid",
+                "kind": "grid",
+                "role": "source",
+                "rows": 6,
+                "columns": 4,
+                "cell_size": 42,
+                "origin": (390, 34),
+                "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
+            },
+            {
+                "id": "request-vector",
+                "kind": "node",
+                "role": "request",
+                "x": 42,
+                "y": 114,
+                "width": 180,
+                "height": 58,
+                "label": "request: length 4",
+            },
+            {
+                "id": "selection-map",
+                "kind": "arrow",
+                "role": "text",
+                "source": "request-vector",
+                "target": "source-grid-label",
+                "label": "i ↦ (i + 1, 2)",
+            },
+            {
+                "id": "source-grid-label",
+                "kind": "node",
+                "role": "selected",
+                "x": 576,
+                "y": 130,
+                "width": 92,
+                "height": 46,
+                "label": "4 cells",
+            },
+            {
+                "id": "expression",
+                "kind": "text",
+                "role": "text",
+                "x": 110,
+                "y": 82,
+                "label": "image[1:5, 2]",
+            },
+        ),
+    },
+    {
+        "id": "coordinate-addresses",
+        "title": "Negative and non-negative coordinates are peer addresses",
+        "description": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
+        "width": 720,
+        "height": 250,
+        "elements": tuple(
+            {
+                "id": f"coordinate-{coordinate}",
+                "kind": "node",
+                "role": "cell-domain",
+                "x": 80 + index * 112,
+                "y": 62,
+                "width": 72,
+                "height": 62,
+                "label": str(coordinate),
+            }
+            for index, coordinate in enumerate(range(-2, 3))
+        )
+        + (
+            {
+                "id": "domain-label",
+                "kind": "text",
+                "role": "text",
+                "x": 120,
+                "y": 42,
+                "label": "cell domain [-2, 3)",
+            },
+        ),
+    },
+    {
+        "id": "prepend-chunk",
+        "title": "Prepending extends the domain without moving old coordinates",
+        "description": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
+        "width": 760,
+        "height": 350,
+        "elements": tuple(
+            {
+                "id": f"before-{coordinate}",
+                "kind": "node",
+                "role": "source",
+                "x": 260 + coordinate * 52,
+                "y": 48,
+                "width": 44,
+                "height": 44,
+                "label": str(coordinate),
+            }
+            for coordinate in range(6)
+        )
+        + tuple(
+            {
+                "id": f"after-{coordinate}",
+                "kind": "node",
+                "role": "chunk-local" if coordinate < 0 else "source",
+                "x": 104 + (coordinate + 3) * 52,
+                "y": 156,
+                "width": 44,
+                "height": 44,
+                "label": str(coordinate),
+            }
+            for coordinate in range(-3, 6)
+        )
+        + (
+            {
+                "id": "before-label",
+                "kind": "text",
+                "role": "text",
+                "x": 80,
+                "y": 75,
+                "label": "before [0, 6)",
+            },
+            {
+                "id": "after-label",
+                "kind": "text",
+                "role": "text",
+                "x": 270,
+                "y": 224,
+                "label": "after [-3, 6); coordinates 0–5 stay aligned",
+            },
+        ),
+    },
+    {
+        "id": "transform-mapping",
+        "title": "A request coordinate maps into source coordinates",
+        "description": "request i maps to source (i + 1, 2).",
+        "width": 680,
+        "height": 250,
+        "elements": (
+            {
+                "id": "request-i",
+                "kind": "node",
+                "role": "request",
+                "x": 72,
+                "y": 62,
+                "width": 170,
+                "height": 70,
+                "label": "request i",
+            },
+            {
+                "id": "source-coordinate",
+                "kind": "node",
+                "role": "source",
+                "x": 438,
+                "y": 62,
+                "width": 190,
+                "height": 70,
+                "label": "source (i + 1, 2)",
+            },
+            {
+                "id": "request-to-source",
+                "kind": "arrow",
+                "role": "text",
+                "source": "request-i",
+                "target": "source-coordinate",
+                "label": "transform",
+            },
+        ),
+    },
+    {
+        "id": "compose-views",
+        "title": "Composed views reduce to one direct request-to-source map",
+        "description": "two view maps collapse into one direct map.",
+        "width": 760,
+        "height": 340,
+        "elements": (
+            {
+                "id": "request-chain",
+                "kind": "node",
+                "role": "request",
+                "x": 34,
+                "y": 42,
+                "width": 128,
+                "height": 52,
+                "label": "request",
+            },
+            {
+                "id": "outer-view",
+                "kind": "node",
+                "role": "cell-domain",
+                "x": 222,
+                "y": 42,
+                "width": 128,
+                "height": 52,
+                "label": "outer view",
+            },
+            {
+                "id": "inner-view",
+                "kind": "node",
+                "role": "cell-domain",
+                "x": 410,
+                "y": 42,
+                "width": 128,
+                "height": 52,
+                "label": "inner view",
+            },
+            {
+                "id": "source-chain",
+                "kind": "node",
+                "role": "source",
+                "x": 598,
+                "y": 42,
+                "width": 128,
+                "height": 52,
+                "label": "source",
+            },
+            {
+                "id": "map-one",
+                "kind": "arrow",
+                "role": "text",
+                "source": "request-chain",
+                "target": "outer-view",
+                "label": "map 2",
+            },
+            {
+                "id": "map-two",
+                "kind": "arrow",
+                "role": "text",
+                "source": "outer-view",
+                "target": "inner-view",
+                "label": "compose",
+            },
+            {
+                "id": "map-three",
+                "kind": "arrow",
+                "role": "text",
+                "source": "inner-view",
+                "target": "source-chain",
+                "label": "map 1",
+            },
+            {
+                "id": "request-direct",
+                "kind": "node",
+                "role": "request",
+                "x": 128,
+                "y": 164,
+                "width": 150,
+                "height": 56,
+                "label": "request",
+            },
+            {
+                "id": "source-direct",
+                "kind": "node",
+                "role": "source",
+                "x": 482,
+                "y": 164,
+                "width": 150,
+                "height": 56,
+                "label": "source",
+            },
+            {
+                "id": "direct-map",
+                "kind": "arrow",
+                "role": "selected",
+                "source": "request-direct",
+                "target": "source-direct",
+                "label": "one direct map",
+            },
+        ),
+    },
+    {
+        "id": "chunk-overlay",
+        "title": "The selection crosses one chunk-row boundary",
+        "description": "the basic selection touches chunks (0, 0) and (1, 0).",
+        "width": 720,
+        "height": 390,
+        "elements": (
+            {
+                "id": "chunked-source",
+                "kind": "grid",
+                "role": "source",
+                "rows": 6,
+                "columns": 6,
+                "cell_size": 42,
+                "origin": (224, 34),
+                "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
+                "chunk_shape": (3, 3),
+            },
+            {
+                "id": "chunk-zero",
+                "kind": "text",
+                "role": "chunk-local",
+                "x": 108,
+                "y": 104,
+                "label": "chunk (0, 0)",
+            },
+            {
+                "id": "chunk-one",
+                "kind": "text",
+                "role": "chunk-local",
+                "x": 108,
+                "y": 236,
+                "label": "chunk (1, 0)",
+            },
+            {
+                "id": "selection-label",
+                "kind": "text",
+                "role": "selected",
+                "x": 606,
+                "y": 130,
+                "label": "selected cells",
+            },
+        ),
+    },
+    {
+        "id": "projection-pair",
+        "title": "A cell domain projects into two coordinate spaces",
+        "description": "one cell domain points to request and chunk-local spaces.",
+        "width": 720,
+        "height": 330,
+        "elements": (
+            {
+                "id": "domain",
+                "kind": "node",
+                "role": "cell-domain",
+                "x": 70,
+                "y": 104,
+                "width": 180,
+                "height": 68,
+                "label": "cell domain",
+            },
+            {
+                "id": "request-space",
+                "kind": "node",
+                "role": "request",
+                "x": 462,
+                "y": 42,
+                "width": 188,
+                "height": 60,
+                "label": "request space",
+            },
+            {
+                "id": "chunk-space",
+                "kind": "node",
+                "role": "chunk-local",
+                "x": 462,
+                "y": 174,
+                "width": 188,
+                "height": 60,
+                "label": "chunk-local space",
+            },
+            {
+                "id": "request-projection",
+                "kind": "arrow",
+                "role": "text",
+                "source": "domain",
+                "target": "request-space",
+                "label": "request projection",
+            },
+            {
+                "id": "chunk-projection",
+                "kind": "arrow",
+                "role": "text",
+                "source": "domain",
+                "target": "chunk-space",
+                "label": "chunk projection",
+            },
+        ),
+    },
+    {
+        "id": "orthogonal-contrast",
+        "title": "Orthogonal row indexing preserves order and duplicates",
+        "description": "rows [4, 1, 1] retain order and duplication.",
+        "width": 740,
+        "height": 380,
+        "elements": (
+            {
+                "id": "row-request",
+                "kind": "node",
+                "role": "request",
+                "x": 52,
+                "y": 94,
+                "width": 196,
+                "height": 64,
+                "label": "rows [4, 1, 1]",
+            },
+            {
+                "id": "result-four",
+                "kind": "node",
+                "role": "selected",
+                "x": 470,
+                "y": 34,
+                "width": 160,
+                "height": 48,
+                "label": "result[0] = row 4",
+            },
+            {
+                "id": "result-one-a",
+                "kind": "node",
+                "role": "selected",
+                "x": 470,
+                "y": 104,
+                "width": 160,
+                "height": 48,
+                "label": "result[1] = row 1",
+            },
+            {
+                "id": "result-one-b",
+                "kind": "node",
+                "role": "selected",
+                "x": 470,
+                "y": 174,
+                "width": 160,
+                "height": 48,
+                "label": "result[2] = row 1",
+            },
+            {
+                "id": "select-four",
+                "kind": "arrow",
+                "role": "text",
+                "source": "row-request",
+                "target": "result-four",
+                "label": "first",
+            },
+            {
+                "id": "select-one-a",
+                "kind": "arrow",
+                "role": "text",
+                "source": "row-request",
+                "target": "result-one-a",
+                "label": "second",
+            },
+            {
+                "id": "select-one-b",
+                "kind": "arrow",
+                "role": "text",
+                "source": "row-request",
+                "target": "result-one-b",
+                "label": "third; duplicate retained",
+            },
+        ),
+    },
+)
 
 _SEMANTIC_ROLES: frozenset[str] = frozenset(
     {"request", "source", "selected", "chunk-local", "cell-domain", "text"}

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, get_args
 from xml.etree import ElementTree
 
 import pytest
 
 import docs.diagrams.render as diagram_render
+import docs.diagrams.specifications as diagram_specs
 from docs.diagrams.render import STYLESHEET_NAME, render_all, render_figure
-from docs.diagrams.specifications import FigureSpec, validate_figure
+from docs.diagrams.specifications import FIGURES, FigureSpec, SemanticRole, validate_figure
 
-SemanticRole = Literal["request", "source", "selected", "chunk-local", "cell-domain", "text"]
+DOCS = Path(__file__).parents[1] / "docs"
+PALETTES = getattr(diagram_specs, "PALETTES", {})
+ROLE_CUES = getattr(diagram_specs, "ROLE_CUES", {})
 
 
 class GridSpec(TypedDict):
@@ -274,7 +277,11 @@ def generated_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _snapshot(output_dir: Path) -> dict[str, bytes]:
-    return {path.name: path.read_bytes() for path in output_dir.iterdir()}
+    return {
+        str(path.relative_to(output_dir)): path.read_bytes()
+        for path in output_dir.rglob("*")
+        if path.is_file()
+    }
 
 
 def test_render_all_update_then_check_writes_deterministic_utf8_lf(
@@ -291,7 +298,7 @@ def test_render_all_update_then_check_writes_deterministic_utf8_lf(
     monkeypatch.setattr(Path, "write_text", write_text_with_options)
     render_all(tmp_path, check=False)
     render_all(tmp_path, check=True)
-    assert set(_snapshot(tmp_path)) == {"generated.svg", STYLESHEET_NAME}
+    assert set(_snapshot(tmp_path)) == {"diagrams/generated.svg", STYLESHEET_NAME}
     assert write_options == [{"encoding": "utf-8", "newline": "\n"}] * 2
 
 
@@ -307,7 +314,14 @@ def test_render_all_update_then_check_writes_deterministic_utf8_lf(
 def test_render_all_check_reports_the_exact_stale_path(
     generated_assets: Path, filename: str, replacement: bytes | None
 ) -> None:
-    path = generated_assets / ("generated.svg" if filename == "missing.svg" else filename)
+    relative_path = (
+        Path("diagrams/generated.svg")
+        if filename == "missing.svg"
+        else Path(filename)
+        if filename == STYLESHEET_NAME
+        else Path("diagrams") / filename
+    )
+    path = generated_assets / relative_path
     if replacement is None:
         path.unlink()
     else:
@@ -323,3 +337,94 @@ def test_render_all_check_includes_stylesheet_and_does_not_mutate(generated_asse
     before = _snapshot(generated_assets)
     render_all(generated_assets, check=True)
     assert _snapshot(generated_assets) == before
+
+
+def _linear_channel(value: int) -> float:
+    channel = value / 255
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def contrast_ratio(foreground: str, background: str) -> float:
+    """Return the WCAG contrast ratio for two six-digit hexadecimal colours."""
+    luminances = []
+    for color in (foreground, background):
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+        luminances.append(
+            0.2126 * _linear_channel(red)
+            + 0.7152 * _linear_channel(green)
+            + 0.0722 * _linear_channel(blue)
+        )
+    lighter, darker = sorted(luminances, reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_semantic_palettes_are_accessible() -> None:
+    for scheme in ("default", "slate"):
+        assert set(PALETTES[scheme]) == set(get_args(SemanticRole))
+        for role, colors in PALETTES[scheme].items():
+            assert contrast_ratio(colors["text"], colors["fill"]) >= 4.5, role
+            assert ROLE_CUES[role]
+
+
+def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
+    assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
+        "indexing-selection": "image[1:5, 2] maps four source cells to a length-four request.",
+        "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
+        "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
+        "transform-mapping": "request i maps to source (i + 1, 2).",
+        "compose-views": "two view maps collapse into one direct map.",
+        "chunk-overlay": "the basic selection touches chunks (0, 0) and (1, 0).",
+        "projection-pair": "one cell domain points to request and chunk-local spaces.",
+        "orthogonal-contrast": "rows [4, 1, 1] retain order and duplication.",
+    }
+
+
+def test_rendered_figures_have_structural_and_visible_semantics() -> None:
+    document_ids: set[str] = set()
+    for figure_spec in FIGURES:
+        root = ElementTree.fromstring(render_figure(figure_spec))
+        ids = [element.attrib["id"] for element in root.iter() if "id" in element.attrib]
+        assert len(ids) == len(set(ids)), figure_spec["id"]
+        assert document_ids.isdisjoint(ids), figure_spec["id"]
+        document_ids.update(ids)
+
+        labelled_by = root.attrib["aria-labelledby"].split()
+        assert len(labelled_by) == 2
+        assert set(labelled_by) <= set(ids)
+        assert any(element.tag.endswith("title") for element in root)
+        assert any(element.tag.endswith("desc") for element in root)
+
+        role_groups = [element for element in root.iter() if "data-semantic-role" in element.attrib]
+        assert role_groups, figure_spec["id"]
+        for group in role_groups:
+            role = group.attrib["data-semantic-role"]
+            assert group.attrib["aria-label"] == role
+            assert group.attrib["data-non-color-cue"] == ROLE_CUES[role]
+
+        visible_roles = {
+            element.attrib["data-semantic-role"]
+            for element in root.iter()
+            if "zi-role-label" in element.attrib.get("class", "").split()
+        }
+        assert {group.attrib["data-semantic-role"] for group in role_groups} <= visible_roles
+
+
+def test_generated_stylesheet_has_theme_roles_and_responsive_layout() -> None:
+    stylesheet = diagram_render.STYLESHEET
+    for scheme in ("default", "slate"):
+        assert f'[data-md-color-scheme="{scheme}"]' in stylesheet
+        for role in get_args(SemanticRole):
+            for attribute in ("fill", "stroke", "text"):
+                assert (
+                    f"--zi-{role}-{attribute}: {PALETTES[scheme][role][attribute]};" in stylesheet
+                )
+            assert f".zi-role-{role}" in stylesheet
+    assert ".zi-figure" in stylesheet
+    assert "max-width: 100%;" in stylesheet
+    assert "@media (max-width: 600px)" in stylesheet
+    assert "flex-wrap: wrap;" in stylesheet
+    assert "overflow-x: visible;" in stylesheet
+
+
+def test_generated_assets_are_current() -> None:
+    render_all(DOCS / "_static", check=True)

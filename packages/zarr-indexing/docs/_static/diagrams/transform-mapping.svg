@@ -1,0 +1,38 @@
+<svg aria-labelledby="transform-mapping-title transform-mapping-desc" class="zi-figure" role="img" viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg">
+  <title id="transform-mapping-title">A request coordinate maps into source coordinates</title>
+  <desc id="transform-mapping-desc">request i maps to source (i + 1, 2).</desc>
+  <defs>
+    <marker id="transform-mapping-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
+      <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />
+    </marker>
+  </defs>
+  <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="transform-mapping-request-i">
+    <rect height="70" width="170" x="72" y="62" />
+    <rect class="zi-request-inner" height="62" width="162" x="76" y="66" />
+    <text x="157.0" y="97.0">request i</text>
+  </g>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="transform-mapping-source-coordinate">
+    <rect height="70" width="190" x="438" y="62" />
+    <text x="533.0" y="97.0">source (i + 1, 2)</text>
+  </g>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="transform-mapping-request-to-source">
+    <line class="zi-arrow-line" marker-end="url(#transform-mapping-arrowhead)" x1="242.0" x2="438.0" y1="97.0" y2="97.0" />
+    <rect height="26" width="79" x="300.5" y="69.0" />
+    <text x="340.0" y="82.0">transform</text>
+  </g>
+  <g aria-label="Visible semantic role legend" class="zi-legend" id="transform-mapping-legend">
+    <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="transform-mapping-legend-request">
+      <rect class="zi-cue-swatch" height="20" width="28" x="22" y="218" />
+      <rect class="zi-request-inner" height="14" width="22" x="25" y="221" />
+      <text aria-label="request" class="zi-role-label" data-non-color-cue="request label + double border" data-semantic-role="request" x="58" y="228">request</text>
+    </g>
+    <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="transform-mapping-legend-source">
+      <rect class="zi-cue-swatch" height="20" width="28" x="192" y="218" />
+      <text aria-label="source" class="zi-role-label" data-non-color-cue="source label + neutral single border" data-semantic-role="source" x="228" y="228">source</text>
+    </g>
+    <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="transform-mapping-legend-text">
+      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="218" />
+      <text aria-label="text" class="zi-role-label" data-non-color-cue="text label" data-semantic-role="text" x="398" y="228">text</text>
+    </g>
+  </g>
+</svg>
