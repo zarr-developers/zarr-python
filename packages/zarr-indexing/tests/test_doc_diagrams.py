@@ -444,6 +444,52 @@ def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> N
     ]
 
 
+def test_indexing_selection_arrow_labels_do_not_obscure_selected_cells() -> None:
+    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
+    root = ElementTree.fromstring(render_figure(spec))
+    arrow_ids = {
+        f"indexing-selection-{element['id']}"
+        for element in spec["elements"]
+        if element["kind"] == "arrow"
+    }
+    arrow_label_boxes = [
+        child
+        for group in root.iter()
+        if group.attrib.get("id") in arrow_ids
+        for child in group
+        if child.tag.endswith("rect")
+    ]
+    selected_cells = [
+        element
+        for element in root.iter()
+        if element.tag.endswith("rect")
+        and {"zi-grid-cell", "zi-role-selected"} <= set(element.attrib.get("class", "").split())
+    ]
+    assert arrow_label_boxes
+    assert len(selected_cells) == 4
+
+    def bounds(rectangle: ElementTree.Element) -> tuple[float, float, float, float]:
+        left = float(rectangle.attrib["x"])
+        top = float(rectangle.attrib["y"])
+        return (
+            left,
+            top,
+            left + float(rectangle.attrib["width"]),
+            top + float(rectangle.attrib["height"]),
+        )
+
+    for label_box in arrow_label_boxes:
+        label_left, label_top, label_right, label_bottom = bounds(label_box)
+        for selected_cell in selected_cells:
+            cell_left, cell_top, cell_right, cell_bottom = bounds(selected_cell)
+            assert (
+                label_right <= cell_left
+                or cell_right <= label_left
+                or label_bottom <= cell_top
+                or cell_bottom <= label_top
+            )
+
+
 def test_prepend_coordinates_keep_global_semantics_and_old_positions() -> None:
     prepend = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "prepend-chunk")
     nodes = {element["id"]: element for element in prepend["elements"] if element["kind"] == "node"}

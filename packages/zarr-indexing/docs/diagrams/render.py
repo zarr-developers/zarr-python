@@ -301,10 +301,11 @@ def _render_arrow(
             "y2": target_y,
         },
     )
+    label_offset_x, label_offset_y = element.get("label_offset", (0, 0))
     _render_label(
         group,
-        (source_x + target_x) / 2,
-        (source_y + target_y) / 2 - 15,
+        (source_x + target_x) / 2 + label_offset_x,
+        (source_y + target_y) / 2 - 15 + label_offset_y,
         element["label"],
     )
 

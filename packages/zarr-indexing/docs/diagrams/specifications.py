@@ -95,6 +95,7 @@ class ArrowSpec(TypedDict):
     source: str
     target: str
     label: str
+    label_offset: NotRequired[tuple[int, int]]
 
 
 class TextSpec(TypedDict):
@@ -157,6 +158,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "source": "request-vector",
                 "target": "source-grid-label",
                 "label": "i ↦ (i + 1, 2)",
+                "label_offset": (0, -115),
             },
             {
                 "id": "source-grid-label",

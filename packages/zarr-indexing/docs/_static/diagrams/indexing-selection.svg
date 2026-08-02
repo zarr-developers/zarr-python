@@ -63,8 +63,8 @@
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-selection-map">
     <line class="zi-arrow-line" marker-end="url(#indexing-selection-arrowhead)" x1="222.0" x2="790.0" y1="144.2784090909091" y2="152.3465909090909" />
-    <rect height="26" width="114" x="449.0" y="120.3125" />
-    <text x="506.0" y="133.3125">i ↦ (i + 1, 2)</text>
+    <rect height="26" width="114" x="449.0" y="5.3125" />
+    <text x="506.0" y="18.3125">i ↦ (i + 1, 2)</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-label">
     <rect height="46" width="92" x="790" y="130" />
