@@ -1,4 +1,4 @@
-<svg aria-labelledby="indexing-selection-title indexing-selection-desc" class="zi-figure" role="img" viewBox="0 0 720 390" xmlns="http://www.w3.org/2000/svg">
+<svg aria-labelledby="indexing-selection-title indexing-selection-desc" class="zi-figure" role="img" viewBox="0 0 900 390" xmlns="http://www.w3.org/2000/svg">
   <title id="indexing-selection-title">Basic indexing selects a one-dimensional request</title>
   <desc id="indexing-selection-desc">image[1:5, 2] maps four source cells to a length-four request.</desc>
   <defs>
@@ -7,30 +7,54 @@
     </marker>
   </defs>
   <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="indexing-selection-source-grid">
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="474" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="76" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="474" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="118" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="474" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="160" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="474" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="202" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="474" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="390" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="432" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="474" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="516" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="504" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="76" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="118" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="160" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="202" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="504" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="244" />
   </g>
   <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="indexing-selection-request-vector">
     <rect height="58" width="180" x="42" y="114" />
@@ -38,13 +62,13 @@
     <text x="132.0" y="143.0">request: length 4</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-selection-map">
-    <line class="zi-arrow-line" marker-end="url(#indexing-selection-arrowhead)" x1="222.0" x2="576.0" y1="144.83673469387756" y2="152.0612244897959" />
-    <rect height="26" width="114" x="342.0" y="120.44897959183675" />
-    <text x="399.0" y="133.44897959183675">i ↦ (i + 1, 2)</text>
+    <line class="zi-arrow-line" marker-end="url(#indexing-selection-arrowhead)" x1="222.0" x2="790.0" y1="144.2784090909091" y2="152.3465909090909" />
+    <rect height="26" width="114" x="449.0" y="120.3125" />
+    <text x="506.0" y="133.3125">i ↦ (i + 1, 2)</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-label">
-    <rect height="46" width="92" x="576" y="130" />
-    <text x="622.0" y="153.0">4 cells</text>
+    <rect height="46" width="92" x="790" y="130" />
+    <text x="836.0" y="153.0">4 cells</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-expression">
     <rect height="26" width="107" x="56.5" y="69" />

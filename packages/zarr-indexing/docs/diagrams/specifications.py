@@ -127,7 +127,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         "id": "indexing-selection",
         "title": "Basic indexing selects a one-dimensional request",
         "description": "image[1:5, 2] maps four source cells to a length-four request.",
-        "width": 720,
+        "width": 900,
         "height": 390,
         "elements": (
             {
@@ -135,9 +135,9 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "kind": "grid",
                 "role": "source",
                 "rows": 6,
-                "columns": 4,
+                "columns": 8,
                 "cell_size": 42,
-                "origin": (390, 34),
+                "origin": (420, 34),
                 "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
             },
             {
@@ -162,7 +162,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "id": "source-grid-label",
                 "kind": "node",
                 "role": "selected",
-                "x": 576,
+                "x": 790,
                 "y": 130,
                 "width": 92,
                 "height": 46,
@@ -231,7 +231,7 @@ FIGURES: tuple[FigureSpec, ...] = (
             {
                 "id": f"after-{coordinate}",
                 "kind": "node",
-                "role": "chunk-local" if coordinate < 0 else "source",
+                "role": "source",
                 "x": 104 + (coordinate + 3) * 52,
                 "y": 156,
                 "width": 44,
@@ -241,6 +241,14 @@ FIGURES: tuple[FigureSpec, ...] = (
             for coordinate in range(-3, 6)
         )
         + (
+            {
+                "id": "prepended-label",
+                "kind": "text",
+                "role": "selected",
+                "x": 178,
+                "y": 132,
+                "label": "prepended cells",
+            },
             {
                 "id": "before-label",
                 "kind": "text",
@@ -401,7 +409,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         "id": "chunk-overlay",
         "title": "The selection crosses one chunk-row boundary",
         "description": "the basic selection touches chunks (0, 0) and (1, 0).",
-        "width": 720,
+        "width": 900,
         "height": 390,
         "elements": (
             {
@@ -409,17 +417,17 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "kind": "grid",
                 "role": "source",
                 "rows": 6,
-                "columns": 6,
+                "columns": 8,
                 "cell_size": 42,
-                "origin": (224, 34),
+                "origin": (420, 34),
                 "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
-                "chunk_shape": (3, 3),
+                "chunk_shape": (3, 4),
             },
             {
                 "id": "chunk-zero",
                 "kind": "text",
                 "role": "chunk-local",
-                "x": 108,
+                "x": 140,
                 "y": 104,
                 "label": "chunk (0, 0)",
             },
@@ -427,7 +435,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "id": "chunk-one",
                 "kind": "text",
                 "role": "chunk-local",
-                "x": 108,
+                "x": 140,
                 "y": 236,
                 "label": "chunk (1, 0)",
             },
@@ -435,7 +443,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "id": "selection-label",
                 "kind": "text",
                 "role": "selected",
-                "x": 606,
+                "x": 830,
                 "y": 130,
                 "label": "selected cells",
             },

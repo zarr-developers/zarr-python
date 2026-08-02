@@ -379,6 +379,88 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     }
 
 
+def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
+    figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
+    grids = {
+        "indexing-selection": next(
+            element
+            for element in figures["indexing-selection"]["elements"]
+            if element["id"] == "source-grid"
+        ),
+        "chunk-overlay": next(
+            element
+            for element in figures["chunk-overlay"]["elements"]
+            if element["id"] == "chunked-source"
+        ),
+    }
+    for grid in grids.values():
+        assert grid["kind"] == "grid"
+        assert (grid["rows"], grid["columns"]) == (6, 8)
+        assert grid["selected"] == ((1, 2), (2, 2), (3, 2), (4, 2))
+    assert grids["chunk-overlay"]["chunk_shape"] == (3, 4)
+    assert {
+        field: grids["indexing-selection"][field]
+        for field in ("rows", "columns", "cell_size", "origin", "selected")
+    } == {
+        field: grids["chunk-overlay"][field]
+        for field in ("rows", "columns", "cell_size", "origin", "selected")
+    }
+
+
+def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> None:
+    figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
+    for figure_id, grid_id in (
+        ("indexing-selection", "source-grid"),
+        ("chunk-overlay", "chunked-source"),
+    ):
+        root = ElementTree.fromstring(render_figure(figures[figure_id]))
+        grid = next(
+            element
+            for element in root.iter()
+            if element.attrib.get("id") == f"{figure_id}-{grid_id}"
+        )
+        cells = [
+            element
+            for element in grid
+            if element.tag.endswith("rect")
+            and "zi-grid-cell" in element.attrib.get("class", "").split()
+        ]
+        assert len(cells) == 48
+
+    overlay_root = ElementTree.fromstring(render_figure(figures["chunk-overlay"]))
+    overlay_grid = next(
+        element
+        for element in overlay_root.iter()
+        if element.attrib.get("id") == "chunk-overlay-chunked-source"
+    )
+    boundaries = [
+        element.attrib
+        for element in overlay_grid
+        if element.tag.endswith("line") and element.attrib.get("class") == "zi-chunk-boundary"
+    ]
+    assert boundaries == [
+        {"class": "zi-chunk-boundary", "x1": "588", "x2": "588", "y1": "34", "y2": "286"},
+        {"class": "zi-chunk-boundary", "x1": "420", "x2": "756", "y1": "160", "y2": "160"},
+    ]
+
+
+def test_prepend_coordinates_keep_global_semantics_and_old_positions() -> None:
+    prepend = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "prepend-chunk")
+    nodes = {element["id"]: element for element in prepend["elements"] if element["kind"] == "node"}
+    for coordinate in range(-3, 0):
+        after = nodes[f"after-{coordinate}"]
+        assert after["role"] == "source"
+        assert after["role"] != "chunk-local"
+    for coordinate in range(6):
+        assert nodes[f"before-{coordinate}"]["x"] == nodes[f"after-{coordinate}"]["x"]
+    assert any(
+        element["kind"] == "text"
+        and element["role"] == "selected"
+        and element["label"] == "prepended cells"
+        for element in prepend["elements"]
+    )
+
+
 def test_rendered_figures_have_structural_and_visible_semantics() -> None:
     document_ids: set[str] = set()
     for figure_spec in FIGURES:

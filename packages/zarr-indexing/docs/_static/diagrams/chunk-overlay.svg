@@ -1,4 +1,4 @@
-<svg aria-labelledby="chunk-overlay-title chunk-overlay-desc" class="zi-figure" role="img" viewBox="0 0 720 390" xmlns="http://www.w3.org/2000/svg">
+<svg aria-labelledby="chunk-overlay-title chunk-overlay-desc" class="zi-figure" role="img" viewBox="0 0 900 390" xmlns="http://www.w3.org/2000/svg">
   <title id="chunk-overlay-title">The selection crosses one chunk-row boundary</title>
   <desc id="chunk-overlay-desc">the basic selection touches chunks (0, 0) and (1, 0).</desc>
   <defs>
@@ -7,56 +7,68 @@
     </marker>
   </defs>
   <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunked-source">
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="308" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="34" />
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="76" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="308" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="76" />
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="118" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="308" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="118" />
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="160" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="308" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="160" />
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="202" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="308" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="202" />
-    <rect class="zi-grid-cell" height="42" width="42" x="224" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="266" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="308" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="350" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="392" y="244" />
-    <rect class="zi-grid-cell" height="42" width="42" x="434" y="244" />
-    <line class="zi-chunk-boundary" x1="350" x2="350" y1="34" y2="286" />
-    <line class="zi-chunk-boundary" x1="224" x2="476" y1="160" y2="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="504" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="34" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="76" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="76" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="118" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="118" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="160" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="160" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="202" />
+    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="202" />
+    <rect class="zi-grid-cell" height="42" width="42" x="420" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="462" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="504" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="546" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="588" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="630" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="672" y="244" />
+    <rect class="zi-grid-cell" height="42" width="42" x="714" y="244" />
+    <line class="zi-chunk-boundary" x1="588" x2="588" y1="34" y2="286" />
+    <line class="zi-chunk-boundary" x1="420" x2="756" y1="160" y2="160" />
   </g>
   <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-zero">
-    <rect height="26" width="100" x="58.0" y="91" />
-    <text x="108" y="104">chunk (0, 0)</text>
+    <rect height="26" width="100" x="90.0" y="91" />
+    <text x="140" y="104">chunk (0, 0)</text>
   </g>
   <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-one">
-    <rect height="26" width="100" x="58.0" y="223" />
-    <text x="108" y="236">chunk (1, 0)</text>
+    <rect height="26" width="100" x="90.0" y="223" />
+    <text x="140" y="236">chunk (1, 0)</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-selection-label">
-    <rect height="26" width="114" x="549.0" y="117" />
-    <text x="606" y="130">selected cells</text>
+    <rect height="26" width="114" x="773.0" y="117" />
+    <text x="830" y="130">selected cells</text>
   </g>
   <g aria-label="Visible semantic role legend" class="zi-legend" id="chunk-overlay-legend">
     <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-legend-source">
