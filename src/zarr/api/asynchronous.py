@@ -1022,6 +1022,10 @@ async def create(
 
         The elements of ``codecs`` specify the transformation from array values to stored bytes.
         Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+        In order, a Zarr format 3 pipeline contains zero or more
+        [`zarr.abc.codec.ArrayArrayCodec`][] filters, exactly one
+        [`zarr.abc.codec.ArrayBytesCodec`][] serializer, and zero or more
+        [`zarr.abc.codec.BytesBytesCodec`][] compressors.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple ``(BytesCodec(), ZstdCodec())``;
