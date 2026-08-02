@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, TypedDict, get_args
+from typing import Literal, NotRequired, TypedDict, get_args
 from xml.etree import ElementTree
 
 import pytest
@@ -58,6 +58,7 @@ class ArrowSpec(TypedDict):
     source: str
     target: str
     label: str
+    label_offset: NotRequired[tuple[int, int]]
 
 
 class TextSpec(TypedDict):
@@ -253,6 +254,16 @@ def test_arrow_label_must_be_a_string() -> None:
     }
     spec = figure("missing-arrow-label", elements=(LEFT_NODE, RIGHT_NODE, arrow_without_label))
     with pytest.raises(ValueError, match="missing-arrow-label.*arrow.label"):
+        validate_figure(spec)
+
+
+@pytest.mark.parametrize("label_offset", [(1,), None, (0, "up"), (False, 1)])
+def test_arrow_label_offset_must_be_a_pair_of_integers(label_offset: object) -> None:
+    arrow_with_invalid_offset = {**ARROW, "label_offset": label_offset}
+    spec = figure(
+        "invalid-arrow-offset", elements=(LEFT_NODE, RIGHT_NODE, arrow_with_invalid_offset)
+    )
+    with pytest.raises(ValueError, match=r"invalid-arrow-offset.*arrow\.label_offset"):
         validate_figure(spec)
 
 

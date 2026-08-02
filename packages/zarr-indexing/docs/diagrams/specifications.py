@@ -643,6 +643,12 @@ def validate_figure(spec: FigureSpec) -> None:
             node_ids.add(element_id)
         elif kind == "arrow":
             _validate_label(figure_id, element_id, element)
+            if "label_offset" in element and not _pair_of_ints(element["label_offset"]):
+                _invalid(
+                    figure_id,
+                    f"{element_id}.label_offset",
+                    "must be a pair of integers",
+                )
             arrows.append(element)  # type: ignore[arg-type]
         elif kind == "text":
             _validate_text(figure_id, element_id, element)
