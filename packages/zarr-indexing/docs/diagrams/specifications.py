@@ -99,7 +99,7 @@ def _invalid(figure_id: str, field: str, detail: str) -> None:
 
 def _positive(figure_id: str, element_id: str, element: dict[str, object], field: str) -> None:
     value = element.get(field)
-    if not isinstance(value, int) or value <= 0:
+    if not _is_integer(value) or value <= 0:
         _invalid(figure_id, f"{element_id}.{field}", "must be a positive integer")
 
 
@@ -119,7 +119,7 @@ def validate_figure(spec: FigureSpec) -> None:
             _invalid(figure_id, field, "must be a non-empty string")
     for field in ("width", "height"):
         value = spec.get(field)
-        if not isinstance(value, int) or value <= 0:
+        if not _is_integer(value) or value <= 0:
             _invalid(figure_id, field, "must be a positive integer")
 
     element_ids: set[str] = set()
@@ -148,6 +148,7 @@ def validate_figure(spec: FigureSpec) -> None:
             _validate_node(figure_id, element_id, element)
             node_ids.add(element_id)
         elif kind == "arrow":
+            _validate_label(figure_id, element_id, element)
             arrows.append(element)  # type: ignore[arg-type]
         elif kind == "text":
             _validate_text(figure_id, element_id, element)
@@ -171,8 +172,8 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
         _invalid(figure_id, f"{element_id}.selected", "must contain coordinate pairs")
     rows = element["rows"]
     columns = element["columns"]
-    assert isinstance(rows, int)
-    assert isinstance(columns, int)
+    assert _is_integer(rows)
+    assert _is_integer(columns)
     for row, column in selected:
         if not 0 <= row < rows or not 0 <= column < columns:
             _invalid(figure_id, f"{element_id}.selected", "contains a coordinate outside the grid")
@@ -185,7 +186,7 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
 def _validate_axis(figure_id: str, element_id: str, element: dict[str, object]) -> None:
     _positive(figure_id, element_id, element, "length")
     for field in ("x", "y", "start", "stop"):
-        if not isinstance(element.get(field), int):
+        if not _is_integer(element.get(field)):
             _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
     if element.get("orientation") not in {"horizontal", "vertical"}:
         _invalid(figure_id, f"{element_id}.orientation", "must be horizontal or vertical")
@@ -195,7 +196,7 @@ def _validate_axis(figure_id: str, element_id: str, element: dict[str, object]) 
 
 def _validate_node(figure_id: str, element_id: str, element: dict[str, object]) -> None:
     for field in ("x", "y"):
-        if not isinstance(element.get(field), int):
+        if not _is_integer(element.get(field)):
             _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
     for field in ("width", "height"):
         _positive(figure_id, element_id, element, field)
@@ -204,7 +205,7 @@ def _validate_node(figure_id: str, element_id: str, element: dict[str, object]) 
 
 def _validate_text(figure_id: str, element_id: str, element: dict[str, object]) -> None:
     for field in ("x", "y"):
-        if not isinstance(element.get(field), int):
+        if not _is_integer(element.get(field)):
             _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
     _validate_label(figure_id, element_id, element)
 
@@ -215,4 +216,8 @@ def _validate_label(figure_id: str, element_id: str, element: dict[str, object])
 
 
 def _pair_of_ints(value: object) -> bool:
-    return isinstance(value, tuple) and len(value) == 2 and all(isinstance(item, int) for item in value)
+    return isinstance(value, tuple) and len(value) == 2 and all(_is_integer(item) for item in value)
+
+
+def _is_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)

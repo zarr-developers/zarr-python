@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal, TypedDict
 from xml.etree import ElementTree
 
 import pytest
 
-from docs.diagrams.render import render_figure
+import docs.diagrams.render as diagram_render
+from docs.diagrams.render import STYLESHEET_NAME, render_all, render_figure
 from docs.diagrams.specifications import FigureSpec, validate_figure
 
 SemanticRole = Literal["request", "source", "selected", "chunk-local", "cell-domain", "text"]
@@ -208,3 +210,116 @@ def test_arrow_target_must_resolve() -> None:
     spec = figure("broken-arrow", elements=(LEFT_NODE, broken_arrow))
     with pytest.raises(ValueError, match="broken-arrow.*missing"):
         validate_figure(spec)
+
+
+def test_grid_chunk_shape_renders_chunk_boundaries() -> None:
+    grid = {
+        **GRID,
+        "rows": 6,
+        "columns": 8,
+        "cell_size": 10,
+        "origin": (5, 7),
+        "chunk_shape": (3, 4),
+    }
+    root = ElementTree.fromstring(render_figure(figure("chunked", elements=(grid,))))
+    boundaries = [
+        line.attrib
+        for line in root.iter()
+        if line.tag.endswith("line") and line.attrib.get("class") == "zi-chunk-boundary"
+    ]
+    assert boundaries == [
+        {"class": "zi-chunk-boundary", "x1": "45", "x2": "45", "y1": "7", "y2": "67"},
+        {"class": "zi-chunk-boundary", "x1": "5", "x2": "85", "y1": "37", "y2": "37"},
+    ]
+    unchunked_root = ElementTree.fromstring(
+        render_figure(figure("unchunked", elements=({**grid, "chunk_shape": None},)))
+    )
+    assert not any(
+        line.tag.endswith("line") and line.attrib.get("class") == "zi-chunk-boundary"
+        for line in unchunked_root.iter()
+    )
+
+
+def test_arrow_label_must_be_a_string() -> None:
+    arrow_without_label = {
+        "id": "arrow",
+        "kind": "arrow",
+        "role": "text",
+        "source": "left",
+        "target": "right",
+    }
+    spec = figure("missing-arrow-label", elements=(LEFT_NODE, RIGHT_NODE, arrow_without_label))
+    with pytest.raises(ValueError, match="missing-arrow-label.*arrow.label"):
+        validate_figure(spec)
+
+
+def test_grid_geometry_must_not_be_boolean() -> None:
+    grid_with_boolean_rows = {**GRID, "rows": True}
+    with pytest.raises(ValueError, match="boolean-grid.*grid.rows"):
+        validate_figure(figure("boolean-grid", elements=(grid_with_boolean_rows,)))
+
+
+def test_figure_geometry_must_not_be_boolean() -> None:
+    spec = figure("boolean-figure", elements=(TEXT,))
+    spec["width"] = True
+    with pytest.raises(ValueError, match="boolean-figure.*width"):
+        validate_figure(spec)
+
+
+@pytest.fixture
+def generated_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(diagram_render, "FIGURES", (figure("generated", elements=(TEXT,)),))
+    render_all(tmp_path, check=False)
+    return tmp_path
+
+
+def _snapshot(output_dir: Path) -> dict[str, bytes]:
+    return {path.name: path.read_bytes() for path in output_dir.iterdir()}
+
+
+def test_render_all_update_then_check_writes_deterministic_utf8_lf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(diagram_render, "FIGURES", (figure("generated", elements=(TEXT,)),))
+    original_write_text = Path.write_text
+    write_options: list[dict[str, object]] = []
+
+    def write_text_with_options(self: Path, data: str, **kwargs: object) -> int:
+        write_options.append(kwargs)
+        return original_write_text(self, data, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write_text_with_options)
+    render_all(tmp_path, check=False)
+    render_all(tmp_path, check=True)
+    assert set(_snapshot(tmp_path)) == {"generated.svg", STYLESHEET_NAME}
+    assert write_options == [{"encoding": "utf-8", "newline": "\n"}] * 2
+
+
+@pytest.mark.parametrize(
+    ("filename", "replacement"),
+    [
+        ("generated.svg", b"changed"),
+        (STYLESHEET_NAME, b"changed stylesheet"),
+        ("missing.svg", None),
+        ("orphan.svg", b"orphan"),
+    ],
+)
+def test_render_all_check_reports_the_exact_stale_path(
+    generated_assets: Path, filename: str, replacement: bytes | None
+) -> None:
+    path = generated_assets / ("generated.svg" if filename == "missing.svg" else filename)
+    if replacement is None:
+        path.unlink()
+    else:
+        path.write_bytes(replacement)
+    with pytest.raises(RuntimeError) as error:
+        render_all(generated_assets, check=True)
+    assert str(error.value) == f"stale generated diagram: {path}"
+
+
+def test_render_all_check_includes_stylesheet_and_does_not_mutate(generated_assets: Path) -> None:
+    stylesheet = generated_assets / STYLESHEET_NAME
+    assert stylesheet.exists()
+    before = _snapshot(generated_assets)
+    render_all(generated_assets, check=True)
+    assert _snapshot(generated_assets) == before
