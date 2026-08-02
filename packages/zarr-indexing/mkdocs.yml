@@ -23,6 +23,9 @@ nav:
       - Lazy views compose: guide/03-composition.md
       - A request becomes a chunk plan: guide/04-chunks.md
       - One cell domain, two projections: guide/05-projections.md
+  - Practical reference:
+      - Indexing patterns: guide/patterns.md
+      - Integration boundaries: guide/integrations.md
   - ndsel.md
   - design-notes.md
   - API Reference:

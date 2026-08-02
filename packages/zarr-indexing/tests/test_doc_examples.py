@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from zarr_indexing import LazyArray
+
 DOCS = Path(__file__).parents[1] / "docs"
 EXAMPLES = tuple(
     DOCS / "examples" / name
@@ -31,6 +33,19 @@ REGIONS = {
     "zarr-consumer": DOCS / "examples" / "integrations.py",
     "viewport-consumer": DOCS / "examples" / "integrations.py",
 }
+REQUIRED_PATTERNS = {
+    "basic-slice",
+    "integer-axis-removal",
+    "negative-stride",
+    "empty-selection",
+    "boolean-mask",
+    "orthogonal",
+    "vectorized",
+    "broadcasting",
+    "repeated-out-of-order",
+}
+PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
+PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.stem)
@@ -59,12 +74,38 @@ def test_documentation_region_is_nonempty_and_balanced(region: str, path: Path) 
     assert match.group("body").strip(), f"region {region!r} must not be empty"
 
 
-def test_viewport_consumer_reads_only_touched_source_chunks() -> None:
-    """Changing the viewport must not make the executable example over-read its source."""
+def test_integration_consumers_touch_only_planned_source_chunks() -> None:
+    """Dispatch and viewport examples stay within the same two-chunk plan."""
     namespace: dict[str, Any] = runpy.run_path(
         str(DOCS / "examples" / "integrations.py"), run_name="__main__"
     )
-    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (1, 0))
+    expected_chunks = ((0, 0), (1, 0))
+    assert namespace["ZARR_DISPATCHED_CHUNKS"] == expected_chunks
+    assert namespace["VIEWPORT_READS_BEFORE_RESULT"] == ()
+    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == expected_chunks
+
+
+def test_indexing_pattern_matrix_is_complete() -> None:
+    namespace = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
+    cases = namespace["PATTERN_CASES"]
+    assert {case["name"] for case in cases} == REQUIRED_PATTERNS
+
+
+@pytest.mark.parametrize("case", PATTERN_CASES, ids=lambda case: case["name"])
+def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
+    image = PATTERN_NAMESPACE["image"]
+    lazy = LazyArray(image)
+    accessor = {
+        "basic": lazy.lazy,
+        "orthogonal": lazy.lazy.oindex,
+        "vectorized": lazy.lazy.vindex,
+    }[case["mode"]]
+    view = accessor[case["selection"]]
+    result = view.result()
+
+    np.testing.assert_array_equal(result, case["expected"])
+    assert result.shape == case["shape"]
+    assert ("box" if view.is_box else "query") == case["category"]
 
 
 def test_projection_example_exposes_paired_directions() -> None:

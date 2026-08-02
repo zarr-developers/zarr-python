@@ -16,6 +16,15 @@ class ChunkDispatcher:
 
     def dispatch(self, projection: ChunkProjection) -> None:
         self.chunk_coords.append(projection.chunk_coords)
+
+
+zarr_view = LazyArray(np.arange(48).reshape(6, 8)).with_parts((3, 4)).lazy[1:5, 2]
+dispatcher = ChunkDispatcher()
+for part in zarr_view.parts():
+    dispatcher.dispatch(part.projection)
+
+ZARR_DISPATCHED_CHUNKS = tuple(dispatcher.chunk_coords)
+assert ZARR_DISPATCHED_CHUNKS == ((0, 0), (1, 0))
 # --8<-- [end:zarr-consumer]
 
 
@@ -43,7 +52,8 @@ class RecordingArray:
 
 viewport_source = RecordingArray(np.arange(48).reshape(6, 8), chunks=(3, 4))
 viewport = LazyArray(viewport_source).lazy[1:5, 2]
-assert viewport_source.keys == []
+VIEWPORT_READS_BEFORE_RESULT = tuple(viewport_source.keys)
+assert VIEWPORT_READS_BEFORE_RESULT == ()
 assert viewport.result().tolist() == [10, 18, 26, 34]
 
 VIEWPORT_SOURCE_KEYS = tuple(viewport_source.keys)
