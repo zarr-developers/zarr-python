@@ -86,7 +86,7 @@ jobs:
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        run: uv run --group test --with pyright pyright
 
   docs:
     name: docs

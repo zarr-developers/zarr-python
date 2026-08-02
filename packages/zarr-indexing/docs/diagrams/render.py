@@ -158,16 +158,15 @@ def render_figure(spec: FigureSpec) -> str:
 def _render_element(
     parent: Element, element: ElementSpec, nodes: dict[str, NodeSpec], figure_id: str
 ) -> None:
-    kind = element["kind"]
-    if kind == "grid":
+    if element["kind"] == "grid":
         _render_grid(parent, element, figure_id)
-    elif kind == "axis":
+    elif element["kind"] == "axis":
         _render_axis(parent, element, figure_id)
-    elif kind == "node":
+    elif element["kind"] == "node":
         _render_node(parent, element, figure_id)
-    elif kind == "arrow":
+    elif element["kind"] == "arrow":
         _render_arrow(parent, element, nodes, figure_id)
-    elif kind == "text":
+    elif element["kind"] == "text":
         _render_text(parent, element, figure_id)
 
 
@@ -381,7 +380,7 @@ def _render_legend(parent: Element, spec: FigureSpec) -> None:
             **{
                 "aria-label": role,
                 "class": f"zi-role-{role}",
-                "data-non-color-cue": ROLE_CUES[role],
+                "data-non-color-cue": _role_cue(role),
                 "data-semantic-role": role,
                 "id": f"{spec['id']}-legend-{role}",
             },
@@ -411,12 +410,16 @@ def _render_legend(parent: Element, spec: FigureSpec) -> None:
             **{
                 "aria-label": role,
                 "class": "zi-role-label",
-                "data-non-color-cue": ROLE_CUES[role],
+                "data-non-color-cue": _role_cue(role),
                 "data-semantic-role": role,
                 "x": x + 36,
                 "y": y,
             },
         ).text = role
+
+
+def _role_cue(role: str) -> str:
+    return next(cue for known_role, cue in ROLE_CUES.items() if known_role == role)
 
 
 def render_all(output_dir: Path, *, check: bool) -> None:

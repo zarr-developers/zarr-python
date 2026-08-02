@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, Never, NotRequired, TypeGuard, TypedDict
 
 
 SemanticRole = Literal["request", "source", "selected", "chunk-local", "cell-domain", "text"]
@@ -187,27 +187,27 @@ FIGURES: tuple[FigureSpec, ...] = (
         "width": 720,
         "height": 250,
         "elements": tuple(
-            {
-                "id": f"coordinate-{coordinate}",
-                "kind": "node",
-                "role": "cell-domain",
-                "x": 80 + index * 112,
-                "y": 62,
-                "width": 72,
-                "height": 62,
-                "label": str(coordinate),
-            }
+            NodeSpec(
+                id=f"coordinate-{coordinate}",
+                kind="node",
+                role="cell-domain",
+                x=80 + index * 112,
+                y=62,
+                width=72,
+                height=62,
+                label=str(coordinate),
+            )
             for index, coordinate in enumerate(range(-2, 3))
         )
         + (
-            {
-                "id": "domain-label",
-                "kind": "text",
-                "role": "text",
-                "x": 120,
-                "y": 42,
-                "label": "cell domain [-2, 3)",
-            },
+            TextSpec(
+                id="domain-label",
+                kind="text",
+                role="text",
+                x=120,
+                y=42,
+                label="cell domain [-2, 3)",
+            ),
         ),
     },
     {
@@ -217,56 +217,56 @@ FIGURES: tuple[FigureSpec, ...] = (
         "width": 760,
         "height": 350,
         "elements": tuple(
-            {
-                "id": f"before-{coordinate}",
-                "kind": "node",
-                "role": "source",
-                "x": 260 + coordinate * 52,
-                "y": 48,
-                "width": 44,
-                "height": 44,
-                "label": str(coordinate),
-            }
+            NodeSpec(
+                id=f"before-{coordinate}",
+                kind="node",
+                role="source",
+                x=260 + coordinate * 52,
+                y=48,
+                width=44,
+                height=44,
+                label=str(coordinate),
+            )
             for coordinate in range(6)
         )
         + tuple(
-            {
-                "id": f"after-{coordinate}",
-                "kind": "node",
-                "role": "source",
-                "x": 104 + (coordinate + 3) * 52,
-                "y": 156,
-                "width": 44,
-                "height": 44,
-                "label": str(coordinate),
-            }
+            NodeSpec(
+                id=f"after-{coordinate}",
+                kind="node",
+                role="source",
+                x=104 + (coordinate + 3) * 52,
+                y=156,
+                width=44,
+                height=44,
+                label=str(coordinate),
+            )
             for coordinate in range(-3, 6)
         )
         + (
-            {
-                "id": "prepended-label",
-                "kind": "text",
-                "role": "selected",
-                "x": 178,
-                "y": 132,
-                "label": "prepended cells",
-            },
-            {
-                "id": "before-label",
-                "kind": "text",
-                "role": "text",
-                "x": 80,
-                "y": 75,
-                "label": "before [0, 6)",
-            },
-            {
-                "id": "after-label",
-                "kind": "text",
-                "role": "text",
-                "x": 270,
-                "y": 224,
-                "label": "after [-3, 6); coordinates 0–5 stay aligned",
-            },
+            TextSpec(
+                id="prepended-label",
+                kind="text",
+                role="selected",
+                x=178,
+                y=132,
+                label="prepended cells",
+            ),
+            TextSpec(
+                id="before-label",
+                kind="text",
+                role="text",
+                x=80,
+                y=75,
+                label="before [0, 6)",
+            ),
+            TextSpec(
+                id="after-label",
+                kind="text",
+                role="text",
+                x=270,
+                y=224,
+                label="after [-3, 6); coordinates 0–5 stay aligned",
+            ),
         ),
     },
     {
@@ -587,7 +587,7 @@ _SEMANTIC_ROLES: frozenset[str] = frozenset(
 _ELEMENT_KINDS: frozenset[str] = frozenset({"grid", "axis", "node", "arrow", "text"})
 
 
-def _invalid(figure_id: str, field: str, detail: str) -> None:
+def _invalid(figure_id: str, field: str, detail: str) -> Never:
     raise ValueError(f"{figure_id}: {field} {detail}")
 
 
@@ -605,21 +605,29 @@ def validate_figure(spec: FigureSpec) -> None:
     ValueError
         If the specification cannot be rendered unambiguously.
     """
-    figure_id = spec.get("id", "<missing-id>")
+    raw_spec = dict(spec)
+    figure_id = raw_spec.get("id", "<missing-id>")
     if not isinstance(figure_id, str) or not figure_id:
         _invalid("<missing-id>", "id", "must be a non-empty string")
     for field in ("title", "description"):
-        if not isinstance(spec.get(field), str) or not spec[field].strip():
+        value = raw_spec.get(field)
+        if not isinstance(value, str) or not value.strip():
             _invalid(figure_id, field, "must be a non-empty string")
     for field in ("width", "height"):
-        value = spec.get(field)
+        value = raw_spec.get(field)
         if not _is_integer(value) or value <= 0:
             _invalid(figure_id, field, "must be a positive integer")
 
     element_ids: set[str] = set()
     node_ids: set[str] = set()
-    arrows: list[ArrowSpec] = []
-    for element in spec["elements"]:
+    arrows: list[dict[str, object]] = []
+    elements = raw_spec.get("elements")
+    if not isinstance(elements, tuple):
+        _invalid(figure_id, "elements", "must be a tuple")
+    for raw_element in elements:
+        if not isinstance(raw_element, dict):
+            _invalid(figure_id, "elements", "must contain element mappings")
+        element: dict[str, object] = raw_element
         element_id = element.get("id")
         if not isinstance(element_id, str) or not element_id:
             _invalid(figure_id, "elements.id", "must be a non-empty string")
@@ -649,7 +657,7 @@ def validate_figure(spec: FigureSpec) -> None:
                     f"{element_id}.label_offset",
                     "must be a pair of integers",
                 )
-            arrows.append(element)  # type: ignore[arg-type]
+            arrows.append(element)
         elif kind == "text":
             _validate_text(figure_id, element_id, element)
 
@@ -674,12 +682,22 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
     columns = element["columns"]
     assert _is_integer(rows)
     assert _is_integer(columns)
-    for row, column in selected:
+    assert isinstance(selected, tuple)
+    for coordinate in selected:
+        assert _pair_of_ints(coordinate)
+        row, column = coordinate
+        assert _is_integer(row)
+        assert _is_integer(column)
         if not 0 <= row < rows or not 0 <= column < columns:
             _invalid(figure_id, f"{element_id}.selected", "contains a coordinate outside the grid")
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
-        if not _pair_of_ints(chunk_shape) or any(size <= 0 for size in chunk_shape):
+        if not _pair_of_ints(chunk_shape):
+            _invalid(figure_id, f"{element_id}.chunk_shape", "must be positive dimensions")
+        first, second = chunk_shape
+        assert _is_integer(first)
+        assert _is_integer(second)
+        if first <= 0 or second <= 0:
             _invalid(figure_id, f"{element_id}.chunk_shape", "must be positive dimensions")
 
 
@@ -690,7 +708,11 @@ def _validate_axis(figure_id: str, element_id: str, element: dict[str, object]) 
             _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
     if element.get("orientation") not in {"horizontal", "vertical"}:
         _invalid(figure_id, f"{element_id}.orientation", "must be horizontal or vertical")
-    if element["stop"] < element["start"]:
+    start = element.get("start")
+    stop = element.get("stop")
+    assert _is_integer(start)
+    assert _is_integer(stop)
+    if stop < start:
         _invalid(figure_id, f"{element_id}.stop", "must not precede start")
 
 
@@ -715,9 +737,9 @@ def _validate_label(figure_id: str, element_id: str, element: dict[str, object])
         _invalid(figure_id, f"{element_id}.label", "must be a string")
 
 
-def _pair_of_ints(value: object) -> bool:
+def _pair_of_ints(value: object) -> TypeGuard[tuple[int, int]]:
     return isinstance(value, tuple) and len(value) == 2 and all(_is_integer(item) for item in value)
 
 
-def _is_integer(value: object) -> bool:
+def _is_integer(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)

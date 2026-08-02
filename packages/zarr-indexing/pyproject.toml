@@ -102,7 +102,13 @@ filterwarnings = [
 ]
 
 [tool.pyright]
-include = ["src"]
+include = [
+    "src",
+    "docs/diagrams",
+    "docs/examples",
+    "tests/test_doc_diagrams.py",
+    "tests/test_doc_examples.py",
+]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"

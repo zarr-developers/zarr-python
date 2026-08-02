@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict, get_args
+from typing import NotRequired, TypedDict, Unpack, cast, get_args
 from xml.etree import ElementTree
 
 import pytest
@@ -9,68 +9,28 @@ import pytest
 import docs.diagrams.render as diagram_render
 import docs.diagrams.specifications as diagram_specs
 from docs.diagrams.render import STYLESHEET_NAME, render_all, render_figure
-from docs.diagrams.specifications import FIGURES, FigureSpec, SemanticRole, validate_figure
+from docs.diagrams.specifications import (
+    FIGURES,
+    ArrowSpec,
+    AxisSpec,
+    ElementSpec,
+    FigureSpec,
+    GridSpec,
+    NodeSpec,
+    SemanticRole,
+    TextSpec,
+    validate_figure,
+)
 
 DOCS = Path(__file__).parents[1] / "docs"
-PALETTES = getattr(diagram_specs, "PALETTES", {})
-ROLE_CUES = getattr(diagram_specs, "ROLE_CUES", {})
+PALETTES = diagram_specs.PALETTES
+ROLE_CUES = diagram_specs.ROLE_CUES
 
 
-class GridSpec(TypedDict):
-    id: str
-    kind: Literal["grid"]
-    role: SemanticRole
-    rows: int
-    columns: int
-    cell_size: int
-    origin: tuple[int, int]
-    selected: tuple[tuple[int, int], ...]
-    chunk_shape: tuple[int, int] | None
-
-
-class AxisSpec(TypedDict):
-    id: str
-    kind: Literal["axis"]
-    role: SemanticRole
-    x: int
-    y: int
-    length: int
-    orientation: Literal["horizontal", "vertical"]
-    start: int
-    stop: int
-
-
-class NodeSpec(TypedDict):
-    id: str
-    kind: Literal["node"]
-    role: SemanticRole
-    x: int
-    y: int
-    width: int
-    height: int
-    label: str
-
-
-class ArrowSpec(TypedDict):
-    id: str
-    kind: Literal["arrow"]
-    role: SemanticRole
-    source: str
-    target: str
-    label: str
-    label_offset: NotRequired[tuple[int, int]]
-
-
-class TextSpec(TypedDict):
-    id: str
-    kind: Literal["text"]
-    role: SemanticRole
-    x: int
-    y: int
-    label: str
-
-
-type ElementSpec = GridSpec | AxisSpec | NodeSpec | ArrowSpec | TextSpec
+class WriteTextOptions(TypedDict):
+    encoding: NotRequired[str | None]
+    errors: NotRequired[str | None]
+    newline: NotRequired[str | None]
 
 
 def figure(figure_id: str, *, elements: tuple[ElementSpec, ...]) -> FigureSpec:
@@ -82,6 +42,21 @@ def figure(figure_id: str, *, elements: tuple[ElementSpec, ...]) -> FigureSpec:
         "height": 120,
         "elements": elements,
     }
+
+
+def malformed_figure(figure_id: str, *, elements: tuple[object, ...]) -> FigureSpec:
+    """Construct an intentionally invalid runtime input for validation tests."""
+    return cast(
+        FigureSpec,
+        {
+            "id": figure_id,
+            "title": f"Figure {figure_id}",
+            "description": "A deterministic renderer test figure.",
+            "width": 240,
+            "height": 120,
+            "elements": elements,
+        },
+    )
 
 
 GRID: GridSpec = {
@@ -167,19 +142,19 @@ def test_render_figure_accepts_reasonable_element_combinations(
 def test_grid_size_must_be_positive() -> None:
     invalid_grid = {**GRID, "rows": 0}
     with pytest.raises(ValueError, match="invalid-grid.*rows"):
-        validate_figure(figure("invalid-grid", elements=(invalid_grid,)))
+        validate_figure(malformed_figure("invalid-grid", elements=(invalid_grid,)))
 
 
 def test_selected_coordinate_must_be_inside_grid() -> None:
     invalid_grid = {**GRID, "selected": ((2, 0),)}
     with pytest.raises(ValueError, match="outside-grid.*selected"):
-        validate_figure(figure("outside-grid", elements=(invalid_grid,)))
+        validate_figure(malformed_figure("outside-grid", elements=(invalid_grid,)))
 
 
 def test_element_ids_must_be_unique() -> None:
     duplicate = {**TEXT, "id": "grid"}
     with pytest.raises(ValueError, match="duplicate-id.*grid"):
-        validate_figure(figure("duplicate-id", elements=(GRID, duplicate)))
+        validate_figure(malformed_figure("duplicate-id", elements=(GRID, duplicate)))
 
 
 def test_title_must_not_be_empty() -> None:
@@ -199,7 +174,7 @@ def test_description_must_not_be_empty() -> None:
 def test_semantic_role_must_be_known() -> None:
     invalid_text = {**TEXT, "role": "unknown"}
     with pytest.raises(ValueError, match="unknown-role.*role"):
-        validate_figure(figure("unknown-role", elements=(invalid_text,)))
+        validate_figure(malformed_figure("unknown-role", elements=(invalid_text,)))
 
 
 def test_arrow_target_must_resolve() -> None:
@@ -217,7 +192,7 @@ def test_arrow_target_must_resolve() -> None:
 
 
 def test_grid_chunk_shape_renders_chunk_boundaries() -> None:
-    grid = {
+    grid: GridSpec = {
         **GRID,
         "rows": 6,
         "columns": 8,
@@ -235,8 +210,9 @@ def test_grid_chunk_shape_renders_chunk_boundaries() -> None:
         {"class": "zi-chunk-boundary", "x1": "45", "x2": "45", "y1": "7", "y2": "67"},
         {"class": "zi-chunk-boundary", "x1": "5", "x2": "85", "y1": "37", "y2": "37"},
     ]
+    unchunked: GridSpec = {**grid, "chunk_shape": None}
     unchunked_root = ElementTree.fromstring(
-        render_figure(figure("unchunked", elements=({**grid, "chunk_shape": None},)))
+        render_figure(figure("unchunked", elements=(unchunked,)))
     )
     assert not any(
         line.tag.endswith("line") and line.attrib.get("class") == "zi-chunk-boundary"
@@ -252,7 +228,9 @@ def test_arrow_label_must_be_a_string() -> None:
         "source": "left",
         "target": "right",
     }
-    spec = figure("missing-arrow-label", elements=(LEFT_NODE, RIGHT_NODE, arrow_without_label))
+    spec = malformed_figure(
+        "missing-arrow-label", elements=(LEFT_NODE, RIGHT_NODE, arrow_without_label)
+    )
     with pytest.raises(ValueError, match="missing-arrow-label.*arrow.label"):
         validate_figure(spec)
 
@@ -260,7 +238,7 @@ def test_arrow_label_must_be_a_string() -> None:
 @pytest.mark.parametrize("label_offset", [(1,), None, (0, "up"), (False, 1)])
 def test_arrow_label_offset_must_be_a_pair_of_integers(label_offset: object) -> None:
     arrow_with_invalid_offset = {**ARROW, "label_offset": label_offset}
-    spec = figure(
+    spec = malformed_figure(
         "invalid-arrow-offset", elements=(LEFT_NODE, RIGHT_NODE, arrow_with_invalid_offset)
     )
     with pytest.raises(ValueError, match=r"invalid-arrow-offset.*arrow\.label_offset"):
@@ -270,12 +248,17 @@ def test_arrow_label_offset_must_be_a_pair_of_integers(label_offset: object) -> 
 def test_grid_geometry_must_not_be_boolean() -> None:
     grid_with_boolean_rows = {**GRID, "rows": True}
     with pytest.raises(ValueError, match="boolean-grid.*grid.rows"):
-        validate_figure(figure("boolean-grid", elements=(grid_with_boolean_rows,)))
+        validate_figure(malformed_figure("boolean-grid", elements=(grid_with_boolean_rows,)))
 
 
 def test_figure_geometry_must_not_be_boolean() -> None:
-    spec = figure("boolean-figure", elements=(TEXT,))
-    spec["width"] = True
+    spec = cast(
+        FigureSpec,
+        {
+            **figure("boolean-figure", elements=(TEXT,)),
+            "width": True,
+        },
+    )
     with pytest.raises(ValueError, match="boolean-figure.*width"):
         validate_figure(spec)
 
@@ -300,9 +283,9 @@ def test_render_all_update_then_check_writes_deterministic_utf8_lf(
 ) -> None:
     monkeypatch.setattr(diagram_render, "FIGURES", (figure("generated", elements=(TEXT,)),))
     original_write_text = Path.write_text
-    write_options: list[dict[str, object]] = []
+    write_options: list[WriteTextOptions] = []
 
-    def write_text_with_options(self: Path, data: str, **kwargs: object) -> int:
+    def write_text_with_options(self: Path, data: str, **kwargs: Unpack[WriteTextOptions]) -> int:
         write_options.append(kwargs)
         return original_write_text(self, data, **kwargs)
 
@@ -357,7 +340,7 @@ def _linear_channel(value: int) -> float:
 
 def contrast_ratio(foreground: str, background: str) -> float:
     """Return the WCAG contrast ratio for two six-digit hexadecimal colours."""
-    luminances = []
+    luminances: list[float] = []
     for color in (foreground, background):
         red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
         luminances.append(
@@ -390,32 +373,37 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     }
 
 
+def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:
+    for element in spec["elements"]:
+        if element["id"] == element_id and element["kind"] == "grid":
+            return element
+    raise AssertionError(f"missing grid {element_id!r}")
+
+
 def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
     figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
     grids = {
-        "indexing-selection": next(
-            element
-            for element in figures["indexing-selection"]["elements"]
-            if element["id"] == "source-grid"
-        ),
-        "chunk-overlay": next(
-            element
-            for element in figures["chunk-overlay"]["elements"]
-            if element["id"] == "chunked-source"
-        ),
+        "indexing-selection": _grid_element(figures["indexing-selection"], "source-grid"),
+        "chunk-overlay": _grid_element(figures["chunk-overlay"], "chunked-source"),
     }
     for grid in grids.values():
         assert grid["kind"] == "grid"
         assert (grid["rows"], grid["columns"]) == (6, 8)
         assert grid["selected"] == ((1, 2), (2, 2), (3, 2), (4, 2))
-    assert grids["chunk-overlay"]["chunk_shape"] == (3, 4)
-    assert {
-        field: grids["indexing-selection"][field]
-        for field in ("rows", "columns", "cell_size", "origin", "selected")
-    } == {
-        field: grids["chunk-overlay"][field]
-        for field in ("rows", "columns", "cell_size", "origin", "selected")
-    }
+    assert grids["chunk-overlay"].get("chunk_shape") == (3, 4)
+    assert (
+        grids["indexing-selection"]["rows"],
+        grids["indexing-selection"]["columns"],
+        grids["indexing-selection"]["cell_size"],
+        grids["indexing-selection"]["origin"],
+        grids["indexing-selection"]["selected"],
+    ) == (
+        grids["chunk-overlay"]["rows"],
+        grids["chunk-overlay"]["columns"],
+        grids["chunk-overlay"]["cell_size"],
+        grids["chunk-overlay"]["origin"],
+        grids["chunk-overlay"]["selected"],
+    )
 
 
 def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> None:
@@ -538,7 +526,9 @@ def test_rendered_figures_have_structural_and_visible_semantics() -> None:
         for group in role_groups:
             role = group.attrib["data-semantic-role"]
             assert group.attrib["aria-label"] == role
-            assert group.attrib["data-non-color-cue"] == ROLE_CUES[role]
+            assert group.attrib["data-non-color-cue"] == next(
+                cue for known_role, cue in ROLE_CUES.items() if known_role == role
+            )
 
         visible_roles = {
             element.attrib["data-semantic-role"]
