@@ -1,0 +1,90 @@
+# Coordinates are addresses
+
+In the transform algebra, **coordinates are just integers**. A negative
+coordinate is a real address in a domain, with the same status as zero or a
+positive coordinate; it is not automatically shorthand for counting backward
+from an array's end.
+
+<figure>
+--8<-- "_static/diagrams/coordinate-addresses.svg"
+<figcaption>The domain <code>[-2, 3)</code> contains five peer addresses, including the real negative addresses <code>-2</code> and <code>-1</code>.</figcaption>
+</figure>
+
+`IndexDomain` makes those bounds explicit. In the first half of this executable
+example, narrowing at `-1` means selecting the literal address `-1`. The final
+assertion deliberately contrasts that with a NumPy-shaped wrapper.
+
+```python
+--8<-- "examples/coordinate_origins.py:coordinate-origin"
+```
+
+## Prepending does not renumber
+
+Literal coordinates let a domain grow at its lower end without changing the
+identity of anything already present. Prepending three cells extends `[0, 6)`
+to `[-3, 6)`: the new cells receive addresses `-3`, `-2`, and `-1`, while the
+old cells keep addresses `0` through `5`. Coordinate `0` does not become
+coordinate `3`.
+
+<figure>
+--8<-- "_static/diagrams/prepend-chunk.svg"
+<figcaption>Prepending extends <code>[0, 6)</code> to <code>[-3, 6)</code> without renumbering any existing coordinate.</figcaption>
+</figure>
+
+That literal model and NumPy's positional model are both useful, but they answer
+different questions:
+
+| Surface | Meaning of an integer index | Meaning of `-1` |
+| --- | --- | --- |
+| `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The actual address `-1`, if the domain contains it |
+| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before it reaches the transform algebra |
+
+`LazyArray` uses positions because it is an array-like wrapper: each derived
+view starts at position zero and negative indices wrap exactly as they do in
+NumPy. The lower-level domain and transform types keep literal coordinates so
+independently described regions can retain stable addresses.
+
+The same distinction matters for chunk grids. `EdgeDimensionGrid` is the
+convenient concrete grid for a zero-origin array: its chunk offsets are prefix
+sums starting at zero. `DimensionGridLike` is the more general protocol
+consumed by chunk planning, so it admits grids with negative chunk and cell
+coordinates, including the prependable example below.
+
+```python
+--8<-- "examples/coordinate_origins.py:prepend-grid"
+```
+
+Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Planning gives
+the chunk-local transform a separate zero-origin domain `[0, 3)`; that local
+frame does not rename the source addresses.
+
+## A transform points from the request to the source
+
+An `IndexTransform` records how every coordinate in a request finds its source
+coordinate. For the slice from chapter 1, request coordinate `i` maps to source
+coordinate `(i + 1, 2)`. This direction is deliberate: request to source, not
+source to request.
+
+<figure>
+--8<-- "_static/diagrams/transform-mapping.svg"
+<figcaption>The transform sends each request coordinate <code>i</code> to its source address <code>(i + 1, 2)</code>.</figcaption>
+</figure>
+
+One output map describes each source dimension. There are three map forms:
+
+- `ConstantMap` fixes a source coordinate, such as column 2 after an integer
+  index removes that request axis.
+- `DimensionMap` describes an arithmetic rule, such as request `i` becoming
+  source row `i + 1`.
+- `ArrayMap` stores explicit coordinates for irregular or fancy indexing.
+
+Together, the request domain and these per-source-dimension maps are the
+complete reusable description of an index.
+
+---
+
+<nav aria-label="Guide chapter navigation">
+  <strong>Previous:</strong> <a href="../01-indexing/">An index selects coordinates</a>
+  ·
+  <strong>Next:</strong> <a href="../03-composition/">Lazy views compose</a>
+</nav>

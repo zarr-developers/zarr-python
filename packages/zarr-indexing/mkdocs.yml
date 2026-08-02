@@ -16,6 +16,11 @@ exclude_docs: |
 
 nav:
   - index.md
+  - Visual guide:
+      - guide/index.md
+      - An index selects coordinates: guide/01-indexing.md
+      - Coordinates are addresses: guide/02-transforms.md
+      - Lazy views compose: guide/03-composition.md
   - ndsel.md
   - design-notes.md
   - API Reference:
