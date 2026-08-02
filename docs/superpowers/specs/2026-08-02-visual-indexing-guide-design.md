@@ -23,6 +23,9 @@ chapter. Library integrators can continue into chunk planning and projections.
 ## Goals
 
 - Give NumPy users a correct mental model of an index as a coordinate mapping.
+- Distinguish positions from coordinates: coordinate domains may have arbitrary
+  origins, and a negative integer may name a real coordinate rather than wrap
+  from the end.
 - Explain why lazy views compose without reading array data.
 - Show how a selection is partitioned over a chunk grid.
 - Make the shared-domain relationship between `chunk_transform` and
@@ -72,13 +75,42 @@ coordinates* informally, without transform classes.
 Reader outcome: an index says which source coordinate contributes to each
 result coordinate.
 
-### 2. A transform remembers the mapping
+### 2. Coordinates are addresses; a transform remembers the mapping
 
-Redraw the same selection as a mapping from result coordinate `i` to source
+Begin with a number line whose domain is `[-2, 3)`. Its five valid coordinates
+are `-2, -1, 0, 1, 2`: shape five does not imply origin zero, and `-1` names the
+literal coordinate `-1`. It does not mean “the last element.” The visual must
+show zero as an ordinary interior tick and negative coordinates with the same
+styling as positive coordinates.
+
+Explain why the algebra needs this model before showing its classes. Coordinates
+are durable addresses, while positions are offsets within a particular view.
+Arbitrary origins let translated views, cropped regions, chunk domains, and
+external coordinate systems retain their addresses instead of repeatedly
+renumbering every cell from zero.
+
+Then contrast the two public dialects explicitly:
+
+```python
+domain = IndexDomain(inclusive_min=(-2,), exclusive_max=(3,))
+domain.contains((-1,))  # True: -1 is a real coordinate
+domain.narrow(-1)       # selects the literal interval [-1, 0)
+
+LazyArray(values).lazy[-1].result()  # NumPy position: the final element
+```
+
+`LazyArray` is intentionally NumPy-like: each view is re-zeroed and negative
+positions count from its end. The boundary converts that positional request into
+literal coordinates before it enters the transform algebra. This distinction is
+not an edge case; it is the reason the boundary layer exists.
+
+Finally, redraw `image[1:5, 2]` as a mapping from result coordinate `i` to source
 coordinate `(i + 1, 2)`. Introduce `IndexDomain`, `DimensionMap`, and
-`ConstantMap` only where they name parts already visible in the figure.
+`ConstantMap` only where they name parts already visible in the figures.
 
-Reader outcome: a transform is a reusable description, not materialized data.
+Reader outcome: coordinates are literal addresses with arbitrary origins;
+NumPy-style positions are a boundary dialect; and a transform is a reusable
+mapping rather than materialized data.
 
 ### 3. Lazy views compose without reading
 
@@ -97,6 +129,11 @@ Reveal the image's existing 3 by 4 chunk grid. The array and selection do not
 change; only the storage partition becomes visible. Identify the two touched
 chunks, translate their selected coordinates to chunk-local coordinates, and
 introduce `ChunkPlan`.
+
+The figure labels the same touched chunk twice: first by its global
+`chunk_domain`, then by the zero-origin coordinates used by `chunk_transform`.
+This makes re-zeroing visible as an explicit translation between coordinate
+systems, not an assumption that all coordinate indexing begins at zero.
 
 Reader outcome: a chunk plan partitions a global transform without coupling it
 to a source, codec pipeline, or scheduler.
@@ -130,7 +167,9 @@ cells belong in the request.
 An illustrated lookup page covers basic slices, integer axis removal, negative
 strides, empty selections, boolean masks, orthogonal indexing, vectorized
 indexing, broadcasting, and repeated or out-of-order coordinates. Each pattern
-shows its expression, result shape, and mapping category.
+shows its expression, result shape, and mapping category. It begins with a
+compact positional-versus-coordinate table, including `-1` in a zero-origin
+NumPy view and `-1` in a domain that actually contains that coordinate.
 
 ### Integrations
 
@@ -155,10 +194,12 @@ The guide uses one 6 by 8 image with 3 by 4 chunks. Coordinate labels dominate
 the figures; values appear only when result ordering matters.
 
 1. `image[1:5, 2]` establishes familiar selection behavior.
-2. A second lazy index demonstrates composition.
-3. Chunk boundaries are overlaid on the unchanged selection.
-4. `oindex[[4, 1, 1], 2:6]` demonstrates reordering and duplication.
-5. The same projections feed zarr chunk reads or a viewport consumer.
+2. A short `[-2, 3)` number line distinguishes coordinate addresses from
+   zero-based positions without changing the canonical image.
+3. A second lazy index demonstrates composition.
+4. Chunk boundaries are overlaid on the unchanged selection.
+5. `oindex[[4, 1, 1], 2:6]` demonstrates reordering and duplication.
+6. The same projections feed zarr chunk reads or a viewport consumer.
 
 All other forms move to the patterns reference. This preserves continuity while
 proving that paired projections do more than rectangular slicing.
@@ -179,6 +220,11 @@ Color is never the only carrier of meaning. Figures use explicit labels,
 different borders, coordinate text, and captions. Arrows always point from a
 transform's input domain to its output coordinates. Solid heavy lines mark
 chunk boundaries. Numbered static panels express sequences.
+
+Domain axes always display their actual inclusive and exclusive bounds. Zero is
+never implied as an origin, and negative coordinate labels are not styled as
+errors or as special wrapping syntax. When a figure uses positional NumPy
+semantics instead, it carries an explicit “position” label.
 
 Each figure has a sentence-length caption, SVG `<title>` and `<desc>`,
 `role="img"`, an `aria-labelledby` relationship, adjacent prose, and a meaningful
@@ -222,6 +268,11 @@ Examples avoid nondeterministic representations, filesystem I/O, network access,
 and large allocations. Integration examples use tiny recording sources so tests
 can prove that untouched chunks are not read.
 
+One executable example directly compares the dialects. It proves that `-1` is
+contained by `IndexDomain((-2,), (3,))` and selects the literal coordinate in
+the transform algebra, while `LazyArray(...).lazy[-1]` selects the final
+position after NumPy-style normalization.
+
 ## File layout
 
 ```text
@@ -237,7 +288,12 @@ packages/zarr-indexing/
 │   │   ├── 05-projections.md
 │   │   ├── patterns.md
 │   │   └── integrations.md
-│   ├── examples/*.py
+│   ├── examples/
+│   │   ├── coordinate_origins.py
+│   │   ├── canonical_slice.py
+│   │   ├── lazy_composition.py
+│   │   ├── chunk_projection.py
+│   │   └── integrations.py
 │   ├── diagrams/
 │   │   ├── specifications.py
 │   │   └── render.py
@@ -277,6 +333,11 @@ integration fixture verifies both results and the exact touched chunks. The
 advanced example verifies order and duplicate preservation, the behavioral
 reason for documenting `cell_transform` separately.
 
+A dedicated coordinate-origin test checks the paired examples above and fails
+if the literal-coordinate and positional dialects are accidentally conflated.
+Diagram tests also require the negative-origin number line to expose all five
+tick labels and identify `[-2, 3)` as its domain.
+
 Acceptance requires the package test suite, Ruff, Pyright, deterministic diagram
 check, and `mkdocs build --strict` to pass. Manual visual QA covers Material
 light and dark schemes at desktop and narrow widths, plus keyboard navigation
@@ -295,13 +356,17 @@ the automated contract; responsive composition receives focused manual QA.
 
 1. A reader can follow the five chapters without first reading the API reference.
 2. The first three chapters form a self-contained lazy-indexing introduction.
-3. The last two correctly explain chunk planning and transform directionality.
-4. Zarr and viewport examples read only chunks touched by their selections.
-5. Every displayed code fragment is backed by an executed example.
-6. Every diagram is deterministic, accessible, and legible in both themes and
+3. A reader can explain why an `IndexDomain` need not start at zero, why `-1`
+   can be a valid literal coordinate, and why `LazyArray(...).lazy[-1]` still
+   means the final position.
+4. The last two chapters correctly explain chunk planning and transform
+   directionality.
+5. Zarr and viewport examples read only chunks touched by their selections.
+6. Every displayed code fragment is backed by an executed example.
+7. Every diagram is deterministic, accessible, and legible in both themes and
    at narrow widths.
-7. The patterns page covers important variants without interrupting the tour.
-8. Existing notes and API pages link into the guide without competing accounts.
+8. The patterns page covers important variants without interrupting the tour.
+9. Existing notes and API pages link into the guide without competing accounts.
 
 ## Approved decisions
 
@@ -310,5 +375,7 @@ the automated contract; responsive composition receives focused manual QA.
 - Accessible generated SVG system.
 - One canonical basic example plus one advanced contrast.
 - Explicit user/integrator stopping point after lazy composition.
+- Explicit distinction between literal coordinates and NumPy-style positions,
+  including negative coordinate domains.
 - No animation, JavaScript dependency, or color-only semantics.
 - Light and dark contrast are tested requirements, not deferred visual polish.
