@@ -10,6 +10,9 @@ site_author: Davis Bennett
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-indexing.readthedocs.io/']
 docs_dir: docs
 use_directory_urls: true
+exclude_docs: |
+  examples/**
+  diagrams/**
 
 nav:
   - index.md
@@ -99,6 +102,9 @@ plugins:
             - https://numpy.org/doc/stable/objects.inv
             - https://zarr.readthedocs.io/en/stable/objects.inv
 
+extra_css:
+  - _static/indexing-guide.css
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -114,3 +120,5 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: [docs]
