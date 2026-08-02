@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal, Never, NotRequired, TypeGuard, TypedDict
 
 
@@ -410,7 +411,10 @@ FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "chunk-overlay",
         "title": "The selection crosses one chunk-row boundary",
-        "description": "the basic selection touches chunks (0, 0) and (1, 0).",
+        "description": (
+            "touched global chunk domains map selected cells to zero-origin "
+            "chunk-local coordinates."
+        ),
         "width": 900,
         "height": 390,
         "elements": (
@@ -426,28 +430,60 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "chunk_shape": (3, 4),
             },
             {
-                "id": "chunk-zero",
+                "id": "chunk-zero-coords",
                 "kind": "text",
-                "role": "chunk-local",
-                "x": 140,
-                "y": 104,
-                "label": "chunk (0, 0)",
+                "role": "source",
+                "x": 178,
+                "y": 58,
+                "label": "global chunk_coords (0, 0)",
             },
             {
-                "id": "chunk-one",
+                "id": "chunk-zero-domain",
+                "kind": "text",
+                "role": "source",
+                "x": 178,
+                "y": 93,
+                "label": "global chunk_domain [0, 3) × [0, 4)",
+            },
+            {
+                "id": "chunk-zero-local",
                 "kind": "text",
                 "role": "chunk-local",
-                "x": 140,
-                "y": 236,
-                "label": "chunk (1, 0)",
+                "x": 178,
+                "y": 128,
+                "label": "chunk-local selected (1, 2), (2, 2)",
+            },
+            {
+                "id": "chunk-one-coords",
+                "kind": "text",
+                "role": "source",
+                "x": 178,
+                "y": 196,
+                "label": "global chunk_coords (1, 0)",
+            },
+            {
+                "id": "chunk-one-domain",
+                "kind": "text",
+                "role": "source",
+                "x": 178,
+                "y": 231,
+                "label": "global chunk_domain [3, 6) × [0, 4)",
+            },
+            {
+                "id": "chunk-one-local",
+                "kind": "text",
+                "role": "chunk-local",
+                "x": 178,
+                "y": 266,
+                "label": "chunk-local selected (0, 2), (1, 2)",
             },
             {
                 "id": "selection-label",
                 "kind": "text",
                 "role": "selected",
-                "x": 830,
-                "y": 130,
-                "label": "selected cells",
+                "x": 650,
+                "y": 315,
+                "label": "selected global cells",
             },
         ),
     },
@@ -585,6 +621,7 @@ _SEMANTIC_ROLES: frozenset[str] = frozenset(
     {"request", "source", "selected", "chunk-local", "cell-domain", "text"}
 )
 _ELEMENT_KINDS: frozenset[str] = frozenset({"grid", "axis", "node", "arrow", "text"})
+_SAFE_FRAGMENT_ID_PATTERN = r"[A-Za-z][A-Za-z0-9_-]*"
 
 
 def _invalid(figure_id: str, field: str, detail: str) -> Never:
@@ -600,6 +637,9 @@ def _positive(figure_id: str, element_id: str, element: dict[str, object], field
 def validate_figure(spec: FigureSpec) -> None:
     """Validate a figure before rendering it.
 
+    Figure and element IDs must match ``[A-Za-z][A-Za-z0-9_-]*`` so every
+    generated XML ID is one whitespace-free fragment token.
+
     Raises
     ------
     ValueError
@@ -609,6 +649,8 @@ def validate_figure(spec: FigureSpec) -> None:
     figure_id = raw_spec.get("id", "<missing-id>")
     if not isinstance(figure_id, str) or not figure_id:
         _invalid("<missing-id>", "id", "must be a non-empty string")
+    if re.fullmatch(_SAFE_FRAGMENT_ID_PATTERN, figure_id) is None:
+        _invalid(figure_id, "id", f"must match {_SAFE_FRAGMENT_ID_PATTERN}")
     for field in ("title", "description"):
         value = raw_spec.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -631,15 +673,17 @@ def validate_figure(spec: FigureSpec) -> None:
         element_id = element.get("id")
         if not isinstance(element_id, str) or not element_id:
             _invalid(figure_id, "elements.id", "must be a non-empty string")
+        if re.fullmatch(_SAFE_FRAGMENT_ID_PATTERN, element_id) is None:
+            _invalid(figure_id, "elements.id", f"must match {_SAFE_FRAGMENT_ID_PATTERN}")
         if element_id in element_ids:
             _invalid(figure_id, element_id, "is a duplicate element ID")
         element_ids.add(element_id)
 
         role = element.get("role")
-        if role not in _SEMANTIC_ROLES:
+        if not isinstance(role, str) or role not in _SEMANTIC_ROLES:
             _invalid(figure_id, f"{element_id}.role", "must be a known semantic role")
         kind = element.get("kind")
-        if kind not in _ELEMENT_KINDS:
+        if not isinstance(kind, str) or kind not in _ELEMENT_KINDS:
             _invalid(figure_id, f"{element_id}.kind", "must be a known element kind")
 
         if kind == "grid":

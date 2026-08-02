@@ -9,21 +9,24 @@ paired projection answers both from one shared cell domain.
 <figcaption>Each point in the shared cell domain identifies the same logical cell on both arrows, once in request space and once in zero-origin chunk-local space.</figcaption>
 </figure>
 
-The directions are exact: **shared cell domain → request via
+The directions are exact: **shared synthetic input cell domain → request via
 `cell_transform`**, and **shared cell domain → chunk-local via
 `chunk_transform`**. Neither arrow starts at the request or maps one output
 space into the other.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |
-| `cell_transform` | Positions in the original request; its output rank is the request rank |
-| `chunk_transform` | Positions in the selected chunk's zero-origin local frame; its output rank is the source rank |
+| `cell_transform` | Literal coordinates in the original request; its output rank is the request rank |
+| `chunk_transform` | Zero-origin coordinates in the selected chunk's local frame; its output rank is the source rank |
 
-Both transforms have exactly the same input domain. A consumer can therefore
-evaluate one cell-domain point on both sides: one result says where to read,
-and the other says where to place that value. The canonical column selection
-has a one-dimensional request and a two-dimensional source, so its paired
-projections have request rank one and source rank two.
+Both transforms have exactly the same synthetic input cell domain. That domain
+enumerates corresponding cells; it is not either output coordinate space. A
+consumer can therefore evaluate one input point on both sides: the
+`chunk_transform` result says which zero-origin chunk-local coordinate to read,
+and the `cell_transform` result says which literal request coordinate receives
+that value. The canonical column selection has a one-dimensional request and a
+two-dimensional source, so its paired projections have request rank one and
+source rank two.
 
 ## Order and duplicates need the request-side projection
 

@@ -54,9 +54,12 @@ coordinates, including the prependable example below.
 --8<-- "examples/coordinate_origins.py:prepend-grid"
 ```
 
-Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Planning gives
-the chunk-local transform a separate zero-origin domain `[0, 3)`; that local
-frame does not rename the source addresses.
+Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Both public
+projection transforms share the same synthetic input cell domain `[0, 3)`.
+Evaluating its three points shows the two distinct outputs:
+`chunk_transform` produces zero-origin chunk-local coordinates `0, 1, 2`,
+while `cell_transform` produces the literal request coordinates `-3, -2, -1`.
+The shared input domain is not itself the chunk-local coordinate frame.
 
 ## A transform points from the request to the source
 

@@ -59,7 +59,7 @@ def _stylesheet() -> str:
             ".zi-figure text { dominant-baseline: middle; text-anchor: middle; font-size: 14px; }",
             ".zi-figure line, .zi-figure rect { vector-effect: non-scaling-stroke; }",
             ".zi-figure .zi-grid-cell { stroke-width: 1.5; }",
-            ".zi-figure .zi-chunk-boundary { fill: none; stroke-width: 4; stroke-dasharray: 8 5; }",
+            ".zi-figure .zi-chunk-boundary { fill: none; stroke-width: 4; }",
             ".zi-figure .zi-arrow-line { fill: none; stroke-width: 2; }",
             ".zi-figure .zi-arrowhead { fill: var(--zi-text-stroke, #57606a); stroke: none; }",
             ".zi-figure .zi-role-label { font-size: 12px; font-weight: 650; text-anchor: start; }",
@@ -191,10 +191,23 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
     for row in range(element["rows"]):
         for column in range(element["columns"]):
             classes = ["zi-grid-cell"]
-            if (row, column) in element["selected"]:
+            selected = (row, column) in element["selected"]
+            cell_parent = group
+            if selected:
                 classes.append("zi-role-selected")
+                cell_parent = _svg_element(
+                    group,
+                    "g",
+                    **{
+                        "aria-label": f"selected coordinate ({row}, {column})",
+                        "class": "zi-role-selected zi-selected-cell",
+                        "data-non-color-cue": ROLE_CUES["selected"],
+                        "data-semantic-role": "selected",
+                        "id": f"{figure_id}-{element['id']}-selected-{row}-{column}",
+                    },
+                )
             _svg_element(
-                group,
+                cell_parent,
                 "rect",
                 **{
                     "class": " ".join(classes),
@@ -204,6 +217,16 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     "y": origin_y + row * element["cell_size"],
                 },
             )
+            if selected:
+                _svg_element(
+                    cell_parent,
+                    "text",
+                    **{
+                        "class": "zi-selected-coordinate-label",
+                        "x": origin_x + (column + 0.5) * element["cell_size"],
+                        "y": origin_y + (row + 0.5) * element["cell_size"],
+                    },
+                ).text = f"({row}, {column})"
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         chunk_rows, chunk_columns = chunk_shape
@@ -448,6 +471,12 @@ def render_all(output_dir: Path, *, check: bool) -> None:
                 raise RuntimeError(f"stale generated diagram: {path}")
         return
 
+    diagrams = output_dir / "diagrams"
+    expected_paths = set(expected)
+    if diagrams.exists():
+        for path in diagrams.rglob("*.svg"):
+            if path.relative_to(output_dir) not in expected_paths:
+                path.unlink()
     for relative_path, contents in expected.items():
         path = output_dir / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)

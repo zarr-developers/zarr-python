@@ -85,15 +85,34 @@ def test_landing_quickstart_produces_the_shown_result() -> None:
     )
 
 
-def test_integration_consumers_touch_only_planned_source_chunks() -> None:
-    """Dispatch and viewport examples stay within the same two-chunk plan."""
+def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:
+    """A chunk source reads only projected keys and assembles through both transforms."""
     namespace: dict[str, Any] = runpy.run_path(
         str(DOCS / "examples" / "integrations.py"), run_name="__main__"
     )
-    expected_chunks = ((0, 0), (1, 0))
-    assert namespace["ZARR_DISPATCHED_CHUNKS"] == expected_chunks
+    assert namespace["ZARR_SOURCE_KEYS"] == ((0, 0), (0, 1), (1, 0), (1, 1))
+    assert namespace["ZARR_SOURCE_READS"] == ((0, 0), (1, 0))
+    assert all(chunk == cell for chunk, cell in namespace["ZARR_SHARED_DOMAINS"])
+    assert namespace["ZARR_CHUNK_LOCAL_COORDS"] == (
+        ((1, 2), (2, 2)),
+        ((0, 2), (1, 2)),
+    )
+    assert namespace["ZARR_REQUEST_COORDS"] == (((0,), (1,)), ((2,), (3,)))
+    assert namespace["ZARR_READ_VALUES"] == ((10, 18), (26, 34))
+    np.testing.assert_array_equal(namespace["ZARR_RESULT"], np.array([10, 18, 26, 34]))
+
+
+def test_viewport_consumer_uses_exact_non_crossing_source_keys() -> None:
+    """Exact selectors prevent a read crossing into a hidden neighboring chunk."""
+    namespace: dict[str, Any] = runpy.run_path(
+        str(DOCS / "examples" / "integrations.py"), run_name="__main__"
+    )
     assert namespace["VIEWPORT_READS_BEFORE_RESULT"] == ()
-    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == expected_chunks
+    assert namespace["VIEWPORT_SOURCE_KEYS"] == (
+        (slice(1, 3, 1), slice(2, 3, 1)),
+        (slice(3, 5, 1), slice(2, 3, 1)),
+    )
+    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (1, 0))
 
 
 def test_indexing_pattern_matrix_is_complete() -> None:
@@ -125,3 +144,12 @@ def test_projection_example_exposes_paired_directions() -> None:
     assert all(chunk == cell for chunk, cell in namespace["PAIRED_DOMAINS"])
     assert all(p.chunk_transform.output_rank == 2 for p in namespace["PROJECTIONS"])
     assert all(p.cell_transform.output_rank == 1 for p in namespace["PROJECTIONS"])
+
+
+def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct() -> None:
+    """The shared cell coordinates project to local storage and literal request addresses."""
+    namespace = runpy.run_path(str(DOCS / "examples" / "coordinate_origins.py"))
+
+    assert namespace["PREPEND_SHARED_CELL_COORDS"] == ((0,), (1,), (2,))
+    assert namespace["PREPEND_CHUNK_LOCAL_COORDS"] == ((0,), (1,), (2,))
+    assert namespace["PREPEND_REQUEST_COORDS"] == ((-3,), (-2,), (-1,))

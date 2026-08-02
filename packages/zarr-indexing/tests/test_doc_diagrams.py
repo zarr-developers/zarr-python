@@ -177,6 +177,34 @@ def test_semantic_role_must_be_known() -> None:
         validate_figure(malformed_figure("unknown-role", elements=(invalid_text,)))
 
 
+def test_unhashable_semantic_role_has_a_scoped_validation_error() -> None:
+    invalid_text = {**TEXT, "role": list[object]()}
+    with pytest.raises(ValueError) as error:
+        validate_figure(malformed_figure("unhashable-role", elements=(invalid_text,)))
+    assert str(error.value) == "unhashable-role: text.role must be a known semantic role"
+
+
+def test_unhashable_element_kind_has_a_scoped_validation_error() -> None:
+    invalid_text = {**TEXT, "kind": dict[object, object]()}
+    with pytest.raises(ValueError) as error:
+        validate_figure(malformed_figure("unhashable-kind", elements=(invalid_text,)))
+    assert str(error.value) == "unhashable-kind: text.kind must be a known element kind"
+
+
+def test_figure_id_must_be_a_safe_xml_fragment_token() -> None:
+    spec = figure("two figure ids", elements=(TEXT,))
+    with pytest.raises(ValueError) as error:
+        validate_figure(spec)
+    assert str(error.value) == ("two figure ids: id must match [A-Za-z][A-Za-z0-9_-]*")
+
+
+def test_element_id_must_be_a_safe_xml_fragment_token() -> None:
+    invalid_text = {**TEXT, "id": "two element ids"}
+    with pytest.raises(ValueError) as error:
+        validate_figure(malformed_figure("unsafe-element-id", elements=(invalid_text,)))
+    assert str(error.value) == ("unsafe-element-id: elements.id must match [A-Za-z][A-Za-z0-9_-]*")
+
+
 def test_arrow_target_must_resolve() -> None:
     broken_arrow: ArrowSpec = {
         "id": "a",
@@ -320,9 +348,49 @@ def test_render_all_check_reports_the_exact_stale_path(
         path.unlink()
     else:
         path.write_bytes(replacement)
+    before = _snapshot(generated_assets)
     with pytest.raises(RuntimeError) as error:
         render_all(generated_assets, check=True)
     assert str(error.value) == f"stale generated diagram: {path}"
+    assert _snapshot(generated_assets) == before
+
+
+def test_render_all_update_prunes_orphaned_svgs_then_passes_check(
+    generated_assets: Path,
+) -> None:
+    orphan = generated_assets / "diagrams" / "orphan.svg"
+    nested_orphan = generated_assets / "diagrams" / "retired" / "old.svg"
+    orphan.write_text("orphan", encoding="utf-8")
+    nested_orphan.parent.mkdir()
+    nested_orphan.write_text("old", encoding="utf-8")
+
+    render_all(generated_assets, check=False)
+
+    assert not orphan.exists()
+    assert not nested_orphan.exists()
+    assert nested_orphan.parent.is_dir()
+    render_all(generated_assets, check=True)
+
+
+def test_render_all_update_preserves_unrelated_files_and_directories(
+    generated_assets: Path,
+) -> None:
+    unrelated_svg = generated_assets / "manual.svg"
+    unrelated_text = generated_assets / "diagrams" / "notes.txt"
+    unrelated_directory = generated_assets / "diagrams" / "manual-assets"
+    unrelated_nested_file = unrelated_directory / "notes.txt"
+    unrelated_svg.write_text("manual", encoding="utf-8")
+    unrelated_text.write_text("notes", encoding="utf-8")
+    unrelated_directory.mkdir()
+    unrelated_nested_file.write_text("nested notes", encoding="utf-8")
+    before = {
+        path: path.read_bytes() for path in (unrelated_svg, unrelated_text, unrelated_nested_file)
+    }
+
+    render_all(generated_assets, check=False)
+
+    assert unrelated_directory.is_dir()
+    assert {path: path.read_bytes() for path in before} == before
 
 
 def test_render_all_check_includes_stylesheet_and_does_not_mutate(generated_assets: Path) -> None:
@@ -367,7 +435,10 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
         "transform-mapping": "request i maps to source (i + 1, 2).",
         "compose-views": "two view maps collapse into one direct map.",
-        "chunk-overlay": "the basic selection touches chunks (0, 0) and (1, 0).",
+        "chunk-overlay": (
+            "touched global chunk domains map selected cells to zero-origin "
+            "chunk-local coordinates."
+        ),
         "projection-pair": "one cell domain points to request and chunk-local spaces.",
         "orthogonal-contrast": "rows [4, 1, 1] retain order and duplication.",
     }
@@ -420,7 +491,7 @@ def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> N
         )
         cells = [
             element
-            for element in grid
+            for element in grid.iter()
             if element.tag.endswith("rect")
             and "zi-grid-cell" in element.attrib.get("class", "").split()
         ]
@@ -441,6 +512,104 @@ def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> N
         {"class": "zi-chunk-boundary", "x1": "588", "x2": "588", "y1": "34", "y2": "286"},
         {"class": "zi-chunk-boundary", "x1": "420", "x2": "756", "y1": "160", "y2": "160"},
     ]
+
+
+def test_chunk_overlay_distinguishes_global_chunk_metadata_from_local_outputs() -> None:
+    """Global chunk labels must not borrow the chunk-local role or cue."""
+    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
+    annotations = {
+        element["id"]: (element["role"], element["label"])
+        for element in overlay["elements"]
+        if element["kind"] == "text"
+    }
+
+    assert annotations["chunk-zero-coords"] == ("source", "global chunk_coords (0, 0)")
+    assert annotations["chunk-zero-domain"] == (
+        "source",
+        "global chunk_domain [0, 3) \N{MULTIPLICATION SIGN} [0, 4)",
+    )
+    assert annotations["chunk-zero-local"] == (
+        "chunk-local",
+        "chunk-local selected (1, 2), (2, 2)",
+    )
+    assert annotations["chunk-one-coords"] == ("source", "global chunk_coords (1, 0)")
+    assert annotations["chunk-one-domain"] == (
+        "source",
+        "global chunk_domain [3, 6) \N{MULTIPLICATION SIGN} [0, 4)",
+    )
+    assert annotations["chunk-one-local"] == (
+        "chunk-local",
+        "chunk-local selected (0, 2), (1, 2)",
+    )
+
+
+def test_chunk_overlay_selected_cells_have_visible_coordinate_cues() -> None:
+    """Each selected cell must carry the coordinate label promised by ROLE_CUES."""
+    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
+    root = ElementTree.fromstring(render_figure(overlay))
+    selected_groups = [
+        element
+        for element in root.iter()
+        if "zi-selected-cell" in element.attrib.get("class", "").split()
+    ]
+
+    assert [element.attrib["aria-label"] for element in selected_groups] == [
+        "selected coordinate (1, 2)",
+        "selected coordinate (2, 2)",
+        "selected coordinate (3, 2)",
+        "selected coordinate (4, 2)",
+    ]
+    assert all(element.attrib["data-semantic-role"] == "selected" for element in selected_groups)
+    assert all(
+        element.attrib["data-non-color-cue"] == ROLE_CUES["selected"] for element in selected_groups
+    )
+    assert [
+        child.text
+        for element in selected_groups
+        for child in element
+        if "zi-selected-coordinate-label" in child.attrib.get("class", "").split()
+    ] == ["(1, 2)", "(2, 2)", "(3, 2)", "(4, 2)"]
+
+
+def test_chunk_boundaries_are_solid_while_chunk_local_cues_remain_dashed() -> None:
+    chunk_boundary_rule = diagram_render.STYLESHEET.split(
+        ".zi-figure .zi-chunk-boundary {", maxsplit=1
+    )[1].split("}", maxsplit=1)[0]
+    chunk_local_rule = diagram_render.STYLESHEET.split(
+        ".zi-figure .zi-role-chunk-local > rect", maxsplit=1
+    )[1].split("}", maxsplit=1)[0]
+
+    assert "stroke-width: 4;" in chunk_boundary_rule
+    assert "stroke-dasharray" not in chunk_boundary_rule
+    assert "stroke-dasharray: 7 4;" in chunk_local_rule
+
+
+def test_chunk_overlay_annotation_boxes_do_not_overlap_the_source_grid() -> None:
+    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
+    grid = _grid_element(overlay, "chunked-source")
+    root = ElementTree.fromstring(render_figure(overlay))
+    grid_left, grid_top = grid["origin"]
+    grid_right = grid_left + grid["columns"] * grid["cell_size"]
+    grid_bottom = grid_top + grid["rows"] * grid["cell_size"]
+    text_group_ids = {
+        f"chunk-overlay-{element['id']}"
+        for element in overlay["elements"]
+        if element["kind"] == "text"
+    }
+    annotation_boxes = [
+        child
+        for group in root.iter()
+        if group.attrib.get("id") in text_group_ids
+        for child in group
+        if child.tag.endswith("rect")
+    ]
+
+    for box in annotation_boxes:
+        left = float(box.attrib["x"])
+        top = float(box.attrib["y"])
+        right = left + float(box.attrib["width"])
+        bottom = top + float(box.attrib["height"])
+        assert right <= grid_left or grid_right <= left or bottom <= grid_top or grid_bottom <= top
 
 
 def test_indexing_selection_arrow_labels_do_not_obscure_selected_cells() -> None:
@@ -525,7 +694,10 @@ def test_rendered_figures_have_structural_and_visible_semantics() -> None:
         assert role_groups, figure_spec["id"]
         for group in role_groups:
             role = group.attrib["data-semantic-role"]
-            assert group.attrib["aria-label"] == role
+            if "zi-selected-cell" in group.attrib.get("class", "").split():
+                assert group.attrib["aria-label"].startswith("selected coordinate ")
+            else:
+                assert group.attrib["aria-label"] == role
             assert group.attrib["data-non-color-cue"] == next(
                 cue for known_role, cue in ROLE_CUES.items() if known_role == role
             )

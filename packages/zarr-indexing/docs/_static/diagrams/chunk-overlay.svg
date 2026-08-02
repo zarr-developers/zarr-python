@@ -1,6 +1,6 @@
 <svg aria-labelledby="chunk-overlay-title chunk-overlay-desc" class="zi-figure" role="img" viewBox="0 0 900 390" xmlns="http://www.w3.org/2000/svg">
   <title id="chunk-overlay-title">The selection crosses one chunk-row boundary</title>
-  <desc id="chunk-overlay-desc">the basic selection touches chunks (0, 0) and (1, 0).</desc>
+  <desc id="chunk-overlay-desc">touched global chunk domains map selected cells to zero-origin chunk-local coordinates.</desc>
   <defs>
     <marker id="chunk-overlay-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
       <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />
@@ -17,7 +17,10 @@
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="34" />
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="76" />
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="76" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="76" />
+    <g aria-label="selected coordinate (1, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-chunked-source-selected-1-2">
+      <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="76" />
+      <text class="zi-selected-coordinate-label" x="525.0" y="97.0">(1, 2)</text>
+    </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="76" />
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="76" />
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="76" />
@@ -25,7 +28,10 @@
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="76" />
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="118" />
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="118" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="118" />
+    <g aria-label="selected coordinate (2, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-chunked-source-selected-2-2">
+      <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="118" />
+      <text class="zi-selected-coordinate-label" x="525.0" y="139.0">(2, 2)</text>
+    </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="118" />
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="118" />
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="118" />
@@ -33,7 +39,10 @@
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="118" />
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="160" />
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="160" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="160" />
+    <g aria-label="selected coordinate (3, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-chunked-source-selected-3-2">
+      <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="160" />
+      <text class="zi-selected-coordinate-label" x="525.0" y="181.0">(3, 2)</text>
+    </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="160" />
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="160" />
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="160" />
@@ -41,7 +50,10 @@
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="160" />
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="202" />
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="202" />
-    <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="202" />
+    <g aria-label="selected coordinate (4, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-chunked-source-selected-4-2">
+      <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="202" />
+      <text class="zi-selected-coordinate-label" x="525.0" y="223.0">(4, 2)</text>
+    </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="202" />
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="202" />
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="202" />
@@ -58,17 +70,33 @@
     <line class="zi-chunk-boundary" x1="588" x2="588" y1="34" y2="286" />
     <line class="zi-chunk-boundary" x1="420" x2="756" y1="160" y2="160" />
   </g>
-  <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-zero">
-    <rect height="26" width="100" x="90.0" y="91" />
-    <text x="140" y="104">chunk (0, 0)</text>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunk-zero-coords">
+    <rect height="26" width="198" x="79.0" y="45" />
+    <text x="178" y="58">global chunk_coords (0, 0)</text>
   </g>
-  <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-one">
-    <rect height="26" width="100" x="90.0" y="223" />
-    <text x="140" y="236">chunk (1, 0)</text>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunk-zero-domain">
+    <rect height="26" width="261" x="47.5" y="80" />
+    <text x="178" y="93">global chunk_domain [0, 3) × [0, 4)</text>
+  </g>
+  <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-zero-local">
+    <rect height="26" width="261" x="47.5" y="115" />
+    <text x="178" y="128">chunk-local selected (1, 2), (2, 2)</text>
+  </g>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunk-one-coords">
+    <rect height="26" width="198" x="79.0" y="183" />
+    <text x="178" y="196">global chunk_coords (1, 0)</text>
+  </g>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunk-one-domain">
+    <rect height="26" width="261" x="47.5" y="218" />
+    <text x="178" y="231">global chunk_domain [3, 6) × [0, 4)</text>
+  </g>
+  <g aria-label="chunk-local" class="zi-role-chunk-local" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" id="chunk-overlay-chunk-one-local">
+    <rect height="26" width="261" x="47.5" y="253" />
+    <text x="178" y="266">chunk-local selected (0, 2), (1, 2)</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="chunk-overlay-selection-label">
-    <rect height="26" width="114" x="773.0" y="117" />
-    <text x="830" y="130">selected cells</text>
+    <rect height="26" width="163" x="568.5" y="302" />
+    <text x="650" y="315">selected global cells</text>
   </g>
   <g aria-label="Visible semantic role legend" class="zi-legend" id="chunk-overlay-legend">
     <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-legend-source">

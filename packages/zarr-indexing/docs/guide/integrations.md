@@ -7,27 +7,31 @@ run, how decoded chunks are obtained, and where completed values are retained.
 ## Zarr chunk dispatch
 
 A Zarr-oriented reader can consume each public `ChunkProjection` and use its
-`chunk_coords` to dispatch work to its own storage and codec layers. This
-example stops at that ownership boundary: it records the two planned chunk
-coordinates, `(0, 0)` and `(1, 0)`, without fetching, decoding, or scheduling a
-chunk.
+`chunk_coords` to obtain one decoded chunk from its own storage and codec
+layers. This tiny source keeps four in-memory chunks keyed by their global
+chunk coordinates and records the exact reads. For each projection, the
+consumer enumerates the shared synthetic input cell domain, evaluates
+`chunk_transform` to read zero-origin chunk-local coordinates, and evaluates
+`cell_transform` to place each value at its literal request coordinate.
 
 ```python
 --8<-- "examples/integrations.py:zarr-consumer"
 ```
 
-The projection also carries the paired chunk-local and request-side transforms
-described in [One cell domain, two projections](05-projections.md). A real Zarr
-consumer can lower those transforms after its own chunk dispatch; the plan does
-not prescribe that execution policy.
+The two reads are exactly `(0, 0)` and `(1, 0)`; untouched chunks `(0, 1)` and
+`(1, 1)` are never read. The assembled request is `[10, 18, 26, 34]`. The
+example intentionally begins with already decoded in-memory chunks: storage
+keys, codecs, scheduling, caching, and asynchronous orchestration remain the
+consumer's policy rather than responsibilities of the plan.
 
 ## napari-like consumer
 
 This is a **napari-like consumer**, not a napari integration. It models the
 boundary a viewport could use without importing or claiming support for
 napari. `RecordingArray` exposes a chunked, basic-indexing source; composing the
-visible slice records no reads. Only `result()` materializes it, and that read
-touches exactly chunks `(0, 0)` and `(1, 0)`.
+visible slice records no reads. Only `result()` materializes it, with the exact
+source selectors `1:3, 2:3` and `3:5, 2:3`; neither selector crosses into an
+untouched neighboring chunk.
 
 ```python
 --8<-- "examples/integrations.py:viewport-consumer"
