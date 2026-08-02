@@ -93,6 +93,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             pickle.dumps(store)
 
         store.close()
+        assert store.path is not None
         with zipfile.ZipFile(store.path, mode="r") as archive:
             assert archive.read("sentinel") == data.to_bytes()
 
