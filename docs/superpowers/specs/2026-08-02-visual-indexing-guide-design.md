@@ -89,6 +89,22 @@ Arbitrary origins let translated views, cropped regions, chunk domains, and
 external coordinate systems retain their addresses instead of repeatedly
 renumbering every cell from zero.
 
+The primary practical example is prepending storage. Begin with a chunked axis
+whose domain is `[0, 6)`, divided into chunks `[0, 3)` and `[3, 6)`. Prepending
+one three-cell chunk can extend the domain to `[-3, 6)` and assign the new chunk
+the interval `[-3, 0)`. Every existing cell keeps its coordinate. If the model
+required the domain to begin at zero, the same operation would shift all old
+coordinates by three, forcing every saved transform, view, and coordinate-based
+reference to be rewritten.
+
+This motivates the phrase **coordinates are just integers**. Zero has no special
+status in the algebra. Chunk coordinates and cell coordinates may extend in
+either integer direction, allowing a `DimensionGridLike` implementation to
+express layouts such as prepended or nonuniform chunks without making the
+transform layer depend on one storage policy. The guide must distinguish the
+capability of the grid protocol from the provided `EdgeDimensionGrid` helper,
+which intentionally describes a zero-origin dask-style partition.
+
 Then contrast the two public dialects explicitly:
 
 ```python
@@ -134,6 +150,13 @@ The figure labels the same touched chunk twice: first by its global
 `chunk_domain`, then by the zero-origin coordinates used by `chunk_transform`.
 This makes re-zeroing visible as an explicit translation between coordinate
 systems, not an assumption that all coordinate indexing begins at zero.
+
+A second static panel reuses the prepend example. A tiny custom
+`DimensionGridLike` maps chunk coordinate `-1` to `[-3, 0)`, chunk coordinate
+`0` to `[0, 3)`, and chunk coordinate `1` to `[3, 6)`. Planning a selection in
+the prepended interval yields `chunk_coords == (-1,)`, preserves
+`chunk_domain == [-3, 0)`, and maps the requested cells to zero-origin
+chunk-local coordinates only in `chunk_transform`.
 
 Reader outcome: a chunk plan partitions a global transform without coupling it
 to a source, codec pipeline, or scheduler.
@@ -196,10 +219,12 @@ the figures; values appear only when result ordering matters.
 1. `image[1:5, 2]` establishes familiar selection behavior.
 2. A short `[-2, 3)` number line distinguishes coordinate addresses from
    zero-based positions without changing the canonical image.
-3. A second lazy index demonstrates composition.
-4. Chunk boundaries are overlaid on the unchanged selection.
-5. `oindex[[4, 1, 1], 2:6]` demonstrates reordering and duplication.
-6. The same projections feed zarr chunk reads or a viewport consumer.
+3. A prepend panel grows `[0, 6)` to `[-3, 6)` without renumbering existing
+   chunks or cells.
+4. A second lazy index demonstrates composition.
+5. Chunk boundaries are overlaid on the unchanged selection.
+6. `oindex[[4, 1, 1], 2:6]` demonstrates reordering and duplication.
+7. The same projections feed zarr chunk reads or a viewport consumer.
 
 All other forms move to the patterns reference. This preserves continuity while
 proving that paired projections do more than rectangular slicing.
@@ -273,6 +298,11 @@ contained by `IndexDomain((-2,), (3,))` and selects the literal coordinate in
 the transform algebra, while `LazyArray(...).lazy[-1]` selects the final
 position after NumPy-style normalization.
 
+The same file defines a minimal negative-origin `DimensionGridLike` and plans a
+read against a prepended chunk. The example is intentionally separate from
+`EdgeDimensionGrid`: it demonstrates that planning is grid-protocol-driven
+without implying that the zero-origin helper has a prepend operation.
+
 ## File layout
 
 ```text
@@ -338,6 +368,12 @@ if the literal-coordinate and positional dialects are accidentally conflated.
 Diagram tests also require the negative-origin number line to expose all five
 tick labels and identify `[-2, 3)` as its domain.
 
+The coordinate-origin test also plans against the custom prependable grid and
+asserts the negative chunk coordinate, negative global `chunk_domain`, and
+zero-origin local transform independently. This catches implementations that
+accidentally clamp global coordinates at zero or erase the distinction between
+global and chunk-local space.
+
 Acceptance requires the package test suite, Ruff, Pyright, deterministic diagram
 check, and `mkdocs build --strict` to pass. Manual visual QA covers Material
 light and dark schemes at desktop and narrow widths, plus keyboard navigation
@@ -359,14 +395,17 @@ the automated contract; responsive composition receives focused manual QA.
 3. A reader can explain why an `IndexDomain` need not start at zero, why `-1`
    can be a valid literal coordinate, and why `LazyArray(...).lazy[-1]` still
    means the final position.
-4. The last two chapters correctly explain chunk planning and transform
+4. The prepend example extends `[0, 6)` to `[-3, 6)` without changing existing
+   coordinates, and its plan exposes chunk `-1` globally while retaining
+   zero-origin coordinates locally.
+5. The last two chapters correctly explain chunk planning and transform
    directionality.
-5. Zarr and viewport examples read only chunks touched by their selections.
-6. Every displayed code fragment is backed by an executed example.
-7. Every diagram is deterministic, accessible, and legible in both themes and
+6. Zarr and viewport examples read only chunks touched by their selections.
+7. Every displayed code fragment is backed by an executed example.
+8. Every diagram is deterministic, accessible, and legible in both themes and
    at narrow widths.
-8. The patterns page covers important variants without interrupting the tour.
-9. Existing notes and API pages link into the guide without competing accounts.
+9. The patterns page covers important variants without interrupting the tour.
+10. Existing notes and API pages link into the guide without competing accounts.
 
 ## Approved decisions
 
@@ -377,5 +416,7 @@ the automated contract; responsive composition receives focused manual QA.
 - Explicit user/integrator stopping point after lazy composition.
 - Explicit distinction between literal coordinates and NumPy-style positions,
   including negative coordinate domains.
+- Prepending a chunk is the concrete motivation for negative coordinates and
+  preserving coordinate identity.
 - No animation, JavaScript dependency, or color-only semantics.
 - Light and dark contrast are tested requirements, not deferred visual polish.
