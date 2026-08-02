@@ -466,13 +466,11 @@ def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
         grids["indexing-selection"]["rows"],
         grids["indexing-selection"]["columns"],
         grids["indexing-selection"]["cell_size"],
-        grids["indexing-selection"]["origin"],
         grids["indexing-selection"]["selected"],
     ) == (
         grids["chunk-overlay"]["rows"],
         grids["chunk-overlay"]["columns"],
         grids["chunk-overlay"]["cell_size"],
-        grids["chunk-overlay"]["origin"],
         grids["chunk-overlay"]["selected"],
     )
 
@@ -509,9 +507,58 @@ def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> N
         if element.tag.endswith("line") and element.attrib.get("class") == "zi-chunk-boundary"
     ]
     assert boundaries == [
-        {"class": "zi-chunk-boundary", "x1": "588", "x2": "588", "y1": "34", "y2": "286"},
-        {"class": "zi-chunk-boundary", "x1": "420", "x2": "756", "y1": "160", "y2": "160"},
+        {"class": "zi-chunk-boundary", "x1": "220", "x2": "220", "y1": "140", "y2": "392"},
+        {"class": "zi-chunk-boundary", "x1": "52", "x2": "388", "y1": "266", "y2": "266"},
     ]
+
+
+def test_chunk_overlay_uses_a_phone_readable_stacked_layout() -> None:
+    """The 390 px audit viewport must keep key labels at 12 CSS px without scrolling."""
+    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
+    grid = _grid_element(overlay, "chunked-source")
+    root = ElementTree.fromstring(render_figure(overlay))
+    rendered_phone_width = 386
+    svg_label_size = 14
+
+    assert svg_label_size * rendered_phone_width / overlay["width"] >= 12
+    assert overlay["height"] > overlay["width"]
+    grid_left, grid_top = grid["origin"]
+    grid_right = grid_left + grid["columns"] * grid["cell_size"]
+    grid_bottom = grid_top + grid["rows"] * grid["cell_size"]
+    assert grid_left == overlay["width"] - grid_right
+
+    annotation_boxes = {
+        element.attrib["id"].removeprefix("chunk-overlay-"): next(
+            child for child in element if child.tag.endswith("rect")
+        )
+        for element in root.iter()
+        if element.attrib.get("id", "").removeprefix("chunk-overlay-")
+        in {
+            "chunk-zero-coords",
+            "chunk-zero-domain",
+            "chunk-zero-local",
+            "chunk-one-coords",
+            "chunk-one-domain",
+            "chunk-one-local",
+            "selection-label",
+        }
+    }
+    for element_id in ("chunk-zero-coords", "chunk-zero-domain", "chunk-zero-local"):
+        box = annotation_boxes[element_id]
+        assert float(box.attrib["y"]) + float(box.attrib["height"]) <= grid_top
+    for element_id in (
+        "chunk-one-coords",
+        "chunk-one-domain",
+        "chunk-one-local",
+        "selection-label",
+    ):
+        assert float(annotation_boxes[element_id].attrib["y"]) >= grid_bottom
+
+    chunk_overlay_rule = diagram_render.STYLESHEET.split(
+        '.zi-figure[aria-labelledby~="chunk-overlay-title"] {', maxsplit=1
+    )[1].split("}", maxsplit=1)[0]
+    assert "max-width: 528px;" in chunk_overlay_rule
+    assert "overflow" not in chunk_overlay_rule
 
 
 def test_chunk_overlay_distinguishes_global_chunk_metadata_from_local_outputs() -> None:
