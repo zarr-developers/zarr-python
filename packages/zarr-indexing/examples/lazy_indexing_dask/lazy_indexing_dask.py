@@ -21,10 +21,10 @@ import dask
 import dask.array as da
 import numpy as np
 import pytest
-from dask.base import tokenize
-from zarr_indexing import LazyArray
-
 import zarr
+from dask.base import tokenize
+
+from zarr_indexing import LazyArray
 
 
 @pytest.fixture

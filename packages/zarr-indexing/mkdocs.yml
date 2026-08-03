@@ -11,7 +11,7 @@ site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-indexing.readthedocs.io
 docs_dir: docs
 use_directory_urls: true
 exclude_docs: |
-  examples/**
+  examples/*.py
   diagrams/**
 
 nav:
@@ -27,6 +27,9 @@ nav:
   - Practical reference:
       - Indexing patterns: guide/patterns.md
       - Integration boundaries: guide/integrations.md
+  - Examples:
+      - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md
+      - Lazy indexing with Dask: examples/lazy_indexing_dask.md
   - ndsel.md
   - design-notes.md
   - API Reference:
@@ -132,4 +135,4 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets:
-      base_path: [docs]
+      base_path: [docs, examples]

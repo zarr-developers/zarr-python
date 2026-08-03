@@ -42,6 +42,7 @@ The script declares its dependencies inline
 with [uv](https://docs.astral.sh/uv/), which installs them automatically:
 
 ```bash
+cd packages/zarr-indexing
 uv run examples/lazy_indexing_dask/lazy_indexing_dask.py
 ```
 
@@ -49,5 +50,6 @@ Alternatively, run it with plain Python, in which case you must first install
 `zarr`, `zarr-indexing`, `dask[array]`, `numpy`, and `pytest` yourself:
 
 ```bash
+cd packages/zarr-indexing
 python examples/lazy_indexing_dask/lazy_indexing_dask.py
 ```

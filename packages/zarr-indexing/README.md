@@ -34,6 +34,11 @@ repository and consumed by `zarr` to resolve array indexing operations.
 pip install zarr-indexing
 ```
 
+## Examples
+
+- [Lazy indexing a NumPy array](examples/lazy_indexing_numpy/README.md)
+- [Lazy indexing with Dask](examples/lazy_indexing_dask/README.md)
+
 ## Contributing
 
 Development commands, the test suite and the docs build are described in

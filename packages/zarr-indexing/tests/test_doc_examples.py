@@ -13,6 +13,9 @@ from docs.diagrams.specifications import FIGURES
 from zarr_indexing import LazyArray
 
 DOCS = Path(__file__).parents[1] / "docs"
+PACKAGE_ROOT = DOCS.parent
+REPOSITORY_ROOT = PACKAGE_ROOT.parents[1]
+STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
 EXAMPLES = tuple(
     DOCS / "examples" / name
     for name in (
@@ -321,6 +324,21 @@ def test_system_memory_cache_assembles_a_scalar_selection() -> None:
 def test_system_memory_cache_is_documentation_only() -> None:
     assert not hasattr(zarr_indexing, "SystemMemoryChunkCache")
     assert not hasattr(zarr_indexing, "ChunkState")
+
+
+@pytest.mark.parametrize("name", ["lazy_indexing_numpy", "lazy_indexing_dask"])
+def test_lazy_indexing_examples_are_scoped_to_the_indexing_package(name: str) -> None:
+    assert (STANDALONE_EXAMPLES / name / "README.md").is_file()
+    assert (STANDALONE_EXAMPLES / name / f"{name}.py").is_file()
+    assert (DOCS / "examples" / f"{name}.md").is_file()
+
+    assert not (REPOSITORY_ROOT / "examples" / name).exists()
+    assert not (REPOSITORY_ROOT / "docs" / "user-guide" / "examples" / f"{name}.md").exists()
+
+    package_nav = (PACKAGE_ROOT / "mkdocs.yml").read_text()
+    repository_nav = (REPOSITORY_ROOT / "mkdocs.yml").read_text()
+    assert f"examples/{name}.md" in package_nav
+    assert f"user-guide/examples/{name}.md" not in repository_nav
 
 
 @pytest.mark.parametrize(

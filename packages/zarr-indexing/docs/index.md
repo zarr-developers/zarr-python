@@ -51,6 +51,8 @@ the view stays lazy and how repeated indexing combines.
 - [Visual guide](guide/index.md)
 - [Indexing pattern reference](guide/patterns.md)
 - [Integration boundaries](guide/integrations.md)
+- [Lazy indexing a NumPy array](examples/lazy_indexing_numpy.md)
+- [Lazy indexing with Dask](examples/lazy_indexing_dask.md)
 - [The ndsel wire format](ndsel.md)
 - [Design notes](design-notes.md)
 - [API reference](api/index.md)

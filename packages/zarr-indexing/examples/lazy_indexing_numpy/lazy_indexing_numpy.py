@@ -16,6 +16,7 @@ import sys
 
 import numpy as np
 import pytest
+
 from zarr_indexing import LazyArray
 
 
