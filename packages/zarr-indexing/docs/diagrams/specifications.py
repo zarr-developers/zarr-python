@@ -143,6 +143,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "cell_size": 42,
                 "origin": (420, 34),
                 "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
+                "show_coordinates": True,
             },
             {
                 "id": "request-vector",

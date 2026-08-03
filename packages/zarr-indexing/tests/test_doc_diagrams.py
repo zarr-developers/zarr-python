@@ -679,17 +679,26 @@ def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() 
     ]
 
 
-def test_chunk_overlay_shows_faded_coordinates_for_unselected_cells() -> None:
-    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
-    root = ElementTree.fromstring(render_figure(overlay))
+@pytest.mark.parametrize(
+    ("figure_id", "grid_id"),
+    [("indexing-selection", "source-grid"), ("chunk-overlay", "chunked-source")],
+)
+def test_canonical_source_figures_show_faded_coordinates_for_unselected_cells(
+    figure_id: str, grid_id: str
+) -> None:
+    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == figure_id)
+    root = ElementTree.fromstring(render_figure(spec))
+    grid = next(
+        element for element in root.iter() if element.attrib.get("id") == f"{figure_id}-{grid_id}"
+    )
     unselected_labels = [
         element
-        for element in root.iter()
+        for element in grid.iter()
         if element.attrib.get("class") == "zi-unselected-coordinate-label"
     ]
     selected_labels = [
         element
-        for element in root.iter()
+        for element in grid.iter()
         if element.attrib.get("class") == "zi-selected-coordinate-label"
     ]
 

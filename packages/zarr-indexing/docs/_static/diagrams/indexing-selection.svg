@@ -8,65 +8,109 @@
   </defs>
   <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="indexing-selection-source-grid">
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="55.0">(0, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="55.0">(0, 1)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="504" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="525.0" y="55.0">(0, 2)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="55.0">(0, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="55.0">(0, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="55.0">(0, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="55.0">(0, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="34" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="55.0">(0, 7)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="97.0">(1, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="97.0">(1, 1)</text>
     <g aria-label="selected coordinate (1, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-1-2">
       <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="76" />
       <text class="zi-selected-coordinate-label" x="525.0" y="97.0">(1, 2)</text>
     </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="97.0">(1, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="97.0">(1, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="97.0">(1, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="97.0">(1, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="76" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="97.0">(1, 7)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="139.0">(2, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="139.0">(2, 1)</text>
     <g aria-label="selected coordinate (2, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-2-2">
       <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="118" />
       <text class="zi-selected-coordinate-label" x="525.0" y="139.0">(2, 2)</text>
     </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="139.0">(2, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="139.0">(2, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="139.0">(2, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="139.0">(2, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="118" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="139.0">(2, 7)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="181.0">(3, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="181.0">(3, 1)</text>
     <g aria-label="selected coordinate (3, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-3-2">
       <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="160" />
       <text class="zi-selected-coordinate-label" x="525.0" y="181.0">(3, 2)</text>
     </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="181.0">(3, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="181.0">(3, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="181.0">(3, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="181.0">(3, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="160" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="181.0">(3, 7)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="223.0">(4, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="223.0">(4, 1)</text>
     <g aria-label="selected coordinate (4, 2)" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-4-2">
       <rect class="zi-grid-cell zi-role-selected" height="42" width="42" x="504" y="202" />
       <text class="zi-selected-coordinate-label" x="525.0" y="223.0">(4, 2)</text>
     </g>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="223.0">(4, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="223.0">(4, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="223.0">(4, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="223.0">(4, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="202" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="223.0">(4, 7)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="420" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="441.0" y="265.0">(5, 0)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="462" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="483.0" y="265.0">(5, 1)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="504" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="525.0" y="265.0">(5, 2)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="546" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="567.0" y="265.0">(5, 3)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="588" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="609.0" y="265.0">(5, 4)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="630" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="651.0" y="265.0">(5, 5)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="672" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="693.0" y="265.0">(5, 6)</text>
     <rect class="zi-grid-cell" height="42" width="42" x="714" y="244" />
+    <text aria-hidden="true" class="zi-unselected-coordinate-label" x="735.0" y="265.0">(5, 7)</text>
   </g>
   <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="indexing-selection-request-vector">
     <rect height="58" width="180" x="42" y="114" />
