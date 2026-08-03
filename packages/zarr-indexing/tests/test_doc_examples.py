@@ -20,6 +20,11 @@ STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
 CACHE_EXAMPLE_NAME = "napari_chunk_cache"
 CACHE_EXAMPLE_DIR = STANDALONE_EXAMPLES / CACHE_EXAMPLE_NAME
 CACHE_EXAMPLE = CACHE_EXAMPLE_DIR / f"{CACHE_EXAMPLE_NAME}.py"
+STANDALONE_EXAMPLE_NAMES = (
+    "lazy_indexing_numpy",
+    "lazy_indexing_dask",
+    CACHE_EXAMPLE_NAME,
+)
 DOC_EXAMPLES = tuple(
     DOCS / "examples" / name
     for name in (
@@ -392,21 +397,35 @@ def test_half_open_interval_examples_explain_ordered_concatenation_before_negati
 
 def test_visual_guide_is_one_scrolling_document_with_stable_section_links() -> None:
     guide = (DOCS / "guide" / "index.md").read_text()
-    mkdocs = (PACKAGE_ROOT / "mkdocs.yml").read_text()
     headings = tuple(f"## {title} {{#{anchor}}}" for title, anchor in TUTORIAL_SECTIONS)
-    expected_nav = "\n".join(
-        ("  - Use lazy indexing:", "      - Visual guide: guide/index.md")
-        + tuple(f"      - {title}: /guide/#{anchor}" for title, anchor in TUTORIAL_SECTIONS)
-    )
 
     assert all(guide.count(heading) == 1 for heading in headings)
     positions = tuple(guide.index(heading) for heading in headings)
     assert positions == tuple(sorted(positions))
     assert all(f"](#{anchor})" in guide for _, anchor in TUTORIAL_SECTIONS)
     assert all(guide.count(snippet) == 1 for snippet in TUTORIAL_SNIPPETS)
-    assert expected_nav in mkdocs
     assert all(not (DOCS / "guide" / name).exists() for name in RETIRED_TUTORIAL_FILES)
+
+
+def test_visual_guide_navigation_is_version_relative() -> None:
+    mkdocs = (PACKAGE_ROOT / "mkdocs.yml").read_text()
+    expected_nav = "\n".join(
+        ("  - Use lazy indexing:", "      - Visual guide: guide/index.md")
+        + tuple(f"      - {title}: guide/#{anchor}" for title, anchor in TUTORIAL_SECTIONS)
+    )
+
+    assert expected_nav in mkdocs
+    assert "/guide/#" not in mkdocs
     assert all(name not in mkdocs for name in RETIRED_TUTORIAL_FILES)
+
+
+@pytest.mark.parametrize("name", STANDALONE_EXAMPLE_NAMES)
+def test_standalone_example_source_uses_a_plain_python_fence(name: str) -> None:
+    source = (DOCS / "examples" / f"{name}.md").read_text()
+    expected_include = f'```python\n--8<-- "{name}/{name}.py"\n```'
+
+    assert expected_include in source
+    assert "```python " not in source
 
 
 @pytest.mark.parametrize(
@@ -506,7 +525,7 @@ def test_system_memory_cache_is_documentation_only() -> None:
     assert not hasattr(zarr_indexing, "ChunkState")
 
 
-@pytest.mark.parametrize("name", ["lazy_indexing_numpy", "lazy_indexing_dask", CACHE_EXAMPLE_NAME])
+@pytest.mark.parametrize("name", STANDALONE_EXAMPLE_NAMES)
 def test_lazy_indexing_examples_are_scoped_to_the_indexing_package(name: str) -> None:
     readme = STANDALONE_EXAMPLES / name / "README.md"
     assert readme.is_file()

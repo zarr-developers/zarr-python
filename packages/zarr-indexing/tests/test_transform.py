@@ -765,6 +765,72 @@ class TestIndexTransformIntersect:
         assert restricted.domain.inclusive_min == (2,)
         assert restricted.domain.exclusive_max == (4,)
 
+    @pytest.mark.parametrize(
+        ("input_domain", "output_domain", "output_map", "expected"),
+        [
+            (
+                (2**53, 2**53 + 3),
+                (2**53 + 1, 2**53 + 2),
+                DimensionMap(input_dimension=0),
+                (2**53 + 1, 2**53 + 2),
+            ),
+            (
+                (-(2**53) - 2, -(2**53) + 1),
+                (-(2**53) - 1, -(2**53)),
+                DimensionMap(input_dimension=0),
+                (-(2**53) - 1, -(2**53)),
+            ),
+            (
+                (-(2**53) - 2, -(2**53) + 1),
+                (2**53 + 1, 2**53 + 2),
+                DimensionMap(input_dimension=0, stride=-1),
+                (-(2**53) - 1, -(2**53)),
+            ),
+            (
+                (2**53, 2**53 + 3),
+                (-(2**53) - 2, -(2**53) - 1),
+                DimensionMap(input_dimension=0, stride=-1),
+                (2**53 + 2, 2**53 + 3),
+            ),
+        ],
+        ids=[
+            "positive-coordinates-positive-stride",
+            "negative-coordinates-positive-stride",
+            "positive-coordinates-negative-stride",
+            "negative-coordinates-negative-stride",
+        ],
+    )
+    def test_dimension_intersection_is_exact_above_float_precision(
+        self,
+        input_domain: tuple[int, int],
+        output_domain: tuple[int, int],
+        output_map: DimensionMap,
+        expected: tuple[int, int],
+    ) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain((input_domain[0],), (input_domain[1],)),
+            output=(output_map,),
+        )
+
+        result = transform.intersect(IndexDomain((output_domain[0],), (output_domain[1],)))
+
+        assert result is not None
+        restricted, _surviving = result
+        assert restricted.domain == IndexDomain((expected[0],), (expected[1],))
+
+    def test_dimension_intersection_accepts_unbounded_python_integer_precision(self) -> None:
+        huge = 10**400
+        transform = IndexTransform(
+            domain=IndexDomain((huge,), (huge + 2,)),
+            output=(DimensionMap(input_dimension=0),),
+        )
+
+        result = transform.intersect(IndexDomain((huge + 1,), (huge + 2,)))
+
+        assert result is not None
+        restricted, _surviving = result
+        assert restricted.domain == IndexDomain((huge + 1,), (huge + 2,))
+
     def test_array_partial(self) -> None:
         arr = np.array([3, 8, 15, 22], dtype=np.intp)
         t = IndexTransform(

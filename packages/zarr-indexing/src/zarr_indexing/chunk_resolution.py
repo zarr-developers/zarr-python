@@ -349,8 +349,9 @@ def _iter_chunk_transform_results(
 
 
 def _covers_whole_chunk(transform: IndexTransform, chunk_shape: tuple[int, ...]) -> bool:
-    """Whether an affine chunk-local transform addresses every chunk cell."""
+    """Whether an affine chunk-local transform bijects onto every chunk cell."""
     domain = transform.domain
+    used_nontrivial_inputs: set[int] = set()
     for out_dim, m in enumerate(transform.output):
         extent = chunk_shape[out_dim]
         if isinstance(m, ConstantMap):
@@ -369,9 +370,14 @@ def _covers_whole_chunk(transform: IndexTransform, chunk_shape: tuple[int, ...])
             last = m.offset + m.stride * (hi - 1)
             if min(first, last) != 0 or max(first, last) != extent - 1:
                 return False
+            if extent > 1:
+                if m.input_dimension in used_nontrivial_inputs:
+                    return False
+                used_nontrivial_inputs.add(m.input_dimension)
         else:
             return False
-    return True
+    nontrivial_inputs = {dimension for dimension, extent in enumerate(domain.shape) if extent > 1}
+    return used_nontrivial_inputs == nontrivial_inputs
 
 
 def _orthogonal_cell_transform(

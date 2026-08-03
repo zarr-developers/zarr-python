@@ -28,7 +28,6 @@ resolves the transform against the chunk grid via intersect + translate.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -665,11 +664,11 @@ def _intersect_dimension_map(
     if input_lo >= input_hi:
         return None
     if m.stride > 0:
-        new_input_lo = max(input_lo, math.ceil((lo - m.offset) / m.stride))
-        new_input_hi = min(input_hi, math.ceil((hi - m.offset) / m.stride))
+        new_input_lo = max(input_lo, _ceil_div(lo - m.offset, m.stride))
+        new_input_hi = min(input_hi, _ceil_div(hi - m.offset, m.stride))
     elif m.stride < 0:
-        new_input_lo = max(input_lo, math.ceil((hi - 1 - m.offset) / m.stride))
-        new_input_hi = min(input_hi, math.ceil((lo - 1 - m.offset) / m.stride))
+        new_input_lo = max(input_lo, _ceil_div(hi - 1 - m.offset, m.stride))
+        new_input_hi = min(input_hi, _ceil_div(lo - 1 - m.offset, m.stride))
     else:
         if lo <= m.offset < hi:
             new_input_lo, new_input_hi = input_lo, input_hi
@@ -678,6 +677,11 @@ def _intersect_dimension_map(
     if new_input_lo >= new_input_hi:
         return None
     return new_input_lo, new_input_hi
+
+
+def _ceil_div(numerator: int, denominator: int) -> int:
+    """Return ``ceil(numerator / denominator)`` using exact integer arithmetic."""
+    return -((-numerator) // denominator)
 
 
 def _intersect_orthogonal(

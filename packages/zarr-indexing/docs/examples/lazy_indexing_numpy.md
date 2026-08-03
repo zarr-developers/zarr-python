@@ -2,6 +2,6 @@
 
 ## Source Code
 
-```python exec="false" reason="pymdownx snippet include directive, not python source"
+```python
 --8<-- "lazy_indexing_numpy/lazy_indexing_numpy.py"
 ```

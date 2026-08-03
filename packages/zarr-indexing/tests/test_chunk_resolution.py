@@ -134,6 +134,69 @@ def test_coverage_classification(transform: IndexTransform, expected: list[str])
     assert [projection.coverage for projection in plan_chunks(transform, grids)] == expected
 
 
+def test_repeated_input_dependency_is_not_full_coverage() -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(DimensionMap(input_dimension=0), DimensionMap(input_dimension=0)),
+    )
+    grids = dimension_grids_from_chunks((2, 2), (2, 2))
+
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == ["partial"]
+
+
+def test_unused_input_axis_is_not_full_coverage() -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2, 2)),
+        output=(DimensionMap(input_dimension=0),),
+    )
+    grids = dimension_grids_from_chunks((2,), (2,))
+
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == ["partial"]
+
+
+@pytest.mark.parametrize(
+    ("transform", "grids"),
+    [
+        (
+            IndexTransform.from_shape((2, 3)),
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+        (
+            IndexTransform(
+                domain=IndexDomain.from_shape((2, 3)),
+                output=(DimensionMap(input_dimension=1), DimensionMap(input_dimension=0)),
+            ),
+            dimension_grids_from_chunks((3, 2), (3, 2)),
+        ),
+        (
+            IndexTransform.from_shape((2, 3))[::-1, ::-1],
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+        (
+            IndexTransform(
+                domain=IndexDomain((4, 7), (6, 10)),
+                output=(
+                    DimensionMap(input_dimension=0, offset=-4),
+                    DimensionMap(input_dimension=1, offset=-7),
+                ),
+            ),
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+    ],
+    ids=["identity", "axis-permutation", "reversal", "translated-unit-affine"],
+)
+def test_bijective_unit_affine_transforms_retain_full_coverage(
+    transform: IndexTransform, grids: tuple[Any, ...]
+) -> None:
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == ["full"]
+
+
+def test_rank_zero_transform_has_full_coverage() -> None:
+    transform = IndexTransform.identity(IndexDomain((), ()))
+
+    assert [projection.coverage for projection in plan_chunks(transform, ())] == ["full"]
+
+
 @pytest.mark.parametrize(
     ("transform", "grids", "expected_coords"),
     [
