@@ -679,7 +679,9 @@ def test_result_array_shape_figure_compares_same_points_with_different_arrays() 
     """Integer and slice indexing visually distinguish result-axis construction."""
     spec = next(item for item in FIGURES if item["id"] == "result-array-shape")
     labels = {
-        element["label"] for element in spec["elements"] if element["kind"] in {"text", "node"}
+        element["label"]
+        for element in spec["elements"]
+        if element["kind"] == "text" or element["kind"] == "node"
     }
 
     assert {"image[1, :]", "shape (4,)", "image[1:2, :]", "shape (1, 4)"} <= labels
@@ -702,6 +704,23 @@ def test_result_array_shape_figure_compares_same_points_with_different_arrays() 
     assert outer_frame["y"] < row_y
     assert outer_frame["x"] + outer_frame["width"] > row_right
     assert outer_frame["y"] + outer_frame["height"] > row_bottom
+
+
+def test_result_array_shape_branch_rows_render_identical_value_sequences() -> None:
+    """Both indexing forms show values; their result-axis structure differs."""
+    spec = next(item for item in FIGURES if item["id"] == "result-array-shape")
+    root = ElementTree.fromstring(render_figure(spec))
+
+    for branch_id in ("integer-row", "slice-row"):
+        branch = next(
+            element
+            for element in root.iter()
+            if element.attrib.get("id") == f"result-array-shape-{branch_id}"
+        )
+        labels = [element.text or "" for element in branch.iter() if element.tag.endswith("text")]
+
+        assert labels == ["4", "5", "6", "7"]
+        assert all("coord:" not in label and "value:" not in label for label in labels)
 
 
 def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None:

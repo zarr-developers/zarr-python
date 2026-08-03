@@ -29,18 +29,22 @@
     <text x="65" y="110">image[1, :]</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-integer-row">
-    <rect class="zi-sequence-cell" height="48" width="50.0" x="138.0" y="86" />
-    <text class="zi-cell-coordinate" x="163.0" y="101.0">coord: 0</text>
-    <text class="zi-cell-value" x="163.0" y="120.0">value: 4</text>
-    <rect class="zi-sequence-cell" height="48" width="50.0" x="188.0" y="86" />
-    <text class="zi-cell-coordinate" x="213.0" y="101.0">coord: 1</text>
-    <text class="zi-cell-value" x="213.0" y="120.0">value: 5</text>
-    <rect class="zi-sequence-cell" height="48" width="50.0" x="238.0" y="86" />
-    <text class="zi-cell-coordinate" x="263.0" y="101.0">coord: 2</text>
-    <text class="zi-cell-value" x="263.0" y="120.0">value: 6</text>
-    <rect class="zi-sequence-cell" height="48" width="50.0" x="288.0" y="86" />
-    <text class="zi-cell-coordinate" x="313.0" y="101.0">coord: 3</text>
-    <text class="zi-cell-value" x="313.0" y="120.0">value: 7</text>
+    <g aria-label="selected coordinate (0, 0), value 4" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-integer-row-selected-0-0">
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="138" y="86" />
+      <text class="zi-cell-value" x="163.0" y="111.0">4</text>
+    </g>
+    <g aria-label="selected coordinate (0, 1), value 5" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-integer-row-selected-0-1">
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="188" y="86" />
+      <text class="zi-cell-value" x="213.0" y="111.0">5</text>
+    </g>
+    <g aria-label="selected coordinate (0, 2), value 6" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-integer-row-selected-0-2">
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="238" y="86" />
+      <text class="zi-cell-value" x="263.0" y="111.0">6</text>
+    </g>
+    <g aria-label="selected coordinate (0, 3), value 7" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-integer-row-selected-0-3">
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="288" y="86" />
+      <text class="zi-cell-value" x="313.0" y="111.0">7</text>
+    </g>
   </g>
   <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="result-array-shape-integer-shape">
     <rect height="26" width="86" x="152.0" y="143" />
