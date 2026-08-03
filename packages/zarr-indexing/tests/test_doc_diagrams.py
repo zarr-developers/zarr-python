@@ -431,6 +431,9 @@ def test_semantic_palettes_are_accessible() -> None:
 def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
         "indexing-selection": "image[1:5, 2] maps four source cells to a length-four request.",
+        "half-open-intervals": (
+            "adjacent [0, 1) and [1, 3) meet without a gap or overlap to form [0, 3)."
+        ),
         "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
         "transform-mapping": "request i maps to source (i + 1, 2).",
@@ -442,6 +445,19 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
         "projection-pair": "one cell domain points to request and chunk-local spaces.",
         "orthogonal-contrast": "rows [4, 1, 1] retain order and duplication.",
     }
+
+
+def test_half_open_interval_figure_names_both_pieces_and_the_combined_interval() -> None:
+    spec = next(item for item in FIGURES if item["id"] == "half-open-intervals")
+    labels = {
+        element["label"] for element in spec["elements"] if element["kind"] in {"node", "text"}
+    }
+    assert {
+        "[0, 1) contains 0",
+        "[1, 3) contains 1, 2",
+        "[0, 3) contains 0, 1, 2",
+        "1 is excluded on the left and included on the right",
+    } <= labels
 
 
 def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:

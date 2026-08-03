@@ -153,3 +153,14 @@ def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct
     assert namespace["PREPEND_SHARED_CELL_COORDS"] == ((0,), (1,), (2,))
     assert namespace["PREPEND_CHUNK_LOCAL_COORDS"] == ((0,), (1,), (2,))
     assert namespace["PREPEND_REQUEST_COORDS"] == ((-3,), (-2,), (-1,))
+
+
+def test_half_open_interval_is_defined_before_negative_coordinates() -> None:
+    chapter = (DOCS / "guide" / "02-transforms.md").read_text()
+    definition = "start at 0, inclusive, and stop at 1, exclusive"
+    concatenation = "[0, 1) ∪ [1, 3) = [0, 3)"  # noqa: RUF001
+
+    assert definition in chapter
+    assert concatenation in chapter
+    assert chapter.index(definition) < chapter.index("[-2, 3)")
+    assert chapter.index("half-open-intervals.svg") < chapter.index("[-2, 3)")

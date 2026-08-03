@@ -1,0 +1,52 @@
+<svg aria-labelledby="half-open-intervals-title half-open-intervals-desc" class="zi-figure" role="img" viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg">
+  <title id="half-open-intervals-title">Adjacent half-open intervals concatenate exactly</title>
+  <desc id="half-open-intervals-desc">adjacent [0, 1) and [1, 3) meet without a gap or overlap to form [0, 3).</desc>
+  <defs>
+    <marker id="half-open-intervals-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
+      <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />
+    </marker>
+  </defs>
+  <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="half-open-intervals-left-piece">
+    <rect height="64" width="250" x="54" y="48" />
+    <rect class="zi-request-inner" height="56" width="242" x="58" y="52" />
+    <text x="179.0" y="80.0">[0, 1) contains 0</text>
+  </g>
+  <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="half-open-intervals-right-piece">
+    <rect height="64" width="250" x="456" y="48" />
+    <rect class="zi-request-inner" height="56" width="242" x="460" y="52" />
+    <text x="581.0" y="80.0">[1, 3) contains 1, 2</text>
+  </g>
+  <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="half-open-intervals-combined">
+    <rect height="68" width="300" x="230" y="190" />
+    <text x="380.0" y="224.0">[0, 3) contains 0, 1, 2</text>
+  </g>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="half-open-intervals-left-concatenates">
+    <line class="zi-arrow-line" marker-end="url(#half-open-intervals-arrowhead)" x1="223.66666666666666" x2="332.5416666666667" y1="112.0" y2="190.0" />
+    <rect height="26" width="93" x="231.60416666666669" y="123.0" />
+    <text x="278.1041666666667" y="136.0">concatenate</text>
+  </g>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="half-open-intervals-right-concatenates">
+    <line class="zi-arrow-line" marker-end="url(#half-open-intervals-arrowhead)" x1="536.3333333333334" x2="427.4583333333333" y1="112.0" y2="190.0" />
+    <rect height="26" width="93" x="435.39583333333337" y="123.0" />
+    <text x="481.89583333333337" y="136.0">concatenate</text>
+  </g>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="half-open-intervals-shared-boundary">
+    <rect height="26" width="373" x="193.5" y="157" />
+    <text x="380" y="170">1 is excluded on the left and included on the right</text>
+  </g>
+  <g aria-label="Visible semantic role legend" class="zi-legend" id="half-open-intervals-legend">
+    <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="half-open-intervals-legend-request">
+      <rect class="zi-cue-swatch" height="20" width="28" x="22" y="298" />
+      <rect class="zi-request-inner" height="14" width="22" x="25" y="301" />
+      <text aria-label="request" class="zi-role-label" data-non-color-cue="request label + double border" data-semantic-role="request" x="58" y="308">request</text>
+    </g>
+    <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="half-open-intervals-legend-selected">
+      <rect class="zi-cue-swatch" height="20" width="28" x="192" y="298" />
+      <text aria-label="selected" class="zi-role-label" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" x="228" y="308">selected</text>
+    </g>
+    <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="half-open-intervals-legend-text">
+      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="298" />
+      <text aria-label="text" class="zi-role-label" data-non-color-cue="text label" data-semantic-role="text" x="398" y="308">text</text>
+    </g>
+  </g>
+</svg>

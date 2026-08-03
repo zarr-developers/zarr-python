@@ -1,5 +1,21 @@
 # Coordinates are addresses
 
+## How to read a half-open interval
+
+`[0, 1)` is a **half-open interval**: start at 0, inclusive, and stop at 1, exclusive.
+The `[` includes the lower boundary, while the `)` excludes the upper boundary.
+For integer coordinates, `[0, 1)` therefore contains exactly one coordinate: `0`.
+
+Half-openness lets adjacent slices and chunks meet without a gap or overlap.
+The stopping boundary of one interval is the starting boundary of the next:
+`[0, 1) ∪ [1, 3) = [0, 3)`. Coordinate `1` appears exactly once—in the
+second interval.
+
+<figure>
+--8<-- "_static/diagrams/half-open-intervals.svg"
+<figcaption>Matching an exclusive stop to the next inclusive start lets adjacent half-open intervals concatenate exactly.</figcaption>
+</figure>
+
 In the transform algebra, **coordinates are just integers**. A negative
 coordinate is a real address in a domain, with the same status as zero or a
 positive coordinate; it is not automatically shorthand for counting backward
@@ -25,6 +41,10 @@ identity of anything already present. Prepending three cells extends `[0, 6)`
 to `[-3, 6)`: the new cells receive addresses `-3`, `-2`, and `-1`, while the
 old cells keep addresses `0` through `5`. Coordinate `0` does not become
 coordinate `3`.
+
+The adjacent intervals `[-3, 0)`, `[0, 3)`, and `[3, 6)` follow the same
+half-open adjacency rule: each stopping boundary is included exactly once as
+the next interval's starting boundary.
 
 <figure>
 --8<-- "_static/diagrams/prepend-chunk.svg"
