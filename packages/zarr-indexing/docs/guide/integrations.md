@@ -51,6 +51,9 @@ executable reference below demonstrates.
 This remains a **napari-like consumer, not a napari integration**. It models
 only decoded chunks resident in system memory.
 
+For setup instructions and the complete executable, see the
+[system-memory chunk cache example](../examples/napari_chunk_cache.md).
+
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable system-memory chunk lifecycle diagram" tabindex="0">
 --8<-- "_static/diagrams/system-memory-chunk-lifecycle.svg"
@@ -61,13 +64,13 @@ only decoded chunks resident in system memory.
 The example keeps the lifecycle records and transitions explicit:
 
 ```python
---8<-- "examples/napari_chunk_cache.py:chunk-cache-types"
+--8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-types"
 ```
 
 Its source represents already decoded chunks and records each read:
 
 ```python
---8<-- "examples/napari_chunk_cache.py:chunk-cache-source"
+--8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-source"
 ```
 
 The wrapper turns public chunk projections into cache requests and assembles
@@ -80,13 +83,13 @@ as orthogonal by plain square brackets; callers choose that behavior through
 the named accessor.
 
 ```python
---8<-- "examples/napari_chunk_cache.py:chunk-cache-wrapper"
+--8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-wrapper"
 ```
 
 ### Follow one viewport through the cache
 
 ```python
---8<-- "examples/napari_chunk_cache.py:chunk-cache-worked-example"
+--8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-worked-example"
 ```
 
 The worked example uses a 6-by-8 image, 3-by-4 chunks, and capacity for two

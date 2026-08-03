@@ -30,6 +30,7 @@ nav:
   - Examples:
       - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md
       - Lazy indexing with Dask: examples/lazy_indexing_dask.md
+      - System-memory chunk cache: examples/napari_chunk_cache.md
   - ndsel.md
   - design-notes.md
   - API Reference:

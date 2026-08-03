@@ -17,7 +17,10 @@ DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
 REPOSITORY_ROOT = PACKAGE_ROOT.parents[1]
 STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
-EXAMPLES = tuple(
+CACHE_EXAMPLE_NAME = "napari_chunk_cache"
+CACHE_EXAMPLE_DIR = STANDALONE_EXAMPLES / CACHE_EXAMPLE_NAME
+CACHE_EXAMPLE = CACHE_EXAMPLE_DIR / f"{CACHE_EXAMPLE_NAME}.py"
+DOC_EXAMPLES = tuple(
     DOCS / "examples" / name
     for name in (
         "coordinate_origins.py",
@@ -27,9 +30,9 @@ EXAMPLES = tuple(
         "chunk_projection.py",
         "indexing_patterns.py",
         "integrations.py",
-        "napari_chunk_cache.py",
     )
 )
+EXAMPLES = (*DOC_EXAMPLES, CACHE_EXAMPLE)
 REGIONS = {
     "coordinate-origin": DOCS / "examples" / "coordinate_origins.py",
     "prepend-grid": DOCS / "examples" / "coordinate_origins.py",
@@ -43,10 +46,10 @@ REGIONS = {
     "indexing-patterns": DOCS / "examples" / "indexing_patterns.py",
     "zarr-consumer": DOCS / "examples" / "integrations.py",
     "viewport-consumer": DOCS / "examples" / "integrations.py",
-    "chunk-cache-types": DOCS / "examples" / "napari_chunk_cache.py",
-    "chunk-cache-source": DOCS / "examples" / "napari_chunk_cache.py",
-    "chunk-cache-wrapper": DOCS / "examples" / "napari_chunk_cache.py",
-    "chunk-cache-worked-example": DOCS / "examples" / "napari_chunk_cache.py",
+    "chunk-cache-types": CACHE_EXAMPLE,
+    "chunk-cache-source": CACHE_EXAMPLE,
+    "chunk-cache-wrapper": CACHE_EXAMPLE,
+    "chunk-cache-worked-example": CACHE_EXAMPLE,
 }
 GUIDE_FIGURES = (
     (
@@ -138,7 +141,7 @@ REQUIRED_PATTERNS = {
 }
 PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
-CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "napari_chunk_cache.py"))
+CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(CACHE_EXAMPLE))
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.stem)
@@ -146,6 +149,46 @@ def test_documentation_example_executes(example: Path) -> None:
     """Examples remain executable contracts rather than display-only fragments."""
     assert example.is_file(), f"missing executable documentation example: {example}"
     runpy.run_path(str(example), run_name="__main__")
+
+
+def test_chunk_cache_example_has_one_package_scoped_canonical_source() -> None:
+    """The chunk-cache example has one executable package-scoped source."""
+    readme = CACHE_EXAMPLE_DIR / "README.md"
+    page = DOCS / "examples" / f"{CACHE_EXAMPLE_NAME}.md"
+    old_source = DOCS / "examples" / f"{CACHE_EXAMPLE_NAME}.py"
+
+    assert readme.is_file()
+    assert CACHE_EXAMPLE.is_file()
+    assert page.is_file()
+    assert not old_source.exists()
+
+    script_source = CACHE_EXAMPLE.read_text()
+    assert script_source.startswith("# /// script\n")
+    assert '# requires-python = ">=3.12"' in script_source
+    assert '"zarr-indexing>=0.1"' in script_source
+    assert '"numpy==2.4.3"' in script_source
+
+    page_source = page.read_text()
+    assert '--8<-- "napari_chunk_cache/README.md"' in page_source
+    assert '--8<-- "napari_chunk_cache/napari_chunk_cache.py"' in page_source
+
+    package_nav = (PACKAGE_ROOT / "mkdocs.yml").read_text()
+    repository_nav = (REPOSITORY_ROOT / "mkdocs.yml").read_text()
+    assert "System-memory chunk cache: examples/napari_chunk_cache.md" in package_nav
+    assert "examples/napari_chunk_cache.md" not in repository_nav
+    assert not (REPOSITORY_ROOT / "examples" / CACHE_EXAMPLE_NAME).exists()
+
+    guide = (DOCS / "guide" / "integrations.md").read_text()
+    for region in (
+        "chunk-cache-types",
+        "chunk-cache-source",
+        "chunk-cache-wrapper",
+        "chunk-cache-worked-example",
+    ):
+        canonical_snippet = f"napari_chunk_cache/napari_chunk_cache.py:{region}"
+        assert canonical_snippet in guide
+        assert f"examples/napari_chunk_cache.py:{region}" not in guide
+    assert "../examples/napari_chunk_cache.md" in guide
 
 
 @pytest.mark.parametrize(("region", "path"), REGIONS.items())
@@ -462,11 +505,13 @@ def test_system_memory_cache_is_documentation_only() -> None:
     assert not hasattr(zarr_indexing, "ChunkState")
 
 
-@pytest.mark.parametrize("name", ["lazy_indexing_numpy", "lazy_indexing_dask"])
+@pytest.mark.parametrize("name", ["lazy_indexing_numpy", "lazy_indexing_dask", CACHE_EXAMPLE_NAME])
 def test_lazy_indexing_examples_are_scoped_to_the_indexing_package(name: str) -> None:
-    assert (STANDALONE_EXAMPLES / name / "README.md").is_file()
+    readme = STANDALONE_EXAMPLES / name / "README.md"
+    assert readme.is_file()
     assert (STANDALONE_EXAMPLES / name / f"{name}.py").is_file()
     assert (DOCS / "examples" / f"{name}.md").is_file()
+    assert f"uv run --with-editable . examples/{name}/{name}.py" in readme.read_text()
 
     assert not (REPOSITORY_ROOT / "examples" / name).exists()
     assert not (REPOSITORY_ROOT / "docs" / "user-guide" / "examples" / f"{name}.md").exists()
@@ -482,7 +527,7 @@ def test_lazy_indexing_examples_are_scoped_to_the_indexing_package(name: str) ->
     [
         DOCS / "examples" / "integrations.py",
         DOCS / "examples" / "coordinate_origins.py",
-        DOCS / "examples" / "napari_chunk_cache.py",
+        CACHE_EXAMPLE,
     ],
     ids=lambda path: path.stem,
 )
@@ -498,7 +543,7 @@ def test_projection_examples_use_batched_transform_application(example: Path) ->
     "example",
     [
         DOCS / "examples" / "integrations.py",
-        DOCS / "examples" / "napari_chunk_cache.py",
+        CACHE_EXAMPLE,
     ],
     ids=lambda path: path.stem,
 )
@@ -525,9 +570,11 @@ def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
     assert "system-memory chunk cache" in guide.lower()
     assert "not a napari integration" in guide.lower()
     assert "system-memory-chunk-lifecycle.svg" in guide
-    assert "examples/napari_chunk_cache.py:chunk-cache-source" in guide
-    assert "examples/napari_chunk_cache.py:chunk-cache-wrapper" in guide
-    assert "examples/napari_chunk_cache.py:chunk-cache-worked-example" in guide
+    assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-types" in guide
+    assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-source" in guide
+    assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-wrapper" in guide
+    assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-worked-example" in guide
+    assert "../examples/napari_chunk_cache.md" in guide
     assert "https://napari.org/dev/howtos/layers/image.html" in guide
     assert "https://github.com/google/neuroglancer/blob/master/src/chunk_manager/base.ts" in guide
     assert "conceptual prior art" in guide.lower()

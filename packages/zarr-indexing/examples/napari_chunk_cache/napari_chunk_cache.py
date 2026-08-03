@@ -1,13 +1,24 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "zarr-indexing>=0.1",
+#   "numpy==2.4.3",
+# ]
+# ///
+#
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 from zarr_indexing import IndexDomain, LazyArray
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 type ChunkCoords = tuple[int, ...]
 
@@ -79,9 +90,7 @@ def _domain_points(domain: IndexDomain) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Enumerate a rectangular domain with a trailing coordinate axis."""
     if domain.ndim == 0:
         return np.empty((1, 0), dtype=np.intp)
-    points = np.moveaxis(np.indices(domain.shape, dtype=np.intp), 0, -1).reshape(
-        -1, domain.ndim
-    )
+    points = np.moveaxis(np.indices(domain.shape, dtype=np.intp), 0, -1).reshape(-1, domain.ndim)
     points += np.asarray(domain.inclusive_min, dtype=np.intp)
     return points
 
@@ -154,7 +163,9 @@ class SystemMemoryChunkCache:
     def resident(self) -> tuple[ChunkCoords, ...]:
         return tuple(
             sorted(
-                coords for coords, record in self._records.items() if record.state is ChunkState.READY
+                coords
+                for coords, record in self._records.items()
+                if record.state is ChunkState.READY
             )
         )
 
@@ -236,7 +247,9 @@ class SystemMemoryChunkCache:
             record = self._record(chunk_coords)
             if record.state is ChunkState.FAILED:
                 assert record.error is not None
-                raise ChunkLoadError(f"chunk {chunk_coords} is failed; call retry first") from record.error
+                raise ChunkLoadError(
+                    f"chunk {chunk_coords} is failed; call retry first"
+                ) from record.error
 
         for chunk_coords in required:
             record = self._record(chunk_coords)
@@ -250,7 +263,8 @@ class SystemMemoryChunkCache:
         uses: list[tuple[str, str]] = []
         for projection in projections:
             record = self._record(projection.chunk_coords)
-            assert record.state is ChunkState.READY and record.buffer is not None
+            assert record.state is ChunkState.READY
+            assert record.buffer is not None
             domain = projection.chunk_transform.domain
             cell_points = _domain_points(domain)
             chunk_points = projection.chunk_transform.apply_many(cell_points)
