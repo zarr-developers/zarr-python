@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+import zarr_indexing
 from zarr_indexing import LazyArray
 
 DOCS = Path(__file__).parents[1] / "docs"
@@ -20,6 +21,7 @@ EXAMPLES = tuple(
         "chunk_projection.py",
         "indexing_patterns.py",
         "integrations.py",
+        "napari_chunk_cache.py",
     )
 )
 REGIONS = {
@@ -33,6 +35,10 @@ REGIONS = {
     "indexing-patterns": DOCS / "examples" / "indexing_patterns.py",
     "zarr-consumer": DOCS / "examples" / "integrations.py",
     "viewport-consumer": DOCS / "examples" / "integrations.py",
+    "chunk-cache-types": DOCS / "examples" / "napari_chunk_cache.py",
+    "chunk-cache-source": DOCS / "examples" / "napari_chunk_cache.py",
+    "chunk-cache-wrapper": DOCS / "examples" / "napari_chunk_cache.py",
+    "chunk-cache-worked-example": DOCS / "examples" / "napari_chunk_cache.py",
 }
 REQUIRED_PATTERNS = {
     "basic-slice",
@@ -47,6 +53,7 @@ REQUIRED_PATTERNS = {
 }
 PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
+CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "napari_chunk_cache.py"))
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.stem)
@@ -164,3 +171,102 @@ def test_half_open_interval_is_defined_before_negative_coordinates() -> None:
     assert concatenation in chapter
     assert chapter.index(definition) < chapter.index("[-2, 3)")
     assert chapter.index("half-open-intervals.svg") < chapter.index("[-2, 3)")
+
+
+@pytest.mark.parametrize(
+    ("name", "actual", "expected"),
+    [
+        ("no eager reads", CACHE_NAMESPACE["READS_BEFORE_SELECTION"], ()),
+        ("initial values", CACHE_NAMESPACE["INITIAL_RESULT"].tolist(), [10, 18, 26, 34]),
+        ("initial reads", CACHE_NAMESPACE["INITIAL_READS"], ((0, 0), (1, 0))),
+        ("overlap values", CACHE_NAMESPACE["OVERLAP_RESULT"].tolist(), [26, 34]),
+        ("overlap reads", CACHE_NAMESPACE["OVERLAP_NEW_READS"], ()),
+        ("eviction values", CACHE_NAMESPACE["EVICTION_RESULT"].tolist(), [5, 13]),
+        ("eviction read", CACHE_NAMESPACE["EVICTION_NEW_READS"], ((0, 1),)),
+        ("after eviction", CACHE_NAMESPACE["AFTER_EVICTION_RESIDENT"], ((0, 1), (1, 0))),
+        ("reload values", CACHE_NAMESPACE["RELOAD_RESULT"].tolist(), [10, 18, 26, 34]),
+        ("reload", CACHE_NAMESPACE["RELOAD_NEW_READS"], ((0, 0),)),
+        ("after reload", CACHE_NAMESPACE["AFTER_RELOAD_RESIDENT"], ((0, 0), (1, 0))),
+        ("failed reads", CACHE_NAMESPACE["FAILURE_READ_COUNTS"], (1, 1)),
+        ("retry read", CACHE_NAMESPACE["RETRY_NEW_READS"], ((1, 1),)),
+        ("retry values", CACHE_NAMESPACE["RETRY_RESULT"].tolist(), [[28, 29], [36, 37]]),
+        ("retry state", CACHE_NAMESPACE["RETRY_STATE"], "ready"),
+        (
+            "failure lifecycle",
+            CACHE_NAMESPACE["FAILED_TRANSITIONS"],
+            ("queued", "loading", "failed", "queued", "loading", "ready"),
+        ),
+        (
+            "failure event log",
+            CACHE_NAMESPACE["FAILED_EVENT_ROWS"],
+            (
+                ("new", "queued", "requested"),
+                ("queued", "loading", "queue drained"),
+                ("loading", "failed", "source read failed"),
+                ("failed", "queued", "explicit retry"),
+                ("queued", "loading", "queue drained"),
+                ("loading", "ready", "source read completed"),
+            ),
+        ),
+    ],
+)
+def test_system_memory_cache_worked_sequence(name: str, actual: object, expected: object) -> None:
+    assert actual == expected, name
+
+
+def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> None:
+    cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
+    source_type = CACHE_NAMESPACE["RecordingChunkSource"]
+    source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
+    cache = cache_type(source, capacity=2)
+
+    np.testing.assert_array_equal(cache[[1, 1], 2], np.array([10, 10]))
+    assert tuple(source.reads) == ((0, 0),)
+    assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
+
+
+def test_system_memory_cache_is_documentation_only() -> None:
+    assert not hasattr(zarr_indexing, "SystemMemoryChunkCache")
+    assert not hasattr(zarr_indexing, "ChunkState")
+
+
+def make_documented_cache() -> tuple[Any, Any]:
+    source_type = CACHE_NAMESPACE["RecordingChunkSource"]
+    cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
+    source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
+    return source, cache_type(source, capacity=2)
+
+
+def test_chunk_source_failure_is_retained_as_failed_with_its_cause() -> None:
+    source, cache = make_documented_cache()
+    source.failures.add((1, 1))
+
+    with pytest.raises(CACHE_NAMESPACE["ChunkLoadError"]) as error:
+        cache[3:5, 4:6]
+
+    assert isinstance(error.value.__cause__, OSError)
+    assert cache.state((1, 1)).value == "failed"
+    assert tuple(source.reads) == ((1, 1),)
+
+
+def test_failed_chunk_is_not_retried_implicitly() -> None:
+    source, cache = make_documented_cache()
+    source.failures.add((1, 1))
+    with pytest.raises(CACHE_NAMESPACE["ChunkLoadError"]):
+        cache[3:5, 4:6]
+    with pytest.raises(CACHE_NAMESPACE["ChunkLoadError"]):
+        cache[3:5, 4:6]
+
+    assert tuple(source.reads) == ((1, 1),)
+
+
+def test_retry_requires_a_failed_chunk() -> None:
+    _, cache = make_documented_cache()
+    with pytest.raises(ValueError, match="retry requires failed chunk .*new"):
+        cache.retry((0, 0))
+
+
+def test_illegal_chunk_transition_is_rejected() -> None:
+    _, cache = make_documented_cache()
+    with pytest.raises(ValueError, match="illegal chunk transition new -> ready"):
+        cache._transition((0, 0), CACHE_NAMESPACE["ChunkState"].READY, "test")
