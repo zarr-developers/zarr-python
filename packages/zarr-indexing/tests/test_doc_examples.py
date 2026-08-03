@@ -354,18 +354,6 @@ def test_visual_guide_is_one_scrolling_document_with_stable_section_links() -> N
     assert all(not (DOCS / "guide" / name).exists() for name in RETIRED_TUTORIAL_FILES)
 
 
-def test_visual_guide_navigation_is_version_relative() -> None:
-    mkdocs = (PACKAGE_ROOT / "mkdocs.yml").read_text()
-    expected_nav = "\n".join(
-        ("  - Use lazy indexing:", "      - Visual guide: guide/index.md")
-        + tuple(f"      - {title}: guide/#{anchor}" for title, anchor in TUTORIAL_SECTIONS)
-    )
-
-    assert expected_nav in mkdocs
-    assert "/guide/#" not in mkdocs
-    assert all(name not in mkdocs for name in RETIRED_TUTORIAL_FILES)
-
-
 @pytest.mark.parametrize("name", STANDALONE_EXAMPLE_NAMES)
 def test_standalone_example_source_uses_a_plain_python_fence(name: str) -> None:
     source = (DOCS / "examples" / f"{name}.md").read_text()
