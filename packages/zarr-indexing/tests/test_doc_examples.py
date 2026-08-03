@@ -362,7 +362,7 @@ def test_guide_figure_confines_only_its_svg_to_an_accessible_scroll_region(
     guide_path: Path, figure_id: str, aria_label: str
 ) -> None:
     all_guide_source = "\n".join(
-        path.read_text() for path in sorted({path for path, _, _ in GUIDE_FIGURES})
+        path.read_text() for path in sorted((DOCS / "guide").rglob("*.md"))
     )
     guide = guide_path.read_text()
     svg_include = f'_static/diagrams/{figure_id}.svg"'
