@@ -171,6 +171,7 @@ def test_chunk_cache_example_has_one_package_scoped_canonical_source() -> None:
     page_source = page.read_text()
     assert '--8<-- "napari_chunk_cache/README.md"' in page_source
     assert '--8<-- "napari_chunk_cache/napari_chunk_cache.py"' in page_source
+    assert '```python\n--8<-- "napari_chunk_cache/napari_chunk_cache.py"\n```' in page_source
 
     package_nav = (PACKAGE_ROOT / "mkdocs.yml").read_text()
     repository_nav = (REPOSITORY_ROOT / "mkdocs.yml").read_text()
