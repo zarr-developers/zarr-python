@@ -178,6 +178,9 @@ class IndexTransform:
             If the coordinates do not have an integer dtype.
         BoundsCheckError
             If a coordinate lies outside the input domain.
+        OverflowError
+            If a mapped output coordinate cannot be represented by
+            ``np.intp``.
         """
         coordinates = np.asarray(point)
         expected_shape = (self.input_rank,)
@@ -213,6 +216,9 @@ class IndexTransform:
             If the coordinates do not have an integer dtype.
         BoundsCheckError
             If a coordinate lies outside the input domain.
+        OverflowError
+            If a mapped output coordinate cannot be represented by
+            ``np.intp``.
         """
         coordinates = np.asarray(points)
         if coordinates.ndim == 0 or coordinates.shape[-1] != self.input_rank:
@@ -248,26 +254,37 @@ class IndexTransform:
                 f"{dimension} coordinate {value} outside [{lower}, {upper})"
             )
 
-        coordinates = points.astype(np.intp, copy=False)
-        batch_shape = coordinates.shape[:-1]
+        batch_shape = points.shape[:-1]
         result = np.empty(batch_shape + (self.output_rank,), dtype=np.intp)
         for output_dimension, output_map in enumerate(self.output):
             if isinstance(output_map, ConstantMap):
+                if result[..., output_dimension].size == 0:
+                    continue
+                if not _fits_intp(output_map.offset):
+                    raise OverflowError(
+                        f"output coordinate {output_map.offset} for output dimension "
+                        f"{output_dimension} is outside the np.intp range"
+                    )
                 result[..., output_dimension] = output_map.offset
             elif isinstance(output_map, DimensionMap):
-                result[..., output_dimension] = (
-                    output_map.offset
-                    + output_map.stride * coordinates[..., output_map.input_dimension]
+                result[..., output_dimension] = _checked_affine_to_intp(
+                    points[..., output_map.input_dimension],
+                    offset=output_map.offset,
+                    stride=output_map.stride,
+                    output_dimension=output_dimension,
                 )
             else:
                 index = tuple(
                     np.zeros(batch_shape, dtype=np.intp)
                     if output_map.index_array.shape[axis] == 1
-                    else coordinates[..., axis] - self.domain.inclusive_min[axis]
+                    else _positions_from_origin(points[..., axis], self.domain.inclusive_min[axis])
                     for axis in range(self.input_rank)
                 )
-                result[..., output_dimension] = (
-                    output_map.offset + output_map.stride * output_map.index_array[index]
+                result[..., output_dimension] = _checked_affine_to_intp(
+                    np.asarray(output_map.index_array[index]),
+                    offset=output_map.offset,
+                    stride=output_map.stride,
+                    output_dimension=output_dimension,
                 )
         return result
 
@@ -288,8 +305,15 @@ class IndexTransform:
         Raises
         ------
         ValueError
-            If this transform does not have a representable inverse.
+            If this transform does not have a representable inverse, including
+            when input labels cannot be transferred to unlabeled output
+            dimensions.
         """
+        if self.domain.labels is not None:
+            raise ValueError(
+                "cannot invert transform: input labels cannot be represented "
+                "because output dimensions do not carry labels"
+            )
         if self.input_rank != self.output_rank:
             raise ValueError(
                 "cannot invert transform: input rank must equal output rank, got "
@@ -507,6 +531,72 @@ class IndexTransform:
     @property
     def vindex(self) -> _VIndexHelper:
         return _VIndexHelper(self)
+
+
+_INTP_INFO = np.iinfo(np.intp)
+
+
+def _fits_intp(value: int) -> bool:
+    return _INTP_INFO.min <= value <= _INTP_INFO.max
+
+
+def _checked_affine_to_intp(
+    values: np.ndarray[Any, Any],
+    *,
+    offset: int,
+    stride: int,
+    output_dimension: int,
+) -> npt.NDArray[np.intp]:
+    """Evaluate ``offset + stride * values`` without fixed-width corruption."""
+    if values.size == 0:
+        return np.empty(values.shape, dtype=np.intp)
+
+    offset = int(offset)
+    stride = int(stride)
+    value_min = int(np.min(values))
+    value_max = int(np.max(values))
+    product_at_min = stride * value_min
+    product_at_max = stride * value_max
+    mapped_at_min = offset + product_at_min
+    mapped_at_max = offset + product_at_max
+    mapped_min = min(mapped_at_min, mapped_at_max)
+    mapped_max = max(mapped_at_min, mapped_at_max)
+    if not _fits_intp(mapped_min) or not _fits_intp(mapped_max):
+        invalid = mapped_min if not _fits_intp(mapped_min) else mapped_max
+        raise OverflowError(
+            f"output coordinate {invalid} for output dimension {output_dimension} "
+            "is outside the np.intp range"
+        )
+
+    # The fast path is safe only when every intermediate is representable.
+    # Cancellation can make the final result small even when an operand or
+    # product is large; those uncommon cases use exact Python-integer ufuncs.
+    fast_path_values = (
+        _fits_intp(value_min)
+        and _fits_intp(value_max)
+        and _fits_intp(offset)
+        and _fits_intp(stride)
+        and _fits_intp(product_at_min)
+        and _fits_intp(product_at_max)
+    )
+    if fast_path_values:
+        intp_values = values.astype(np.intp, copy=False)
+        return np.asarray(offset + stride * intp_values, dtype=np.intp)
+
+    exact = offset + stride * values.astype(object)
+    return np.asarray(exact, dtype=np.intp)
+
+
+def _positions_from_origin(coordinates: np.ndarray[Any, Any], origin: int) -> npt.NDArray[np.intp]:
+    """Convert literal coordinates to positional indices without wrapping."""
+    if coordinates.size == 0:
+        return np.empty(coordinates.shape, dtype=np.intp)
+    minimum = int(np.min(coordinates))
+    maximum = int(np.max(coordinates))
+    origin = int(origin)
+    if _fits_intp(minimum) and _fits_intp(maximum) and _fits_intp(origin):
+        return np.asarray(coordinates, dtype=np.intp) - origin
+    return np.asarray(coordinates.astype(object) - origin, dtype=np.intp)
 
 
 def _intersect(

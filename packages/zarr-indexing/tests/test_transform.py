@@ -193,6 +193,75 @@ class TestIndexTransformApply:
             "point at batch position (0, 1) has input dimension 1 coordinate 20 outside [10, 13)"
         )
 
+    @pytest.mark.parametrize(
+        "beyond_intp",
+        [
+            pytest.param(int(np.iinfo(np.intp).max) + 1, id="first-uint64-coordinate"),
+            pytest.param(int(np.iinfo(np.uint64).max), id="maximum-uint64-coordinate"),
+        ],
+    )
+    def test_apply_many_maps_large_literal_coordinates_exactly(self, beyond_intp: int) -> None:
+        transform = IndexTransform(
+            IndexDomain((beyond_intp,), (beyond_intp + 1,)),
+            (DimensionMap(0, offset=-beyond_intp),),
+        )
+
+        result = transform.apply_many(np.array([[beyond_intp]], dtype=np.uint64))
+
+        np.testing.assert_array_equal(result, np.array([[0]], dtype=np.intp))
+        assert result.dtype == np.dtype(np.intp)
+        assert result.flags.owndata
+
+    @pytest.mark.parametrize(
+        ("transform", "points"),
+        [
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((1,)),
+                    (ConstantMap(np.iinfo(np.intp).max + 1),),
+                ),
+                [[0]],
+                id="constant",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((2,)),
+                    (DimensionMap(0, offset=np.iinfo(np.intp).max),),
+                ),
+                [[1]],
+                id="dimension",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((1,)),
+                    (
+                        ArrayMap(
+                            np.array([1], dtype=np.intp),
+                            offset=np.iinfo(np.intp).max,
+                        ),
+                    ),
+                ),
+                [[0]],
+                id="array",
+            ),
+            pytest.param(
+                IndexTransform.identity(
+                    IndexDomain(
+                        (int(np.iinfo(np.intp).max) + 1,),
+                        (int(np.iinfo(np.intp).max) + 2,),
+                    )
+                ),
+                np.array([[int(np.iinfo(np.intp).max) + 1]], dtype=np.uint64),
+                id="large-input-identity",
+            ),
+        ],
+    )
+    def test_apply_many_rejects_mapped_coordinates_outside_intp(
+        self, transform: IndexTransform, points: list[list[int]] | np.ndarray
+    ) -> None:
+        with pytest.raises(OverflowError, match="output coordinate.*np.intp"):
+            transform.apply_many(points)
+
 
 class TestIndexTransformInverted:
     @pytest.mark.parametrize(
@@ -269,6 +338,11 @@ class TestIndexTransformInverted:
             (DimensionMap(0), ConstantMap(7)),
         )
         with pytest.raises(ValueError, match="unreferenced input dimension 1.*extent 2"):
+            transform.inverted()
+
+    def test_inverted_rejects_input_labels_that_cannot_be_preserved(self) -> None:
+        transform = IndexTransform.identity(IndexDomain((0,), (2,), labels=("row",)))
+        with pytest.raises(ValueError, match="input labels cannot be represented"):
             transform.inverted()
 
 

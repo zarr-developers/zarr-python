@@ -225,6 +225,20 @@ def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> 
     assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
 
 
+def test_system_memory_cache_assembles_a_scalar_selection() -> None:
+    cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
+    source_type = CACHE_NAMESPACE["RecordingChunkSource"]
+    source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
+    cache = cache_type(source, capacity=2)
+
+    result = cache[1, 2]
+
+    assert result.shape == ()
+    assert result[()] == 10
+    assert tuple(source.reads) == ((0, 0),)
+    assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
+
+
 def test_system_memory_cache_is_documentation_only() -> None:
     assert not hasattr(zarr_indexing, "SystemMemoryChunkCache")
     assert not hasattr(zarr_indexing, "ChunkState")
@@ -245,6 +259,32 @@ def test_projection_examples_use_batched_transform_application(example: Path) ->
     assert "def evaluate_point" not in source
     assert ".chunk_transform.apply_many(" in source
     assert ".cell_transform.apply_many(" in source
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        DOCS / "examples" / "integrations.py",
+        DOCS / "examples" / "napari_chunk_cache.py",
+    ],
+    ids=lambda path: path.stem,
+)
+def test_projection_examples_assemble_rank_zero_domains(example: Path) -> None:
+    namespace = runpy.run_path(str(example))
+    domain = zarr_indexing.IndexDomain((), ())
+    cell_points = namespace["_domain_points"](domain)
+    destination = np.empty((), dtype=np.intp)
+
+    values = namespace["_gather_and_scatter"](
+        destination,
+        np.array(7, dtype=np.intp),
+        cell_points,
+        cell_points,
+    )
+
+    assert cell_points.shape == (1, 0)
+    assert values.shape == (1,)
+    assert destination[()] == 7
 
 
 def make_documented_cache() -> tuple[Any, Any]:

@@ -20,6 +20,32 @@ class RecordingChunkSource:
         return self.chunks[chunk_coords]
 
 
+def _domain_points(domain: IndexDomain) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Enumerate a rectangular domain with a trailing coordinate axis."""
+    if domain.ndim == 0:
+        return np.empty((1, 0), dtype=np.intp)
+    points = np.moveaxis(np.indices(domain.shape, dtype=np.intp), 0, -1).reshape(
+        -1, domain.ndim
+    )
+    points += np.asarray(domain.inclusive_min, dtype=np.intp)
+    return points
+
+
+def _gather_and_scatter(
+    destination: np.ndarray[Any, Any],
+    source: np.ndarray[Any, Any],
+    source_points: np.ndarray[Any, np.dtype[np.intp]],
+    destination_points: np.ndarray[Any, np.dtype[np.intp]],
+) -> np.ndarray[Any, Any]:
+    """Gather and scatter a flattened point batch, including rank zero."""
+    values = np.asarray(source[tuple(source_points.T)]).reshape(-1)
+    if destination_points.shape[-1] == 0:
+        destination[()] = values.reshape(destination.shape)[()]
+    else:
+        destination[tuple(destination_points.T)] = values
+    return values
+
+
 zarr_image = np.arange(48).reshape(6, 8)
 zarr_chunks = {
     (chunk_row, chunk_column): zarr_image[
@@ -44,15 +70,13 @@ for part in zarr_view.parts():
         (projection.chunk_transform.domain, projection.cell_transform.domain)
     )
     domain = projection.chunk_transform.domain
-    cell_points = np.moveaxis(
-        np.indices(domain.shape, dtype=np.intp), 0, -1
-    ).reshape(-1, domain.ndim)
-    cell_points += np.asarray(domain.inclusive_min, dtype=np.intp)
+    cell_points = _domain_points(domain)
     local_points_array = projection.chunk_transform.apply_many(cell_points)
     result_points_array = projection.cell_transform.apply_many(cell_points)
     chunk = zarr_source.read(projection.chunk_coords)
-    values_array = chunk[tuple(local_points_array.T)]
-    ZARR_RESULT[tuple(result_points_array.T)] = values_array
+    values_array = _gather_and_scatter(
+        ZARR_RESULT, chunk, local_points_array, result_points_array
+    )
     local_points = tuple(tuple(point) for point in local_points_array.tolist())
     result_points = tuple(tuple(point) for point in result_points_array.tolist())
     values = tuple(int(value) for value in values_array)

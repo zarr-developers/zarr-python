@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from zarr_indexing import LazyArray
+from zarr_indexing import IndexDomain, LazyArray
 
 type ChunkCoords = tuple[int, ...]
 
@@ -72,6 +72,32 @@ class RecordingChunkSource:
             for coord, size, extent in zip(chunk_coords, self.chunks, self.shape, strict=True)
         )
         return self._data[key].copy()
+
+
+def _domain_points(domain: IndexDomain) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Enumerate a rectangular domain with a trailing coordinate axis."""
+    if domain.ndim == 0:
+        return np.empty((1, 0), dtype=np.intp)
+    points = np.moveaxis(np.indices(domain.shape, dtype=np.intp), 0, -1).reshape(
+        -1, domain.ndim
+    )
+    points += np.asarray(domain.inclusive_min, dtype=np.intp)
+    return points
+
+
+def _gather_and_scatter(
+    destination: np.ndarray[Any, Any],
+    source: np.ndarray[Any, Any],
+    source_points: np.ndarray[Any, np.dtype[np.intp]],
+    destination_points: np.ndarray[Any, np.dtype[np.intp]],
+) -> np.ndarray[Any, Any]:
+    """Gather and scatter a flattened point batch, including rank zero."""
+    values = np.asarray(source[tuple(source_points.T)]).reshape(-1)
+    if destination_points.shape[-1] == 0:
+        destination[()] = values.reshape(destination.shape)[()]
+    else:
+        destination[tuple(destination_points.T)] = values
+    return values
 
 
 # --8<-- [end:chunk-cache-source]
@@ -207,13 +233,10 @@ class SystemMemoryChunkCache:
             record = self._record(projection.chunk_coords)
             assert record.state is ChunkState.READY and record.buffer is not None
             domain = projection.chunk_transform.domain
-            cell_points = np.moveaxis(
-                np.indices(domain.shape, dtype=np.intp), 0, -1
-            ).reshape(-1, domain.ndim)
-            cell_points += np.asarray(domain.inclusive_min, dtype=np.intp)
+            cell_points = _domain_points(domain)
             chunk_points = projection.chunk_transform.apply_many(cell_points)
             request_points = projection.cell_transform.apply_many(cell_points)
-            result[tuple(request_points.T)] = record.buffer[tuple(chunk_points.T)]
+            _gather_and_scatter(result, record.buffer, chunk_points, request_points)
             uses.append(("chunk_transform", "cell_transform"))
         self.projection_uses = tuple(uses)
         self._evict(pinned=frozenset())
