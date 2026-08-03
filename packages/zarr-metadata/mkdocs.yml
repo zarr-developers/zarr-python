@@ -91,6 +91,11 @@ plugins:
             - https://docs.python.org/3/objects.inv
             - https://zarr.readthedocs.io/en/stable/objects.inv
 
+# Override the header source widget's version fact (the monorepo's latest
+# release) with the latest zarr_metadata-v* tag.
+extra_javascript:
+  - _static/source-version.js
+
 markdown_extensions:
   - admonition
   - attr_list
