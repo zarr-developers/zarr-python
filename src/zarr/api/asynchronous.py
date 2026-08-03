@@ -309,12 +309,20 @@ async def load(
 
     See Also
     --------
-    save
+    save, open
 
     Notes
     -----
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
+
+    Unlike [`open`][zarr.open], which returns a lazy [`Array`][zarr.Array] or
+    [`Group`][zarr.Group] backed by the store, `load` eagerly reads the data and
+    returns it as an in-memory array (or a dict of arrays for a group).
+    The array type is NumPy by default, but follows the configured
+    buffer prototype (for example, CuPy for GPU use cases).
+    Use `open` when you want to read or write data incrementally without loading it
+    all into memory.
     """
 
     obj = await open(store=store, path=path, zarr_format=zarr_format)
@@ -362,6 +370,17 @@ async def open(
     -------
     z : array or group
         Return type depends on what exists in the given store.
+
+    See Also
+    --------
+    load
+
+    Notes
+    -----
+    `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
+    the store, so data is read and written incrementally. Use [`load`][zarr.load]
+    instead when you want the data eagerly read into an in-memory array (a
+    NumPy array by default).
     """
 
     if mode is None:
@@ -1273,7 +1292,9 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
     path : str
         The path to the new array.
     **kwargs
-        Any keyword arguments to pass to the array constructor.
+        Additional keyword arguments passed to `open_array`.
+        If `mode` is omitted or `None`, it defaults to `"a"`. Pass `mode="r"` when
+        opening an existing array from a read-only store.
 
     Returns
     -------
@@ -1281,6 +1302,8 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The opened array.
     """
     like_kwargs = _like_args(a) | kwargs
+    if like_kwargs.get("mode") is None:
+        like_kwargs["mode"] = "a"
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 

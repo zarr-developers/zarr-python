@@ -29,7 +29,8 @@ def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(2) == 2
 
 
-@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, "3"])
+# The explicit id for "3" avoids colliding with the auto-generated id for the int 3.
+@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, pytest.param("3", id="3-str")])
 def test_parse_zarr_format_invalid(data: Any) -> None:
     with pytest.raises(ValueError, match="Failed to parse input for 'zarr_format'"):
         parse_zarr_format(data)

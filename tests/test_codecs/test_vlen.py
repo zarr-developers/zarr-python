@@ -13,10 +13,12 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
-numpy_str_dtypes: list[type | str | None] = [
+# The explicit id for the "str" literal avoids colliding with the auto-generated id for
+# the `str` builtin.
+numpy_str_dtypes: list[Any] = [
     None,
     str,
-    "str",
+    pytest.param("str", id="str-literal"),
     np.dtypes.StrDType,
     "S",
     "U",

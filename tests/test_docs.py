@@ -254,7 +254,7 @@ def test_documentation_examples(
         module_globals.update(result)
 
 
-@pytest.mark.parametrize("example", find_examples(str(SOURCES_ROOT)), ids=str)
+@pytest.mark.parametrize("example", list(find_examples(str(SOURCES_ROOT))), ids=str)
 def test_docstrings(example: CodeExample, eval_example: EvalExample) -> None:
     """Test our docstring examples."""
     if example.path.name == "config.py" and "your.module" in example.source:

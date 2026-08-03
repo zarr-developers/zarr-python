@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, get_args
 
@@ -9,6 +10,7 @@ import pytest
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    concurrent_iter,
     parse_bool,
     parse_int,
     parse_name,
@@ -32,6 +34,32 @@ def test_access_modes() -> None:
     Test that the access modes type and variable for run-time checking are equivalent.
     """
     assert set(ANY_ACCESS_MODE) == set(get_args(AccessModeLiteral))
+
+
+async def test_concurrent_iter_schedules_eagerly() -> None:
+    """`concurrent_iter` must return already-scheduled tasks, not a lazy generator.
+
+    Its docstring promises `func(*item)` is launched concurrently for every
+    item up front; a caller that awaits the returned tasks one at a time
+    (rather than via `gather`/`as_completed`, which force iteration) relies
+    on that eager scheduling to get any overlap at all.
+    """
+    started = [False, False, False]
+
+    async def mark(i: int) -> int:
+        started[i] = True
+        return i
+
+    tasks = concurrent_iter([(0,), (1,), (2,)], mark)
+
+    # Give the event loop one chance to run before awaiting anything
+    # individually. If `concurrent_iter` were lazy, nothing would have been
+    # scheduled yet and `started` would still be all-False here.
+    await asyncio.sleep(0)
+    assert started == [True, True, True]
+
+    results = [await t for t in tasks]
+    assert results == [0, 1, 2]
 
 
 # todo: test

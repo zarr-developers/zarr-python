@@ -15,7 +15,7 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.15
+    rev: v0.15.20
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -31,6 +31,16 @@ repos:
       - id: check-yaml
         exclude: mkdocs.yml
       - id: trailing-whitespace
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.22.1
+    hooks:
+      # Markdown structure/hygiene. Rule selection and ignores are in
+      # .markdownlint-cli2.jsonc; complements ci/lint_docs.py (RST residue,
+      # list-breaking fences) and `mkdocs build --strict`. Scoped to docs/ to
+      # match the config's globs (pre-commit passes filenames, which would
+      # otherwise override that scoping and lint all repo Markdown).
+      - id: markdownlint-cli2
+        files: ^docs/
   - repo: local
     hooks:
       - id: mypy
@@ -41,11 +51,11 @@ repos:
         always_run: true
         types_or: [python, pyi]
   - repo: https://github.com/scientific-python/cookie
-    rev: 2026.04.04
+    rev: 2026.06.18
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/numpy/numpydoc
-    rev: v1.10.0
+    rev: v1.11.0rc0
     hooks:
       - id: numpydoc-validation
   - repo: local
@@ -58,7 +68,7 @@ repos:
         types: [python]
         files: ^(src|tests)/
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.25.2
+    rev: v1.26.1
     hooks:
       - id: zizmor
   - repo: https://github.com/twisted/towncrier

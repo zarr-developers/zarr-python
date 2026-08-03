@@ -82,6 +82,20 @@ class SupportsSyncCodec[CI: CodecInput, CO: CodecOutput](Protocol):
     def _encode_sync(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None: ...
 
 
+def _codec_supports_sync(codec: object) -> bool:
+    """Whether `codec` can actually run on a synchronous (no event loop) path.
+
+    Structural membership in `SupportsSyncCodec` is necessary but not always
+    sufficient: a codec can provide `_decode_sync`/`_encode_sync` whose ability
+    to run depends on runtime configuration the type system cannot see.
+    `ShardingCodec` is the canonical case — its sync methods delegate to its
+    configured inner and index codec chains, so they only work when every codec
+    in those chains is itself sync-capable. Such codecs opt out dynamically via
+    a `_sync_capable` attribute/property (absent means capable).
+    """
+    return isinstance(codec, SupportsSyncCodec) and getattr(codec, "_sync_capable", True)
+
+
 class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
     """Generic base class for codecs.
 
@@ -93,7 +107,15 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
     ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
     """
 
-    is_fixed_size: bool
+    # Whether this codec's encoded output is a fixed size given a fixed input
+    # size. Defaults to False (the conservative answer): a codec that does not
+    # explicitly opt in is treated as variable-size, which only disables
+    # size-dependent fast paths (e.g. the sharding bulk-decode), never
+    # correctness. Codecs with genuinely fixed-size output (BytesCodec,
+    # TransposeCodec, ...) override this with True. The default also keeps
+    # third-party / variable-length codecs (VLenUTF8, numcodecs wrappers) that
+    # never set the attribute from raising AttributeError where it is read.
+    is_fixed_size: bool = False
 
     @abstractmethod
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
