@@ -31,12 +31,16 @@ Begin with an ordinary NumPy array. `source` contains the values 10 through 15.
 The selection `source[2:5]` takes source coordinates 2, 3, and 4, containing
 the values 12, 13, and 14.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable basic indexing selection diagram" tabindex="0">
---8<-- "_static/diagrams/indexing-selection.svg"
-</div>
-<figcaption>Result coordinates <code>0</code>, <code>1</code>, and <code>2</code> receive source values at coordinates <code>2</code>, <code>3</code>, and <code>4</code>.</figcaption>
-</figure>
+```text
+source coordinate |  0   1   2   3   4   5
+source value      | 10  11  12  13  14  15
+selection         |         [12  13  14]
+                             source[2:5]
+
+result coordinate |  0   1   2
+source coordinate |  2   3   4
+result value      | 12  13  14
+```
 
 The result defines its own coordinates: `0`, `1`, and `2`. The aligned rows
 make the correspondence explicit: those result coordinates receive values
@@ -79,12 +83,12 @@ coordinate is a real address in a domain, with the same status as zero or a
 positive coordinate; it is not automatically shorthand for counting backward
 from an array's end.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable coordinate addresses diagram" tabindex="0">
---8<-- "_static/diagrams/coordinate-addresses.svg"
-</div>
-<figcaption>The domain <code>[-2, 3)</code> contains five peer addresses, including the real negative addresses <code>-2</code> and <code>-1</code>.</figcaption>
-</figure>
+```text
+domain [-2, 3)
+
+coordinate |   -2     -1      0      1      2
+status     | address address address address address
+```
 
 `IndexDomain` makes those bounds explicit. In the first half of this executable
 example, narrowing at `-1` means selecting the literal address `-1`. The final
@@ -107,12 +111,17 @@ The adjacent intervals `[-3, 0)`, `[0, 3)`, and `[3, 6)` follow the same
 half-open adjacency rule: each stopping boundary is included exactly once as
 the next interval's starting boundary.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable prepended chunk coordinates diagram" tabindex="0">
---8<-- "_static/diagrams/prepend-chunk.svg"
-</div>
-<figcaption>Prepending extends <code>[0, 6)</code> to <code>[-3, 6)</code> without renumbering any existing coordinate.</figcaption>
-</figure>
+```text
+before [0, 6):
+
+                  |  0   1   2  |  3   4   5  |
+chunk coordinate  |      0      |      1      |
+
+after [-3, 6):
+
+| -3  -2  -1  |  0   1   2  |  3   4   5  |
+|     -1      |      0      |      1      |  chunk coordinate
+```
 
 That literal model and NumPy's positional model are both useful, but they answer
 different questions:
@@ -151,12 +160,13 @@ coordinate. For the slice from the first section, request coordinate `i` maps
 to source coordinate `i + 2`. This direction is deliberate: request to source,
 not source to request.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable transform mapping diagram" tabindex="0">
---8<-- "_static/diagrams/transform-mapping.svg"
-</div>
-<figcaption>The transform sends each request coordinate <code>i</code> to source address <code>i + 2</code>.</figcaption>
-</figure>
+```text
+request coordinate | 0   1   2
+                   | |   |   |
+             i + 2 | v   v   v
+source coordinate  | 2   3   4
+source value       | 12  13  14
+```
 
 This slice needs one `DimensionMap`, which describes how its one request
 coordinate becomes the source coordinate `i + 2`. The transform system also
@@ -177,12 +187,16 @@ A lazy view can be indexed again. Each step changes the request-to-source
 description, but it does not read an intermediate array. The chain is reduced
 to one direct transform from the newest request to the original source.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable composed views diagram" tabindex="0">
---8<-- "_static/diagrams/compose-views.svg"
-</div>
-<figcaption>The two view steps collapse into one direct request-to-source map, so composition adds no intermediate read.</figcaption>
-</figure>
+```text
+source[2:5][::-1][1:]
+
+new request | intermediate view | original source
+------------+-------------------+----------------
+     0      |         1         |       3
+     1      |         2         |       2
+
+direct map: request i -> source (3 - i)
+```
 
 The executable example first selects `source[2:5]`, then reverses that view
 and trims its first element:
@@ -217,12 +231,24 @@ An index chooses source points and also defines how those points are arranged in
 the result. In the 3-by-4 image below, `image[1, :]` and `image[1:2, :]` choose
 the same four source points: values `4`, `5`, `6`, and `7`.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable result array shape comparison diagram" tabindex="0">
---8<-- "_static/diagrams/result-array-shape.svg"
-</div>
-<figcaption>The same source coordinates can define different result axes.</figcaption>
-</figure>
+```text
+same selected source cells
+
+source coordinate | (1, 0)  (1, 1)  (1, 2)  (1, 3)
+value             |    4       5       6       7
+
+image[1, :]
+
+result coordinate |    0       1       2       3
+value             |    4       5       6       7
+shape             | (4,); source axis 0 is omitted
+
+image[1:2, :]
+
+result coordinate | (0, 0)  (0, 1)  (0, 2)  (0, 3)
+value             |    4       5       6       7
+shape             | (1, 4); source axis 0 is retained with length 1
+```
 
 The integer in `image[1, :]` fixes source axis 0. No result coordinate varies
 along that axis, so it is omitted and the result shape is `(4,)`. The slice in
@@ -247,12 +273,22 @@ image a 2-by-2 chunk shape does not change the four selected values or their
 order. It changes only how the work is divided: columns 0 and 1 come from chunk
 `(0, 0)`, while columns 2 and 3 come from chunk `(0, 1)`.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable chunk projection overlay diagram" tabindex="0">
---8<-- "_static/diagrams/chunk-overlay.svg"
-</div>
-<figcaption>The unchanged selection crosses one 2-column chunk boundary, so it touches exactly chunks <code>(0, 0)</code> and <code>(0, 1)</code> of the 3-by-4 source.</figcaption>
-</figure>
+```text
+                    column
+                0    1  |  2    3
+              ----------+----------
+row 0            0    1 |   2    3
+row 1           [4]  [5]|  [6]  [7]   <- image[1, :]
+              ----------+----------
+row 2            8    9 |  10   11
+
+                       left part             right part
+chunk_coords           (0, 0)                (0, 1)
+global chunk_domain    [0,2) x [0,2)         [0,2) x [2,4)
+selected global cells  (1,0), (1,1)          (1,2), (1,3)
+chunk-local cells      (1,0), (1,1)          (1,0), (1,1)
+request coordinates    0, 1                  2, 3
+```
 
 Every planned chunk keeps three coordinate frames distinct:
 
@@ -287,12 +323,23 @@ A chunk read has to answer two questions at once: which cells belong to this
 chunk, and where does each of those cells belong in the requested result? A
 paired projection answers both from one shared cell domain.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable paired chunk projections diagram" tabindex="0">
---8<-- "_static/diagrams/projection-pair.svg"
-</div>
-<figcaption>Each point in the shared cell domain identifies the same logical cell on both arrows, once in request space and once in zero-origin chunk-local space.</figcaption>
-</figure>
+```text
+left chunk (0, 0)
+
+shared cell coordinate |    0       1
+cell_transform         |    v       v
+request coordinate     |    0       1
+
+shared cell coordinate |    0       1
+chunk_transform        |    v       v
+chunk-local coordinate | (1, 0)  (1, 1)
+
+right chunk (0, 1)
+
+shared cell coordinate |    0       1
+request coordinate     |    2       3
+chunk-local coordinate | (1, 0)  (1, 1)
+```
 
 The directions are exact: **shared synthetic input cell domain → request via
 `cell_transform`**, and **shared cell domain → chunk-local via
@@ -319,12 +366,11 @@ Orthogonal indexing can visit source cells in an order that does not match
 chunk order, and it can visit one source cell more than once. In the request
 below, row 4 comes first and row 1 appears twice.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable orthogonal indexing contrast diagram" tabindex="0">
---8<-- "_static/diagrams/orthogonal-contrast.svg"
-</div>
-<figcaption>The request <code>[4, 1, 1]</code> produces row 4 first, then two independently placed copies of row 1.</figcaption>
-</figure>
+```text
+request position |   0      1      2
+source row       |   4      1      1
+result row       | row 4  row 1  row 1
+```
 
 A source bounding box cannot reconstruct this result. The box spanning rows 1
 through 4 also includes unrequested rows 2 and 3, and its increasing coordinate

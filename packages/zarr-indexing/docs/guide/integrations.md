@@ -54,12 +54,18 @@ only decoded chunks resident in system memory.
 For setup instructions and the complete executable, see the
 [system-memory chunk cache example](../examples/napari_chunk_cache.md).
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable system-memory chunk lifecycle diagram" tabindex="0">
---8<-- "_static/diagrams/system-memory-chunk-lifecycle.svg"
-</div>
-<figcaption>A requested chunk is queued and loaded before becoming ready in system memory; failures require explicit retry, and evicted chunks re-enter through the same queue.</figcaption>
-</figure>
+```text
+                         read succeeds
+NEW -> QUEUED -> LOADING -------------> READY -> EVICTED
+        ^            |
+        |            | read fails
+        |            v
+        +--------- FAILED
+             retry
+
+EVICTED -> QUEUED
+           reload
+```
 
 The example keeps the lifecycle records and transitions explicit:
 

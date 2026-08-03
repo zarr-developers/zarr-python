@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 import zarr_indexing
-from docs.diagrams.specifications import FIGURES
 from zarr_indexing import LazyArray
 
 DOCS = Path(__file__).parents[1] / "docs"
@@ -56,58 +55,6 @@ REGIONS = {
     "chunk-cache-wrapper": CACHE_EXAMPLE,
     "chunk-cache-worked-example": CACHE_EXAMPLE,
 }
-GUIDE_FIGURES = (
-    (
-        DOCS / "guide" / "index.md",
-        "indexing-selection",
-        "Scrollable basic indexing selection diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "coordinate-addresses",
-        "Scrollable coordinate addresses diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "prepend-chunk",
-        "Scrollable prepended chunk coordinates diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "transform-mapping",
-        "Scrollable transform mapping diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "compose-views",
-        "Scrollable composed views diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "result-array-shape",
-        "Scrollable result array shape comparison diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "chunk-overlay",
-        "Scrollable chunk projection overlay diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "projection-pair",
-        "Scrollable paired chunk projections diagram",
-    ),
-    (
-        DOCS / "guide" / "index.md",
-        "orthogonal-contrast",
-        "Scrollable orthogonal indexing contrast diagram",
-    ),
-    (
-        DOCS / "guide" / "integrations.md",
-        "system-memory-chunk-lifecycle",
-        "Scrollable system-memory chunk lifecycle diagram",
-    ),
-)
 TUTORIAL_SECTIONS = (
     ("An index selects coordinates", "an-index-selects-coordinates"),
     ("Coordinates are addresses", "coordinates-are-addresses"),
@@ -589,7 +536,6 @@ def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
     guide = (DOCS / "guide" / "integrations.md").read_text()
     assert "system-memory chunk cache" in guide.lower()
     assert "not a napari integration" in guide.lower()
-    assert "system-memory-chunk-lifecycle.svg" in guide
     assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-types" in guide
     assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-source" in guide
     assert "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-wrapper" in guide
@@ -598,51 +544,6 @@ def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
     assert "https://napari.org/dev/howtos/layers/image.html" in guide
     assert "https://github.com/google/neuroglancer/blob/master/src/chunk_manager/base.ts" in guide
     assert "conceptual prior art" in guide.lower()
-
-
-@pytest.mark.parametrize(
-    ("guide_path", "figure_id", "aria_label"),
-    GUIDE_FIGURES,
-    ids=[figure_id for _, figure_id, _ in GUIDE_FIGURES],
-)
-def test_guide_figure_confines_only_its_svg_to_an_accessible_scroll_region(
-    guide_path: Path, figure_id: str, aria_label: str
-) -> None:
-    all_guide_source = "\n".join(
-        path.read_text() for path in sorted((DOCS / "guide").rglob("*.md"))
-    )
-    guide = guide_path.read_text()
-    svg_include = f'_static/diagrams/{figure_id}.svg"'
-    aria_label_attribute = f'aria-label="{aria_label}"'
-
-    assert all_guide_source.count(svg_include) == 1
-    assert all_guide_source.count(aria_label_attribute) == 1
-
-    svg = guide.index(svg_include)
-    figure_start = guide.rindex("<figure>", 0, svg)
-    wrapper_start = guide.rindex('<div class="zi-figure-scroll"', figure_start, svg)
-    wrapper_end = guide.index("</div>", svg)
-    figcaption = guide.index("<figcaption>", wrapper_end)
-    figure_end = guide.index("</figure>", figcaption)
-    figure_source = guide[figure_start : figure_end + len("</figure>")]
-
-    assert figure_start < wrapper_start < svg < wrapper_end < figcaption < figure_end
-    assert figure_source.count('<div class="zi-figure-scroll"') == 1
-    wrapper_open = guide[wrapper_start:svg]
-    assert 'role="region"' in wrapper_open
-    assert aria_label_attribute in wrapper_open
-    assert 'tabindex="0"' in wrapper_open
-
-
-def test_every_registered_figure_has_one_guide_scroll_wrapper() -> None:
-    registered_ids = [spec["id"] for spec in FIGURES]
-    wrapped_ids = [figure_id for _, figure_id, _ in GUIDE_FIGURES]
-    aria_labels = [aria_label for _, _, aria_label in GUIDE_FIGURES]
-
-    assert len(registered_ids) == len(set(registered_ids))
-    assert len(wrapped_ids) == len(set(wrapped_ids))
-    assert set(wrapped_ids) == set(registered_ids)
-    assert len(aria_labels) == len(set(aria_labels))
 
 
 def make_documented_cache() -> tuple[Any, Any]:
