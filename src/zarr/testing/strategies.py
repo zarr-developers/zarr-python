@@ -27,6 +27,7 @@ from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.indexing import Selection
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -612,6 +613,55 @@ def orthogonal_indices(
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
+IndexMode = Literal["basic", "oindex", "vindex", "mask"]
+
+
+@st.composite
+def numpy_array_indexers(
+    draw: st.DrawFn, *, mode: IndexMode, shape: tuple[int, ...]
+) -> tuple[Selection, Selection]:
+    """A `(zarr_selection, numpy_selection)` pair for `mode` on `shape`.
+
+    Scope: the *element-space* indexing modes that have a direct NumPy-array
+    equivalent, so a NumPy array of `shape` can serve as the correctness oracle.
+    One strategy covers them all, so a test can be written once and parametrized
+    over mode instead of re-deriving selection setup per test:
+
+    - `"basic"`  — slices / ints / ellipsis (no newaxis, no negative slices)
+    - `"oindex"` — per-axis integer arrays or slices (orthogonal / outer product)
+    - `"vindex"` — broadcast integer coordinate arrays (vectorized)
+    - `"mask"`   — a boolean array of `shape`
+
+    The two returned selections differ only for `oindex` (zarr's per-axis
+    spelling vs the `np.ix_`-style spelling numpy needs); for the other modes
+    the same object indexes both a zarr array and its numpy reference. The
+    array-based modes (`oindex`/`vindex`/`mask`) need `shape` to have no
+    zero-length axis; `basic` has no such requirement.
+
+    Deliberately excluded is **block** indexing (`Array.blocks` /
+    `get_block_selection`): it addresses the *chunk grid*, not array elements,
+    so it is parametrized by the chunk grid rather than `shape` and has no
+    NumPy-array equivalent to compare against — its oracle is a coordinate
+    translation built by the separate `block_indices` strategy.
+    """
+    if mode == "basic":
+        sel = draw(basic_indices(shape=shape))
+        return sel, sel
+    if mode == "oindex":
+        return draw(orthogonal_indices(shape=shape))
+    if mode == "vindex":
+        idx = draw(
+            npst.integer_array_indices(
+                shape=shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            )
+        )
+        return idx, idx
+    if mode == "mask":
+        m = draw(npst.arrays(dtype=np.bool_, shape=st.just(shape)))
+        return m, m
+    raise ValueError(f"unknown indexing mode: {mode!r}")
+
+
 @st.composite
 def block_indices(
     draw: st.DrawFn, *, chunk_sizes: tuple[tuple[int, ...], ...]
@@ -620,17 +670,17 @@ def block_indices(
     Strategy for block-selection indexers over a chunk grid.
 
     Block indexing is basic indexing applied to the block grid (the grid of
-    chunks), so each axis is drawn with ``basic_indices`` over that axis's chunk
-    count, mirroring how ``orthogonal_indices`` reuses ``basic_indices`` per
-    axis. ``chunk_sizes`` gives the per-chunk data sizes of the array's *outer*
-    (block) grid for every axis — i.e. ``Array.write_chunk_sizes``, the grid that
-    ``Array.blocks`` addresses (the shard grid when sharding is used). For
-    example ``(3, 3, 3, 1)`` for a length-10 axis with a regular chunk size of 3,
-    or the explicit edges of a rectilinear axis; ``nchunks`` for an axis is
-    ``len(chunk_sizes[axis])``.
+    chunks), so each axis is drawn with `basic_indices` over that axis's chunk
+    count, mirroring how `orthogonal_indices` reuses `basic_indices` per
+    axis. `chunk_sizes` gives the per-chunk data sizes of the array's *outer*
+    (block) grid for every axis — i.e. `Array.write_chunk_sizes`, the grid that
+    `Array.blocks` addresses (the shard grid when sharding is used). For
+    example `(3, 3, 3, 1)` for a length-10 axis with a regular chunk size of 3,
+    or the explicit edges of a rectilinear axis; `nchunks` for an axis is
+    `len(chunk_sizes[axis])`.
 
     The array-space translation uses the cumulative sum of those sizes, matching
-    ``BlockIndexer``'s use of ``dim_grid.chunk_offset``. Because the sizes are
+    `BlockIndexer`'s use of `dim_grid.chunk_offset`. Because the sizes are
     clipped to the array extent, the final offset equals the extent and the
     translation is exact for regular (uniform), rectilinear, and sharded grids
     alike.
@@ -643,7 +693,7 @@ def block_indices(
     -------
     block_indexer
         A per-axis tuple of ints / step-1 slices addressing whole chunks,
-        suitable for ``Array.blocks`` / ``get_block_selection`` / ``set_block_selection``.
+        suitable for `Array.blocks` / `get_block_selection` / `set_block_selection`.
     array_indexer
         The equivalent array-space selection (a tuple of slices) for indexing
         the corresponding numpy array, used as the comparison oracle.
@@ -679,7 +729,7 @@ def block_indices(
         # basic_indices draws slices far more often than bare integers, so the
         # integer (single-block) branch below would only be hit on rare draws.
         # Union in an explicit integer so it is reliably exercised — keeping
-        # coverage deterministic under the derandomized ``ci`` Hypothesis profile.
+        # coverage deterministic under the derandomized `ci` Hypothesis profile.
         (dim_sel,) = draw(
             dim_strategy | st.integers(min_value=0, max_value=nchunks - 1).map(lambda i: (i,))
         )
@@ -704,9 +754,9 @@ def block_test_arrays(
     - **regular**: a regular chunk grid, optionally wrapped in sharding.
     - **rectilinear**: a variable (rectilinear) chunk grid, always unsharded.
 
-    Returns ``(zarray, nparray)``. The per-axis block sizes the oracle needs are
-    ``zarray.write_chunk_sizes`` — the array's *outer* (block / shard) grid, which
-    is exactly the grid ``Array.blocks`` addresses; the caller reads it directly.
+    Returns `(zarray, nparray)`. The per-axis block sizes the oracle needs are
+    `zarray.write_chunk_sizes` — the array's *outer* (block / shard) grid, which
+    is exactly the grid `Array.blocks` addresses; the caller reads it directly.
     """
     chunks: tuple[int, ...] | list[list[int]]
     if draw(st.booleans()):
@@ -752,10 +802,10 @@ def key_ranges(
         [(key, byte_request),
          (key, byte_request),...]
 
-    where ``byte_request`` is ``None`` or any of the concrete ``ByteRequest``
+    where `byte_request` is `None` or any of the concrete `ByteRequest`
     subtypes. The bounds are drawn independently of each value's length, so the
     offsets/suffixes routinely exceed the data and exercise the clamping logic
-    in ``_normalize_byte_range_index``.
+    in `_normalize_byte_range_index`.
     """
 
     def make_range(start: int, length: int) -> RangeByteRequest:
@@ -784,7 +834,7 @@ def complex_rectilinear_arrays(
     """Generate a rectilinear array with many small chunks.
 
     The shape is derived from the chunk edges (5-10 chunks per dim,
-    sizes 1-5), exercising higher chunk counts than ``rectilinear_arrays``.
+    sizes 1-5), exercising higher chunk counts than `rectilinear_arrays`.
     """
     ndim = draw(st.integers(min_value=1, max_value=3))
     nchunks = draw(st.integers(min_value=5, max_value=10))
