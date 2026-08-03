@@ -31,16 +31,8 @@ check: lint typecheck test docs-check
 changelog-draft:
     uvx towncrier build --draft --version Unreleased
 
-# Regenerate deterministic documentation diagrams
-docs-generate:
-    uv run --group docs python docs/diagrams/render.py
-
-# Verify that committed documentation diagrams match their specifications
-docs-generated-check:
-    uv run --group docs python docs/diagrams/render.py --check
-
 # Build this package's documentation site, warnings as errors
-docs-check: docs-generated-check
+docs-check:
     env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs build --strict
 
 # With no argument, uses port 8000 if free, otherwise an ephemeral free port;

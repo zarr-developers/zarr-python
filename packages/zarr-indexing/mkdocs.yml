@@ -12,7 +12,6 @@ docs_dir: docs
 use_directory_urls: true
 exclude_docs: |
   examples/*.py
-  diagrams/**
 
 # MkDocs classifies nav targets containing fragments as missing source files,
 # even though Material resolves these relative links against each generated
@@ -123,9 +122,6 @@ plugins:
             - https://docs.python.org/3/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://zarr.readthedocs.io/en/stable/objects.inv
-
-extra_css:
-  - _static/indexing-guide.css
 
 markdown_extensions:
   - admonition

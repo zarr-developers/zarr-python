@@ -105,9 +105,7 @@ filterwarnings = [
 [tool.pyright]
 include = [
     "src",
-    "docs/diagrams",
     "docs/examples",
-    "tests/test_doc_diagrams.py",
     "tests/test_doc_examples.py",
 ]
 enableExperimentalFeatures = true
