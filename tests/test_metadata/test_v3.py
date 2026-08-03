@@ -34,7 +34,7 @@ from zarr.errors import (
 if TYPE_CHECKING:
     from typing import Any
 
-    from zarr_metadata import GroupMetadataV3
+    from zarr_metadata import ZarrV3GroupMetadataJSON
     from zarr_metadata.v3.codec.bytes import BytesCodecObject
 
 
@@ -456,11 +456,11 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
     ):
         group = consolidate_metadata(store)
 
-    # `consolidated_metadata` is an `ExtensionFieldV3` (extra key allowed
-    # on `GroupMetadataV3` via PEP 728 extra_items=ExtensionFieldV3). mypy
+    # `consolidated_metadata` is an `ZarrV3ExtensionField` (extra key allowed
+    # on `ZarrV3GroupMetadataJSON` via PEP 728 extra_items=ZarrV3ExtensionField). mypy
     # doesn't honor PEP 728 yet and reports `typeddict-unknown-key`; the
     # annotation is correct, so the error code is ignored at the literal.
-    expected: GroupMetadataV3 = {  # type: ignore[typeddict-unknown-key]
+    expected: ZarrV3GroupMetadataJSON = {  # type: ignore[typeddict-unknown-key]
         "zarr_format": 3,
         "node_type": "group",
         "attributes": attributes or {},

@@ -54,8 +54,6 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from typing import Any, Literal
 
-    from _pytest.compat import LEGACY_PATH
-
     from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import (
@@ -110,7 +108,7 @@ async def parse_store(
     if store == "zip":
         return await ZipStore.open(f"{path}/zarr.zip", mode="w")
     if store == "memory_get_latency":
-        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0)
+        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0.0)
     raise AssertionError
 
 
@@ -121,14 +119,14 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = await LocalStore.open(str(tmpdir))
+async def store_path(tmp_path: pathlib.Path) -> StorePath:
+    store = await LocalStore.open(str(tmp_path))
     return StorePath(store)
 
 
 @pytest.fixture
-async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return await LocalStore.open(str(tmpdir))
+async def local_store(tmp_path: pathlib.Path) -> LocalStore:
+    return await LocalStore.open(str(tmp_path))
 
 
 @pytest.fixture
@@ -142,26 +140,27 @@ async def memory_store() -> MemoryStore:
 
 
 @pytest.fixture
-async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
-    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
+async def zip_store(tmp_path: pathlib.Path) -> ZipStore:
+    return await ZipStore.open(str(tmp_path / "zarr.zip"), mode="w")
 
 
 @pytest.fixture
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmp_path))
 
 
 @pytest.fixture
-async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store2(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     """Fixture to create a second store for testing copy operations between stores"""
     param = request.param
-    store2_path = tmpdir.mkdir("store2")
+    store2_path = tmp_path / "store2"
+    store2_path.mkdir()
     return await parse_store(param, str(store2_path))
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
+def sync_store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
     result = sync(parse_store(request.param, str(tmp_path)))
     if not isinstance(result, Store):
         raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
@@ -176,10 +175,10 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture
-async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = await parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmp_path))
     return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
@@ -551,24 +550,30 @@ def deep_nan_equal(a: object, b: object) -> bool:
 # instead of each module standing up its own. Consumers create their own buckets and choose
 # how the endpoint reaches the client (explicit storage_options vs. the AWS_ENDPOINT_URL
 # env var) on top of this fixture.
-MOTO_SERVER_PORT = 5555
-MOTO_ENDPOINT_URL = f"http://127.0.0.1:{MOTO_SERVER_PORT}/"
 
 
 @pytest.fixture(scope="session")
 def moto_server() -> Generator[str, None, None]:
     """Start a session-scoped moto S3 server and yield its endpoint URL.
 
+    The server binds an ephemeral port (port=0), so the endpoint is only known at
+    runtime; consumers must take it from this fixture rather than a constant. A fixed
+    port deadlocks under pytest-xdist: session-scoped fixtures run once per *worker*, so
+    concurrent workers race to bind the same port, and the losers block forever inside
+    ThreadedMotoServer.start(), whose server thread dies on "Address already in use"
+    before ever setting the ready event that start() waits on.
+
     importorskip lives inside the fixture so moto is only required when a test actually
     requests an S3 backend, not for the whole test session."""
     moto_server_mod = pytest.importorskip("moto.moto_server.threaded_moto_server")
 
-    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_SERVER_PORT)
+    server = moto_server_mod.ThreadedMotoServer(ip_address="127.0.0.1", port=0)
     server.start()
+    host, port = server.get_host_and_port()
     # moto needs *some* credentials present; use throwaway values if the environment has none.
     os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "foo")
     os.environ.setdefault("AWS_ACCESS_KEY_ID", "foo")
     try:
-        yield MOTO_ENDPOINT_URL
+        yield f"http://{host}:{port}/"
     finally:
         server.stop()

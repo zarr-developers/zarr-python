@@ -14,8 +14,10 @@ import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.indexing import (
     BasicSelection,
+    CoordinateIndexer,
     CoordinateSelection,
     OrthogonalSelection,
     Selection,
@@ -158,7 +160,9 @@ def test_replace_ellipsis() -> None:
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning"),
         ),
     ],
 )
@@ -171,8 +175,8 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
 
     assert_array_equal(arr_np, arr_z.get_basic_selection(Ellipsis))
     assert_array_equal(arr_np, arr_z[...])
-    assert value == arr_z.get_basic_selection(())
-    assert value == arr_z[()]
+    assert arr_np[()] == arr_z.get_basic_selection(())
+    assert arr_np[()] == arr_z[()]
 
     if use_out:
         # test out param
@@ -598,7 +602,9 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning"),
         ),
     ],
 )
@@ -612,11 +618,11 @@ def test_set_basic_selection_0d(
     assert_array_equal(arr_np_zeros, arr_z)
 
     arr_z.set_basic_selection(Ellipsis, value)
-    assert_array_equal(value, arr_z)
-    arr_z[...] = 0
+    assert_array_equal(arr_np, arr_z)
+    arr_z[...] = arr_np_zeros[()]
     assert_array_equal(arr_np_zeros, arr_z)
     arr_z[...] = value
-    assert_array_equal(value, arr_z)
+    assert_array_equal(arr_np, arr_z)
 
     # todo: uncomment the structured array tests when we can make them pass,
     # or delete them if we formally decide not to support structured dtypes.
@@ -1043,8 +1049,15 @@ _COORD_1D_CASES: list[Expect[CoordinateSelection, None]] = [
     Expect(input=[3, 25, 8, 17], output=None, id="out-of-order"),
     Expect(input=[1, 8, 15, 29], output=None, id="sorted"),
     Expect(input=[29, 15, 8, 1], output=None, id="reversed"),
+    Expect(input=np.array([29, 15, 8, 1], dtype=np.uint32), output=None, id="reversed-uint"),
     Expect(input=[2, 2, 8, 8], output=None, id="duplicates"),
     Expect(input=np.array([[2, 4], [6, 8]]), output=None, id="multi-dim"),
+    # sorted-1D fast path (chunk_shape=(7,)): boundaries, contiguous runs, single chunk, full
+    Expect(input=[0, 6, 7, 13, 14, 28, 29], output=None, id="sorted-chunk-boundaries"),
+    Expect(input=[0, 1, 2, 8, 9, 10, 21, 22, 23], output=None, id="sorted-contiguous-runs"),
+    Expect(input=[1, 2, 3, 4, 5, 6], output=None, id="sorted-single-chunk"),
+    Expect(input=list(range(30)), output=None, id="sorted-full"),
+    Expect(input=[0, 0, 7, 7, 7, 29], output=None, id="sorted-duplicates-boundaries"),
 ]
 
 # get_coordinate_selection and vindex word their errors differently for these
@@ -1135,6 +1148,107 @@ def test_get_coordinate_selection_1d(
     a = np.arange(30, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(7,))
     _test_get_coordinate_selection(a, z, case.input)
+
+
+@pytest.mark.parametrize(
+    ("chunks", "shards"),
+    [((7,), None), ((7,), (21,))],
+    ids=["chunked", "sharded"],
+)
+def test_get_coordinate_selection_1d_fast_path(
+    store: StorePath, chunks: tuple[int, ...], shards: tuple[int, ...] | None
+) -> None:
+    """The sorted-1D-runs fast path in CoordinateIndexer matches numpy on chunked and sharded arrays.
+
+    Exercises the boundary/run/single-chunk/full-array cases that the fast path optimizes, plus
+    the sharded case where the top-level (shard) grid drives chunk assignment.
+    """
+    a = np.arange(210, dtype=int)
+    z = zarr.create_array(
+        store=store / str(uuid4()),
+        shape=a.shape,
+        dtype=a.dtype,
+        chunks=chunks,
+        shards=shards,
+    )
+    z[:] = a
+    rng = np.random.default_rng(0)
+    selections = [
+        np.sort(rng.choice(210, 60, replace=False)),  # scattered sorted
+        np.array([0, 6, 7, 20, 21, 209]),  # chunk/shard boundaries
+        np.concatenate([np.arange(s, s + 5) for s in (0, 33, 100, 180)]),  # contiguous runs
+        np.array([0, 0, 7, 7, 209]),  # sorted with duplicates
+        np.arange(210),  # whole array
+        np.array([5]),  # single element
+    ]
+    for sel in selections:
+        assert_array_equal(a[sel], z.get_coordinate_selection(sel))
+        assert_array_equal(a[sel], z.vindex[sel])
+
+
+def test_coordinate_indexer_1d_last_chunk_boundary_does_not_overflow() -> None:
+    max_intp = np.iinfo(np.intp).max
+    chunk_size = max_intp // 2 + 1
+    coords = np.arange(max_intp - 4, max_intp, dtype=np.intp)
+    chunk_grid = ChunkGrid.from_sizes((max_intp,), (chunk_size,))
+
+    (projection,) = tuple(CoordinateIndexer((coords,), (max_intp,), chunk_grid))
+
+    assert projection.chunk_coords == (1,)
+    assert_array_equal(projection.chunk_selection[0], coords - chunk_size)
+    assert projection.out_selection == slice(0, 4)
+
+
+@pytest.mark.parametrize("coord_dtype", [np.int8, np.uint8, np.uint32])
+def test_coordinate_selection_1d_narrow_dtype_large_chunk(
+    store: StorePath, coord_dtype: type[np.integer[Any]]
+) -> None:
+    source = np.arange(1_000)
+    coords = np.arange(10, dtype=coord_dtype)
+    z = zarr_array_from_numpy_array(store, source, chunk_shape=(1_000,))
+
+    assert_array_equal(z.get_coordinate_selection(coords), source[coords])
+    assert_array_equal(z.vindex[coords], source[coords])
+    assert_array_equal(z[coords], source[coords])
+
+    expected = source.copy()
+    expected[coords] = -1
+    z.set_coordinate_selection(coords, -1)
+    assert_array_equal(z[:], expected)
+    z[:] = source
+    z.vindex[coords] = -1
+    assert_array_equal(z[:], expected)
+
+
+def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coords = np.array([0, 99])
+    chunk_grid = ChunkGrid.from_sizes((100,), (1,))
+
+    def unexpected_searchsorted(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("sparse coordinate selection should not call searchsorted")
+
+    monkeypatch.setattr(np, "searchsorted", unexpected_searchsorted)
+    projections = tuple(CoordinateIndexer((coords,), (100,), chunk_grid))
+
+    assert tuple(projection.chunk_coords for projection in projections) == ((0,), (99,))
+
+
+def test_get_coordinate_selection_1d_irregular_grid(store: StorePath) -> None:
+    """Coordinate selections on an irregular (rectilinear) chunk grid bypass the sorted-1D fast
+    path (which requires a regular grid) and still match numpy via the general path."""
+    a = np.arange(30, dtype=int)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        z = zarr.create_array(
+            store=store / str(uuid4()),
+            shape=a.shape,
+            dtype=a.dtype,
+            chunks=((3, 3, 4, 5, 5, 5, 5),),
+        )
+    z[:] = a
+    for sel in (np.array([1, 8, 15, 29]), np.array([0, 3, 3, 29]), np.arange(30)):
+        assert_array_equal(a[sel], z.get_coordinate_selection(sel))
 
 
 @pytest.mark.parametrize("case", _COORD_1D_BAD_CASES, ids=lambda c: c.id)

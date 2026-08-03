@@ -29,8 +29,8 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         (store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir: str) -> dict[str, str]:
-        return {"root": str(tmpdir)}
+    def store_kwargs(self, tmp_path: pathlib.Path) -> dict[str, str]:
+        return {"root": str(tmp_path)}
 
     def test_store_repr(self, store: LocalStore) -> None:
         assert str(store) == f"file://{store.root.as_posix()}"
@@ -45,6 +45,20 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert await store.is_empty("")
         (store.root / "foo/bar").mkdir(parents=True)
         assert await store.is_empty("")
+
+    def test_delete_sync_directory(self, store: LocalStore) -> None:
+        """`delete_sync` on a key that is a directory must remove the whole tree.
+
+        Mirrors the async `delete_dir` behavior: deleting `"foo"` where
+        `"foo"` is a directory containing further nested paths should remove
+        everything under it, not just fail or delete a single file.
+        """
+        (store.root / "foo" / "bar").mkdir(parents=True)
+        (store.root / "foo" / "bar" / "baz").write_bytes(b"data")
+
+        store.delete_sync("foo")
+
+        assert not (store.root / "foo").exists()
 
     def test_creates_new_directory(self, tmp_path: pathlib.Path) -> None:
         target = tmp_path.joinpath("a", "b", "c")

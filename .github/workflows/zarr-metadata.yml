@@ -1,5 +1,11 @@
 name: zarr-metadata
 
+# The justfile's `uv run` recipes resolve against the repo-root uv workspace,
+# whose `requires-python = ">=3.12"` blocks the 3.11 floor tested here, so
+# most jobs install into standalone venvs instead of delegating to
+# packages/zarr-metadata/justfile (only workspace-independent recipes like
+# `just lint` are shared). Keep pins in sync with the justfile.
+
 on:
   push:
     branches: [main]
@@ -39,11 +45,11 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
       - name: Create standalone Python ${{ matrix.python-version }} venv
@@ -67,13 +73,15 @@ jobs:
         shell: bash
         working-directory: packages/zarr-metadata
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run ruff
-        run: uvx ruff check .
+        run: just lint
 
   pyright:
     name: pyright
@@ -83,11 +91,11 @@ jobs:
         shell: bash
         working-directory: packages/zarr-metadata
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
       - name: Create standalone Python 3.11 venv
@@ -99,11 +107,42 @@ jobs:
             --group pyproject.toml:test \
             .
       - name: Run pyright
-        run: uvx --python "$RUNNER_TEMP/zm-venv/bin/python" pyright src
+        # Pinned to the last pyright that types PEP 661 sentinels in class
+        # attributes correctly; 1.1.405+ regressed (microsoft/pyright#11115).
+        # Keep in sync with the pin in packages/zarr-metadata/justfile.
+        run: uvx --python "$RUNNER_TEMP/zm-venv/bin/python" pyright==1.1.404 src
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-metadata
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - name: Create standalone Python 3.12 venv
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python 3.12 --seed
+      - name: Install zarr-metadata and docs deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:docs \
+            .
+      - name: Build docs
+        run: |
+          DISABLE_MKDOCS_2_WARNING=true "$RUNNER_TEMP/zm-venv/bin/python" \
+            -m mkdocs build --strict
 
   zarr-metadata-complete:
     name: zarr-metadata complete
-    needs: [test, ruff, pyright]
+    needs: [test, ruff, pyright, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:

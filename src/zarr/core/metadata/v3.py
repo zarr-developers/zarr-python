@@ -12,7 +12,7 @@ from zarr_metadata import (
     RectilinearChunkGridName,
     RegularChunkGridName,
 )
-from zarr_metadata.v3.array import ArrayMetadataV3, ExtensionFieldV3
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
@@ -147,8 +147,8 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
-AllowedExtraField = ExtensionFieldV3
-"""Alias for `zarr_metadata.v3.array.ExtensionFieldV3`.
+AllowedExtraField = ZarrV3ExtensionField
+"""Alias for `zarr_metadata.v3.array.ZarrV3ExtensionField`.
 
 `must_understand` is typed as `bool` to match the spec (extension authors that
 *understand* a field may produce `True`); the runtime guard
@@ -425,13 +425,13 @@ def parse_chunk_grid(
     raise ValueError(f"Unknown chunk grid name: {name!r}")
 
 
-ArrayMetadataJSON_V3 = ArrayMetadataV3
-"""Alias for `zarr_metadata.v3.array.ArrayMetadataV3`, the TypedDict modeling
+ArrayMetadataJSON_V3 = ZarrV3ArrayMetadataJSON
+"""Alias for `zarr_metadata.v3.array.ZarrV3ArrayMetadataJSON`, the TypedDict modeling
 the v3 array metadata document.
 
 Used throughout zarr-python under this name to avoid visual collision with
 the `ArrayV3Metadata` dataclass — the two differ only in word order. Extra
-keys are permitted on this dict if they conform to `ExtensionFieldV3`."""
+keys are permitted on this dict if they conform to `ZarrV3ExtensionField`."""
 
 
 """

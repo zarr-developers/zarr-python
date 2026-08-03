@@ -589,7 +589,9 @@ class Struct(Structured):
             ]
             return {"name": fields_v2, "object_codec_id": None}
         elif zarr_format == 3:
-            v3_unstable_dtype_warning(self)
+            # The "struct" data type has a stable Zarr V3 specification
+            # (https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/struct),
+            # so unlike the legacy "structured" alias it does not emit an unstable-spec warning.
             # `fields` is emitted as a tuple, not a list: a JSON array is a
             # typed fixed-length container, which `tuple` models faithfully.
             # This matches zarr-metadata's `StructConfiguration.fields` type.

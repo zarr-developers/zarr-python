@@ -67,8 +67,10 @@ class VLenUTF8Codec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
+        # numcodecs vlen codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
         return chunk_spec.prototype.buffer.from_bytes(
-            _vlen_utf8_codec.encode(chunk_array.as_numpy_array())
+            _vlen_utf8_codec.encode(np.ascontiguousarray(chunk_array.as_numpy_array()))
         )
 
     async def _encode_single(
@@ -125,8 +127,10 @@ class VLenBytesCodec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
+        # numcodecs vlen codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
         return chunk_spec.prototype.buffer.from_bytes(
-            _vlen_bytes_codec.encode(chunk_array.as_numpy_array())
+            _vlen_bytes_codec.encode(np.ascontiguousarray(chunk_array.as_numpy_array()))
         )
 
     async def _encode_single(

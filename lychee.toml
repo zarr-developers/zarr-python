@@ -1,0 +1,25 @@
+# Configuration for the lychee link checker (https://lychee.cli.rs/).
+# Auto-discovered as ./lychee.toml by the lychee GitHub Action.
+
+# Treat redirect status codes as success rather than failures.
+accept = ["200..=299"]
+
+# Files lychee should not scan for links.
+exclude_path = [
+  # mkdocs-material theme overrides: hrefs are Jinja expressions like
+  # `{{ '../' ~ base_url }}`, not real URLs, so lychee cannot resolve them.
+  "docs/overrides",
+  # Design notes: working records that point at transient artifacts (commits,
+  # fork branches, compare URLs) which are expected to disappear over time.
+  "design",
+]
+
+# URL patterns to ignore (regex, matched against the full URL).
+exclude = [
+  # Local docs preview server shown in the contributing guide ("hatch run serve"),
+  # documentation of a command rather than a reachable link.
+  '^https?://0\.0\.0\.0',
+  '^https?://(localhost|127\.0\.0\.1)(:\d+)?',
+  # SPEC 0 page times out but is valid.
+  '^https://scientific-python\.org/specs/spec-0000',
+]

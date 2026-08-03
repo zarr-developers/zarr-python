@@ -41,8 +41,10 @@ from zarr.core.group import (
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
     ZarrUserWarning,
 )
@@ -54,18 +56,18 @@ from zarr.testing.store import LatencyStore
 from .conftest import meta_from_array, parse_store
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Callable
 
-    from _pytest.compat import LEGACY_PATH
-    from zarr_metadata import GroupMetadataV2, GroupMetadataV3
+    from zarr_metadata import ZarrV2GroupMetadataJSON, ZarrV3GroupMetadataJSON
 
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
-    result = await parse_store(request.param, str(tmpdir))
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
+    result = await parse_store(request.param, str(tmp_path))
     if not isinstance(result, Store):
         raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
@@ -103,7 +105,7 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     root = await zarr.api.asynchronous.open_group(
         store=store,
     )
-    agroup = await root.getitem("a")
+    agroup = await root.get_group("a")
     assert agroup.attrs == {"key": "value"}
 
     # create a child node with a couple intermediates
@@ -397,7 +399,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subgroup"]["subarray"] == subsubarray
     assert group["subgroup/subarray"] == subsubarray
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="nope"):
         group["nope"]
 
     with pytest.raises(KeyError, match="subarray/subsubarray"):
@@ -448,6 +450,77 @@ def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
     assert result.attrs["foo"] == "bar"
 
 
+def test_group_get_array(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` returns the array at the given path, for both direct child names
+    and nested paths, and the result is statically typed as an Array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+
+    observed = group.get_array("subarray")
+    assert isinstance(observed, Array)
+    assert observed == subarray
+    assert group.get_array("subgroup/subarray") == subsubarray
+
+
+def test_group_get_array_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ArrayNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(ArrayNotFoundError, match="No array found in store"):
+        group.get_array("missing")
+
+
+def test_group_get_array_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ContainsGroupError` when the node at the given path is a
+    group rather than an array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_group(name="subgroup")
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+        group.get_array("subgroup")
+
+
+def test_group_get_group(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` returns the group at the given path, for both direct child names
+    and nested paths, and the result is statically typed as a Group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subsubgroup = subgroup.create_group(name="subsubgroup")
+
+    observed = group.get_group("subgroup")
+    assert isinstance(observed, Group)
+    assert observed == subgroup
+    assert group.get_group("subgroup/subsubgroup") == subsubgroup
+
+
+def test_group_get_group_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `GroupNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(GroupNotFoundError, match="No group found in store"):
+        group.get_group("missing")
+
+
+def test_group_get_group_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `ContainsArrayError` when the node at the given path is an
+    array rather than a group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+        group.get_group("subarray")
+
+
 @pytest.mark.parametrize("consolidated", [True, False])
 def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
@@ -485,11 +558,11 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subarray"] == subarray
 
     del group["subgroup"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subgroup"):
         group["subgroup"]
 
     del group["subarray"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subarray"):
         group["subarray"]
 
 
@@ -592,7 +665,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             # `node_type` is v3 only. The subgroup metadata here uses the
             # in-memory merged form (zarr-python folds `.zattrs` and the
             # `consolidated_metadata` extension into a single dict).
-            subgroup: GroupMetadataV2 = {
+            subgroup: ZarrV2GroupMetadataJSON = {
                 "attributes": {},
                 "consolidated_metadata": {  # type: ignore[typeddict-unknown-key]
                     "metadata": {},
@@ -1026,12 +1099,12 @@ async def test_asyncgroup_open_wrong_format(
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
-_FROM_DICT_V3: GroupMetadataV3 = {
+_FROM_DICT_V3: ZarrV3GroupMetadataJSON = {
     "zarr_format": 3,
     "node_type": "group",
     "attributes": {"foo": 100},
 }
-_FROM_DICT_V2: GroupMetadataV2 = {"zarr_format": 2, "attributes": {"foo": 100}}
+_FROM_DICT_V2: ZarrV2GroupMetadataJSON = {"zarr_format": 2, "attributes": {"foo": 100}}
 
 
 # should this be async?
@@ -1067,7 +1140,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     assert await agroup.getitem(sub_group_path) == sub_group
 
     # check that asking for a nonexistent key raises KeyError
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="foo"):
         await agroup.getitem("foo")
 
 
@@ -1323,7 +1396,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     #     await root.require_group("foo", overwrite=True)
 
     # test that requiring a group where an array is fails
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Incompatible object"):
         await foo_group.require_group("bar")
 
 
@@ -1476,7 +1549,7 @@ class TestConsolidated:
 
         # On disk, we've consolidated all the metadata in the root zarr.json
         group = await zarr.api.asynchronous.open(store=store)
-        rg0 = await group.getitem("g0")
+        rg0 = await group.get_group("g0")
 
         expected = ConsolidatedMetadata(
             metadata={
@@ -1497,10 +1570,10 @@ class TestConsolidated:
         )
         assert rg0.metadata.consolidated_metadata == expected
 
-        rg1 = await rg0.getitem("g1")
+        rg1 = await rg0.get_group("g1")
         assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
 
-        rg2 = await rg1.getitem("g2")
+        rg2 = await rg1.get_group("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_group_delitem_consolidated(self, store: Store) -> None:
@@ -1657,7 +1730,7 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="0/0"):
         g1["0/0"]
 
 
@@ -1720,6 +1793,9 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
         (zarr.core.group.get_node, zarr.core.sync_group.get_node),
     ],
+    # The default ids (from __name__) collide: the method pair and the module-level pair
+    # for create_hierarchy would both be id'd "create_hierarchy-create_hierarchy".
+    ids=lambda func: f"{func.__module__.rsplit('.', maxsplit=1)[-1]}.{func.__qualname__}",
 )
 def test_consistent_signatures(
     a_func: Callable[[object], object], b_func: Callable[[object], object]

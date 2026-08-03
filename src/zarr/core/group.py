@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import json
 import logging
 import unicodedata
@@ -52,6 +51,7 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
     GroupNotFoundError,
@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr_metadata.v2 import ConsolidatedMetadataV2
+    from zarr_metadata.v2 import ZarrV2ConsolidatedMetadataJSON
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -239,10 +239,12 @@ class ConsolidatedMetadata:
         # In the example, the group at `/a/b` will have consolidated metadata
         # for its children `array-0` and `array-1`.
 
-        keys = sorted(metadata, key=lambda k: k.count("/"))
-        grouped = {
-            k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
-        }
+        # Group keys by their parent path. This must not rely on same-parent keys
+        # being adjacent: the persisted key order is arbitrary, so accumulate
+        # instead of using itertools.groupby, which only groups consecutive runs.
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for k in sorted(metadata, key=lambda k: k.count("/")):
+            grouped[k.rsplit("/", 1)[0]].append(k)
 
         # we go top down and directly manipulate metadata.
         for key, children_keys in grouped.items():
@@ -633,11 +635,13 @@ class AsyncGroup:
         group_metadata: dict[str, Any] = {**zgroup, "attributes": zattrs}
 
         if consolidated_metadata_bytes is not None:
-            # The parsed file has the shape of `ConsolidatedMetadataV2` from
+            # The parsed file has the shape of `ZarrV2ConsolidatedMetadataJSON` from
             # zarr-metadata (keys like `foo/.zarray`, `foo/.zgroup`,
             # `foo/.zattrs`). Mutate it below to strip and reorganize
             # entries, so convert to a mutable `dict` after parsing.
-            parsed: ConsolidatedMetadataV2 = json.loads(consolidated_metadata_bytes.to_bytes())
+            parsed: ZarrV2ConsolidatedMetadataJSON = json.loads(
+                consolidated_metadata_bytes.to_bytes()
+            )
             v2_consolidated_metadata = dict(parsed["metadata"])
             # We already read zattrs and zgroup. Should we ignore these?
             v2_consolidated_metadata.pop(".zattrs", None)
@@ -832,6 +836,70 @@ class AsyncGroup:
             return await self.getitem(key)
         except KeyError:
             return default
+
+    async def get_array(self, path: str) -> AnyAsyncArray:
+        """Obtain an array member of this group, raising if it is absent or not an array.
+
+        Parameters
+        ----------
+        path : str
+            Path of the array relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subarray`.
+
+        Returns
+        -------
+        AsyncArray
+            The array at the given path.
+
+        Raises
+        ------
+        ArrayNotFoundError
+            If no node exists at the given path.
+        ContainsGroupError
+            If the node at the given path is a group rather than an array.
+        """
+        store_path = self.store_path / path
+        try:
+            node = await self.getitem(path)
+        except KeyError as e:
+            msg = f"No array found in store {store_path.store!r} at path {store_path.path!r}"
+            raise ArrayNotFoundError(msg) from e
+        if isinstance(node, AsyncGroup):
+            msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsGroupError(msg)
+        return node
+
+    async def get_group(self, path: str) -> AsyncGroup:
+        """Obtain a group member of this group, raising if it is absent or not a group.
+
+        Parameters
+        ----------
+        path : str
+            Path of the group relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subsubgroup`.
+
+        Returns
+        -------
+        AsyncGroup
+            The group at the given path.
+
+        Raises
+        ------
+        GroupNotFoundError
+            If no node exists at the given path.
+        ContainsArrayError
+            If the node at the given path is an array rather than a group.
+        """
+        store_path = self.store_path / path
+        try:
+            node = await self.getitem(path)
+        except KeyError as e:
+            msg = f"No group found in store {store_path.store!r} at path {store_path.path!r}"
+            raise GroupNotFoundError(msg) from e
+        if isinstance(node, AsyncArray):
+            msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+            raise ContainsArrayError(msg)
+        return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
@@ -1892,6 +1960,74 @@ class Group(SyncMixin):
             return self[path]
         except KeyError:
             return default
+
+    def get_array(self, path: str) -> AnyArray:
+        """Obtain an array member of this group, raising if it is absent or not an array.
+
+        Parameters
+        ----------
+        path : str
+            Path of the array relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subarray`.
+
+        Returns
+        -------
+        Array
+            The array at the given path.
+
+        Raises
+        ------
+        ArrayNotFoundError
+            If no node exists at the given path.
+        ContainsGroupError
+            If the node at the given path is a group rather than an array.
+
+        Examples
+        --------
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
+        group.get_array("subarray")
+        # <Array memory://... shape=(10,) dtype=float64>
+        ```
+        """
+        return Array(self._sync(self._async_group.get_array(path)))
+
+    def get_group(self, path: str) -> Group:
+        """Obtain a group member of this group, raising if it is absent or not a group.
+
+        Parameters
+        ----------
+        path : str
+            Path of the group relative to this group. May contain `/` to reference
+            a member of a subgroup, e.g. `subgroup/subsubgroup`.
+
+        Returns
+        -------
+        Group
+            The group at the given path.
+
+        Raises
+        ------
+        GroupNotFoundError
+            If no node exists at the given path.
+        ContainsArrayError
+            If the node at the given path is an array rather than a group.
+
+        Examples
+        --------
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_group(name="subgroup")
+        group.get_group("subgroup")
+        # <Group memory://...>
+        ```
+        """
+        return Group(self._sync(self._async_group.get_group(path)))
 
     def __delitem__(self, key: str) -> None:
         """Delete a group member.
@@ -3078,7 +3214,7 @@ async def create_nodes(
     """
 
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
-    # then we should consider adding a keyword argument this this function
+    # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
     create_tasks: list[Coroutine[None, None, str]] = []
 

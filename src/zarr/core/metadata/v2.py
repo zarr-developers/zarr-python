@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
-from zarr_metadata.v2.array import ArrayMetadataV2 as _ArrayMetadataV2
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataJSON
 
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -47,7 +47,7 @@ from zarr.core.metadata.common import parse_attributes
 # Union of acceptable types for v2 compressors
 type CompressorLikev2 = dict[str, JSON] | Numcodec | None
 # Re-export the v2 array metadata JSON shape under zarr-python's historical name.
-ArrayV2MetadataDict = _ArrayMetadataV2
+ArrayV2MetadataDict = _ZarrV2ArrayMetadataJSON
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,7 +113,7 @@ class ArrayV2Metadata(Metadata):
     def chunk_grid(self) -> ChunkGrid:
         """Backwards-compatible chunk grid property.
 
-        .. deprecated::
+        !!! warning "Deprecated"
             Access the chunk grid via the array layer instead.
             This property will be removed in a future release.
         """

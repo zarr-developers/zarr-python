@@ -163,6 +163,40 @@ def test_generic_filter(
     np.testing.assert_array_equal(data, b[:, :])
 
 
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "dtype"),
+    [
+        (_numcodecs.Delta, {"dtype": "int64"}, "int64"),
+        (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 1}, "int64"),
+        (_numcodecs.PackBits, {}, "bool"),
+    ],
+    ids=["delta", "fixedscaleoffset", "packbits"],
+)
+def test_generic_filter_f_contiguous(
+    codec_class: type[_numcodecs._NumcodecsArrayArrayCodec],
+    codec_config: dict[str, JSON],
+    dtype: str,
+) -> None:
+    # gh-3558: F-contiguous chunks were handed to numcodecs filters as is, and
+    # numcodecs flattens in memory order, so the elements came back transposed
+    if dtype == "bool":
+        data = np.asfortranarray(np.tril(np.ones((16, 16), dtype=bool)))
+    else:
+        data = np.asfortranarray(np.arange(256, dtype=dtype).reshape(16, 16))
+
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[codec_class(**codec_config)],
+    )
+
+    a[:, :] = data
+    np.testing.assert_array_equal(data, a[:, :])
+
+
 def test_generic_filter_bitround() -> None:
     data = np.linspace(0, 1, 256, dtype="float32").reshape((16, 16))
 
