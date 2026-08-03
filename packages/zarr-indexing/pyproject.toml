@@ -95,6 +95,7 @@ target-version = "py312"
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
+pythonpath = ["."]
 xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
