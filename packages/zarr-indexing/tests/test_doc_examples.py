@@ -211,17 +211,33 @@ def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct
     assert namespace["PREPEND_REQUEST_COORDS"] == ((-3,), (-2,), (-1,))
 
 
-def test_half_open_interval_is_defined_before_negative_coordinates() -> None:
+def test_half_open_interval_examples_explain_ordered_concatenation_before_negative_coordinates() -> (
+    None
+):
     chapter = (DOCS / "guide" / "02-transforms.md").read_text()
     definition = "start at 0, inclusive, and stop at 1, exclusive"
-    equations = (
-        "[0, 1) = {0}",
-        "[1, 3) = {1, 2}",
-        "[0, 1) ∪ [1, 3) = [0, 3) = {0, 1, 2}",  # noqa: RUF001
+    examples = (
+        ("[0, 1) = {0}", "Start at 0 and stop before 1, so the interval contains only 0."),
+        (
+            "[1, 3) = {1, 2}",
+            "Start at 1 and stop before 3, so the interval contains 1 and 2.",
+        ),
+        (
+            "concat([0, 1), [1, 3)) = [0, 3)",
+            "Append the second interval after the first. Their matching "
+            "exclusive/inclusive boundary produces one continuous interval without "
+            "a gap or duplicated coordinate.",
+        ),
     )
+    interval_section = chapter[: chapter.index("[-2, 3)")]
+    normalized_section = " ".join(interval_section.split())
 
     assert definition in chapter
-    assert all(equation in chapter for equation in equations)
+    assert all(
+        equation in normalized_section and explanation in normalized_section
+        for equation, explanation in examples
+    )
+    assert " ∪ " not in interval_section  # noqa: RUF001
     assert chapter.index(definition) < chapter.index("[-2, 3)")
     assert "half-open-intervals.svg" not in chapter
 

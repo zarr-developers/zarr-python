@@ -7,15 +7,15 @@ The `[` includes the lower boundary, while the `)` excludes the upper boundary.
 For integer coordinates, `[0, 1)` therefore contains exactly one coordinate: `0`.
 
 Half-openness lets adjacent slices and chunks meet without a gap or overlap.
-The stopping boundary of one interval is the starting boundary of the next:
-`[0, 1) ∪ [1, 3) = [0, 3)`. Coordinate `1` appears exactly once—in the
-second interval.
+Concatenation is ordered: the first interval is followed by the second. When
+the first interval's exclusive stop matches the second interval's inclusive
+start, the shared boundary coordinate appears exactly once.
 
-```text
-[0, 1) = {0}
-[1, 3) = {1, 2}
-[0, 1) ∪ [1, 3) = [0, 3) = {0, 1, 2}
-```
+- `[0, 1) = {0}` — Start at 0 and stop before 1, so the interval contains only 0.
+- `[1, 3) = {1, 2}` — Start at 1 and stop before 3, so the interval contains 1 and 2.
+- `concat([0, 1), [1, 3)) = [0, 3)` — Append the second interval after the
+  first. Their matching exclusive/inclusive boundary produces one continuous
+  interval without a gap or duplicated coordinate.
 
 In the transform algebra, **coordinates are just integers**. A negative
 coordinate is a real address in a domain, with the same status as zero or a
