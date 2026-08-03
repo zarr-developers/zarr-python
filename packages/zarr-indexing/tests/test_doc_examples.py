@@ -273,9 +273,35 @@ def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> 
     source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
     cache = cache_type(source, capacity=2)
 
-    np.testing.assert_array_equal(cache[[1, 1], 2], np.array([10, 10]))
+    np.testing.assert_array_equal(cache.oindex[[1, 1], 2], np.array([10, 10]))
     assert tuple(source.reads) == ((0, 0),)
     assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
+
+
+def test_system_memory_cache_separates_basic_and_orthogonal_indexing() -> None:
+    source_type = CACHE_NAMESPACE["RecordingChunkSource"]
+    cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
+    data = np.arange(48).reshape(6, 8)
+    cache = cache_type(source_type(data, chunks=(3, 4)), capacity=4)
+    row = np.array([0, 2])
+    column = np.array([1, 3])
+
+    np.testing.assert_array_equal(cache[0:3, 1:4], data[0:3, 1:4])
+    np.testing.assert_array_equal(
+        cache.oindex[row, column],
+        data[np.ix_(row, column)],
+    )
+
+
+def test_system_memory_cache_does_not_treat_array_keys_as_orthogonal() -> None:
+    source, cache = make_documented_cache()
+    row = np.array([0, 2])
+    column = np.array([1, 3])
+
+    with pytest.raises(IndexError, match="unsupported selection type for basic indexing"):
+        cache[row, column]
+
+    assert tuple(source.reads) == ()
 
 
 def test_system_memory_cache_assembles_a_scalar_selection() -> None:

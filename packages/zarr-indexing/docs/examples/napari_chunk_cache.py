@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, cast
@@ -114,6 +115,16 @@ LEGAL_TRANSITIONS: dict[ChunkState, frozenset[ChunkState]] = {
 }
 
 
+class _OrthogonalIndexer:
+    """Expose outer-product indexing without changing ``cache[key]`` semantics."""
+
+    def __init__(self, getitem: Callable[[Any], np.ndarray[Any, Any]]) -> None:
+        self._getitem = getitem
+
+    def __getitem__(self, key: Any) -> np.ndarray[Any, Any]:
+        return self._getitem(key)
+
+
 class SystemMemoryChunkCache:
     def __init__(self, source: RecordingChunkSource, *, capacity: int) -> None:
         self.source = source
@@ -132,6 +143,10 @@ class SystemMemoryChunkCache:
     @property
     def dtype(self) -> np.dtype[Any]:
         return self.source.dtype
+
+    @property
+    def oindex(self) -> _OrthogonalIndexer:
+        return _OrthogonalIndexer(lambda key: self._read(key, orthogonal=True))
 
     def state(self, chunk_coords: ChunkCoords) -> ChunkState:
         return self._record(chunk_coords).state
@@ -209,7 +224,11 @@ class SystemMemoryChunkCache:
             self._transition(chunk_coords, ChunkState.EVICTED, "LRU capacity")
 
     def __getitem__(self, key: Any) -> np.ndarray[Any, Any]:
-        view = self._planner.lazy.oindex[key]
+        return self._read(key, orthogonal=False)
+
+    def _read(self, key: Any, *, orthogonal: bool) -> np.ndarray[Any, Any]:
+        lazy = self._planner.lazy
+        view = lazy.oindex[key] if orthogonal else lazy[key]
         projections = tuple(part.projection for part in view.parts())
         required = tuple(dict.fromkeys(projection.chunk_coords for projection in projections))
 

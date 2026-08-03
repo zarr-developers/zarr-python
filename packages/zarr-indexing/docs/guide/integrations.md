@@ -73,6 +73,12 @@ Its source represents already decoded chunks and records each read:
 The wrapper turns public chunk projections into cache requests and assembles
 ready buffers through the paired transforms:
 
+Its indexing dialects remain explicit: `cache[key]` accepts basic indexing
+(integers, slices, ellipsis, and new axes), while `cache.oindex[key]` combines
+per-axis index arrays as an outer product. Array keys are not silently treated
+as orthogonal by plain square brackets; callers choose that behavior through
+the named accessor.
+
 ```python
 --8<-- "examples/napari_chunk_cache.py:chunk-cache-wrapper"
 ```
