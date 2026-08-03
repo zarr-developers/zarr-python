@@ -51,10 +51,12 @@ executable reference below demonstrates.
 This remains a **napari-like consumer, not a napari integration**. It models
 only decoded chunks resident in system memory.
 
+<div class="zi-lifecycle-scroll" role="region" aria-label="Scrollable system-memory chunk lifecycle" tabindex="0">
 <figure>
 --8<-- "_static/diagrams/system-memory-chunk-lifecycle.svg"
 <figcaption>A requested chunk is queued and loaded before becoming ready in system memory; failures require explicit retry, and evicted chunks re-enter through the same queue.</figcaption>
 </figure>
+</div>
 
 The example keeps the lifecycle records and transitions explicit:
 

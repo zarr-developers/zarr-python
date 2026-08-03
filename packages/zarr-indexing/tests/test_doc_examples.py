@@ -300,6 +300,18 @@ def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
     assert "conceptual prior art" in guide.lower()
 
 
+def test_integration_guide_confines_lifecycle_scrolling_to_an_accessible_wrapper() -> None:
+    guide = (DOCS / "guide" / "integrations.md").read_text()
+    wrapper_start = guide.index('<div class="zi-lifecycle-scroll"')
+    figure = guide.index("<figure>", wrapper_start)
+    wrapper_end = guide.index("</div>", figure)
+
+    assert wrapper_start < figure < wrapper_end
+    assert 'role="region"' in guide[wrapper_start:figure]
+    assert 'aria-label="Scrollable system-memory chunk lifecycle"' in guide[wrapper_start:figure]
+    assert 'tabindex="0"' in guide[wrapper_start:figure]
+
+
 def make_documented_cache() -> tuple[Any, Any]:
     source_type = CACHE_NAMESPACE["RecordingChunkSource"]
     cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]

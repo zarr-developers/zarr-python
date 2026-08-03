@@ -121,6 +121,7 @@ class FigureSpec(TypedDict):
     description: str
     width: int
     height: int
+    legend_bottom_padding: NotRequired[int]
     elements: tuple[ElementSpec, ...]
 
 
@@ -689,6 +690,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         ),
         "width": 760,
         "height": 470,
+        "legend_bottom_padding": 24,
         "elements": (
             {
                 "id": "new",
@@ -856,6 +858,9 @@ def validate_figure(spec: FigureSpec) -> None:
         value = raw_spec.get(field)
         if not _is_integer(value) or value <= 0:
             _invalid(figure_id, field, "must be a positive integer")
+    legend_bottom_padding = raw_spec.get("legend_bottom_padding", 12)
+    if not _is_integer(legend_bottom_padding) or legend_bottom_padding < 0:
+        _invalid(figure_id, "legend_bottom_padding", "must be a non-negative integer")
 
     element_ids: set[str] = set()
     node_ids: set[str] = set()

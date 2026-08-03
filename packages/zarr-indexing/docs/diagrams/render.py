@@ -97,9 +97,15 @@ def _stylesheet() -> str:
             ".zi-figure .zi-role-chunk-local > rect, .zi-figure .zi-role-chunk-local .zi-cue-swatch { stroke-width: 2; stroke-dasharray: 7 4; }",
             ".zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }",
             ".zi-panel-row { display: flex; gap: 1rem; align-items: flex-start; }",
+            ".zi-lifecycle-scroll { max-width: 100%; }",
             "@media (max-width: 600px) {",
             "  .zi-panel-row { flex-wrap: wrap; overflow-x: visible; }",
             "  .zi-panel-row > * { flex: 1 1 100%; min-width: 0; }",
+            "  .zi-lifecycle-scroll { overflow-x: auto; overscroll-behavior-inline: contain; }",
+            (
+                '  .zi-lifecycle-scroll .zi-figure[aria-labelledby~="system-memory-chunk-'
+                'lifecycle-title"] { min-width: 640px; }'
+            ),
             "}",
         )
     )
@@ -397,7 +403,8 @@ def _render_legend(parent: Element, spec: FigureSpec) -> None:
     columns = min(4, len(roles))
     column_width = min(170, (spec["width"] - 32) // max(columns, 1))
     rows = (len(roles) + columns - 1) // columns
-    first_y = spec["height"] - 22 - (rows - 1) * 34
+    legend_bottom_padding = spec.get("legend_bottom_padding", 12)
+    first_y = spec["height"] - legend_bottom_padding - 10 - (rows - 1) * 34
     for index, role in enumerate(roles):
         x = 22 + (index % columns) * column_width
         y = first_y + (index // columns) * 34

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import NotRequired, TypedDict, Unpack, cast, get_args
 from xml.etree import ElementTree
@@ -291,6 +292,30 @@ def test_figure_geometry_must_not_be_boolean() -> None:
         validate_figure(spec)
 
 
+def test_legend_bottom_padding_must_not_be_negative() -> None:
+    spec = cast(
+        FigureSpec,
+        {
+            **figure("negative-legend-padding", elements=(TEXT,)),
+            "legend_bottom_padding": -1,
+        },
+    )
+    with pytest.raises(ValueError, match="negative-legend-padding.*legend_bottom_padding"):
+        validate_figure(spec)
+
+
+def test_legend_bottom_padding_must_be_an_integer() -> None:
+    spec = cast(
+        FigureSpec,
+        {
+            **figure("boolean-legend-padding", elements=(TEXT,)),
+            "legend_bottom_padding": True,
+        },
+    )
+    with pytest.raises(ValueError, match="boolean-legend-padding.*legend_bottom_padding"):
+        validate_figure(spec)
+
+
 @pytest.fixture
 def generated_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(diagram_render, "FIGURES", (figure("generated", elements=(TEXT,)),))
@@ -493,6 +518,51 @@ def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None
         ("ready", "evicted", "LRU pressure"),
         ("evicted", "queued", "request again"),
     }
+
+
+def test_system_memory_lifecycle_legend_reserves_24_units_below_visible_content() -> None:
+    spec = next(item for item in FIGURES if item["id"] == "system-memory-chunk-lifecycle")
+    assert spec.get("legend_bottom_padding") == 24
+
+    root = ElementTree.fromstring(render_figure(spec))
+    legend = next(
+        element
+        for element in root.iter()
+        if element.attrib.get("id") == "system-memory-chunk-lifecycle-legend"
+    )
+    swatches = [
+        element
+        for element in legend.iter()
+        if "zi-cue-swatch" in element.attrib.get("class", "").split()
+    ]
+    labels = [
+        element
+        for element in legend.iter()
+        if "zi-role-label" in element.attrib.get("class", "").split()
+    ]
+    content_bottom = spec["height"] - 24
+    role_label_font_size = 12
+
+    assert swatches
+    assert labels
+    assert all(
+        float(element.attrib["y"]) + float(element.attrib["height"]) <= content_bottom
+        for element in swatches
+    )
+    assert all(
+        float(element.attrib["y"]) + role_label_font_size / 2 <= content_bottom
+        for element in labels
+    )
+
+
+def test_default_legend_bottom_padding_preserves_existing_coordinates() -> None:
+    root = ElementTree.fromstring(render_figure(figure("default-legend", elements=(TEXT,))))
+    swatch = next(
+        element
+        for element in root.iter()
+        if "zi-cue-swatch" in element.attrib.get("class", "").split()
+    )
+    assert (swatch.attrib["y"], swatch.attrib["height"]) == ("88", "20")
 
 
 def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:
@@ -823,6 +893,35 @@ def test_generated_stylesheet_has_theme_roles_and_responsive_layout() -> None:
     assert "@media (max-width: 600px)" in stylesheet
     assert "flex-wrap: wrap;" in stylesheet
     assert "overflow-x: visible;" in stylesheet
+
+
+def test_lifecycle_phone_scroll_is_confined_to_its_wrapper() -> None:
+    stylesheet = diagram_render.STYLESHEET
+    lifecycle = next(item for item in FIGURES if item["id"] == "system-memory-chunk-lifecycle")
+    base_wrapper_rule = stylesheet.split(".zi-lifecycle-scroll {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
+    phone_rules = stylesheet.split("@media (max-width: 600px) {", maxsplit=1)[1]
+    phone_wrapper_rule = phone_rules.split(".zi-lifecycle-scroll {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
+    selector = (
+        '.zi-lifecycle-scroll .zi-figure[aria-labelledby~="system-memory-chunk-lifecycle-title"] {'
+    )
+    lifecycle_rule = phone_rules.split(selector, maxsplit=1)[1].split("}", maxsplit=1)[0]
+    minimum_width_match = re.search(r"min-width: (?P<width>\d+)px;", lifecycle_rule)
+
+    assert "max-width: 100%;" in base_wrapper_rule
+    assert "overflow-x" not in base_wrapper_rule
+    assert "overflow-x: auto;" in phone_wrapper_rule
+    assert minimum_width_match is not None
+    minimum_width = int(minimum_width_match.group("width"))
+    assert 600 <= minimum_width <= 680
+    assert 14 * minimum_width / lifecycle["width"] >= 11.5
+
+    global_figure_rule = stylesheet.split(".zi-figure {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+    assert "min-width" not in global_figure_rule
+    assert not re.search(r"(?:html|body|\.md-main)\s*\{[^}]*overflow-x", stylesheet)
 
 
 def test_generated_assets_are_current() -> None:
