@@ -88,7 +88,8 @@ from an array's end.
 
 `IndexDomain` makes those bounds explicit. In the first half of this executable
 example, narrowing at `-1` means selecting the literal address `-1`. The final
-assertion deliberately contrasts that with a NumPy-shaped wrapper.
+assertion deliberately contrasts that with a NumPy-style position in the wrapper
+while preserving a one-element result array.
 
 ```python
 --8<-- "examples/coordinate_origins.py:coordinate-origin"

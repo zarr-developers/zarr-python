@@ -1,6 +1,6 @@
 <svg aria-labelledby="result-array-shape-title result-array-shape-desc" class="zi-figure" role="img" viewBox="0 0 390 465" xmlns="http://www.w3.org/2000/svg">
   <title id="result-array-shape-title">Indexes define result axes as well as source points</title>
-  <desc id="result-array-shape-desc">image[1, :] and image[1:2, :] select the same source coordinates and values 4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively.</desc>
+  <desc id="result-array-shape-desc">image[1, :] and image[1:2, :] select the same source coordinates and values 4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively. Integer indexing fixes and omits source axis 0; slicing retains it as a length-one result axis.</desc>
   <defs>
     <marker id="result-array-shape-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
       <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />

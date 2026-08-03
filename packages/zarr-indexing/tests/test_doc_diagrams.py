@@ -660,7 +660,9 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
         "compose-views": "two view maps collapse into one direct map.",
         "result-array-shape": (
             "image[1, :] and image[1:2, :] select the same source coordinates and values "
-            "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively."
+            "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively. "
+            "Integer indexing fixes and omits source axis 0; slicing retains it as a "
+            "length-one result axis."
         ),
         "chunk-overlay": (
             "touched global chunk domains map selected cells to zero-origin "

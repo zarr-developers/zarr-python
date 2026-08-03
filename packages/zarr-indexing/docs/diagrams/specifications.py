@@ -502,7 +502,9 @@ FIGURES: tuple[FigureSpec, ...] = (
         "title": "Indexes define result axes as well as source points",
         "description": (
             "image[1, :] and image[1:2, :] select the same source coordinates and values "
-            "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively."
+            "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively. "
+            "Integer indexing fixes and omits source axis 0; slicing retains it as a "
+            "length-one result axis."
         ),
         "width": 390,
         "height": 465,

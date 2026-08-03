@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 import runpy
 from pathlib import Path
@@ -197,6 +198,39 @@ def test_lazy_composition_stays_one_dimensional_until_the_later_axis_section() -
     assert "[::-1]" in region
     assert ".lazy[1:]" in region
     assert "[1," not in region
+
+
+def test_pre_result_array_snippets_do_not_change_rank_with_integer_indexes() -> None:
+    """The coordinate introduction uses slices until result-axis behavior is introduced."""
+    guide = (DOCS / "guide" / "index.md").read_text()
+    introduction = guide.split("## An index defines a result array", maxsplit=1)[0]
+    snippets = re.findall(r'--8<-- "(?P<path>[^"\n]+\.py):(?P<region>[^"]+)"', introduction)
+
+    assert snippets
+    for path, region in snippets:
+        source = (DOCS / path).read_text()
+        body = source.split(f"# --8<-- [start:{region}]", maxsplit=1)[1].split(
+            f"# --8<-- [end:{region}]", maxsplit=1
+        )[0]
+        rank_changing_indexes = [
+            node
+            for node in ast.walk(ast.parse(body))
+            if isinstance(node, ast.Subscript)
+            and any(
+                (isinstance(index, ast.Constant) and isinstance(index.value, int))
+                or (
+                    isinstance(index, ast.UnaryOp)
+                    and isinstance(index.op, (ast.UAdd, ast.USub))
+                    and isinstance(index.operand, ast.Constant)
+                    and isinstance(index.operand.value, int)
+                )
+                for index in (
+                    node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+                )
+            )
+        ]
+
+        assert not rank_changing_indexes, f"{path}:{region} changes rank with integer indexing"
 
 
 def test_axis_manipulation_examples_define_result_axes() -> None:
