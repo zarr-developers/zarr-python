@@ -67,8 +67,10 @@
     <rect class="zi-grid-cell" height="42" width="42" x="262" y="350" />
     <rect class="zi-grid-cell" height="42" width="42" x="304" y="350" />
     <rect class="zi-grid-cell" height="42" width="42" x="346" y="350" />
-    <line class="zi-chunk-boundary" x1="220" x2="220" y1="140" y2="392" />
-    <line class="zi-chunk-boundary" x1="52" x2="388" y1="266" y2="266" />
+    <rect class="zi-chunk-boundary" height="126" width="168" x="52" y="140" />
+    <rect class="zi-chunk-boundary" height="126" width="168" x="220" y="140" />
+    <rect class="zi-chunk-boundary" height="126" width="168" x="52" y="266" />
+    <rect class="zi-chunk-boundary" height="126" width="168" x="220" y="266" />
   </g>
   <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="chunk-overlay-chunk-zero-coords">
     <rect height="26" width="198" x="121.0" y="22" />

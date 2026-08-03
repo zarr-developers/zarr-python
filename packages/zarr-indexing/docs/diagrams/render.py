@@ -93,6 +93,7 @@ def _stylesheet() -> str:
             ".zi-figure .zi-role-request > rect, .zi-figure .zi-role-request .zi-cue-swatch { stroke-width: 3; }",
             ".zi-figure .zi-request-inner { fill: none; stroke-width: 1.5; }",
             ".zi-figure .zi-role-source > rect, .zi-figure .zi-role-source .zi-cue-swatch { stroke-width: 1.5; }",
+            ".zi-figure .zi-role-source > rect.zi-chunk-boundary { stroke-width: 4; }",
             ".zi-figure .zi-role-selected, .zi-figure .zi-role-selected > rect { stroke-width: 4; }",
             ".zi-figure .zi-role-chunk-local > rect, .zi-figure .zi-role-chunk-local .zi-cue-swatch { stroke-width: 2; stroke-dasharray: 7 4; }",
             ".zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }",
@@ -248,34 +249,21 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         chunk_rows, chunk_columns = chunk_shape
-        grid_width = element["columns"] * element["cell_size"]
-        grid_height = element["rows"] * element["cell_size"]
-        for column in range(chunk_columns, element["columns"], chunk_columns):
-            x = origin_x + column * element["cell_size"]
-            _svg_element(
-                group,
-                "line",
-                **{
-                    "class": "zi-chunk-boundary",
-                    "x1": x,
-                    "x2": x,
-                    "y1": origin_y,
-                    "y2": origin_y + grid_height,
-                },
-            )
-        for row in range(chunk_rows, element["rows"], chunk_rows):
-            y = origin_y + row * element["cell_size"]
-            _svg_element(
-                group,
-                "line",
-                **{
-                    "class": "zi-chunk-boundary",
-                    "x1": origin_x,
-                    "x2": origin_x + grid_width,
-                    "y1": y,
-                    "y2": y,
-                },
-            )
+        for row in range(0, element["rows"], chunk_rows):
+            rendered_rows = min(chunk_rows, element["rows"] - row)
+            for column in range(0, element["columns"], chunk_columns):
+                rendered_columns = min(chunk_columns, element["columns"] - column)
+                _svg_element(
+                    group,
+                    "rect",
+                    **{
+                        "class": "zi-chunk-boundary",
+                        "height": rendered_rows * element["cell_size"],
+                        "width": rendered_columns * element["cell_size"],
+                        "x": origin_x + column * element["cell_size"],
+                        "y": origin_y + row * element["cell_size"],
+                    },
+                )
 
 
 def _render_axis(parent: Element, element: AxisSpec, figure_id: str) -> None:

@@ -220,32 +220,33 @@ def test_arrow_target_must_resolve() -> None:
         validate_figure(spec)
 
 
-def test_grid_chunk_shape_renders_chunk_boundaries() -> None:
+def test_grid_chunk_shape_renders_complete_chunk_outlines() -> None:
     grid: GridSpec = {
         **GRID,
-        "rows": 6,
-        "columns": 8,
+        "rows": 5,
+        "columns": 7,
         "cell_size": 10,
         "origin": (5, 7),
         "chunk_shape": (3, 4),
     }
     root = ElementTree.fromstring(render_figure(figure("chunked", elements=(grid,))))
-    boundaries = [
-        line.attrib
-        for line in root.iter()
-        if line.tag.endswith("line") and line.attrib.get("class") == "zi-chunk-boundary"
+    outlines = [
+        element.attrib
+        for element in root.iter()
+        if element.tag.endswith("rect") and element.attrib.get("class") == "zi-chunk-boundary"
     ]
-    assert boundaries == [
-        {"class": "zi-chunk-boundary", "x1": "45", "x2": "45", "y1": "7", "y2": "67"},
-        {"class": "zi-chunk-boundary", "x1": "5", "x2": "85", "y1": "37", "y2": "37"},
+    assert outlines == [
+        {"class": "zi-chunk-boundary", "height": "30", "width": "40", "x": "5", "y": "7"},
+        {"class": "zi-chunk-boundary", "height": "30", "width": "30", "x": "45", "y": "7"},
+        {"class": "zi-chunk-boundary", "height": "20", "width": "40", "x": "5", "y": "37"},
+        {"class": "zi-chunk-boundary", "height": "20", "width": "30", "x": "45", "y": "37"},
     ]
     unchunked: GridSpec = {**grid, "chunk_shape": None}
     unchunked_root = ElementTree.fromstring(
         render_figure(figure("unchunked", elements=(unchunked,)))
     )
     assert not any(
-        line.tag.endswith("line") and line.attrib.get("class") == "zi-chunk-boundary"
-        for line in unchunked_root.iter()
+        element.attrib.get("class") == "zi-chunk-boundary" for element in unchunked_root.iter()
     )
 
 
@@ -596,7 +597,7 @@ def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
     )
 
 
-def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> None:
+def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() -> None:
     figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
     for figure_id, grid_id in (
         ("indexing-selection", "source-grid"),
@@ -622,14 +623,40 @@ def test_canonical_source_svg_has_48_cells_and_internal_3_by_4_boundaries() -> N
         for element in overlay_root.iter()
         if element.attrib.get("id") == "chunk-overlay-chunked-source"
     )
-    boundaries = [
+    outlines = [
         element.attrib
         for element in overlay_grid
-        if element.tag.endswith("line") and element.attrib.get("class") == "zi-chunk-boundary"
+        if element.tag.endswith("rect") and element.attrib.get("class") == "zi-chunk-boundary"
     ]
-    assert boundaries == [
-        {"class": "zi-chunk-boundary", "x1": "220", "x2": "220", "y1": "140", "y2": "392"},
-        {"class": "zi-chunk-boundary", "x1": "52", "x2": "388", "y1": "266", "y2": "266"},
+    assert outlines == [
+        {
+            "class": "zi-chunk-boundary",
+            "height": "126",
+            "width": "168",
+            "x": "52",
+            "y": "140",
+        },
+        {
+            "class": "zi-chunk-boundary",
+            "height": "126",
+            "width": "168",
+            "x": "220",
+            "y": "140",
+        },
+        {
+            "class": "zi-chunk-boundary",
+            "height": "126",
+            "width": "168",
+            "x": "52",
+            "y": "266",
+        },
+        {
+            "class": "zi-chunk-boundary",
+            "height": "126",
+            "width": "168",
+            "x": "220",
+            "y": "266",
+        },
     ]
 
 
@@ -743,11 +770,15 @@ def test_chunk_boundaries_are_solid_while_chunk_local_cues_remain_dashed() -> No
     chunk_boundary_rule = diagram_render.STYLESHEET.split(
         ".zi-figure .zi-chunk-boundary {", maxsplit=1
     )[1].split("}", maxsplit=1)[0]
+    source_chunk_boundary_rule = diagram_render.STYLESHEET.split(
+        ".zi-figure .zi-role-source > rect.zi-chunk-boundary {", maxsplit=1
+    )[1].split("}", maxsplit=1)[0]
     chunk_local_rule = diagram_render.STYLESHEET.split(
         ".zi-figure .zi-role-chunk-local > rect", maxsplit=1
     )[1].split("}", maxsplit=1)[0]
 
     assert "stroke-width: 4;" in chunk_boundary_rule
+    assert "stroke-width: 4;" in source_chunk_boundary_rule
     assert "stroke-dasharray" not in chunk_boundary_rule
     assert "stroke-dasharray: 7 4;" in chunk_local_rule
 
