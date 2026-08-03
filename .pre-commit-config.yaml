@@ -15,13 +15,13 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
+    rev: v0.16.1
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
       - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         args: ["-L", "fo,ihs,kake,te", "-S", "fixture"]
@@ -32,7 +32,7 @@ repos:
         exclude: mkdocs.yml
       - id: trailing-whitespace
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.1
+    rev: v0.23.2
     hooks:
       # Markdown structure/hygiene. Rule selection and ignores are in
       # .markdownlint-cli2.jsonc; complements ci/lint_docs.py (RST residue,
@@ -68,7 +68,7 @@ repos:
         types: [python]
         files: ^(src|tests)/
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.26.1
+    rev: v1.29.0
     hooks:
       - id: zizmor
   - repo: https://github.com/twisted/towncrier
