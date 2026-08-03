@@ -4,7 +4,7 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from itertools import batched, pairwise
+from itertools import batched, chain, pairwise
 from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
@@ -54,10 +54,23 @@ def _resolve_max_workers() -> int:
     """Helper for getting the maximum number of workers available to the `FusedCodecPipeline`"""
     import os as _os
 
+    default = _os.cpu_count() or 1
     cfg = config.get("codec_pipeline.max_workers", default=None)
     if cfg is None:
-        return _os.cpu_count() or 1
-    return max(1, int(cfg))
+        return default
+    try:
+        return max(1, int(cfg))
+    except (TypeError, ValueError):
+        # This value arrives via the config/env layer (e.g.
+        # `ZARR_CODEC_PIPELINE__MAX_WORKERS`), so tolerate bad input here
+        # instead of raising mid-read.
+        warn(
+            f"Ignoring invalid `codec_pipeline.max_workers` config value {cfg!r}; "
+            f"falling back to {default}.",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+        return default
 
 
 def _get_pool(max_workers: int) -> ThreadPoolExecutor:
@@ -169,6 +182,23 @@ def pipeline_supports_partial_encode(
     return isinstance(array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
 
 
+async def _cancel_and_drain(futures: Iterable[asyncio.Future[Any]]) -> None:
+    """Cancel every not-yet-done future/task and await its outcome.
+
+    Used to clean up work spawned by a drain loop (`asyncio.as_completed` +
+    `await`) when the loop exits early via exception. Without this, tasks
+    already spawned keep running unattended after the caller has moved on,
+    and an eventual failure surfaces as an unraisable "exception was never
+    retrieved" warning instead of being observed here.
+    """
+    pending = [f for f in futures if not f.done()]
+    if len(pending) == 0:
+        return
+    for f in pending:
+        f.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
 async def _fetch_and_decode_as_completed(
     batch: Sequence[tuple[ByteGetter | None, ArraySpec]],
     transform: ChunkTransform,
@@ -201,20 +231,29 @@ async def _fetch_and_decode_as_completed(
         _fetch,
         config.get("async.concurrency"),
     )
-    for fetch_coro in asyncio.as_completed(fetch_tasks):
-        idx, buffer = await fetch_coro
-        chunk_spec = batch[idx][1]
-        # Bridge both paths to asyncio.Future so the final collection loop
-        # can `await` uniformly without blocking the event loop. For the
-        # pool path that means `wrap_future` (not `pool.submit(...).result()`,
-        # which would block the loop thread for the duration of every decode
-        # — freezing any unrelated coroutines sharing this loop).
-        if pool is None:
-            decode_futures[idx].set_result(_decode(buffer, chunk_spec))
-        else:
-            decode_futures[idx] = asyncio.wrap_future(pool.submit(_decode, buffer, chunk_spec))
+    try:
+        for fetch_coro in asyncio.as_completed(fetch_tasks):
+            idx, buffer = await fetch_coro
+            chunk_spec = batch[idx][1]
+            # Bridge both paths to asyncio.Future so the final collection loop
+            # can `await` uniformly without blocking the event loop. For the
+            # pool path that means `wrap_future` (not `pool.submit(...).result()`,
+            # which would block the loop thread for the duration of every decode
+            # — freezing any unrelated coroutines sharing this loop).
+            if pool is None:
+                decode_futures[idx].set_result(_decode(buffer, chunk_spec))
+            else:
+                decode_futures[idx] = asyncio.wrap_future(pool.submit(_decode, buffer, chunk_spec))
 
-    return await asyncio.gather(*decode_futures)
+        return await asyncio.gather(*decode_futures)
+    finally:
+        # On the happy path every future here is already done, so this is a
+        # no-op; on failure it stops abandoned fetches/decodes from
+        # continuing to run unattended after this function has raised. A
+        # single call over both iterables (not two sequential calls) so that
+        # outer-task cancellation during the first drain can't skip the
+        # second, leaving its futures/tasks unobserved.
+        await _cancel_and_drain(chain(fetch_tasks, decode_futures))
 
 
 async def _encode_and_write_as_completed(
@@ -263,10 +302,20 @@ async def _encode_and_write_as_completed(
     # Kick off each chunk's write the instant its encode lands, so writes of
     # already-compressed chunks proceed while the rest are still encoding.
     write_tasks: list[asyncio.Task[None]] = []
-    for encode_coro in asyncio.as_completed(encode_futures):
-        idx, chunk_bytes = await encode_coro
-        write_tasks.append(asyncio.ensure_future(_write(idx, chunk_bytes)))
-    await asyncio.gather(*write_tasks)
+    try:
+        for encode_coro in asyncio.as_completed(encode_futures):
+            idx, chunk_bytes = await encode_coro
+            write_tasks.append(asyncio.ensure_future(_write(idx, chunk_bytes)))
+        await asyncio.gather(*write_tasks)
+    finally:
+        # On the happy path every future here is already done, so this is a
+        # no-op; on failure (an encode or a write raising) it stops
+        # already-spawned writes from continuing in the background after
+        # this function has raised. A single call over both iterables (not
+        # two sequential calls) so that outer-task cancellation during the
+        # first drain can't skip the second, leaving its futures/tasks
+        # unobserved.
+        await _cancel_and_drain(chain(write_tasks, encode_futures))
 
 
 async def _async_read_fallback(
@@ -282,8 +331,8 @@ async def _async_read_fallback(
     then scatters each decoded chunk into `out` at its `out_selection`.
 
     Used by both `BatchedCodecPipeline.read_batch` (non-partial-decode
-    branch) and `FusedCodecPipeline.read` (when the store is not a
-    `SupportsGetSync` / sync transform is unavailable).
+    branch) and `FusedCodecPipeline.read` (when the store does not advertise
+    sync IO / sync transform is unavailable).
     """
 
     chunk_array_batch: list[NDBuffer | None]
@@ -344,8 +393,8 @@ async def _async_write_fallback(
     if encoding produced `None` or the chunk dropped).
 
     Used by both `BatchedCodecPipeline.write_batch` (non-partial-encode
-    branch) and `FusedCodecPipeline.write` (when the store is not a
-    `SupportsSetSync` / sync transform is unavailable).
+    branch) and `FusedCodecPipeline.write` (when the store does not advertise
+    sync IO / sync transform is unavailable).
     """
 
     if use_sync := (
@@ -468,7 +517,11 @@ class AsyncChunkTransform:
     _bb_codecs: tuple[BytesBytesCodec, ...] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        aa, ab, bb = codecs_from_list(list(self.codecs))
+        # `AsyncChunkTransform` is (re)constructed per decode/encode call from a
+        # codec chain that already went through `codecs_from_list` when the
+        # pipeline itself was built, so re-splitting it here must not re-emit
+        # that chain's advisory warnings on every call.
+        aa, ab, bb = codecs_from_list_unchecked(list(self.codecs))
         self._aa_codecs = aa
         self._ab_codec = ab
         self._bb_codecs = bb
@@ -532,7 +585,19 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_codecs(evolve_codecs(self, array_spec))
+        # Re-splits an already-`codecs_from_list`-validated (and warned-about)
+        # chain against the evolved spec, so this uses the quiet variant rather
+        # than routing through `from_codecs` (which would re-warn).
+        evolved_codecs = evolve_codecs(self, array_spec)
+        array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list_unchecked(
+            evolved_codecs
+        )
+        return type(self)(
+            array_array_codecs=array_array_codecs,
+            array_bytes_codec=array_bytes_codec,
+            bytes_bytes_codecs=bytes_bytes_codecs,
+            batch_size=self.batch_size,
+        )
 
     @classmethod
     def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
@@ -794,13 +859,19 @@ class BatchedCodecPipeline(CodecPipeline):
 def codecs_from_list(
     codecs: Iterable[Codec],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    """Split `codecs` into `(array_array, array_bytes, bytes_bytes)`, validating order.
+
+    Emits user-facing advisory warnings about the codec chain (e.g. sharding's
+    "disables partial reads" warning). Use this for the FIRST construction of a
+    codec chain from user-supplied codecs. Use `codecs_from_list_unchecked` when
+    re-splitting a chain that was already validated and warned about by a prior
+    `codecs_from_list` call (e.g. `evolve_from_array_spec` re-splitting the same
+    codecs against an evolved spec) — re-warning there would fire the same
+    advisory once per reconstruction instead of once per user-facing chain.
+    """
     from zarr.codecs.sharding import ShardingCodec
 
     codecs = tuple(codecs)  # materialize to avoid generator consumption issues
-
-    array_array: tuple[ArrayArrayCodec, ...] = ()
-    array_bytes_maybe: ArrayBytesCodec | None = None
-    bytes_bytes: tuple[BytesBytesCodec, ...] = ()
 
     if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
         warn(
@@ -809,6 +880,23 @@ def codecs_from_list(
             category=ZarrUserWarning,
             stacklevel=3,
         )
+    return codecs_from_list_unchecked(codecs)
+
+
+def codecs_from_list_unchecked(
+    codecs: Iterable[Codec],
+) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    """Split `codecs` into `(array_array, array_bytes, bytes_bytes)`, validating order.
+
+    Same structural validation as `codecs_from_list` (raises on bad codec
+    ordering or a missing/duplicate array-bytes codec) but does NOT emit
+    user-facing advisory warnings. See `codecs_from_list` for when to use each.
+    """
+    codecs = tuple(codecs)  # materialize to avoid generator consumption issues
+
+    array_array: tuple[ArrayArrayCodec, ...] = ()
+    array_bytes_maybe: ArrayBytesCodec | None = None
+    bytes_bytes: tuple[BytesBytesCodec, ...] = ()
 
     for prev_codec, cur_codec in pairwise((None, *codecs)):
         if isinstance(cur_codec, ArrayArrayCodec):
@@ -911,8 +999,11 @@ class FusedCodecPipeline(CodecPipeline):
         )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        # Re-splits an already-`codecs_from_list`-validated (and warned-about)
+        # chain against the evolved spec, so this uses the quiet variant to
+        # avoid re-emitting the same advisory warning on every array open.
         evolved_codecs = evolve_codecs(self.codecs, array_spec)
-        aa, ab, bb = codecs_from_list(evolved_codecs)
+        aa, ab, bb = codecs_from_list_unchecked(evolved_codecs)
 
         try:
             sync_transform: ChunkTransform | None = ChunkTransform(codecs=evolved_codecs)
@@ -1174,16 +1265,17 @@ class FusedCodecPipeline(CodecPipeline):
             return ()
 
         # Fast path: sync transform plus synchronous IO. For StorePath the gate
-        # is on the STORE's sync support (StorePath always has a get_sync
-        # method, but it only works when its store does); for other byte
-        # getters (e.g. the sharding codec's in-memory _ShardingByteGetter) the
-        # SyncByteGetter protocol is the gate.
-        from zarr.abc.store import SupportsGetSync, SyncByteGetter
+        # is the STORE's sync-IO capability (`_store_supports_sync_io`) (StorePath always has a
+        # get_sync method, but it only works when its store implements the full
+        # sync surface); for other byte getters (e.g. the sharding codec's
+        # in-memory _ShardingByteGetter) the SyncByteGetter protocol is the
+        # gate.
+        from zarr.abc.store import SyncByteGetter, _store_supports_sync_io
         from zarr.storage._common import StorePath
 
         first_bg = batch[0][0]
         if self.sync_transform is not None and (
-            (isinstance(first_bg, StorePath) and isinstance(first_bg.store, SupportsGetSync))
+            (isinstance(first_bg, StorePath) and _store_supports_sync_io(first_bg.store))
             or (not isinstance(first_bg, StorePath) and isinstance(first_bg, SyncByteGetter))
         ):
             # One thread hop for the WHOLE batch — not per chunk, so the fused
@@ -1237,14 +1329,17 @@ class FusedCodecPipeline(CodecPipeline):
             return
 
         # Fast path: sync transform plus synchronous IO. Mirrors `read`: gate
-        # StorePath on the store's sync support, other byte setters (e.g. the
-        # sharding codec's in-memory _ShardingByteSetter) on SyncByteSetter.
-        from zarr.abc.store import SupportsSetSync, SyncByteSetter
+        # StorePath on the store's sync-IO capability (`_store_supports_sync_io`) — write_sync
+        # needs the FULL sync surface (get_sync for partial-chunk
+        # read-modify-write, delete_sync for all-fill chunks), not just
+        # set_sync — and other byte setters (e.g. the sharding codec's
+        # in-memory _ShardingByteSetter) on SyncByteSetter.
+        from zarr.abc.store import SyncByteSetter, _store_supports_sync_io
         from zarr.storage._common import StorePath
 
         first_bs = batch[0][0]
         if self.sync_transform is not None and (
-            (isinstance(first_bs, StorePath) and isinstance(first_bs.store, SupportsSetSync))
+            (isinstance(first_bs, StorePath) and _store_supports_sync_io(first_bs.store))
             or (not isinstance(first_bs, StorePath) and isinstance(first_bs, SyncByteSetter))
         ):
             # One thread hop for the whole batch; see the matching comment in
