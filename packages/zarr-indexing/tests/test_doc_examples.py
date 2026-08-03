@@ -22,6 +22,7 @@ EXAMPLES = tuple(
         "coordinate_origins.py",
         "canonical_slice.py",
         "lazy_composition.py",
+        "axis_manipulation.py",
         "chunk_projection.py",
         "indexing_patterns.py",
         "integrations.py",
@@ -34,6 +35,8 @@ REGIONS = {
     "canonical-slice": DOCS / "examples" / "canonical_slice.py",
     "landing-quickstart": DOCS / "examples" / "canonical_slice.py",
     "lazy-composition": DOCS / "examples" / "lazy_composition.py",
+    "axis-shape-comparison": DOCS / "examples" / "axis_manipulation.py",
+    "axis-insertion": DOCS / "examples" / "axis_manipulation.py",
     "chunk-projection": DOCS / "examples" / "chunk_projection.py",
     "advanced-projection": DOCS / "examples" / "chunk_projection.py",
     "indexing-patterns": DOCS / "examples" / "indexing_patterns.py",
@@ -72,6 +75,11 @@ GUIDE_FIGURES = (
     ),
     (
         DOCS / "guide" / "index.md",
+        "result-array-shape",
+        "Scrollable result array shape comparison diagram",
+    ),
+    (
+        DOCS / "guide" / "index.md",
         "chunk-overlay",
         "Scrollable chunk projection overlay diagram",
     ),
@@ -95,6 +103,7 @@ TUTORIAL_SECTIONS = (
     ("An index selects coordinates", "an-index-selects-coordinates"),
     ("Coordinates are addresses", "coordinates-are-addresses"),
     ("Lazy views compose", "lazy-views-compose"),
+    ("An index defines a result array", "an-index-defines-a-result-array"),
     ("A request becomes a chunk plan", "a-request-becomes-a-chunk-plan"),
     ("One cell domain, two projections", "one-cell-domain-two-projections"),
 )
@@ -110,6 +119,8 @@ TUTORIAL_SNIPPETS = (
     "examples/coordinate_origins.py:coordinate-origin",
     "examples/coordinate_origins.py:prepend-grid",
     "examples/lazy_composition.py:lazy-composition",
+    "examples/axis_manipulation.py:axis-shape-comparison",
+    "examples/axis_manipulation.py:axis-insertion",
     "examples/chunk_projection.py:chunk-projection",
     "examples/chunk_projection.py:advanced-projection",
 )
@@ -186,6 +197,18 @@ def test_lazy_composition_stays_one_dimensional_until_the_later_axis_section() -
     assert "[::-1]" in region
     assert ".lazy[1:]" in region
     assert "[1," not in region
+
+
+def test_axis_manipulation_examples_define_result_axes() -> None:
+    """Integer, slice, and None indexes produce their documented result shapes."""
+    namespace = runpy.run_path(str(DOCS / "examples" / "axis_manipulation.py"))
+
+    np.testing.assert_array_equal(namespace["INTEGER_RESULT"], np.array([4, 5, 6, 7]))
+    np.testing.assert_array_equal(namespace["SLICE_RESULT"], np.array([[4, 5, 6, 7]]))
+    np.testing.assert_array_equal(namespace["INSERTED_RESULT"], np.array([[4], [5], [6], [7]]))
+    assert namespace["INTEGER_RESULT"].shape == (4,)
+    assert namespace["SLICE_RESULT"].shape == (1, 4)
+    assert namespace["INSERTED_RESULT"].shape == (4, 1)
 
 
 def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:

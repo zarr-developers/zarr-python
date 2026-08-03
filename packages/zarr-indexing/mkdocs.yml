@@ -21,6 +21,7 @@ nav:
       - An index selects coordinates: /guide/#an-index-selects-coordinates
       - Coordinates are addresses: /guide/#coordinates-are-addresses
       - Lazy views compose: /guide/#lazy-views-compose
+      - An index defines a result array: /guide/#an-index-defines-a-result-array
       - A request becomes a chunk plan: /guide/#a-request-becomes-a-chunk-plan
       - One cell domain, two projections: /guide/#one-cell-domain-two-projections
   - Practical reference:

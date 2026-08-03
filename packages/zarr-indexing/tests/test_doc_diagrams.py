@@ -658,6 +658,10 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
         "transform-mapping": "request i maps to source i + 2.",
         "compose-views": "two view maps collapse into one direct map.",
+        "result-array-shape": (
+            "image[1, :] and image[1:2, :] select the same source coordinates and values "
+            "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively."
+        ),
         "chunk-overlay": (
             "touched global chunk domains map selected cells to zero-origin "
             "chunk-local coordinates."
@@ -669,6 +673,20 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
             "with explicit failure, retry, eviction, and reload paths."
         ),
     }
+
+
+def test_result_array_shape_figure_compares_same_points_with_different_arrays() -> None:
+    """Integer and slice indexing visually distinguish result-axis construction."""
+    spec = next(item for item in FIGURES if item["id"] == "result-array-shape")
+    labels = {
+        element["label"] for element in spec["elements"] if element["kind"] in {"text", "node"}
+    }
+
+    assert {"image[1, :]", "shape (4,)", "image[1:2, :]", "shape (1, 4)"} <= labels
+    assert {"same source coordinates: (1, 0), (1, 1), (1, 2), (1, 3)"} <= labels
+    assert {"4", "5", "6", "7"} <= labels
+    assert all(element["kind"] != "arrow" for element in spec["elements"])
+    assert spec.get("show_legend") is False
 
 
 def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None:

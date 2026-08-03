@@ -151,6 +151,7 @@
 .zi-figure-scroll .zi-figure[aria-labelledby~="prepend-chunk-title"] { min-width: 760px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="transform-mapping-title"] { min-width: 440px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="compose-views-title"] { min-width: 760px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="result-array-shape-title"] { min-width: 390px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="chunk-overlay-title"] { min-width: 440px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="projection-pair-title"] { min-width: 720px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="orthogonal-contrast-title"] { min-width: 740px; }

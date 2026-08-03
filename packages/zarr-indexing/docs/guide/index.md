@@ -1,10 +1,10 @@
 # Visual guide
 
-Start with a familiar NumPy selection and follow it through the five ideas that
+Start with a familiar NumPy selection and follow it through the six ideas that
 make indexing lazy and partitionable: coordinates, transforms, composition,
-chunk planning, and paired projections. The opening slice keeps the coordinate
-story one-dimensional before later sections introduce higher-dimensional chunk
-planning.
+result axes, chunk planning, and paired projections. The opening slice keeps
+the coordinate story one-dimensional before the result-array section introduces
+the 3-by-4 image used in later chunk planning.
 
 1. [An index selects coordinates](#an-index-selects-coordinates) begins with
    the values and order of `source[2:5]`.
@@ -13,10 +13,12 @@ planning.
    between them.
 3. [Lazy views compose](#lazy-views-compose) shows how repeated indexing
    becomes one description and identifies exactly when data is read.
-4. [A request becomes a chunk plan](#a-request-becomes-a-chunk-plan) divides
+4. [An index defines a result array](#an-index-defines-a-result-array) explains
+   how an index chooses points and arranges the resulting axes.
+5. [A request becomes a chunk plan](#a-request-becomes-a-chunk-plan) divides
    a higher-dimensional request over a 2-by-2 chunk grid without choosing a source or
    scheduler.
-5. [One cell domain, two projections](#one-cell-domain-two-projections) pairs
+6. [One cell domain, two projections](#one-cell-domain-two-projections) pairs
    chunk-local reads with their exact positions in the requested result.
 
 You can finish the tour with a practical mental model: indexing through
@@ -208,9 +210,38 @@ example that materializes the selected data.
     NumPy arithmetic such as `numpy.add(view, 1)` converts and materializes the
     view. This wrapper defers indexing, not a general compute graph.
 
+## An index defines a result array {#an-index-defines-a-result-array}
+
+An index chooses source points and also defines how those points are arranged in
+the result. In the 3-by-4 image below, `image[1, :]` and `image[1:2, :]` choose
+the same four source points: values `4`, `5`, `6`, and `7`.
+
+<figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable result array shape comparison diagram" tabindex="0">
+--8<-- "_static/diagrams/result-array-shape.svg"
+</div>
+<figcaption>The same source coordinates can define different result axes.</figcaption>
+</figure>
+
+The integer in `image[1, :]` fixes source axis 0. No result coordinate varies
+along that axis, so it is omitted and the result shape is `(4,)`. The slice in
+`image[1:2, :]` preserves source axis 0 as a length-one result axis, so the
+result shape is `(1, 4)`.
+
+```python
+--8<-- "examples/axis_manipulation.py:axis-shape-comparison"
+```
+
+`None` inserts a new length-one axis without selecting different source points.
+Here it produces the shape `(4, 1)`:
+
+```python
+--8<-- "examples/axis_manipulation.py:axis-insertion"
+```
+
 ## A request becomes a chunk plan {#a-request-becomes-a-chunk-plan}
 
-Now move to a 3-by-4 source and its selection `image[1, 0:4]`. Giving the
+Continue with the 3-by-4 image and `image[1, :]` introduced above. Giving the
 image a 2-by-2 chunk shape does not change the four selected values or their
 order. It changes only how the work is divided: columns 0 and 1 come from chunk
 `(0, 0)`, while columns 2 and 3 come from chunk `(0, 1)`.
