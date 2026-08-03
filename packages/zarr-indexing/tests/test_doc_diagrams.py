@@ -449,9 +449,10 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
 
 def test_half_open_interval_figure_names_both_pieces_and_the_combined_interval() -> None:
     spec = next(item for item in FIGURES if item["id"] == "half-open-intervals")
-    labels = {
-        element["label"] for element in spec["elements"] if element["kind"] in {"node", "text"}
-    }
+    labels: set[str] = set()
+    for element in spec["elements"]:
+        if element["kind"] == "node" or element["kind"] == "text":
+            labels.add(element["label"])
     assert {
         "[0, 1) contains 0",
         "[1, 3) contains 1, 2",
