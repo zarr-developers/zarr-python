@@ -23,7 +23,7 @@ assert LANDING_QUICKSTART_RESULT.tolist() == [4, 5, 6, 7]
 
 # --8<-- [start:canonical-slice]
 image = np.arange(12).reshape(3, 4)
-lazy = LazyArray(image).with_parts((2, 2))
+lazy = LazyArray(image)
 view = lazy.lazy[1, 0:4]
 
 assert view.result().tolist() == [4, 5, 6, 7]

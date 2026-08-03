@@ -19,7 +19,6 @@ from docs.diagrams.specifications import (
     GridSpec,
     NodeSpec,
     SemanticRole,
-    SequenceSpec,
     TextSpec,
     validate_figure,
 )
@@ -157,6 +156,48 @@ def test_grid_show_coordinates_must_be_boolean() -> None:
     invalid_grid = {**GRID, "show_coordinates": "yes"}
     with pytest.raises(ValueError, match="show-coordinates.*show_coordinates.*boolean"):
         validate_figure(malformed_figure("show-coordinates", elements=(invalid_grid,)))
+
+
+def test_grid_show_selected_coordinates_must_be_boolean() -> None:
+    invalid_grid = {**GRID, "show_selected_coordinates": "yes"}
+    with pytest.raises(
+        ValueError, match="show-selected-coordinates.*show_selected_coordinates.*boolean"
+    ):
+        validate_figure(malformed_figure("show-selected-coordinates", elements=(invalid_grid,)))
+
+
+def test_grid_show_value_prefix_must_be_boolean() -> None:
+    invalid_grid = {**GRID, "show_value_prefix": "yes"}
+    with pytest.raises(ValueError, match="show-value-prefix.*show_value_prefix.*boolean"):
+        validate_figure(malformed_figure("show-value-prefix", elements=(invalid_grid,)))
+
+
+def test_text_boxed_must_be_boolean() -> None:
+    invalid_text = {**TEXT, "boxed": "yes"}
+    with pytest.raises(ValueError, match="boxed-text.*boxed.*boolean"):
+        validate_figure(malformed_figure("boxed-text", elements=(invalid_text,)))
+
+
+def test_text_boxed_controls_the_visible_label_box() -> None:
+    boxed: TextSpec = {**TEXT, "id": "boxed"}
+    unboxed: TextSpec = {**TEXT, "id": "unboxed", "boxed": False}
+    root = ElementTree.fromstring(render_figure(figure("text-boxes", elements=(boxed, unboxed))))
+    groups = {
+        element.attrib["id"]: element
+        for element in root.iter()
+        if element.attrib.get("id") in {"text-boxes-boxed", "text-boxes-unboxed"}
+    }
+
+    assert any(child.tag.endswith("rect") for child in groups["text-boxes-boxed"])
+    assert not any(child.tag.endswith("rect") for child in groups["text-boxes-unboxed"])
+    assert any(child.tag.endswith("text") for child in groups["text-boxes-unboxed"])
+
+
+def test_figure_show_legend_must_be_boolean() -> None:
+    spec = figure("show-legend", elements=(TEXT,))
+    spec["show_legend"] = "yes"  # type: ignore[typeddict-item]
+    with pytest.raises(ValueError, match="show-legend.*show_legend.*boolean"):
+        validate_figure(spec)
 
 
 def test_element_ids_must_be_unique() -> None:
@@ -609,7 +650,12 @@ def test_semantic_palettes_are_accessible() -> None:
 
 def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
-        "indexing-selection": "image[1, 0:4] maps four source cells to a length-four request.",
+        "indexing-selection": (
+            "image[1, 0:4] fixes source axis 0 at row 1, removes that axis, and retains "
+            "source axis 1 as result axis 0. Result coordinates 0, 1, 2, 3 receive values "
+            "4, 5, 6, 7 from source coordinates (1, 0), (1, 1), (1, 2), and (1, 3), "
+            "respectively."
+        ),
         "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
         "transform-mapping": "request i maps to source (1, i).",
@@ -709,7 +755,7 @@ def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:
     raise AssertionError(f"missing grid {element_id!r}")
 
 
-def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
+def test_basic_selection_figures_share_the_canonical_source_data() -> None:
     figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
     grids = {
         "indexing-selection": _grid_element(figures["indexing-selection"], "source-grid"),
@@ -721,17 +767,6 @@ def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
         assert grid["selected"] == ((1, 0), (1, 1), (1, 2), (1, 3))
         assert grid.get("values") == ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11))
     assert grids["chunk-overlay"].get("chunk_shape") == (2, 2)
-    assert (
-        grids["indexing-selection"]["rows"],
-        grids["indexing-selection"]["columns"],
-        grids["indexing-selection"]["cell_size"],
-        grids["indexing-selection"]["selected"],
-    ) == (
-        grids["chunk-overlay"]["rows"],
-        grids["chunk-overlay"]["columns"],
-        grids["chunk-overlay"]["cell_size"],
-        grids["chunk-overlay"]["selected"],
-    )
 
 
 def test_canonical_source_svg_has_12_cells_and_complete_2_by_2_chunk_outlines() -> None:
@@ -797,13 +832,9 @@ def test_canonical_source_svg_has_12_cells_and_complete_2_by_2_chunk_outlines() 
     ]
 
 
-@pytest.mark.parametrize(
-    ("figure_id", "grid_id"),
-    [("indexing-selection", "source-grid"), ("chunk-overlay", "chunked-source")],
-)
-def test_canonical_source_figures_show_faded_coordinates_for_unselected_cells(
-    figure_id: str, grid_id: str
-) -> None:
+def test_chunk_overlay_shows_faded_coordinates_for_unselected_cells() -> None:
+    figure_id = "chunk-overlay"
+    grid_id = "chunked-source"
     spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == figure_id)
     root = ElementTree.fromstring(render_figure(spec))
     grid = next(
@@ -827,40 +858,85 @@ def test_canonical_source_figures_show_faded_coordinates_for_unselected_cells(
     )
 
 
-def test_indexing_selection_shows_request_coordinates_paired_with_selected_values() -> None:
+def test_indexing_selection_shows_result_to_source_correspondence_without_cell_prefixes() -> None:
     spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
-    request = next(
+    source = _grid_element(spec, "source-grid")
+    labels = {element["label"] for element in spec["elements"] if element["kind"] == "text"}
+    labels.update(element["label"] for element in spec["elements"] if element["kind"] == "node")
+
+    assert source.get("show_coordinates") is False
+    assert source.get("show_selected_coordinates") is False
+    assert source.get("show_value_prefix") is False
+    assert {"result coordinate", "source coordinate", "value"} <= labels
+    assert {"0", "1", "2", "3", "(1, 0)", "(1, 1)", "(1, 2)", "(1, 3)"} <= labels
+    assert "result[i] = image[1, i]" in labels
+    assert "i = 0, 1, 2, 3" in labels
+
+    root = ElementTree.fromstring(render_figure(spec))
+    source_group = next(
         element
-        for element in spec["elements"]
-        if element["id"] == "request-vector" and element["kind"] == "sequence"
+        for element in root.iter()
+        if element.attrib.get("id") == "indexing-selection-source-grid"
     )
+    source_text = [element.text for element in source_group.iter() if element.tag.endswith("text")]
+    assert source_text == [str(value) for value in range(12)]
+    assert not any("coord:" in (text or "") or "value:" in (text or "") for text in source_text)
 
-    assert request["coordinates"] == (0, 1, 2, 3)
-    assert request["values"] == (4, 5, 6, 7)
-    assert request["orientation"] == "horizontal"
 
-
-def test_indexing_selection_reads_from_source_through_selection_to_result() -> None:
+def test_indexing_selection_stacks_result_below_source_and_explains_axis_removal() -> None:
     spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
-    elements = {element["id"]: element for element in spec["elements"]}
-    source = cast(GridSpec, elements["source-grid"])
-    request = cast(SequenceSpec, elements["request-vector"])
-    selection = cast(ArrowSpec, elements["selection-map"])
-    source_title = cast(TextSpec, elements["source-title"])
-    request_title = cast(TextSpec, elements["request-title"])
-
-    assert source["origin"][0] < request["x"]
-    assert selection == {
-        "id": "selection-map",
-        "kind": "arrow",
-        "role": "text",
-        "source": "source-grid",
-        "target": "request-vector",
-        "label": "image[1, 0:4]",
-        "label_offset": (0, -55),
+    source = _grid_element(spec, "source-grid")
+    result_cells = {
+        int(element["id"].removeprefix("result-value-")): element
+        for element in spec["elements"]
+        if element["kind"] == "node" and element["id"].startswith("result-value-")
     }
-    assert source_title["label"] == "source image: shape (3, 4)"
-    assert request_title["label"] == "result: shape (4,)"
+    text_by_id = {
+        element["id"]: element for element in spec["elements"] if element["kind"] == "text"
+    }
+    labels = {
+        element["label"]: element for element in spec["elements"] if element["kind"] == "text"
+    }
+
+    source_bottom = source["origin"][1] + source["rows"] * source["cell_size"]
+    assert set(result_cells) == set(range(4))
+    assert all(cell["y"] > source_bottom for cell in result_cells.values())
+    assert len({cell["y"] for cell in result_cells.values()}) == 1
+    assert all(
+        result_cells[index]["x"] + result_cells[index]["width"] == result_cells[index + 1]["x"]
+        for index in range(3)
+    )
+    for index in range(4):
+        source_column_center = (
+            source["origin"][0] + index * source["cell_size"] + source["cell_size"] // 2
+        )
+        result = result_cells[index]
+        assert result["label"] == str(index + 4)
+        assert result["x"] + result["width"] // 2 == source_column_center
+        assert text_by_id[f"result-coordinate-{index}"]["label"] == str(index)
+        assert text_by_id[f"result-coordinate-{index}"]["x"] == source_column_center
+        assert text_by_id[f"source-coordinate-{index}"]["label"] == f"(1, {index})"
+        assert text_by_id[f"source-coordinate-{index}"]["x"] == source_column_center
+
+    assert labels["1 fixes source axis 0 → no result axis"]["y"] > source_bottom
+    assert labels["0:4 keeps source axis 1 → result axis 0"]["y"] > source_bottom
+    assert all(element["kind"] != "arrow" for element in spec["elements"])
+    assert spec.get("show_legend") is False
+    assert spec["height"] > spec["width"]
+    assert spec["width"] <= 320
+
+    visible_copy = " ".join(
+        (
+            *(element["label"] for element in spec["elements"] if element["kind"] == "text"),
+            *(element["label"] for element in spec["elements"] if element["kind"] == "node"),
+        )
+    ).lower()
+    assert "request" not in visible_copy
+
+    root = ElementTree.fromstring(render_figure(spec))
+    assert not any(
+        element.attrib.get("id") == "indexing-selection-legend" for element in root.iter()
+    )
 
 
 def test_chunk_overlay_uses_a_phone_readable_stacked_layout() -> None:
@@ -1023,50 +1099,19 @@ def test_chunk_overlay_annotation_boxes_do_not_overlap_the_source_grid() -> None
         assert right <= grid_left or grid_right <= left or bottom <= grid_top or grid_bottom <= top
 
 
-def test_indexing_selection_arrow_labels_do_not_obscure_selected_cells() -> None:
+def test_indexing_selection_is_centered_and_phone_readable_without_horizontal_discovery() -> None:
     spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
-    root = ElementTree.fromstring(render_figure(spec))
-    arrow_ids = {
-        f"indexing-selection-{element['id']}"
-        for element in spec["elements"]
-        if element["kind"] == "arrow"
-    }
-    arrow_label_boxes = [
-        child
-        for group in root.iter()
-        if group.attrib.get("id") in arrow_ids
-        for child in group
-        if child.tag.endswith("rect")
-    ]
-    selected_cells = [
-        element
-        for element in root.iter()
-        if element.tag.endswith("rect")
-        and {"zi-grid-cell", "zi-role-selected"} <= set(element.attrib.get("class", "").split())
-    ]
-    assert arrow_label_boxes
-    assert len(selected_cells) == 4
+    selector = '.zi-figure[aria-labelledby~="indexing-selection-title"] {'
+    figure_rule = diagram_render.STYLESHEET.split(selector, maxsplit=1)[1].split("}", maxsplit=1)[0]
+    scroll_rule = diagram_render.STYLESHEET.split(
+        '.zi-figure-scroll .zi-figure[aria-labelledby~="indexing-selection-title"] {',
+        maxsplit=1,
+    )[1].split("}", maxsplit=1)[0]
 
-    def bounds(rectangle: ElementTree.Element) -> tuple[float, float, float, float]:
-        left = float(rectangle.attrib["x"])
-        top = float(rectangle.attrib["y"])
-        return (
-            left,
-            top,
-            left + float(rectangle.attrib["width"]),
-            top + float(rectangle.attrib["height"]),
-        )
-
-    for label_box in arrow_label_boxes:
-        label_left, label_top, label_right, label_bottom = bounds(label_box)
-        for selected_cell in selected_cells:
-            cell_left, cell_top, cell_right, cell_bottom = bounds(selected_cell)
-            assert (
-                label_right <= cell_left
-                or cell_right <= label_left
-                or label_bottom <= cell_top
-                or cell_bottom <= label_top
-            )
+    assert spec["width"] <= 320
+    assert "max-width: 440px;" in figure_rule
+    assert "margin-inline: auto;" in figure_rule
+    assert f"min-width: {spec['width']}px;" in scroll_rule
 
 
 def test_prepend_coordinates_keep_global_semantics_and_old_positions() -> None:
@@ -1123,12 +1168,20 @@ def test_rendered_figures_have_structural_and_visible_semantics() -> None:
             for group in role_groups
             if group.attrib["data-semantic-role"] != "text"
         }
-        assert reader_facing_roles <= visible_roles
+        if figure_spec.get("show_legend", True):
+            assert reader_facing_roles <= visible_roles
+        else:
+            assert not visible_roles
 
 
 def test_legend_omits_internal_text_role_without_removing_text_styling() -> None:
     for figure_spec in FIGURES:
         root = ElementTree.fromstring(render_figure(figure_spec))
+        if not figure_spec.get("show_legend", True):
+            assert not any(
+                element.attrib.get("id") == f"{figure_spec['id']}-legend" for element in root.iter()
+            )
+            continue
         legend = next(
             element
             for element in root.iter()

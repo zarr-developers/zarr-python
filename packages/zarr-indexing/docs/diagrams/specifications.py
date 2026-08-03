@@ -59,6 +59,8 @@ class GridSpec(TypedDict):
     selected: tuple[tuple[int, int], ...]
     chunk_shape: NotRequired[tuple[int, int] | None]
     show_coordinates: NotRequired[bool]
+    show_selected_coordinates: NotRequired[bool]
+    show_value_prefix: NotRequired[bool]
     values: NotRequired[tuple[tuple[int, ...], ...]]
 
 
@@ -125,6 +127,7 @@ class TextSpec(TypedDict):
     x: int
     y: int
     label: str
+    boxed: NotRequired[bool]
 
 
 type ElementSpec = GridSpec | AxisSpec | NodeSpec | SequenceSpec | ArrowSpec | TextSpec
@@ -139,66 +142,220 @@ class FigureSpec(TypedDict):
     width: int
     height: int
     legend_bottom_padding: NotRequired[int]
+    show_legend: NotRequired[bool]
     elements: tuple[ElementSpec, ...]
 
 
 FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "indexing-selection",
-        "title": "Basic indexing selects a one-dimensional request",
-        "description": "image[1, 0:4] maps four source cells to a length-four request.",
-        "width": 680,
-        "height": 350,
+        "title": "Basic indexing maps result coordinates to selected source cells",
+        "description": (
+            "image[1, 0:4] fixes source axis 0 at row 1, removes that axis, and retains "
+            "source axis 1 as result axis 0. Result coordinates 0, 1, 2, 3 receive values "
+            "4, 5, 6, 7 from source coordinates (1, 0), (1, 1), (1, 2), and (1, 3), "
+            "respectively."
+        ),
+        "width": 320,
+        "height": 570,
+        "show_legend": False,
         "elements": (
-            {
-                "id": "source-grid",
-                "kind": "grid",
-                "role": "source",
-                "rows": 3,
-                "columns": 4,
-                "cell_size": 72,
-                "origin": (20, 50),
-                "selected": ((1, 0), (1, 1), (1, 2), (1, 3)),
-                "show_coordinates": True,
-                "values": ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)),
-            },
-            {
-                "id": "request-vector",
-                "kind": "sequence",
-                "role": "request",
-                "x": 420,
-                "y": 125,
-                "width": 240,
-                "height": 66,
-                "orientation": "horizontal",
-                "coordinates": (0, 1, 2, 3),
-                "values": (4, 5, 6, 7),
-            },
-            {
-                "id": "selection-map",
-                "kind": "arrow",
-                "role": "text",
-                "source": "source-grid",
-                "target": "request-vector",
-                "label": "image[1, 0:4]",
-                "label_offset": (0, -55),
-            },
-            {
-                "id": "source-title",
-                "kind": "text",
-                "role": "text",
-                "x": 164,
-                "y": 24,
-                "label": "source image: shape (3, 4)",
-            },
-            {
-                "id": "request-title",
-                "kind": "text",
-                "role": "text",
-                "x": 540,
-                "y": 105,
-                "label": "result: shape (4,)",
-            },
+            TextSpec(
+                id="selection-expression",
+                kind="text",
+                role="text",
+                x=160,
+                y=22,
+                label="image[1, 0:4]",
+                boxed=False,
+            ),
+            TextSpec(
+                id="selection-plain",
+                kind="text",
+                role="text",
+                x=160,
+                y=48,
+                label="row 1 · columns 0–3",
+                boxed=False,
+            ),
+            TextSpec(
+                id="source-title",
+                kind="text",
+                role="text",
+                x=160,
+                y=80,
+                label="Source image · shape (3, 4)",
+                boxed=False,
+            ),
+            TextSpec(
+                id="source-axis-one",
+                kind="text",
+                role="text",
+                x=209,
+                y=106,
+                label="source axis 1",
+                boxed=False,
+            ),
+            GridSpec(
+                id="source-grid",
+                kind="grid",
+                role="source",
+                rows=3,
+                columns=4,
+                cell_size=46,
+                origin=(117, 142),
+                selected=((1, 0), (1, 1), (1, 2), (1, 3)),
+                show_coordinates=False,
+                show_selected_coordinates=False,
+                show_value_prefix=False,
+                values=((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)),
+            ),
+            TextSpec(
+                id="source-axis-zero",
+                kind="text",
+                role="text",
+                x=55,
+                y=126,
+                label="source axis 0 ↓",
+                boxed=False,
+            ),
+        )
+        + tuple(
+            TextSpec(
+                id=f"source-column-{coordinate}",
+                kind="text",
+                role="text",
+                x=140 + coordinate * 46,
+                y=126,
+                label=str(coordinate),
+                boxed=False,
+            )
+            for coordinate in range(4)
+        )
+        + tuple(
+            TextSpec(
+                id=f"source-row-{coordinate}",
+                kind="text",
+                role="text",
+                x=104,
+                y=165 + coordinate * 46,
+                label=str(coordinate),
+                boxed=False,
+            )
+            for coordinate in range(3)
+        )
+        + (
+            TextSpec(
+                id="axis-zero-rule",
+                kind="text",
+                role="text",
+                x=160,
+                y=302,
+                label="1 fixes source axis 0 → no result axis",
+                boxed=False,
+            ),
+            TextSpec(
+                id="axis-one-rule",
+                kind="text",
+                role="text",
+                x=160,
+                y=328,
+                label="0:4 keeps source axis 1 → result axis 0",
+                boxed=False,
+            ),
+            TextSpec(
+                id="result-title",
+                kind="text",
+                role="text",
+                x=160,
+                y=364,
+                label="Result · shape (4,)",
+                boxed=False,
+            ),
+            TextSpec(
+                id="result-coordinate-label",
+                kind="text",
+                role="text",
+                x=55,
+                y=398,
+                label="result coordinate",
+                boxed=False,
+            ),
+            TextSpec(
+                id="source-coordinate-label",
+                kind="text",
+                role="text",
+                x=55,
+                y=430,
+                label="source coordinate",
+                boxed=False,
+            ),
+            TextSpec(
+                id="value-label",
+                kind="text",
+                role="text",
+                x=55,
+                y=470,
+                label="value",
+                boxed=False,
+            ),
+        )
+        + tuple(
+            TextSpec(
+                id=f"result-coordinate-{coordinate}",
+                kind="text",
+                role="text",
+                x=140 + coordinate * 46,
+                y=398,
+                label=str(coordinate),
+                boxed=False,
+            )
+            for coordinate in range(4)
+        )
+        + tuple(
+            TextSpec(
+                id=f"source-coordinate-{coordinate}",
+                kind="text",
+                role="text",
+                x=140 + coordinate * 46,
+                y=430,
+                label=f"(1, {coordinate})",
+                boxed=False,
+            )
+            for coordinate in range(4)
+        )
+        + tuple(
+            NodeSpec(
+                id=f"result-value-{coordinate}",
+                kind="node",
+                role="text",
+                x=117 + coordinate * 46,
+                y=448,
+                width=46,
+                height=44,
+                label=str(4 + coordinate),
+            )
+            for coordinate in range(4)
+        )
+        + (
+            TextSpec(
+                id="result-invariant",
+                kind="text",
+                role="text",
+                x=160,
+                y=524,
+                label="result[i] = image[1, i]",
+                boxed=False,
+            ),
+            TextSpec(
+                id="result-domain",
+                kind="text",
+                role="text",
+                x=160,
+                y=550,
+                label="i = 0, 1, 2, 3",
+                boxed=False,
+            ),
         ),
     },
     {
@@ -819,6 +976,8 @@ def validate_figure(spec: FigureSpec) -> None:
     legend_bottom_padding = raw_spec.get("legend_bottom_padding", 12)
     if not _is_integer(legend_bottom_padding) or legend_bottom_padding < 0:
         _invalid(figure_id, "legend_bottom_padding", "must be a non-negative integer")
+    if "show_legend" in raw_spec and not isinstance(raw_spec["show_legend"], bool):
+        _invalid(figure_id, "show_legend", "must be a boolean")
 
     element_ids: set[str] = set()
     node_ids: set[str] = set()
@@ -898,8 +1057,9 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
         assert _is_integer(column)
         if not 0 <= row < rows or not 0 <= column < columns:
             _invalid(figure_id, f"{element_id}.selected", "contains a coordinate outside the grid")
-    if "show_coordinates" in element and not isinstance(element["show_coordinates"], bool):
-        _invalid(figure_id, f"{element_id}.show_coordinates", "must be a boolean")
+    for field in ("show_coordinates", "show_selected_coordinates", "show_value_prefix"):
+        if field in element and not isinstance(element[field], bool):
+            _invalid(figure_id, f"{element_id}.{field}", "must be a boolean")
     values = element.get("values")
     if values is not None:
         if not isinstance(values, tuple) or len(values) != rows:
@@ -980,6 +1140,8 @@ def _validate_text(figure_id: str, element_id: str, element: dict[str, object]) 
         if not _is_integer(element.get(field)):
             _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
     _validate_label(figure_id, element_id, element)
+    if "boxed" in element and not isinstance(element["boxed"], bool):
+        _invalid(figure_id, f"{element_id}.boxed", "must be a boolean")
 
 
 def _validate_label(figure_id: str, element_id: str, element: dict[str, object]) -> None:

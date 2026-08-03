@@ -62,6 +62,14 @@ def _stylesheet() -> str:
             "  max-width: 528px;",
             "  margin-inline: auto;",
             "}",
+            '.zi-figure[aria-labelledby~="indexing-selection-title"] {',
+            "  max-width: 440px;",
+            "  margin-inline: auto;",
+            "}",
+            (
+                "#indexing-selection-result-coordinate-label text, "
+                "#indexing-selection-source-coordinate-label text { font-size: 12px; }"
+            ),
             ".zi-figure text { dominant-baseline: middle; text-anchor: middle; font-size: 14px; }",
             ".zi-figure line, .zi-figure rect { vector-effect: non-scaling-stroke; }",
             ".zi-figure .zi-grid-cell { stroke-width: 1.5; }",
@@ -177,7 +185,8 @@ def render_figure(spec: FigureSpec) -> str:
             nodes[element["id"]] = element
     for element in spec["elements"]:
         _render_element(root, element, nodes, spec["id"])
-    _render_legend(root, spec)
+    if spec.get("show_legend", True):
+        _render_legend(root, spec)
     indent(root)
     return tostring(root, encoding="unicode", short_empty_elements=True) + "\n"
 
@@ -255,7 +264,9 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     "y": origin_y + row * element["cell_size"],
                 },
             )
-            show_coordinate = selected or element.get("show_coordinates", False)
+            show_coordinate = (
+                selected and element.get("show_selected_coordinates", True)
+            ) or (not selected and element.get("show_coordinates", False))
             if show_coordinate:
                 coordinate_class = (
                     "zi-selected-coordinate-label"
@@ -281,15 +292,20 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     **attributes,
                 ).text = coordinate_text
             if value is not None:
+                has_coordinate = show_coordinate
                 _svg_element(
                     cell_parent,
                     "text",
                     **{
                         "class": "zi-cell-value",
                         "x": origin_x + (column + 0.5) * element["cell_size"],
-                        "y": origin_y + (row + 0.5) * element["cell_size"] + 10,
+                        "y": (
+                            origin_y
+                            + (row + 0.5) * element["cell_size"]
+                            + (10 if has_coordinate else 0)
+                        ),
                     },
-                ).text = f"value: {value}"
+                ).text = f"value: {value}" if element.get("show_value_prefix", True) else str(value)
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         chunk_rows, chunk_columns = chunk_shape
@@ -473,21 +489,30 @@ def _arrow_endpoints(
 
 def _render_text(parent: Element, element: TextSpec, figure_id: str) -> None:
     group = _group(parent, element, figure_id)
-    _render_label(group, element["x"], element["y"], element["label"])
-
-
-def _render_label(parent: Element, x: float, y: float, label: str) -> None:
-    width = max(48, len(label) * 7 + 16)
-    rectangle = _svg_element(
-        parent,
-        "rect",
-        height=26,
-        width=width,
-        x=x - width / 2,
-        y=y - 13,
+    _render_label(
+        group,
+        element["x"],
+        element["y"],
+        element["label"],
+        boxed=element.get("boxed", True),
     )
-    if "zi-role-cell-domain" in parent.attrib.get("class", ""):
-        rectangle.attrib.update(_attributes(rx=8, ry=8))
+
+
+def _render_label(
+    parent: Element, x: float, y: float, label: str, *, boxed: bool = True
+) -> None:
+    if boxed:
+        width = max(48, len(label) * 7 + 16)
+        rectangle = _svg_element(
+            parent,
+            "rect",
+            height=26,
+            width=width,
+            x=x - width / 2,
+            y=y - 13,
+        )
+        if "zi-role-cell-domain" in parent.attrib.get("class", ""):
+            rectangle.attrib.update(_attributes(rx=8, ry=8))
     _svg_element(parent, "text", x=x, y=y).text = label
 
 

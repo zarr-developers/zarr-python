@@ -163,6 +163,16 @@ def test_landing_quickstart_produces_the_shown_result() -> None:
     np.testing.assert_array_equal(namespace["LANDING_QUICKSTART_RESULT"], np.array([4, 5, 6, 7]))
 
 
+def test_canonical_slice_introduces_lazy_indexing_before_partitioning() -> None:
+    source = (DOCS / "examples" / "canonical_slice.py").read_text()
+    region = source.split("# --8<-- [start:canonical-slice]", maxsplit=1)[1].split(
+        "# --8<-- [end:canonical-slice]", maxsplit=1
+    )[0]
+
+    assert "lazy = LazyArray(image)" in region
+    assert ".with_parts(" not in region
+
+
 def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:
     """A chunk source reads only projected keys and assembles through both transforms."""
     namespace: dict[str, Any] = runpy.run_path(
