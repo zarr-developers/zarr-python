@@ -83,7 +83,7 @@ def test_tunable_attrs_param(
     # contaminating the BloscCodec construction below with that warning.
     if shuffle == "legacy-enum":
         with pytest.warns(DeprecationWarning, match="BloscShuffle.shuffle"):
-            shuffle_arg: None | BloscShuffleLiteral | str = BloscShuffle.shuffle
+            shuffle_arg: BloscShuffleLiteral | str | None = BloscShuffle.shuffle
     else:
         shuffle_arg = shuffle
 
