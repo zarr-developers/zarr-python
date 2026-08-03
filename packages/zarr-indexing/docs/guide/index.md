@@ -34,8 +34,8 @@ the values 12, 13, and 14.
 ```text
 source coordinate |  0   1   2   3   4   5
 source value      | 10  11  12  13  14  15
-selection         |         [12  13  14]
-                             source[2:5]
+selection         |        [12  13  14]
+                            source[2:5]
 
 result coordinate |  0   1   2
 source coordinate |  2   3   4
