@@ -26,7 +26,15 @@
     return 0
   }
 
+  /* Cache the tag for the tab's lifetime (like the theme's own __source
+     cache) so navigation doesn't burn GitHub's unauthenticated API rate
+     limit. Keyed by prefix in case sub-package sites share an origin. */
+  const CACHE_KEY = `__package_tag/${PREFIX}`
+
   async function latestPackageTag() {
+    const cached = sessionStorage.getItem(CACHE_KEY)
+    if (cached)
+      return cached
     const response = await fetch(
       `https://api.github.com/repos/${REPO}/tags?per_page=100`
     )
@@ -38,6 +46,8 @@
       .filter(name => name.startsWith(PREFIX))
       .map(name => name.slice(PREFIX.length))
       .sort(newestFirst)
+    if (versions[0])
+      sessionStorage.setItem(CACHE_KEY, versions[0])
     return versions[0]
   }
 
