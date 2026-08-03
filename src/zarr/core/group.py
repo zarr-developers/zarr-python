@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import unicodedata
 import warnings
@@ -237,10 +236,12 @@ class ConsolidatedMetadata:
         # In the example, the group at `/a/b` will have consolidated metadata
         # for its children `array-0` and `array-1`.
 
-        keys = sorted(metadata, key=lambda k: k.count("/"))
-        grouped = {
-            k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
-        }
+        # Group keys by their parent path. This must not rely on same-parent keys
+        # being adjacent: the persisted key order is arbitrary, so accumulate
+        # instead of using itertools.groupby, which only groups consecutive runs.
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for k in sorted(metadata, key=lambda k: k.count("/")):
+            grouped[k.rsplit("/", 1)[0]].append(k)
 
         # we go top down and directly manipulate metadata.
         for key, children_keys in grouped.items():
