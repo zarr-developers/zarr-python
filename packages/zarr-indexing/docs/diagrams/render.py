@@ -94,6 +94,7 @@ def _stylesheet() -> str:
             ".zi-figure .zi-request-inner { fill: none; stroke-width: 1.5; }",
             ".zi-figure .zi-role-source > rect, .zi-figure .zi-role-source .zi-cue-swatch { stroke-width: 1.5; }",
             ".zi-figure .zi-role-source > rect.zi-chunk-boundary { stroke-width: 4; }",
+            ".zi-figure .zi-role-source text.zi-unselected-coordinate-label { fill: var(--zi-source-stroke, #57606a); font-size: 11px; }",
             ".zi-figure .zi-role-selected, .zi-figure .zi-role-selected > rect { stroke-width: 4; }",
             ".zi-figure .zi-role-chunk-local > rect, .zi-figure .zi-role-chunk-local .zi-cue-swatch { stroke-width: 2; stroke-dasharray: 7 4; }",
             ".zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }",
@@ -242,6 +243,17 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     "text",
                     **{
                         "class": "zi-selected-coordinate-label",
+                        "x": origin_x + (column + 0.5) * element["cell_size"],
+                        "y": origin_y + (row + 0.5) * element["cell_size"],
+                    },
+                ).text = f"({row}, {column})"
+            elif element.get("show_coordinates", False):
+                _svg_element(
+                    cell_parent,
+                    "text",
+                    **{
+                        "aria-hidden": "true",
+                        "class": "zi-unselected-coordinate-label",
                         "x": origin_x + (column + 0.5) * element["cell_size"],
                         "y": origin_y + (row + 0.5) * element["cell_size"],
                     },

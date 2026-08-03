@@ -58,6 +58,7 @@ class GridSpec(TypedDict):
     origin: tuple[int, int]
     selected: tuple[tuple[int, int], ...]
     chunk_shape: NotRequired[tuple[int, int] | None]
+    show_coordinates: NotRequired[bool]
 
 
 class AxisSpec(TypedDict):
@@ -494,6 +495,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "origin": (52, 140),
                 "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
                 "chunk_shape": (3, 4),
+                "show_coordinates": True,
             },
             {
                 "id": "chunk-zero-coords",
@@ -936,6 +938,8 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
         assert _is_integer(column)
         if not 0 <= row < rows or not 0 <= column < columns:
             _invalid(figure_id, f"{element_id}.selected", "contains a coordinate outside the grid")
+    if "show_coordinates" in element and not isinstance(element["show_coordinates"], bool):
+        _invalid(figure_id, f"{element_id}.show_coordinates", "must be a boolean")
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         if not _pair_of_ints(chunk_shape):

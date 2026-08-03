@@ -152,6 +152,12 @@ def test_selected_coordinate_must_be_inside_grid() -> None:
         validate_figure(malformed_figure("outside-grid", elements=(invalid_grid,)))
 
 
+def test_grid_show_coordinates_must_be_boolean() -> None:
+    invalid_grid = {**GRID, "show_coordinates": "yes"}
+    with pytest.raises(ValueError, match="show-coordinates.*show_coordinates.*boolean"):
+        validate_figure(malformed_figure("show-coordinates", elements=(invalid_grid,)))
+
+
 def test_element_ids_must_be_unique() -> None:
     duplicate = {**TEXT, "id": "grid"}
     with pytest.raises(ValueError, match="duplicate-id.*grid"):
@@ -248,6 +254,19 @@ def test_grid_chunk_shape_renders_complete_chunk_outlines() -> None:
     assert not any(
         element.attrib.get("class") == "zi-chunk-boundary" for element in unchunked_root.iter()
     )
+
+
+def test_grid_show_coordinates_labels_only_unselected_cells() -> None:
+    grid: GridSpec = {**GRID, "show_coordinates": True}
+    root = ElementTree.fromstring(render_figure(figure("coordinates", elements=(grid,))))
+    labels = [
+        element
+        for element in root.iter()
+        if element.attrib.get("class") == "zi-unselected-coordinate-label"
+    ]
+
+    assert [label.text for label in labels] == ["(0, 0)", "(0, 1)", "(0, 2)", "(1, 0)", "(1, 1)"]
+    assert all(label.attrib["aria-hidden"] == "true" for label in labels)
 
 
 def test_arrow_label_must_be_a_string() -> None:
@@ -660,6 +679,27 @@ def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() 
     ]
 
 
+def test_chunk_overlay_shows_faded_coordinates_for_unselected_cells() -> None:
+    overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
+    root = ElementTree.fromstring(render_figure(overlay))
+    unselected_labels = [
+        element
+        for element in root.iter()
+        if element.attrib.get("class") == "zi-unselected-coordinate-label"
+    ]
+    selected_labels = [
+        element
+        for element in root.iter()
+        if element.attrib.get("class") == "zi-selected-coordinate-label"
+    ]
+
+    assert len(unselected_labels) == 44
+    assert len(selected_labels) == 4
+    assert {label.text for label in unselected_labels}.isdisjoint(
+        {label.text for label in selected_labels}
+    )
+
+
 def test_chunk_overlay_uses_a_phone_readable_stacked_layout() -> None:
     """The 390 px audit viewport must keep key labels at 12 CSS px without scrolling."""
     overlay = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "chunk-overlay")
@@ -781,6 +821,15 @@ def test_chunk_boundaries_are_solid_while_chunk_local_cues_remain_dashed() -> No
     assert "stroke-width: 4;" in source_chunk_boundary_rule
     assert "stroke-dasharray" not in chunk_boundary_rule
     assert "stroke-dasharray: 7 4;" in chunk_local_rule
+
+
+def test_unselected_coordinate_labels_use_the_faded_source_color() -> None:
+    coordinate_rule = diagram_render.STYLESHEET.split(
+        ".zi-figure .zi-role-source text.zi-unselected-coordinate-label {", maxsplit=1
+    )[1].split("}", maxsplit=1)[0]
+
+    assert "fill: var(--zi-source-stroke" in coordinate_rule
+    assert "font-size: 11px;" in coordinate_rule
 
 
 def test_chunk_overlay_annotation_boxes_do_not_overlap_the_source_grid() -> None:
