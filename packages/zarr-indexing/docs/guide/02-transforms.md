@@ -11,12 +11,11 @@ The stopping boundary of one interval is the starting boundary of the next:
 `[0, 1) ∪ [1, 3) = [0, 3)`. Coordinate `1` appears exactly once—in the
 second interval.
 
-<figure>
-<div class="zi-figure-scroll" role="region" aria-label="Scrollable half-open interval concatenation diagram" tabindex="0">
---8<-- "_static/diagrams/half-open-intervals.svg"
-</div>
-<figcaption>Matching an exclusive stop to the next inclusive start lets adjacent half-open intervals concatenate exactly.</figcaption>
-</figure>
+```text
+[0, 1) = {0}
+[1, 3) = {1, 2}
+[0, 1) ∪ [1, 3) = [0, 3) = {0, 1, 2}
+```
 
 In the transform algebra, **coordinates are just integers**. A negative
 coordinate is a real address in a domain, with the same status as zero or a

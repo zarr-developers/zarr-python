@@ -52,11 +52,6 @@ GUIDE_FIGURES = (
     ),
     (
         DOCS / "guide" / "02-transforms.md",
-        "half-open-intervals",
-        "Scrollable half-open interval concatenation diagram",
-    ),
-    (
-        DOCS / "guide" / "02-transforms.md",
         "coordinate-addresses",
         "Scrollable coordinate addresses diagram",
     ),
@@ -219,12 +214,16 @@ def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct
 def test_half_open_interval_is_defined_before_negative_coordinates() -> None:
     chapter = (DOCS / "guide" / "02-transforms.md").read_text()
     definition = "start at 0, inclusive, and stop at 1, exclusive"
-    concatenation = "[0, 1) ∪ [1, 3) = [0, 3)"  # noqa: RUF001
+    equations = (
+        "[0, 1) = {0}",
+        "[1, 3) = {1, 2}",
+        "[0, 1) ∪ [1, 3) = [0, 3) = {0, 1, 2}",  # noqa: RUF001
+    )
 
     assert definition in chapter
-    assert concatenation in chapter
+    assert all(equation in chapter for equation in equations)
     assert chapter.index(definition) < chapter.index("[-2, 3)")
-    assert chapter.index("half-open-intervals.svg") < chapter.index("[-2, 3)")
+    assert "half-open-intervals.svg" not in chapter
 
 
 @pytest.mark.parametrize(

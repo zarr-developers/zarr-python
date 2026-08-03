@@ -610,9 +610,6 @@ def test_semantic_palettes_are_accessible() -> None:
 def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
         "indexing-selection": "image[1, 0:4] maps four source cells to a length-four request.",
-        "half-open-intervals": (
-            "adjacent [0, 1) and [1, 3) meet without a gap or overlap to form [0, 3)."
-        ),
         "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
         "transform-mapping": "request i maps to source (1, i).",
@@ -628,20 +625,6 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
             "with explicit failure, retry, eviction, and reload paths."
         ),
     }
-
-
-def test_half_open_interval_figure_names_both_pieces_and_the_combined_interval() -> None:
-    spec = next(item for item in FIGURES if item["id"] == "half-open-intervals")
-    labels: set[str] = set()
-    for element in spec["elements"]:
-        if element["kind"] == "node" or element["kind"] == "text":
-            labels.add(element["label"])
-    assert {
-        "[0, 1) contains 0",
-        "[1, 3) contains 1, 2",
-        "[0, 3) contains 0, 1, 2",
-        "1 is excluded on the left and included on the right",
-    } <= labels
 
 
 def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None:

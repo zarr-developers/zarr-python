@@ -143,7 +143,6 @@
 .zi-panel-row { display: flex; gap: 1rem; align-items: flex-start; }
 .zi-figure-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="indexing-selection-title"] { min-width: 680px; }
-.zi-figure-scroll .zi-figure[aria-labelledby~="half-open-intervals-title"] { min-width: 760px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="coordinate-addresses-title"] { min-width: 720px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="prepend-chunk-title"] { min-width: 760px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="transform-mapping-title"] { min-width: 680px; }
