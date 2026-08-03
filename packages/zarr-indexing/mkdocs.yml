@@ -17,13 +17,12 @@ exclude_docs: |
 nav:
   - index.md
   - Use lazy indexing:
-      - guide/index.md
-      - An index selects coordinates: guide/01-indexing.md
-      - Coordinates are addresses: guide/02-transforms.md
-      - Lazy views compose: guide/03-composition.md
-  - Integrate a chunked source:
-      - A request becomes a chunk plan: guide/04-chunks.md
-      - One cell domain, two projections: guide/05-projections.md
+      - Visual guide: guide/index.md
+      - An index selects coordinates: /guide/#an-index-selects-coordinates
+      - Coordinates are addresses: /guide/#coordinates-are-addresses
+      - Lazy views compose: /guide/#lazy-views-compose
+      - A request becomes a chunk plan: /guide/#a-request-becomes-a-chunk-plan
+      - One cell domain, two projections: /guide/#one-cell-domain-two-projections
   - Practical reference:
       - Indexing patterns: guide/patterns.md
       - Integration boundaries: guide/integrations.md

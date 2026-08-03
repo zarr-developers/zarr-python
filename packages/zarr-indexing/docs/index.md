@@ -9,7 +9,7 @@ Composable, lazy coordinate transforms for Zarr array indexing.
   ---
 
   Build NumPy-shaped views without reading until you materialize a result.
-  Start with [chapter 1: An index selects coordinates](guide/01-indexing.md).
+  Start with [An index selects coordinates](guide/index.md#an-index-selects-coordinates).
 
 - **Integrate a chunked source**
 
@@ -17,9 +17,10 @@ Composable, lazy coordinate transforms for Zarr array indexing.
 
   Turn a request into source-independent chunk projections for your own reader,
   writer, or scheduler. Start with
-  [chapter 4: A request becomes a chunk plan](guide/04-chunks.md). If literal
+  [A request becomes a chunk plan](guide/index.md#a-request-becomes-a-chunk-plan).
+  If literal
   coordinates are unfamiliar, read
-  [chapter 2: Coordinates are addresses](guide/02-transforms.md) first.
+  [Coordinates are addresses](guide/index.md#coordinates-are-addresses) first.
 
 </div>
 
@@ -42,9 +43,9 @@ you want its values:
 --8<-- "examples/canonical_slice.py:landing-quickstart"
 ```
 
-Continue through [chapter 2: Coordinates are addresses](guide/02-transforms.md)
-and [chapter 3: Lazy views compose](guide/03-composition.md) to understand how
-the view stays lazy and how repeated indexing combines.
+Continue through [Coordinates are addresses](guide/index.md#coordinates-are-addresses)
+and [Lazy views compose](guide/index.md#lazy-views-compose) to understand how the
+view stays lazy and how repeated indexing combines.
 
 ## Reference
 

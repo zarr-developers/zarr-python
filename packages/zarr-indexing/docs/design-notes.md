@@ -7,16 +7,19 @@ title: Design notes
 This page records advanced rationale that the API does not state directly: how
 this library relates to TensorStore, why rectangular selections are a category
 rather than a fast path, and what is deliberately not implemented yet. The
-visual guide owns the mechanics of [literal coordinates](guide/02-transforms.md),
-[view composition](guide/03-composition.md), [chunk plans](guide/04-chunks.md),
-and [their paired projections](guide/05-projections.md).
+visual guide owns the mechanics of
+[literal coordinates](guide/index.md#coordinates-are-addresses),
+[view composition](guide/index.md#lazy-views-compose),
+[chunk plans](guide/index.md#a-request-becomes-a-chunk-plan), and
+[their paired projections](guide/index.md#one-cell-domain-two-projections).
 
 ## Relationship to TensorStore
 
 The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
 index-transform model, reimplemented in Python against NumPy. The visual guide
-introduces the shared coordinate model in [chapter 2](guide/02-transforms.md)
-and composition in [chapter 3](guide/03-composition.md); the comparison here is
+introduces the shared model in
+[Coordinates are addresses](guide/index.md#coordinates-are-addresses) and
+[Lazy views compose](guide/index.md#lazy-views-compose); the comparison here is
 about the deliberately matching semantics:
 
 - **The model.** Both use an `IndexTransform` made of an input domain and one
@@ -61,8 +64,10 @@ Four deliberate differences:
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
 | Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
 
-The mechanics of a [chunk plan](guide/04-chunks.md) and its
-[paired projections](guide/05-projections.md) belong to the visual guide.
+The mechanics of a
+[chunk plan](guide/index.md#a-request-becomes-a-chunk-plan) and its
+[paired projections](guide/index.md#one-cell-domain-two-projections) belong to
+the visual guide.
 The relevant comparison is that both libraries use the paired-transform
 boundary rather than a read key plus scatter indices, so slices, outer products,
 and correlated gathers remain ordinary transforms that a consumer can lower to

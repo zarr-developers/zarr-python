@@ -46,42 +46,42 @@ REGIONS = {
 }
 GUIDE_FIGURES = (
     (
-        DOCS / "guide" / "01-indexing.md",
+        DOCS / "guide" / "index.md",
         "indexing-selection",
         "Scrollable basic indexing selection diagram",
     ),
     (
-        DOCS / "guide" / "02-transforms.md",
+        DOCS / "guide" / "index.md",
         "coordinate-addresses",
         "Scrollable coordinate addresses diagram",
     ),
     (
-        DOCS / "guide" / "02-transforms.md",
+        DOCS / "guide" / "index.md",
         "prepend-chunk",
         "Scrollable prepended chunk coordinates diagram",
     ),
     (
-        DOCS / "guide" / "02-transforms.md",
+        DOCS / "guide" / "index.md",
         "transform-mapping",
         "Scrollable transform mapping diagram",
     ),
     (
-        DOCS / "guide" / "03-composition.md",
+        DOCS / "guide" / "index.md",
         "compose-views",
         "Scrollable composed views diagram",
     ),
     (
-        DOCS / "guide" / "04-chunks.md",
+        DOCS / "guide" / "index.md",
         "chunk-overlay",
         "Scrollable chunk projection overlay diagram",
     ),
     (
-        DOCS / "guide" / "05-projections.md",
+        DOCS / "guide" / "index.md",
         "projection-pair",
         "Scrollable paired chunk projections diagram",
     ),
     (
-        DOCS / "guide" / "05-projections.md",
+        DOCS / "guide" / "index.md",
         "orthogonal-contrast",
         "Scrollable orthogonal indexing contrast diagram",
     ),
@@ -90,6 +90,28 @@ GUIDE_FIGURES = (
         "system-memory-chunk-lifecycle",
         "Scrollable system-memory chunk lifecycle diagram",
     ),
+)
+TUTORIAL_SECTIONS = (
+    ("An index selects coordinates", "an-index-selects-coordinates"),
+    ("Coordinates are addresses", "coordinates-are-addresses"),
+    ("Lazy views compose", "lazy-views-compose"),
+    ("A request becomes a chunk plan", "a-request-becomes-a-chunk-plan"),
+    ("One cell domain, two projections", "one-cell-domain-two-projections"),
+)
+RETIRED_TUTORIAL_FILES = (
+    "01-indexing.md",
+    "02-transforms.md",
+    "03-composition.md",
+    "04-chunks.md",
+    "05-projections.md",
+)
+TUTORIAL_SNIPPETS = (
+    "examples/canonical_slice.py:canonical-slice",
+    "examples/coordinate_origins.py:coordinate-origin",
+    "examples/coordinate_origins.py:prepend-grid",
+    "examples/lazy_composition.py:lazy-composition",
+    "examples/chunk_projection.py:chunk-projection",
+    "examples/chunk_projection.py:advanced-projection",
 )
 REQUIRED_PATTERNS = {
     "basic-slice",
@@ -214,7 +236,7 @@ def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct
 def test_half_open_interval_examples_explain_ordered_concatenation_before_negative_coordinates() -> (
     None
 ):
-    chapter = (DOCS / "guide" / "02-transforms.md").read_text()
+    chapter = (DOCS / "guide" / "index.md").read_text()
     definition = "start at 0, inclusive, and stop at 1, exclusive"
     examples = (
         ("[0, 1) = {0}", "Start at 0 and stop before 1, so the interval contains only 0."),
@@ -240,6 +262,25 @@ def test_half_open_interval_examples_explain_ordered_concatenation_before_negati
     assert " ∪ " not in interval_section  # noqa: RUF001
     assert chapter.index(definition) < chapter.index("[-2, 3)")
     assert "half-open-intervals.svg" not in chapter
+
+
+def test_visual_guide_is_one_scrolling_document_with_stable_section_links() -> None:
+    guide = (DOCS / "guide" / "index.md").read_text()
+    mkdocs = (PACKAGE_ROOT / "mkdocs.yml").read_text()
+    headings = tuple(f"## {title} {{#{anchor}}}" for title, anchor in TUTORIAL_SECTIONS)
+    expected_nav = "\n".join(
+        ("  - Use lazy indexing:", "      - Visual guide: guide/index.md")
+        + tuple(f"      - {title}: /guide/#{anchor}" for title, anchor in TUTORIAL_SECTIONS)
+    )
+
+    assert all(guide.count(heading) == 1 for heading in headings)
+    positions = tuple(guide.index(heading) for heading in headings)
+    assert positions == tuple(sorted(positions))
+    assert all(f"](#{anchor})" in guide for _, anchor in TUTORIAL_SECTIONS)
+    assert all(guide.count(snippet) == 1 for snippet in TUTORIAL_SNIPPETS)
+    assert expected_nav in mkdocs
+    assert all(not (DOCS / "guide" / name).exists() for name in RETIRED_TUTORIAL_FILES)
+    assert all(name not in mkdocs for name in RETIRED_TUTORIAL_FILES)
 
 
 @pytest.mark.parametrize(

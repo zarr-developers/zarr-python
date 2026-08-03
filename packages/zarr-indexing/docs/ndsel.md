@@ -7,10 +7,10 @@ title: The ndsel wire format
 [ndsel](https://github.com/zarr-developers/ndsel) is a draft JSON
 representation of NumPy-style n-dimensional selections, adapted from
 TensorStore's `IndexTransform` model. This page documents the wire format, not
-the coordinate model: [chapter 2 of the visual guide](guide/02-transforms.md)
-introduces literal coordinates, and [chapter 3](guide/03-composition.md) shows
-how views combine before a transform is serialized. `zarr-indexing` implements
-ndsel in two layers:
+the coordinate model: [Coordinates are addresses](guide/index.md#coordinates-are-addresses)
+introduces literal coordinates, and
+[Lazy views compose](guide/index.md#lazy-views-compose) shows how views combine
+before a transform is serialized. `zarr-indexing` implements ndsel in two layers:
 
 | Layer | Module | Depends on | Job |
 | --- | --- | --- | --- |

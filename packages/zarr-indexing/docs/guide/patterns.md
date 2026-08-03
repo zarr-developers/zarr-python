@@ -7,7 +7,8 @@
 
 The wrapper's three indexing modes all use positions in the current view. Each
 derived view begins at position zero, while the transform algebra underneath
-retains literal coordinates. The [coordinate chapter](02-transforms.md) develops
+retains literal coordinates. The
+[Coordinates are addresses](index.md#coordinates-are-addresses) section develops
 that distinction with non-zero and negative-origin domains.
 
 ## Selection matrix
