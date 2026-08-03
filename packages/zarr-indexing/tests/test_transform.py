@@ -56,6 +56,222 @@ class TestIndexTransformConstruction:
             IndexTransform(domain=domain, output=maps)
 
 
+class TestIndexTransformApply:
+    @pytest.mark.parametrize(
+        ("transform", "points", "expected"),
+        [
+            pytest.param(
+                IndexTransform.identity(IndexDomain((-2, 5), (1, 8))),
+                np.array([-2, 7], dtype=np.int64),
+                np.array([-2, 7], dtype=np.intp),
+                id="identity-negative-and-nonzero-origins",
+            ),
+            pytest.param(
+                IndexTransform(
+                    domain=IndexDomain((3,), (6,)),
+                    output=(
+                        ConstantMap(41),
+                        DimensionMap(0, offset=10, stride=-2),
+                    ),
+                ),
+                np.array([[3], [5]], dtype=np.int16),
+                np.array([[41, 4], [41, 0]], dtype=np.intp),
+                id="constant-and-negative-stride",
+            ),
+            pytest.param(
+                IndexTransform(
+                    domain=IndexDomain((-2, 5), (1, 8)),
+                    output=(
+                        ArrayMap(
+                            np.array([[7], [11], [13]], dtype=np.intp),
+                            offset=-1,
+                            stride=2,
+                            input_dimension=0,
+                        ),
+                    ),
+                ),
+                np.array(
+                    [
+                        [[-2, 5], [-1, 7]],
+                        [[0, 6], [-2, 6]],
+                    ],
+                    dtype=np.intp,
+                ),
+                np.array([[[13], [21]], [[25], [13]]], dtype=np.intp),
+                id="array-map-singleton-broadcast-multidimensional-batch",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((), ()), (ConstantMap(42),)),
+                np.empty((2, 0), dtype=np.intp),
+                np.array([[42], [42]], dtype=np.intp),
+                id="rank-zero-input",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((-1,), (2,)), ()),
+                np.array([[-1], [1]], dtype=np.intp),
+                np.empty((2, 0), dtype=np.intp),
+                id="rank-zero-output",
+            ),
+            pytest.param(
+                IndexTransform.identity(IndexDomain.from_shape((2,))),
+                np.empty((0, 1), dtype=np.intp),
+                np.empty((0, 1), dtype=np.intp),
+                id="empty-batch",
+            ),
+        ],
+    )
+    def test_apply_many_maps_integer_point_batches(
+        self,
+        transform: IndexTransform,
+        points: np.ndarray,
+        expected: np.ndarray,
+    ) -> None:
+        result = transform.apply_many(points)
+
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == np.dtype(np.intp)
+        assert result.flags.owndata
+
+    def test_apply_maps_one_point(self) -> None:
+        transform = IndexTransform(
+            IndexDomain((-2, 4), (1, 7)),
+            (
+                DimensionMap(1, offset=3, stride=-1),
+                DimensionMap(0, offset=2, stride=2),
+            ),
+        )
+
+        assert transform.apply((-1, 6)) == (-3, 0)
+
+    def test_apply_rejects_a_point_with_the_wrong_rank(self) -> None:
+        with pytest.raises(ValueError, match=r"point must have shape \(2,\), got \(1,\)"):
+            IndexTransform.from_shape((2, 3)).apply((1,))
+
+    def test_apply_rejects_an_explicitly_floating_rank_zero_point(self) -> None:
+        transform = IndexTransform(IndexDomain((), ()), ())
+        with pytest.raises(TypeError, match="integer dtype"):
+            transform.apply(np.array([], dtype=np.float64))
+
+    @pytest.mark.parametrize(
+        "points",
+        [
+            pytest.param(np.array(1, dtype=np.intp), id="no-coordinate-axis"),
+            pytest.param(np.zeros((4, 3), dtype=np.intp), id="wrong-trailing-size"),
+        ],
+    )
+    def test_apply_many_rejects_an_invalid_coordinate_axis(self, points: np.ndarray) -> None:
+        with pytest.raises(ValueError, match="trailing coordinate axis"):
+            IndexTransform.from_shape((2, 3)).apply_many(points)
+
+    @pytest.mark.parametrize(
+        "points",
+        [
+            pytest.param(np.array([[True]], dtype=np.bool_), id="bool"),
+            pytest.param(np.array([[1.0]], dtype=np.float64), id="float"),
+            pytest.param(np.array([["1"]], dtype=np.str_), id="string"),
+            pytest.param(np.array([[1]], dtype=object), id="object"),
+        ],
+    )
+    def test_apply_many_rejects_non_integer_coordinates(self, points: np.ndarray) -> None:
+        with pytest.raises(TypeError, match="integer dtype"):
+            IndexTransform.from_shape((2,)).apply_many(points)
+
+    def test_apply_many_reports_the_first_out_of_bounds_coordinate(self) -> None:
+        transform = IndexTransform.identity(IndexDomain((-2, 10), (2, 13)))
+        points = np.array(
+            [
+                [[-2, 10], [-1, 20]],
+                [[9, 11], [0, 12]],
+            ],
+            dtype=np.intp,
+        )
+
+        with pytest.raises(BoundsCheckError) as error:
+            transform.apply_many(points)
+
+        assert str(error.value) == (
+            "point at batch position (0, 1) has input dimension 1 coordinate 20 outside [10, 13)"
+        )
+
+
+class TestIndexTransformInverted:
+    @pytest.mark.parametrize(
+        ("transform", "points"),
+        [
+            pytest.param(
+                IndexTransform(
+                    IndexDomain((-3, 4), (1, 7)),
+                    (
+                        DimensionMap(1, offset=10),
+                        DimensionMap(0, offset=2, stride=-1),
+                    ),
+                ),
+                np.array([[-3, 4], [0, 6]], dtype=np.intp),
+                id="permutation-translation-reversal-nonzero-origin",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain((5, -2), (8, -1)),
+                    (DimensionMap(0, offset=3), ConstantMap(99)),
+                ),
+                np.array([[5, -2], [7, -2]], dtype=np.intp),
+                id="constant-and-unreferenced-singleton",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((), ()), ()),
+                np.empty((1, 0), dtype=np.intp),
+                id="rank-zero",
+            ),
+        ],
+    )
+    def test_inverted_round_trips_points(
+        self, transform: IndexTransform, points: np.ndarray
+    ) -> None:
+        inverse = transform.inverted()
+        mapped = transform.apply_many(points)
+
+        np.testing.assert_array_equal(inverse.apply_many(mapped), points)
+        assert inverse.apply(transform.apply(tuple(points[0]))) == tuple(points[0])
+        assert inverse.inverted() == transform
+
+    def test_inverted_rejects_unequal_ranks(self) -> None:
+        transform = IndexTransform(IndexDomain.from_shape((2,)), (ConstantMap(1), ConstantMap(2)))
+        with pytest.raises(ValueError, match="input rank must equal output rank"):
+            transform.inverted()
+
+    def test_inverted_rejects_an_array_map(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2,)),
+            (ArrayMap(np.array([1, 0], dtype=np.intp)),),
+        )
+        with pytest.raises(ValueError, match="ArrayMap"):
+            transform.inverted()
+
+    def test_inverted_rejects_a_non_unit_stride(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2,)),
+            (DimensionMap(0, stride=2),),
+        )
+        with pytest.raises(ValueError, match=r"stride must be \+1 or -1"):
+            transform.inverted()
+
+    def test_inverted_rejects_a_repeated_input_dimension(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2, 1)),
+            (DimensionMap(0), DimensionMap(0, offset=5)),
+        )
+        with pytest.raises(ValueError, match="referenced more than once"):
+            transform.inverted()
+
+    def test_inverted_rejects_an_unreferenced_non_singleton_dimension(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2, 2)),
+            (DimensionMap(0), ConstantMap(7)),
+        )
+        with pytest.raises(ValueError, match="unreferenced input dimension 1.*extent 2"):
+            transform.inverted()
+
+
 class TestIndexTransformBasicIndexing:
     def test_slice_identity(self) -> None:
         """slice(None) on identity transform is a no-op."""

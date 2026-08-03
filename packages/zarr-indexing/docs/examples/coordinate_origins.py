@@ -5,10 +5,7 @@ from numpy.typing import NDArray
 from typing import Any, cast
 
 from zarr_indexing import (
-    ArrayMap,
-    ConstantMap,
     DimensionGridLike,
-    DimensionMap,
     IndexDomain,
     IndexTransform,
     LazyArray,
@@ -52,33 +49,16 @@ assert projection.chunk_domain == IndexDomain((-3,), (0,))
 assert projection.chunk_transform.domain == IndexDomain((0,), (3,))
 
 
-def evaluate_point(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
-    """Evaluate the public output-map forms at one input coordinate."""
-    result: list[int] = []
-    for output_map in transform.output:
-        if isinstance(output_map, ConstantMap):
-            result.append(output_map.offset)
-        elif isinstance(output_map, DimensionMap):
-            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
-        else:
-            assert isinstance(output_map, ArrayMap)
-            index = tuple(
-                0
-                if output_map.index_array.shape[axis] == 1
-                else point[axis] - transform.domain.inclusive_min[axis]
-                for axis in range(output_map.index_array.ndim)
-            )
-            result.append(output_map.offset + output_map.stride * int(output_map.index_array[index]))
-    return tuple(result)
-
-
 assert projection.chunk_transform.domain == projection.cell_transform.domain
 PREPEND_SHARED_CELL_COORDS = ((0,), (1,), (2,))
+prepend_shared_cell_points = np.asarray(PREPEND_SHARED_CELL_COORDS, dtype=np.intp)
 PREPEND_CHUNK_LOCAL_COORDS = tuple(
-    evaluate_point(projection.chunk_transform, point) for point in PREPEND_SHARED_CELL_COORDS
+    tuple(point)
+    for point in projection.chunk_transform.apply_many(prepend_shared_cell_points).tolist()
 )
 PREPEND_REQUEST_COORDS = tuple(
-    evaluate_point(projection.cell_transform, point) for point in PREPEND_SHARED_CELL_COORDS
+    tuple(point)
+    for point in projection.cell_transform.apply_many(prepend_shared_cell_points).tolist()
 )
 assert PREPEND_CHUNK_LOCAL_COORDS == ((0,), (1,), (2,))
 assert PREPEND_REQUEST_COORDS == ((-3,), (-2,), (-1,))

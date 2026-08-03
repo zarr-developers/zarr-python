@@ -230,6 +230,23 @@ def test_system_memory_cache_is_documentation_only() -> None:
     assert not hasattr(zarr_indexing, "ChunkState")
 
 
+@pytest.mark.parametrize(
+    "example",
+    [
+        DOCS / "examples" / "integrations.py",
+        DOCS / "examples" / "coordinate_origins.py",
+        DOCS / "examples" / "napari_chunk_cache.py",
+    ],
+    ids=lambda path: path.stem,
+)
+def test_projection_examples_use_batched_transform_application(example: Path) -> None:
+    source = example.read_text()
+
+    assert "def evaluate_point" not in source
+    assert ".chunk_transform.apply_many(" in source
+    assert ".cell_transform.apply_many(" in source
+
+
 def make_documented_cache() -> tuple[Any, Any]:
     source_type = CACHE_NAMESPACE["RecordingChunkSource"]
     cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]

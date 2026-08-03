@@ -41,6 +41,8 @@ from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, Output
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import numpy.typing as npt
+
 
 @dataclass(frozen=True, slots=True)
 class IndexTransform:
@@ -153,6 +155,210 @@ class IndexTransform:
     @classmethod
     def from_shape(cls, shape: tuple[int, ...]) -> IndexTransform:
         return cls.identity(IndexDomain.from_shape(shape))
+
+    def apply(self, point: Sequence[int]) -> tuple[int, ...]:
+        """Map one input coordinate to an output coordinate.
+
+        Parameters
+        ----------
+        point : sequence of int
+            One literal coordinate for each input dimension.
+
+        Returns
+        -------
+        tuple of int
+            One coordinate for each output map.
+
+        Raises
+        ------
+        ValueError
+            If ``point`` does not have exactly one coordinate per input
+            dimension.
+        TypeError
+            If the coordinates do not have an integer dtype.
+        BoundsCheckError
+            If a coordinate lies outside the input domain.
+        """
+        coordinates = np.asarray(point)
+        expected_shape = (self.input_rank,)
+        if coordinates.shape != expected_shape:
+            raise ValueError(f"point must have shape {expected_shape}, got {coordinates.shape}")
+        # An empty Python sequence has no elements from which NumPy can infer
+        # an integer dtype, but it is the unique point in a rank-zero domain.
+        if self.input_rank == 0 and isinstance(point, (list, tuple)):
+            coordinates = coordinates.astype(np.intp)
+        result = self._apply_points(coordinates)
+        return tuple(int(value) for value in result)
+
+    def apply_many(self, points: npt.ArrayLike) -> npt.NDArray[np.intp]:
+        """Map an array of input coordinates to output coordinates.
+
+        Parameters
+        ----------
+        points : array-like
+            Integer coordinates with shape ``batch_shape + (input_rank,)``.
+
+        Returns
+        -------
+        numpy.ndarray
+            An owned ``np.intp`` array with shape
+            ``batch_shape + (output_rank,)``.
+
+        Raises
+        ------
+        ValueError
+            If ``points`` has no trailing coordinate axis or that axis does
+            not contain exactly one coordinate per input dimension.
+        TypeError
+            If the coordinates do not have an integer dtype.
+        BoundsCheckError
+            If a coordinate lies outside the input domain.
+        """
+        coordinates = np.asarray(points)
+        if coordinates.ndim == 0 or coordinates.shape[-1] != self.input_rank:
+            raise ValueError(
+                "points must have a trailing coordinate axis of size "
+                f"{self.input_rank}, got shape {coordinates.shape}"
+            )
+        return self._apply_points(coordinates)
+
+    def _apply_points(self, points: np.ndarray[Any, Any]) -> npt.NDArray[np.intp]:
+        """Vectorized implementation shared by ``apply`` and ``apply_many``."""
+        if not np.issubdtype(points.dtype, np.integer):
+            raise TypeError(f"points must have an integer dtype, got {points.dtype}")
+
+        invalid = np.zeros(points.shape, dtype=np.bool_)
+        for dimension, (lower, upper) in enumerate(
+            zip(self.domain.inclusive_min, self.domain.exclusive_max, strict=True)
+        ):
+            invalid[..., dimension] = (points[..., dimension] < lower) | (
+                points[..., dimension] >= upper
+            )
+        invalid_positions = np.argwhere(invalid)
+        if invalid_positions.size > 0:
+            first = invalid_positions[0]
+            dimension = int(first[-1])
+            batch_position = tuple(int(position) for position in first[:-1])
+            point_index = tuple(int(position) for position in first)
+            value = int(points[point_index])
+            lower = self.domain.inclusive_min[dimension]
+            upper = self.domain.exclusive_max[dimension]
+            raise BoundsCheckError(
+                f"point at batch position {batch_position} has input dimension "
+                f"{dimension} coordinate {value} outside [{lower}, {upper})"
+            )
+
+        coordinates = points.astype(np.intp, copy=False)
+        batch_shape = coordinates.shape[:-1]
+        result = np.empty(batch_shape + (self.output_rank,), dtype=np.intp)
+        for output_dimension, output_map in enumerate(self.output):
+            if isinstance(output_map, ConstantMap):
+                result[..., output_dimension] = output_map.offset
+            elif isinstance(output_map, DimensionMap):
+                result[..., output_dimension] = (
+                    output_map.offset
+                    + output_map.stride * coordinates[..., output_map.input_dimension]
+                )
+            else:
+                index = tuple(
+                    np.zeros(batch_shape, dtype=np.intp)
+                    if output_map.index_array.shape[axis] == 1
+                    else coordinates[..., axis] - self.domain.inclusive_min[axis]
+                    for axis in range(self.input_rank)
+                )
+                result[..., output_dimension] = (
+                    output_map.offset + output_map.stride * output_map.index_array[index]
+                )
+        return result
+
+    def inverted(self) -> IndexTransform:
+        """Return the restricted, exactly representable inverse transform.
+
+        Inversion is defined for square transforms containing only constants
+        and unique unit-stride dimension maps. Any input dimension not named by
+        a dimension map must have singleton extent, so its coordinate can be
+        recovered as a constant.
+
+        Returns
+        -------
+        IndexTransform
+            A new transform mapping output coordinates back to input
+            coordinates.
+
+        Raises
+        ------
+        ValueError
+            If this transform does not have a representable inverse.
+        """
+        if self.input_rank != self.output_rank:
+            raise ValueError(
+                "cannot invert transform: input rank must equal output rank, got "
+                f"{self.input_rank} and {self.output_rank}"
+            )
+
+        referenced: set[int] = set()
+        for output_dimension, output_map in enumerate(self.output):
+            if isinstance(output_map, ArrayMap):
+                raise ValueError(  # noqa: TRY004 - valid map, invalid inverse
+                    f"cannot invert transform: output[{output_dimension}] is an ArrayMap"
+                )
+            if isinstance(output_map, DimensionMap):
+                if output_map.stride not in (-1, 1):
+                    raise ValueError(
+                        "cannot invert transform: DimensionMap stride must be +1 or -1, "
+                        f"got {output_map.stride} for output[{output_dimension}]"
+                    )
+                if output_map.input_dimension in referenced:
+                    raise ValueError(
+                        "cannot invert transform: input dimension "
+                        f"{output_map.input_dimension} is referenced more than once"
+                    )
+                referenced.add(output_map.input_dimension)
+
+        for input_dimension, extent in enumerate(self.domain.shape):
+            if input_dimension not in referenced and extent != 1:
+                raise ValueError(
+                    "cannot invert transform: unreferenced input dimension "
+                    f"{input_dimension} has extent {extent}, not 1"
+                )
+
+        inverse_min: list[int] = []
+        inverse_max: list[int] = []
+        inverse_output: dict[int, OutputIndexMap] = {}
+        for output_dimension, output_map in enumerate(self.output):
+            if isinstance(output_map, ConstantMap):
+                inverse_min.append(output_map.offset)
+                inverse_max.append(output_map.offset + 1)
+                continue
+
+            assert isinstance(output_map, DimensionMap)
+            input_dimension = output_map.input_dimension
+            lower = self.domain.inclusive_min[input_dimension]
+            upper = self.domain.exclusive_max[input_dimension]
+            if output_map.stride == 1:
+                inverse_min.append(output_map.offset + lower)
+                inverse_max.append(output_map.offset + upper)
+                inverse_output[input_dimension] = DimensionMap(
+                    output_dimension,
+                    offset=-output_map.offset,
+                )
+            else:
+                inverse_min.append(output_map.offset - upper + 1)
+                inverse_max.append(output_map.offset - lower + 1)
+                inverse_output[input_dimension] = DimensionMap(
+                    output_dimension,
+                    offset=output_map.offset,
+                    stride=-1,
+                )
+
+        for input_dimension, lower in enumerate(self.domain.inclusive_min):
+            if input_dimension not in referenced:
+                inverse_output[input_dimension] = ConstantMap(lower)
+
+        return IndexTransform(
+            domain=IndexDomain(tuple(inverse_min), tuple(inverse_max)),
+            output=tuple(inverse_output[dimension] for dimension in range(self.input_rank)),
+        )
 
     @property
     def selection_repr(self) -> str:

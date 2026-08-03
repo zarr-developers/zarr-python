@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from zarr_indexing import ArrayMap, ConstantMap, DimensionMap, IndexTransform, LazyArray
+from zarr_indexing import LazyArray
 
 type ChunkCoords = tuple[int, ...]
 
@@ -72,25 +72,6 @@ class RecordingChunkSource:
             for coord, size, extent in zip(chunk_coords, self.chunks, self.shape, strict=True)
         )
         return self._data[key].copy()
-
-
-def evaluate_point(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
-    result: list[int] = []
-    for output_map in transform.output:
-        if isinstance(output_map, ConstantMap):
-            result.append(output_map.offset)
-        elif isinstance(output_map, DimensionMap):
-            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
-        else:
-            assert isinstance(output_map, ArrayMap)
-            index = tuple(
-                0
-                if output_map.index_array.shape[axis] == 1
-                else point[axis] - transform.domain.inclusive_min[axis]
-                for axis in range(output_map.index_array.ndim)
-            )
-            result.append(output_map.offset + output_map.stride * int(output_map.index_array[index]))
-    return tuple(result)
 
 
 # --8<-- [end:chunk-cache-source]
@@ -226,14 +207,13 @@ class SystemMemoryChunkCache:
             record = self._record(projection.chunk_coords)
             assert record.state is ChunkState.READY and record.buffer is not None
             domain = projection.chunk_transform.domain
-            for index in np.ndindex(*domain.shape):
-                point = tuple(
-                    position + origin
-                    for position, origin in zip(index, domain.inclusive_min, strict=True)
-                )
-                chunk_point = evaluate_point(projection.chunk_transform, point)
-                request_point = evaluate_point(projection.cell_transform, point)
-                result[request_point] = record.buffer[chunk_point]
+            cell_points = np.moveaxis(
+                np.indices(domain.shape, dtype=np.intp), 0, -1
+            ).reshape(-1, domain.ndim)
+            cell_points += np.asarray(domain.inclusive_min, dtype=np.intp)
+            chunk_points = projection.chunk_transform.apply_many(cell_points)
+            request_points = projection.cell_transform.apply_many(cell_points)
+            result[tuple(request_points.T)] = record.buffer[tuple(chunk_points.T)]
             uses.append(("chunk_transform", "cell_transform"))
         self.projection_uses = tuple(uses)
         self._evict(pinned=frozenset())

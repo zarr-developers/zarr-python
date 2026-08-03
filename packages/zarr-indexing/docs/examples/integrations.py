@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from zarr_indexing import ArrayMap, ConstantMap, DimensionMap, IndexDomain, IndexTransform, LazyArray
+from zarr_indexing import IndexDomain, LazyArray
 
 
 # --8<-- [start:zarr-consumer]
@@ -18,26 +18,6 @@ class RecordingChunkSource:
     def read(self, chunk_coords: tuple[int, ...]) -> np.ndarray[Any, Any]:
         self.reads.append(chunk_coords)
         return self.chunks[chunk_coords]
-
-
-def evaluate_point(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
-    """Evaluate the three public output-map forms at one input coordinate."""
-    result: list[int] = []
-    for output_map in transform.output:
-        if isinstance(output_map, ConstantMap):
-            result.append(output_map.offset)
-        elif isinstance(output_map, DimensionMap):
-            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
-        else:
-            assert isinstance(output_map, ArrayMap)
-            index = tuple(
-                0
-                if output_map.index_array.shape[axis] == 1
-                else point[axis] - transform.domain.inclusive_min[axis]
-                for axis in range(output_map.index_array.ndim)
-            )
-            result.append(output_map.offset + output_map.stride * int(output_map.index_array[index]))
-    return tuple(result)
 
 
 zarr_image = np.arange(48).reshape(6, 8)
@@ -64,19 +44,18 @@ for part in zarr_view.parts():
         (projection.chunk_transform.domain, projection.cell_transform.domain)
     )
     domain = projection.chunk_transform.domain
-    cell_points = tuple(
-        tuple(
-            position + origin
-            for position, origin in zip(index, domain.inclusive_min, strict=True)
-        )
-        for index in np.ndindex(*domain.shape)
-    )
-    local_points = tuple(evaluate_point(projection.chunk_transform, point) for point in cell_points)
-    result_points = tuple(evaluate_point(projection.cell_transform, point) for point in cell_points)
+    cell_points = np.moveaxis(
+        np.indices(domain.shape, dtype=np.intp), 0, -1
+    ).reshape(-1, domain.ndim)
+    cell_points += np.asarray(domain.inclusive_min, dtype=np.intp)
+    local_points_array = projection.chunk_transform.apply_many(cell_points)
+    result_points_array = projection.cell_transform.apply_many(cell_points)
     chunk = zarr_source.read(projection.chunk_coords)
-    values = tuple(int(chunk[point]) for point in local_points)
-    for result_point, value in zip(result_points, values, strict=True):
-        ZARR_RESULT[result_point] = value
+    values_array = chunk[tuple(local_points_array.T)]
+    ZARR_RESULT[tuple(result_points_array.T)] = values_array
+    local_points = tuple(tuple(point) for point in local_points_array.tolist())
+    result_points = tuple(tuple(point) for point in result_points_array.tolist())
+    values = tuple(int(value) for value in values_array)
     chunk_local_coords.append(local_points)
     request_coords.append(result_points)
     read_values.append(values)
