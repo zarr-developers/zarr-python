@@ -1,4 +1,4 @@
-<svg aria-labelledby="result-array-shape-title result-array-shape-desc" class="zi-figure" role="img" viewBox="0 0 390 390" xmlns="http://www.w3.org/2000/svg">
+<svg aria-labelledby="result-array-shape-title result-array-shape-desc" class="zi-figure" role="img" viewBox="0 0 390 465" xmlns="http://www.w3.org/2000/svg">
   <title id="result-array-shape-title">Indexes define result axes as well as source points</title>
   <desc id="result-array-shape-desc">image[1, :] and image[1:2, :] select the same source coordinates and values 4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively.</desc>
   <defs>
@@ -53,34 +53,33 @@
     <rect height="26" width="107" x="16.5" y="225" />
     <text x="70" y="238">image[1:2, :]</text>
   </g>
-  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="result-array-shape-slice-axis-label">
-    <rect height="26" width="149" x="120.5" y="253" />
-    <text x="195" y="266">axis 0 coordinate 0</text>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="result-array-shape-slice-axis-frame">
+    <rect height="140" width="230" x="80" y="260" />
+    <text x="195.0" y="330.0">axis 0 coordinate 0</text>
   </g>
   <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-slice-row">
     <g aria-label="selected coordinate (0, 0), value 4" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-slice-row-selected-0-0">
-      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="95" y="280" />
-      <text class="zi-cell-value" x="120.0" y="305.0">4</text>
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="95" y="342" />
+      <text class="zi-cell-value" x="120.0" y="367.0">4</text>
     </g>
     <g aria-label="selected coordinate (0, 1), value 5" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-slice-row-selected-0-1">
-      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="145" y="280" />
-      <text class="zi-cell-value" x="170.0" y="305.0">5</text>
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="145" y="342" />
+      <text class="zi-cell-value" x="170.0" y="367.0">5</text>
     </g>
     <g aria-label="selected coordinate (0, 2), value 6" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-slice-row-selected-0-2">
-      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="195" y="280" />
-      <text class="zi-cell-value" x="220.0" y="305.0">6</text>
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="195" y="342" />
+      <text class="zi-cell-value" x="220.0" y="367.0">6</text>
     </g>
     <g aria-label="selected coordinate (0, 3), value 7" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="result-array-shape-slice-row-selected-0-3">
-      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="245" y="280" />
-      <text class="zi-cell-value" x="270.0" y="305.0">7</text>
+      <rect class="zi-grid-cell zi-role-selected" height="50" width="50" x="245" y="342" />
+      <text class="zi-cell-value" x="270.0" y="367.0">7</text>
     </g>
-    <rect class="zi-chunk-boundary" height="50" width="200" x="95" y="280" />
   </g>
   <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="result-array-shape-slice-shape">
-    <rect height="26" width="100" x="145.0" y="337" />
-    <text x="195" y="350">shape (1, 4)</text>
+    <rect height="26" width="100" x="145.0" y="409" />
+    <text x="195" y="422">shape (1, 4)</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="result-array-shape-slice-explanation">
-    <text x="195" y="378">slice keeps axis 0 → length-one axis retained</text>
+    <text x="195" y="452">slice keeps axis 0 → length-one axis retained</text>
   </g>
 </svg>

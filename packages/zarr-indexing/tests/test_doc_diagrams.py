@@ -688,6 +688,21 @@ def test_result_array_shape_figure_compares_same_points_with_different_arrays() 
     assert all(element["kind"] != "arrow" for element in spec["elements"])
     assert spec.get("show_legend") is False
 
+    nodes = {element["label"]: element for element in spec["elements"] if element["kind"] == "node"}
+    grids = {element["id"]: element for element in spec["elements"] if element["kind"] == "grid"}
+    assert "axis 0 coordinate 0" in nodes
+
+    outer_frame = nodes["axis 0 coordinate 0"]
+    slice_result = grids["slice-row"]
+    row_x, row_y = slice_result["origin"]
+    row_right = row_x + slice_result["columns"] * slice_result["cell_size"]
+    row_bottom = row_y + slice_result["rows"] * slice_result["cell_size"]
+
+    assert outer_frame["x"] < row_x
+    assert outer_frame["y"] < row_y
+    assert outer_frame["x"] + outer_frame["width"] > row_right
+    assert outer_frame["y"] + outer_frame["height"] > row_bottom
+
 
 def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None:
     spec = next(item for item in FIGURES if item["id"] == "system-memory-chunk-lifecycle")

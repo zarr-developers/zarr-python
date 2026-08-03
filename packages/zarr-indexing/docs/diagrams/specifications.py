@@ -505,7 +505,7 @@ FIGURES: tuple[FigureSpec, ...] = (
             "4, 5, 6, 7, but define result shapes (4,) and (1, 4), respectively."
         ),
         "width": 390,
-        "height": 390,
+        "height": 465,
         "show_legend": False,
         "elements": (
             {
@@ -584,11 +584,13 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "label": "image[1:2, :]",
             },
             {
-                "id": "slice-axis-label",
-                "kind": "text",
+                "id": "slice-axis-frame",
+                "kind": "node",
                 "role": "source",
-                "x": 195,
-                "y": 266,
+                "x": 80,
+                "y": 260,
+                "width": 230,
+                "height": 140,
                 "label": "axis 0 coordinate 0",
             },
             {
@@ -598,19 +600,18 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "rows": 1,
                 "columns": 4,
                 "cell_size": 50,
-                "origin": (95, 280),
+                "origin": (95, 342),
                 "selected": ((0, 0), (0, 1), (0, 2), (0, 3)),
                 "values": ((4, 5, 6, 7),),
                 "show_selected_coordinates": False,
                 "show_value_prefix": False,
-                "chunk_shape": (1, 4),
             },
             {
                 "id": "slice-shape",
                 "kind": "text",
                 "role": "request",
                 "x": 195,
-                "y": 350,
+                "y": 422,
                 "label": "shape (1, 4)",
             },
             {
@@ -618,7 +619,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "kind": "text",
                 "role": "text",
                 "x": 195,
-                "y": 378,
+                "y": 452,
                 "label": "slice keeps axis 0 → length-one axis retained",
                 "boxed": False,
             },
