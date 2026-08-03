@@ -1,9 +1,9 @@
 """Helpers for validating JSON-decoded metadata.
 
-Most JSON metadata validation is delegated to :func:`msgspec.convert`, which
+Most JSON metadata validation is delegated to ``msgspec.convert``, which
 handles the type coercions Zarr needs (``Literal`` membership, ``int``/``bool``
-strictness, list-to-tuple, ``TypedDict`` with ``NotRequired``). :func:`convert`
-is a thin wrapper that translates :class:`msgspec.ValidationError` into the
+strictness, list-to-tuple, ``TypedDict`` with ``NotRequired``). ``convert``
+is a thin wrapper that translates ``msgspec.ValidationError`` into the
 ``TypeError`` the rest of the codebase already raises.
 
 msgspec cannot handle two things in Zarr's metadata types:
@@ -12,7 +12,7 @@ msgspec cannot handle two things in Zarr's metadata types:
   schema-build time, and
 * PEP 728 ``extra_items=`` extension fields, which it silently drops.
 
-:func:`validate_json_value` is the small hand-written fallback for the first of
+``validate_json_value`` is the small hand-written fallback for the first of
 those. See https://github.com/zarr-developers/zarr-python/issues/3285.
 """
 
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 __all__ = ["MAX_JSON_DEPTH", "convert", "parse_field", "validate_json_value"]
 
 MAX_JSON_DEPTH: Final = 64
-"""Maximum nesting depth accepted by :func:`validate_json_value`."""
+"""Maximum nesting depth accepted by ``validate_json_value``."""
 
 
 def _type_name(type_: Any) -> str:
@@ -37,11 +37,11 @@ def _type_name(type_: Any) -> str:
 
 
 def convert(value: object, type_: Any, *, strict: bool = True) -> Any:
-    """Validate and coerce ``value`` against ``type_`` via :func:`msgspec.convert`.
+    """Validate and coerce ``value`` against ``type_`` via ``msgspec.convert``.
 
-    On a mismatch msgspec raises :class:`msgspec.ValidationError`; this re-raises
+    On a mismatch msgspec raises ``msgspec.ValidationError``; this re-raises
     a plain, field-agnostic ``ValueError`` naming the expected type, so callers
-    can add their own field context (see :func:`parse_field`).
+    can add their own field context (see ``parse_field``).
     """
     try:
         return msgspec.convert(value, type_, strict=strict)
@@ -54,7 +54,7 @@ def parse_field(
 ) -> Any:
     """Validate ``data`` for metadata field ``field`` against ``type_``.
 
-    Wraps :func:`convert` and, on failure, re-raises ``error`` with field
+    Wraps ``convert`` and, on failure, re-raises ``error`` with field
     context, chaining the underlying type error. This keeps the
     ``convert``-then-re-raise pattern in one place rather than repeating it in
     every per-field parser.
