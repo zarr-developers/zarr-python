@@ -302,14 +302,17 @@ def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
 
 def test_integration_guide_confines_lifecycle_scrolling_to_an_accessible_wrapper() -> None:
     guide = (DOCS / "guide" / "integrations.md").read_text()
+    figure_start = guide.index("<figure>")
     wrapper_start = guide.index('<div class="zi-lifecycle-scroll"')
-    figure = guide.index("<figure>", wrapper_start)
-    wrapper_end = guide.index("</div>", figure)
+    svg = guide.index("system-memory-chunk-lifecycle.svg")
+    wrapper_end = guide.index("</div>", wrapper_start)
+    figcaption = guide.index("<figcaption>")
+    figure_end = guide.index("</figure>", figure_start)
 
-    assert wrapper_start < figure < wrapper_end
-    assert 'role="region"' in guide[wrapper_start:figure]
-    assert 'aria-label="Scrollable system-memory chunk lifecycle"' in guide[wrapper_start:figure]
-    assert 'tabindex="0"' in guide[wrapper_start:figure]
+    assert figure_start < wrapper_start < svg < wrapper_end < figcaption < figure_end
+    assert 'role="region"' in guide[wrapper_start:svg]
+    assert 'aria-label="Scrollable system-memory chunk lifecycle"' in guide[wrapper_start:svg]
+    assert 'tabindex="0"' in guide[wrapper_start:svg]
 
 
 def make_documented_cache() -> tuple[Any, Any]:
