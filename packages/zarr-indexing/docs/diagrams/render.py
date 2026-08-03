@@ -398,7 +398,13 @@ def _render_label(parent: Element, x: float, y: float, label: str) -> None:
 
 
 def _render_legend(parent: Element, spec: FigureSpec) -> None:
-    roles = tuple(dict.fromkeys(element["role"] for element in spec["elements"]))
+    roles = tuple(
+        dict.fromkeys(
+            element["role"] for element in spec["elements"] if element["role"] != "text"
+        )
+    )
+    if not roles:
+        return
     legend = _svg_element(
         parent,
         "g",

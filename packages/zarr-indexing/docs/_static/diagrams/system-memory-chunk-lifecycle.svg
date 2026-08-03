@@ -80,9 +80,5 @@
       <rect class="zi-cue-swatch" height="20" width="28" x="362" y="426" />
       <text aria-label="chunk-local" class="zi-role-label" data-non-color-cue="chunk-local label + dashed border" data-semantic-role="chunk-local" x="398" y="436">chunk-local</text>
     </g>
-    <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="system-memory-chunk-lifecycle-legend-text">
-      <rect class="zi-cue-swatch" height="20" width="28" x="532" y="426" />
-      <text aria-label="text" class="zi-role-label" data-non-color-cue="text label" data-semantic-role="text" x="568" y="436">text</text>
-    </g>
   </g>
 </svg>

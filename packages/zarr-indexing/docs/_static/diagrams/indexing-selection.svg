@@ -96,13 +96,9 @@
       <rect class="zi-request-inner" height="14" width="22" x="195" y="361" />
       <text aria-label="request" class="zi-role-label" data-non-color-cue="request label + double border" data-semantic-role="request" x="228" y="368">request</text>
     </g>
-    <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-legend-text">
-      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="358" />
-      <text aria-label="text" class="zi-role-label" data-non-color-cue="text label" data-semantic-role="text" x="398" y="368">text</text>
-    </g>
     <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-legend-selected">
-      <rect class="zi-cue-swatch" height="20" width="28" x="532" y="358" />
-      <text aria-label="selected" class="zi-role-label" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" x="568" y="368">selected</text>
+      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="358" />
+      <text aria-label="selected" class="zi-role-label" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" x="398" y="368">selected</text>
     </g>
   </g>
 </svg>

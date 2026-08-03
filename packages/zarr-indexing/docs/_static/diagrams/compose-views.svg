@@ -54,25 +54,21 @@
   </g>
   <g aria-label="Visible semantic role legend" class="zi-legend" id="compose-views-legend">
     <g aria-label="request" class="zi-role-request" data-non-color-cue="request label + double border" data-semantic-role="request" id="compose-views-legend-request">
-      <rect class="zi-cue-swatch" height="20" width="28" x="22" y="274" />
-      <rect class="zi-request-inner" height="14" width="22" x="25" y="277" />
-      <text aria-label="request" class="zi-role-label" data-non-color-cue="request label + double border" data-semantic-role="request" x="58" y="284">request</text>
+      <rect class="zi-cue-swatch" height="20" width="28" x="22" y="308" />
+      <rect class="zi-request-inner" height="14" width="22" x="25" y="311" />
+      <text aria-label="request" class="zi-role-label" data-non-color-cue="request label + double border" data-semantic-role="request" x="58" y="318">request</text>
     </g>
     <g aria-label="cell-domain" class="zi-role-cell-domain" data-non-color-cue="cell-domain label + rounded border" data-semantic-role="cell-domain" id="compose-views-legend-cell-domain">
-      <rect class="zi-cue-swatch" height="20" width="28" x="192" y="274" rx="7" ry="7" />
-      <text aria-label="cell-domain" class="zi-role-label" data-non-color-cue="cell-domain label + rounded border" data-semantic-role="cell-domain" x="228" y="284">cell-domain</text>
+      <rect class="zi-cue-swatch" height="20" width="28" x="192" y="308" rx="7" ry="7" />
+      <text aria-label="cell-domain" class="zi-role-label" data-non-color-cue="cell-domain label + rounded border" data-semantic-role="cell-domain" x="228" y="318">cell-domain</text>
     </g>
     <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="compose-views-legend-source">
-      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="274" />
-      <text aria-label="source" class="zi-role-label" data-non-color-cue="source label + neutral single border" data-semantic-role="source" x="398" y="284">source</text>
-    </g>
-    <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="compose-views-legend-text">
-      <rect class="zi-cue-swatch" height="20" width="28" x="532" y="274" />
-      <text aria-label="text" class="zi-role-label" data-non-color-cue="text label" data-semantic-role="text" x="568" y="284">text</text>
+      <rect class="zi-cue-swatch" height="20" width="28" x="362" y="308" />
+      <text aria-label="source" class="zi-role-label" data-non-color-cue="source label + neutral single border" data-semantic-role="source" x="398" y="318">source</text>
     </g>
     <g aria-label="selected" class="zi-role-selected" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="compose-views-legend-selected">
-      <rect class="zi-cue-swatch" height="20" width="28" x="22" y="308" />
-      <text aria-label="selected" class="zi-role-label" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" x="58" y="318">selected</text>
+      <rect class="zi-cue-swatch" height="20" width="28" x="532" y="308" />
+      <text aria-label="selected" class="zi-role-label" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" x="568" y="318">selected</text>
     </g>
   </g>
 </svg>

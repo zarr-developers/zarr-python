@@ -875,7 +875,34 @@ def test_rendered_figures_have_structural_and_visible_semantics() -> None:
             for element in root.iter()
             if "zi-role-label" in element.attrib.get("class", "").split()
         }
-        assert {group.attrib["data-semantic-role"] for group in role_groups} <= visible_roles
+        reader_facing_roles = {
+            group.attrib["data-semantic-role"]
+            for group in role_groups
+            if group.attrib["data-semantic-role"] != "text"
+        }
+        assert reader_facing_roles <= visible_roles
+
+
+def test_legend_omits_internal_text_role_without_removing_text_styling() -> None:
+    for figure_spec in FIGURES:
+        root = ElementTree.fromstring(render_figure(figure_spec))
+        legend = next(
+            element
+            for element in root.iter()
+            if element.attrib.get("id") == f"{figure_spec['id']}-legend"
+        )
+        assert not any(
+            element.attrib.get("data-semantic-role") == "text" for element in legend.iter()
+        ), figure_spec["id"]
+
+    text_element = cast(TextSpec, {**TEXT, "role": "text"})
+    root = ElementTree.fromstring(render_figure(figure("text-only", elements=(text_element,))))
+    assert any(
+        element.attrib.get("id") == "text-only-text"
+        and element.attrib.get("class") == "zi-role-text"
+        for element in root.iter()
+    )
+    assert not any(element.attrib.get("class") == "zi-legend" for element in root.iter())
 
 
 def test_generated_stylesheet_has_theme_roles_and_responsive_layout() -> None:
