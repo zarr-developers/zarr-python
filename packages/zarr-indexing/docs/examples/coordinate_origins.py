@@ -2,7 +2,7 @@
 
 import numpy as np
 from numpy.typing import NDArray
-from typing import Any, cast
+from typing import cast
 
 from zarr_indexing import (
     DimensionGridLike,
@@ -19,7 +19,7 @@ assert domain.contains((-1,))
 assert domain.narrow(-1).inclusive_min == (-1,)
 
 values = np.array([10, 20, 30, 40, 50])
-assert LazyArray(cast(Any, values)).lazy[-1].result() == 50
+assert LazyArray(values).lazy[-1].result() == 50
 # --8<-- [end:coordinate-origin]
 
 

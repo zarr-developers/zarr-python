@@ -18,8 +18,8 @@ consumer enumerates the shared synthetic input cell domain, evaluates
 --8<-- "examples/integrations.py:zarr-consumer"
 ```
 
-The two reads are exactly `(0, 0)` and `(1, 0)`; untouched chunks `(0, 1)` and
-`(1, 1)` are never read. The assembled request is `[10, 18, 26, 34]`. The
+The two reads are exactly `(0, 0)` and `(0, 1)`; untouched chunks `(1, 0)` and
+`(1, 1)` are never read. The assembled request is `[4, 5, 6, 7]`. The
 example intentionally begins with already decoded in-memory chunks: storage
 keys, codecs, scheduling, caching, and asynchronous orchestration remain the
 consumer's policy rather than responsibilities of the plan.
@@ -30,7 +30,7 @@ This is a **napari-like consumer**, not a napari integration. It models the
 boundary a viewport could use without importing or claiming support for
 napari. `RecordingArray` exposes a chunked, basic-indexing source; composing the
 visible slice records no reads. Only `result()` materializes it, with the exact
-source selectors `1:3, 2:3` and `3:5, 2:3`; neither selector crosses into an
+source selectors `1:2, 0:2` and `1:2, 2:4`; neither selector crosses into an
 untouched neighboring chunk.
 
 ```python

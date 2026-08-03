@@ -1,6 +1,6 @@
 """Executable reference matrix for the public lazy indexing modes."""
 
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
 import numpy as np
 
@@ -103,7 +103,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
 )
 
-lazy = LazyArray(cast(Any, image))
+lazy = LazyArray(image)
 for case in PATTERN_CASES:
     accessor = {
         "basic": lazy.lazy,

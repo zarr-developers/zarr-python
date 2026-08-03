@@ -1,6 +1,6 @@
 """Boundaries for chunked-source and viewport consumers."""
 
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -46,17 +46,17 @@ def _gather_and_scatter(
     return values
 
 
-zarr_image = np.arange(48).reshape(6, 8)
+zarr_image = np.arange(12).reshape(3, 4)
 zarr_chunks = {
     (chunk_row, chunk_column): zarr_image[
-        chunk_row * 3 : (chunk_row + 1) * 3,
-        chunk_column * 4 : (chunk_column + 1) * 4,
+        chunk_row * 2 : (chunk_row + 1) * 2,
+        chunk_column * 2 : (chunk_column + 1) * 2,
     ]
     for chunk_row in range(2)
     for chunk_column in range(2)
 }
 zarr_source = RecordingChunkSource(zarr_chunks)
-zarr_view = LazyArray(cast(Any, zarr_image)).with_parts((3, 4)).lazy[1:5, 2]
+zarr_view = LazyArray(zarr_image).with_parts((2, 2)).lazy[1, 0:4]
 ZARR_RESULT = np.empty(zarr_view.shape, dtype=zarr_image.dtype)
 shared_domains: list[tuple[IndexDomain, IndexDomain]] = []
 chunk_local_coords: list[tuple[tuple[int, ...], ...]] = []
@@ -92,11 +92,11 @@ ZARR_CHUNK_LOCAL_COORDS = tuple(chunk_local_coords)
 ZARR_REQUEST_COORDS = tuple(request_coords)
 ZARR_READ_VALUES = tuple(read_values)
 assert ZARR_SOURCE_KEYS == ((0, 0), (0, 1), (1, 0), (1, 1))
-assert ZARR_SOURCE_READS == ((0, 0), (1, 0))
-assert ZARR_CHUNK_LOCAL_COORDS == (((1, 2), (2, 2)), ((0, 2), (1, 2)))
+assert ZARR_SOURCE_READS == ((0, 0), (0, 1))
+assert ZARR_CHUNK_LOCAL_COORDS == (((1, 0), (1, 1)), ((1, 0), (1, 1)))
 assert ZARR_REQUEST_COORDS == (((0,), (1,)), ((2,), (3,)))
-assert ZARR_READ_VALUES == ((10, 18), (26, 34))
-assert ZARR_RESULT.tolist() == [10, 18, 26, 34]
+assert ZARR_READ_VALUES == ((4, 5), (6, 7))
+assert ZARR_RESULT.tolist() == [4, 5, 6, 7]
 # --8<-- [end:zarr-consumer]
 
 
@@ -122,19 +122,19 @@ class RecordingArray:
         return self._data[key]
 
 
-viewport_source = RecordingArray(np.arange(48).reshape(6, 8), chunks=(3, 4))
-viewport = LazyArray(viewport_source).lazy[1:5, 2]
+viewport_source = RecordingArray(np.arange(12).reshape(3, 4), chunks=(2, 2))
+viewport = LazyArray(viewport_source).lazy[1, 0:4]
 VIEWPORT_READS_BEFORE_RESULT = tuple(viewport_source.keys)
 assert VIEWPORT_READS_BEFORE_RESULT == ()
-assert viewport.result().tolist() == [10, 18, 26, 34]
+assert viewport.result().tolist() == [4, 5, 6, 7]
 
 VIEWPORT_SOURCE_KEYS = tuple(viewport_source.keys)
 VIEWPORT_SOURCE_CHUNKS = tuple(
-    (key[0].start // 3, key[1].start // 4) for key in VIEWPORT_SOURCE_KEYS
+    (key[0].start // 2, key[1].start // 2) for key in VIEWPORT_SOURCE_KEYS
 )
 assert VIEWPORT_SOURCE_KEYS == (
-    (slice(1, 3, 1), slice(2, 3, 1)),
-    (slice(3, 5, 1), slice(2, 3, 1)),
+    (slice(1, 2, 1), slice(0, 2, 1)),
+    (slice(1, 2, 1), slice(2, 4, 1)),
 )
-assert VIEWPORT_SOURCE_CHUNKS == ((0, 0), (1, 0))
+assert VIEWPORT_SOURCE_CHUNKS == ((0, 0), (0, 1))
 # --8<-- [end:viewport-consumer]

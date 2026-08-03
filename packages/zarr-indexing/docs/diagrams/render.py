@@ -17,6 +17,7 @@ if __package__:
         FigureSpec,
         GridSpec,
         NodeSpec,
+        SequenceSpec,
         TextSpec,
         validate_figure,
     )
@@ -31,6 +32,7 @@ else:
         FigureSpec,
         GridSpec,
         NodeSpec,
+        SequenceSpec,
         TextSpec,
         validate_figure,
     )
@@ -63,6 +65,8 @@ def _stylesheet() -> str:
             ".zi-figure text { dominant-baseline: middle; text-anchor: middle; font-size: 14px; }",
             ".zi-figure line, .zi-figure rect { vector-effect: non-scaling-stroke; }",
             ".zi-figure .zi-grid-cell { stroke-width: 1.5; }",
+            ".zi-figure text.zi-cell-coordinate { font-size: 12px; }",
+            ".zi-figure text.zi-cell-value { font-size: 15px; font-weight: 650; }",
             ".zi-figure .zi-chunk-boundary { fill: none; stroke-width: 4; }",
             ".zi-figure .zi-arrow-line { fill: none; stroke-width: 2; }",
             ".zi-figure .zi-arrowhead { fill: var(--zi-text-stroke, #57606a); stroke: none; }",
@@ -163,11 +167,14 @@ def render_figure(spec: FigureSpec) -> str:
         viewBox="0 0 7 7",
     )
     _svg_element(marker, "path", **{"class": "zi-arrowhead", "d": "M 0 0 L 7 3.5 L 0 7 z"})
-    nodes = {
-        element["id"]: element
-        for element in spec["elements"]
-        if element["kind"] == "node"
-    }
+    nodes: dict[str, GridSpec | NodeSpec | SequenceSpec] = {}
+    for element in spec["elements"]:
+        if element["kind"] == "grid":
+            nodes[element["id"]] = element
+        elif element["kind"] == "node":
+            nodes[element["id"]] = element
+        elif element["kind"] == "sequence":
+            nodes[element["id"]] = element
     for element in spec["elements"]:
         _render_element(root, element, nodes, spec["id"])
     _render_legend(root, spec)
@@ -176,7 +183,10 @@ def render_figure(spec: FigureSpec) -> str:
 
 
 def _render_element(
-    parent: Element, element: ElementSpec, nodes: dict[str, NodeSpec], figure_id: str
+    parent: Element,
+    element: ElementSpec,
+    nodes: dict[str, GridSpec | NodeSpec | SequenceSpec],
+    figure_id: str,
 ) -> None:
     if element["kind"] == "grid":
         _render_grid(parent, element, figure_id)
@@ -184,6 +194,8 @@ def _render_element(
         _render_axis(parent, element, figure_id)
     elif element["kind"] == "node":
         _render_node(parent, element, figure_id)
+    elif element["kind"] == "sequence":
+        _render_sequence(parent, element, figure_id)
     elif element["kind"] == "arrow":
         _render_arrow(parent, element, nodes, figure_id)
     elif element["kind"] == "text":
@@ -212,6 +224,8 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
         for column in range(element["columns"]):
             classes = ["zi-grid-cell"]
             selected = (row, column) in element["selected"]
+            values = element.get("values")
+            value = values[row][column] if values is not None else None
             cell_parent = group
             if selected:
                 classes.append("zi-role-selected")
@@ -219,7 +233,11 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     group,
                     "g",
                     **{
-                        "aria-label": f"selected coordinate ({row}, {column})",
+                        "aria-label": (
+                            f"selected coordinate ({row}, {column})"
+                            if value is None
+                            else f"selected coordinate ({row}, {column}), value {value}"
+                        ),
                         "class": "zi-role-selected zi-selected-cell",
                         "data-non-color-cue": ROLE_CUES["selected"],
                         "data-semantic-role": "selected",
@@ -237,27 +255,41 @@ def _render_grid(parent: Element, element: GridSpec, figure_id: str) -> None:
                     "y": origin_y + row * element["cell_size"],
                 },
             )
-            if selected:
+            show_coordinate = selected or element.get("show_coordinates", False)
+            if show_coordinate:
+                coordinate_class = (
+                    "zi-selected-coordinate-label"
+                    if selected
+                    else "zi-unselected-coordinate-label"
+                )
+                coordinate_text = f"({row}, {column})"
+                coordinate_y = origin_y + (row + 0.5) * element["cell_size"]
+                attributes: dict[str, object] = {
+                    "class": coordinate_class,
+                    "x": origin_x + (column + 0.5) * element["cell_size"],
+                    "y": coordinate_y,
+                }
+                if not selected:
+                    attributes["aria-hidden"] = "true"
+                if value is not None:
+                    attributes["class"] = f"zi-cell-coordinate {coordinate_class}"
+                    attributes["y"] = coordinate_y - 9
+                    coordinate_text = f"coord: ({row}, {column})"
+                _svg_element(
+                    cell_parent,
+                    "text",
+                    **attributes,
+                ).text = coordinate_text
+            if value is not None:
                 _svg_element(
                     cell_parent,
                     "text",
                     **{
-                        "class": "zi-selected-coordinate-label",
+                        "class": "zi-cell-value",
                         "x": origin_x + (column + 0.5) * element["cell_size"],
-                        "y": origin_y + (row + 0.5) * element["cell_size"],
+                        "y": origin_y + (row + 0.5) * element["cell_size"] + 10,
                     },
-                ).text = f"({row}, {column})"
-            elif element.get("show_coordinates", False):
-                _svg_element(
-                    cell_parent,
-                    "text",
-                    **{
-                        "aria-hidden": "true",
-                        "class": "zi-unselected-coordinate-label",
-                        "x": origin_x + (column + 0.5) * element["cell_size"],
-                        "y": origin_y + (row + 0.5) * element["cell_size"],
-                    },
-                ).text = f"({row}, {column})"
+                ).text = f"value: {value}"
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         chunk_rows, chunk_columns = chunk_shape
@@ -322,8 +354,56 @@ def _render_node(parent: Element, element: NodeSpec, figure_id: str) -> None:
     ).text = element["label"]
 
 
+def _render_sequence(parent: Element, element: SequenceSpec, figure_id: str) -> None:
+    group = _group(parent, element, figure_id)
+    horizontal = element["orientation"] == "horizontal"
+    cell_width = element["width"] / len(element["coordinates"]) if horizontal else element["width"]
+    cell_height = element["height"] if horizontal else element["height"] / len(element["coordinates"])
+    for index, (coordinate, value) in enumerate(zip(element["coordinates"], element["values"])):
+        cell_x = element["x"] + index * cell_width if horizontal else element["x"]
+        cell_y = element["y"] if horizontal else element["y"] + index * cell_height
+        _svg_element(
+            group,
+            "rect",
+            **{
+                "class": "zi-sequence-cell",
+                "height": cell_height,
+                "width": cell_width,
+                "x": cell_x,
+                "y": cell_y,
+            },
+        )
+        if element["role"] == "request":
+            _svg_element(
+                group,
+                "rect",
+                **{
+                    "class": "zi-request-inner",
+                    "height": max(cell_height - 8, 1),
+                    "width": max(cell_width - 8, 1),
+                    "x": cell_x + 4,
+                    "y": cell_y + 4,
+                },
+            )
+        center_x = cell_x + cell_width / 2
+        center_y = cell_y + cell_height / 2
+        _svg_element(
+            group,
+            "text",
+            **{"class": "zi-cell-coordinate", "x": center_x, "y": center_y - 9},
+        ).text = f"coord: {coordinate}"
+        _svg_element(
+            group,
+            "text",
+            **{"class": "zi-cell-value", "x": center_x, "y": center_y + 10},
+        ).text = f"value: {value}"
+
+
 def _render_arrow(
-    parent: Element, element: ArrowSpec, nodes: dict[str, NodeSpec], figure_id: str
+    parent: Element,
+    element: ArrowSpec,
+    nodes: dict[str, GridSpec | NodeSpec | SequenceSpec],
+    figure_id: str,
 ) -> None:
     group = _group(parent, element, figure_id)
     source = nodes[element["source"]]
@@ -350,11 +430,24 @@ def _render_arrow(
     )
 
 
-def _node_center(node: NodeSpec) -> tuple[float, float]:
-    return (node["x"] + node["width"] / 2, node["y"] + node["height"] / 2)
+def _anchor_bounds(
+    node: GridSpec | NodeSpec | SequenceSpec,
+) -> tuple[float, float, float, float]:
+    if node["kind"] == "grid":
+        x, y = node["origin"]
+        return x, y, node["columns"] * node["cell_size"], node["rows"] * node["cell_size"]
+    return node["x"], node["y"], node["width"], node["height"]
 
 
-def _arrow_endpoints(source: NodeSpec, target: NodeSpec) -> tuple[float, float, float, float]:
+def _node_center(node: GridSpec | NodeSpec | SequenceSpec) -> tuple[float, float]:
+    x, y, width, height = _anchor_bounds(node)
+    return (x + width / 2, y + height / 2)
+
+
+def _arrow_endpoints(
+    source: GridSpec | NodeSpec | SequenceSpec,
+    target: GridSpec | NodeSpec | SequenceSpec,
+) -> tuple[float, float, float, float]:
     source_x, source_y = _node_center(source)
     target_x, target_y = _node_center(target)
     delta_x = target_x - source_x
@@ -362,9 +455,10 @@ def _arrow_endpoints(source: NodeSpec, target: NodeSpec) -> tuple[float, float, 
     if delta_x == delta_y == 0:
         return source_x, source_y, target_x, target_y
 
-    def edge_scale(node: NodeSpec) -> float:
-        horizontal = node["width"] / (2 * abs(delta_x)) if delta_x else float("inf")
-        vertical = node["height"] / (2 * abs(delta_y)) if delta_y else float("inf")
+    def edge_scale(node: GridSpec | NodeSpec | SequenceSpec) -> float:
+        _, _, width, height = _anchor_bounds(node)
+        horizontal = width / (2 * abs(delta_x)) if delta_x else float("inf")
+        vertical = height / (2 * abs(delta_y)) if delta_y else float("inf")
         return min(horizontal, vertical)
 
     source_scale = edge_scale(source)
@@ -398,11 +492,14 @@ def _render_label(parent: Element, x: float, y: float, label: str) -> None:
 
 
 def _render_legend(parent: Element, spec: FigureSpec) -> None:
-    roles = tuple(
+    role_order = list(
         dict.fromkeys(
             element["role"] for element in spec["elements"] if element["role"] != "text"
         )
     )
+    if any(element["kind"] == "grid" and element["selected"] for element in spec["elements"]):
+        role_order.append("selected")
+    roles = tuple(dict.fromkeys(role_order))
     if not roles:
         return
     legend = _svg_element(

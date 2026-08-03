@@ -1,6 +1,6 @@
 <svg aria-labelledby="transform-mapping-title transform-mapping-desc" class="zi-figure" role="img" viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg">
   <title id="transform-mapping-title">A request coordinate maps into source coordinates</title>
-  <desc id="transform-mapping-desc">request i maps to source (i + 1, 2).</desc>
+  <desc id="transform-mapping-desc">request i maps to source (1, i).</desc>
   <defs>
     <marker id="transform-mapping-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
       <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />
@@ -13,7 +13,7 @@
   </g>
   <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="transform-mapping-source-coordinate">
     <rect height="70" width="190" x="438" y="62" />
-    <text x="533.0" y="97.0">source (i + 1, 2)</text>
+    <text x="533.0" y="97.0">source (1, i)</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="transform-mapping-request-to-source">
     <line class="zi-arrow-line" marker-end="url(#transform-mapping-arrowhead)" x1="242.0" x2="438.0" y1="97.0" y2="97.0" />

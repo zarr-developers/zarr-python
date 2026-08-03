@@ -59,6 +59,7 @@ class GridSpec(TypedDict):
     selected: tuple[tuple[int, int], ...]
     chunk_shape: NotRequired[tuple[int, int] | None]
     show_coordinates: NotRequired[bool]
+    values: NotRequired[tuple[tuple[int, ...], ...]]
 
 
 class AxisSpec(TypedDict):
@@ -88,6 +89,21 @@ class NodeSpec(TypedDict):
     label: str
 
 
+class SequenceSpec(TypedDict):
+    """A sequence whose cells pair coordinates with values."""
+
+    id: str
+    kind: Literal["sequence"]
+    role: SemanticRole
+    x: int
+    y: int
+    width: int
+    height: int
+    orientation: Literal["horizontal", "vertical"]
+    coordinates: tuple[int, ...]
+    values: tuple[int, ...]
+
+
 class ArrowSpec(TypedDict):
     """A labelled edge between two node IDs."""
 
@@ -111,7 +127,7 @@ class TextSpec(TypedDict):
     label: str
 
 
-type ElementSpec = GridSpec | AxisSpec | NodeSpec | ArrowSpec | TextSpec
+type ElementSpec = GridSpec | AxisSpec | NodeSpec | SequenceSpec | ArrowSpec | TextSpec
 
 
 class FigureSpec(TypedDict):
@@ -130,57 +146,58 @@ FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "indexing-selection",
         "title": "Basic indexing selects a one-dimensional request",
-        "description": "image[1:5, 2] maps four source cells to a length-four request.",
-        "width": 900,
-        "height": 390,
+        "description": "image[1, 0:4] maps four source cells to a length-four request.",
+        "width": 680,
+        "height": 350,
         "elements": (
             {
                 "id": "source-grid",
                 "kind": "grid",
                 "role": "source",
-                "rows": 6,
-                "columns": 8,
-                "cell_size": 42,
-                "origin": (420, 34),
-                "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
+                "rows": 3,
+                "columns": 4,
+                "cell_size": 72,
+                "origin": (20, 50),
+                "selected": ((1, 0), (1, 1), (1, 2), (1, 3)),
                 "show_coordinates": True,
+                "values": ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)),
             },
             {
                 "id": "request-vector",
-                "kind": "node",
+                "kind": "sequence",
                 "role": "request",
-                "x": 42,
-                "y": 114,
-                "width": 180,
-                "height": 58,
-                "label": "request: length 4",
+                "x": 420,
+                "y": 125,
+                "width": 240,
+                "height": 66,
+                "orientation": "horizontal",
+                "coordinates": (0, 1, 2, 3),
+                "values": (4, 5, 6, 7),
             },
             {
                 "id": "selection-map",
                 "kind": "arrow",
                 "role": "text",
-                "source": "request-vector",
-                "target": "source-grid-label",
-                "label": "i ↦ (i + 1, 2)",
-                "label_offset": (0, -115),
+                "source": "source-grid",
+                "target": "request-vector",
+                "label": "image[1, 0:4]",
+                "label_offset": (0, -55),
             },
             {
-                "id": "source-grid-label",
-                "kind": "node",
-                "role": "selected",
-                "x": 790,
-                "y": 130,
-                "width": 92,
-                "height": 46,
-                "label": "4 cells",
-            },
-            {
-                "id": "expression",
+                "id": "source-title",
                 "kind": "text",
                 "role": "text",
-                "x": 110,
-                "y": 82,
-                "label": "image[1:5, 2]",
+                "x": 164,
+                "y": 24,
+                "label": "source image: shape (3, 4)",
+            },
+            {
+                "id": "request-title",
+                "kind": "text",
+                "role": "text",
+                "x": 540,
+                "y": 105,
+                "label": "result: shape (4,)",
             },
         ),
     },
@@ -341,7 +358,7 @@ FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "transform-mapping",
         "title": "A request coordinate maps into source coordinates",
-        "description": "request i maps to source (i + 1, 2).",
+        "description": "request i maps to source (1, i).",
         "width": 680,
         "height": 250,
         "elements": (
@@ -363,7 +380,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "y": 62,
                 "width": 190,
                 "height": 70,
-                "label": "source (i + 1, 2)",
+                "label": "source (1, i)",
             },
             {
                 "id": "request-to-source",
@@ -490,13 +507,14 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "id": "chunked-source",
                 "kind": "grid",
                 "role": "source",
-                "rows": 6,
-                "columns": 8,
-                "cell_size": 42,
-                "origin": (52, 140),
-                "selected": ((1, 2), (2, 2), (3, 2), (4, 2)),
-                "chunk_shape": (3, 4),
+                "rows": 3,
+                "columns": 4,
+                "cell_size": 72,
+                "origin": (76, 140),
+                "selected": ((1, 0), (1, 1), (1, 2), (1, 3)),
+                "chunk_shape": (2, 2),
                 "show_coordinates": True,
+                "values": ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)),
             },
             {
                 "id": "chunk-zero-coords",
@@ -512,7 +530,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "role": "source",
                 "x": 220,
                 "y": 75,
-                "label": "global chunk_domain [0, 3) × [0, 4)",
+                "label": "global chunk_domain [0, 2) × [0, 2)",
             },
             {
                 "id": "chunk-zero-local",
@@ -520,7 +538,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "role": "chunk-local",
                 "x": 220,
                 "y": 115,
-                "label": "chunk-local selected (1, 2), (2, 2)",
+                "label": "chunk-local selected (1, 0), (1, 1)",
             },
             {
                 "id": "chunk-one-coords",
@@ -528,7 +546,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "role": "source",
                 "x": 220,
                 "y": 425,
-                "label": "global chunk_coords (1, 0)",
+                "label": "global chunk_coords (0, 1)",
             },
             {
                 "id": "chunk-one-domain",
@@ -536,7 +554,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "role": "source",
                 "x": 220,
                 "y": 465,
-                "label": "global chunk_domain [3, 6) × [0, 4)",
+                "label": "global chunk_domain [0, 2) × [2, 4)",
             },
             {
                 "id": "chunk-one-local",
@@ -544,7 +562,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "role": "chunk-local",
                 "x": 220,
                 "y": 505,
-                "label": "chunk-local selected (0, 2), (1, 2)",
+                "label": "chunk-local selected (1, 0), (1, 1)",
             },
             {
                 "id": "selection-label",
@@ -822,7 +840,9 @@ FIGURES: tuple[FigureSpec, ...] = (
 _SEMANTIC_ROLES: frozenset[str] = frozenset(
     {"request", "source", "selected", "chunk-local", "cell-domain", "text"}
 )
-_ELEMENT_KINDS: frozenset[str] = frozenset({"grid", "axis", "node", "arrow", "text"})
+_ELEMENT_KINDS: frozenset[str] = frozenset(
+    {"grid", "axis", "node", "sequence", "arrow", "text"}
+)
 _SAFE_FRAGMENT_ID_PATTERN = r"[A-Za-z][A-Za-z0-9_-]*"
 
 
@@ -893,10 +913,14 @@ def validate_figure(spec: FigureSpec) -> None:
 
         if kind == "grid":
             _validate_grid(figure_id, element_id, element)
+            node_ids.add(element_id)
         elif kind == "axis":
             _validate_axis(figure_id, element_id, element)
         elif kind == "node":
             _validate_node(figure_id, element_id, element)
+            node_ids.add(element_id)
+        elif kind == "sequence":
+            _validate_sequence(figure_id, element_id, element)
             node_ids.add(element_id)
         elif kind == "arrow":
             _validate_label(figure_id, element_id, element)
@@ -941,6 +965,18 @@ def _validate_grid(figure_id: str, element_id: str, element: dict[str, object]) 
             _invalid(figure_id, f"{element_id}.selected", "contains a coordinate outside the grid")
     if "show_coordinates" in element and not isinstance(element["show_coordinates"], bool):
         _invalid(figure_id, f"{element_id}.show_coordinates", "must be a boolean")
+    values = element.get("values")
+    if values is not None:
+        if not isinstance(values, tuple) or len(values) != rows:
+            _invalid(figure_id, f"{element_id}.values", f"must contain {rows} rows")
+        if not all(isinstance(row, tuple) and len(row) == columns for row in values):
+            _invalid(
+                figure_id,
+                f"{element_id}.values",
+                f"must contain {columns} columns in every row",
+            )
+        if not all(_is_integer(value) for row in values for value in row):
+            _invalid(figure_id, f"{element_id}.values", "must contain integers")
     chunk_shape = element.get("chunk_shape")
     if chunk_shape is not None:
         if not _pair_of_ints(chunk_shape):
@@ -974,6 +1010,34 @@ def _validate_node(figure_id: str, element_id: str, element: dict[str, object]) 
     for field in ("width", "height"):
         _positive(figure_id, element_id, element, field)
     _validate_label(figure_id, element_id, element)
+
+
+def _validate_sequence(figure_id: str, element_id: str, element: dict[str, object]) -> None:
+    for field in ("x", "y"):
+        if not _is_integer(element.get(field)):
+            _invalid(figure_id, f"{element_id}.{field}", "must be an integer")
+    for field in ("width", "height"):
+        _positive(figure_id, element_id, element, field)
+    if element.get("orientation") not in {"horizontal", "vertical"}:
+        _invalid(
+            figure_id,
+            f"{element_id}.orientation",
+            "must be horizontal or vertical",
+        )
+    coordinates = element.get("coordinates")
+    if not isinstance(coordinates, tuple) or not coordinates:
+        _invalid(figure_id, f"{element_id}.coordinates", "must be a non-empty tuple")
+    if not all(_is_integer(coordinate) for coordinate in coordinates):
+        _invalid(figure_id, f"{element_id}.coordinates", "must contain integers")
+    values = element.get("values")
+    if not isinstance(values, tuple) or len(values) != len(coordinates):
+        _invalid(
+            figure_id,
+            f"{element_id}.values",
+            "must contain one value for every entry in coordinates",
+        )
+    if not all(_is_integer(value) for value in values):
+        _invalid(figure_id, f"{element_id}.values", "must contain integers")
 
 
 def _validate_text(figure_id: str, element_id: str, element: dict[str, object]) -> None:

@@ -26,7 +26,7 @@ enumerates corresponding cells; it is not either output coordinate space. A
 consumer can therefore evaluate one input point on both sides: the
 `chunk_transform` result says which zero-origin chunk-local coordinate to read,
 and the `cell_transform` result says which literal request coordinate receives
-that value. The canonical column selection has a one-dimensional request and a
+that value. The canonical row selection has a one-dimensional request and a
 two-dimensional source, so its paired projections have request rank one and
 source rank two.
 

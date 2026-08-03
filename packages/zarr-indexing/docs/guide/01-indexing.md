@@ -1,20 +1,22 @@
 # An index selects coordinates
 
-Begin with an ordinary NumPy array. `image` has 6 rows and 8 columns, and the
-selection `image[1:5, 2]` takes rows 1 through 4 from column 2. Four source cells
-are selected, the column index removes one axis, and the request therefore has
-shape `(4,)`.
+Begin with an ordinary NumPy array. `image` has 3 rows and 4 columns, filled
+row-by-row with the values 0 through 11. The selection `image[1, 0:4]` takes
+all four columns from row 1. Four source cells are selected, the row index
+removes one axis, and the request therefore has shape `(4,)`.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable basic indexing selection diagram" tabindex="0">
 --8<-- "_static/diagrams/indexing-selection.svg"
 </div>
-<figcaption>A one-dimensional request of shape <code>(4,)</code> visits four source cells in top-to-bottom result order.</figcaption>
+<figcaption>A one-dimensional request of shape <code>(4,)</code> visits four source cells in left-to-right result order.</figcaption>
 </figure>
 
-The selected source values are `10`, `18`, `26`, and `34`. Their order in the
-result is the order of the request: position 0 gets source cell `(1, 2)`,
-position 1 gets `(2, 2)`, and so on.
+The diagram labels addresses as `coord:` and stored data as `value:`. Source
+cell `coord: (1, 0)` stores `value: 4`, and request `coord: 0` receives that
+value. Request coordinates 1, 2, and 3 similarly receive values 5, 6, and 7
+from source coordinates `(1, 1)`, `(1, 2)`, and `(1, 3)`. The request sequence
+therefore shows both where each result value lives and where it came from.
 
 The wrapper below gives the same familiar selection a lazy spelling. Indexing
 through `.lazy` creates `view`; the last line asks for its values and checks the

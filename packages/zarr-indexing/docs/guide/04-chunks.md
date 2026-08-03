@@ -1,15 +1,15 @@
 # A request becomes a chunk plan
 
-Return to the same 6-by-8 image and the same selection, `image[1:5, 2]`.
-Giving the image a 3-by-4 chunk shape does not change the four selected values
-or their order. It changes only how the work is divided: rows 1 and 2 come
-from chunk `(0, 0)`, while rows 3 and 4 come from chunk `(1, 0)`.
+Return to the same 3-by-4 image and the same selection, `image[1, 0:4]`.
+Giving the image a 2-by-2 chunk shape does not change the four selected values
+or their order. It changes only how the work is divided: columns 0 and 1 come
+from chunk `(0, 0)`, while columns 2 and 3 come from chunk `(0, 1)`.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable chunk projection overlay diagram" tabindex="0">
 --8<-- "_static/diagrams/chunk-overlay.svg"
 </div>
-<figcaption>The unchanged selection crosses one 3-row chunk boundary, so it touches exactly chunks <code>(0, 0)</code> and <code>(1, 0)</code> of the 6-by-8 source.</figcaption>
+<figcaption>The unchanged selection crosses one 2-column chunk boundary, so it touches exactly chunks <code>(0, 0)</code> and <code>(0, 1)</code> of the 3-by-4 source.</figcaption>
 </figure>
 
 Every planned chunk keeps three coordinate frames distinct:
@@ -18,16 +18,16 @@ Every planned chunk keeps three coordinate frames distinct:
   integers, so the prepended chunk from chapter 2 really has coordinate `-1`;
   it is not an alias for the final chunk.
 - `chunk_domain` gives that chunk's bounds in **global source coordinates**.
-  Here the two domains are `[0, 3) × [0, 4)` and
-  `[3, 6) × [0, 4)`. For the prepended one-dimensional example, chunk `-1`
+  Here the two domains are `[0, 2) × [0, 2)` and
+  `[0, 2) × [2, 4)`. For the prepended one-dimensional example, chunk `-1`
   has the global domain `[-3, 0)`.
-- Chunk-local positions start from zero inside each chunk. Global row 3 is
-  therefore local row 0 in chunk `(1, 0)`. This zero-origin local frame is
+- Chunk-local positions start from zero inside each chunk. Global column 2 is
+  therefore local column 0 in chunk `(0, 1)`. This zero-origin local frame is
   separate from both the global `chunk_domain` and the possibly negative
   chunk coordinate.
 
 `plan_chunks` needs only a transform and a grid. The executable example builds
-the canonical 3-by-4 grid, plans the request, and iterates the same plan again
+the canonical 2-by-2 chunk grid, plans the request, and iterates the same plan again
 to show that planning is reusable.
 
 ```python

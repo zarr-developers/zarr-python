@@ -2,7 +2,7 @@
 
 import numpy as np
 from numpy.typing import NDArray
-from typing import Any, cast
+from typing import cast
 
 from zarr_indexing import DimensionGridLike, IndexTransform, LazyArray, plan_chunks
 
@@ -27,14 +27,14 @@ class RegularGrid:
         return np.floor_divide(indices, self.size).astype(np.intp)
 
 
-transform = IndexTransform.from_shape((6, 8))[1:5, 2]
+transform = IndexTransform.from_shape((3, 4))[1, 0:4]
 grids = cast(
     tuple[DimensionGridLike, DimensionGridLike],
-    (RegularGrid(3), RegularGrid(4)),
+    (RegularGrid(2), RegularGrid(2)),
 )
 plan = plan_chunks(transform, grids)
 PROJECTIONS = tuple(plan)
-assert tuple(projection.chunk_coords for projection in plan) == ((0, 0), (1, 0))
+assert tuple(projection.chunk_coords for projection in plan) == ((0, 0), (0, 1))
 
 PAIRED_DOMAINS = tuple(
     (projection.chunk_transform.domain, projection.cell_transform.domain)
@@ -46,7 +46,7 @@ assert all(chunk_domain == cell_domain for chunk_domain, cell_domain in PAIRED_D
 
 # --8<-- [start:advanced-projection]
 image = np.arange(48).reshape(6, 8)
-advanced = LazyArray(cast(Any, image)).with_parts((3, 4)).lazy.oindex[[4, 1, 1], 2:6]
+advanced = LazyArray(image).with_parts((3, 4)).lazy.oindex[[4, 1, 1], 2:6]
 
 ADVANCED_EXPECTED = image[[4, 1, 1]][:, 2:6]
 ADVANCED_RESULT = np.empty_like(ADVANCED_EXPECTED)

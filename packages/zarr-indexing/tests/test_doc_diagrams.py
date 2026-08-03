@@ -19,6 +19,7 @@ from docs.diagrams.specifications import (
     GridSpec,
     NodeSpec,
     SemanticRole,
+    SequenceSpec,
     TextSpec,
     validate_figure,
 )
@@ -269,6 +270,139 @@ def test_grid_show_coordinates_labels_only_unselected_cells() -> None:
     assert all(label.attrib["aria-hidden"] == "true" for label in labels)
 
 
+def test_grid_values_render_coordinates_and_values_for_every_cell() -> None:
+    grid = cast(
+        GridSpec,
+        {
+            **GRID,
+            "values": ((0, 1, 2), (3, 4, 5)),
+            "show_coordinates": True,
+        },
+    )
+    root = ElementTree.fromstring(render_figure(figure("grid-values", elements=(grid,))))
+    coordinate_labels = [
+        element.text
+        for element in root.iter()
+        if "zi-cell-coordinate" in element.attrib.get("class", "").split()
+    ]
+    value_labels = [
+        element.text
+        for element in root.iter()
+        if "zi-cell-value" in element.attrib.get("class", "").split()
+    ]
+
+    assert coordinate_labels == [
+        "coord: (0, 0)",
+        "coord: (0, 1)",
+        "coord: (0, 2)",
+        "coord: (1, 0)",
+        "coord: (1, 1)",
+        "coord: (1, 2)",
+    ]
+    assert value_labels == [
+        "value: 0",
+        "value: 1",
+        "value: 2",
+        "value: 3",
+        "value: 4",
+        "value: 5",
+    ]
+
+
+def test_grid_values_must_have_one_row_per_grid_row() -> None:
+    invalid_grid = {**GRID, "values": ((0, 1, 2),)}
+    with pytest.raises(ValueError, match=r"grid-values-rows.*grid\.values.*2 rows"):
+        validate_figure(malformed_figure("grid-values-rows", elements=(invalid_grid,)))
+
+
+def test_grid_values_must_have_one_value_per_grid_column() -> None:
+    invalid_grid = {**GRID, "values": ((0, 1), (2, 3, 4))}
+    with pytest.raises(ValueError, match=r"grid-values-columns.*grid\.values.*3 columns"):
+        validate_figure(malformed_figure("grid-values-columns", elements=(invalid_grid,)))
+
+
+def test_sequence_renders_coordinate_value_cells_and_can_anchor_an_arrow() -> None:
+    sequence = cast(
+        ElementSpec,
+        {
+            "id": "request-sequence",
+            "kind": "sequence",
+            "role": "request",
+            "x": 10,
+            "y": 10,
+            "width": 90,
+            "height": 72,
+            "orientation": "horizontal",
+            "coordinates": (0, 1, 2),
+            "values": (4, 5, 6),
+        },
+    )
+    arrow = {**ARROW, "source": "request-sequence"}
+    root = ElementTree.fromstring(
+        render_figure(malformed_figure("request-sequence", elements=(sequence, RIGHT_NODE, arrow)))
+    )
+    sequence_group = next(
+        element
+        for element in root.iter()
+        if element.attrib.get("id") == "request-sequence-request-sequence"
+    )
+
+    assert [
+        element.text
+        for element in sequence_group.iter()
+        if "zi-cell-coordinate" in element.attrib.get("class", "").split()
+    ] == ["coord: 0", "coord: 1", "coord: 2"]
+    assert [
+        element.text
+        for element in sequence_group.iter()
+        if "zi-cell-value" in element.attrib.get("class", "").split()
+    ] == ["value: 4", "value: 5", "value: 6"]
+    assert any(element.attrib.get("class") == "zi-arrow-line" for element in root.iter())
+    assert [
+        {key: element.attrib[key] for key in ("height", "width", "x", "y")}
+        for element in sequence_group
+        if element.attrib.get("class") == "zi-sequence-cell"
+    ] == [
+        {"height": "72", "width": "30.0", "x": "10.0", "y": "10"},
+        {"height": "72", "width": "30.0", "x": "40.0", "y": "10"},
+        {"height": "72", "width": "30.0", "x": "70.0", "y": "10"},
+    ]
+
+
+def test_sequence_coordinates_and_values_must_have_equal_lengths() -> None:
+    invalid_sequence = {
+        "id": "sequence",
+        "kind": "sequence",
+        "role": "request",
+        "x": 10,
+        "y": 10,
+        "width": 90,
+        "height": 72,
+        "orientation": "vertical",
+        "coordinates": (0, 1),
+        "values": (4,),
+    }
+    with pytest.raises(ValueError, match=r"sequence-length.*sequence\.values.*coordinates"):
+        validate_figure(malformed_figure("sequence-length", elements=(invalid_sequence,)))
+
+
+def test_sequence_orientation_must_be_horizontal_or_vertical() -> None:
+    invalid_sequence = {
+        "id": "sequence",
+        "kind": "sequence",
+        "role": "request",
+        "x": 10,
+        "y": 10,
+        "width": 90,
+        "height": 72,
+        "orientation": "diagonal",
+        "coordinates": (0, 1),
+        "values": (4, 5),
+    }
+    with pytest.raises(ValueError, match=r"sequence-orientation.*sequence\.orientation"):
+        validate_figure(malformed_figure("sequence-orientation", elements=(invalid_sequence,)))
+
+
 def test_arrow_label_must_be_a_string() -> None:
     arrow_without_label = {
         "id": "arrow",
@@ -475,13 +609,13 @@ def test_semantic_palettes_are_accessible() -> None:
 
 def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
-        "indexing-selection": "image[1:5, 2] maps four source cells to a length-four request.",
+        "indexing-selection": "image[1, 0:4] maps four source cells to a length-four request.",
         "half-open-intervals": (
             "adjacent [0, 1) and [1, 3) meet without a gap or overlap to form [0, 3)."
         ),
         "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
-        "transform-mapping": "request i maps to source (i + 1, 2).",
+        "transform-mapping": "request i maps to source (1, i).",
         "compose-views": "two view maps collapse into one direct map.",
         "chunk-overlay": (
             "touched global chunk domains map selected cells to zero-origin "
@@ -600,9 +734,10 @@ def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
     }
     for grid in grids.values():
         assert grid["kind"] == "grid"
-        assert (grid["rows"], grid["columns"]) == (6, 8)
-        assert grid["selected"] == ((1, 2), (2, 2), (3, 2), (4, 2))
-    assert grids["chunk-overlay"].get("chunk_shape") == (3, 4)
+        assert (grid["rows"], grid["columns"]) == (3, 4)
+        assert grid["selected"] == ((1, 0), (1, 1), (1, 2), (1, 3))
+        assert grid.get("values") == ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11))
+    assert grids["chunk-overlay"].get("chunk_shape") == (2, 2)
     assert (
         grids["indexing-selection"]["rows"],
         grids["indexing-selection"]["columns"],
@@ -616,7 +751,7 @@ def test_basic_selection_figures_share_the_canonical_source_geometry() -> None:
     )
 
 
-def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() -> None:
+def test_canonical_source_svg_has_12_cells_and_complete_2_by_2_chunk_outlines() -> None:
     figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
     for figure_id, grid_id in (
         ("indexing-selection", "source-grid"),
@@ -634,7 +769,7 @@ def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() 
             if element.tag.endswith("rect")
             and "zi-grid-cell" in element.attrib.get("class", "").split()
         ]
-        assert len(cells) == 48
+        assert len(cells) == 12
 
     overlay_root = ElementTree.fromstring(render_figure(figures["chunk-overlay"]))
     overlay_grid = next(
@@ -650,31 +785,31 @@ def test_canonical_source_svg_has_48_cells_and_complete_3_by_4_chunk_outlines() 
     assert outlines == [
         {
             "class": "zi-chunk-boundary",
-            "height": "126",
-            "width": "168",
-            "x": "52",
+            "height": "144",
+            "width": "144",
+            "x": "76",
             "y": "140",
         },
         {
             "class": "zi-chunk-boundary",
-            "height": "126",
-            "width": "168",
+            "height": "144",
+            "width": "144",
             "x": "220",
             "y": "140",
         },
         {
             "class": "zi-chunk-boundary",
-            "height": "126",
-            "width": "168",
-            "x": "52",
-            "y": "266",
+            "height": "72",
+            "width": "144",
+            "x": "76",
+            "y": "284",
         },
         {
             "class": "zi-chunk-boundary",
-            "height": "126",
-            "width": "168",
+            "height": "72",
+            "width": "144",
             "x": "220",
-            "y": "266",
+            "y": "284",
         },
     ]
 
@@ -694,19 +829,55 @@ def test_canonical_source_figures_show_faded_coordinates_for_unselected_cells(
     unselected_labels = [
         element
         for element in grid.iter()
-        if element.attrib.get("class") == "zi-unselected-coordinate-label"
+        if "zi-unselected-coordinate-label" in element.attrib.get("class", "").split()
     ]
     selected_labels = [
         element
         for element in grid.iter()
-        if element.attrib.get("class") == "zi-selected-coordinate-label"
+        if "zi-selected-coordinate-label" in element.attrib.get("class", "").split()
     ]
 
-    assert len(unselected_labels) == 44
+    assert len(unselected_labels) == 8
     assert len(selected_labels) == 4
     assert {label.text for label in unselected_labels}.isdisjoint(
         {label.text for label in selected_labels}
     )
+
+
+def test_indexing_selection_shows_request_coordinates_paired_with_selected_values() -> None:
+    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
+    request = next(
+        element
+        for element in spec["elements"]
+        if element["id"] == "request-vector" and element["kind"] == "sequence"
+    )
+
+    assert request["coordinates"] == (0, 1, 2, 3)
+    assert request["values"] == (4, 5, 6, 7)
+    assert request["orientation"] == "horizontal"
+
+
+def test_indexing_selection_reads_from_source_through_selection_to_result() -> None:
+    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
+    elements = {element["id"]: element for element in spec["elements"]}
+    source = cast(GridSpec, elements["source-grid"])
+    request = cast(SequenceSpec, elements["request-vector"])
+    selection = cast(ArrowSpec, elements["selection-map"])
+    source_title = cast(TextSpec, elements["source-title"])
+    request_title = cast(TextSpec, elements["request-title"])
+
+    assert source["origin"][0] < request["x"]
+    assert selection == {
+        "id": "selection-map",
+        "kind": "arrow",
+        "role": "text",
+        "source": "source-grid",
+        "target": "request-vector",
+        "label": "image[1, 0:4]",
+        "label_offset": (0, -55),
+    }
+    assert source_title["label"] == "source image: shape (3, 4)"
+    assert request_title["label"] == "result: shape (4,)"
 
 
 def test_chunk_overlay_uses_a_phone_readable_stacked_layout() -> None:
@@ -770,20 +941,20 @@ def test_chunk_overlay_distinguishes_global_chunk_metadata_from_local_outputs() 
     assert annotations["chunk-zero-coords"] == ("source", "global chunk_coords (0, 0)")
     assert annotations["chunk-zero-domain"] == (
         "source",
-        "global chunk_domain [0, 3) \N{MULTIPLICATION SIGN} [0, 4)",
+        "global chunk_domain [0, 2) \N{MULTIPLICATION SIGN} [0, 2)",
     )
     assert annotations["chunk-zero-local"] == (
         "chunk-local",
-        "chunk-local selected (1, 2), (2, 2)",
+        "chunk-local selected (1, 0), (1, 1)",
     )
-    assert annotations["chunk-one-coords"] == ("source", "global chunk_coords (1, 0)")
+    assert annotations["chunk-one-coords"] == ("source", "global chunk_coords (0, 1)")
     assert annotations["chunk-one-domain"] == (
         "source",
-        "global chunk_domain [3, 6) \N{MULTIPLICATION SIGN} [0, 4)",
+        "global chunk_domain [0, 2) \N{MULTIPLICATION SIGN} [2, 4)",
     )
     assert annotations["chunk-one-local"] == (
         "chunk-local",
-        "chunk-local selected (0, 2), (1, 2)",
+        "chunk-local selected (1, 0), (1, 1)",
     )
 
 
@@ -798,10 +969,10 @@ def test_chunk_overlay_selected_cells_have_visible_coordinate_cues() -> None:
     ]
 
     assert [element.attrib["aria-label"] for element in selected_groups] == [
-        "selected coordinate (1, 2)",
-        "selected coordinate (2, 2)",
-        "selected coordinate (3, 2)",
-        "selected coordinate (4, 2)",
+        "selected coordinate (1, 0), value 4",
+        "selected coordinate (1, 1), value 5",
+        "selected coordinate (1, 2), value 6",
+        "selected coordinate (1, 3), value 7",
     ]
     assert all(element.attrib["data-semantic-role"] == "selected" for element in selected_groups)
     assert all(
@@ -812,7 +983,7 @@ def test_chunk_overlay_selected_cells_have_visible_coordinate_cues() -> None:
         for element in selected_groups
         for child in element
         if "zi-selected-coordinate-label" in child.attrib.get("class", "").split()
-    ] == ["(1, 2)", "(2, 2)", "(3, 2)", "(4, 2)"]
+    ] == ["coord: (1, 0)", "coord: (1, 1)", "coord: (1, 2)", "coord: (1, 3)"]
 
 
 def test_chunk_boundaries_are_solid_while_chunk_local_cues_remain_dashed() -> None:

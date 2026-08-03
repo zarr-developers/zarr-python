@@ -143,9 +143,7 @@ def test_landing_quickstart_produces_the_shown_result() -> None:
     namespace: dict[str, Any] = runpy.run_path(
         str(DOCS / "examples" / "canonical_slice.py"), run_name="__main__"
     )
-    np.testing.assert_array_equal(
-        namespace["LANDING_QUICKSTART_RESULT"], np.array([10, 18, 26, 34])
-    )
+    np.testing.assert_array_equal(namespace["LANDING_QUICKSTART_RESULT"], np.array([4, 5, 6, 7]))
 
 
 def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:
@@ -154,15 +152,15 @@ def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> 
         str(DOCS / "examples" / "integrations.py"), run_name="__main__"
     )
     assert namespace["ZARR_SOURCE_KEYS"] == ((0, 0), (0, 1), (1, 0), (1, 1))
-    assert namespace["ZARR_SOURCE_READS"] == ((0, 0), (1, 0))
+    assert namespace["ZARR_SOURCE_READS"] == ((0, 0), (0, 1))
     assert all(chunk == cell for chunk, cell in namespace["ZARR_SHARED_DOMAINS"])
     assert namespace["ZARR_CHUNK_LOCAL_COORDS"] == (
-        ((1, 2), (2, 2)),
-        ((0, 2), (1, 2)),
+        ((1, 0), (1, 1)),
+        ((1, 0), (1, 1)),
     )
     assert namespace["ZARR_REQUEST_COORDS"] == (((0,), (1,)), ((2,), (3,)))
-    assert namespace["ZARR_READ_VALUES"] == ((10, 18), (26, 34))
-    np.testing.assert_array_equal(namespace["ZARR_RESULT"], np.array([10, 18, 26, 34]))
+    assert namespace["ZARR_READ_VALUES"] == ((4, 5), (6, 7))
+    np.testing.assert_array_equal(namespace["ZARR_RESULT"], np.array([4, 5, 6, 7]))
 
 
 def test_viewport_consumer_uses_exact_non_crossing_source_keys() -> None:
@@ -172,10 +170,10 @@ def test_viewport_consumer_uses_exact_non_crossing_source_keys() -> None:
     )
     assert namespace["VIEWPORT_READS_BEFORE_RESULT"] == ()
     assert namespace["VIEWPORT_SOURCE_KEYS"] == (
-        (slice(1, 3, 1), slice(2, 3, 1)),
-        (slice(3, 5, 1), slice(2, 3, 1)),
+        (slice(1, 2, 1), slice(0, 2, 1)),
+        (slice(1, 2, 1), slice(2, 4, 1)),
     )
-    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (1, 0))
+    assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (0, 1))
 
 
 def test_indexing_pattern_matrix_is_complete() -> None:

@@ -208,6 +208,12 @@ class ArrayLike(Protocol):
     def __getitem__(self, key: Any) -> Any: ...
 
 
+# NumPy's dtype-specialized ``__getitem__`` overloads do not structurally match
+# the deliberately broad protocol above under strict type checking.  Accept an
+# ndarray explicitly so users do not have to erase its type with ``cast(Any, …)``.
+_WrappedArray = ArrayLike | np.ndarray[Any, Any]
+
+
 # --------------------------------------------------------------------------- #
 # Array-namespace helpers
 # --------------------------------------------------------------------------- #
@@ -1112,7 +1118,7 @@ class LazyArray:
 
     __slots__ = ("_array", "_parts", "_support", "_transform", "_window")
 
-    def __init__(self, array: ArrayLike) -> None:
+    def __init__(self, array: _WrappedArray) -> None:
         if isinstance(array, np.matrix):
             # `np.matrix` keeps every result two-dimensional, so `m[1]` has shape
             # `(1, n)` where every other array-like gives `(n,)`. A view's shape
@@ -1134,7 +1140,7 @@ class LazyArray:
     @classmethod
     def _derive(
         cls,
-        array: ArrayLike,
+        array: _WrappedArray,
         transform: IndexTransform,
         parts: tuple[EdgeDimensionGrid, ...] | None,
         window: tuple[slice, ...] | None,
@@ -1161,7 +1167,7 @@ class LazyArray:
     # -- array-API surface --------------------------------------------------
 
     @property
-    def array(self) -> ArrayLike:
+    def array(self) -> _WrappedArray:
         """The wrapped array."""
         return self._array
 

@@ -91,22 +91,22 @@ The shared input domain is not itself the chunk-local coordinate frame.
 
 An `IndexTransform` records how every coordinate in a request finds its source
 coordinate. For the slice from chapter 1, request coordinate `i` maps to source
-coordinate `(i + 1, 2)`. This direction is deliberate: request to source, not
+coordinate `(1, i)`. This direction is deliberate: request to source, not
 source to request.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable transform mapping diagram" tabindex="0">
 --8<-- "_static/diagrams/transform-mapping.svg"
 </div>
-<figcaption>The transform sends each request coordinate <code>i</code> to its source address <code>(i + 1, 2)</code>.</figcaption>
+<figcaption>The transform sends each request coordinate <code>i</code> to its source address <code>(1, i)</code>.</figcaption>
 </figure>
 
 One output map describes each source dimension. There are three map forms:
 
-- `ConstantMap` fixes a source coordinate, such as column 2 after an integer
+- `ConstantMap` fixes a source coordinate, such as row 1 after an integer
   index removes that request axis.
 - `DimensionMap` describes an arithmetic rule, such as request `i` becoming
-  source row `i + 1`.
+  source column `i`.
 - `ArrayMap` stores explicit coordinates for irregular or fancy indexing.
 
 Together, the request domain and these per-source-dimension maps are the

@@ -11,7 +11,7 @@ to one direct transform from the newest request to the original source.
 <figcaption>The two view steps collapse into one direct request-to-source map, so composition adds no intermediate read.</figcaption>
 </figure>
 
-The executable example first selects the familiar column, then reverses that
+The executable example first selects the familiar row, then reverses that
 view and trims its first element:
 
 ```python
@@ -24,7 +24,7 @@ metadata is ready to inspect:
 | Available without reading | Value in this example |
 | --- | --- |
 | `composed.shape` | `(3,)` |
-| `composed.transform` | One transform mapping request `i` to source `(3 - i, 2)` |
+| `composed.transform` | One transform mapping request `i` to source `(1, 2 - i)` |
 
 Neither property needs source values. Composition works only on the coordinate
 description; the assertion's call to `result()` is the first operation in the
