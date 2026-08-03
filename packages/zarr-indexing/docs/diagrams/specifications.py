@@ -149,135 +149,67 @@ class FigureSpec(TypedDict):
 FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "indexing-selection",
-        "title": "Basic indexing maps result coordinates to selected source cells",
+        "title": "A slice maps result coordinates to selected source values",
         "description": (
-            "image[1, 0:4] fixes source axis 0 at row 1, removes that axis, and retains "
-            "source axis 1 as result axis 0. Result coordinates 0, 1, 2, 3 receive values "
-            "4, 5, 6, 7 from source coordinates (1, 0), (1, 1), (1, 2), and (1, 3), "
-            "respectively."
+            "source[2:5] maps source coordinates 2, 3, 4, containing values 12, 13, 14, "
+            "to result coordinates 0, 1, 2, respectively."
         ),
-        "width": 320,
-        "height": 570,
+        "width": 360,
+        "height": 300,
         "show_legend": False,
         "elements": (
             TextSpec(
                 id="selection-expression",
                 kind="text",
                 role="text",
-                x=160,
+                x=180,
                 y=22,
-                label="image[1, 0:4]",
-                boxed=False,
-            ),
-            TextSpec(
-                id="selection-plain",
-                kind="text",
-                role="text",
-                x=160,
-                y=48,
-                label="row 1 · columns 0–3",
+                label="source[2:5]",
                 boxed=False,
             ),
             TextSpec(
                 id="source-title",
                 kind="text",
                 role="text",
-                x=160,
-                y=80,
-                label="Source image · shape (3, 4)",
-                boxed=False,
-            ),
-            TextSpec(
-                id="source-axis-one",
-                kind="text",
-                role="text",
-                x=209,
-                y=106,
-                label="source axis 1",
+                x=180,
+                y=48,
+                label="source values",
                 boxed=False,
             ),
             GridSpec(
-                id="source-grid",
+                id="source-values",
                 kind="grid",
                 role="source",
-                rows=3,
-                columns=4,
-                cell_size=46,
-                origin=(117, 142),
-                selected=((1, 0), (1, 1), (1, 2), (1, 3)),
+                rows=1,
+                columns=6,
+                cell_size=48,
+                origin=(36, 86),
+                selected=((0, 2), (0, 3), (0, 4)),
                 show_coordinates=False,
                 show_selected_coordinates=False,
                 show_value_prefix=False,
-                values=((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)),
-            ),
-            TextSpec(
-                id="source-axis-zero",
-                kind="text",
-                role="text",
-                x=55,
-                y=126,
-                label="source axis 0 ↓",
-                boxed=False,
+                values=((10, 11, 12, 13, 14, 15),),
             ),
         )
         + tuple(
             TextSpec(
-                id=f"source-column-{coordinate}",
+                id=f"source-index-{coordinate}",
                 kind="text",
                 role="text",
-                x=140 + coordinate * 46,
-                y=126,
+                x=60 + coordinate * 48,
+                y=72,
                 label=str(coordinate),
                 boxed=False,
             )
-            for coordinate in range(4)
-        )
-        + tuple(
-            TextSpec(
-                id=f"source-row-{coordinate}",
-                kind="text",
-                role="text",
-                x=104,
-                y=165 + coordinate * 46,
-                label=str(coordinate),
-                boxed=False,
-            )
-            for coordinate in range(3)
+            for coordinate in range(6)
         )
         + (
-            TextSpec(
-                id="axis-zero-rule",
-                kind="text",
-                role="text",
-                x=160,
-                y=302,
-                label="1 fixes source axis 0 → no result axis",
-                boxed=False,
-            ),
-            TextSpec(
-                id="axis-one-rule",
-                kind="text",
-                role="text",
-                x=160,
-                y=328,
-                label="0:4 keeps source axis 1 → result axis 0",
-                boxed=False,
-            ),
-            TextSpec(
-                id="result-title",
-                kind="text",
-                role="text",
-                x=160,
-                y=364,
-                label="Result · shape (4,)",
-                boxed=False,
-            ),
             TextSpec(
                 id="result-coordinate-label",
                 kind="text",
                 role="text",
-                x=55,
-                y=398,
+                x=78,
+                y=178,
                 label="result coordinate",
                 boxed=False,
             ),
@@ -285,18 +217,18 @@ FIGURES: tuple[FigureSpec, ...] = (
                 id="source-coordinate-label",
                 kind="text",
                 role="text",
-                x=55,
-                y=430,
+                x=78,
+                y=214,
                 label="source coordinate",
                 boxed=False,
             ),
             TextSpec(
-                id="value-label",
+                id="result-value-label",
                 kind="text",
                 role="text",
-                x=55,
-                y=470,
-                label="value",
+                x=78,
+                y=256,
+                label="result value",
                 boxed=False,
             ),
         )
@@ -305,57 +237,37 @@ FIGURES: tuple[FigureSpec, ...] = (
                 id=f"result-coordinate-{coordinate}",
                 kind="text",
                 role="text",
-                x=140 + coordinate * 46,
-                y=398,
+                x=188 + coordinate * 48,
+                y=178,
                 label=str(coordinate),
                 boxed=False,
             )
-            for coordinate in range(4)
+            for coordinate in range(3)
         )
         + tuple(
             TextSpec(
                 id=f"source-coordinate-{coordinate}",
                 kind="text",
                 role="text",
-                x=140 + coordinate * 46,
-                y=430,
-                label=f"(1, {coordinate})",
+                x=188 + coordinate * 48,
+                y=214,
+                label=str(coordinate + 2),
                 boxed=False,
             )
-            for coordinate in range(4)
+            for coordinate in range(3)
         )
         + tuple(
             NodeSpec(
                 id=f"result-value-{coordinate}",
                 kind="node",
                 role="text",
-                x=117 + coordinate * 46,
-                y=448,
-                width=46,
+                x=164 + coordinate * 48,
+                y=234,
+                width=48,
                 height=44,
-                label=str(4 + coordinate),
+                label=str(12 + coordinate),
             )
-            for coordinate in range(4)
-        )
-        + (
-            TextSpec(
-                id="result-invariant",
-                kind="text",
-                role="text",
-                x=160,
-                y=524,
-                label="result[i] = image[1, i]",
-                boxed=False,
-            ),
-            TextSpec(
-                id="result-domain",
-                kind="text",
-                role="text",
-                x=160,
-                y=550,
-                label="i = 0, 1, 2, 3",
-                boxed=False,
-            ),
+            for coordinate in range(3)
         ),
     },
     {
@@ -450,17 +362,17 @@ FIGURES: tuple[FigureSpec, ...] = (
     {
         "id": "transform-mapping",
         "title": "A request coordinate maps into source coordinates",
-        "description": "request i maps to source (1, i).",
-        "width": 680,
+        "description": "request i maps to source i + 2.",
+        "width": 440,
         "height": 250,
         "elements": (
             {
                 "id": "request-i",
                 "kind": "node",
                 "role": "request",
-                "x": 72,
+                "x": 38,
                 "y": 62,
-                "width": 170,
+                "width": 150,
                 "height": 70,
                 "label": "request i",
             },
@@ -468,11 +380,11 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "id": "source-coordinate",
                 "kind": "node",
                 "role": "source",
-                "x": 438,
+                "x": 252,
                 "y": 62,
-                "width": 190,
+                "width": 150,
                 "height": 70,
-                "label": "source (1, i)",
+                "label": "source i + 2",
             },
             {
                 "id": "request-to-source",

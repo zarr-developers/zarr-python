@@ -160,17 +160,32 @@ def test_landing_quickstart_produces_the_shown_result() -> None:
     namespace: dict[str, Any] = runpy.run_path(
         str(DOCS / "examples" / "canonical_slice.py"), run_name="__main__"
     )
-    np.testing.assert_array_equal(namespace["LANDING_QUICKSTART_RESULT"], np.array([4, 5, 6, 7]))
+    np.testing.assert_array_equal(namespace["LANDING_QUICKSTART_RESULT"], np.array([12, 13, 14]))
 
 
-def test_canonical_slice_introduces_lazy_indexing_before_partitioning() -> None:
+def test_canonical_slice_introduces_one_dimensional_lazy_indexing_before_partitioning() -> None:
     source = (DOCS / "examples" / "canonical_slice.py").read_text()
     region = source.split("# --8<-- [start:canonical-slice]", maxsplit=1)[1].split(
         "# --8<-- [end:canonical-slice]", maxsplit=1
     )[0]
 
-    assert "lazy = LazyArray(image)" in region
+    assert "source = np.array([10, 11, 12, 13, 14, 15])" in region
+    assert "lazy = LazyArray(source)" in region
+    assert "view = lazy.lazy[2:5]" in region
     assert ".with_parts(" not in region
+    assert "[1," not in region
+
+
+def test_lazy_composition_stays_one_dimensional_until_the_later_axis_section() -> None:
+    source = (DOCS / "examples" / "lazy_composition.py").read_text()
+    region = source.split("# --8<-- [start:lazy-composition]", maxsplit=1)[1].split(
+        "# --8<-- [end:lazy-composition]", maxsplit=1
+    )[0]
+
+    assert "source[2:5]" in region
+    assert "[::-1]" in region
+    assert ".lazy[1:]" in region
+    assert "[1," not in region
 
 
 def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:

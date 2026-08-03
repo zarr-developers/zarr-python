@@ -66,10 +66,6 @@ def _stylesheet() -> str:
             "  max-width: 440px;",
             "  margin-inline: auto;",
             "}",
-            (
-                "#indexing-selection-result-coordinate-label text, "
-                "#indexing-selection-source-coordinate-label text { font-size: 12px; }"
-            ),
             ".zi-figure text { dominant-baseline: middle; text-anchor: middle; font-size: 14px; }",
             ".zi-figure line, .zi-figure rect { vector-effect: non-scaling-stroke; }",
             ".zi-figure .zi-grid-cell { stroke-width: 1.5; }",

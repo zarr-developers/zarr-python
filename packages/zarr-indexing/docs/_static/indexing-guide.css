@@ -54,7 +54,6 @@
   max-width: 440px;
   margin-inline: auto;
 }
-#indexing-selection-result-coordinate-label text, #indexing-selection-source-coordinate-label text { font-size: 12px; }
 .zi-figure text { dominant-baseline: middle; text-anchor: middle; font-size: 14px; }
 .zi-figure line, .zi-figure rect { vector-effect: non-scaling-stroke; }
 .zi-figure .zi-grid-cell { stroke-width: 1.5; }
@@ -147,10 +146,10 @@
 .zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }
 .zi-panel-row { display: flex; gap: 1rem; align-items: flex-start; }
 .zi-figure-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-.zi-figure-scroll .zi-figure[aria-labelledby~="indexing-selection-title"] { min-width: 320px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="indexing-selection-title"] { min-width: 360px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="coordinate-addresses-title"] { min-width: 720px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="prepend-chunk-title"] { min-width: 760px; }
-.zi-figure-scroll .zi-figure[aria-labelledby~="transform-mapping-title"] { min-width: 680px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="transform-mapping-title"] { min-width: 440px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="compose-views-title"] { min-width: 760px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="chunk-overlay-title"] { min-width: 440px; }
 .zi-figure-scroll .zi-figure[aria-labelledby~="projection-pair-title"] { min-width: 720px; }

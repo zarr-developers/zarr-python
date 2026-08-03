@@ -6,9 +6,9 @@ from zarr_indexing import LazyArray
 
 
 # --8<-- [start:lazy-composition]
-image = np.arange(12).reshape(3, 4)
-view = LazyArray(image).with_parts((2, 2)).lazy[1, 0:4]
+source = np.array([10, 11, 12, 13, 14, 15])
+view = LazyArray(source).with_parts((2,)).lazy[2:5]
 composed = view.lazy[::-1].lazy[1:]
 
-assert composed.result().tolist() == image[1, 0:4][::-1][1:].tolist()
+assert composed.result().tolist() == source[2:5][::-1][1:].tolist()
 # --8<-- [end:lazy-composition]

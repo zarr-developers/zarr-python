@@ -2,18 +2,19 @@
 
 Start with a familiar NumPy selection and follow it through the five ideas that
 make indexing lazy and partitionable: coordinates, transforms, composition,
-chunk planning, and paired projections. The same 3-by-4 image stays with us,
-so each section adds one idea without changing the data.
+chunk planning, and paired projections. The opening slice keeps the coordinate
+story one-dimensional before later sections introduce higher-dimensional chunk
+planning.
 
 1. [An index selects coordinates](#an-index-selects-coordinates) begins with
-   the observable shape, values, and order of `image[1, 0:4]`.
+   the values and order of `source[2:5]`.
 2. [Coordinates are addresses](#coordinates-are-addresses) explains literal
    coordinate domains, NumPy positions, and the request-to-source mapping
    between them.
 3. [Lazy views compose](#lazy-views-compose) shows how repeated indexing
    becomes one description and identifies exactly when data is read.
 4. [A request becomes a chunk plan](#a-request-becomes-a-chunk-plan) divides
-   that description over a 2-by-2 chunk grid without choosing a source or
+   a higher-dimensional request over a 2-by-2 chunk grid without choosing a source or
    scheduler.
 5. [One cell domain, two projections](#one-cell-domain-two-projections) pairs
    chunk-local reads with their exact positions in the requested result.
@@ -24,24 +25,21 @@ You can finish the tour with a practical mental model: indexing through
 
 ## An index selects coordinates {#an-index-selects-coordinates}
 
-Begin with an ordinary NumPy array. `image` has 3 rows and 4 columns, filled
-row-by-row with the values 0 through 11. The selection `image[1, 0:4]` takes
-all four columns from row 1. Four source cells are selected, the row index
-fixes and removes source axis 0, and the column slice retains source axis 1 as
-result axis 0. The result therefore has shape `(4,)`.
+Begin with an ordinary NumPy array. `source` contains the values 10 through 15.
+The selection `source[2:5]` takes source coordinates 2, 3, and 4, containing
+the values 12, 13, and 14.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable basic indexing selection diagram" tabindex="0">
 --8<-- "_static/diagrams/indexing-selection.svg"
 </div>
-<figcaption>Result coordinate <code>i</code> receives the value at source coordinate <code>(1, i)</code>; result coordinates <code>0</code> through <code>3</code> determine the logical order.</figcaption>
+<figcaption>Result coordinates <code>0</code>, <code>1</code>, and <code>2</code> receive source values at coordinates <code>2</code>, <code>3</code>, and <code>4</code>.</figcaption>
 </figure>
 
-The source uses two coordinates, `(row, column)`, while the one-dimensional
-result uses one coordinate, `i`. The aligned rows make the correspondence
-explicit: result coordinates `0`, `1`, `2`, and `3` receive values `4`, `5`,
-`6`, and `7` from source coordinates `(1, 0)`, `(1, 1)`, `(1, 2)`, and `(1, 3)`.
-This is logical result placement; it does not prescribe a physical read order.
+The result defines its own coordinates: `0`, `1`, and `2`. The aligned rows
+make the correspondence explicit: those result coordinates receive values
+`12`, `13`, and `14` from source coordinates `2`, `3`, and `4`. This is logical
+placement, not physical read order.
 
 The wrapper below gives the same familiar selection a lazy spelling. Indexing
 through `.lazy` creates `view`; the last line asks for its values and checks the
@@ -51,9 +49,9 @@ observable NumPy result.
 --8<-- "examples/canonical_slice.py:canonical-slice"
 ```
 
-The important first step is simply that an index describes which source cells
-fill a result of a particular shape and order. The next section gives the
-numbers on both sides of that description a precise meaning.
+The important first step is simply that an index describes which source values
+fill a result in a particular order. The next section gives the numbers on both
+sides of that description a precise meaning.
 
 ## Coordinates are addresses {#coordinates-are-addresses}
 
@@ -147,22 +145,24 @@ The shared input domain is not itself the chunk-local coordinate frame.
 
 An `IndexTransform` records how every coordinate in a request finds its source
 coordinate. For the slice from the first section, request coordinate `i` maps
-to source coordinate `(1, i)`. This direction is deliberate: request to
-source, not source to request.
+to source coordinate `i + 2`. This direction is deliberate: request to source,
+not source to request.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable transform mapping diagram" tabindex="0">
 --8<-- "_static/diagrams/transform-mapping.svg"
 </div>
-<figcaption>The transform sends each request coordinate <code>i</code> to its source address <code>(1, i)</code>.</figcaption>
+<figcaption>The transform sends each request coordinate <code>i</code> to source address <code>i + 2</code>.</figcaption>
 </figure>
 
-One output map describes each source dimension. There are three map forms:
+This slice needs one `DimensionMap`, which describes how its one request
+coordinate becomes the source coordinate `i + 2`. The transform system also
+has three map forms:
 
-- `ConstantMap` fixes a source coordinate, such as row 1 after an integer
-  index removes that request axis.
+- `ConstantMap` is a map whose source coordinate does not vary; the later
+  result-array section returns to that form.
 - `DimensionMap` describes an arithmetic rule, such as request `i` becoming
-  source column `i`.
+  source coordinate `i + 2`.
 - `ArrayMap` stores explicit coordinates for irregular or fancy indexing.
 
 Together, the request domain and these per-source-dimension maps are the
@@ -181,8 +181,8 @@ to one direct transform from the newest request to the original source.
 <figcaption>The two view steps collapse into one direct request-to-source map, so composition adds no intermediate read.</figcaption>
 </figure>
 
-The executable example first selects the familiar row, then reverses that
-view and trims its first element:
+The executable example first selects `source[2:5]`, then reverses that view
+and trims its first element:
 
 ```python
 --8<-- "examples/lazy_composition.py:lazy-composition"
@@ -193,8 +193,8 @@ metadata is ready to inspect:
 
 | Available without reading | Value in this example |
 | --- | --- |
-| `composed.shape` | `(3,)` |
-| `composed.transform` | One transform mapping request `i` to source `(1, 2 - i)` |
+| `composed.shape` | `(2,)` |
+| `composed.transform` | One transform mapping request `i` to source `3 - i` |
 
 Neither property needs source values. Composition works only on the coordinate
 description; the assertion's call to `result()` is the first operation in the
@@ -210,10 +210,10 @@ example that materializes the selected data.
 
 ## A request becomes a chunk plan {#a-request-becomes-a-chunk-plan}
 
-Return to the same 3-by-4 image and the same selection, `image[1, 0:4]`.
-Giving the image a 2-by-2 chunk shape does not change the four selected values
-or their order. It changes only how the work is divided: columns 0 and 1 come
-from chunk `(0, 0)`, while columns 2 and 3 come from chunk `(0, 1)`.
+Now move to a 3-by-4 source and its selection `image[1, 0:4]`. Giving the
+image a 2-by-2 chunk shape does not change the four selected values or their
+order. It changes only how the work is divided: columns 0 and 1 come from chunk
+`(0, 0)`, while columns 2 and 3 come from chunk `(0, 1)`.
 
 <figure>
 <div class="zi-figure-scroll" role="region" aria-label="Scrollable chunk projection overlay diagram" tabindex="0">

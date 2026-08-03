@@ -1,143 +1,92 @@
-<svg aria-labelledby="indexing-selection-title indexing-selection-desc" class="zi-figure" role="img" viewBox="0 0 320 570" xmlns="http://www.w3.org/2000/svg">
-  <title id="indexing-selection-title">Basic indexing maps result coordinates to selected source cells</title>
-  <desc id="indexing-selection-desc">image[1, 0:4] fixes source axis 0 at row 1, removes that axis, and retains source axis 1 as result axis 0. Result coordinates 0, 1, 2, 3 receive values 4, 5, 6, 7 from source coordinates (1, 0), (1, 1), (1, 2), and (1, 3), respectively.</desc>
+<svg aria-labelledby="indexing-selection-title indexing-selection-desc" class="zi-figure" role="img" viewBox="0 0 360 300" xmlns="http://www.w3.org/2000/svg">
+  <title id="indexing-selection-title">A slice maps result coordinates to selected source values</title>
+  <desc id="indexing-selection-desc">source[2:5] maps source coordinates 2, 3, 4, containing values 12, 13, 14, to result coordinates 0, 1, 2, respectively.</desc>
   <defs>
     <marker id="indexing-selection-arrowhead" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 7 7">
       <path class="zi-arrowhead" d="M 0 0 L 7 3.5 L 0 7 z" />
     </marker>
   </defs>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-selection-expression">
-    <text x="160" y="22">image[1, 0:4]</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-selection-plain">
-    <text x="160" y="48">row 1 · columns 0–3</text>
+    <text x="180" y="22">source[2:5]</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-title">
-    <text x="160" y="80">Source image · shape (3, 4)</text>
+    <text x="180" y="48">source values</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-axis-one">
-    <text x="209" y="106">source axis 1</text>
-  </g>
-  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="indexing-selection-source-grid">
-    <rect class="zi-grid-cell" height="46" width="46" x="117" y="142" />
-    <text class="zi-cell-value" x="140.0" y="165.0">0</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="163" y="142" />
-    <text class="zi-cell-value" x="186.0" y="165.0">1</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="209" y="142" />
-    <text class="zi-cell-value" x="232.0" y="165.0">2</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="255" y="142" />
-    <text class="zi-cell-value" x="278.0" y="165.0">3</text>
-    <g aria-label="selected coordinate (1, 0), value 4" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-1-0">
-      <rect class="zi-grid-cell zi-role-selected" height="46" width="46" x="117" y="188" />
-      <text class="zi-cell-value" x="140.0" y="211.0">4</text>
+  <g aria-label="source" class="zi-role-source" data-non-color-cue="source label + neutral single border" data-semantic-role="source" id="indexing-selection-source-values">
+    <rect class="zi-grid-cell" height="48" width="48" x="36" y="86" />
+    <text class="zi-cell-value" x="60.0" y="110.0">10</text>
+    <rect class="zi-grid-cell" height="48" width="48" x="84" y="86" />
+    <text class="zi-cell-value" x="108.0" y="110.0">11</text>
+    <g aria-label="selected coordinate (0, 2), value 12" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-values-selected-0-2">
+      <rect class="zi-grid-cell zi-role-selected" height="48" width="48" x="132" y="86" />
+      <text class="zi-cell-value" x="156.0" y="110.0">12</text>
     </g>
-    <g aria-label="selected coordinate (1, 1), value 5" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-1-1">
-      <rect class="zi-grid-cell zi-role-selected" height="46" width="46" x="163" y="188" />
-      <text class="zi-cell-value" x="186.0" y="211.0">5</text>
+    <g aria-label="selected coordinate (0, 3), value 13" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-values-selected-0-3">
+      <rect class="zi-grid-cell zi-role-selected" height="48" width="48" x="180" y="86" />
+      <text class="zi-cell-value" x="204.0" y="110.0">13</text>
     </g>
-    <g aria-label="selected coordinate (1, 2), value 6" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-1-2">
-      <rect class="zi-grid-cell zi-role-selected" height="46" width="46" x="209" y="188" />
-      <text class="zi-cell-value" x="232.0" y="211.0">6</text>
+    <g aria-label="selected coordinate (0, 4), value 14" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-values-selected-0-4">
+      <rect class="zi-grid-cell zi-role-selected" height="48" width="48" x="228" y="86" />
+      <text class="zi-cell-value" x="252.0" y="110.0">14</text>
     </g>
-    <g aria-label="selected coordinate (1, 3), value 7" class="zi-role-selected zi-selected-cell" data-non-color-cue="coordinate label + heavy outline" data-semantic-role="selected" id="indexing-selection-source-grid-selected-1-3">
-      <rect class="zi-grid-cell zi-role-selected" height="46" width="46" x="255" y="188" />
-      <text class="zi-cell-value" x="278.0" y="211.0">7</text>
-    </g>
-    <rect class="zi-grid-cell" height="46" width="46" x="117" y="234" />
-    <text class="zi-cell-value" x="140.0" y="257.0">8</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="163" y="234" />
-    <text class="zi-cell-value" x="186.0" y="257.0">9</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="209" y="234" />
-    <text class="zi-cell-value" x="232.0" y="257.0">10</text>
-    <rect class="zi-grid-cell" height="46" width="46" x="255" y="234" />
-    <text class="zi-cell-value" x="278.0" y="257.0">11</text>
+    <rect class="zi-grid-cell" height="48" width="48" x="276" y="86" />
+    <text class="zi-cell-value" x="300.0" y="110.0">15</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-axis-zero">
-    <text x="55" y="126">source axis 0 ↓</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-0">
+    <text x="60" y="72">0</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-column-0">
-    <text x="140" y="126">0</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-1">
+    <text x="108" y="72">1</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-column-1">
-    <text x="186" y="126">1</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-2">
+    <text x="156" y="72">2</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-column-2">
-    <text x="232" y="126">2</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-3">
+    <text x="204" y="72">3</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-column-3">
-    <text x="278" y="126">3</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-4">
+    <text x="252" y="72">4</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-row-0">
-    <text x="104" y="165">0</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-row-1">
-    <text x="104" y="211">1</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-row-2">
-    <text x="104" y="257">2</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-axis-zero-rule">
-    <text x="160" y="302">1 fixes source axis 0 → no result axis</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-axis-one-rule">
-    <text x="160" y="328">0:4 keeps source axis 1 → result axis 0</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-title">
-    <text x="160" y="364">Result · shape (4,)</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-index-5">
+    <text x="300" y="72">5</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-coordinate-label">
-    <text x="55" y="398">result coordinate</text>
+    <text x="78" y="178">result coordinate</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-coordinate-label">
-    <text x="55" y="430">source coordinate</text>
+    <text x="78" y="214">source coordinate</text>
   </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-value-label">
-    <text x="55" y="470">value</text>
+  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-value-label">
+    <text x="78" y="256">result value</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-coordinate-0">
-    <text x="140" y="398">0</text>
+    <text x="188" y="178">0</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-coordinate-1">
-    <text x="186" y="398">1</text>
+    <text x="236" y="178">1</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-coordinate-2">
-    <text x="232" y="398">2</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-coordinate-3">
-    <text x="278" y="398">3</text>
+    <text x="284" y="178">2</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-coordinate-0">
-    <text x="140" y="430">(1, 0)</text>
+    <text x="188" y="214">2</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-coordinate-1">
-    <text x="186" y="430">(1, 1)</text>
+    <text x="236" y="214">3</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-coordinate-2">
-    <text x="232" y="430">(1, 2)</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-source-coordinate-3">
-    <text x="278" y="430">(1, 3)</text>
+    <text x="284" y="214">4</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-value-0">
-    <rect height="44" width="46" x="117" y="448" />
-    <text x="140.0" y="470.0">4</text>
+    <rect height="44" width="48" x="164" y="234" />
+    <text x="188.0" y="256.0">12</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-value-1">
-    <rect height="44" width="46" x="163" y="448" />
-    <text x="186.0" y="470.0">5</text>
+    <rect height="44" width="48" x="212" y="234" />
+    <text x="236.0" y="256.0">13</text>
   </g>
   <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-value-2">
-    <rect height="44" width="46" x="209" y="448" />
-    <text x="232.0" y="470.0">6</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-value-3">
-    <rect height="44" width="46" x="255" y="448" />
-    <text x="278.0" y="470.0">7</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-invariant">
-    <text x="160" y="524">result[i] = image[1, i]</text>
-  </g>
-  <g aria-label="text" class="zi-role-text" data-non-color-cue="text label" data-semantic-role="text" id="indexing-selection-result-domain">
-    <text x="160" y="550">i = 0, 1, 2, 3</text>
+    <rect height="44" width="48" x="260" y="234" />
+    <text x="284.0" y="256.0">14</text>
   </g>
 </svg>

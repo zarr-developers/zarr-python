@@ -651,14 +651,12 @@ def test_semantic_palettes_are_accessible() -> None:
 def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
     assert {figure_spec["id"]: figure_spec["description"] for figure_spec in FIGURES} == {
         "indexing-selection": (
-            "image[1, 0:4] fixes source axis 0 at row 1, removes that axis, and retains "
-            "source axis 1 as result axis 0. Result coordinates 0, 1, 2, 3 receive values "
-            "4, 5, 6, 7 from source coordinates (1, 0), (1, 1), (1, 2), and (1, 3), "
-            "respectively."
+            "source[2:5] maps source coordinates 2, 3, 4, containing values 12, 13, 14, "
+            "to result coordinates 0, 1, 2, respectively."
         ),
         "coordinate-addresses": "domain [-2, 3) gives equal status to -2, -1, 0, 1, 2.",
         "prepend-chunk": "[0, 6) becomes [-3, 6) while old coordinates stay fixed.",
-        "transform-mapping": "request i maps to source (1, i).",
+        "transform-mapping": "request i maps to source i + 2.",
         "compose-views": "two view maps collapse into one direct map.",
         "chunk-overlay": (
             "touched global chunk domains map selected cells to zero-origin "
@@ -755,46 +753,32 @@ def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:
     raise AssertionError(f"missing grid {element_id!r}")
 
 
-def test_basic_selection_figures_share_the_canonical_source_data() -> None:
-    figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
-    grids = {
-        "indexing-selection": _grid_element(figures["indexing-selection"], "source-grid"),
-        "chunk-overlay": _grid_element(figures["chunk-overlay"], "chunked-source"),
-    }
-    for grid in grids.values():
-        assert grid["kind"] == "grid"
-        assert (grid["rows"], grid["columns"]) == (3, 4)
-        assert grid["selected"] == ((1, 0), (1, 1), (1, 2), (1, 3))
-        assert grid.get("values") == ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11))
-    assert grids["chunk-overlay"].get("chunk_shape") == (2, 2)
+def test_chunk_overlay_uses_the_canonical_two_dimensional_source_data() -> None:
+    chunk_overlay = next(item for item in FIGURES if item["id"] == "chunk-overlay")
+    grid = _grid_element(chunk_overlay, "chunked-source")
+
+    assert grid["kind"] == "grid"
+    assert (grid["rows"], grid["columns"]) == (3, 4)
+    assert grid["selected"] == ((1, 0), (1, 1), (1, 2), (1, 3))
+    assert grid.get("values") == ((0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11))
+    assert grid.get("chunk_shape") == (2, 2)
 
 
-def test_canonical_source_svg_has_12_cells_and_complete_2_by_2_chunk_outlines() -> None:
-    figures = {figure_spec["id"]: figure_spec for figure_spec in FIGURES}
-    for figure_id, grid_id in (
-        ("indexing-selection", "source-grid"),
-        ("chunk-overlay", "chunked-source"),
-    ):
-        root = ElementTree.fromstring(render_figure(figures[figure_id]))
-        grid = next(
-            element
-            for element in root.iter()
-            if element.attrib.get("id") == f"{figure_id}-{grid_id}"
-        )
-        cells = [
-            element
-            for element in grid.iter()
-            if element.tag.endswith("rect")
-            and "zi-grid-cell" in element.attrib.get("class", "").split()
-        ]
-        assert len(cells) == 12
-
-    overlay_root = ElementTree.fromstring(render_figure(figures["chunk-overlay"]))
+def test_chunk_overlay_svg_has_12_cells_and_complete_2_by_2_chunk_outlines() -> None:
+    chunk_overlay = next(item for item in FIGURES if item["id"] == "chunk-overlay")
+    overlay_root = ElementTree.fromstring(render_figure(chunk_overlay))
     overlay_grid = next(
         element
         for element in overlay_root.iter()
         if element.attrib.get("id") == "chunk-overlay-chunked-source"
     )
+    cells = [
+        element
+        for element in overlay_grid.iter()
+        if element.tag.endswith("rect")
+        and "zi-grid-cell" in element.attrib.get("class", "").split()
+    ]
+    assert len(cells) == 12
     outlines = [
         element.attrib
         for element in overlay_grid
@@ -858,85 +842,49 @@ def test_chunk_overlay_shows_faded_coordinates_for_unselected_cells() -> None:
     )
 
 
-def test_indexing_selection_shows_result_to_source_correspondence_without_cell_prefixes() -> None:
-    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
-    source = _grid_element(spec, "source-grid")
-    labels = {element["label"] for element in spec["elements"] if element["kind"] == "text"}
-    labels.update(element["label"] for element in spec["elements"] if element["kind"] == "node")
-
-    assert source.get("show_coordinates") is False
-    assert source.get("show_selected_coordinates") is False
-    assert source.get("show_value_prefix") is False
-    assert {"result coordinate", "source coordinate", "value"} <= labels
-    assert {"0", "1", "2", "3", "(1, 0)", "(1, 1)", "(1, 2)", "(1, 3)"} <= labels
-    assert "result[i] = image[1, i]" in labels
-    assert "i = 0, 1, 2, 3" in labels
-
-    root = ElementTree.fromstring(render_figure(spec))
-    source_group = next(
-        element
-        for element in root.iter()
-        if element.attrib.get("id") == "indexing-selection-source-grid"
+def test_indexing_selection_shows_one_dimensional_result_to_source_correspondence() -> None:
+    spec = next(item for item in FIGURES if item["id"] == "indexing-selection")
+    assert spec["description"] == (
+        "source[2:5] maps source coordinates 2, 3, 4, containing values 12, 13, 14, "
+        "to result coordinates 0, 1, 2, respectively."
     )
-    source_text = [element.text for element in source_group.iter() if element.tag.endswith("text")]
-    assert source_text == [str(value) for value in range(12)]
-    assert not any("coord:" in (text or "") or "value:" in (text or "") for text in source_text)
 
+    source = _grid_element(spec, "source-values")
+    assert (source["rows"], source["columns"]) == (1, 6)
+    assert source["selected"] == ((0, 2), (0, 3), (0, 4))
+    assert source.get("values") == ((10, 11, 12, 13, 14, 15),)
 
-def test_indexing_selection_stacks_result_below_source_and_explains_axis_removal() -> None:
-    spec = next(figure_spec for figure_spec in FIGURES if figure_spec["id"] == "indexing-selection")
-    source = _grid_element(spec, "source-grid")
-    result_cells = {
+    text = {element["id"]: element for element in spec["elements"] if element["kind"] == "text"}
+    values = {
         int(element["id"].removeprefix("result-value-")): element
         for element in spec["elements"]
         if element["kind"] == "node" and element["id"].startswith("result-value-")
     }
-    text_by_id = {
-        element["id"]: element for element in spec["elements"] if element["kind"] == "text"
-    }
-    labels = {
-        element["label"]: element for element in spec["elements"] if element["kind"] == "text"
-    }
+    for result_coordinate, source_coordinate in enumerate((2, 3, 4)):
+        center = values[result_coordinate]["x"] + values[result_coordinate]["width"] // 2
+        assert text[f"result-coordinate-{result_coordinate}"]["label"] == str(result_coordinate)
+        assert text[f"source-coordinate-{result_coordinate}"]["label"] == str(source_coordinate)
+        assert text[f"result-coordinate-{result_coordinate}"]["x"] == center
+        assert text[f"source-coordinate-{result_coordinate}"]["x"] == center
+        assert values[result_coordinate]["label"] == str(source_coordinate + 10)
 
-    source_bottom = source["origin"][1] + source["rows"] * source["cell_size"]
-    assert set(result_cells) == set(range(4))
-    assert all(cell["y"] > source_bottom for cell in result_cells.values())
-    assert len({cell["y"] for cell in result_cells.values()}) == 1
-    assert all(
-        result_cells[index]["x"] + result_cells[index]["width"] == result_cells[index + 1]["x"]
-        for index in range(3)
-    )
-    for index in range(4):
-        source_column_center = (
-            source["origin"][0] + index * source["cell_size"] + source["cell_size"] // 2
-        )
-        result = result_cells[index]
-        assert result["label"] == str(index + 4)
-        assert result["x"] + result["width"] // 2 == source_column_center
-        assert text_by_id[f"result-coordinate-{index}"]["label"] == str(index)
-        assert text_by_id[f"result-coordinate-{index}"]["x"] == source_column_center
-        assert text_by_id[f"source-coordinate-{index}"]["label"] == f"(1, {index})"
-        assert text_by_id[f"source-coordinate-{index}"]["x"] == source_column_center
-
-    assert labels["1 fixes source axis 0 → no result axis"]["y"] > source_bottom
-    assert labels["0:4 keeps source axis 1 → result axis 0"]["y"] > source_bottom
+    visible = " ".join(
+        element["label"] for element in spec["elements"] if element["kind"] == "text"
+    ).lower()
+    assert "axis" not in visible
+    assert "shape" not in visible
     assert all(element["kind"] != "arrow" for element in spec["elements"])
     assert spec.get("show_legend") is False
-    assert spec["height"] > spec["width"]
-    assert spec["width"] <= 320
 
-    visible_copy = " ".join(
-        (
-            *(element["label"] for element in spec["elements"] if element["kind"] == "text"),
-            *(element["label"] for element in spec["elements"] if element["kind"] == "node"),
-        )
-    ).lower()
-    assert "request" not in visible_copy
 
-    root = ElementTree.fromstring(render_figure(spec))
-    assert not any(
-        element.attrib.get("id") == "indexing-selection-legend" for element in root.iter()
-    )
+def test_transform_mapping_shows_the_slice_offset() -> None:
+    spec = next(item for item in FIGURES if item["id"] == "transform-mapping")
+    nodes = {
+        element["id"]: element["label"] for element in spec["elements"] if element["kind"] == "node"
+    }
+
+    assert spec["description"] == "request i maps to source i + 2."
+    assert nodes == {"request-i": "request i", "source-coordinate": "source i + 2"}
 
 
 def test_chunk_overlay_uses_a_phone_readable_stacked_layout() -> None:
@@ -1108,10 +1056,12 @@ def test_indexing_selection_is_centered_and_phone_readable_without_horizontal_di
         maxsplit=1,
     )[1].split("}", maxsplit=1)[0]
 
-    assert spec["width"] <= 320
+    assert spec["width"] == 360
+    assert spec["width"] <= 390
     assert "max-width: 440px;" in figure_rule
     assert "margin-inline: auto;" in figure_rule
     assert f"min-width: {spec['width']}px;" in scroll_rule
+    assert "#indexing-selection-result-coordinate-label" not in diagram_render.STYLESHEET
 
 
 def test_prepend_coordinates_keep_global_semantics_and_old_positions() -> None:
