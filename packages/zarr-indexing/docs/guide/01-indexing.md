@@ -6,7 +6,9 @@ are selected, the column index removes one axis, and the request therefore has
 shape `(4,)`.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable basic indexing selection diagram" tabindex="0">
 --8<-- "_static/diagrams/indexing-selection.svg"
+</div>
 <figcaption>A one-dimensional request of shape <code>(4,)</code> visits four source cells in top-to-bottom result order.</figcaption>
 </figure>
 

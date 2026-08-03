@@ -12,7 +12,9 @@ The stopping boundary of one interval is the starting boundary of the next:
 second interval.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable half-open interval concatenation diagram" tabindex="0">
 --8<-- "_static/diagrams/half-open-intervals.svg"
+</div>
 <figcaption>Matching an exclusive stop to the next inclusive start lets adjacent half-open intervals concatenate exactly.</figcaption>
 </figure>
 
@@ -22,7 +24,9 @@ positive coordinate; it is not automatically shorthand for counting backward
 from an array's end.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable coordinate addresses diagram" tabindex="0">
 --8<-- "_static/diagrams/coordinate-addresses.svg"
+</div>
 <figcaption>The domain <code>[-2, 3)</code> contains five peer addresses, including the real negative addresses <code>-2</code> and <code>-1</code>.</figcaption>
 </figure>
 
@@ -47,7 +51,9 @@ half-open adjacency rule: each stopping boundary is included exactly once as
 the next interval's starting boundary.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable prepended chunk coordinates diagram" tabindex="0">
 --8<-- "_static/diagrams/prepend-chunk.svg"
+</div>
 <figcaption>Prepending extends <code>[0, 6)</code> to <code>[-3, 6)</code> without renumbering any existing coordinate.</figcaption>
 </figure>
 
@@ -89,7 +95,9 @@ coordinate `(i + 1, 2)`. This direction is deliberate: request to source, not
 source to request.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable transform mapping diagram" tabindex="0">
 --8<-- "_static/diagrams/transform-mapping.svg"
+</div>
 <figcaption>The transform sends each request coordinate <code>i</code> to its source address <code>(i + 1, 2)</code>.</figcaption>
 </figure>
 

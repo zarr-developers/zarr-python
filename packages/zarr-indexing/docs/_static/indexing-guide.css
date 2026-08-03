@@ -137,10 +137,18 @@
 .zi-figure .zi-role-chunk-local > rect, .zi-figure .zi-role-chunk-local .zi-cue-swatch { stroke-width: 2; stroke-dasharray: 7 4; }
 .zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }
 .zi-panel-row { display: flex; gap: 1rem; align-items: flex-start; }
-.zi-lifecycle-scroll { max-width: 100%; }
+.zi-figure-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="indexing-selection-title"] { min-width: 760px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="half-open-intervals-title"] { min-width: 760px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="coordinate-addresses-title"] { min-width: 720px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="prepend-chunk-title"] { min-width: 760px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="transform-mapping-title"] { min-width: 680px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="compose-views-title"] { min-width: 760px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="chunk-overlay-title"] { min-width: 440px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="projection-pair-title"] { min-width: 720px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="orthogonal-contrast-title"] { min-width: 740px; }
+.zi-figure-scroll .zi-figure[aria-labelledby~="system-memory-chunk-lifecycle-title"] { min-width: 760px; }
 @media (max-width: 600px) {
   .zi-panel-row { flex-wrap: wrap; overflow-x: visible; }
   .zi-panel-row > * { flex: 1 1 100%; min-width: 0; }
-  .zi-lifecycle-scroll { overflow-x: auto; overscroll-behavior-inline: contain; }
-  .zi-lifecycle-scroll .zi-figure[aria-labelledby~="system-memory-chunk-lifecycle-title"] { min-width: 640px; }
 }

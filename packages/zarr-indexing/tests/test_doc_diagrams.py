@@ -895,29 +895,26 @@ def test_generated_stylesheet_has_theme_roles_and_responsive_layout() -> None:
     assert "overflow-x: visible;" in stylesheet
 
 
-def test_lifecycle_phone_scroll_is_confined_to_its_wrapper() -> None:
+def test_wrapped_figures_get_their_registered_capped_minimum_width() -> None:
     stylesheet = diagram_render.STYLESHEET
-    lifecycle = next(item for item in FIGURES if item["id"] == "system-memory-chunk-lifecycle")
-    base_wrapper_rule = stylesheet.split(".zi-lifecycle-scroll {", maxsplit=1)[1].split(
-        "}", maxsplit=1
-    )[0]
-    phone_rules = stylesheet.split("@media (max-width: 600px) {", maxsplit=1)[1]
-    phone_wrapper_rule = phone_rules.split(".zi-lifecycle-scroll {", maxsplit=1)[1].split(
-        "}", maxsplit=1
-    )[0]
-    selector = (
-        '.zi-lifecycle-scroll .zi-figure[aria-labelledby~="system-memory-chunk-lifecycle-title"] {'
-    )
-    lifecycle_rule = phone_rules.split(selector, maxsplit=1)[1].split("}", maxsplit=1)[0]
-    minimum_width_match = re.search(r"min-width: (?P<width>\d+)px;", lifecycle_rule)
+    selector_prefix = '.zi-figure-scroll .zi-figure[aria-labelledby~="'
 
-    assert "max-width: 100%;" in base_wrapper_rule
-    assert "overflow-x" not in base_wrapper_rule
-    assert "overflow-x: auto;" in phone_wrapper_rule
-    assert minimum_width_match is not None
-    minimum_width = int(minimum_width_match.group("width"))
-    assert 600 <= minimum_width <= 680
-    assert 14 * minimum_width / lifecycle["width"] >= 11.5
+    assert stylesheet.count(selector_prefix) == len(FIGURES)
+    for spec in FIGURES:
+        selector = f'{selector_prefix}{spec["id"]}-title"] {{'
+        rule = stylesheet.split(selector, maxsplit=1)[1].split("}", maxsplit=1)[0]
+        minimum_width_match = re.search(r"min-width: (?P<width>\d+)px;", rule)
+        assert minimum_width_match is not None
+        assert int(minimum_width_match.group("width")) == min(spec["width"], 760)
+
+
+def test_guide_figure_scroll_is_confined_without_global_minimum_width() -> None:
+    stylesheet = diagram_render.STYLESHEET
+    wrapper_rule = stylesheet.split(".zi-figure-scroll {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+
+    assert "max-width: 100%;" in wrapper_rule
+    assert "overflow-x: auto;" in wrapper_rule
+    assert "zi-lifecycle-scroll" not in stylesheet
 
     global_figure_rule = stylesheet.split(".zi-figure {", maxsplit=1)[1].split("}", maxsplit=1)[0]
     assert "min-width" not in global_figure_rule

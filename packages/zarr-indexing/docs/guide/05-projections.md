@@ -5,7 +5,9 @@ chunk, and where does each of those cells belong in the requested result? A
 paired projection answers both from one shared cell domain.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable paired chunk projections diagram" tabindex="0">
 --8<-- "_static/diagrams/projection-pair.svg"
+</div>
 <figcaption>Each point in the shared cell domain identifies the same logical cell on both arrows, once in request space and once in zero-origin chunk-local space.</figcaption>
 </figure>
 
@@ -35,7 +37,9 @@ chunk order, and it can visit one source cell more than once. In the request
 below, row 4 comes first and row 1 appears twice.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable orthogonal indexing contrast diagram" tabindex="0">
 --8<-- "_static/diagrams/orthogonal-contrast.svg"
+</div>
 <figcaption>The request <code>[4, 1, 1]</code> produces row 4 first, then two independently placed copies of row 1.</figcaption>
 </figure>
 

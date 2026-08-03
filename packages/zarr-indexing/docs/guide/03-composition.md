@@ -5,7 +5,9 @@ description, but it does not read an intermediate array. The chain is reduced
 to one direct transform from the newest request to the original source.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable composed views diagram" tabindex="0">
 --8<-- "_static/diagrams/compose-views.svg"
+</div>
 <figcaption>The two view steps collapse into one direct request-to-source map, so composition adds no intermediate read.</figcaption>
 </figure>
 

@@ -6,7 +6,9 @@ or their order. It changes only how the work is divided: rows 1 and 2 come
 from chunk `(0, 0)`, while rows 3 and 4 come from chunk `(1, 0)`.
 
 <figure>
+<div class="zi-figure-scroll" role="region" aria-label="Scrollable chunk projection overlay diagram" tabindex="0">
 --8<-- "_static/diagrams/chunk-overlay.svg"
+</div>
 <figcaption>The unchanged selection crosses one 3-row chunk boundary, so it touches exactly chunks <code>(0, 0)</code> and <code>(1, 0)</code> of the 6-by-8 source.</figcaption>
 </figure>
 

@@ -97,15 +97,23 @@ def _stylesheet() -> str:
             ".zi-figure .zi-role-chunk-local > rect, .zi-figure .zi-role-chunk-local .zi-cue-swatch { stroke-width: 2; stroke-dasharray: 7 4; }",
             ".zi-figure .zi-role-cell-domain > rect, .zi-figure .zi-role-cell-domain .zi-cue-swatch { stroke-width: 2; }",
             ".zi-panel-row { display: flex; gap: 1rem; align-items: flex-start; }",
-            ".zi-lifecycle-scroll { max-width: 100%; }",
+            (
+                ".zi-figure-scroll { max-width: 100%; overflow-x: auto; "
+                "overscroll-behavior-inline: contain; }"
+            ),
+        )
+    )
+    for spec in FIGURES:
+        selector = (
+            '.zi-figure-scroll .zi-figure[aria-labelledby~="'
+            f'{spec["id"]}-title"]'
+        )
+        lines.append(f"{selector} {{ min-width: {min(spec['width'], 760)}px; }}")
+    lines.extend(
+        (
             "@media (max-width: 600px) {",
             "  .zi-panel-row { flex-wrap: wrap; overflow-x: visible; }",
             "  .zi-panel-row > * { flex: 1 1 100%; min-width: 0; }",
-            "  .zi-lifecycle-scroll { overflow-x: auto; overscroll-behavior-inline: contain; }",
-            (
-                '  .zi-lifecycle-scroll .zi-figure[aria-labelledby~="system-memory-chunk-'
-                'lifecycle-title"] { min-width: 640px; }'
-            ),
             "}",
         )
     )
