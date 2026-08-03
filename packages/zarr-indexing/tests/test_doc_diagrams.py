@@ -444,6 +444,10 @@ def test_figure_registry_has_the_approved_accessible_conclusions() -> None:
         ),
         "projection-pair": "one cell domain points to request and chunk-local spaces.",
         "orthogonal-contrast": "rows [4, 1, 1] retain order and duplication.",
+        "system-memory-chunk-lifecycle": (
+            "chunks move through queued and loading states before system-memory residency, "
+            "with explicit failure, retry, eviction, and reload paths."
+        ),
     }
 
 
@@ -459,6 +463,36 @@ def test_half_open_interval_figure_names_both_pieces_and_the_combined_interval()
         "[0, 3) contains 0, 1, 2",
         "1 is excluded on the left and included on the right",
     } <= labels
+
+
+def test_system_memory_lifecycle_figure_has_the_documented_transitions() -> None:
+    spec = next(item for item in FIGURES if item["id"] == "system-memory-chunk-lifecycle")
+    nodes = {
+        element["id"]: element["label"] for element in spec["elements"] if element["kind"] == "node"
+    }
+    transitions = {
+        (element["source"], element["target"], element["label"])
+        for element in spec["elements"]
+        if element["kind"] == "arrow"
+    }
+
+    assert nodes == {
+        "new": "NEW",
+        "queued": "QUEUED",
+        "loading": "LOADING",
+        "ready": "READY: system memory",
+        "failed": "FAILED",
+        "evicted": "EVICTED",
+    }
+    assert transitions == {
+        ("new", "queued", "request"),
+        ("queued", "loading", "drain"),
+        ("loading", "ready", "read succeeds"),
+        ("loading", "failed", "read fails"),
+        ("failed", "queued", "explicit retry"),
+        ("ready", "evicted", "LRU pressure"),
+        ("evicted", "queued", "request again"),
+    }
 
 
 def _grid_element(spec: FigureSpec, element_id: str) -> GridSpec:

@@ -287,6 +287,19 @@ def test_projection_examples_assemble_rank_zero_domains(example: Path) -> None:
     assert destination[()] == 7
 
 
+def test_integration_guide_states_the_cache_boundary_and_prior_art() -> None:
+    guide = (DOCS / "guide" / "integrations.md").read_text()
+    assert "system-memory chunk cache" in guide.lower()
+    assert "not a napari integration" in guide.lower()
+    assert "system-memory-chunk-lifecycle.svg" in guide
+    assert "examples/napari_chunk_cache.py:chunk-cache-source" in guide
+    assert "examples/napari_chunk_cache.py:chunk-cache-wrapper" in guide
+    assert "examples/napari_chunk_cache.py:chunk-cache-worked-example" in guide
+    assert "https://napari.org/dev/howtos/layers/image.html" in guide
+    assert "https://github.com/google/neuroglancer/blob/master/src/chunk_manager/base.ts" in guide
+    assert "conceptual prior art" in guide.lower()
+
+
 def make_documented_cache() -> tuple[Any, Any]:
     source_type = CACHE_NAMESPACE["RecordingChunkSource"]
     cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
