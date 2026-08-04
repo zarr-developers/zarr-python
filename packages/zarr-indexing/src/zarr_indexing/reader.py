@@ -1,3 +1,5 @@
+"""Backend reader protocol and built-in system-memory implementations."""
+
 from __future__ import annotations
 
 import math
@@ -18,28 +20,72 @@ __all__ = [
 
 
 class Reader(Protocol):
+    """Backend adapter that fills supplied system-memory result buffers.
+
+    A reader may be shared by every view and part derived from one
+    [`LazyArray`][zarr_indexing.lazy_array.LazyArray]. Part reads may run
+    concurrently, so a stateful implementation must synchronize its own
+    mutable state. `LazyArray` deliberately adds no serialization.
+    """
+
     def read_into(
         self,
         source: Any,
         transform: IndexTransform,
         out: np.ndarray[Any, Any],
         /,
-    ) -> None: ...
+    ) -> None:
+        """Fill `out` with the exact source values selected by `transform`.
+
+        `transform` maps zero-origin coordinates in the output buffer to
+        global coordinates in `source`, and `transform.domain.shape` equals
+        `out.shape`. Fill every cell in place, preserving the transform's exact
+        values, order, and dtype, then return `None`. Do not replace or retain
+        `out`; it may be a strided writable view rather than an owning array.
+
+        Backend exceptions propagate unchanged. Because callers may resolve
+        parts concurrently through the same reader object, stateful readers
+        are responsible for synchronizing their own state.
+        """
+        ...
 
 
 class BasicReader:
+    """Reader for system-memory sources exposing basic integer/slice indexing.
+
+    Each transform is decomposed into the smallest enclosing positive-slice
+    slab and a residual transform. The slab is read once with basic indexing,
+    so fancy or negative-step selections may over-read, and the residual is
+    then lowered through NumPy system-memory operations into the supplied
+    buffer.
+
+    Slice results must permit conversion to NumPy system memory. Device arrays
+    that reject implicit conversion require a custom reader responsible for
+    transferring values into the supplied system-memory output buffer.
+    """
+
     __slots__ = ()
 
     def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        """Read one transform through a positive-slice slab and residual lowering."""
         key, residual = _decompose_basic(transform)
         block = np.asanyarray(source[key])
         out[...] = _lower(block, residual)
 
 
 class NumPyReader:
+    """Reader optimized for NumPy system-memory arrays.
+
+    This is the reader selected by
+    [`LazyArray.from_numpy`][zarr_indexing.lazy_array.LazyArray.from_numpy]. It
+    applies the complete transform with NumPy operations and is applicable to
+    `numpy.ndarray` sources, including `numpy.ma.MaskedArray`.
+    """
+
     __slots__ = ()
 
     def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        """Read one complete transform from a NumPy array into `out`."""
         out[...] = _lower(np.asanyarray(source), transform)
 
 

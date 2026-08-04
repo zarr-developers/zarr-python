@@ -13,8 +13,9 @@ Key types:
   output dimension can depend on the input (see `output_map.py`)
 - `compose` — chain two transforms into one
 
-`LazyArray` wraps an array-API-like array and gives it deferred indexing
-through `.lazy[...]`, yielding its reads as `Partition`s.
+`LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
+indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
+backends use an explicit `Reader` adapter.
 
 `plan_chunks` projects a transform through a caller-selected chunk grid without
 coupling the result to a storage backend or scheduler. `selection_to_transform`

@@ -62,7 +62,7 @@ Four deliberate differences:
 | Dialect | One strict dialect everywhere: literal coordinates, no negative wrapping | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `zarr.Array.lazy` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
 | Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) exposes the partition structure so the caller's own scheduler — dask, a thread pool, a task queue — drives it |
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
-| Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The wrapper takes anything with `shape`, `dtype`, and `__getitem__`, and prefers the array's own `__array_namespace__` |
+| Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. Built-in readers accept system-memory/basic-indexing sources; other backends use explicit custom readers. A device reader owns transfer into the supplied system-memory output |
 
 The mechanics of a
 [chunk plan](guide/index.md#a-request-becomes-a-chunk-plan) and its

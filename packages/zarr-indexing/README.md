@@ -11,12 +11,13 @@ I/O until you explicitly read or write.
 
 Key types:
 
-- `LazyArray` — wraps any array-API-like array (NumPy, zarr, CuPy, ...) and adds
-  a `.lazy` accessor: `LazyArray.from_numpy(numpy_array).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]`
+- `LazyArray` — wraps a system-memory/basic-indexing source and adds a `.lazy`
+  accessor: `LazyArray.from_numpy(numpy_array).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]`
   composes a transform and returns a new view without reading data, and
   `result()` materializes it into owned system memory. `LazyArray(source)` uses
   the conservative basic reader; `from_numpy` explicitly selects NumPy's
-  optimized reader.
+  optimized reader. Device arrays require an explicit custom reader responsible
+  for transferring values into the supplied system-memory output buffer.
 - `Reader` — the explicit backend execution boundary: transforms say which
   values belong in the result, while readers say how a backend obtains them
 - `IndexDomain` — a rectangular region of integer coordinates

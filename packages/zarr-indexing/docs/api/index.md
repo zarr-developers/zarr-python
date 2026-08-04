@@ -46,10 +46,12 @@ and the wire format built on top of it.
 
 **Lazy arrays**
 
-- [`zarr_indexing.lazy_array`](lazy_array.md) — `LazyArray`, a wrapper that
-  gives any array-API-like array (NumPy, zarr, CuPy, …) a `.lazy` accessor for
+- [`zarr_indexing.lazy_array`](lazy_array.md) — `LazyArray`, a wrapper for
+  system-memory/basic-indexing sources that adds a `.lazy` accessor for
   TensorStore-style deferred indexing, plus `Partition` and `parts()` /
-  `with_parts()`, which determine the boxes a read is broken into
+  `with_parts()`, which determine the boxes a read is broken into. Device
+  sources require an explicit custom reader that transfers into the supplied
+  system-memory output
 - [`zarr_indexing.reader`](reader.md) — `Reader`, the backend execution boundary
   that obtains the values described by a complete transform; `basic_reader`
   serves conservative duck arrays and `numpy_reader` is selected explicitly by

@@ -1023,6 +1023,33 @@ def test_construction_selects_readers_explicitly() -> None:
     assert LazyArray.from_numpy(data).reader is numpy_reader
 
 
+def test_reader_wrappers_forward_the_read_contract_unchanged() -> None:
+    events: list[tuple[str, Any, IndexTransform, Any]] = []
+
+    class RecordingDelegatingReader:
+        def __init__(self, name: str, inner: Reader) -> None:
+            self.name = name
+            self.inner = inner
+
+        def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+            events.append((self.name, source, transform, out))
+            self.inner.read_into(source, transform, out)
+
+    data = reference()
+    inner = RecordingDelegatingReader("inner", numpy_reader)
+    outer = RecordingDelegatingReader("outer", inner)
+    view = LazyArray(data).with_reader(outer).lazy[1:6:2, ::-1, 1].unpartitioned()
+
+    result = view.result()
+
+    assert [name for name, _, _, _ in events] == ["outer", "inner"]
+    outer_call, inner_call = events
+    assert outer_call[1] is inner_call[1] is data
+    assert outer_call[2] is inner_call[2]
+    assert outer_call[3] is inner_call[3] is result
+    np.testing.assert_array_equal(result, data[1:6:2, ::-1, 1])
+
+
 @pytest.mark.parametrize("value", [object(), [1, 2, 3], "array"])
 def test_from_numpy_rejects_non_ndarrays(value: Any) -> None:
     with pytest.raises(TypeError, match="from_numpy requires a numpy.ndarray"):

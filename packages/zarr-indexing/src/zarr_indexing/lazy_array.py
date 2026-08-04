@@ -1,8 +1,9 @@
-"""`LazyArray` — TensorStore-style lazy indexing over any array-API-like array.
+"""`LazyArray` — TensorStore-style lazy indexing over array-like sources.
 
-`LazyArray` wraps an existing array — NumPy, zarr, CuPy, anything with `shape`,
-`dtype`, and basic `__getitem__` — and adds a `.lazy` accessor whose indexing
-operations build up an [`IndexTransform`](transform.md) instead of reading data:
+`LazyArray` wraps a source with `shape`, `dtype`, and basic integer/slice
+`__getitem__`, whose reads can be lowered through NumPy system memory. It adds
+a `.lazy` accessor whose indexing operations build up an
+[`IndexTransform`](transform.md) instead of reading data:
 
 ```python
 view = LazyArray(source).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]
@@ -55,7 +56,13 @@ partitioning, scheduling, or result ownership. The conservative
 `LazyArray(source)` uses `basic_reader`, which needs only basic slicing.
 `LazyArray.from_numpy(array)` explicitly opts into `numpy_reader` for direct
 NumPy indexing. `with_reader()` replaces the reader without reading or changing
-the view metadata.
+the view metadata. The reader object is shared by all derived views and their
+parts. Consumers may materialize part views concurrently; `LazyArray` does not
+serialize calls, so a stateful reader must synchronize its own mutable state.
+
+Both built-in readers lower through NumPy system memory. They do not implicitly
+transfer device arrays. A device source requires an explicit custom reader that
+performs any needed transfer into the supplied system-memory output buffer.
 
 Boxes and queries
 -----------------
@@ -102,8 +109,8 @@ Two more NumPy rules the dialect keeps, in every mode:
 Materializing on fallback
 -------------------------
 `LazyArray` implements `__array__` but deliberately implements neither
-`__array_ufunc__`/`__array_function__` nor `__array_namespace__`. A NumPy
-*function* given a view therefore materializes the whole thing through
+`__array_ufunc__` nor `__array_function__`. A NumPy *function* given a view
+therefore materializes the whole thing through
 `__array__` and works on the resulting array: `numpy.sum(view)`,
 `numpy.add(view, 1)` and `numpy.stack([view, view])` all do, and so does
 `numpy.ones(view.shape) + view`, where the ndarray on the left dispatches.
@@ -386,6 +393,8 @@ class Partition:
     The parts of a view tile it exactly and disjointly: assembling every
     `view.result()` at its `out_selection` reproduces the whole view's
     `result()`, and each part can be resolved independently and concurrently.
+    Derived parts retain the same reader object; a shared stateful reader owns
+    synchronization for concurrent calls.
 
     Attributes
     ----------
@@ -506,7 +515,7 @@ def _wrapped_token(array: Any) -> Any:
 
 
 class LazyArray:
-    """A lazily-indexable view over an array-API-like array.
+    """A lazily-indexable view over a system-memory/basic-indexing source.
 
     Wrapping neither copies nor reads the wrapped array at construction time.
     Indexing through `.lazy` composes an `IndexTransform` and returns another
@@ -597,7 +606,7 @@ class LazyArray:
             return tuple(int(s) for s in self._array.shape)
         return tuple(s.stop - s.start for s in self._window)
 
-    # -- array-API surface --------------------------------------------------
+    # -- array-like surface -------------------------------------------------
 
     @property
     def array(self) -> _WrappedArray:
@@ -913,7 +922,9 @@ class LazyArray:
         Yields one [`Partition`][zarr_indexing.lazy_array.Partition] per box the
         view actually touches. The parts tile the view exactly and disjointly,
         and each carries a `LazyArray` that can be resolved on its own: in
-        another thread, in another order, or not at all.
+        another thread, in another order, or not at all. Those views share this
+        view's reader, and `LazyArray` does not serialize calls, so a stateful
+        reader must synchronize its own mutable state.
 
         A wrapper with no partitioning (see `with_parts`) yields a single part
         covering the whole array.

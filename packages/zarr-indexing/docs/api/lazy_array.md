@@ -10,4 +10,11 @@ may first use an owned dense temporary. `LazyArray(source)` assumes only basic
 indexing, while `LazyArray.from_numpy(array)` explicitly selects NumPy's
 optimized reader.
 
+The built-in readers lower through NumPy system memory and support sources
+whose basic reads can be converted there. They do not implicitly transfer
+device arrays; a device source needs an explicit custom reader that transfers
+into the supplied system-memory output. Derived views and parts share their
+reader and part views may be materialized concurrently, so stateful readers
+must synchronize their own mutable state.
+
 ::: zarr_indexing.lazy_array
