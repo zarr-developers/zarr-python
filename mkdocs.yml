@@ -194,6 +194,7 @@ plugins:
             - https://docs.xarray.dev/en/stable/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://numcodecs.readthedocs.io/en/stable/objects.inv
+            - https://msgspec.dev/objects.inv
             - https://developmentseed.org/obstore/latest/objects.inv
             - https://filesystem-spec.readthedocs.io/en/latest/objects.inv
             - https://requests.readthedocs.io/en/latest/objects.inv

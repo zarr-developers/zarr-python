@@ -1,9 +1,10 @@
 """Helpers for validating JSON-decoded metadata.
 
-Most JSON metadata validation is delegated to ``msgspec.convert``, which
-handles the type coercions Zarr needs (``Literal`` membership, ``int``/``bool``
-strictness, list-to-tuple, ``TypedDict`` with ``NotRequired``). ``convert``
-is a thin wrapper that translates ``msgspec.ValidationError`` into the
+Most JSON metadata validation is delegated to
+[`msgspec.convert`][msgspec.convert], which handles the type coercions Zarr
+needs (``Literal`` membership, ``int``/``bool`` strictness, list-to-tuple,
+``TypedDict`` with ``NotRequired``). ``convert`` is a thin wrapper that
+translates [`msgspec.ValidationError`][msgspec.ValidationError] into the
 ``TypeError`` the rest of the codebase already raises.
 
 msgspec cannot handle two things in Zarr's metadata types:
@@ -45,9 +46,10 @@ def _type_name(type_: Any) -> str:
 
 
 def convert(value: object, type_: Any, *, strict: bool = True) -> Any:
-    """Validate and coerce ``value`` against ``type_`` via ``msgspec.convert``.
+    """Validate and coerce ``value`` against ``type_`` via [`msgspec.convert`][msgspec.convert].
 
-    On a mismatch msgspec raises ``msgspec.ValidationError``; this re-raises
+    On a mismatch msgspec raises
+    [`msgspec.ValidationError`][msgspec.ValidationError]; this re-raises
     a plain, field-agnostic ``ValueError`` naming the expected type, so callers
     can add their own field context (see ``parse_field``).
     """
