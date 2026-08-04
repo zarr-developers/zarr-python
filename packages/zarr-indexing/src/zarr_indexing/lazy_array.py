@@ -20,24 +20,17 @@ A `LazyArray` carries a **partitioning** of the array it wraps: a grid of boxes
 that a read is broken into. `parts()` walks those boxes as they fall through the
 view, yielding a [`Partition`](#zarr_indexing.lazy_array.Partition) per box. Its
 paired projection describes the chunk-local read and where its cells land in the
-request; `view` is the directly resolvable form. `result()` is built on that
-walk:
-
-```python
-for part in view.parts():
-    out[part.out_selection] = part.view.result()
-```
-
-Each box is therefore read once, and whatever the source could not do itself is
-applied to the block in memory.
+request; `view` carries that partition's transform. `result()` allocates one
+fresh output buffer, then reads each partition once through the selected reader
+into the final buffer or an owned temporary for fancy placement.
 
 The partitioning is discovered from the wrapped array at construction — first
 `read_chunk_sizes` (zarr's clipped per-axis sizes, sharding-aware), then
 `chunks`, read as per-axis sizes if its entries are sequences and as a uniform
 box shape if they are integers. Those attribute names belong to the wrapped
 array; this API refers only to parts. An array that advertises neither gets a
-single whole-array part, and resolving it lowers the whole view in one pass
-rather than materializing a block first.
+single whole-array part, and resolving it reads the whole view through its
+selected reader in one pass.
 
 `with_parts` replaces the partitioning without touching the data or the view:
 
@@ -52,28 +45,14 @@ Parts that do not align with the source's own boxes are permitted and can be
 useful (to bound peak memory, or to batch small reads); they cost extra I/O but
 do not affect correctness.
 
-What the source is asked for
----------------------------
-Sources differ in what their indexing surface accepts, so a read is negotiated
-rather than assumed. Each wrapper carries an
-[`IndexingSupport`](support.md) level, and every request is split in two: the
-largest part of the selection that level can express is asked of the source in a
-single call — through `oindex` or `vindex` when the source has them — and the
-remainder is applied to the block that comes back, with NumPy.
-
-The level is detected at construction (a NumPy array or zarr's
-`oindex`/`vindex` pair reads as `VECTORIZED`, a source's own
-`__zarr_indexing_support__` declaration is honored, and anything else is
-`BASIC`, which is the only assumption that is always safe).
-`with_indexing_support` overrides the detection:
-
-```python
-view.with_indexing_support(IndexingSupport.OUTER)
-```
-
-The level changes how much data crosses the boundary, never what `result()`
-returns. Declaring `BASIC` on a NumPy array answers exactly what `VECTORIZED`
-answers, having read the enclosing slab and gathered from it instead.
+Readers
+-------
+Every wrapper carries a reader that owns the backend-specific request. The
+default `basic_reader` needs only basic slicing; `LazyArray.from_numpy()` opts
+into `numpy_reader` for direct NumPy indexing. `with_reader()` replaces the
+reader without reading or changing the view metadata. The legacy
+`IndexingSupport` metadata remains available during its migration, but does not
+change materialization.
 
 Boxes and queries
 -----------------
@@ -134,20 +113,11 @@ for arithmetic on a large array either way. Use `.lazy[...]` to narrow the view
 first, or pass the wrapper to `dask.array.from_array` so that dask owns the
 compute graph.
 
-Device caveat
--------------
-Resolving a **partitioned** view builds its output buffer with NumPy, because
-the resolver's scatter indices are host-side integer arrays. Wrapping a device
-array that advertises parts therefore returns host memory, and any information
-carried by the wrapped array's own type is lost with it — a `numpy.ma` mask is
-the exception, kept by allocating a masked buffer. A wrapper with **no**
-partitioning (`unpartitioned()`) skips that buffer and stays in the wrapped
-array's own namespace.
-
-`result()` never returns memory shared with the wrapped array. That is settled
-from the arrays' memory bounds, which only NumPy exposes: a foreign namespace
-whose basic indexing returns views is beyond reach here, and an unpartitioned
-read of such a source can hand back one of its views.
+Ownership
+---------
+`result()` always allocates fresh system memory before reading through the
+selected reader. A `numpy.ma` source keeps its mask by receiving a masked
+output buffer; other source-specific array types do not survive materializing.
 """
 
 from __future__ import annotations
@@ -174,16 +144,16 @@ from zarr_indexing.chunk_resolution import (
 )
 from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
+    Reader,
+    _invoke_reader,
     _is_correlated,
-    _lower,
-    _push_slice_for_dimension_map,
-    _reshape,
+    basic_reader,
+    numpy_reader,
 )
 from zarr_indexing.support import (
     IndexingSupport,
-    has_accessor,
     resolve_indexing_support,
 )
 from zarr_indexing.transform import IndexTransform, selection_to_transform
@@ -214,24 +184,6 @@ class ArrayLike(Protocol):
 # the deliberately broad protocol above under strict type checking.  Accept an
 # ndarray explicitly so users do not have to erase its type with ``cast(Any, …)``.
 _WrappedArray = ArrayLike | np.ndarray[Any, Any]
-
-
-# --------------------------------------------------------------------------- #
-# Array-namespace helpers
-# --------------------------------------------------------------------------- #
-
-
-def _namespace(x: Any) -> Any:
-    """Return `x`'s array-API namespace, or None if it does not declare one."""
-    getter = getattr(x, "__array_namespace__", None)
-    if getter is None:
-        return None
-    try:
-        return getter()
-    # A foreign namespace may fail in arbitrary ways; discovery must degrade
-    # to "no information", never raise.
-    except Exception:  # pragma: no cover - a namespace that refuses to load
-        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -305,250 +257,8 @@ def _is_identity_transform(transform: IndexTransform, shape: tuple[int, ...]) ->
 
 
 # --------------------------------------------------------------------------- #
-# Source-capability negotiation
-# --------------------------------------------------------------------------- #
-#
-# `_lower` is exact but assumes the array under it accepts anything NumPy
-# accepts. Most sources do not, and the ones that do would rather be asked for
-# what is wanted in one request than be walked axis by axis. So a read is split
-# in two: a *pushed key*, the largest part of the selection the source can
-# express, and a *residual transform*, whatever is left, which `_lower` applies
-# to the block that comes back. The split is the same idea as xarray's
-# `decompose_indexer`, expressed over `IndexTransform` rather than over
-# xarray's explicit indexer classes.
-#
-# The pushed key holds exactly one selector per storage dimension, always a
-# slice or a one-dimensional integer array and never a bare integer, so the
-# block has one axis per storage dimension whatever the level. That invariant is
-# what lets the residual be built by rewriting output maps in place: only the
-# coordinates change, from storage coordinates to positions within the block.
-
-
-def _push_gain(coords: np.ndarray[Any, np.dtype[np.intp]]) -> float:
-    """How much a slab read of `coords` would over-read, as a ratio.
-
-    xarray's heuristic for choosing which axis keeps its array when only one
-    can: the span of the coordinates divided by how many distinct ones there
-    are. An axis whose coordinates are dense and contiguous scores 1 and loses
-    nothing to a slab; a sparse axis scores high and is the one worth spending
-    the single array slot on.
-    """
-    if coords.size == 0:
-        return 0.0
-    span = int(coords.max()) - int(coords.min()) + 1
-    return span / int(np.unique(coords).size)
-
-
-def _array_push_capacity(support: IndexingSupport, has_oindex: bool, wanted: int) -> int:
-    """How many axes may carry an integer array in one request to the source."""
-    if support is IndexingSupport.BASIC:
-        return 0
-    if support is IndexingSupport.OUTER_1VECTOR:
-        return 1
-    # OUTER and VECTORIZED both accept several array axes, but only through an
-    # `oindex` accessor: a bare `__getitem__` key with two arrays means an outer
-    # product to HDF5 and a correlated gather to NumPy, and nothing about the
-    # source says which reading applies. One array is the key both readings
-    # agree on, so that is the fallback.
-    return wanted if has_oindex else 1
-
-
-def _decompose(
-    transform: IndexTransform, support: IndexingSupport, has_oindex: bool
-) -> tuple[tuple[Any, ...], IndexTransform, int]:
-    """Split `transform` into a key for the source and a transform for the block.
-
-    Returns `(key, residual, n_arrays)`. `key` has one selector per storage
-    dimension; `n_arrays` is how many of them are integer arrays, which decides
-    whether the request goes to `oindex` or to `__getitem__`. Applying `residual`
-    to the block the key returns is equivalent to applying `transform` to the
-    source.
-    """
-    outputs = transform.output
-    coords: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {
-        d: (m.offset + m.stride * m.index_array).astype(np.intp)
-        for d, m in enumerate(outputs)
-        if isinstance(m, ArrayMap)
-    }
-    # An empty axis carries no coordinates to push and needs no array slot.
-    array_axes = [d for d, c in coords.items() if c.size > 0]
-    capacity = _array_push_capacity(support, has_oindex, len(array_axes))
-    if capacity >= len(array_axes):
-        pushed_axes = set(array_axes)
-    else:
-        ranked = sorted(array_axes, key=lambda d: _push_gain(coords[d]), reverse=True)
-        pushed_axes = set(ranked[:capacity])
-
-    key: list[Any] = []
-    residual: list[OutputIndexMap] = []
-    for d, m in enumerate(outputs):
-        if isinstance(m, ConstantMap):
-            # A slice rather than the integer: every axis survives into the
-            # block, so residual output `d` addresses block axis `d`.
-            key.append(slice(m.offset, m.offset + 1, 1))
-            residual.append(ConstantMap(offset=0))
-        elif isinstance(m, DimensionMap):
-            pushed, local = _push_slice_for_dimension_map(m, transform)
-            key.append(pushed)
-            residual.append(local)
-        else:
-            full = coords[d]
-            if full.size == 0:
-                key.append(slice(0, 0, 1))
-                local_index = full
-            elif d in pushed_axes:
-                # Sorted and deduplicated: a source is never asked for the same
-                # coordinate twice, and the residual looks positions back up.
-                unique = np.unique(full)
-                key.append(unique)
-                local_index = np.searchsorted(unique, full).astype(np.intp)
-            else:
-                # No array slot for this axis: read the slab it spans and
-                # gather from that instead.
-                origin = int(full.min())
-                key.append(slice(origin, int(full.max()) + 1, 1))
-                local_index = (full - origin).astype(np.intp)
-            residual.append(ArrayMap(index_array=local_index, input_dimension=m.input_dimension))
-    return (
-        tuple(key),
-        IndexTransform(domain=transform.domain, output=tuple(residual)),
-        len(pushed_axes),
-    )
-
-
-def _point_key(transform: IndexTransform) -> tuple[Any, ...] | None:
-    """The whole selection as one flat coordinate array per axis, or None.
-
-    Defined only when every storage dimension is addressed by a correlated
-    `ArrayMap` or fixed by a `ConstantMap`, which is what a plain `vindex[i, j,
-    k]` composes to. The points are then exactly the cells the view wants, in
-    the view's own order, so a source that can gather points has nothing left to
-    do — whereas the outer superset those same points span can be very much
-    larger than the points themselves.
-
-    A selection with a sliced axis is not expressible this way without
-    enumerating the slice, so it goes through `_decompose` instead.
-    """
-    shape = transform.domain.shape
-    if math.prod(shape) == 0:
-        return None
-    key: list[Any] = []
-    for m in transform.output:
-        if isinstance(m, ConstantMap):
-            key.append(np.full(math.prod(shape), m.offset, dtype=np.intp))
-        elif isinstance(m, ArrayMap) and m.input_dimension is None:
-            coords = (m.offset + m.stride * m.index_array).astype(np.intp)
-            key.append(np.broadcast_to(coords, shape).reshape(-1))
-        else:
-            return None
-    return tuple(key)
-
-
-def _shift_key(key: tuple[Any, ...], window: tuple[slice, ...] | None) -> tuple[Any, ...]:
-    """Rebase a key built in part-local coordinates onto the wrapped array."""
-    if window is None:
-        return key
-    shifted: list[Any] = []
-    for selector, w in zip(key, window, strict=True):
-        if isinstance(selector, slice):
-            shifted.append(slice(w.start + selector.start, w.start + selector.stop, selector.step))
-        else:
-            shifted.append(selector + w.start)
-    return tuple(shifted)
-
-
-def _gatherable(block: Any) -> Any:
-    """The block the residual is applied to, as something that can be gathered from.
-
-    The residual finishes the read with `take`, `reshape` and `transpose`, which
-    is more than the `BASIC` floor asks of a *source*: that floor is `shape`,
-    `dtype` and a `__getitem__` understanding integers and slices, and a source
-    meeting exactly it may hand back a block that understands no more. Such a
-    block is converted, so that the floor is a promise about the source alone.
-
-    A block that is already a NumPy array, or that answers with an array-API
-    namespace of its own, is left where it is: the namespace is how a device
-    array keeps a read on its own device (see the module docstring's device
-    caveat), and converting it would defeat that.
-    """
-    if isinstance(block, np.ndarray) or _namespace(block) is not None:
-        return block
-    return np.asarray(block)
-
-
-def _read(
-    source: Any,
-    window: tuple[slice, ...] | None,
-    transform: IndexTransform,
-    support: IndexingSupport,
-) -> Any:
-    """Materialize `transform` over `source`, asking for no more than `support` allows.
-
-    `window` restricts the read to one part's box, in the wrapped array's
-    coordinates; it is folded into the key rather than materialized first, so a
-    part costs one request whatever its selection looks like.
-    """
-    has_vindex = has_accessor(source, "vindex")
-    has_oindex = has_accessor(source, "oindex")
-
-    if support is IndexingSupport.VECTORIZED and _is_correlated(transform):
-        points = _point_key(transform)
-        if points is not None:
-            gathered = source.vindex if has_vindex else source
-            # The key is flat so that a `vindex` accepting only one-dimensional
-            # coordinate lists is served too; the shape is restored here.
-            block = _gatherable(gathered[_shift_key(points, window)])
-            return _reshape(block, transform.domain.shape)
-
-    key, residual, n_arrays = _decompose(transform, support, has_oindex)
-    key = _shift_key(key, window)
-    block = source.oindex[key] if n_arrays > 0 and has_oindex else source[key]
-    return _lower(_gatherable(block), residual)
-
-
-# --------------------------------------------------------------------------- #
 # Partitions
 # --------------------------------------------------------------------------- #
-
-
-def _wrapped_base(array: Any) -> Any:
-    """The concrete array at the bottom of a (possibly nested) wrapper."""
-    while isinstance(array, LazyArray):
-        array = array.array
-    return array
-
-
-def _detach(value: Any, source: Any) -> Any:
-    """Return `value` sharing no memory with the array `source` reads from.
-
-    An unpartitioned read of a selection that lowers to basic slicing hands back
-    a *view* of the wrapped array, so writing to it would reach through and
-    change the source — while the same read under any partitioning returns a
-    fresh buffer. `result()` is answering "what does this view hold", not "lend
-    me the storage", and its answer must not depend on how the read was divided.
-
-    Sharing is settled two ways, because the source is not always something
-    `may_share_memory` can be pointed at. When the wrapped array is itself a
-    NumPy array the two are compared directly, and the copy is made only when
-    they really overlap. When it is not — a duck array that stores its data in
-    NumPy and returns views from `__getitem__`, which is exactly the `BASIC`
-    source this package invites people to wrap — there is nothing to compare
-    against, so the question becomes whether the result owns its buffer. A NumPy
-    array that does not own its buffer is a view of something, and the only
-    thing it can be a view of here is storage the source lent us.
-
-    Deciding it that way means the answer never depends on knowing what the
-    source is: memory is released only when sharing is *disproved*, never merely
-    because it could not be established. An array whose namespace is foreign
-    enough that it is not a NumPy array at all is still handed back as it comes
-    (see the module docstring's device caveat).
-    """
-    if not isinstance(value, np.ndarray):
-        return value
-    base = _wrapped_base(source)
-    if isinstance(base, np.ndarray):
-        return value.copy() if np.may_share_memory(value, base) else value
-    return value if value.flags.owndata else value.copy()
 
 
 def _partition_out_selection(
@@ -682,10 +392,10 @@ class Partition:
         may be narrower than `projection.chunk_domain`.
     view
         A `LazyArray` covering exactly the cells of the view that live in this
-        box. Resolving it reads the box once with basic slicing and applies the
-        selection to the block in memory. Named `view` rather than `array`
-        because `LazyArray.array` is the opposite thing — the raw wrapped source
-        — and the two sat next to each other meaning inverses.
+        box. Resolving it reads the box once through its selected reader. Named
+        `view` rather than `array` because `LazyArray.array` is the opposite
+        thing — the raw wrapped source — and the two sat next to each other
+        meaning inverses.
     out_selection
         Where `view.result()` belongs in an array of the whole view's shape — a
         NumPy index tuple with one entry per dimension of the view, usable
@@ -711,6 +421,13 @@ class Partition:
     def is_complete(self) -> bool:
         """Whether the projection proves it covers the entire selected cell."""
         return self.projection.coverage == "full"
+
+
+def _global_transform(view: LazyArray) -> IndexTransform:
+    """Shift a part-local transform into the wrapped array's coordinates."""
+    if view._window is None:
+        return view._transform
+    return view._transform.translate(tuple(item.start for item in view._window))
 
 
 # --------------------------------------------------------------------------- #
@@ -790,19 +507,18 @@ class LazyArray:
 
     Selections use the **positional NumPy dialect**; reads are broken up along a
     **partitioning** discovered from the wrapped array; and how much of a
-    selection each read hands to that array is **negotiated** from an
-    [`IndexingSupport`](support.md) level, also detected here. See the module
-    docstring, which also covers how the dialect differs from `zarr.Array.lazy`
-    and why every non-indexing NumPy operation materializes the view.
+    selection each read hands to that array is determined by its reader. See
+    the module docstring, which also covers how the dialect differs from
+    `zarr.Array.lazy` and why every non-indexing NumPy operation materializes
+    the view.
 
     Parameters
     ----------
     array
         The array to wrap. It must expose `shape`, `dtype`, and `__getitem__`
-        with basic (integer/slice) indexing; anything beyond that is used only
-        if detected or declared. Its partitioning, if it advertises one, is
-        discovered here; use `with_parts` to choose a different one, and
-        `with_indexing_support` to choose a different level.
+        with basic (integer/slice) indexing. Its partitioning, if it advertises
+        one, is discovered here; use `with_parts` to choose a different one.
+        Use `with_reader` to select a different backend adapter.
 
     Examples
     --------
@@ -816,7 +532,7 @@ class LazyArray:
            [ 8, 10]])
     """
 
-    __slots__ = ("_array", "_parts", "_support", "_transform", "_window")
+    __slots__ = ("_array", "_parts", "_reader", "_support", "_transform", "_window")
 
     def __init__(self, array: _WrappedArray) -> None:
         if isinstance(array, np.matrix):
@@ -836,6 +552,16 @@ class LazyArray:
         self._transform = IndexTransform.from_shape(shape)
         self._parts = _discover_parts(array, shape)
         self._support = resolve_indexing_support(array)
+        self._reader = basic_reader
+
+    @classmethod
+    def from_numpy(cls, array: np.ndarray[Any, Any]) -> LazyArray:
+        """Wrap a NumPy array with the reader that can use NumPy indexing directly."""
+        if not isinstance(array, np.ndarray):
+            raise TypeError(
+                f"LazyArray.from_numpy requires a numpy.ndarray, got {type(array).__name__}"
+            )
+        return cls(array).with_reader(numpy_reader)
 
     @classmethod
     def _derive(
@@ -845,6 +571,7 @@ class LazyArray:
         parts: tuple[EdgeDimensionGrid, ...] | None,
         window: tuple[slice, ...] | None,
         support: IndexingSupport,
+        reader: Reader,
     ) -> LazyArray:
         """Build a wrapper sharing `array` but carrying a new transform or partitioning."""
         view = cls.__new__(cls)
@@ -855,6 +582,7 @@ class LazyArray:
         view._parts = parts
         view._window = window
         view._support = support
+        view._reader = reader
         return view
 
     @property
@@ -907,45 +635,40 @@ class LazyArray:
         """The wrapped array's dtype; views never change it."""
         return self._array.dtype
 
+    @property
+    def reader(self) -> Reader:
+        """The backend adapter used when this view materializes."""
+        return self._reader
+
+    def with_reader(self, reader: Reader) -> LazyArray:
+        """Return the same metadata view resolved through `reader`."""
+        if not callable(getattr(reader, "read_into", None)):
+            raise TypeError(f"reader.read_into must be callable, got {type(reader).__name__}")
+        return LazyArray._derive(
+            self._array,
+            self._transform,
+            self._parts,
+            self._window,
+            self._support,
+            reader,
+        )
+
     # -- source capability --------------------------------------------------
 
     @property
     def indexing_support(self) -> IndexingSupport:
-        """How much of a selection this wrapper hands to the array it wraps.
+        """Legacy indexing metadata retained during the reader migration.
 
-        Read-only; use
-        [`with_indexing_support`][zarr_indexing.lazy_array.LazyArray.with_indexing_support]
-        to change it. Resolved once, at construction, in this order:
-
-        1. an explicit `with_indexing_support` on this wrapper or the one it was
-           derived from;
-        2. the wrapped array's own `__zarr_indexing_support__` declaration;
-        3. inference from the wrapped array — `VECTORIZED` for a NumPy array or
-           for anything carrying zarr's `oindex`/`vindex` pair,
-           [`BASIC`][zarr_indexing.support.IndexingSupport] otherwise.
-
-        See [`zarr_indexing.support`](support.md) for what each level means and
-        why the default is the most restrictive one.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> LazyArray(np.arange(6)).indexing_support
-        <IndexingSupport.VECTORIZED: 'vectorized'>
+        Materialization is selected solely by [`reader`][zarr_indexing.lazy_array.LazyArray.reader].
         """
         return self._support
 
     def with_indexing_support(self, support: IndexingSupport) -> LazyArray:
-        """Return the same view, negotiating differently with the wrapped array.
+        """Return the same view with replacement legacy indexing metadata.
 
-        The transform, the wrapped array, the partitioning, and therefore
-        `result()` are all unchanged; only how much of a selection is asked of
-        the source, and how much is finished in memory, differs. Nothing is
-        copied and nothing is read.
-
-        Use this when the wrapped array supports more than can be detected from
-        the outside, or when it supports less than it appears to and a request
-        it cannot answer must not be made.
+        Nothing is copied or read. This compatibility path no longer changes
+        how `result()` materializes: use `with_reader` to change its backend
+        adapter.
 
         Parameters
         ----------
@@ -956,7 +679,7 @@ class LazyArray:
         Returns
         -------
         LazyArray
-            The same view, read through a differently-negotiated source.
+            The same view with the supplied legacy metadata.
 
         Raises
         ------
@@ -972,17 +695,16 @@ class LazyArray:
         >>> view = LazyArray(np.arange(6)).with_indexing_support(IndexingSupport.BASIC)
         >>> view.indexing_support
         <IndexingSupport.BASIC: 'basic'>
-        >>> view.lazy.oindex[[4, 1, 1]].result()
-        array([4, 1, 1])
         """
         # The annotation already says this, but the check is for callers who are
-        # not type-checked: a bare string is the obvious mistake to make here,
-        # and it would otherwise be read as "no arrays" and silently over-read.
+        # not type-checked: a bare string is the obvious mistake to make here.
         if not isinstance(support, IndexingSupport):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise TypeError(
                 f"indexing support must be an IndexingSupport, got {type(support).__name__}"
             )
-        return LazyArray._derive(self._array, self._transform, self._parts, self._window, support)
+        return LazyArray._derive(
+            self._array, self._transform, self._parts, self._window, support, self._reader
+        )
 
     # -- shape of the selection ---------------------------------------------
 
@@ -1222,7 +944,9 @@ class LazyArray:
         return self._with_grids(None)
 
     def _with_grids(self, grids: tuple[EdgeDimensionGrid, ...] | None) -> LazyArray:
-        return LazyArray._derive(self._array, self._transform, grids, self._window, self._support)
+        return LazyArray._derive(
+            self._array, self._transform, grids, self._window, self._support, self._reader
+        )
 
     def parts(self) -> Iterator[Partition]:
         """Iterate the base partitioning, projected through this view.
@@ -1284,7 +1008,9 @@ class LazyArray:
             yield Partition(
                 projection=projection,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
-                view=LazyArray._derive(self._array, local, None, window, self._support),
+                view=LazyArray._derive(
+                    self._array, local, None, window, self._support, self._reader
+                ),
                 out_selection=_partition_out_selection(projection.cell_transform),
             )
 
@@ -1315,7 +1041,9 @@ class LazyArray:
             composed = transform[literal]
         else:
             composed = selection_to_transform(literal, transform, mode)
-        return LazyArray._derive(self._array, composed, self._parts, self._window, self._support)
+        return LazyArray._derive(
+            self._array, composed, self._parts, self._window, self._support, self._reader
+        )
 
     def __getitem__(self, selection: Any) -> Any:
         """Read a basic selection eagerly, like `numpy.ndarray.__getitem__`.
@@ -1329,27 +1057,16 @@ class LazyArray:
     def result(self) -> Any:
         """Materialize this view.
 
-        Assembles the view from its `parts()`, reading each box once. A wrapper
-        with **no partitioning** — `unpartitioned()`, and the default for a
-        source that advertises none — skips the output buffer and lowers the
-        whole view directly to array operations. A partitioning with a single
-        whole-array box still goes through the buffer: the branch is on whether
-        a partitioning is in force, not on how many boxes it has.
-
-        The result never shares memory with the wrapped array, so writing to it
-        is safe whichever of those two routes it came by. That holds for a
-        source that stores its data in NumPy whether or not the source is itself
-        a NumPy array; a source whose namespace is foreign enough that its
-        blocks are not NumPy arrays is out of reach (see the module docstring's
-        device caveat).
+        Every result starts as a fresh system-memory buffer. Each touched
+        partition is read through the selected reader directly into its
+        rectangular destination, or into an owned dense temporary before fancy
+        placement. Empty views allocate without reading the source.
 
         Returns
         -------
         array
             An array of shape `self.shape`, identical whatever partitioning is
-            in force. A partitioned view produces a NumPy array (see the module
-            docstring's device caveat); an unpartitioned one produces whatever
-            the wrapped array's namespace produces. A view with a zero-rank
+            in force, always in fresh system memory. A view with a zero-rank
             domain returns a zero-dimensional array, not a scalar.
 
         Raises
@@ -1360,22 +1077,34 @@ class LazyArray:
             reported rather than returned.
         """
         out_shape = self.shape
+        out = self._output_buffer(out_shape)
         size = math.prod(out_shape)
         if size == 0:
-            return self._empty_result(out_shape)
+            return out
 
         if self._parts is None:
-            block = _read(self._array, self._window, self._transform, self._support)
-            return _detach(block, self._array)
+            _invoke_reader(self._reader, self._array, _global_transform(self), out)
+            return out
 
-        out = self._output_buffer(out_shape)
         written = 0
         for part in self.parts():
             # Counted before the scatter, so a part addressing the wrong
             # number of axes is named rather than reported as a broadcast
             # failure against the buffer.
             written += _out_selection_cell_count(part.out_selection, out_shape)
-            out[part.out_selection] = np.asanyarray(part.view.result())
+            direct = all(isinstance(selector, slice) for selector in part.out_selection)
+            if direct:
+                destination = out if len(part.out_selection) == 0 else out[part.out_selection]
+            else:
+                destination = part.view._output_buffer(part.view.shape)
+            _invoke_reader(
+                self._reader,
+                self._array,
+                _global_transform(part.view),
+                destination,
+            )
+            if not direct:
+                out[part.out_selection] = destination
         if written != size:
             # The buffer is uninitialized where no part wrote, so a partition
             # walk that does not tile the view exactly would otherwise hand
@@ -1388,32 +1117,13 @@ class LazyArray:
             )
         return out
 
-    def _empty_result(self, out_shape: tuple[int, ...]) -> Any:
-        """Allocate an empty result without asking the source for any data.
-
-        A masked source is answered from `_output_buffer`, which knows to build
-        a masked buffer, whatever partitioning is in force. Reaching for the
-        namespace's own `empty` first would hand back a plain array on the
-        unpartitioned path and a masked one on the partitioned path — the same
-        answer differing by how the read was divided, which `result()` promises
-        it never does. There are no cells either way, so this is about the type
-        the caller gets back rather than about any value.
-        """
-        if self._parts is None and not isinstance(self._array, np.ma.MaskedArray):
-            xp = _namespace(self._array)
-            empty = getattr(xp, "empty", None)
-            if empty is not None:
-                return empty(out_shape, dtype=self.dtype)
-        return self._output_buffer(out_shape)
-
     def _output_buffer(self, out_shape: tuple[int, ...]) -> Any:
         """The buffer `result()` scatters parts into.
 
         Deliberately uninitialized: every cell is written by exactly one part,
         and `result()` verifies that before returning. A masked source gets a
-        masked buffer so that scattering preserves the mask; nothing else about
-        the wrapped array's own type survives a partitioned read (see the module
-        docstring's device caveat).
+        masked buffer so that reader writes preserve the mask; other source-
+        specific array types do not survive materializing.
         """
         dtype = np.dtype(self.dtype)
         if isinstance(self._array, np.ma.MaskedArray):
@@ -1426,7 +1136,7 @@ class LazyArray:
         """Materialize the view as a NumPy array.
 
         The result never shares memory with the wrapped array, whatever `copy`
-        asks for: `result()` already detaches, so `copy=True` gets an array the
+        asks for: `result()` already allocates, so `copy=True` gets an array the
         caller owns and `copy=None` gets the same one rather than a second
         allocation. `copy=False` is refused, because materializing means reading
         — the values do not exist as a NumPy array until this call makes them.

@@ -30,6 +30,7 @@ from zarr_indexing import (
     dimension_grids_from_chunks,
 )
 from zarr_indexing.lazy_array import _out_selection_cell_count
+from zarr_indexing.reader import basic_reader, numpy_reader
 from zarr_indexing.support import IndexingSupport
 from zarr_indexing.testing import repartition
 
@@ -1007,6 +1008,117 @@ def test_zero_dimensional_result_is_an_array(source: LazyArray) -> None:
     assert isinstance(result, np.ndarray)
     assert result.ndim == 0
     assert result[()] == reference()[0, 1, 2]
+
+
+def test_construction_selects_readers_explicitly() -> None:
+    data = reference()
+    assert LazyArray(data).reader is basic_reader
+    assert LazyArray.from_numpy(data).reader is numpy_reader
+
+
+@pytest.mark.parametrize("value", [object(), [1, 2, 3], "array"])
+def test_from_numpy_rejects_non_ndarrays(value: Any) -> None:
+    with pytest.raises(TypeError, match="from_numpy requires a numpy.ndarray"):
+        LazyArray.from_numpy(value)
+
+
+class RecordingReader:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, IndexTransform, Any]] = []
+
+    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        self.calls.append((source, transform, out))
+        numpy_reader.read_into(source, transform, out)
+
+
+def test_view_operations_preserve_the_reader_without_reading() -> None:
+    data = reference()
+    reader = RecordingReader()
+    base = LazyArray(data).with_reader(reader)
+    views = (
+        base.lazy[1:5],
+        base.with_parts((2, 2, 2)),
+        base.with_parts_per_axis(((3, 3, 1), (2, 3), (1, 3))),
+        base.unpartitioned(),
+    )
+    assert reader.calls == []
+    assert all(view.reader is reader for view in views)
+    assert all(part.view.reader is reader for part in views[1].parts())
+
+
+@pytest.mark.parametrize("value", [object(), None, lambda: None])
+def test_with_reader_requires_callable_read_into(value: Any) -> None:
+    with pytest.raises(TypeError, match="reader.read_into must be callable"):
+        LazyArray(reference()).with_reader(value)
+
+
+class ReturningReader:
+    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> Any:
+        return np.empty(transform.domain.shape, dtype=source.dtype)
+
+
+def test_result_rejects_a_reader_that_returns_a_value() -> None:
+    view = LazyArray(reference()).with_reader(ReturningReader())
+    with pytest.raises(TypeError, match="must return None"):
+        view.result()
+
+
+class BufferRecordingReader(RecordingReader):
+    def __init__(self) -> None:
+        super().__init__()
+        self.owns_data: list[bool] = []
+
+    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        self.owns_data.append(bool(out.flags.owndata))
+        super().read_into(source, transform, out)
+
+
+def test_reader_is_called_once_per_touched_part() -> None:
+    data = np.arange(48).reshape(6, 8)
+    reader = RecordingReader()
+    view = LazyArray(data).with_reader(reader).with_parts((3, 4)).lazy[1:5, 2]
+    np.testing.assert_array_equal(view.result(), data[1:5, 2])
+    assert len(reader.calls) == len(tuple(view.parts())) == 2
+    assert all(call[1].domain.inclusive_min == (0,) * call[1].input_rank for call in reader.calls)
+
+
+def test_an_empty_result_does_not_call_the_reader() -> None:
+    reader = RecordingReader()
+    result = LazyArray(reference()).with_reader(reader).lazy[:, 0:0, :].result()
+    assert result.shape == (7, 0, 4)
+    assert reader.calls == []
+
+
+def test_rectangular_parts_write_into_result_views() -> None:
+    reader = BufferRecordingReader()
+    view = LazyArray(reference()).with_reader(reader).with_parts((2, 2, 2)).lazy[1:6, 1:4]
+    view.result()
+    assert reader.owns_data
+    assert not any(reader.owns_data)
+
+
+def test_fancy_part_placement_uses_owned_dense_temporaries() -> None:
+    reader = BufferRecordingReader()
+    view = (
+        LazyArray(reference())
+        .with_reader(reader)
+        .with_parts((2, 2, 2))
+        .lazy.oindex[[6, 1, 1], :, :]
+    )
+    np.testing.assert_array_equal(view.result(), reference()[np.ix_([6, 1, 1], range(5), range(4))])
+    assert any(reader.owns_data)
+
+
+def test_reader_exception_propagates_unchanged() -> None:
+    error = RuntimeError("backend failed")
+
+    class FailingReader:
+        def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+            raise error
+
+    with pytest.raises(RuntimeError) as caught:
+        LazyArray(reference()).with_reader(FailingReader()).result()
+    assert caught.value is error
 
 
 class ForeignArray:
