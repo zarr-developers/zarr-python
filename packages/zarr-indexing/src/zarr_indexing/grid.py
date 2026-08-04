@@ -78,7 +78,7 @@ class FixedDimension:
         return FixedDimension(size=self.size, extent=new_extent)
 
     @property
-    def _size_repr(self) -> str:
+    def size_repr(self) -> str:
         return str(self.size)
 
 
@@ -146,7 +146,7 @@ class VaryingDimension:
         return VaryingDimension(self.edges, extent=new_extent)
 
     @property
-    def _size_repr(self) -> str:
+    def size_repr(self) -> str:
         return repr(self.edges)
 
 
@@ -168,7 +168,7 @@ class DimensionGrid(Protocol):
     def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
     @property
-    def _size_repr(self) -> str: ...
+    def size_repr(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -202,10 +202,7 @@ class ChunkGrid:
         )
 
     def __repr__(self) -> str:
-        sizes = ", ".join(
-            dimension._size_repr
-            for dimension in self.dimensions  # pyright: ignore[reportPrivateUsage]
-        )
+        sizes = ", ".join(dimension.size_repr for dimension in self.dimensions)
         shape = tuple(dimension.extent for dimension in self.dimensions)
         return f"ChunkGrid(chunk_sizes=({sizes}), array_shape={shape})"
 
