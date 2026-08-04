@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from zarr_indexing import IndexTransform
-from zarr_indexing.reader import _invoke_reader, basic_reader, numpy_reader
+from zarr_indexing.reader import basic_reader, invoke_reader, numpy_reader
 
 
 class BasicOnlySource:
@@ -96,4 +96,4 @@ def test_invoke_reader_rejects_a_reader_that_returns_a_value() -> None:
             return object()
 
     with pytest.raises(TypeError, match="reader.read_into must return None, got object"):
-        _invoke_reader(InvalidReader(), SOURCE, BASE, np.empty(SOURCE.shape, dtype=SOURCE.dtype))
+        invoke_reader(InvalidReader(), SOURCE, BASE, np.empty(SOURCE.shape, dtype=SOURCE.dtype))

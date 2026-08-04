@@ -47,7 +47,7 @@ basic_reader: Final = BasicReader()
 numpy_reader: Final = NumPyReader()
 
 
-def _invoke_reader(
+def invoke_reader(
     reader: Reader,
     source: Any,
     transform: IndexTransform,
@@ -74,7 +74,7 @@ def _expand_dims(array: Any, axis: int) -> Any:
     return np.expand_dims(array, axis)
 
 
-def _is_correlated(transform: IndexTransform) -> bool:
+def is_correlated(transform: IndexTransform) -> bool:
     """True when the transform gathers a list of points rather than an outer product."""
     return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
 
@@ -163,7 +163,7 @@ def _lower(array: Any, transform: IndexTransform) -> Any:
     always in the transform's own domain axis order and of exactly its domain
     shape.
     """
-    if _is_correlated(transform):
+    if is_correlated(transform):
         result = _lower_correlated(array, transform)
     else:
         result = _lower_orthogonal(array, transform)

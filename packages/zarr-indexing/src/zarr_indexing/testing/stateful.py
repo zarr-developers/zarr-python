@@ -238,7 +238,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
             source = self.make_source(self.model)
             setattr(cls, _SOURCE, source)
         self.view = LazyArray(source)
-        self.readers = _reader_set(self.view, cls.readers)
+        self.reader_choices = _reader_set(self.view, cls.readers)
         # Genuine fancy-after-fancy raises `NotImplementedError` by design, so a
         # chain carries at most one fancy step — in either order relative to the
         # basic ones.
@@ -301,7 +301,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
     @rule(data=st.data())
     def choose_reader(self, data: st.DataObject) -> None:
         """Read the rest of the chain through another conforming strategy."""
-        reader = data.draw(st.sampled_from(list(self.readers)))
+        reader = data.draw(st.sampled_from(list(self.reader_choices)))
         self.view = self.view.with_reader(reader)
         self.chain.append(("reader", type(reader).__qualname__))
 

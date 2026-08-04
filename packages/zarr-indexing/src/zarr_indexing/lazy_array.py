@@ -132,7 +132,7 @@ import operator
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
@@ -150,9 +150,9 @@ from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
     Reader,
-    _invoke_reader,
-    _is_correlated,
     basic_reader,
+    invoke_reader,
+    is_correlated,
     numpy_reader,
 )
 from zarr_indexing.transform import IndexTransform, selection_to_transform
@@ -265,7 +265,7 @@ def _partition_out_selection(
 ) -> tuple[Any, ...]:
     """Lower ``cell_transform`` to NumPy selectors on the request buffer."""
     domain = cell_transform.domain
-    if _is_correlated(cell_transform):
+    if is_correlated(cell_transform):
         correlated_selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
         for output_map in cell_transform.output:
             if isinstance(output_map, ConstantMap):
@@ -422,13 +422,6 @@ class Partition:
         return self.projection.coverage == "full"
 
 
-def _global_transform(view: LazyArray) -> IndexTransform:
-    """Shift a part-local transform into the wrapped array's coordinates."""
-    if view._window is None:
-        return view._transform
-    return view._transform.translate(tuple(item.start for item in view._window))
-
-
 # --------------------------------------------------------------------------- #
 # Tokenization
 # --------------------------------------------------------------------------- #
@@ -556,7 +549,7 @@ class LazyArray:
     @classmethod
     def from_numpy(cls, array: np.ndarray[Any, Any]) -> LazyArray:
         """Wrap a NumPy array with its explicitly selected optimized reader."""
-        if not isinstance(array, np.ndarray):
+        if not isinstance(cast(object, array), np.ndarray):
             raise TypeError(
                 f"LazyArray.from_numpy requires a numpy.ndarray, got {type(array).__name__}"
             )
@@ -613,6 +606,12 @@ class LazyArray:
     def transform(self) -> IndexTransform:
         """The composed transform from this view's coordinates to storage."""
         return self._transform
+
+    def _global_transform(self) -> IndexTransform:
+        """Shift a part-local transform into the wrapped array's coordinates."""
+        if self._window is None:
+            return self._transform
+        return self._transform.translate(tuple(item.start for item in self._window))
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -1020,7 +1019,7 @@ class LazyArray:
             return out
 
         if self._parts is None:
-            _invoke_reader(self._reader, self._array, _global_transform(self), out)
+            invoke_reader(self._reader, self._array, self._global_transform(), out)
             return out
 
         written = 0
@@ -1034,10 +1033,10 @@ class LazyArray:
                 destination = out if len(part.out_selection) == 0 else out[part.out_selection]
             else:
                 destination = part.view._output_buffer(part.view.shape)
-            _invoke_reader(
+            invoke_reader(
                 self._reader,
                 self._array,
-                _global_transform(part.view),
+                part.view._global_transform(),
                 destination,
             )
             if not direct:
