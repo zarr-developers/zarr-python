@@ -19,7 +19,7 @@ those. See https://github.com/zarr-developers/zarr-python/issues/3285.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast, get_origin
 
 import msgspec
 
@@ -33,6 +33,14 @@ MAX_JSON_DEPTH: Final = 64
 
 
 def _type_name(type_: Any) -> str:
+    """Render ``type_`` for an error message.
+
+    Parameterized types keep their arguments, so a ``Literal`` reports its
+    members (``Literal[2, 3]``) rather than the bare origin name. ``__name__``
+    would drop them, which loses the most useful part of the message.
+    """
+    if get_origin(type_) is not None:
+        return str(type_).replace("typing.", "")
     return getattr(type_, "__name__", None) or str(type_).replace("typing.", "")
 
 
@@ -62,7 +70,9 @@ def parse_field(
     try:
         return convert(data, type_)
     except ValueError as exc:
-        raise error(f"Failed to parse input for {field!r}.") from exc
+        raise error(
+            f"Failed to parse input for {field!r}: expected {_type_name(type_)}, got {data!r}."
+        ) from exc
 
 
 def validate_json_value(value: object, *, max_depth: int = MAX_JSON_DEPTH, _depth: int = 0) -> JSON:
