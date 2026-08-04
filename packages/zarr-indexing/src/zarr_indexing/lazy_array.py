@@ -1,7 +1,7 @@
 """`LazyArray` — TensorStore-style lazy indexing over any array-API-like array.
 
 `LazyArray` wraps an existing array — NumPy, zarr, CuPy, anything with `shape`,
-`dtype`, and `__getitem__` — and adds a `.lazy` accessor whose indexing
+`dtype`, and basic `__getitem__` — and adds a `.lazy` accessor whose indexing
 operations build up an [`IndexTransform`](transform.md) instead of reading data:
 
 ```python
@@ -11,8 +11,8 @@ values = view.result()
 ```
 
 Nothing is read until `result()` (or `__array__`, or an eager `__getitem__`).
-Composition does not accumulate layers: a view of a view is still a single
-transform.
+Every `.lazy` operation is metadata-only. Composition does not accumulate
+layers: a view of a view is still a single transform and retains its reader.
 
 Parts
 -----
@@ -48,9 +48,14 @@ do not affect correctness.
 Readers
 -------
 Every wrapper carries a reader that owns the backend-specific request. The
-default `basic_reader` needs only basic slicing; `LazyArray.from_numpy()` opts
-into `numpy_reader` for direct NumPy indexing. `with_reader()` replaces the
-reader without reading or changing the view metadata.
+transform answers **which values?** and is independent of the backend; the
+reader answers **how does this backend obtain them?** and must preserve the
+complete transform exactly. Readers do not define indexing semantics,
+partitioning, scheduling, or result ownership. The conservative
+`LazyArray(source)` uses `basic_reader`, which needs only basic slicing.
+`LazyArray.from_numpy(array)` explicitly opts into `numpy_reader` for direct
+NumPy indexing. `with_reader()` replaces the reader without reading or changing
+the view metadata.
 
 Boxes and queries
 -----------------
@@ -499,12 +504,12 @@ class LazyArray:
     Indexing through `.lazy` composes an `IndexTransform` and returns another
     `LazyArray`; `result()` materializes.
 
-    Selections use the **positional NumPy dialect**; reads are broken up along a
-    **partitioning** discovered from the wrapped array; and how much of a
-    selection each read hands to that array is determined by its reader. See
-    the module docstring, which also covers how the dialect differs from
-    `zarr.Array.lazy` and why every non-indexing NumPy operation materializes
-    the view.
+    Selections use the **positional NumPy dialect** and reads are broken up
+    along a **partitioning** discovered from the wrapped array. Every derived
+    view retains its reader; that reader receives the complete projected
+    transform once per part. See the module docstring, which also covers how the
+    dialect differs from `zarr.Array.lazy` and why every non-indexing NumPy
+    operation materializes the view.
 
     Parameters
     ----------
@@ -512,13 +517,14 @@ class LazyArray:
         The array to wrap. It must expose `shape`, `dtype`, and `__getitem__`
         with basic (integer/slice) indexing. Its partitioning, if it advertises
         one, is discovered here; use `with_parts` to choose a different one.
-        Use `with_reader` to select a different backend adapter.
+        This conservative constructor selects `basic_reader`; use `from_numpy`
+        for a NumPy array or `with_reader` to select another backend adapter.
 
     Examples
     --------
     >>> import numpy as np
     >>> source = np.arange(12).reshape(3, 4)
-    >>> view = LazyArray(source).with_parts((2, 2)).lazy[1:, ::2]
+    >>> view = LazyArray.from_numpy(source).with_parts((2, 2)).lazy[1:, ::2]
     >>> view.shape
     (2, 2)
     >>> view.result()
@@ -549,7 +555,7 @@ class LazyArray:
 
     @classmethod
     def from_numpy(cls, array: np.ndarray[Any, Any]) -> LazyArray:
-        """Wrap a NumPy array with the reader that can use NumPy indexing directly."""
+        """Wrap a NumPy array with its explicitly selected optimized reader."""
         if not isinstance(array, np.ndarray):
             raise TypeError(
                 f"LazyArray.from_numpy requires a numpy.ndarray, got {type(array).__name__}"
@@ -673,7 +679,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> array = LazyArray(np.arange(12).reshape(3, 4))
+        >>> array = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
         >>> (array.lazy[1:, ::2].is_box, array.lazy.oindex[[2, 0], :].is_box)
         (True, False)
         """
@@ -713,7 +719,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> array = LazyArray(np.arange(12).reshape(3, 4))
+        >>> array = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
         >>> array.lazy[1:, ::2].bounding_box()
         ((1, 3), (0, 3))
         >>> array.lazy.oindex[[2, 0], :].bounding_box()
@@ -770,7 +776,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> array = LazyArray(np.arange(24).reshape(4, 6))
+        >>> array = LazyArray.from_numpy(np.arange(24).reshape(4, 6))
         >>> (array.lazy[1:, ::2].bounding_box(), array.lazy[1:, ::2].strides())
         (((1, 4), (0, 5)), (1, 2))
         >>> array.lazy[2, ::3].strides()
@@ -822,7 +828,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> view = LazyArray(np.arange(12).reshape(3, 4))
+        >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
         >>> [part.base_coords for part in view.with_parts((2, 3)).parts()]
         [(0, 0), (0, 1), (1, 0), (1, 1)]
         """
@@ -860,7 +866,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> view = LazyArray(np.arange(12).reshape(3, 4))
+        >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
         >>> [part.box for part in view.with_parts_per_axis(((1, 2), (4,))).parts()]
         [((0, 1), (0, 4)), ((1, 3), (0, 4))]
         """
@@ -869,9 +875,9 @@ class LazyArray:
     def unpartitioned(self) -> LazyArray:
         """Return the same view, read in one pass.
 
-        `result()` then lowers the whole view to array operations directly
-        rather than allocating an output buffer and assembling it box by box.
-        `parts()` still yields a single part covering everything.
+        `result()` still allocates its owned output buffer first, then calls the
+        reader once with the whole projected transform. `parts()` still yields a
+        single part covering everything.
 
         Returns
         -------
@@ -906,7 +912,7 @@ class LazyArray:
         Examples
         --------
         >>> import numpy as np
-        >>> view = LazyArray(np.arange(12).reshape(3, 4)).with_parts((2, 2))
+        >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4)).with_parts((2, 2))
         >>> part = next(view.lazy[:, 1:].parts())
         >>> (part.base_coords, part.view.shape, part.is_complete)
         ((0, 0), (2, 1), False)

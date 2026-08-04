@@ -56,7 +56,7 @@ zarr_chunks = {
     for chunk_column in range(2)
 }
 zarr_source = RecordingChunkSource(zarr_chunks)
-zarr_view = LazyArray(zarr_image).with_parts((2, 2)).lazy[1, 0:4]
+zarr_view = LazyArray.from_numpy(zarr_image).with_parts((2, 2)).lazy[1, 0:4]
 ZARR_RESULT = np.empty(zarr_view.shape, dtype=zarr_image.dtype)
 shared_domains: list[tuple[IndexDomain, IndexDomain]] = []
 chunk_local_coords: list[tuple[tuple[int, ...], ...]] = []

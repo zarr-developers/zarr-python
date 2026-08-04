@@ -5,7 +5,7 @@ import numpy as np
 from zarr_indexing import LazyArray
 
 image = np.arange(12).reshape(3, 4)
-lazy = LazyArray(image)
+lazy = LazyArray.from_numpy(image)
 
 # --8<-- [start:axis-shape-comparison]
 integer_view = lazy.lazy[1, :]

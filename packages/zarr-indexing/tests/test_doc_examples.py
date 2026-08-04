@@ -178,7 +178,7 @@ def test_canonical_slice_introduces_one_dimensional_lazy_indexing_before_partiti
     )[0]
 
     assert "source = np.array([10, 11, 12, 13, 14, 15])" in region
-    assert "lazy = LazyArray(source)" in region
+    assert "lazy = LazyArray.from_numpy(source)" in region
     assert "view = lazy.lazy[2:5]" in region
     assert ".with_parts(" not in region
     assert "[1," not in region
@@ -280,7 +280,7 @@ def test_indexing_pattern_matrix_is_complete() -> None:
 @pytest.mark.parametrize("case", PATTERN_CASES, ids=lambda case: case["name"])
 def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
     image = PATTERN_NAMESPACE["image"]
-    lazy = LazyArray(image)
+    lazy = LazyArray.from_numpy(image)
     accessor = {
         "basic": lazy.lazy,
         "orthogonal": lazy.lazy.oindex,

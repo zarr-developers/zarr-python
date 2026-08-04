@@ -11,7 +11,7 @@ import numpy as np
 from zarr_indexing import LazyArray
 
 source = np.array([10, 11, 12, 13, 14, 15])
-view = LazyArray(source).lazy[2:5]
+view = LazyArray.from_numpy(source).lazy[2:5]
 
 view.result()
 # array([12, 13, 14])
@@ -23,7 +23,7 @@ assert LANDING_QUICKSTART_RESULT.tolist() == [12, 13, 14]
 
 # --8<-- [start:canonical-slice]
 source = np.array([10, 11, 12, 13, 14, 15])
-lazy = LazyArray(source)
+lazy = LazyArray.from_numpy(source)
 view = lazy.lazy[2:5]
 
 assert view.result().tolist() == [12, 13, 14]

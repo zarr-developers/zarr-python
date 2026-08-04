@@ -25,6 +25,12 @@ You can finish the tour with a practical mental model: indexing through
 `LazyArray.lazy` builds a view, chunk planning partitions its coordinates, and
 `result()` materializes that view.
 
+The transform answers **which values?** and is independent of the backend. The
+reader answers **how do I obtain them?** and must preserve the transform
+exactly. `LazyArray(source)` assumes only basic indexing; use
+`LazyArray.from_numpy(array)` when the source is visibly a NumPy array and its
+optimized reader is appropriate.
+
 ## An index selects coordinates {#an-index-selects-coordinates}
 
 Begin with an ordinary NumPy array. `source` contains the values 10 through 15.

@@ -23,7 +23,7 @@ from zarr_indexing import LazyArray
 def test_wrap_and_compose() -> None:
     """Wrap an array, compose selections without reading, then materialize once."""
     data = np.arange(12 * 8).reshape(12, 8)
-    lazy = LazyArray(data)
+    lazy = LazyArray.from_numpy(data)
 
     # The wrapper forwards the attributes an array consumer expects.
     assert lazy.shape == (12, 8)
@@ -61,7 +61,7 @@ def test_wrap_and_compose() -> None:
 def test_box_and_query_selections() -> None:
     """Distinguish selections that describe a region from selections that gather points."""
     data = np.arange(12 * 8).reshape(12, 8)
-    lazy = LazyArray(data)
+    lazy = LazyArray.from_numpy(data)
 
     # A box selection is built from slices and integers alone. It is described
     # completely by an interval and a step per dimension, so a consumer can
@@ -91,7 +91,7 @@ def test_parts() -> None:
 
     # A plain NumPy array declares no partitioning, so `with_parts` states one.
     # Partitioning changes the granularity of reads, never the result.
-    lazy = LazyArray(data).with_parts((4, 4))
+    lazy = LazyArray.from_numpy(data).with_parts((4, 4))
     view = lazy.lazy[2:10, ::2]
 
     parts = list(view.parts())
@@ -108,7 +108,9 @@ def test_parts() -> None:
     assert np.array_equal(assembled, view.result())
 
     # The partitioning is a read strategy, so a different one gives the same data.
-    assert np.array_equal(LazyArray(data).with_parts((5, 3)).lazy[2:10, ::2].result(), assembled)
+    assert np.array_equal(
+        LazyArray.from_numpy(data).with_parts((5, 3)).lazy[2:10, ::2].result(), assembled
+    )
 
 
 if __name__ == "__main__":

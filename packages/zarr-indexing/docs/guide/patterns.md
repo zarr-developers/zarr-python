@@ -13,8 +13,8 @@ that distinction with non-zero and negative-origin domains.
 
 ## Selection matrix
 
-The table uses the 6-by-8 `image` and names from the executable matrix below.
-`lazy` means `LazyArray(image)`. A **box** has an interval and stride per source
+The table uses the 6-by-8 NumPy `image` and names from the executable matrix below.
+`lazy` means `LazyArray.from_numpy(image)`. A **box** has an interval and stride per source
 dimension; a **query** carries explicit source coordinates.
 
 | Case | Expression | Result shape | Category | API mode |

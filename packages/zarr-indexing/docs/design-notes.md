@@ -187,22 +187,21 @@ speculatively; `is_box` is the runtime check until then.
 
 ## Related work
 
-The closest neighbour to this package in the Python ecosystem is xarray's
-[`xarray/core/indexing.py`](https://github.com/pydata/xarray/blob/main/xarray/core/indexing.py).
-It solves the same problem — carrying a selection around as a value, and
-deciding how much of it a given backend can be asked to perform — and the
-`IndexingSupport` taxonomy here (`BASIC`, `OUTER`, `OUTER_1VECTOR`,
-`VECTORIZED`) is taken from it, member names and meanings included, so that a
-reader who knows one knows the other. The split of a selection into a part
-pushed to the source and a part finished with NumPy follows xarray's
-`decompose_indexer`, and the heuristic for choosing which axis keeps its
-coordinate array when only one can is xarray's.
+TensorStore is the prior art for the transform algebra, as described above. At
+the execution boundary, this package instead gives each backend a complete
+transform through a `Reader`. A transform answers **which values?**; the reader
+answers **how does this backend obtain them?** The reader must preserve the
+transform exactly, but it does not participate in indexing semantics,
+partitioning, scheduling, or result ownership.
 
-This package is a standalone implementation rather than a port: no code is
-shared, the selection is carried as an `IndexTransform` rather than as xarray's
-explicit indexer classes, and the decomposition is applied per chunk partition
-as well as per array, so a source is asked for one key per box rather than one
-key per read.
+Earlier versions used a capability taxonomy modeled on historical indexing
+dialects. That model required deciding which fragment of a request a backend
+could accept and finishing the rest elsewhere. A reader lowers the complete
+transform and can compose through delegation instead. This resembles
+[zarrita.js store extensions](https://zarrita.dev/packages/zarrita.html), where
+storage-specific behavior is an explicit extension point rather than an
+inferred array capability. The implementation remains independently authored:
+no code is shared with TensorStore, xarray, or zarrita.js.
 
 ## Current scope
 

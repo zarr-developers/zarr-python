@@ -103,7 +103,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
 )
 
-lazy = LazyArray(image)
+lazy = LazyArray.from_numpy(image)
 for case in PATTERN_CASES:
     accessor = {
         "basic": lazy.lazy,

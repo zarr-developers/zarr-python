@@ -119,7 +119,7 @@ def test_indexing_only_workload() -> None:
         return array
 
     def lazy_chain(depth: int) -> LazyArray:
-        view = LazyArray(data)
+        view = LazyArray.from_numpy(data)
         for _ in range(depth):
             view = view.lazy[1:]
         return view

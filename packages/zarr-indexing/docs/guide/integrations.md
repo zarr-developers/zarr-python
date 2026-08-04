@@ -3,6 +3,9 @@
 This package supplies indexing plans. It does **not** supply scheduling,
 caching, codecs, or async orchestration. A consumer decides when projections
 run, how decoded chunks are obtained, and where completed values are retained.
+An `IndexTransform` says which source values belong in a result; a `Reader`
+lowers that complete transform for one backend. The reader does not choose
+indexing semantics or result ownership.
 
 ## Zarr chunk dispatch
 
@@ -80,11 +83,11 @@ Its source represents already decoded chunks and records each read:
 ```
 
 `LazyArray` converts a cache selection into transforms and partitions, then
-allocates and assembles the result. `SystemMemoryChunkReader` intercepts each
-materialized part, plans its chunks, reads resident buffers, and applies the
-paired transforms. The reader owns cache state and source reads; it does not
-own result shape or assembly. `SystemMemoryChunkCache` is only the thin
-NumPy-style facade that configures that reader:
+allocates and assembles the result. `SystemMemoryChunkReader` receives one
+complete transform for each materialized part, plans its chunks, reads resident
+buffers, and applies the paired transforms. The reader owns cache state and
+source reads; it does not own result shape or assembly. `SystemMemoryChunkCache`
+is only the thin NumPy-style facade that configures that reader:
 
 Its indexing dialects remain explicit: `cache[key]` accepts basic indexing
 (integers, slices, ellipsis, and new axes), while `cache.oindex[key]` combines

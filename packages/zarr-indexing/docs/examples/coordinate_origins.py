@@ -19,7 +19,7 @@ assert domain.contains((-1,))
 assert domain.narrow(-1).inclusive_min == (-1,)
 
 values = np.array([10, 20, 30, 40, 50])
-assert LazyArray(values).lazy[-1:].result().tolist() == [50]
+assert LazyArray.from_numpy(values).lazy[-1:].result().tolist() == [50]
 # --8<-- [end:coordinate-origin]
 
 

@@ -46,7 +46,7 @@ assert all(chunk_domain == cell_domain for chunk_domain, cell_domain in PAIRED_D
 
 # --8<-- [start:advanced-projection]
 image = np.arange(48).reshape(6, 8)
-advanced = LazyArray(image).with_parts((3, 4)).lazy.oindex[[4, 1, 1], 2:6]
+advanced = LazyArray.from_numpy(image).with_parts((3, 4)).lazy.oindex[[4, 1, 1], 2:6]
 
 ADVANCED_EXPECTED = image[[4, 1, 1]][:, 2:6]
 ADVANCED_RESULT = np.empty_like(ADVANCED_EXPECTED)
