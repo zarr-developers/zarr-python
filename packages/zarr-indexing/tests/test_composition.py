@@ -40,6 +40,19 @@ class TestComposeDimensionInner:
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 25
 
+    def test_dimension_inner_constant_outer_rejects_affine_overflow(self) -> None:
+        outer = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ConstantMap(offset=2**62),),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain((2**62,), (2**62 + 1,)),
+            output=(DimensionMap(input_dimension=0, stride=4),),
+        )
+
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            compose(outer, inner)
+
     def test_dimension_inner_dimension_outer(self) -> None:
         outer = IndexTransform(
             domain=IndexDomain.from_shape((3,)),
@@ -88,6 +101,19 @@ class TestComposeArrayInner:
         result = compose(outer, inner)
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 20
+
+    def test_array_inner_constant_outer_rejects_affine_overflow(self) -> None:
+        outer = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ConstantMap(offset=0),),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ArrayMap(np.array([2**62], dtype=np.intp), stride=4),),
+        )
+
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            compose(outer, inner)
 
     def test_array_inner_array_outer(self) -> None:
         outer_arr = np.array([0, 2, 1], dtype=np.intp)

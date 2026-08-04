@@ -127,7 +127,7 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     outer_map = outer.output[dim_i]
 
     if isinstance(outer_map, ConstantMap):
-        return ConstantMap(offset=offset_i + stride_i * outer_map.offset)
+        return ConstantMap(offset=checked_affine(offset_i, stride_i, outer_map.offset))
 
     if isinstance(outer_map, DimensionMap):
         return DimensionMap(
@@ -226,7 +226,7 @@ def _compose_array(
     )
     gathered = np.asarray(arr_i[positions])
     if gathered.ndim == 0:
-        return ConstantMap(offset=inner_map.offset + inner_map.stride * int(gathered))
+        return ConstantMap(offset=checked_affine(inner_map.offset, inner_map.stride, int(gathered)))
     return ArrayMap(
         index_array=gathered,
         offset=inner_map.offset,
