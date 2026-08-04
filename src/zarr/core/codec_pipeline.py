@@ -331,8 +331,8 @@ async def _async_read_fallback(
     then scatters each decoded chunk into `out` at its `out_selection`.
 
     Used by both `BatchedCodecPipeline.read_batch` (non-partial-decode
-    branch) and `FusedCodecPipeline.read` (when the store is not a
-    `SupportsGetSync` / sync transform is unavailable).
+    branch) and `FusedCodecPipeline.read` (when the store does not advertise
+    sync IO / sync transform is unavailable).
     """
 
     chunk_array_batch: list[NDBuffer | None]
@@ -393,8 +393,8 @@ async def _async_write_fallback(
     if encoding produced `None` or the chunk dropped).
 
     Used by both `BatchedCodecPipeline.write_batch` (non-partial-encode
-    branch) and `FusedCodecPipeline.write` (when the store is not a
-    `SupportsSetSync` / sync transform is unavailable).
+    branch) and `FusedCodecPipeline.write` (when the store does not advertise
+    sync IO / sync transform is unavailable).
     """
 
     if use_sync := (
@@ -1265,16 +1265,17 @@ class FusedCodecPipeline(CodecPipeline):
             return ()
 
         # Fast path: sync transform plus synchronous IO. For StorePath the gate
-        # is on the STORE's sync support (StorePath always has a get_sync
-        # method, but it only works when its store does); for other byte
-        # getters (e.g. the sharding codec's in-memory _ShardingByteGetter) the
-        # SyncByteGetter protocol is the gate.
-        from zarr.abc.store import SupportsGetSync, SyncByteGetter
+        # is the STORE's sync-IO capability (`_store_supports_sync_io`) (StorePath always has a
+        # get_sync method, but it only works when its store implements the full
+        # sync surface); for other byte getters (e.g. the sharding codec's
+        # in-memory _ShardingByteGetter) the SyncByteGetter protocol is the
+        # gate.
+        from zarr.abc.store import SyncByteGetter, _store_supports_sync_io
         from zarr.storage._common import StorePath
 
         first_bg = batch[0][0]
         if self.sync_transform is not None and (
-            (isinstance(first_bg, StorePath) and isinstance(first_bg.store, SupportsGetSync))
+            (isinstance(first_bg, StorePath) and _store_supports_sync_io(first_bg.store))
             or (not isinstance(first_bg, StorePath) and isinstance(first_bg, SyncByteGetter))
         ):
             # One thread hop for the WHOLE batch — not per chunk, so the fused
@@ -1328,14 +1329,17 @@ class FusedCodecPipeline(CodecPipeline):
             return
 
         # Fast path: sync transform plus synchronous IO. Mirrors `read`: gate
-        # StorePath on the store's sync support, other byte setters (e.g. the
-        # sharding codec's in-memory _ShardingByteSetter) on SyncByteSetter.
-        from zarr.abc.store import SupportsSetSync, SyncByteSetter
+        # StorePath on the store's sync-IO capability (`_store_supports_sync_io`) — write_sync
+        # needs the FULL sync surface (get_sync for partial-chunk
+        # read-modify-write, delete_sync for all-fill chunks), not just
+        # set_sync — and other byte setters (e.g. the sharding codec's
+        # in-memory _ShardingByteSetter) on SyncByteSetter.
+        from zarr.abc.store import SyncByteSetter, _store_supports_sync_io
         from zarr.storage._common import StorePath
 
         first_bs = batch[0][0]
         if self.sync_transform is not None and (
-            (isinstance(first_bs, StorePath) and isinstance(first_bs.store, SupportsSetSync))
+            (isinstance(first_bs, StorePath) and _store_supports_sync_io(first_bs.store))
             or (not isinstance(first_bs, StorePath) and isinstance(first_bs, SyncByteSetter))
         ):
             # One thread hop for the whole batch; see the matching comment in

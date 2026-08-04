@@ -84,11 +84,11 @@ class StorePath:
 
             The accepted values are:
 
-            - ``'r'``: read only (must exist)
-            - ``'r+'``: read/write (must exist)
-            - ``'a'``: read/write (create if doesn't exist)
-            - ``'w'``: read/write (overwrite if exists)
-            - ``'w-'``: read/write (create if doesn't exist).
+            - `'r'`: read only (must exist)
+            - `'r+'`: read/write (must exist)
+            - `'a'`: read/write (create if doesn't exist)
+            - `'w'`: read/write (overwrite if exists)
+            - `'w-'`: read/write (create if doesn't exist).
 
         Raises
         ------
@@ -209,7 +209,7 @@ class StorePath:
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         """
-        Store a key to ``value`` if the key is not already present.
+        Store a key to `value` if the key is not already present.
 
         Parameters
         ----------
@@ -250,7 +250,7 @@ class StorePath:
         prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        """Synchronous read — delegates to `self.store.get_sync(self.path, ...)`."""
         if not isinstance(self.store, SupportsGetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
         if prototype is None:
@@ -258,13 +258,13 @@ class StorePath:
         return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
 
     def set_sync(self, value: Buffer) -> None:
-        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        """Synchronous write — delegates to `self.store.set_sync(self.path, value)`."""
         if not isinstance(self.store, SupportsSetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
         self.store.set_sync(self.path, value)
 
     def delete_sync(self) -> None:
-        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        """Synchronous delete — delegates to `self.store.delete_sync(self.path)`."""
         if not isinstance(self.store, SupportsDeleteSync):
             raise TypeError(
                 f"Store {type(self.store).__name__} does not support synchronous delete."
