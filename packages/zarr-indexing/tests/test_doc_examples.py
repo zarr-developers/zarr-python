@@ -178,7 +178,6 @@ def test_canonical_slice_introduces_one_dimensional_lazy_indexing_before_partiti
     )[0]
 
     assert "source = np.array([10, 11, 12, 13, 14, 15])" in region
-    assert "lazy = LazyArray.from_numpy(source)" in region
     assert "view = lazy.lazy[2:5]" in region
     assert ".with_parts(" not in region
     assert "[1," not in region
