@@ -20,12 +20,15 @@ import pytest
 
 from zarr_indexing import (
     ArrayMap,
+    ChunkGrid,
     ChunkProjection,
     ConstantMap,
     DimensionMap,
     EdgeDimensionGrid,
+    FixedDimension,
     IndexTransform,
     LazyArray,
+    VaryingDimension,
     array_map_dependent_axis,
     dimension_grids_from_chunks,
 )
@@ -140,20 +143,48 @@ def test_edge_dimension_grid_rejects_out_of_bounds_chunk() -> None:
     ("chunks", "shape", "expected"),
     [
         # Uniform chunk shape, tail clipped.
-        ((3, 4), (7, 4), ((3, 3, 1), (4,))),
+        ((3, 4), (7, 4), (FixedDimension(size=3, extent=7), FixedDimension(size=4, extent=4))),
         # Dask-convention per-axis sizes, passed through.
-        (((3, 3, 1), (2, 2)), (7, 4), ((3, 3, 1), (2, 2))),
+        (
+            ((3, 3, 1), (2, 2)),
+            (7, 4),
+            (VaryingDimension(edges=(3, 3, 1), extent=7), VaryingDimension(edges=(2, 2), extent=4)),
+        ),
         # A chunk longer than the axis collapses to one clipped chunk.
-        ((10,), (4,), ((4,),)),
+        ((10,), (4,), (FixedDimension(size=10, extent=4),)),
         # A zero-length axis has no chunks at all.
-        ((3,), (0,), ((),)),
+        ((3,), (0,), (FixedDimension(size=3, extent=0),)),
     ],
 )
 def test_dimension_grids_from_chunks(
-    chunks: Any, shape: tuple[int, ...], expected: tuple[tuple[int, ...], ...]
+    chunks: Any, shape: tuple[int, ...], expected: tuple[Any, ...]
 ) -> None:
     grids = dimension_grids_from_chunks(chunks, shape)
-    assert tuple(grid.sizes for grid in grids) == expected
+    assert grids == expected
+
+
+def test_regular_dimension_metadata_is_constant_in_chunk_count() -> None:
+    dimensions = dimension_grids_from_chunks((1,), (1_000_000,))
+
+    assert dimensions == (FixedDimension(size=1, extent=1_000_000),)
+    assert dimensions[0].nchunks == 1_000_000
+    assert dimensions[0].index_to_chunk(999_999) == 999_999
+
+
+def test_chunk_grid_distinguishes_codec_and_data_shape_at_the_edge() -> None:
+    grid = ChunkGrid(dimensions=(FixedDimension(size=3, extent=7),))
+
+    edge = grid[(2,)]
+
+    assert edge is not None
+    assert edge.slices == (slice(6, 7, 1),)
+    assert edge.shape == (1,)
+    assert edge.codec_shape == (3,)
+
+
+def test_dimension_grids_reject_negative_shape() -> None:
+    with pytest.raises(ValueError, match="shape entries must be non-negative"):
+        dimension_grids_from_chunks((3,), (-1,))
 
 
 def test_dimension_grids_from_chunks_rejects_wrong_length() -> None:
@@ -1471,7 +1502,7 @@ def test_partition_boxes_are_global_and_tile_the_base() -> None:
     grids = dimension_grids_from_chunks(PART_SHAPE, SHAPE)
     for coords, part in parts.items():
         expected = tuple(
-            (grid.chunk_offset(c), grid.chunk_offset(c) + grid.chunk_size(c))
+            (grid.chunk_offset(c), grid.chunk_offset(c) + grid.data_size(c))
             for grid, c in zip(grids, coords, strict=True)
         )
         assert part.box == expected

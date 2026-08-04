@@ -36,8 +36,13 @@ from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.grid import (
+    ChunkGrid,
+    ChunkSpec,
+    DimensionGrid,
     DimensionGridLike,
     EdgeDimensionGrid,
+    FixedDimension,
+    VaryingDimension,
     dimension_grids_from_chunks,
 )
 from zarr_indexing.json import (
@@ -68,12 +73,16 @@ __all__ = [
     "BasicReader",
     "BoundsCheckError",
     "ChunkCoverage",
+    "ChunkGrid",
     "ChunkPlan",
     "ChunkProjection",
+    "ChunkSpec",
     "ConstantMap",
+    "DimensionGrid",
     "DimensionGridLike",
     "DimensionMap",
     "EdgeDimensionGrid",
+    "FixedDimension",
     "IndexDomain",
     "IndexDomainJSON",
     "IndexTransform",
@@ -85,6 +94,7 @@ __all__ = [
     "OutputIndexMapJSON",
     "Partition",
     "Reader",
+    "VaryingDimension",
     "VindexInvalidSelectionError",
     "__version__",
     "array_map_dependent_axis",

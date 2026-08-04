@@ -152,7 +152,7 @@ from zarr_indexing.chunk_resolution import (
     ChunkProjection,
     plan_chunks,
 )
-from zarr_indexing.grid import EdgeDimensionGrid, dimension_grids_from_chunks
+from zarr_indexing.grid import DimensionGrid, FixedDimension, dimension_grids_from_chunks
 from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
@@ -229,7 +229,7 @@ def _read_source_attribute(array: Any, name: str) -> Any:
         return None
 
 
-def _discover_parts(array: Any, shape: tuple[int, ...]) -> tuple[EdgeDimensionGrid, ...] | None:
+def _discover_parts(array: Any, shape: tuple[int, ...]) -> tuple[DimensionGrid, ...] | None:
     """Resolve the partitioning advertised by `array`, or None for one whole part.
 
     Discovery parses external input: an attribute that does not describe a
@@ -249,9 +249,9 @@ def _discover_parts(array: Any, shape: tuple[int, ...]) -> tuple[EdgeDimensionGr
         return None
 
 
-def _whole_array_grids(shape: tuple[int, ...]) -> tuple[EdgeDimensionGrid, ...]:
+def _whole_array_grids(shape: tuple[int, ...]) -> tuple[DimensionGrid, ...]:
     """A partitioning with a single part covering the whole array."""
-    return tuple(EdgeDimensionGrid((extent,) if extent > 0 else ()) for extent in shape)
+    return tuple(FixedDimension(size=extent, extent=extent) for extent in shape)
 
 
 # --------------------------------------------------------------------------- #
@@ -584,7 +584,7 @@ class LazyArray:
         cls,
         array: _WrappedArray,
         transform: IndexTransform,
-        parts: tuple[EdgeDimensionGrid, ...] | None,
+        parts: tuple[DimensionGrid, ...] | None,
         window: tuple[slice, ...] | None,
         reader: Reader,
     ) -> LazyArray:
@@ -909,7 +909,7 @@ class LazyArray:
         """
         return self._with_grids(None)
 
-    def _with_grids(self, grids: tuple[EdgeDimensionGrid, ...] | None) -> LazyArray:
+    def _with_grids(self, grids: tuple[DimensionGrid, ...] | None) -> LazyArray:
         return LazyArray._derive(self._array, self._transform, grids, self._window, self._reader)
 
     def parts(self) -> Iterator[Partition]:
@@ -950,7 +950,7 @@ class LazyArray:
             base_coords = projection.chunk_coords
             local = projection.chunk_transform
             origin = tuple(grid.chunk_offset(c) for grid, c in zip(grids, base_coords, strict=True))
-            extent = tuple(grid.chunk_size(c) for grid, c in zip(grids, base_coords, strict=True))
+            extent = tuple(grid.data_size(c) for grid, c in zip(grids, base_coords, strict=True))
             if origin == (0,) * rank and extent == base_shape:
                 # The part is the whole base: lowering directly against the
                 # source beats materializing a block that is the source.

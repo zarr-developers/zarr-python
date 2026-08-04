@@ -60,6 +60,14 @@ _ChunkTransformResult = tuple[
 type ChunkCoverage = Literal["full", "partial", "unknown"]
 
 
+def _data_size(dim_grid: DimensionGridLike, chunk_ix: int) -> int:
+    """Return a chunk's data extent, falling back for narrow-protocol grids."""
+    data_size = getattr(dim_grid, "data_size", None)
+    if data_size is None:
+        return dim_grid.chunk_size(chunk_ix)
+    return int(data_size(chunk_ix))
+
+
 @dataclass(frozen=True, slots=True)
 class ChunkProjection:
     """One source-independent projection of a request through a chunk.
@@ -177,7 +185,7 @@ def _iter_sorted_1d_array_map(
     while start < storage.size:
         chunk = dim_grid.index_to_chunk(int(storage[start]))
         chunk_start = dim_grid.chunk_offset(chunk)
-        chunk_stop = chunk_start + dim_grid.chunk_size(chunk)
+        chunk_stop = chunk_start + _data_size(dim_grid, chunk)
         stop = int(np.searchsorted(storage, chunk_stop, side="left"))
 
         restricted = IndexTransform(
@@ -325,7 +333,7 @@ def _iter_chunk_transform_results(
         for out_dim, c in enumerate(chunk_coords):
             dg = dim_grids[out_dim]
             c_start = dg.chunk_offset(c)
-            c_size = dg.chunk_size(c)
+            c_size = _data_size(dg, c)
             chunk_min.append(c_start)
             chunk_max.append(c_start + c_size)
             chunk_shift.append(-c_start)
@@ -481,7 +489,7 @@ def _iter_chunk_projections(
             grid.chunk_offset(coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
         )
         chunk_shape = tuple(
-            grid.chunk_size(coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
+            _data_size(grid, coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
         )
         chunk_domain = IndexDomain(
             inclusive_min=chunk_min,

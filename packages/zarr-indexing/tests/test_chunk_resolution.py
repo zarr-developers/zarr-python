@@ -4,10 +4,17 @@ from typing import Any
 
 import numpy as np
 import pytest
-from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
 
 import zarr_indexing
-from zarr_indexing import ChunkPlan, ChunkProjection, chunk_resolution, plan_chunks
+from zarr_indexing import (
+    ChunkGrid,
+    ChunkPlan,
+    ChunkProjection,
+    FixedDimension,
+    VaryingDimension,
+    chunk_resolution,
+    plan_chunks,
+)
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.grid import dimension_grids_from_chunks
 from zarr_indexing.output_map import ConstantMap, DimensionMap
@@ -305,14 +312,14 @@ class TestSortedOneDimensionalPlan:
                     np.intp
                 )
                 transform = IndexTransform.from_shape((30,)).vindex[indices]
-                direct = list(plan_chunks(transform, grid._dimensions))
+                direct = list(plan_chunks(transform, grid.dimensions))
                 with monkeypatch.context() as context:
                     context.setattr(
                         chunk_resolution,
                         "_one_dimensional_correlated_array_map",
                         lambda _transform: None,
                     )
-                    general = list(plan_chunks(transform, grid._dimensions))
+                    general = list(plan_chunks(transform, grid.dimensions))
                 assert direct == general
 
     def test_sorted_coordinates_bypass_intersection(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -323,7 +330,7 @@ class TestSortedOneDimensionalPlan:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
         calls = _count_intersect_calls(monkeypatch)
 
-        projections = list(plan_chunks(transform, grid._dimensions))
+        projections = list(plan_chunks(transform, grid.dimensions))
 
         assert [projection.chunk_coords for projection in projections] == [(0,), (1,), (2,)]
         assert calls["n"] == 0
@@ -341,7 +348,7 @@ class TestSortedOneDimensionalPlan:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
         calls = _count_intersect_calls(monkeypatch)
 
-        projections = list(plan_chunks(transform, grid._dimensions))
+        projections = list(plan_chunks(transform, grid.dimensions))
 
         assert [projection.chunk_coords for projection in projections] == [(0,), (1,), (2,)]
         assert calls["n"] == 3
@@ -356,7 +363,7 @@ class TestTouchedOnlyCandidateEnumeration:
         grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=4000),))
         calls = _count_intersect_calls(monkeypatch)
 
-        projections = list(plan_chunks(transform, grid._dimensions))
+        projections = list(plan_chunks(transform, grid.dimensions))
 
         assert [projection.chunk_coords for projection in projections] == [(0,), (999,)]
         assert calls["n"] == 0
@@ -390,7 +397,7 @@ class TestTouchedOnlyCandidateEnumeration:
         )
         calls = _count_intersect_calls(monkeypatch)
 
-        projections = list(plan_chunks(transform, grid._dimensions))
+        projections = list(plan_chunks(transform, grid.dimensions))
 
         assert sorted(projection.chunk_coords for projection in projections) == expected_coords
         assert calls["n"] == expected_calls
@@ -410,7 +417,7 @@ class TestTouchedOnlyCandidateEnumeration:
         )
         calls = _count_intersect_calls(monkeypatch)
 
-        projections = list(plan_chunks(transform, grid._dimensions))
+        projections = list(plan_chunks(transform, grid.dimensions))
 
         assert sorted(projection.chunk_coords for projection in projections) == [
             (2 * index, 2 * index) for index in range(n_points)
