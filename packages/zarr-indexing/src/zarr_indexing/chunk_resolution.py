@@ -276,22 +276,23 @@ def _iter_chunk_transform_results(
             dim_hi = transform.domain.exclusive_max[d]
             if dim_lo >= dim_hi:
                 return  # empty domain
+            first_storage = checked_affine(m.offset, m.stride, dim_lo)
             if m.stride > 0:
-                s_min = checked_affine(m.offset, m.stride, dim_lo)
+                s_min = first_storage
                 s_max = checked_affine(m.offset, m.stride, dim_hi - 1)
             elif m.stride < 0:
                 s_min = checked_affine(m.offset, m.stride, dim_hi - 1)
-                s_max = checked_affine(m.offset, m.stride, dim_lo)
+                s_max = first_storage
             else:
-                s_min = s_max = checked_affine(m.offset, 0, 0)
+                s_min = s_max = first_storage
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
             slot_dims.append((out_dim,))
             point_count = dim_hi - dim_lo
             chunk_count = last - first + 1
             if point_count < chunk_count:
-                inputs = np.arange(dim_lo, dim_hi, dtype=np.intp)
-                storage = checked_affine(m.offset, m.stride, inputs)
+                steps = np.arange(point_count, dtype=np.intp)
+                storage = checked_affine(first_storage, m.stride, steps)
                 chunk_ids = dg.indices_to_chunks(storage)
                 slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
             else:
@@ -461,12 +462,20 @@ def _correlated_cell_transform(
 ) -> IndexTransform:
     """Map compacted correlated points back through the request's row-major domain."""
     positions = np.asarray(survivors, dtype=np.intp)
+    # Correlated broadcast axes already contribute positional survivor offsets;
+    # residual affine axes still contribute literal coordinates. Remove only
+    # the latter origins before unraveling the fully positional flat offsets.
+    literal_axes = {
+        output_map.input_dimension
+        for output_map in original.output
+        if isinstance(output_map, DimensionMap)
+    }
     origin_offset = 0
     flat_stride = 1
-    for origin, extent in zip(
-        reversed(original.domain.inclusive_min), reversed(original.domain.shape), strict=True
-    ):
-        origin_offset += origin * flat_stride
+    for input_dimension in range(original.input_rank - 1, -1, -1):
+        if input_dimension in literal_axes:
+            origin_offset += original.domain.inclusive_min[input_dimension] * flat_stride
+        extent = original.domain.shape[input_dimension]
         flat_stride *= extent
     coordinates = np.unravel_index(
         checked_affine(-origin_offset, 1, positions), original.domain.shape

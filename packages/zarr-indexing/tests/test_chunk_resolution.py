@@ -302,6 +302,23 @@ def test_correlated_projection_preserves_nonzero_request_coordinates() -> None:
     assert sorted(points) == [(2, 5), (2, 6), (2, 7), (3, 5), (3, 6), (3, 7)]
 
 
+def test_correlated_projection_preserves_translated_advanced_axis_coordinates() -> None:
+    transform = (
+        IndexTransform.from_shape((4,))
+        .vindex[np.array([0, 3], dtype=np.intp)]
+        .translate_domain_by((5,))
+    )
+    grids = dimension_grids_from_chunks((2,), (4,))
+
+    request_points = [
+        projection.cell_transform.apply(cell)
+        for projection in plan_chunks(transform, grids)
+        for cell in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(request_points) == [(5,), (6,)]
+
+
 def test_empty_request_has_no_projections() -> None:
     """An empty fancy selection does not fabricate a touched chunk."""
     transform = IndexTransform.from_shape((10,)).oindex[np.array([], dtype=np.intp)]
@@ -403,6 +420,20 @@ def test_sparse_affine_plan_does_not_visit_intervening_chunks() -> None:
         (100_000,),
     ]
     assert grid.calls <= 12
+
+
+def test_sparse_affine_plan_handles_large_origin_cancellation() -> None:
+    origin = int(np.iinfo(np.intp).max)
+    transform = IndexTransform(
+        domain=IndexDomain((origin,), (origin + 2,)),
+        output=(DimensionMap(input_dimension=0, offset=-2 * origin, stride=2),),
+    )
+    grids = dimension_grids_from_chunks((1,), (3,))
+
+    assert [projection.chunk_coords for projection in plan_chunks(transform, grids)] == [
+        (0,),
+        (2,),
+    ]
 
 
 class TestTouchedOnlyCandidateEnumeration:
