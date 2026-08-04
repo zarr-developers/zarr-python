@@ -7,6 +7,7 @@ from typing import Any, Final, Protocol
 
 import numpy as np
 
+from zarr_indexing.affine import checked_affine
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
 
@@ -85,8 +86,10 @@ class NumPyReader:
     __slots__ = ()
 
     def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
-        """Read one complete transform from a NumPy array into `out`."""
-        out[...] = _lower(np.asanyarray(source), transform)
+        """Read one transform through a narrowed slab into `out`."""
+        key, residual = _decompose_basic(transform)
+        block = np.asanyarray(source[key])
+        out[...] = _lower(block, residual)
 
 
 basic_reader: Final = BasicReader()
@@ -116,12 +119,16 @@ def _dimension_map_coords(
     d = m.input_dimension
     lo = transform.domain.inclusive_min[d]
     hi = transform.domain.exclusive_max[d]
-    return (m.offset + m.stride * np.arange(lo, hi, dtype=np.intp)).astype(np.intp)
+    extent = hi - lo
+    if extent == 0:
+        return np.empty((0,), dtype=np.intp)
+    first = checked_affine(m.offset, m.stride, lo)
+    return checked_affine(first, m.stride, np.arange(extent, dtype=np.intp))
 
 
 def _array_map_coords(m: ArrayMap) -> np.ndarray[Any, np.dtype[np.intp]]:
     """The storage coordinates an ArrayMap enumerates, flattened."""
-    return (m.offset + m.stride * m.index_array).astype(np.intp).reshape(-1)
+    return checked_affine(m.offset, m.stride, m.index_array).reshape(-1)
 
 
 def _correlated_map_coords(
@@ -136,7 +143,7 @@ def _correlated_map_coords(
     than there are points, so it is reduced to the broadcast block and
     broadcast up to it explicitly.
     """
-    coords = (m.offset + m.stride * m.index_array).astype(np.intp)
+    coords = checked_affine(m.offset, m.stride, m.index_array)
     if coords.ndim == input_rank:
         # Drop the axes bound by a slice, which the map is singleton along.
         # Removing size-1 axes by reshape preserves element order wherever they
@@ -216,8 +223,8 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
     for out_dim, m in enumerate(outputs):
         if isinstance(m, ArrayMap):
             gathered[out_dim] = _array_map_coords(m)
-        elif isinstance(m, DimensionMap) and m.stride < 0:
-            # A reversing map has no positive-step slice; gather it explicitly.
+        elif isinstance(m, DimensionMap) and m.stride <= 0:
+            # Reversing and repeating maps have no positive-step slice; gather them.
             gathered[out_dim] = _dimension_map_coords(m, transform)
 
     result = array
@@ -275,12 +282,12 @@ def _lower_correlated(array: Any, transform: IndexTransform) -> Any:
     broadcast_axes = [d for d in range(transform.input_rank) if d not in slice_input_dims]
     broadcast_shape = tuple(transform.domain.shape[d] for d in broadcast_axes)
 
-    # Gather any reversing slice axis first, then take the basic-slice cut. The
-    # correlated axes keep their full extent: their coordinates are absolute.
+    # Gather any reversing or repeating slice axis first, then take the basic-slice
+    # cut. The correlated axes keep their full extent: their coordinates are absolute.
     gathered: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {
         d: _dimension_map_coords(m, transform)
         for d, m in enumerate(outputs)
-        if isinstance(m, DimensionMap) and m.stride < 0
+        if isinstance(m, DimensionMap) and m.stride <= 0
     }
     result = array
     for out_dim, coords in gathered.items():
@@ -357,12 +364,17 @@ def _push_slice_for_dimension_map(
     hi = max(transform.domain.exclusive_max[d], lo)
     if hi == lo:
         return slice(0, 0, 1), DimensionMap(input_dimension=d, offset=-lo, stride=1)
-    first = m.offset + m.stride * lo
-    last = m.offset + m.stride * (hi - 1)
+    first = checked_affine(m.offset, m.stride, lo)
+    last = checked_affine(m.offset, m.stride, hi - 1)
     if m.stride > 0:
         return (
             slice(first, last + 1, m.stride),
             DimensionMap(input_dimension=d, offset=-lo, stride=1),
+        )
+    if m.stride == 0:
+        return (
+            slice(first, first + 1, 1),
+            DimensionMap(input_dimension=d, offset=0, stride=0),
         )
     # Descending: the block holds the same coordinates in ascending order, so
     # the residual walks it backwards from the last block position.
@@ -377,15 +389,16 @@ def _decompose_basic(transform: IndexTransform) -> tuple[tuple[slice, ...], Inde
     residual: list[OutputIndexMap] = []
     for output_map in transform.output:
         if isinstance(output_map, ConstantMap):
-            key.append(slice(output_map.offset, output_map.offset + 1, 1))
+            coordinate = checked_affine(output_map.offset, 0, 0)
+            key.append(slice(coordinate, coordinate + 1, 1))
             residual.append(ConstantMap(offset=0))
         elif isinstance(output_map, DimensionMap):
             pushed, local = _push_slice_for_dimension_map(output_map, transform)
             key.append(pushed)
             residual.append(local)
         else:
-            coordinates = (output_map.offset + output_map.stride * output_map.index_array).astype(
-                np.intp
+            coordinates = checked_affine(
+                output_map.offset, output_map.stride, output_map.index_array
             )
             if coordinates.size == 0:
                 key.append(slice(0, 0, 1))
@@ -393,7 +406,7 @@ def _decompose_basic(transform: IndexTransform) -> tuple[tuple[slice, ...], Inde
             else:
                 origin = int(coordinates.min())
                 key.append(slice(origin, int(coordinates.max()) + 1, 1))
-                local_index = (coordinates - origin).astype(np.intp)
+                local_index = checked_affine(-origin, 1, coordinates)
             residual.append(
                 ArrayMap(
                     index_array=local_index,
