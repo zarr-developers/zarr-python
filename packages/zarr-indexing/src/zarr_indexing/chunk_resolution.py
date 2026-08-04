@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+from zarr_indexing.affine import checked_affine
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
@@ -172,7 +173,7 @@ def _one_dimensional_correlated_array_map(
     ):
         return None
 
-    return m, m.offset + m.stride * m.index_array
+    return m, checked_affine(m.offset, m.stride, m.index_array)
 
 
 def _iter_sorted_1d_array_map(
@@ -276,27 +277,39 @@ def _iter_chunk_transform_results(
             if dim_lo >= dim_hi:
                 return  # empty domain
             if m.stride > 0:
-                s_min = m.offset + m.stride * dim_lo
-                s_max = m.offset + m.stride * (dim_hi - 1)
+                s_min = checked_affine(m.offset, m.stride, dim_lo)
+                s_max = checked_affine(m.offset, m.stride, dim_hi - 1)
+            elif m.stride < 0:
+                s_min = checked_affine(m.offset, m.stride, dim_hi - 1)
+                s_max = checked_affine(m.offset, m.stride, dim_lo)
             else:
-                s_min = m.offset + m.stride * (dim_hi - 1)
-                s_max = m.offset + m.stride * dim_lo
+                s_min = s_max = checked_affine(m.offset, 0, 0)
             first = dg.index_to_chunk(s_min)
             last = dg.index_to_chunk(s_max)
             slot_dims.append((out_dim,))
-            slot_candidates.append([(c,) for c in range(first, last + 1)])
+            point_count = dim_hi - dim_lo
+            chunk_count = last - first + 1
+            if point_count < chunk_count:
+                inputs = np.arange(dim_lo, dim_hi, dtype=np.intp)
+                storage = checked_affine(m.offset, m.stride, inputs)
+                chunk_ids = dg.indices_to_chunks(storage)
+                slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
+            else:
+                slot_candidates.append([(c,) for c in range(first, last + 1)])
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap).
             # Storage coordinates were already computed for a correlated 1-D map.
             storage = (
-                array_map_1d[1] if array_map_1d is not None else m.offset + m.stride * m.index_array
+                array_map_1d[1]
+                if array_map_1d is not None
+                else checked_affine(m.offset, m.stride, m.index_array)
             )
             if storage.size == 0:
                 # Empty fancy selection: no coordinates, so no chunks are touched.
                 return
             # Keep the index-array shape: correlated maps broadcast against each
             # other below, and raveling first would lose the singleton axes.
-            chunk_ids = dg.indices_to_chunks(storage.astype(np.intp))
+            chunk_ids = dg.indices_to_chunks(storage)
             if m.input_dimension is None:
                 correlated_dims.append(out_dim)
                 correlated_chunk_ids.append(chunk_ids)
@@ -448,7 +461,16 @@ def _correlated_cell_transform(
 ) -> IndexTransform:
     """Map compacted correlated points back through the request's row-major domain."""
     positions = np.asarray(survivors, dtype=np.intp)
-    coordinates = np.unravel_index(positions, original.domain.shape)
+    origin_offset = 0
+    flat_stride = 1
+    for origin, extent in zip(
+        reversed(original.domain.inclusive_min), reversed(original.domain.shape), strict=True
+    ):
+        origin_offset += origin * flat_stride
+        flat_stride *= extent
+    coordinates = np.unravel_index(
+        checked_affine(-origin_offset, 1, positions), original.domain.shape
+    )
     output = tuple(
         ArrayMap(
             index_array=np.asarray(coordinate, dtype=np.intp),

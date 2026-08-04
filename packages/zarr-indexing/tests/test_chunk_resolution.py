@@ -288,6 +288,20 @@ def test_projection_invariants_for_fancy_selections(
     assert sorted(request_points) == sorted(_points(transform.domain))
 
 
+def test_correlated_projection_preserves_nonzero_request_coordinates() -> None:
+    base = IndexTransform.identity(IndexDomain((2, 5), (4, 8)))
+    transform = base.vindex[np.array([2, 3], dtype=np.intp), :]
+    grids = dimension_grids_from_chunks((2, 4), (4, 8))
+
+    points = [
+        transform.apply(projection.cell_transform.apply(cell))
+        for projection in plan_chunks(transform, grids)
+        for cell in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(points) == [(2, 5), (2, 6), (2, 7), (3, 5), (3, 6), (3, 7)]
+
+
 def test_empty_request_has_no_projections() -> None:
     """An empty fancy selection does not fabricate a touched chunk."""
     transform = IndexTransform.from_shape((10,)).oindex[np.array([], dtype=np.intp)]
@@ -352,6 +366,43 @@ class TestSortedOneDimensionalPlan:
 
         assert [projection.chunk_coords for projection in projections] == [(0,), (1,), (2,)]
         assert calls["n"] == 3
+
+
+class CountingUnitGrid:
+    """A real unit grid that counts every planner-grid operation."""
+
+    def __init__(self, extent: int) -> None:
+        self._grid = FixedDimension(size=1, extent=extent)
+        self.calls = 0
+
+    def index_to_chunk(self, idx: int) -> int:
+        self.calls += 1
+        return self._grid.index_to_chunk(idx)
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        self.calls += 1
+        return self._grid.chunk_offset(chunk_ix)
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        self.calls += 1
+        return self._grid.chunk_size(chunk_ix)
+
+    def indices_to_chunks(
+        self, indices: np.ndarray[Any, np.dtype[np.intp]]
+    ) -> np.ndarray[Any, np.dtype[np.intp]]:
+        self.calls += 1
+        return self._grid.indices_to_chunks(indices)
+
+
+def test_sparse_affine_plan_does_not_visit_intervening_chunks() -> None:
+    grid = CountingUnitGrid(extent=100_001)
+    transform = IndexTransform.from_shape((100_001,))[::100_000]
+
+    assert [projection.chunk_coords for projection in plan_chunks(transform, (grid,))] == [
+        (0,),
+        (100_000,),
+    ]
+    assert grid.calls <= 12
 
 
 class TestTouchedOnlyCandidateEnumeration:
