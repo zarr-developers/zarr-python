@@ -662,6 +662,17 @@ class TestIndexTransformVindex:
         assert result.domain.shape == (3,)
         assert isinstance(result.output[0], ArrayMap)
 
+    def test_vindex_multidimensional_boolean_list_mask(self) -> None:
+        result = IndexTransform.from_shape((2, 3)).vindex[
+            [[True, False, True], [False, True, False]]
+        ]
+
+        assert result.domain.shape == (3,)
+        np.testing.assert_array_equal(
+            result.apply_many(np.array([[0], [1], [2]], dtype=np.intp)),
+            np.array([[0, 0], [0, 2], [1, 1]], dtype=np.intp),
+        )
+
     def test_vindex_broadcast_different_shapes(self) -> None:
         t = IndexTransform.from_shape((10, 20))
         idx0 = np.array([1, 2, 3], dtype=np.intp)

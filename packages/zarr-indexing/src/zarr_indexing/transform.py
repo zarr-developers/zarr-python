@@ -1469,6 +1469,22 @@ def _broadcast_insertion_point(array_dims: Sequence[int], slice_dims: Sequence[i
     return sum(1 for d in slice_dims if d < first)
 
 
+def _as_boolean_index_array(selection: Any) -> np.ndarray[Any, np.dtype[np.bool_]] | None:
+    """Return an array-like boolean index as an ndarray, else None."""
+    if not isinstance(selection, (np.ndarray, list, tuple)):
+        return None
+    array = np.asarray(selection)
+    if array.dtype != np.bool_:
+        return None
+    return array
+
+
+def _selection_axis_count(selection: Any) -> int:
+    """Return how many input axes one vectorized selection entry consumes."""
+    boolean_array = _as_boolean_index_array(selection)
+    return boolean_array.ndim if boolean_array is not None else 1
+
+
 def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     """Apply vectorized indexing to an IndexTransform.
 
@@ -1479,16 +1495,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     if not isinstance(selection, tuple):
         selection = (selection,)
 
-    # Expand ellipsis and count consumed dimensions
-    # Boolean arrays with ndim > 1 consume ndim dims
-    n_consumed = 0
-    for s in selection:
-        if s is Ellipsis:
-            continue
-        if isinstance(s, np.ndarray) and s.dtype == np.bool_ and s.ndim > 1:
-            n_consumed += s.ndim
-        else:
-            n_consumed += 1
+    # Expand ellipsis and count consumed dimensions. Boolean masks consume one
+    # input axis per mask dimension, whether spelled as an ndarray or a list.
+    n_consumed = sum(_selection_axis_count(s) for s in selection if s is not Ellipsis)
     ndim = transform.domain.ndim
 
     expanded: list[Any] = []
@@ -1499,12 +1508,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         else:
             expanded.append(sel)
     # Count dimensions already consumed by expanded entries
-    n_expanded_dims = 0
-    for sel in expanded:
-        if isinstance(sel, np.ndarray) and sel.dtype == np.bool_ and sel.ndim > 1:
-            n_expanded_dims += sel.ndim
-        else:
-            n_expanded_dims += 1
+    n_expanded_dims = sum(_selection_axis_count(sel) for sel in expanded)
     while n_expanded_dims < ndim:
         expanded.append(slice(None))
         n_expanded_dims += 1
@@ -1512,18 +1516,14 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     # Convert booleans, lists, ints to integer arrays
     processed: list[np.ndarray[Any, np.dtype[np.intp]] | slice] = []
     for sel in expanded:
-        if isinstance(sel, np.ndarray) and sel.dtype == np.bool_:
-            indices_tuple = np.nonzero(sel)
+        boolean_array = _as_boolean_index_array(sel)
+        if boolean_array is not None:
+            indices_tuple = np.nonzero(boolean_array)
             processed.extend(indices.astype(np.intp) for indices in indices_tuple)
         elif isinstance(sel, np.ndarray):
             processed.append(sel.astype(np.intp))
         elif isinstance(sel, (list, tuple)):
-            array = np.asarray(sel)
-            if array.dtype == np.bool_:
-                indices_tuple = np.nonzero(array)
-                processed.extend(indices.astype(np.intp) for indices in indices_tuple)
-            else:
-                processed.append(np.asarray(sel, dtype=np.intp))
+            processed.append(np.asarray(sel, dtype=np.intp))
         elif isinstance(sel, (int, np.integer)):
             processed.append(np.array([int(sel)], dtype=np.intp))
         else:
