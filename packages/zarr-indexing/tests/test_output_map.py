@@ -80,3 +80,10 @@ class TestArrayMap:
 
         with pytest.raises(ValueError):
             m.index_array.flags.writeable = True
+
+    def test_equal_array_maps_have_equal_hashes_across_integer_dtypes(self) -> None:
+        left = ArrayMap(np.array([1, 2], dtype=np.int32))
+        right = ArrayMap(np.array([1, 2], dtype=np.int64))
+        assert left == right
+        assert hash(left) == hash(right)
+        assert left.index_array.dtype == np.dtype(np.intp)

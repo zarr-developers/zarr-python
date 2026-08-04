@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from zarr_indexing.affine import checked_affine
 from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform
@@ -153,8 +154,10 @@ def _dimension_positions(
     """Build exact positional indices for an affine outer map."""
     dimension = outer_map.input_dimension
     extent = outer.domain.shape[dimension]
-    start = (
-        outer_map.offset + outer_map.stride * outer.domain.inclusive_min[dimension] - inner_origin
+    start = checked_affine(
+        outer_map.offset - inner_origin,
+        outer_map.stride,
+        outer.domain.inclusive_min[dimension],
     )
     shape = (1,) * dimension + (extent,) + (1,) * (outer.input_rank - dimension - 1)
     if extent == 0:
@@ -162,30 +165,12 @@ def _dimension_positions(
     if extent == 1:
         return np.full(shape, start, dtype=np.intp)
     steps = np.arange(extent, dtype=np.intp)
-    return (start + outer_map.stride * steps).reshape(shape)
+    return checked_affine(start, outer_map.stride, steps).reshape(shape)
 
 
 def _array_positions(outer_map: ArrayMap, inner_origin: int) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Build exact positional indices without fixed-width affine overflow."""
-    index_array = outer_map.index_array
-    if index_array.size == 0:
-        return np.empty(index_array.shape, dtype=np.intp)
-
-    index_lo = int(index_array.min())
-    index_hi = int(index_array.max())
-    if outer_map.stride == 0 or index_lo == index_hi:
-        position = outer_map.offset + outer_map.stride * index_lo - inner_origin
-        return np.full(index_array.shape, position, dtype=np.intp)
-
-    if outer_map.stride > 0:
-        base = outer_map.offset + outer_map.stride * index_lo - inner_origin
-        deltas = index_array - index_lo
-        scale = outer_map.stride
-    else:
-        base = outer_map.offset + outer_map.stride * index_hi - inner_origin
-        deltas = index_hi - index_array
-        scale = -outer_map.stride
-    return base + scale * deltas
+    return checked_affine(outer_map.offset - inner_origin, outer_map.stride, outer_map.index_array)
 
 
 def _positions_for_axis(

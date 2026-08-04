@@ -262,6 +262,22 @@ class TestIndexTransformApply:
         with pytest.raises(OverflowError, match="output coordinate.*np.intp"):
             transform.apply_many(points)
 
+    def test_apply_many_rejects_affine_coordinate_overflow(self) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ArrayMap(np.array([2**62], dtype=np.intp), stride=4),),
+        )
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            transform.apply_many(np.array([[0]], dtype=np.intp))
+
+    def test_apply_rejects_affine_coordinate_overflow(self) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ArrayMap(np.array([2**62], dtype=np.intp), stride=4),),
+        )
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            transform.apply((0,))
+
 
 class TestIndexTransformInverted:
     @pytest.mark.parametrize(

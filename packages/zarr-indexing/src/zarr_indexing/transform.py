@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
+from zarr_indexing.affine import checked_affine
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
@@ -259,18 +260,12 @@ class IndexTransform:
             if isinstance(output_map, ConstantMap):
                 if result[..., output_dimension].size == 0:
                     continue
-                if not _fits_intp(output_map.offset):
-                    raise OverflowError(
-                        f"output coordinate {output_map.offset} for output dimension "
-                        f"{output_dimension} is outside the np.intp range"
-                    )
-                result[..., output_dimension] = output_map.offset
+                result[..., output_dimension] = checked_affine(output_map.offset, 0, 0)
             elif isinstance(output_map, DimensionMap):
-                result[..., output_dimension] = _checked_affine_to_intp(
+                result[..., output_dimension] = checked_affine(
+                    output_map.offset,
+                    output_map.stride,
                     points[..., output_map.input_dimension],
-                    offset=output_map.offset,
-                    stride=output_map.stride,
-                    output_dimension=output_dimension,
                 )
             else:
                 index = tuple(
@@ -279,11 +274,10 @@ class IndexTransform:
                     else _positions_from_origin(points[..., axis], self.domain.inclusive_min[axis])
                     for axis in range(self.input_rank)
                 )
-                result[..., output_dimension] = _checked_affine_to_intp(
+                result[..., output_dimension] = checked_affine(
+                    output_map.offset,
+                    output_map.stride,
                     np.asarray(output_map.index_array[index]),
-                    offset=output_map.offset,
-                    stride=output_map.stride,
-                    output_dimension=output_dimension,
                 )
         return result
 
@@ -532,70 +526,9 @@ class IndexTransform:
         return _VIndexHelper(self)
 
 
-_INTP_INFO = np.iinfo(np.intp)
-
-
-def _fits_intp(value: int) -> bool:
-    return _INTP_INFO.min <= value <= _INTP_INFO.max
-
-
-def _checked_affine_to_intp(
-    values: np.ndarray[Any, Any],
-    *,
-    offset: int,
-    stride: int,
-    output_dimension: int,
-) -> npt.NDArray[np.intp]:
-    """Evaluate ``offset + stride * values`` without fixed-width corruption."""
-    if values.size == 0:
-        return np.empty(values.shape, dtype=np.intp)
-
-    offset = int(offset)
-    stride = int(stride)
-    value_min = int(np.min(values))
-    value_max = int(np.max(values))
-    product_at_min = stride * value_min
-    product_at_max = stride * value_max
-    mapped_at_min = offset + product_at_min
-    mapped_at_max = offset + product_at_max
-    mapped_min = min(mapped_at_min, mapped_at_max)
-    mapped_max = max(mapped_at_min, mapped_at_max)
-    if not _fits_intp(mapped_min) or not _fits_intp(mapped_max):
-        invalid = mapped_min if not _fits_intp(mapped_min) else mapped_max
-        raise OverflowError(
-            f"output coordinate {invalid} for output dimension {output_dimension} "
-            "is outside the np.intp range"
-        )
-
-    # The fast path is safe only when every intermediate is representable.
-    # Cancellation can make the final result small even when an operand or
-    # product is large; those uncommon cases use exact Python-integer ufuncs.
-    fast_path_values = (
-        _fits_intp(value_min)
-        and _fits_intp(value_max)
-        and _fits_intp(offset)
-        and _fits_intp(stride)
-        and _fits_intp(product_at_min)
-        and _fits_intp(product_at_max)
-    )
-    if fast_path_values:
-        intp_values = values.astype(np.intp, copy=False)
-        return np.asarray(offset + stride * intp_values, dtype=np.intp)
-
-    exact = offset + stride * values.astype(object)
-    return np.asarray(exact, dtype=np.intp)
-
-
 def _positions_from_origin(coordinates: np.ndarray[Any, Any], origin: int) -> npt.NDArray[np.intp]:
     """Convert literal coordinates to positional indices without wrapping."""
-    if coordinates.size == 0:
-        return np.empty(coordinates.shape, dtype=np.intp)
-    minimum = int(np.min(coordinates))
-    maximum = int(np.max(coordinates))
-    origin = int(origin)
-    if _fits_intp(minimum) and _fits_intp(maximum) and _fits_intp(origin):
-        return np.asarray(coordinates, dtype=np.intp) - origin
-    return np.asarray(coordinates.astype(object) - origin, dtype=np.intp)
+    return checked_affine(-int(origin), 1, coordinates)
 
 
 def _intersect(
@@ -736,7 +669,7 @@ def _intersect_orthogonal(
                     "collapsed to a ConstantMap"
                 )
             d = axis
-            storage = m.offset + m.stride * m.index_array
+            storage = checked_affine(m.offset, m.stride, m.index_array)
             mask = (storage >= lo) & (storage < hi)
             # The array is singleton on every axis but `d`, so its mask reduces
             # to a 1-D vector along `d`.
@@ -826,7 +759,7 @@ def _intersect_correlated(
     combined: np.ndarray[Any, np.dtype[np.bool_]] | None = None
     for out_dim in correlated_dims:
         cm = cast("ArrayMap", transform.output[out_dim])
-        storage = cm.offset + cm.stride * cm.index_array
+        storage = checked_affine(cm.offset, cm.stride, cm.index_array)
         lo = output_domain.inclusive_min[out_dim]
         hi = output_domain.exclusive_max[out_dim]
         mask = (storage >= lo) & (storage < hi)

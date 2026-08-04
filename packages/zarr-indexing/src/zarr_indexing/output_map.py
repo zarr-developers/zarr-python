@@ -35,7 +35,7 @@ them by chunk, when `DimensionMap` does it with three integers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -97,7 +97,7 @@ class ArrayMap:
     orthogonal map (see `transform._array_map_dependent_axis`).
     """
 
-    index_array: npt.NDArray[np.intp]
+    index_array: npt.NDArray[np.integer[Any]]
     offset: int = 0
     stride: int = 1
     input_dimension: int | None = None
@@ -116,8 +116,8 @@ class ArrayMap:
         # the WRITEABLE flag, as they can on a read-only array that owns its
         # allocation. `asarray` also accepts the NumPy scalars that reach here
         # after indexing an array down to one element.
-        array = np.asarray(self.index_array)
-        frozen = np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
+        array = np.asarray(self.index_array, dtype=np.intp)
+        frozen = np.frombuffer(array.tobytes(), dtype=np.intp).reshape(array.shape)
         object.__setattr__(self, "index_array", frozen)
 
     def __reduce__(self) -> tuple[object, tuple[object, int, int, int | None]]:
