@@ -7,6 +7,7 @@ canonical-implementation convention.
 """
 
 from collections.abc import Mapping
+from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
@@ -37,6 +38,19 @@ class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     metadata: Mapping[str, ZarrV2ZArrayJSON | ZarrV2ZGroupJSON | ZarrV2ZAttrsJSON]
 
 
+ZarrV2ConsolidatedMetadataStoreKey = Literal[".zmetadata"]
+"""Literal type of the store key holding a v2 hierarchy's consolidated metadata."""
+
+ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: Final[ZarrV2ConsolidatedMetadataStoreKey] = ".zmetadata"
+"""The store key a v2 hierarchy's consolidated metadata is persisted under.
+
+Like the document it names, this is a reference-implementation convention
+rather than a spec artifact; see the module docstring.
+"""
+
+
 __all__ = [
+    "ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY",
     "ZarrV2ConsolidatedMetadataJSON",
+    "ZarrV2ConsolidatedMetadataStoreKey",
 ]
