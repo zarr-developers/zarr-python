@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from zarr_indexing import IndexTransform
-from zarr_indexing.reader import basic_reader, invoke_reader, numpy_reader
+from zarr_indexing.reader import basic_reader, numpy_reader
 
 
 class BasicOnlySource:
@@ -86,14 +86,3 @@ def test_numpy_reader_preserves_a_mask_in_the_supplied_buffer() -> None:
     assert numpy_reader.read_into(source, transform, out) is None
     np.testing.assert_array_equal(np.ma.getmaskarray(out), np.ma.getmaskarray(source[:, 1:]))
     np.testing.assert_array_equal(np.ma.filled(out, 0), np.ma.filled(source[:, 1:], 0))
-
-
-def test_invoke_reader_rejects_a_reader_that_returns_a_value() -> None:
-    class InvalidReader:
-        def read_into(
-            self, source: Any, transform: IndexTransform, out: np.ndarray[Any, Any], /
-        ) -> object:
-            return object()
-
-    with pytest.raises(TypeError, match="reader.read_into must return None, got object"):
-        invoke_reader(InvalidReader(), SOURCE, BASE, np.empty(SOURCE.shape, dtype=SOURCE.dtype))

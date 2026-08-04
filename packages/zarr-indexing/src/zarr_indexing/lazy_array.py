@@ -151,8 +151,6 @@ from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
     Reader,
     basic_reader,
-    invoke_reader,
-    is_correlated,
     numpy_reader,
 )
 from zarr_indexing.transform import IndexTransform, selection_to_transform
@@ -167,6 +165,23 @@ __all__ = ["LazyArray", "Partition"]
 # Above this many bytes, the no-dask token fallback describes an array
 # structurally instead of digesting its contents. See `_wrapped_token`.
 _TOKEN_DIGEST_LIMIT = 1 << 20
+
+
+def _invoke_reader(
+    reader: Reader,
+    source: Any,
+    transform: IndexTransform,
+    out: np.ndarray[Any, Any],
+) -> None:
+    """Invoke a reader and enforce its in-place return contract."""
+    returned = reader.read_into(source, transform, out)
+    if returned is not None:
+        raise TypeError(f"reader.read_into must return None, got {type(returned).__name__}")
+
+
+def _is_correlated(transform: IndexTransform) -> bool:
+    """True when the transform gathers a list of points rather than an outer product."""
+    return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
 
 
 class ArrayLike(Protocol):
@@ -265,7 +280,7 @@ def _partition_out_selection(
 ) -> tuple[Any, ...]:
     """Lower ``cell_transform`` to NumPy selectors on the request buffer."""
     domain = cell_transform.domain
-    if is_correlated(cell_transform):
+    if _is_correlated(cell_transform):
         correlated_selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
         for output_map in cell_transform.output:
             if isinstance(output_map, ConstantMap):
@@ -1019,7 +1034,7 @@ class LazyArray:
             return out
 
         if self._parts is None:
-            invoke_reader(self._reader, self._array, self._global_transform(), out)
+            _invoke_reader(self._reader, self._array, self._global_transform(), out)
             return out
 
         written = 0
@@ -1033,7 +1048,7 @@ class LazyArray:
                 destination = out if len(part.out_selection) == 0 else out[part.out_selection]
             else:
                 destination = part.view._output_buffer(part.view.shape)
-            invoke_reader(
+            _invoke_reader(
                 self._reader,
                 self._array,
                 part.view._global_transform(),
