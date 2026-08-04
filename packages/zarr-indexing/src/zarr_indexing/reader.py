@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Final, Protocol
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 import numpy as np
 
@@ -11,13 +12,25 @@ from zarr_indexing.affine import checked_affine
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
 
+if TYPE_CHECKING:
+    from zarr_indexing.chunk_resolution import ChunkProjection
+
 __all__ = [
     "BasicReader",
     "NumPyReader",
+    "ReadContext",
     "Reader",
     "basic_reader",
     "numpy_reader",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class ReadContext:
+    """The complete source-global transform and optional local chunk projection."""
+
+    transform: IndexTransform
+    projection: ChunkProjection | None = None
 
 
 class Reader(Protocol):
@@ -32,17 +45,19 @@ class Reader(Protocol):
     def read_into(
         self,
         source: Any,
-        transform: IndexTransform,
+        context: ReadContext,
         out: np.ndarray[Any, Any],
         /,
     ) -> None:
-        """Fill `out` with the exact source values selected by `transform`.
+        """Fill `out` with the exact source values selected by `context`.
 
-        `transform` maps zero-origin coordinates in the output buffer to
-        global coordinates in `source`, and `transform.domain.shape` equals
-        `out.shape`. Fill every cell in place, preserving the transform's exact
-        values, order, and dtype, then return `None`. Do not replace or retain
-        `out`; it may be a strided writable view rather than an owning array.
+        `context.transform` maps zero-origin coordinates in the output buffer
+        to global coordinates in `source`, and its domain shape equals
+        `out.shape`. `context.projection`, when present, is the corresponding
+        chunk-local plan. Fill every cell in place, preserving the transform's
+        exact values, order, and dtype, then return `None`. Do not replace or
+        retain `out`; it may be a strided writable view rather than an owning
+        array.
 
         Backend exceptions propagate unchanged. Because callers may resolve
         parts concurrently through the same reader object, stateful readers
@@ -67,8 +82,9 @@ class BasicReader:
 
     __slots__ = ()
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
         """Read one transform through a positive-slice slab and residual lowering."""
+        transform = context.transform
         key, residual = _decompose_basic(transform)
         block = np.asanyarray(source[key])
         out[...] = _lower(block, residual)
@@ -85,8 +101,9 @@ class NumPyReader:
 
     __slots__ = ()
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
         """Read one transform through a narrowed slab into `out`."""
+        transform = context.transform
         key, residual = _decompose_basic(transform)
         block = np.asanyarray(source[key])
         out[...] = _lower(block, residual)

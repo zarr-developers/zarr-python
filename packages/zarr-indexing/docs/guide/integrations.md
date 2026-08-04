@@ -84,10 +84,12 @@ Its source represents already decoded chunks and records each read:
 
 `LazyArray` converts a cache selection into transforms and partitions, then
 allocates and assembles the result. `SystemMemoryChunkReader` receives one
-complete transform for each materialized part, plans its chunks, reads resident
-buffers, and applies the paired transforms. The reader owns cache state and
-source reads; it does not own result shape or assembly. `SystemMemoryChunkCache`
-is only the thin NumPy-style facade that configures that reader:
+`ReadContext` for each materialized part. Its global `context.transform`
+directly addresses the raw source, while the supplied projection remains
+chunk-local. The reader plans its chunks, reads resident buffers, and applies
+the paired transforms. It owns cache state and source reads; it does not own
+result shape or assembly. `SystemMemoryChunkCache` is only the thin NumPy-style
+facade that configures that reader:
 
 Its indexing dialects remain explicit: `cache[key]` accepts basic indexing
 (integers, slices, ellipsis, and new axes), while `cache.oindex[key]` combines

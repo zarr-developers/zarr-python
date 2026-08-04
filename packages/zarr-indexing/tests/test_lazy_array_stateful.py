@@ -27,7 +27,7 @@ import pytest
 from hypothesis import settings
 
 import zarr_indexing.testing.stateful as stateful
-from zarr_indexing import IndexTransform, LazyArray
+from zarr_indexing import LazyArray, ReadContext
 from zarr_indexing.reader import basic_reader, numpy_reader
 from zarr_indexing.testing import (
     DEFAULT_SETTINGS,
@@ -46,8 +46,8 @@ TestNumpyIndexing = state_machine_test(NumpyIndexing)
 class UnhashableReader:
     __hash__ = None
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
-        basic_reader.read_into(source, transform, out)
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        basic_reader.read_into(source, context, out)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, UnhashableReader)

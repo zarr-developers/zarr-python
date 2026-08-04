@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import zarr_indexing
-from zarr_indexing import IndexTransform, LazyArray
+from zarr_indexing import IndexTransform, LazyArray, ReadContext
 
 DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
@@ -441,7 +441,7 @@ def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
     out = np.empty(transform.domain.shape, dtype=source.dtype)
 
     reader = reader_type(capacity=2)
-    assert reader.read_into(source, transform, out) is None
+    assert reader.read_into(source, ReadContext(transform), out) is None
 
     np.testing.assert_array_equal(out, np.array([10, 18, 26, 34]))
     assert source.reads == [(0, 0), (1, 0)]

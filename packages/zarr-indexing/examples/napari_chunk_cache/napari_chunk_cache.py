@@ -17,8 +17,8 @@ import numpy as np
 
 from zarr_indexing import (
     IndexDomain,
-    IndexTransform,
     LazyArray,
+    ReadContext,
     dimension_grids_from_chunks,
     plan_chunks,
 )
@@ -271,12 +271,12 @@ class SystemMemoryChunkReader:
     def read_into(
         self,
         source: RecordingChunkSource,
-        transform: IndexTransform,
+        context: ReadContext,
         out: np.ndarray[Any, Any],
         /,
     ) -> None:
         grids = dimension_grids_from_chunks(source.chunks, source.shape)
-        projections = tuple(plan_chunks(transform, grids))
+        projections = tuple(plan_chunks(context.transform, grids))
         required = tuple(dict.fromkeys(projection.chunk_coords for projection in projections))
         self._ensure_ready(source, required)
         for projection in projections:

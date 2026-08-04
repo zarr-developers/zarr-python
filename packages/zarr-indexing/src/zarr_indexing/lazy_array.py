@@ -25,6 +25,10 @@ request; `view` carries that partition's transform. `result()` allocates one
 fresh output buffer, then reads each partition once through the selected reader
 into the final buffer or an owned temporary for fancy placement.
 
+The part view's transform directly addresses its raw wrapped array. The paired
+projection deliberately retains the chunk-local frame; both travel together in
+the `ReadContext` passed to the reader.
+
 The partitioning is discovered from the wrapped array at construction — first
 `read_chunk_sizes` (zarr's clipped per-axis sizes, sharding-aware), then
 `chunks`, read as per-axis sizes if its entries are sequences and as a uniform
@@ -156,6 +160,7 @@ from zarr_indexing.grid import DimensionGrid, FixedDimension, dimension_grids_fr
 from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
+    ReadContext,
     Reader,
     basic_reader,
     numpy_reader,
@@ -177,11 +182,11 @@ _TOKEN_DIGEST_LIMIT = 1 << 20
 def _invoke_reader(
     reader: Reader,
     source: Any,
-    transform: IndexTransform,
+    context: ReadContext,
     out: np.ndarray[Any, Any],
 ) -> None:
     """Invoke a reader and enforce its in-place return contract."""
-    returned = reader.read_into(source, transform, out)
+    returned = reader.read_into(source, context, out)
     if returned is not None:
         raise TypeError(f"reader.read_into must return None, got {type(returned).__name__}")
 
@@ -409,16 +414,18 @@ class Partition:
         of the wrapped array.
     box
         The box itself, in the global storage coordinates of the wrapped
-        array: one `[inclusive_min, exclusive_max)` interval per dimension.
-        `view.bounding_box()` is part-local and so cannot distinguish two
-        parts; this attribute can. For a nested or repartitioned view this box
-        may be narrower than `projection.chunk_domain`.
+        array: one `[inclusive_min, exclusive_max)` interval per dimension. It
+        describes the whole partition cell, while `view.bounding_box()` is the
+        global hull of only the selected values in that cell. For a nested or
+        repartitioned view this box may be narrower than
+        `projection.chunk_domain`.
     view
         A `LazyArray` covering exactly the cells of the view that live in this
-        box. Resolving it reads the box once through its selected reader. Named
-        `view` rather than `array` because `LazyArray.array` is the opposite
-        thing — the raw wrapped source — and the two sat next to each other
-        meaning inverses.
+        box. Its transform directly addresses its raw wrapped `array`; only the
+        projection's `chunk_transform` is chunk-local. Resolving the view reads
+        the box once through its selected reader. Named `view` rather than
+        `array` because `LazyArray.array` is the opposite thing — the raw
+        wrapped source — and the two sat next to each other meaning inverses.
     out_selection
         Where `view.result()` belongs in an array of the whole view's shape — a
         NumPy index tuple with one entry per dimension of the view, usable
@@ -631,12 +638,6 @@ class LazyArray:
         """The composed transform from this view's coordinates to storage."""
         return self._transform
 
-    def _global_transform(self) -> IndexTransform:
-        """Shift a part-local transform into the wrapped array's coordinates."""
-        if self._window is None:
-            return self._transform
-        return self._transform.translate(tuple(item.start for item in self._window))
-
     @property
     def shape(self) -> tuple[int, ...]:
         """The shape of this view — the transform's input domain, not the source's."""
@@ -732,12 +733,10 @@ class LazyArray:
 
         Notes
         -----
-        The coordinates are those of the array this view reads from, which for
-        the `array` of a [`Partition`][zarr_indexing.lazy_array.Partition] is
-        part-local — relative to that part's own box, not the wrapped array.
-        Two parts of the same view can therefore report identical bounding
-        boxes; [`Partition.box`][zarr_indexing.lazy_array.Partition] gives the
-        global box they sit in.
+        The coordinates directly address the raw `array` this view exposes.
+        Consequently, partition views report source-global hulls;
+        [`Partition.box`][zarr_indexing.lazy_array.Partition] separately gives
+        the whole global partition cell rather than only the selected hull.
 
         Examples
         --------
@@ -946,7 +945,12 @@ class LazyArray:
         grids = self._parts if self._parts is not None else _whole_array_grids(base_shape)
         rank = len(base_shape)
 
-        for projection in plan_chunks(self._transform, grids):
+        if self._window is None:
+            plan_transform = self._transform
+        else:
+            plan_transform = self._transform.translate(tuple(-item.start for item in self._window))
+
+        for projection in plan_chunks(plan_transform, grids):
             base_coords = projection.chunk_coords
             local = projection.chunk_transform
             origin = tuple(grid.chunk_offset(c) for grid, c in zip(grids, base_coords, strict=True))
@@ -974,7 +978,13 @@ class LazyArray:
             yield Partition(
                 projection=projection,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
-                view=LazyArray._derive(self._array, local, None, window, self._reader),
+                view=LazyArray._derive(
+                    self._array,
+                    local.translate(global_origin),
+                    None,
+                    window,
+                    self._reader,
+                ),
                 out_selection=_partition_out_selection(projection.cell_transform),
             )
 
@@ -1045,7 +1055,7 @@ class LazyArray:
             return out
 
         if self._parts is None:
-            _invoke_reader(self._reader, self._array, self._global_transform(), out)
+            _invoke_reader(self._reader, self._array, ReadContext(self._transform), out)
             return out
 
         written = 0
@@ -1062,7 +1072,7 @@ class LazyArray:
             _invoke_reader(
                 self._reader,
                 self._array,
-                part.view._global_transform(),
+                ReadContext(part.view.transform, part.projection),
                 destination,
             )
             if not direct:
@@ -1131,7 +1141,6 @@ class LazyArray:
         return (
             type(self).__qualname__,
             _wrapped_token(self._array),
-            None if self._window is None else tuple((s.start, s.stop) for s in self._window),
             json.dumps(transform_to_canonical(self._transform), sort_keys=True),
         )
 

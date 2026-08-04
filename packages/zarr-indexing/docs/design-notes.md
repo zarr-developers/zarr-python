@@ -188,9 +188,10 @@ speculatively; `is_box` is the runtime check until then.
 ## Related work
 
 TensorStore is the prior art for the transform algebra, as described above. At
-the execution boundary, this package instead gives each backend a complete
-transform through a `Reader`. A transform answers **which values?**; the reader
-answers **how does this backend obtain them?** The reader must preserve the
+the execution boundary, this package instead gives each backend a `ReadContext`
+through a `Reader`. Its global transform answers **which values?**; the reader
+answers **how does this backend obtain them?** An optional projection retains a
+partition's chunk-local planning frame. The reader must preserve the global
 transform exactly, but it does not participate in indexing semantics,
 partitioning, scheduling, or result ownership.
 

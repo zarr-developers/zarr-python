@@ -17,4 +17,11 @@ into the supplied system-memory output. Derived views and parts share their
 reader and part views may be materialized concurrently, so stateful readers
 must synchronize their own mutable state.
 
+Every public `Partition.view.transform` directly maps that view's zero-origin
+coordinates into its raw `Partition.view.array`, including for non-first
+partitions. `Partition.projection.chunk_transform` intentionally stays local to
+the selected chunk. During materialization the reader receives both frames in
+one `ReadContext`: the public global transform in `context.transform` and the
+same local plan in `context.projection`.
+
 ::: zarr_indexing.lazy_array

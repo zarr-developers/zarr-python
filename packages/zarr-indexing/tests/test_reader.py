@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 import zarr_indexing.reader as reader_module
-from zarr_indexing import ArrayMap, DimensionMap, IndexDomain, IndexTransform
+from zarr_indexing import ArrayMap, DimensionMap, IndexDomain, IndexTransform, ReadContext
 from zarr_indexing.reader import basic_reader, numpy_reader
 
 
@@ -120,10 +120,10 @@ def test_builtin_readers_match_the_transform(
     out = np.empty(transform.domain.shape, dtype=source_data.dtype)
     if reader_name == "basic":
         source = BasicOnlySource(source_data)
-        result = basic_reader.read_into(source, transform, out)
+        result = basic_reader.read_into(source, ReadContext(transform), out)
         assert len(source.keys) == 1
     else:
-        result = numpy_reader.read_into(source_data, transform, out)
+        result = numpy_reader.read_into(source_data, ReadContext(transform), out)
     assert result is None
     np.testing.assert_array_equal(out, expected)
 
@@ -141,10 +141,10 @@ def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> No
     out = np.empty(transform.domain.shape, dtype=np.intp)
     if reader_name == "basic":
         with pytest.raises(OverflowError, match="outside np.intp"):
-            basic_reader.read_into(BasicOnlySource(np.arange(1)), transform, out)
+            basic_reader.read_into(BasicOnlySource(np.arange(1)), ReadContext(transform), out)
     else:
         with pytest.raises(OverflowError, match="outside np.intp"):
-            numpy_reader.read_into(np.arange(1), transform, out)
+            numpy_reader.read_into(np.arange(1), ReadContext(transform), out)
 
 
 def test_numpy_reader_narrows_basic_slab_before_gather(
@@ -161,7 +161,7 @@ def test_numpy_reader_narrows_basic_slab_before_gather(
 
     monkeypatch.setattr(reader_module, "_take", recording_take)
     out = np.empty(transform.domain.shape, dtype=source.dtype)
-    assert numpy_reader.read_into(source, transform, out) is None
+    assert numpy_reader.read_into(source, ReadContext(transform), out) is None
     assert out.shape == (10, 2)
     np.testing.assert_array_equal(
         out,
@@ -188,6 +188,6 @@ def test_numpy_reader_preserves_a_mask_in_the_supplied_buffer() -> None:
     source = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
     transform = IndexTransform.from_shape(source.shape)[:, 1:]
     out = np.ma.masked_all(transform.domain.shape, dtype=source.dtype)
-    assert numpy_reader.read_into(source, transform, out) is None
+    assert numpy_reader.read_into(source, ReadContext(transform), out) is None
     np.testing.assert_array_equal(np.ma.getmaskarray(out), np.ma.getmaskarray(source[:, 1:]))
     np.testing.assert_array_equal(np.ma.filled(out, 0), np.ma.filled(source[:, 1:], 0))

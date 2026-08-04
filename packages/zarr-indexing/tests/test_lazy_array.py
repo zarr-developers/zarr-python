@@ -28,6 +28,7 @@ from zarr_indexing import (
     FixedDimension,
     IndexTransform,
     LazyArray,
+    ReadContext,
     VaryingDimension,
     array_map_dependent_axis,
     dimension_grids_from_chunks,
@@ -53,8 +54,8 @@ class DelegatingReader:
     def __init__(self, inner: Reader) -> None:
         self.inner = inner
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
-        self.inner.read_into(source, transform, out)
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        self.inner.read_into(source, context, out)
 
 
 def outer(ref: np.ndarray[Any, Any], selections: Sequence[Any]) -> np.ndarray[Any, Any]:
@@ -1055,16 +1056,16 @@ def test_construction_selects_readers_explicitly() -> None:
 
 
 def test_reader_wrappers_forward_the_read_contract_unchanged() -> None:
-    events: list[tuple[str, Any, IndexTransform, Any]] = []
+    events: list[tuple[str, Any, ReadContext, Any]] = []
 
     class RecordingDelegatingReader:
         def __init__(self, name: str, inner: Reader) -> None:
             self.name = name
             self.inner = inner
 
-        def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
-            events.append((self.name, source, transform, out))
-            self.inner.read_into(source, transform, out)
+        def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+            events.append((self.name, source, context, out))
+            self.inner.read_into(source, context, out)
 
     data = reference()
     inner = RecordingDelegatingReader("inner", numpy_reader)
@@ -1089,11 +1090,13 @@ def test_from_numpy_rejects_non_ndarrays(value: Any) -> None:
 
 class RecordingReader:
     def __init__(self) -> None:
-        self.calls: list[tuple[Any, IndexTransform, Any]] = []
+        self.calls: list[tuple[Any, ReadContext, Any]] = []
+        self.contexts: list[ReadContext] = []
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
-        self.calls.append((source, transform, out))
-        numpy_reader.read_into(source, transform, out)
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        self.calls.append((source, context, out))
+        self.contexts.append(context)
+        basic_reader.read_into(source, context, out)
 
 
 def test_view_operations_preserve_the_reader_without_reading() -> None:
@@ -1118,8 +1121,8 @@ def test_with_reader_requires_callable_read_into(value: Any) -> None:
 
 
 class ReturningReader:
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> Any:
-        return np.empty(transform.domain.shape, dtype=source.dtype)
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> Any:
+        return np.empty(context.transform.domain.shape, dtype=source.dtype)
 
 
 def test_result_rejects_a_reader_that_returns_a_value() -> None:
@@ -1133,9 +1136,9 @@ class BufferRecordingReader(RecordingReader):
         super().__init__()
         self.owns_data: list[bool] = []
 
-    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
         self.owns_data.append(bool(out.flags.owndata))
-        super().read_into(source, transform, out)
+        super().read_into(source, context, out)
 
 
 def test_reader_is_called_once_per_touched_part() -> None:
@@ -1144,7 +1147,21 @@ def test_reader_is_called_once_per_touched_part() -> None:
     view = LazyArray(data).with_reader(reader).with_parts((3, 4)).lazy[1:5, 2]
     np.testing.assert_array_equal(view.result(), data[1:5, 2])
     assert len(reader.calls) == len(tuple(view.parts())) == 2
-    assert all(call[1].domain.inclusive_min == (0,) * call[1].input_rank for call in reader.calls)
+    assert all(
+        call[1].transform.domain.inclusive_min == (0,) * call[1].transform.input_rank
+        for call in reader.calls
+    )
+
+
+def test_partition_reader_receives_global_transform_and_existing_projection() -> None:
+    reader = RecordingReader()
+    view = LazyArray(np.arange(8)).with_reader(reader).with_parts((4,))
+    expected = [part.projection for part in view.parts()]
+
+    np.testing.assert_array_equal(view.result(), np.arange(8))
+
+    assert [context.projection for context in reader.contexts] == expected
+    assert [context.transform.apply((0,)) for context in reader.contexts] == [(0,), (4,)]
 
 
 def test_an_empty_result_does_not_call_the_reader() -> None:
@@ -1178,7 +1195,7 @@ def test_reader_exception_propagates_unchanged() -> None:
     error = RuntimeError("backend failed")
 
     class FailingReader:
-        def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
             raise error
 
     with pytest.raises(RuntimeError) as caught:
@@ -1424,7 +1441,9 @@ def test_partition_exposes_projection_as_its_placement_authority(
     for part in view.parts():
         projection = part.projection
         assert isinstance(projection, ChunkProjection)
-        assert part.view.transform == projection.chunk_transform
+        assert part.view.transform == projection.chunk_transform.translate(
+            tuple(lo for lo, _ in part.box)
+        )
         assert part.base_coords == projection.chunk_coords
         assert part.box == tuple(
             zip(
@@ -1451,6 +1470,26 @@ def test_partition_exposes_projection_as_its_placement_authority(
         assembled[part.out_selection] = np.asarray(part.view.result())
 
     np.testing.assert_array_equal(assembled, np.asarray(view.result()))
+
+
+def test_nonfirst_partition_transform_directly_addresses_its_array() -> None:
+    source = np.arange(8)
+    part = list(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
+
+    assert part.box == ((4, 8),)
+    assert part.view.transform.apply((0,)) == (4,)
+    assert part.view.array[part.view.transform.apply((0,))] == 4
+    assert part.view.result()[0] == 4
+    assert part.projection.chunk_transform.apply((0,)) == (0,)
+
+
+def test_partition_token_encodes_its_public_global_transform() -> None:
+    source = np.arange(8)
+    base = LazyArray.from_numpy(source)
+    partition_view = list(base.with_parts((4,)).parts())[1].view
+    direct_view = base.lazy[4:8]
+
+    assert partition_view.__dask_tokenize__() == direct_view.__dask_tokenize__()
 
 
 def test_parts_resolve_independently_and_concurrently() -> None:
@@ -1481,18 +1520,15 @@ def test_parts_report_completeness() -> None:
 
 
 def test_partition_boxes_are_global_and_tile_the_base() -> None:
-    """`box` is in the wrapped array's coordinates, so parts are distinguishable.
-
-    `array.bounding_box()` is part-local and can repeat across parts; `box` is
-    what says which part of the base a `Partition` actually sits in.
-    """
+    """Both the selected hull and the whole partition box use global coordinates."""
     view = make_source("numpy-uniform-parts").lazy[1:6, :, 1:]
     parts = {part.base_coords: part for part in view.parts()}
 
-    # The reviewer's repro: two parts of the same view whose part-local
-    # bounding boxes coincide but which cover different regions of the base.
+    # The reviewer's repro: two parts of the same view now expose distinct
+    # source-global selected hulls as well as distinct whole partition boxes.
     first, second = parts[0, 0, 0], parts[0, 1, 0]
-    assert first.view.bounding_box() == second.view.bounding_box()
+    assert first.view.bounding_box() == ((1, 3), (0, 2), (1, 3))
+    assert second.view.bounding_box() == ((1, 3), (2, 4), (1, 3))
     assert first.box != second.box
     assert first.box == ((0, 3), (0, 2), (0, 3))
     assert second.box == ((0, 3), (2, 4), (0, 3))

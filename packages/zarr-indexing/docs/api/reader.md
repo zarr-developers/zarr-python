@@ -9,17 +9,21 @@ position. A `Reader` defines how a particular backend obtains those values.
 Readers do not define indexing semantics, partitioning, scheduling, or result
 ownership.
 
-`Reader.read_into(source, transform, out)` receives a transform from
-zero-origin output-buffer coordinates to global source coordinates, with
-`transform.domain.shape == out.shape`. An implementation must fill every cell
-of `out` in place, preserve the transform's exact values, order, and dtype, and
-return `None`. It must neither replace nor retain `out`, which may be a strided
-writable view. Backend exceptions propagate unchanged. Derived part views share
-their reader and may be resolved concurrently, so a stateful reader owns its
-own synchronization.
+`Reader.read_into(source, context, out)` receives a `ReadContext` whose
+`transform` maps zero-origin output-buffer coordinates to global coordinates in
+`source`, with `context.transform.domain.shape == out.shape`. Its optional
+`projection` is the existing plan for a partitioned read. The projection's
+`chunk_transform` remains chunk-local; the global transform and local
+projection deliberately describe different coordinate frames.
+
+An implementation must fill every cell of `out` in place, preserve the global
+transform's exact values, order, and dtype, and return `None`. It must neither
+replace nor retain `out`, which may be a strided writable view. Backend
+exceptions propagate unchanged. Derived part views share their reader and may
+be resolved concurrently, so a stateful reader owns its own synchronization.
 
 Reader wrappers compose by intercepting this one operation and forwarding the
-same source, transform, and output buffer to an inner reader:
+same source, context, and output buffer to an inner reader:
 
 ```python
 class RecordingReader:
@@ -27,9 +31,9 @@ class RecordingReader:
         self.inner = inner
         self.calls = []
 
-    def read_into(self, source, transform, out, /):
-        self.calls.append((source, transform, out))
-        self.inner.read_into(source, transform, out)
+    def read_into(self, source, context, out, /):
+        self.calls.append((source, context, out))
+        self.inner.read_into(source, context, out)
 
 
 inner = RecordingReader(numpy_reader)
