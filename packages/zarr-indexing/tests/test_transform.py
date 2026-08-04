@@ -680,6 +680,20 @@ class TestIndexTransformVindex:
         assert result.output[1].index_array.shape == (2,)
 
 
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_direct_advanced_index_rejects_float_arrays(mode: str) -> None:
+    helper = getattr(IndexTransform.from_shape((5,)), mode)
+    with pytest.raises(IndexError, match="integer or boolean"):
+        helper[np.array([1.9, 3.2])]
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_direct_advanced_index_rejects_wrong_length_boolean_mask(mode: str) -> None:
+    helper = getattr(IndexTransform.from_shape((5,)), mode)
+    with pytest.raises(IndexError, match="boolean index.*dimension 5"):
+        helper[np.array([True, False])]
+
+
 class TestSelectionToTransform:
     def test_basic_slice(self) -> None:
         t = IndexTransform.from_shape((10, 20))

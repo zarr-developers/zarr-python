@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 
 from zarr_indexing.affine import checked_affine
+from zarr_indexing.boundary import validate_advanced_selection
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
@@ -1320,7 +1321,12 @@ def _normalize_oindex_selection(
             # Convert integer scalars to 1-element arrays for orthogonal indexing
             result.append(np.array([int(sel)], dtype=np.intp))
         elif isinstance(sel, (list, tuple)):
-            result.append(np.asarray(sel, dtype=np.intp))
+            array = np.asarray(sel)
+            if array.dtype == np.bool_:
+                (indices,) = np.nonzero(array)
+                result.append(indices.astype(np.intp))
+            else:
+                result.append(np.asarray(sel, dtype=np.intp))
         else:
             result.append(sel)
 
@@ -1336,6 +1342,7 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     Each index array is applied independently per dimension (outer product).
     """
+    validate_advanced_selection(selection, transform.domain, "orthogonal")
     normalized = _normalize_oindex_selection(selection, transform.domain.ndim)
 
     new_inclusive_min: list[int] = []
@@ -1468,6 +1475,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     All array indices are broadcast together. Broadcast dimensions are prepended,
     followed by non-array (slice) dimensions.
     """
+    validate_advanced_selection(selection, transform.domain, "vectorized")
     if not isinstance(selection, tuple):
         selection = (selection,)
 
@@ -1510,7 +1518,12 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(sel, np.ndarray):
             processed.append(sel.astype(np.intp))
         elif isinstance(sel, (list, tuple)):
-            processed.append(np.asarray(sel, dtype=np.intp))
+            array = np.asarray(sel)
+            if array.dtype == np.bool_:
+                indices_tuple = np.nonzero(array)
+                processed.extend(indices.astype(np.intp) for indices in indices_tuple)
+            else:
+                processed.append(np.asarray(sel, dtype=np.intp))
         elif isinstance(sel, (int, np.integer)):
             processed.append(np.array([int(sel)], dtype=np.intp))
         else:

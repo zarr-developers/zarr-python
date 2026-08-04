@@ -172,6 +172,43 @@ def _expanded_axis_walk(entries: tuple[Any, ...], ndim: int, mode: SelectionMode
     return axes
 
 
+def validate_advanced_selection(
+    selection: Any,
+    domain: IndexDomain,
+    mode: Literal["orthogonal", "vectorized"],
+) -> None:
+    """Validate advanced-index selector dtypes and boolean mask extents.
+
+    This is the validation shared by positional callers such as `LazyArray`
+    and direct `IndexTransform.oindex` / `.vindex` callers. It deliberately
+    does not normalize coordinates: direct transforms use literal coordinates,
+    whereas positional callers shift and wrap them separately.
+    """
+    entries: tuple[Any, ...] = selection if isinstance(selection, tuple) else (selection,)
+    axes = _expanded_axis_walk(entries, domain.ndim, mode)
+
+    for sel, axis in zip(entries, axes, strict=True):
+        arr = _as_index_array(sel)
+        if arr is None:
+            continue
+        if arr.dtype == np.bool_:
+            n_axes = _axes_consumed(sel, mode)
+            expected = domain.shape[axis : axis + n_axes]
+            if arr.shape != tuple(expected):
+                extent = (
+                    f"dimension {expected[0]}"
+                    if len(expected) == 1
+                    else f"dimensions {tuple(expected)}"
+                )
+                raise IndexError(
+                    f"boolean index has shape {arr.shape} but {extent} has shape {tuple(expected)}"
+                )
+        elif arr.dtype.kind not in "iu":
+            raise IndexError(
+                f"arrays used as indices must be of integer or boolean type; got dtype {arr.dtype}"
+            )
+
+
 def split_scalar_axes(
     selection: Any,
     domain: IndexDomain,
@@ -285,12 +322,15 @@ def normalize_positional_selection(
     origin = domain.inclusive_min
     ndim = domain.ndim
 
-    for sel in entries:
-        if _is_bool_scalar(sel):
-            raise IndexError(
-                "boolean scalars are not valid indices; use a boolean array "
-                "matching the shape of the axes it selects"
-            )
+    if mode in ("orthogonal", "vectorized"):
+        validate_advanced_selection(selection, domain, mode)
+    else:
+        for sel in entries:
+            if _is_bool_scalar(sel):
+                raise IndexError(
+                    "boolean scalars are not valid indices; use a boolean array "
+                    "matching the shape of the axes it selects"
+                )
 
     n_ellipsis = sum(1 for sel in entries if sel is Ellipsis)
     if n_ellipsis > 1:
