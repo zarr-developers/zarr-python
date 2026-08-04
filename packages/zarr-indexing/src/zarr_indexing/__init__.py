@@ -53,6 +53,7 @@ from zarr_indexing.json import (
 from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.reader import BasicReader, NumPyReader, Reader, basic_reader, numpy_reader
 from zarr_indexing.support import (
     IndexingSupport,
     infer_indexing_support,
@@ -68,6 +69,7 @@ __version__ = version("zarr-indexing")
 
 __all__ = [
     "ArrayMap",
+    "BasicReader",
     "BoundsCheckError",
     "ChunkCoverage",
     "ChunkPlan",
@@ -83,12 +85,15 @@ __all__ = [
     "IndexingSupport",
     "LazyArray",
     "NdselError",
+    "NumPyReader",
     "OutputIndexMap",
     "OutputIndexMapJSON",
     "Partition",
+    "Reader",
     "VindexInvalidSelectionError",
     "__version__",
     "array_map_dependent_axis",
+    "basic_reader",
     "compose",
     "dimension_grids_from_chunks",
     "index_domain_from_json",
@@ -97,6 +102,7 @@ __all__ = [
     "index_transform_to_json",
     "infer_indexing_support",
     "normalize_ndsel",
+    "numpy_reader",
     "parse_ndsel",
     "plan_chunks",
     "resolve_indexing_support",
