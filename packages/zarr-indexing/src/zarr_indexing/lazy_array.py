@@ -50,9 +50,7 @@ Readers
 Every wrapper carries a reader that owns the backend-specific request. The
 default `basic_reader` needs only basic slicing; `LazyArray.from_numpy()` opts
 into `numpy_reader` for direct NumPy indexing. `with_reader()` replaces the
-reader without reading or changing the view metadata. The legacy
-`IndexingSupport` metadata remains available during its migration, but does not
-change materialization.
+reader without reading or changing the view metadata.
 
 Boxes and queries
 -----------------
@@ -151,10 +149,6 @@ from zarr_indexing.reader import (
     _is_correlated,
     basic_reader,
     numpy_reader,
-)
-from zarr_indexing.support import (
-    IndexingSupport,
-    resolve_indexing_support,
 )
 from zarr_indexing.transform import IndexTransform, selection_to_transform
 
@@ -532,7 +526,7 @@ class LazyArray:
            [ 8, 10]])
     """
 
-    __slots__ = ("_array", "_parts", "_reader", "_support", "_transform", "_window")
+    __slots__ = ("_array", "_parts", "_reader", "_transform", "_window")
 
     def __init__(self, array: _WrappedArray) -> None:
         if isinstance(array, np.matrix):
@@ -551,7 +545,6 @@ class LazyArray:
         self._window: tuple[slice, ...] | None = None
         self._transform = IndexTransform.from_shape(shape)
         self._parts = _discover_parts(array, shape)
-        self._support = resolve_indexing_support(array)
         self._reader = basic_reader
 
     @classmethod
@@ -570,7 +563,6 @@ class LazyArray:
         transform: IndexTransform,
         parts: tuple[EdgeDimensionGrid, ...] | None,
         window: tuple[slice, ...] | None,
-        support: IndexingSupport,
         reader: Reader,
     ) -> LazyArray:
         """Build a wrapper sharing `array` but carrying a new transform or partitioning."""
@@ -581,7 +573,6 @@ class LazyArray:
         view._transform = transform.translate_domain_to((0,) * transform.input_rank)
         view._parts = parts
         view._window = window
-        view._support = support
         view._reader = reader
         return view
 
@@ -649,61 +640,7 @@ class LazyArray:
             self._transform,
             self._parts,
             self._window,
-            self._support,
             reader,
-        )
-
-    # -- source capability --------------------------------------------------
-
-    @property
-    def indexing_support(self) -> IndexingSupport:
-        """Legacy indexing metadata retained during the reader migration.
-
-        Materialization is selected solely by [`reader`][zarr_indexing.lazy_array.LazyArray.reader].
-        """
-        return self._support
-
-    def with_indexing_support(self, support: IndexingSupport) -> LazyArray:
-        """Return the same view with replacement legacy indexing metadata.
-
-        Nothing is copied or read. This compatibility path no longer changes
-        how `result()` materializes: use `with_reader` to change its backend
-        adapter.
-
-        Parameters
-        ----------
-        support
-            The level to use, overriding both the source's own declaration and
-            inference.
-
-        Returns
-        -------
-        LazyArray
-            The same view with the supplied legacy metadata.
-
-        Raises
-        ------
-        TypeError
-            If `support` is not an `IndexingSupport`. Unlike detection, which
-            treats a malformed declaration as absent, this is a public API and
-            validates strictly.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from zarr_indexing.support import IndexingSupport
-        >>> view = LazyArray(np.arange(6)).with_indexing_support(IndexingSupport.BASIC)
-        >>> view.indexing_support
-        <IndexingSupport.BASIC: 'basic'>
-        """
-        # The annotation already says this, but the check is for callers who are
-        # not type-checked: a bare string is the obvious mistake to make here.
-        if not isinstance(support, IndexingSupport):  # pyright: ignore[reportUnnecessaryIsInstance]
-            raise TypeError(
-                f"indexing support must be an IndexingSupport, got {type(support).__name__}"
-            )
-        return LazyArray._derive(
-            self._array, self._transform, self._parts, self._window, support, self._reader
         )
 
     # -- shape of the selection ---------------------------------------------
@@ -944,9 +881,7 @@ class LazyArray:
         return self._with_grids(None)
 
     def _with_grids(self, grids: tuple[EdgeDimensionGrid, ...] | None) -> LazyArray:
-        return LazyArray._derive(
-            self._array, self._transform, grids, self._window, self._support, self._reader
-        )
+        return LazyArray._derive(self._array, self._transform, grids, self._window, self._reader)
 
     def parts(self) -> Iterator[Partition]:
         """Iterate the base partitioning, projected through this view.
@@ -1008,9 +943,7 @@ class LazyArray:
             yield Partition(
                 projection=projection,
                 box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
-                view=LazyArray._derive(
-                    self._array, local, None, window, self._support, self._reader
-                ),
+                view=LazyArray._derive(self._array, local, None, window, self._reader),
                 out_selection=_partition_out_selection(projection.cell_transform),
             )
 
@@ -1041,9 +974,7 @@ class LazyArray:
             composed = transform[literal]
         else:
             composed = selection_to_transform(literal, transform, mode)
-        return LazyArray._derive(
-            self._array, composed, self._parts, self._window, self._support, self._reader
-        )
+        return LazyArray._derive(self._array, composed, self._parts, self._window, self._reader)
 
     def __getitem__(self, selection: Any) -> Any:
         """Read a basic selection eagerly, like `numpy.ndarray.__getitem__`.
@@ -1159,12 +1090,12 @@ class LazyArray:
         array's contribution; dask is imported lazily and is never a
         requirement of this package.
 
-        The partitioning and the `IndexingSupport` level are deliberately
-        absent. Both decide how the data is read — in which boxes, and through
-        which requests to the source — and neither changes the values that come
-        back, so two wrappers differing only in those describe the same data.
-        A token identifies data, so they token alike and a consumer that caches
-        on tokens reuses one result for both.
+        The partitioning and reader are deliberately absent. Both decide how
+        the data is read — in which boxes, and through which request strategy —
+        and neither changes the values that come back, so two wrappers differing
+        only in those describe the same data. A token identifies data, so they
+        token alike and a consumer that caches on tokens reuses one result for
+        both.
         """
         return (
             type(self).__qualname__,

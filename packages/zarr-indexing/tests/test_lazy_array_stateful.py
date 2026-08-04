@@ -4,10 +4,10 @@
 checks each step against NumPy — see
 `zarr_indexing.testing.stateful` for what the invariants assert and why.
 
-Two sources: a NumPy array, which is the machine's default and reads at
-`VECTORIZED`, and a real zarr array, whose partitioning is discovered from the
-store rather than declared. The zarr case runs a smaller budget: it reads
-through a store, and it exercises the same code paths.
+Two sources: a NumPy array, which exercises both built-in readers, and a real
+zarr array, whose partitioning is discovered from the store rather than
+declared. The zarr case runs a smaller budget: it reads through a store, and it
+exercises the same code paths.
 
 This replaces a seeded `_random_chain` sweep in `test_lazy_array` that read
 chained selections through `parts()`. That sweep did reach the states it was
@@ -26,14 +26,43 @@ import numpy as np
 import pytest
 from hypothesis import settings
 
-from zarr_indexing.support import IndexingSupport
+import zarr_indexing.testing.stateful as stateful
+from zarr_indexing import IndexTransform, LazyArray
+from zarr_indexing.reader import basic_reader, numpy_reader
 from zarr_indexing.testing import (
     DEFAULT_SETTINGS,
     ChainedIndexingStateMachine,
     state_machine_test,
 )
 
-TestNumpyIndexing = state_machine_test(ChainedIndexingStateMachine)
+
+class NumpyIndexing(ChainedIndexingStateMachine):
+    readers = (numpy_reader,)
+
+
+TestNumpyIndexing = state_machine_test(NumpyIndexing)
+
+
+class UnhashableReader:
+    __hash__ = None
+
+    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        basic_reader.read_into(source, transform, out)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, UnhashableReader)
+
+
+def test_reader_set_deduplicates_by_identity_without_hashing() -> None:
+    first = UnhashableReader()
+    second = UnhashableReader()
+
+    readers = stateful._reader_set(LazyArray(np.arange(3)), (first, first, second))
+
+    assert readers[0] is basic_reader
+    assert readers[1] is first
+    assert readers[2] is second
+    assert len(readers) == 3
 
 
 class OneDimensionalIndexing(ChainedIndexingStateMachine):
@@ -71,19 +100,7 @@ TestSingletonAxisIndexing = state_machine_test(SingletonAxisIndexing)
 
 
 class ZarrIndexing(ChainedIndexingStateMachine):
-    """The same chains against a zarr array, read at every level it serves.
-
-    A zarr array carries `oindex` and `vindex`, so `VECTORIZED` is what
-    `LazyArray` detects; naming the levels explicitly also draws the two outer
-    ones, which route an orthogonal request to `oindex` one array axis at a time.
-    """
-
-    supports = (
-        IndexingSupport.BASIC,
-        IndexingSupport.OUTER_1VECTOR,
-        IndexingSupport.OUTER,
-        IndexingSupport.VECTORIZED,
-    )
+    """The same chains against a zarr array through the universal basic reader."""
 
     def make_source(self, data: Any) -> Any:
         zarr = pytest.importorskip("zarr")

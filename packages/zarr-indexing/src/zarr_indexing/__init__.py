@@ -54,11 +54,6 @@ from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.reader import BasicReader, NumPyReader, Reader, basic_reader, numpy_reader
-from zarr_indexing.support import (
-    IndexingSupport,
-    infer_indexing_support,
-    resolve_indexing_support,
-)
 from zarr_indexing.transform import (
     IndexTransform,
     array_map_dependent_axis,
@@ -82,7 +77,6 @@ __all__ = [
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
-    "IndexingSupport",
     "LazyArray",
     "NdselError",
     "NumPyReader",
@@ -100,12 +94,10 @@ __all__ = [
     "index_domain_to_json",
     "index_transform_from_json",
     "index_transform_to_json",
-    "infer_indexing_support",
     "normalize_ndsel",
     "numpy_reader",
     "parse_ndsel",
     "plan_chunks",
-    "resolve_indexing_support",
     "selection_to_transform",
     "transform_from_canonical",
     "transform_to_canonical",

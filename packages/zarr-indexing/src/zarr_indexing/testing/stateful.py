@@ -21,7 +21,7 @@ class MyArrayIndexing(ChainedIndexingStateMachine):
 TestMyArrayIndexing = state_machine_test(MyArrayIndexing)
 ```
 
-`data`, `partitionings`, and `supports` are class attributes; override any of
+`data`, `partitionings`, and `readers` are class attributes; override any of
 them to widen or narrow what is drawn. The base class needs no `make_source` at
 all — left alone it wraps the NumPy array itself, which is a useful smoke test
 of this package but says nothing about yours.
@@ -36,16 +36,11 @@ this checks that literally: a part's values must arrive at exactly the shape its
 there, and cover the view once. Checking through `result()` alone would prove
 only that `result()` is self-consistent.
 
-The `declare_support` rule draws an
-[`IndexingSupport`][zarr_indexing.support.IndexingSupport] level and applies it
-to the view, so the level a source is read at becomes part of the chain. This is
-the property a source author most needs pinned: the level chooses how much data
-crosses the boundary, never what the read means, so a chain read at `BASIC` must
-answer exactly what the same chain read at `VECTORIZED` answers. `BASIC` is
-always honest — at that level `LazyArray` sends nothing but integers and slices
-through `__getitem__` — so it is drawn for every source; the levels beyond it are
-only as trustworthy as the accessors they name, which is why `supports` defaults
-to the declared or inferred level alone and widening it is your call.
+The `choose_reader` rule draws a reader and applies it to the view, so the
+execution strategy becomes part of the chain. Every reader listed by a subclass
+must preserve the NumPy model for its source. The universal `basic_reader` is
+always exercised, even when a subclass lists only specialized readers; with no
+declared readers it is the sole strategy drawn.
 
 Requires the `testing` extra (`pip install zarr-indexing[testing]`).
 """
@@ -62,7 +57,7 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, precondition, rule
 
 from zarr_indexing.lazy_array import LazyArray
-from zarr_indexing.support import IndexingSupport
+from zarr_indexing.reader import Reader, basic_reader
 from zarr_indexing.testing.strategies import (
     basic_selections,
     orthogonal_selections,
@@ -211,16 +206,15 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         that carries through composition untouched and is read only when a view
         resolves, so choosing it up front reaches the same states choosing it
         mid-chain does, and spends the whole step budget on indexing.
-    supports
-        `IndexingSupport` levels `declare_support` may draw, beyond `BASIC`,
-        which is always drawn. `None` means the level `LazyArray` detects for
-        the source. Name a level here only if the source really serves it — a
-        level that overstates the source is a bug in the test, not in the code.
+    readers
+        Execution strategies `choose_reader` may draw. Every listed reader must
+        preserve the model for the source. `basic_reader` is always included;
+        `None` means the reader already carried by the constructed view.
     """
 
     data: ClassVar[Any] = DEFAULT_DATA
     partitionings: ClassVar[Sequence[Any]] = DEFAULT_PARTITIONINGS
-    supports: ClassVar[Sequence[IndexingSupport] | None] = None
+    readers: ClassVar[Sequence[Reader] | None] = None
 
     def make_source(self, data: Any) -> Any:
         """Build the array under test, holding `data`.
@@ -244,7 +238,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
             source = self.make_source(self.model)
             setattr(cls, _SOURCE, source)
         self.view = LazyArray(source)
-        self.levels: tuple[IndexingSupport, ...] = _support_levels(self.view, cls.supports)
+        self.readers = _reader_set(self.view, cls.readers)
         # Genuine fancy-after-fancy raises `NotImplementedError` by design, so a
         # chain carries at most one fancy step — in either order relative to the
         # basic ones.
@@ -305,11 +299,11 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         self._step("orthogonal", data.draw(slice_selections(self.model.shape)), fancy=False)
 
     @rule(data=st.data())
-    def declare_support(self, data: st.DataObject) -> None:
-        """Read the rest of the chain at a different level. This must change no answer."""
-        level = data.draw(st.sampled_from(list(self.levels)))
-        self.view = self.view.with_indexing_support(level)
-        self.chain.append(("support", level))
+    def choose_reader(self, data: st.DataObject) -> None:
+        """Read the rest of the chain through another conforming strategy."""
+        reader = data.draw(st.sampled_from(list(self.readers)))
+        self.view = self.view.with_reader(reader)
+        self.chain.append(("reader", type(reader).__qualname__))
 
     @precondition(lambda self: not self._indexable())
     @rule(data=st.data())
@@ -377,16 +371,13 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         )
 
 
-def _support_levels(
-    view: LazyArray, declared: Sequence[IndexingSupport] | None
-) -> tuple[IndexingSupport, ...]:
-    """The levels `declare_support` draws from, `BASIC` always among them.
-
-    `IndexingSupport` is deliberately unordered — `OUTER_1VECTOR` sits between
-    `BASIC` and `OUTER` in capability — so this is a set of levels the source is
-    asserted to serve, not a ceiling to count down from.
-    """
-    levels = list(declared) if declared is not None else [view.indexing_support]
-    if IndexingSupport.BASIC not in levels:
-        levels.insert(0, IndexingSupport.BASIC)
-    return tuple(dict.fromkeys(levels))
+def _reader_set(view: LazyArray, declared: Sequence[Reader] | None) -> tuple[Reader, ...]:
+    """The readers `choose_reader` draws from, `basic_reader` always among them."""
+    readers = list(declared) if declared is not None else [view.reader]
+    if all(reader is not basic_reader for reader in readers):
+        readers.insert(0, basic_reader)
+    unique: list[Reader] = []
+    for reader in readers:
+        if all(reader is not existing for existing in unique):
+            unique.append(reader)
+    return tuple(unique)

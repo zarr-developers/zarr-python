@@ -30,8 +30,7 @@ from zarr_indexing import (
     dimension_grids_from_chunks,
 )
 from zarr_indexing.lazy_array import _out_selection_cell_count
-from zarr_indexing.reader import basic_reader, numpy_reader
-from zarr_indexing.support import IndexingSupport
+from zarr_indexing.reader import Reader, basic_reader, numpy_reader
 from zarr_indexing.testing import repartition
 
 if TYPE_CHECKING:
@@ -45,6 +44,14 @@ EXPLICIT_PARTS = ((3, 3, 1), (2, 2, 1), (3, 1))
 def reference() -> np.ndarray[Any, np.dtype[np.int64]]:
     """The array every source flavor holds, and the oracle for every case."""
     return np.arange(int(np.prod(SHAPE)), dtype=np.int64).reshape(SHAPE)
+
+
+class DelegatingReader:
+    def __init__(self, inner: Reader) -> None:
+        self.inner = inner
+
+    def read_into(self, source: Any, transform: IndexTransform, out: Any, /) -> None:
+        self.inner.read_into(source, transform, out)
 
 
 def outer(ref: np.ndarray[Any, Any], selections: Sequence[Any]) -> np.ndarray[Any, Any]:
@@ -1529,22 +1536,20 @@ def test_dask_token_is_deterministic_and_discriminating() -> None:
     assert base.lazy[1:5].lazy[0:2].__dask_tokenize__() == base.lazy[1:3].__dask_tokenize__()
 
 
-def test_dask_token_ignores_how_the_data_is_read() -> None:
-    """Partitioning and indexing support are read strategies, not data."""
+def test_reader_and_partitioning_do_not_change_dask_identity() -> None:
     base = LazyArray(reference())
     token = base.__dask_tokenize__()
-
+    assert base.with_reader(numpy_reader).__dask_tokenize__() == token
+    assert base.with_reader(basic_reader).__dask_tokenize__() == token
     assert base.with_parts((2, 2, 2)).__dask_tokenize__() == token
-    assert base.with_parts((3, 5, 4)).__dask_tokenize__() == token
-    assert base.with_indexing_support(IndexingSupport.BASIC).__dask_tokenize__() == token
-    assert base.with_indexing_support(IndexingSupport.OUTER).__dask_tokenize__() == token
 
-    # The same holds for a view, where both strategies also apply.
-    view = base.lazy[1:6, 2:7]
-    assert (
-        view.with_parts((2, 2, 2)).with_indexing_support(IndexingSupport.BASIC).__dask_tokenize__()
-        == view.__dask_tokenize__()
-    )
+
+@pytest.mark.parametrize("reader", [basic_reader, numpy_reader, DelegatingReader(numpy_reader)])
+def test_reader_survives_pickle(reader: Reader) -> None:
+    view = LazyArray(reference()).with_reader(reader).lazy[1:5, ::2]
+    restored = pickle.loads(pickle.dumps(view))
+    assert type(restored.reader) is type(reader)
+    np.testing.assert_array_equal(restored.result(), view.result())
 
 
 def test_iteration_yields_eager_slices(source: LazyArray) -> None:
@@ -1729,19 +1734,12 @@ def test_negative_step_over_a_fancy_axis_reverses_the_coordinates(source: LazyAr
 
 
 # ---------------------------------------------------------------------------
-# Source capability
+# Minimal sources
 # ---------------------------------------------------------------------------
-
-LEVELS = list(IndexingSupport)
 
 
 class MinimalSource:
-    """The floor of the wrapped-array protocol: `shape`, `dtype`, `__getitem__`.
-
-    Delegates every key straight to NumPy, so it is capable of far more than it
-    advertises. That is the point: nothing about it says so, and detection has
-    to take the cautious reading.
-    """
+    """The floor of the wrapped-array protocol: `shape`, `dtype`, `__getitem__`."""
 
     def __init__(self, data: np.ndarray[Any, Any]) -> None:
         self._data = data
@@ -1786,261 +1784,6 @@ def test_an_empty_view_does_not_read_its_source(
 
     assert result.size == 0
     assert source.reads == []
-
-
-def _require_basic(key: tuple[Any, ...], channel: str) -> None:
-    """Raise unless every selector is a slice walking upwards."""
-    for selector in key:
-        if not isinstance(selector, slice):
-            raise TypeError(f"{channel} was given a non-slice selector {selector!r}")
-        if selector.step is not None and selector.step < 0:
-            raise TypeError(f"{channel} was given a negative step {selector!r}")
-
-
-class _OuterAccessor:
-    """An `oindex` that accepts slices and up to `limit` one-dimensional arrays."""
-
-    def __init__(self, data: np.ndarray[Any, Any], limit: int | None) -> None:
-        self._data = data
-        self._limit = limit
-
-    def __getitem__(self, key: tuple[Any, ...]) -> Any:
-        arrays = 0
-        for selector in key:
-            if isinstance(selector, slice):
-                if selector.step is not None and selector.step < 0:
-                    raise TypeError(f"oindex was given a negative step {selector!r}")
-            elif isinstance(selector, np.ndarray) and selector.ndim == 1:
-                arrays += 1
-            else:
-                raise TypeError(f"oindex was given {selector!r}")
-        if self._limit is not None and arrays > self._limit:
-            raise TypeError(f"oindex takes at most {self._limit} array axis, got {arrays}")
-        axes = [
-            np.arange(size)[selector] if isinstance(selector, slice) else selector
-            for selector, size in zip(key, self._data.shape, strict=True)
-        ]
-        return self._data[np.ix_(*axes)]
-
-
-class _VIndexAccessor:
-    """A `vindex` that, like zarr's, gathers points and takes nothing but coordinates."""
-
-    def __init__(self, data: np.ndarray[Any, Any]) -> None:
-        self._data = data
-
-    def __getitem__(self, key: tuple[Any, ...]) -> Any:
-        if not all(isinstance(selector, np.ndarray) for selector in key):
-            raise TypeError(f"vindex takes coordinate arrays only, got {key!r}")
-        return self._data[key]
-
-
-class StrictSource(MinimalSource):
-    """A source that raises when handed a key its declared level forbids.
-
-    The three channels are separate on purpose: `__getitem__` stays basic
-    whatever the level, arrays arrive through `oindex`, points through `vindex`,
-    and each accessor exists only at a level that has one. A wrapper that
-    exceeds the declaration therefore fails loudly instead of quietly working
-    because the data underneath happens to be a NumPy array.
-    """
-
-    __zarr_indexing_support__ = IndexingSupport.BASIC
-
-    def __getitem__(self, key: Any) -> Any:
-        _require_basic(key, "__getitem__")
-        return super().__getitem__(key)
-
-
-class Outer1VectorSource(StrictSource):
-    __zarr_indexing_support__ = IndexingSupport.OUTER_1VECTOR
-
-    @property
-    def oindex(self) -> _OuterAccessor:
-        return _OuterAccessor(self._data, limit=1)
-
-
-class OuterSource(StrictSource):
-    __zarr_indexing_support__ = IndexingSupport.OUTER
-
-    @property
-    def oindex(self) -> _OuterAccessor:
-        return _OuterAccessor(self._data, limit=None)
-
-
-class VectorizedSource(OuterSource):
-    __zarr_indexing_support__ = IndexingSupport.VECTORIZED
-
-    @property
-    def vindex(self) -> _VIndexAccessor:
-        return _VIndexAccessor(self._data)
-
-
-STRICT_SOURCES: dict[IndexingSupport, Callable[[np.ndarray[Any, Any]], MinimalSource]] = {
-    IndexingSupport.BASIC: StrictSource,
-    IndexingSupport.OUTER_1VECTOR: Outer1VectorSource,
-    IndexingSupport.OUTER: OuterSource,
-    IndexingSupport.VECTORIZED: VectorizedSource,
-}
-
-
-@pytest.mark.parametrize("level", LEVELS, ids=[level.name for level in LEVELS])
-@pytest.mark.parametrize(("build", "oracle"), [c[1:] for c in CASES], ids=[c[0] for c in CASES])
-def test_every_level_gives_the_same_answer(
-    level: IndexingSupport,
-    build: Callable[[LazyArray], LazyArray],
-    oracle: Callable[[Any], Any],
-) -> None:
-    """The invariant: the level chooses how the data is fetched, never what it is.
-
-    Declaring `BASIC` on a NumPy array must answer exactly what declaring
-    `VECTORIZED` answers, having gathered more of it in memory to get there.
-    """
-    expected = np.asarray(oracle(reference()))
-    for flavor in ("numpy-whole", "numpy-uniform-parts", "zarr"):
-        view = build(make_source(flavor).with_indexing_support(level))
-        assert view.shape == expected.shape, f"{flavor} at {level}"
-        np.testing.assert_array_equal(
-            np.asarray(view.result()), expected, err_msg=f"{flavor} at {level}"
-        )
-
-
-@pytest.mark.parametrize("level", LEVELS, ids=[level.name for level in LEVELS])
-@pytest.mark.parametrize(("build", "oracle"), [c[1:] for c in CASES], ids=[c[0] for c in CASES])
-def test_a_source_is_never_asked_for_more_than_it_declares(
-    level: IndexingSupport,
-    build: Callable[[LazyArray], LazyArray],
-    oracle: Callable[[Any], Any],
-) -> None:
-    """A source that refuses what its level forbids still gets the right answer.
-
-    This is the test the negotiation exists for. The equivalence test above runs
-    against sources that would have tolerated an over-broad key; this one runs
-    against sources that will not.
-    """
-    expected = np.asarray(oracle(reference()))
-    source = STRICT_SOURCES[level](reference())
-    for parts in (None, PART_SHAPE):
-        view = build(repartition(LazyArray(source), parts))
-        np.testing.assert_array_equal(
-            np.asarray(view.result()), expected, err_msg=f"{level} parts={parts}"
-        )
-
-
-def test_random_chains_agree_across_levels() -> None:
-    """The seeded sweep, crossed with the four levels rather than the sources."""
-    rng = np.random.default_rng(20260731)
-    data = reference()
-    for _ in range(50):
-        chain = _random_chain(rng)
-        expected = data
-        for mode, selection in chain:
-            expected = _apply_oracle(expected, mode, selection)
-
-        for level in LEVELS:
-            for parts in (None, (2, 2, 2)):
-                view = repartition(LazyArray(data).with_indexing_support(level), parts)
-                for mode, selection in chain:
-                    view = _apply_view(view, mode, selection)
-                np.testing.assert_array_equal(
-                    np.asarray(view.result()),
-                    np.asarray(expected),
-                    err_msg=f"{level} parts={parts}: {chain}",
-                )
-
-
-# -- detection --------------------------------------------------------------
-
-
-def test_a_numpy_array_is_detected_as_vectorized() -> None:
-    assert LazyArray(reference()).indexing_support is IndexingSupport.VECTORIZED
-
-
-def test_a_zarr_array_is_detected_as_vectorized() -> None:
-    """zarr carries both accessors, which is the surface inference recognizes."""
-    assert LazyArray(make_zarr_source()).indexing_support is IndexingSupport.VECTORIZED
-
-
-def test_a_bare_array_like_is_detected_as_basic() -> None:
-    """Nothing but `shape`, `dtype`, and `__getitem__` says nothing about fancy keys."""
-    assert LazyArray(MinimalSource(reference())).indexing_support is IndexingSupport.BASIC
-
-
-@pytest.mark.parametrize("level", LEVELS, ids=[level.name for level in LEVELS])
-def test_a_declared_level_is_honored(level: IndexingSupport) -> None:
-    source = MinimalSource(reference())
-    source.__zarr_indexing_support__ = level  # type: ignore[attr-defined]
-    assert LazyArray(source).indexing_support is level
-
-
-def test_a_malformed_declaration_falls_back_to_inference() -> None:
-    """Detection parses external input: a wrong-typed declaration is no declaration."""
-    source = MinimalSource(reference())
-    source.__zarr_indexing_support__ = "vectorized"  # type: ignore[attr-defined]
-    assert LazyArray(source).indexing_support is IndexingSupport.BASIC
-
-
-def test_a_declaration_that_raises_falls_back_to_inference() -> None:
-    """A guarded property that fails means "no information", never an error."""
-
-    class Hostile(MinimalSource):
-        @property
-        def __zarr_indexing_support__(self) -> IndexingSupport:
-            raise RuntimeError("no")
-
-    assert LazyArray(Hostile(reference())).indexing_support is IndexingSupport.BASIC
-
-
-def test_with_indexing_support_overrides_declaration_and_inference() -> None:
-    """The explicit setting wins over both other sources of the level."""
-    declared = MinimalSource(reference())
-    declared.__zarr_indexing_support__ = IndexingSupport.OUTER  # type: ignore[attr-defined]
-    assert (
-        LazyArray(declared).with_indexing_support(IndexingSupport.BASIC).indexing_support
-        is IndexingSupport.BASIC
-    )
-    # And over inference, in the direction that matters least for correctness
-    # and most for I/O: a NumPy array told to behave like a minimal backend.
-    assert (
-        LazyArray(reference()).with_indexing_support(IndexingSupport.BASIC).indexing_support
-        is IndexingSupport.BASIC
-    )
-
-
-def test_with_indexing_support_keeps_the_view_and_the_parts() -> None:
-    view = make_source("zarr").lazy[1:6, ::2]
-    renegotiated = view.with_indexing_support(IndexingSupport.OUTER)
-    assert renegotiated.array is view.array
-    assert renegotiated.transform == view.transform
-    assert [part.base_coords for part in renegotiated.parts()] == [
-        part.base_coords for part in view.parts()
-    ]
-    np.testing.assert_array_equal(np.asarray(renegotiated.result()), np.asarray(view.result()))
-    # Parts inherit the level, so a part never exceeds it either.
-    assert all(part.view.indexing_support is IndexingSupport.OUTER for part in renegotiated.parts())
-
-
-@pytest.mark.parametrize("bogus", ["vectorized", 3, None])
-def test_with_indexing_support_validates_strictly(bogus: Any) -> None:
-    """Our own API, so a level we do not recognize raises rather than degrading."""
-    with pytest.raises(TypeError, match="must be an IndexingSupport"):
-        LazyArray(reference()).with_indexing_support(bogus)
-
-
-def test_indexing_support_is_read_only() -> None:
-    with pytest.raises(AttributeError):
-        LazyArray(reference()).indexing_support = IndexingSupport.BASIC  # type: ignore[misc]
-
-
-def test_the_strict_doubles_notice_an_over_broad_key() -> None:
-    """A negative control: the respect test only means something if the double bites."""
-    data = reference()
-    with pytest.raises(TypeError, match="non-slice selector"):
-        StrictSource(data)[np.array([0, 1]), slice(None), slice(None)]
-    with pytest.raises(TypeError, match="at most 1 array axis"):
-        Outer1VectorSource(data).oindex[np.array([0, 1]), np.array([0, 1]), slice(None)]
-    with pytest.raises(TypeError, match="coordinate arrays only"):
-        VectorizedSource(data).vindex[np.array([0, 1]), slice(None), slice(None)]
 
 
 # ---------------------------------------------------------------------------
@@ -2166,8 +1909,6 @@ class DuckBlock:
     limited as the source was.
     """
 
-    __zarr_indexing_support__ = IndexingSupport.BASIC
-
     def __init__(self, data: np.ndarray[Any, Any]) -> None:
         self._data = data
 
@@ -2257,35 +1998,6 @@ def test_a_masked_source_keeps_its_mask_when_the_view_is_empty(parts: Any) -> No
     got = repartition(LazyArray(data), parts).lazy[:, 2:2].result()
     assert isinstance(got, np.ma.MaskedArray), parts
     assert np.asarray(got).shape == (3, 0), parts
-
-
-def test_a_look_alike_enum_declaration_is_honored_not_upgraded() -> None:
-    """xarray's `IndexingSupport` has these member names; it must not read as absent.
-
-    Falling through to inference would answer `VECTORIZED` for this source, which
-    carries the `oindex`/`vindex` pair — a *more* permissive level than the one
-    it declared.
-    """
-    import enum as _enum
-
-    foreign = _enum.Enum("IndexingSupport", ["BASIC", "OUTER", "OUTER_1VECTOR", "VECTORIZED"])
-
-    class Declaring(VectorizedSource):
-        __zarr_indexing_support__ = foreign.BASIC  # type: ignore[assignment]
-
-    source = Declaring(reference())
-    assert LazyArray(source).indexing_support is IndexingSupport.BASIC
-
-
-def test_an_unrecognized_foreign_enum_still_falls_back_to_inference() -> None:
-    import enum as _enum
-
-    unrelated = _enum.Enum("Colour", ["RED", "GREEN"])
-
-    class Declaring(MinimalSource):
-        __zarr_indexing_support__ = unrelated.RED
-
-    assert LazyArray(Declaring(reference())).indexing_support is IndexingSupport.BASIC
 
 
 def test_a_large_array_without_dask_refuses_to_claim_equality(
