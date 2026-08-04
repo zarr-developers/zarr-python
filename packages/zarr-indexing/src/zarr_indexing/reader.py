@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import Any, Final, Protocol
 
 import numpy as np
 
 from zarr_indexing.affine import checked_affine
+from zarr_indexing.chunk_resolution import ChunkProjection  # noqa: TC001 (runtime annotation)
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
-
-if TYPE_CHECKING:
-    from zarr_indexing.chunk_resolution import ChunkProjection
 
 __all__ = [
     "BasicReader",
@@ -27,7 +25,7 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ReadContext:
-    """The complete source-global transform and optional local chunk projection."""
+    """A source-global transform and optional projection for a partitioned read."""
 
     transform: IndexTransform
     projection: ChunkProjection | None = None
@@ -54,10 +52,12 @@ class Reader(Protocol):
         `context.transform` maps zero-origin coordinates in the output buffer
         to global coordinates in `source`, and its domain shape equals
         `out.shape`. `context.projection`, when present, is the corresponding
-        chunk-local plan. Fill every cell in place, preserving the transform's
-        exact values, order, and dtype, then return `None`. Do not replace or
-        retain `out`; it may be a strided writable view rather than an owning
-        array.
+        partition plan: its `chunk_transform` is chunk-local, its
+        `cell_transform` describes result placement, and its `chunk_domain`
+        describes the grid cell. Fill every cell in place, preserving the
+        transform's exact values, order, and dtype, then return `None`. Do not
+        replace or retain `out`; it may be a strided writable view rather than
+        an owning array.
 
         Backend exceptions propagate unchanged. Because callers may resolve
         parts concurrently through the same reader object, stateful readers

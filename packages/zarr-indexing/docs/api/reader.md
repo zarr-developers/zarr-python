@@ -13,8 +13,10 @@ ownership.
 `transform` maps zero-origin output-buffer coordinates to global coordinates in
 `source`, with `context.transform.domain.shape == out.shape`. Its optional
 `projection` is the existing plan for a partitioned read. The projection's
-`chunk_transform` remains chunk-local; the global transform and local
-projection deliberately describe different coordinate frames.
+`chunk_transform` remains chunk-local, its `cell_transform` describes result
+placement, and its `chunk_domain` describes the grid cell. The global read
+transform and the projection's chunk transform deliberately use different
+coordinate frames.
 
 An implementation must fill every cell of `out` in place, preserve the global
 transform's exact values, order, and dtype, and return `None`. It must neither

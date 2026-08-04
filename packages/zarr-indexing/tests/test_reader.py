@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, get_type_hints
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
 import zarr_indexing.reader as reader_module
-from zarr_indexing import ArrayMap, DimensionMap, IndexDomain, IndexTransform, ReadContext
+from zarr_indexing import (
+    ArrayMap,
+    ChunkProjection,
+    DimensionMap,
+    IndexDomain,
+    IndexTransform,
+    ReadContext,
+)
 from zarr_indexing.reader import basic_reader, numpy_reader
 
 
@@ -33,6 +40,10 @@ class BasicOnlySource:
 
 SOURCE = np.arange(6 * 7 * 8).reshape(6, 7, 8)
 BASE = IndexTransform.from_shape(SOURCE.shape)
+
+
+def test_read_context_public_annotations_resolve() -> None:
+    assert get_type_hints(ReadContext)["projection"] == ChunkProjection | None
 
 
 READER_CASES = (
