@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import zarr_indexing
-from zarr_indexing import LazyArray
+from zarr_indexing import IndexTransform, LazyArray
 
 DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
@@ -415,6 +415,26 @@ def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> 
     assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
 
 
+def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
+    """The reader boundary maps a complete transform through cached chunks."""
+    namespace = runpy.run_path(str(CACHE_EXAMPLE))
+    reader_type = namespace["SystemMemoryChunkReader"]
+    source_type = namespace["RecordingChunkSource"]
+    source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
+    transform = IndexTransform.from_shape(source.shape)[1:5, 2].translate_domain_to((0,))
+    out = np.empty(transform.domain.shape, dtype=source.dtype)
+
+    reader = reader_type(capacity=2)
+    assert reader.read_into(source, transform, out) is None
+
+    np.testing.assert_array_equal(out, np.array([10, 18, 26, 34]))
+    assert source.reads == [(0, 0), (1, 0)]
+    assert reader.projection_uses == [
+        ("chunk_transform", "cell_transform"),
+        ("chunk_transform", "cell_transform"),
+    ]
+
+
 def test_system_memory_cache_separates_basic_and_orthogonal_indexing() -> None:
     source_type = CACHE_NAMESPACE["RecordingChunkSource"]
     cache_type = CACHE_NAMESPACE["SystemMemoryChunkCache"]
@@ -573,4 +593,4 @@ def test_retry_requires_a_failed_chunk() -> None:
 def test_illegal_chunk_transition_is_rejected() -> None:
     _, cache = make_documented_cache()
     with pytest.raises(ValueError, match="illegal chunk transition new -> ready"):
-        cache._transition((0, 0), CACHE_NAMESPACE["ChunkState"].READY, "test")
+        cache.reader._transition((0, 0), CACHE_NAMESPACE["ChunkState"].READY, "test")

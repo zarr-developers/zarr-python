@@ -49,7 +49,7 @@ or scheduler. A viewport adapter can place that policy around the plan, as the
 executable reference below demonstrates.
 
 This remains a **napari-like consumer, not a napari integration**. It models
-only decoded chunks resident in system memory.
+only decoded chunks resident in system memory, synchronously.
 
 For setup instructions and the complete executable, see the
 [system-memory chunk cache example](../examples/napari_chunk_cache.md).
@@ -79,8 +79,12 @@ Its source represents already decoded chunks and records each read:
 --8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-source"
 ```
 
-The wrapper turns public chunk projections into cache requests and assembles
-ready buffers through the paired transforms:
+`LazyArray` converts a cache selection into transforms and partitions, then
+allocates and assembles the result. `SystemMemoryChunkReader` intercepts each
+materialized part, plans its chunks, reads resident buffers, and applies the
+paired transforms. The reader owns cache state and source reads; it does not
+own result shape or assembly. `SystemMemoryChunkCache` is only the thin
+NumPy-style facade that configures that reader:
 
 Its indexing dialects remain explicit: `cache[key]` accepts basic indexing
 (integers, slices, ellipsis, and new axes), while `cache.oindex[key]` combines

@@ -15,10 +15,12 @@ FAILED -> QUEUED  (explicit retry)
 ```
 
 `RecordingChunkSource` owns decoded source-chunk reads and records them for the
-example. `SystemMemoryChunkCache` owns the lifecycle records, queue draining,
-resident ready buffers, LRU eviction, retained load failures, and explicit
-retry. `zarr-indexing` owns the lazy selections and paired chunk and cell
-projections that map a request between source chunks and its result array.
+example. `LazyArray` converts NumPy-style indexing into transforms and
+partitions, then assembles the final result. `SystemMemoryChunkReader`
+intercepts each materialized part and owns the lifecycle records, queue
+draining, resident ready buffers, LRU eviction, retained load failures, and
+explicit retry. The reader owns cache state and source reads, but not result
+shape or assembly.
 
 The requests demonstrate lazy selections, paired chunk projections, overlapping
 viewport requests that reuse resident chunks, eviction under capacity pressure,
@@ -26,9 +28,9 @@ a retained failure that does not retry implicitly, and an explicit retry after
 the source is repaired. The integration guide contains the detailed request
 table.
 
-This is reference architecture, not a production-ready cache, scheduler,
-renderer, or complete napari integration. Its types are intentionally not
-exported by `zarr_indexing`.
+This is synchronous system-memory reference architecture, not a
+production-ready cache, scheduler, renderer, or complete napari integration.
+Its types are intentionally not exported by `zarr_indexing`.
 
 ## Running the example
 

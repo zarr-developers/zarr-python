@@ -8,16 +8,23 @@
 #
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr_indexing import IndexDomain, LazyArray
+from zarr_indexing import (
+    IndexDomain,
+    IndexTransform,
+    LazyArray,
+    dimension_grids_from_chunks,
+    plan_chunks,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 
 type ChunkCoords = tuple[int, ...]
@@ -134,28 +141,15 @@ class _OrthogonalIndexer:
         return self._getitem(key)
 
 
-class SystemMemoryChunkCache:
-    def __init__(self, source: RecordingChunkSource, *, capacity: int) -> None:
-        self.source = source
+class SystemMemoryChunkReader:
+    def __init__(self, *, capacity: int) -> None:
         self.capacity = capacity
-        self._planner = LazyArray(cast(Any, source)).with_parts(source.chunks)
         self._records: dict[ChunkCoords, ChunkRecord] = {}
         self._queue: list[ChunkCoords] = []
         self._clock = 0
+        self._requests = 0
         self.events: list[ChunkEvent] = []
-        self.projection_uses: tuple[tuple[str, str], ...] = ()
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        return self.source.shape
-
-    @property
-    def dtype(self) -> np.dtype[Any]:
-        return self.source.dtype
-
-    @property
-    def oindex(self) -> _OrthogonalIndexer:
-        return _OrthogonalIndexer(lambda key: self._read(key, orthogonal=True))
+        self.projection_uses: list[tuple[str, str]] = []
 
     def state(self, chunk_coords: ChunkCoords) -> ChunkState:
         return self._record(chunk_coords).state
@@ -188,6 +182,20 @@ class SystemMemoryChunkCache:
         self._transition(chunk_coords, ChunkState.QUEUED, "explicit retry")
         self._queue.append(chunk_coords)
 
+    @contextmanager
+    def request(self) -> Iterator[None]:
+        """Defer capacity enforcement until LazyArray finishes one request."""
+        self._requests += 1
+        try:
+            yield
+        except Exception:
+            self._requests -= 1
+            raise
+        else:
+            self._requests -= 1
+            if self._requests == 0:
+                self._evict(pinned=frozenset())
+
     def _touch(self, record: ChunkRecord) -> None:
         self._clock += 1
         record.last_access = self._clock
@@ -201,7 +209,28 @@ class SystemMemoryChunkCache:
         self._transition(chunk_coords, ChunkState.QUEUED, "requested")
         self._queue.append(chunk_coords)
 
-    def _drain(self, required: frozenset[ChunkCoords]) -> None:
+    def _ensure_ready(
+        self,
+        source: RecordingChunkSource,
+        required: tuple[ChunkCoords, ...],
+    ) -> None:
+        for chunk_coords in required:
+            record = self._record(chunk_coords)
+            if record.state is ChunkState.FAILED:
+                assert record.error is not None
+                raise ChunkLoadError(
+                    f"chunk {chunk_coords} is failed; call retry first"
+                ) from record.error
+
+        for chunk_coords in required:
+            record = self._record(chunk_coords)
+            if record.state is ChunkState.READY:
+                self._touch(record)
+            else:
+                self._queue_once(chunk_coords)
+        self._drain(source, frozenset(required))
+
+    def _drain(self, source: RecordingChunkSource, required: frozenset[ChunkCoords]) -> None:
         pending = self._queue
         self._queue = []
         for index, chunk_coords in enumerate(pending):
@@ -211,7 +240,7 @@ class SystemMemoryChunkCache:
             record = self._record(chunk_coords)
             self._transition(chunk_coords, ChunkState.LOADING, "queue drained")
             try:
-                record.buffer = self.source.read_chunk(chunk_coords)
+                record.buffer = source.read_chunk(chunk_coords)
             except OSError as error:
                 record.buffer = None
                 record.error = error
@@ -234,46 +263,73 @@ class SystemMemoryChunkCache:
             record.buffer = None
             self._transition(chunk_coords, ChunkState.EVICTED, "LRU capacity")
 
+    def read_into(
+        self,
+        source: RecordingChunkSource,
+        transform: IndexTransform,
+        out: np.ndarray[Any, Any],
+        /,
+    ) -> None:
+        grids = dimension_grids_from_chunks(source.chunks, source.shape)
+        projections = tuple(plan_chunks(transform, grids))
+        required = tuple(dict.fromkeys(projection.chunk_coords for projection in projections))
+        self._ensure_ready(source, required)
+        for projection in projections:
+            record = self._record(projection.chunk_coords)
+            assert record.buffer is not None
+            cell_points = _domain_points(projection.chunk_transform.domain)
+            chunk_points = projection.chunk_transform.apply_many(cell_points)
+            request_points = projection.cell_transform.apply_many(cell_points)
+            _gather_and_scatter(out, record.buffer, chunk_points, request_points)
+            self.projection_uses.append(("chunk_transform", "cell_transform"))
+        if self._requests == 0:
+            self._evict(pinned=frozenset())
+
+
+class SystemMemoryChunkCache:
+    def __init__(self, source: RecordingChunkSource, *, capacity: int) -> None:
+        self.source = source
+        self.reader = SystemMemoryChunkReader(capacity=capacity)
+        self._lazy = LazyArray(source).with_reader(self.reader)
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.source.shape
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.source.dtype
+
+    @property
+    def oindex(self) -> _OrthogonalIndexer:
+        return _OrthogonalIndexer(lambda key: self._read(key, orthogonal=True))
+
+    @property
+    def events(self) -> list[ChunkEvent]:
+        return self.reader.events
+
+    @property
+    def projection_uses(self) -> tuple[tuple[str, str], ...]:
+        return tuple(self.reader.projection_uses)
+
+    def state(self, chunk_coords: ChunkCoords) -> ChunkState:
+        return self.reader.state(chunk_coords)
+
+    def resident(self) -> tuple[ChunkCoords, ...]:
+        return self.reader.resident()
+
+    def retry(self, chunk_coords: ChunkCoords) -> None:
+        self.reader.retry(chunk_coords)
+
     def __getitem__(self, key: Any) -> np.ndarray[Any, Any]:
         return self._read(key, orthogonal=False)
 
     def _read(self, key: Any, *, orthogonal: bool) -> np.ndarray[Any, Any]:
-        lazy = self._planner.lazy
+        self.reader.projection_uses.clear()
+        lazy = self._lazy.lazy
         view = lazy.oindex[key] if orthogonal else lazy[key]
-        projections = tuple(part.projection for part in view.parts())
-        required = tuple(dict.fromkeys(projection.chunk_coords for projection in projections))
-
-        for chunk_coords in required:
-            record = self._record(chunk_coords)
-            if record.state is ChunkState.FAILED:
-                assert record.error is not None
-                raise ChunkLoadError(
-                    f"chunk {chunk_coords} is failed; call retry first"
-                ) from record.error
-
-        for chunk_coords in required:
-            record = self._record(chunk_coords)
-            if record.state is ChunkState.READY:
-                self._touch(record)
-            else:
-                self._queue_once(chunk_coords)
-        self._drain(frozenset(required))
-
-        result = np.empty(view.shape, dtype=self.dtype)
-        uses: list[tuple[str, str]] = []
-        for projection in projections:
-            record = self._record(projection.chunk_coords)
-            assert record.state is ChunkState.READY
-            assert record.buffer is not None
-            domain = projection.chunk_transform.domain
-            cell_points = _domain_points(domain)
-            chunk_points = projection.chunk_transform.apply_many(cell_points)
-            request_points = projection.cell_transform.apply_many(cell_points)
-            _gather_and_scatter(result, record.buffer, chunk_points, request_points)
-            uses.append(("chunk_transform", "cell_transform"))
-        self.projection_uses = tuple(uses)
-        self._evict(pinned=frozenset())
-        return result
+        with self.reader.request():
+            return np.asarray(view.result())
 
 
 # --8<-- [end:chunk-cache-wrapper]
