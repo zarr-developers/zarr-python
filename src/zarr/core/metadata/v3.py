@@ -34,6 +34,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
+from zarr.core.json_parse import parse_field, validate_json_value
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
@@ -47,16 +48,12 @@ if TYPE_CHECKING:
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    from zarr.core.json_parse import parse_field
-
     return cast(
         "Literal[3]", parse_field(data, Literal[3], "zarr_format", error=MetadataValidationError)
     )
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    from zarr.core.json_parse import parse_field
-
     return cast(
         'Literal["array"]',
         parse_field(data, Literal["array"], "node_type", error=NodeTypeValidationError),
@@ -614,8 +611,6 @@ class ArrayV3Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        from zarr.core.json_parse import validate_json_value
-
         # make a copy because we are modifying the dict
         _data = data.copy()
 

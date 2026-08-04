@@ -20,6 +20,7 @@ import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.core.json_parse import convert, parse_field
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
@@ -147,8 +148,6 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    from zarr.core.json_parse import convert
-
     try:
         data = cast("str", convert(data, str))
     except (ValueError, TypeError) as exc:
@@ -230,14 +229,10 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    from zarr.core.json_parse import parse_field
-
     return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))
 
 
 def parse_bool(data: Any) -> bool:
-    from zarr.core.json_parse import convert
-
     return cast("bool", convert(data, bool))
 
 

@@ -46,6 +46,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
@@ -85,15 +86,11 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    from zarr.core.json_parse import parse_field
-
     return cast("ZarrFormat", parse_field(data, Literal[2, 3], "zarr_format"))
 
 
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
-    from zarr.core.json_parse import parse_field
-
     return cast(
         "Literal['array', 'group']",
         parse_field(data, Literal["array", "group"], "node_type", error=MetadataValidationError),

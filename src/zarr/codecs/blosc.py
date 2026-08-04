@@ -14,6 +14,7 @@ from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumM
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedRequiredConfig, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
+from zarr.core.json_parse import parse_field
 
 if TYPE_CHECKING:
     from typing import Self
@@ -104,8 +105,6 @@ numcodecs.blosc.use_threads = False
 
 
 def parse_typesize(data: JSON) -> int:
-    from zarr.core.json_parse import parse_field
-
     parsed: int = parse_field(data, int, "typesize", error=TypeError)
     if parsed > 0:
         return parsed
@@ -117,15 +116,11 @@ def parse_typesize(data: JSON) -> int:
 
 # todo: real validation
 def parse_clevel(data: JSON) -> int:
-    from zarr.core.json_parse import parse_field
-
     parsed: int = parse_field(data, int, "clevel", error=TypeError)
     return parsed
 
 
 def parse_blocksize(data: JSON) -> int:
-    from zarr.core.json_parse import parse_field
-
     parsed: int = parse_field(data, int, "blocksize", error=TypeError)
     return parsed
 

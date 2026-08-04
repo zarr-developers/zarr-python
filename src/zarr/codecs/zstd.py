@@ -12,6 +12,7 @@ from packaging.version import Version
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.json_parse import parse_field
 
 if TYPE_CHECKING:
     from typing import Self
@@ -21,8 +22,6 @@ if TYPE_CHECKING:
 
 
 def parse_zstd_level(data: JSON) -> int:
-    from zarr.core.json_parse import parse_field
-
     parsed: int = parse_field(data, int, "level", error=TypeError)
     if parsed >= 23:
         raise ValueError(f"Value must be less than or equal to 22. Got {parsed} instead.")
@@ -30,8 +29,6 @@ def parse_zstd_level(data: JSON) -> int:
 
 
 def parse_checksum(data: JSON) -> bool:
-    from zarr.core.json_parse import parse_field
-
     parsed: bool = parse_field(data, bool, "checksum", error=TypeError)
     return parsed
 
