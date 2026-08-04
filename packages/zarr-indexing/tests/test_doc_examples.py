@@ -415,6 +415,23 @@ def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> 
     assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
 
 
+def test_system_memory_cache_queues_all_parts_before_loading() -> None:
+    _, cache = make_documented_cache()
+
+    np.testing.assert_array_equal(cache[1:5, 2], np.array([10, 18, 26, 34]))
+
+    assert [
+        (event.chunk_coords, event.previous.value, event.current.value) for event in cache.events
+    ] == [
+        ((0, 0), "new", "queued"),
+        ((1, 0), "new", "queued"),
+        ((0, 0), "queued", "loading"),
+        ((0, 0), "loading", "ready"),
+        ((1, 0), "queued", "loading"),
+        ((1, 0), "loading", "ready"),
+    ]
+
+
 def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
     """The reader boundary maps a complete transform through cached chunks."""
     namespace = runpy.run_path(str(CACHE_EXAMPLE))

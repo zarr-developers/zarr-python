@@ -183,8 +183,9 @@ class SystemMemoryChunkReader:
         self._queue.append(chunk_coords)
 
     @contextmanager
-    def request(self) -> Iterator[None]:
-        """Defer capacity enforcement until LazyArray finishes one request."""
+    def request(self, required: tuple[ChunkCoords, ...]) -> Iterator[None]:
+        """Prepare every part and defer eviction until one request completes."""
+        self._prepare(required)
         self._requests += 1
         try:
             yield
@@ -209,11 +210,7 @@ class SystemMemoryChunkReader:
         self._transition(chunk_coords, ChunkState.QUEUED, "requested")
         self._queue.append(chunk_coords)
 
-    def _ensure_ready(
-        self,
-        source: RecordingChunkSource,
-        required: tuple[ChunkCoords, ...],
-    ) -> None:
+    def _prepare(self, required: tuple[ChunkCoords, ...]) -> None:
         for chunk_coords in required:
             record = self._record(chunk_coords)
             if record.state is ChunkState.FAILED:
@@ -228,6 +225,14 @@ class SystemMemoryChunkReader:
                 self._touch(record)
             else:
                 self._queue_once(chunk_coords)
+
+    def _ensure_ready(
+        self,
+        source: RecordingChunkSource,
+        required: tuple[ChunkCoords, ...],
+    ) -> None:
+        if self._requests == 0:
+            self._prepare(required)
         self._drain(source, frozenset(required))
 
     def _drain(self, source: RecordingChunkSource, required: frozenset[ChunkCoords]) -> None:
@@ -328,7 +333,8 @@ class SystemMemoryChunkCache:
         self.reader.projection_uses.clear()
         lazy = self._lazy.lazy
         view = lazy.oindex[key] if orthogonal else lazy[key]
-        with self.reader.request():
+        required = tuple(dict.fromkeys(part.base_coords for part in view.parts()))
+        with self.reader.request(required):
             return np.asarray(view.result())
 
 
