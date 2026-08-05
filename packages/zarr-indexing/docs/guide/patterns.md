@@ -43,7 +43,7 @@ same matrix applies each selection to `LazyArray`, then checks values, result
 shape, and box/query category.
 
 ```python
---8<-- "examples/indexing_patterns.py:indexing-patterns"
+--8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
 
 ---

@@ -17,6 +17,7 @@ DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
 REPOSITORY_ROOT = PACKAGE_ROOT.parents[1]
 STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
+DOC_SNIPPETS_DIR = DOCS / "snippets"
 CACHE_EXAMPLE_NAME = "napari_chunk_cache"
 CACHE_EXAMPLE_DIR = STANDALONE_EXAMPLES / CACHE_EXAMPLE_NAME
 CACHE_EXAMPLE = CACHE_EXAMPLE_DIR / f"{CACHE_EXAMPLE_NAME}.py"
@@ -25,32 +26,30 @@ STANDALONE_EXAMPLE_NAMES = (
     "lazy_indexing_dask",
     CACHE_EXAMPLE_NAME,
 )
-DOC_EXAMPLES = tuple(
-    DOCS / "examples" / name
-    for name in (
-        "coordinate_origins.py",
-        "canonical_slice.py",
-        "lazy_composition.py",
-        "axis_manipulation.py",
-        "chunk_projection.py",
-        "indexing_patterns.py",
-        "integrations.py",
-    )
-)
-EXAMPLES = (*DOC_EXAMPLES, CACHE_EXAMPLE)
+EXPECTED_DOC_SNIPPETS = {
+    "axis_manipulation.py",
+    "canonical_slice.py",
+    "chunk_projection.py",
+    "coordinate_origins.py",
+    "indexing_patterns.py",
+    "integrations.py",
+    "lazy_composition.py",
+}
+DOC_SNIPPETS = tuple(DOC_SNIPPETS_DIR / name for name in sorted(EXPECTED_DOC_SNIPPETS))
+EXAMPLES = (*DOC_SNIPPETS, CACHE_EXAMPLE)
 REGIONS = {
-    "coordinate-origin": DOCS / "examples" / "coordinate_origins.py",
-    "prepend-grid": DOCS / "examples" / "coordinate_origins.py",
-    "canonical-slice": DOCS / "examples" / "canonical_slice.py",
-    "landing-quickstart": DOCS / "examples" / "canonical_slice.py",
-    "lazy-composition": DOCS / "examples" / "lazy_composition.py",
-    "axis-shape-comparison": DOCS / "examples" / "axis_manipulation.py",
-    "axis-insertion": DOCS / "examples" / "axis_manipulation.py",
-    "chunk-projection": DOCS / "examples" / "chunk_projection.py",
-    "advanced-projection": DOCS / "examples" / "chunk_projection.py",
-    "indexing-patterns": DOCS / "examples" / "indexing_patterns.py",
-    "zarr-consumer": DOCS / "examples" / "integrations.py",
-    "viewport-consumer": DOCS / "examples" / "integrations.py",
+    "coordinate-origin": DOC_SNIPPETS_DIR / "coordinate_origins.py",
+    "prepend-grid": DOC_SNIPPETS_DIR / "coordinate_origins.py",
+    "canonical-slice": DOC_SNIPPETS_DIR / "canonical_slice.py",
+    "landing-quickstart": DOC_SNIPPETS_DIR / "canonical_slice.py",
+    "lazy-composition": DOC_SNIPPETS_DIR / "lazy_composition.py",
+    "axis-shape-comparison": DOC_SNIPPETS_DIR / "axis_manipulation.py",
+    "axis-insertion": DOC_SNIPPETS_DIR / "axis_manipulation.py",
+    "chunk-projection": DOC_SNIPPETS_DIR / "chunk_projection.py",
+    "advanced-projection": DOC_SNIPPETS_DIR / "chunk_projection.py",
+    "indexing-patterns": DOC_SNIPPETS_DIR / "indexing_patterns.py",
+    "zarr-consumer": DOC_SNIPPETS_DIR / "integrations.py",
+    "viewport-consumer": DOC_SNIPPETS_DIR / "integrations.py",
     "chunk-cache-types": CACHE_EXAMPLE,
     "chunk-cache-source": CACHE_EXAMPLE,
     "chunk-cache-wrapper": CACHE_EXAMPLE,
@@ -72,14 +71,14 @@ RETIRED_TUTORIAL_FILES = (
     "05-projections.md",
 )
 TUTORIAL_SNIPPETS = (
-    "examples/canonical_slice.py:canonical-slice",
-    "examples/coordinate_origins.py:coordinate-origin",
-    "examples/coordinate_origins.py:prepend-grid",
-    "examples/lazy_composition.py:lazy-composition",
-    "examples/axis_manipulation.py:axis-shape-comparison",
-    "examples/axis_manipulation.py:axis-insertion",
-    "examples/chunk_projection.py:chunk-projection",
-    "examples/chunk_projection.py:advanced-projection",
+    "snippets/canonical_slice.py:canonical-slice",
+    "snippets/coordinate_origins.py:coordinate-origin",
+    "snippets/coordinate_origins.py:prepend-grid",
+    "snippets/lazy_composition.py:lazy-composition",
+    "snippets/axis_manipulation.py:axis-shape-comparison",
+    "snippets/axis_manipulation.py:axis-insertion",
+    "snippets/chunk_projection.py:chunk-projection",
+    "snippets/chunk_projection.py:advanced-projection",
 )
 REQUIRED_PATTERNS = {
     "basic-slice",
@@ -92,9 +91,22 @@ REQUIRED_PATTERNS = {
     "broadcasting",
     "repeated-out-of-order",
 }
-PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
+PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOC_SNIPPETS_DIR / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
 CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(CACHE_EXAMPLE))
+
+
+def test_documentation_pages_and_snippets_have_distinct_directories() -> None:
+    """Rendered pages and executable snippets remain separate source concepts."""
+    pages = {path.name for path in (DOCS / "examples").iterdir() if path.is_file()}
+    snippets: set[str] = (
+        {path.name for path in DOC_SNIPPETS_DIR.iterdir() if path.is_file()}
+        if DOC_SNIPPETS_DIR.is_dir()
+        else set()
+    )
+
+    assert all(Path(name).suffix == ".md" for name in pages)
+    assert snippets == EXPECTED_DOC_SNIPPETS
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.stem)
@@ -167,13 +179,13 @@ def test_documentation_region_is_nonempty_and_balanced(region: str, path: Path) 
 def test_landing_quickstart_produces_the_shown_result() -> None:
     """The landing snippet imports, selects, and materializes its promised values."""
     namespace: dict[str, Any] = runpy.run_path(
-        str(DOCS / "examples" / "canonical_slice.py"), run_name="__main__"
+        str(DOC_SNIPPETS_DIR / "canonical_slice.py"), run_name="__main__"
     )
     np.testing.assert_array_equal(namespace["LANDING_QUICKSTART_RESULT"], np.array([12, 13, 14]))
 
 
 def test_canonical_slice_introduces_one_dimensional_lazy_indexing_before_partitioning() -> None:
-    source = (DOCS / "examples" / "canonical_slice.py").read_text()
+    source = (DOC_SNIPPETS_DIR / "canonical_slice.py").read_text()
     region = source.split("# --8<-- [start:canonical-slice]", maxsplit=1)[1].split(
         "# --8<-- [end:canonical-slice]", maxsplit=1
     )[0]
@@ -185,7 +197,7 @@ def test_canonical_slice_introduces_one_dimensional_lazy_indexing_before_partiti
 
 
 def test_lazy_composition_stays_one_dimensional_until_the_later_axis_section() -> None:
-    source = (DOCS / "examples" / "lazy_composition.py").read_text()
+    source = (DOC_SNIPPETS_DIR / "lazy_composition.py").read_text()
     region = source.split("# --8<-- [start:lazy-composition]", maxsplit=1)[1].split(
         "# --8<-- [end:lazy-composition]", maxsplit=1
     )[0]
@@ -231,7 +243,7 @@ def test_pre_result_array_snippets_do_not_change_rank_with_integer_indexes() -> 
 
 def test_axis_manipulation_examples_define_result_axes() -> None:
     """Integer, slice, and None indexes produce their documented result shapes."""
-    namespace = runpy.run_path(str(DOCS / "examples" / "axis_manipulation.py"))
+    namespace = runpy.run_path(str(DOC_SNIPPETS_DIR / "axis_manipulation.py"))
 
     np.testing.assert_array_equal(namespace["INTEGER_RESULT"], np.array([4, 5, 6, 7]))
     np.testing.assert_array_equal(namespace["SLICE_RESULT"], np.array([[4, 5, 6, 7]]))
@@ -244,7 +256,7 @@ def test_axis_manipulation_examples_define_result_axes() -> None:
 def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> None:
     """A chunk source reads only projected keys and assembles through both transforms."""
     namespace: dict[str, Any] = runpy.run_path(
-        str(DOCS / "examples" / "integrations.py"), run_name="__main__"
+        str(DOC_SNIPPETS_DIR / "integrations.py"), run_name="__main__"
     )
     assert namespace["ZARR_SOURCE_KEYS"] == ((0, 0), (0, 1), (1, 0), (1, 1))
     assert namespace["ZARR_SOURCE_READS"] == ((0, 0), (0, 1))
@@ -261,7 +273,7 @@ def test_zarr_consumer_reads_public_projections_and_assembles_exact_values() -> 
 def test_viewport_consumer_uses_exact_non_crossing_source_keys() -> None:
     """Exact selectors prevent a read crossing into a hidden neighboring chunk."""
     namespace: dict[str, Any] = runpy.run_path(
-        str(DOCS / "examples" / "integrations.py"), run_name="__main__"
+        str(DOC_SNIPPETS_DIR / "integrations.py"), run_name="__main__"
     )
     assert namespace["VIEWPORT_READS_BEFORE_RESULT"] == ()
     assert namespace["VIEWPORT_SOURCE_KEYS"] == (
@@ -301,7 +313,7 @@ def test_default_source_contract_converts_basic_selected_slabs_to_system_memory(
 
 
 def test_indexing_pattern_matrix_is_complete() -> None:
-    namespace = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
+    namespace = runpy.run_path(str(DOC_SNIPPETS_DIR / "indexing_patterns.py"))
     cases = namespace["PATTERN_CASES"]
     assert {case["name"] for case in cases} == REQUIRED_PATTERNS
 
@@ -324,7 +336,7 @@ def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
 
 
 def test_projection_example_exposes_paired_directions() -> None:
-    namespace = runpy.run_path(str(DOCS / "examples" / "chunk_projection.py"))
+    namespace = runpy.run_path(str(DOC_SNIPPETS_DIR / "chunk_projection.py"))
     np.testing.assert_array_equal(namespace["ADVANCED_RESULT"], namespace["ADVANCED_EXPECTED"])
     assert all(chunk == cell for chunk, cell in namespace["PAIRED_DOMAINS"])
     assert all(p.chunk_transform.output_rank == 2 for p in namespace["PROJECTIONS"])
@@ -333,7 +345,7 @@ def test_projection_example_exposes_paired_directions() -> None:
 
 def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct() -> None:
     """The shared cell coordinates project to local storage and literal request addresses."""
-    namespace = runpy.run_path(str(DOCS / "examples" / "coordinate_origins.py"))
+    namespace = runpy.run_path(str(DOC_SNIPPETS_DIR / "coordinate_origins.py"))
 
     assert namespace["PREPEND_SHARED_CELL_COORDS"] == ((0,), (1,), (2,))
     assert namespace["PREPEND_CHUNK_LOCAL_COORDS"] == ((0,), (1,), (2,))
@@ -590,8 +602,8 @@ def test_lazy_indexing_examples_are_scoped_to_the_indexing_package(name: str) ->
 @pytest.mark.parametrize(
     "example",
     [
-        DOCS / "examples" / "integrations.py",
-        DOCS / "examples" / "coordinate_origins.py",
+        DOC_SNIPPETS_DIR / "integrations.py",
+        DOC_SNIPPETS_DIR / "coordinate_origins.py",
         CACHE_EXAMPLE,
     ],
     ids=lambda path: path.stem,
@@ -608,7 +620,7 @@ def test_projection_examples_use_batched_transform_application(example: Path) ->
 @pytest.mark.parametrize(
     "example",
     [
-        DOCS / "examples" / "integrations.py",
+        DOC_SNIPPETS_DIR / "integrations.py",
         CACHE_EXAMPLE,
     ],
     ids=lambda path: path.stem,

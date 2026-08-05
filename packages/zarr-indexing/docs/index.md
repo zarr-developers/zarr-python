@@ -40,7 +40,7 @@ Wrap an array, compose a lazy view through `.lazy`, and call `result()` when
 you want its values:
 
 ```python
---8<-- "examples/canonical_slice.py:landing-quickstart"
+--8<-- "snippets/canonical_slice.py:landing-quickstart"
 ```
 
 Continue through [Coordinates are addresses](guide/index.md#coordinates-are-addresses)

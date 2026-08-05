@@ -18,7 +18,7 @@ consumer enumerates the shared synthetic input cell domain, evaluates
 `cell_transform` to place each value at its literal request coordinate.
 
 ```python
---8<-- "examples/integrations.py:zarr-consumer"
+--8<-- "snippets/integrations.py:zarr-consumer"
 ```
 
 The two reads are exactly `(0, 0)` and `(0, 1)`; untouched chunks `(1, 0)` and
@@ -37,7 +37,7 @@ source selectors `1:2, 0:2` and `1:2, 2:4`; neither selector crosses into an
 untouched neighboring chunk.
 
 ```python
---8<-- "examples/integrations.py:viewport-consumer"
+--8<-- "snippets/integrations.py:viewport-consumer"
 ```
 
 The viewport owns its interaction loop and any cancellation, caching, or

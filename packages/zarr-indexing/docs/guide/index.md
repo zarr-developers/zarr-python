@@ -59,7 +59,7 @@ through `.lazy` creates `view`; the last line asks for its values and checks the
 observable NumPy result.
 
 ```python
---8<-- "examples/canonical_slice.py:canonical-slice"
+--8<-- "snippets/canonical_slice.py:canonical-slice"
 ```
 
 The important first step is simply that an index describes which source values
@@ -108,7 +108,7 @@ assertion deliberately contrasts that with a NumPy-style position in the wrapper
 while preserving a one-element result array.
 
 ```python
---8<-- "examples/coordinate_origins.py:coordinate-origin"
+--8<-- "snippets/coordinate_origins.py:coordinate-origin"
 ```
 
 ### Prepending does not renumber
@@ -155,7 +155,7 @@ consumed by chunk planning, so it admits grids with negative chunk and cell
 coordinates, including the prependable example below.
 
 ```python
---8<-- "examples/coordinate_origins.py:prepend-grid"
+--8<-- "snippets/coordinate_origins.py:prepend-grid"
 ```
 
 Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Both public
@@ -214,7 +214,7 @@ The executable example first selects `source[2:5]`, then reverses that view
 and trims its first element:
 
 ```python
---8<-- "examples/lazy_composition.py:lazy-composition"
+--8<-- "snippets/lazy_composition.py:lazy-composition"
 ```
 
 Immediately after `composed` is created—and before the final `result()` call—its
@@ -268,14 +268,14 @@ along that axis, so it is omitted and the result shape is `(4,)`. The slice in
 result shape is `(1, 4)`.
 
 ```python
---8<-- "examples/axis_manipulation.py:axis-shape-comparison"
+--8<-- "snippets/axis_manipulation.py:axis-shape-comparison"
 ```
 
 `None` inserts a new length-one axis without selecting different source points.
 Here it produces the shape `(4, 1)`:
 
 ```python
---8<-- "examples/axis_manipulation.py:axis-insertion"
+--8<-- "snippets/axis_manipulation.py:axis-insertion"
 ```
 
 ## A request becomes a chunk plan {#a-request-becomes-a-chunk-plan}
@@ -321,7 +321,7 @@ the canonical 2-by-2 chunk grid, plans the request, and iterates the same plan a
 to show that planning is reusable.
 
 ```python
---8<-- "examples/chunk_projection.py:chunk-projection"
+--8<-- "snippets/chunk_projection.py:chunk-projection"
 ```
 
 The plan describes work but does not perform it. It contains no array source,
@@ -409,7 +409,7 @@ the wrapper's NumPy lowering of the request-side placement. The assertion
 checks the reordered, duplicated result against direct NumPy indexing.
 
 ```python
---8<-- "examples/chunk_projection.py:advanced-projection"
+--8<-- "snippets/chunk_projection.py:advanced-projection"
 ```
 
 The paired representation preserves information that a bounding box or local

@@ -11,7 +11,7 @@ site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-indexing.readthedocs.io
 docs_dir: docs
 use_directory_urls: true
 exclude_docs: |
-  examples/*.py
+  snippets/*.py
 
 nav:
   - index.md
