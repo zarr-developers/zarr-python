@@ -17,9 +17,12 @@ The package is organized to mirror the structure of the Zarr specifications:
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),
   and [data types](v3/data_type.md)
 
-Every public name is also re-exported at the top level, so
+The document types, models, and spec vocabulary — including the store keys —
+are re-exported at the top level, so
 `from zarr_metadata import ZarrV3ArrayMetadataJSON` and
 `from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON` are equivalent.
+The model layer's validators, parsers, type guards, and metadata key sets are
+imported from [`zarr_metadata.model`](model.md) directly.
 
 ## Common types
 

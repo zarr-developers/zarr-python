@@ -4,7 +4,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -74,8 +74,17 @@ class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False):
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
+ZarrV2GroupMetadataStoreKey = Literal[".zgroup"]
+"""Literal type of the store key holding a v2 group's metadata document."""
+
+ZARR_V2_GROUP_METADATA_STORE_KEY: Final[ZarrV2GroupMetadataStoreKey] = ".zgroup"
+"""The store key a v2 group's metadata document is persisted under."""
+
+
 __all__ = [
+    "ZARR_V2_GROUP_METADATA_STORE_KEY",
     "ZarrV2GroupMetadataJSON",
     "ZarrV2GroupMetadataJSONPartial",
+    "ZarrV2GroupMetadataStoreKey",
     "ZarrV2ZGroupJSON",
 ]
