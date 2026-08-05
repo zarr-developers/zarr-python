@@ -37,6 +37,7 @@ dependencies = [
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'zarr-metadata>=0.4.0,<0.5',
 ]
 
 dynamic = [
@@ -156,6 +157,31 @@ omit = [
     "bench/compress_normal.py",
 ]
 
+# When developing zarr-python locally, resolve zarr-metadata from the in-tree
+# package under packages/zarr-metadata/. The `[project.dependencies]` version
+# requirement is what propagates to consumers installing from PyPI.
+[tool.uv.workspace]
+members = ["packages/zarr-metadata"]
+
+[tool.uv.sources]
+zarr-metadata = { workspace = true }
+
+# zarr-metadata's standalone docs site pins its own mkdocs stack, which need
+# not resolve jointly with zarr-python's docs pins. The group is only ever
+# installed standalone (see packages/zarr-metadata/justfile and the
+# zarr-metadata CI workflow), so exclude the pairings from the workspace
+# lock. One mutual-exclusion set (rather than two pairs) because zarr:dev
+# already includes zarr:docs, so the two are never co-requested, and
+# overlapping pair declarations trip uv's conflict inference.
+[tool.uv]
+conflicts = [
+    [
+        { package = "zarr", group = "dev" },
+        { package = "zarr", group = "docs" },
+        { package = "zarr-metadata", group = "docs" },
+    ],
+]
+
 [tool.hatch]
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
@@ -170,9 +196,18 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.dev]
 dependency-groups = ["dev"]
+# Resolve zarr-metadata from the in-tree workspace member, not PyPI. See
+# `[tool.uv.sources]` above for the equivalent for `uv run` invocations.
+workspace.members = ["packages/zarr-metadata"]
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
+# Resolve zarr-metadata from the in-tree workspace member, not PyPI, so CI
+# in `test.yml` exercises the integration between the two packages on every
+# PR. Envs that inherit via `template = "test"` (gputest, upstream) pick
+# this up automatically; min_deps overrides it (see below) to test against
+# the published floor.
+workspace.members = ["packages/zarr-metadata"]
 
 [tool.hatch.envs.test.env-vars]
 
@@ -251,6 +286,15 @@ PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
 PIP_PRE = "1"
 
 [tool.hatch.envs.min_deps]
+# Use pip rather than the inherited uv installer. This env must resolve
+# zarr-metadata from PyPI (the published floor pinned below), not the in-tree
+# workspace member. uv would honor the root `[tool.uv.sources] zarr-metadata =
+# { workspace = true }` and substitute the workspace copy (whose hatch-vcs dev
+# version can never equal the `==` floor), producing "No solution found" — see
+# https://github.com/pypa/hatch/issues/1639. pip ignores `[tool.uv.sources]`
+# entirely, so the `zarr-metadata==<floor>` pin below resolves against the
+# published wheel and keeps the "minimum supported deps" guarantee honest.
+installer = "pip"
 description = """Test environment for minimum supported dependencies
 
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
@@ -269,6 +313,10 @@ extra-dependencies = [
     'typing_extensions==4.14.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
+    # Pin to the floor of zarr-python's declared zarr-metadata range. Must
+    # match the >= bound in [project.dependencies] above; the
+    # `check_min_deps_floor.py` pre-commit hook enforces this invariant.
+    'zarr-metadata==0.4.0',
 ]
 
 [tool.hatch.envs.default]

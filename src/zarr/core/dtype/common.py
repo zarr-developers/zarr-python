@@ -11,13 +11,17 @@ from typing import (
     TypeGuard,
 )
 
+import zarr_metadata
 from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
 
-EndiannessStr = Literal["little", "big"]
-ENDIANNESS_STR: Final = "little", "big"
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+EndiannessStr = zarr_metadata.Endianness
+ENDIANNESS_STR: Final = zarr_metadata.ENDIANNESS
 
 SpecialFloatStrings = Literal["NaN", "Infinity", "-Infinity"]
 SPECIAL_FLOAT_STRINGS: Final = ("NaN", "Infinity", "-Infinity")

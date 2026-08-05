@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.bool import Bool
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.bool import BoolDataTypeName
 
 
 class TestBool(BaseTestZDType):
@@ -16,7 +21,7 @@ class TestBool(BaseTestZDType):
         np.dtype(np.uint16),
     )
     valid_json_v2 = ({"name": "|b1", "object_codec_id": None},)
-    valid_json_v3 = ("bool",)
+    valid_json_v3: ClassVar[tuple[BoolDataTypeName, ...]] = ("bool",)
     invalid_json_v2 = (
         "|b1",
         "bool",

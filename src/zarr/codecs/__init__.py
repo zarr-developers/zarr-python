@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+from zarr_metadata import (
+    BLOSC_CODEC_NAME,
+    BYTES_CODEC_NAME,
+    CAST_VALUE_CODEC_NAME,
+    CRC32C_CODEC_NAME,
+    GZIP_CODEC_NAME,
+    SCALE_OFFSET_CODEC_NAME,
+    SHARDING_INDEXED_CODEC_NAME,
+    TRANSPOSE_CODEC_NAME,
+    ZSTD_CODEC_NAME,
+)
+
 from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
 from zarr.codecs.cast_value import CastValue
@@ -54,20 +66,20 @@ __all__ = [
     "ZstdCodec",
 ]
 
-register_codec("blosc", BloscCodec)
-register_codec("cast_value", CastValue)
-register_codec("bytes", BytesCodec)
+register_codec(BLOSC_CODEC_NAME, BloscCodec)
+register_codec(CAST_VALUE_CODEC_NAME, CastValue)
+register_codec(BYTES_CODEC_NAME, BytesCodec)
 
 # compatibility with earlier versions of ZEP1
 register_codec("endian", BytesCodec)
-register_codec("crc32c", Crc32cCodec)
-register_codec("gzip", GzipCodec)
-register_codec("scale_offset", ScaleOffset)
-register_codec("sharding_indexed", ShardingCodec)
-register_codec("zstd", ZstdCodec)
+register_codec(CRC32C_CODEC_NAME, Crc32cCodec)
+register_codec(GZIP_CODEC_NAME, GzipCodec)
+register_codec(SCALE_OFFSET_CODEC_NAME, ScaleOffset)
+register_codec(SHARDING_INDEXED_CODEC_NAME, ShardingCodec)
+register_codec(ZSTD_CODEC_NAME, ZstdCodec)
 register_codec("vlen-utf8", VLenUTF8Codec)
 register_codec("vlen-bytes", VLenBytesCodec)
-register_codec("transpose", TransposeCodec)
+register_codec(TRANSPOSE_CODEC_NAME, TransposeCodec)
 
 # Register all the codecs formerly contained in numcodecs.zarr3
 

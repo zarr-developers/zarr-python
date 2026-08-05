@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.data_type.int8 import Int8DataTypeName
+    from zarr_metadata.v3.data_type.int16 import Int16DataTypeName
+    from zarr_metadata.v3.data_type.int32 import Int32DataTypeName
+    from zarr_metadata.v3.data_type.int64 import Int64DataTypeName
+    from zarr_metadata.v3.data_type.uint8 import Uint8DataTypeName
+    from zarr_metadata.v3.data_type.uint16 import Uint16DataTypeName
+    from zarr_metadata.v3.data_type.uint32 import Uint32DataTypeName
+    from zarr_metadata.v3.data_type.uint64 import Uint64DataTypeName
 
 
 class TestInt8(BaseTestZDType):
@@ -16,7 +28,7 @@ class TestInt8(BaseTestZDType):
         np.dtype(np.float64),
     )
     valid_json_v2 = ({"name": "|i1", "object_codec_id": None},)
-    valid_json_v3 = ("int8",)
+    valid_json_v3: ClassVar[tuple[Int8DataTypeName, ...]] = ("int8",)
     invalid_json_v2 = (
         ">i1",
         "int8",
@@ -51,7 +63,7 @@ class TestInt16(BaseTestZDType):
         {"name": ">i2", "object_codec_id": None},
         {"name": "<i2", "object_codec_id": None},
     )
-    valid_json_v3 = ("int16",)
+    valid_json_v3: ClassVar[tuple[Int16DataTypeName, ...]] = ("int16",)
     invalid_json_v2 = (
         "|i2",
         "int16",
@@ -89,7 +101,7 @@ class TestInt32(BaseTestZDType):
         {"name": ">i4", "object_codec_id": None},
         {"name": "<i4", "object_codec_id": None},
     )
-    valid_json_v3 = ("int32",)
+    valid_json_v3: ClassVar[tuple[Int32DataTypeName, ...]] = ("int32",)
     invalid_json_v2 = (
         "|i4",
         "int32",
@@ -124,7 +136,7 @@ class TestInt64(BaseTestZDType):
         {"name": ">i8", "object_codec_id": None},
         {"name": "<i8", "object_codec_id": None},
     )
-    valid_json_v3 = ("int64",)
+    valid_json_v3: ClassVar[tuple[Int64DataTypeName, ...]] = ("int64",)
     invalid_json_v2 = (
         "|i8",
         "int64",
@@ -156,7 +168,7 @@ class TestUInt8(BaseTestZDType):
         np.dtype(np.float64),
     )
     valid_json_v2 = ({"name": "|u1", "object_codec_id": None},)
-    valid_json_v3 = ("uint8",)
+    valid_json_v3: ClassVar[tuple[Uint8DataTypeName, ...]] = ("uint8",)
     invalid_json_v2 = (
         "|u1",
         "uint8",
@@ -191,7 +203,7 @@ class TestUInt16(BaseTestZDType):
         {"name": ">u2", "object_codec_id": None},
         {"name": "<u2", "object_codec_id": None},
     )
-    valid_json_v3 = ("uint16",)
+    valid_json_v3: ClassVar[tuple[Uint16DataTypeName, ...]] = ("uint16",)
     invalid_json_v2 = (
         "|u2",
         "uint16",
@@ -235,7 +247,7 @@ class TestUInt32(BaseTestZDType):
         {"name": ">u4", "object_codec_id": None},
         {"name": "<u4", "object_codec_id": None},
     )
-    valid_json_v3 = ("uint32",)
+    valid_json_v3: ClassVar[tuple[Uint32DataTypeName, ...]] = ("uint32",)
     invalid_json_v2 = (
         "|u4",
         "uint32",
@@ -270,7 +282,7 @@ class TestUInt64(BaseTestZDType):
         {"name": ">u8", "object_codec_id": None},
         {"name": "<u8", "object_codec_id": None},
     )
-    valid_json_v3 = ("uint64",)
+    valid_json_v3: ClassVar[tuple[Uint64DataTypeName, ...]] = ("uint64",)
     invalid_json_v2 = (
         "|u8",
         "uint64",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
@@ -16,53 +16,67 @@ from zarr.codecs.scale_offset import (
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.storage._memory import MemoryStore
 
+if TYPE_CHECKING:
+    from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodecObject
+
+    from zarr.core.common import JSON
+
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
 
 
+_SCALE_OFFSET_DEFAULT: ScaleOffsetCodecObject = {"name": "scale_offset"}
+_SCALE_OFFSET_OFFSET_ONLY: ScaleOffsetCodecObject = {
+    "name": "scale_offset",
+    "configuration": {"offset": 5},
+}
+_SCALE_OFFSET_SCALE_ONLY: ScaleOffsetCodecObject = {
+    "name": "scale_offset",
+    "configuration": {"scale": 0.1},
+}
+_SCALE_OFFSET_BOTH: ScaleOffsetCodecObject = {
+    "name": "scale_offset",
+    "configuration": {"offset": 5, "scale": 0.1},
+}
+
+
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input=ScaleOffset(), output={"name": "scale_offset"}, id="default"),
-        Expect(
-            input=ScaleOffset(offset=5),
-            output={"name": "scale_offset", "configuration": {"offset": 5}},
-            id="offset-only",
-        ),
-        Expect(
-            input=ScaleOffset(scale=0.1),
-            output={"name": "scale_offset", "configuration": {"scale": 0.1}},
-            id="scale-only",
-        ),
-        Expect(
-            input=ScaleOffset(offset=5, scale=0.1),
-            output={"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}},
-            id="both",
-        ),
+        Expect(input=ScaleOffset(), output=_SCALE_OFFSET_DEFAULT, id="default"),
+        Expect(input=ScaleOffset(offset=5), output=_SCALE_OFFSET_OFFSET_ONLY, id="offset-only"),
+        Expect(input=ScaleOffset(scale=0.1), output=_SCALE_OFFSET_SCALE_ONLY, id="scale-only"),
+        Expect(input=ScaleOffset(offset=5, scale=0.1), output=_SCALE_OFFSET_BOTH, id="both"),
     ],
     ids=lambda c: c.id,
 )
-def test_to_dict(case: Expect[ScaleOffset, dict[str, Any]]) -> None:
+def test_to_dict(case: Expect[ScaleOffset, ScaleOffsetCodecObject]) -> None:
     """to_dict produces the expected JSON structure."""
     assert case.input.to_dict() == case.output
 
 
+_SCALE_OFFSET_FROM_DICT_NO_CONFIG: ScaleOffsetCodecObject = {"name": "scale_offset"}
+_SCALE_OFFSET_FROM_DICT_WITH_CONFIG: ScaleOffsetCodecObject = {
+    "name": "scale_offset",
+    "configuration": {"offset": 3, "scale": 2},
+}
+
+
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input={"name": "scale_offset"}, output=(0, 1), id="no-config"),
-        Expect(
-            input={"name": "scale_offset", "configuration": {"offset": 3, "scale": 2}},
-            output=(3, 2),
-            id="with-config",
-        ),
+        Expect(input=_SCALE_OFFSET_FROM_DICT_NO_CONFIG, output=(0, 1), id="no-config"),
+        Expect(input=_SCALE_OFFSET_FROM_DICT_WITH_CONFIG, output=(3, 2), id="with-config"),
     ],
     ids=lambda c: c.id,
 )
-def test_from_dict(case: Expect[dict[str, Any], tuple[int | float, int | float]]) -> None:
+def test_from_dict(
+    case: Expect[ScaleOffsetCodecObject, tuple[int | float, int | float]],
+) -> None:
     """from_dict deserializes configuration with correct values and defaults."""
-    codec = ScaleOffset.from_dict(case.input)
+    # cast: from_dict accepts the wider `dict[str, JSON]`.
+    codec = ScaleOffset.from_dict(cast("dict[str, JSON]", case.input))
     expected_offset, expected_scale = case.output
     assert codec.offset == expected_offset
     assert codec.scale == expected_scale

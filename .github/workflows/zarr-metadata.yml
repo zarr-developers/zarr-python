@@ -1,7 +1,10 @@
 name: zarr-metadata
 
-# Job steps delegate to packages/zarr-metadata/justfile, the single source of
-# truth for this package's verbs; CI owns only the python matrix and caching.
+# The justfile's `uv run` recipes resolve against the repo-root uv workspace,
+# whose `requires-python = ">=3.12"` blocks the 3.11 floor tested here, so
+# most jobs install into standalone venvs instead of delegating to
+# packages/zarr-metadata/justfile (only workspace-independent recipes like
+# `just lint` are shared). Keep pins in sync with the justfile.
 
 on:
   push:
@@ -23,6 +26,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # zarr-metadata CI installs zarr-metadata standalone, not as a uv
+  # workspace member. The workspace at the repo root forces uv to honor
+  # `requires-python = ">=3.12"` from zarr-python's pyproject.toml, which
+  # blocks Python 3.11 even though zarr-metadata itself supports 3.11+.
+  # Using `uv venv` + `uv pip install` from a tmp directory bypasses
+  # workspace resolution and tests zarr-metadata the way downstream users
+  # actually install it: as a standalone package from PyPI.
   test:
     name: pytest py=${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -42,14 +52,18 @@ jobs:
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
-      - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-      - name: Sync test dependency group
-        run: uv sync --group test --python ${{ matrix.python-version }}
+      - name: Create standalone Python ${{ matrix.python-version }} venv
+        # Place the venv outside the workspace tree so uv doesn't try
+        # to resolve workspace-wide requirements.
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python ${{ matrix.python-version }} --seed
+      - name: Install zarr-metadata and test deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:test \
+            .
       - name: Run pytest
-        run: just test
+        run: '"$RUNNER_TEMP/zm-venv/bin/python" -m pytest tests'
 
   ruff:
     name: ruff
@@ -84,11 +98,19 @@ jobs:
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
-      - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Create standalone Python 3.11 venv
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python 3.11 --seed
+      - name: Install zarr-metadata and test deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:test \
+            .
       - name: Run pyright
-        # The pyright version and interpreter pins live in the justfile.
-        run: just typecheck
+        # Pinned to the last pyright that types PEP 661 sentinels in class
+        # attributes correctly; 1.1.405+ regressed (microsoft/pyright#11115).
+        # Keep in sync with the pin in packages/zarr-metadata/justfile.
+        run: uvx --python "$RUNNER_TEMP/zm-venv/bin/python" pyright==1.1.404 src
 
   docs:
     name: docs
@@ -105,10 +127,18 @@ jobs:
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
-      - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Create standalone Python 3.12 venv
+        run: uv venv "$RUNNER_TEMP/zm-venv" --python 3.12 --seed
+      - name: Install zarr-metadata and docs deps
+        run: |
+          uv pip install \
+            --python "$RUNNER_TEMP/zm-venv/bin/python" \
+            --group pyproject.toml:docs \
+            .
       - name: Build docs
-        run: just docs-check
+        run: |
+          DISABLE_MKDOCS_2_WARNING=true "$RUNNER_TEMP/zm-venv/bin/python" \
+            -m mkdocs build --strict
 
   zarr-metadata-complete:
     name: zarr-metadata complete
