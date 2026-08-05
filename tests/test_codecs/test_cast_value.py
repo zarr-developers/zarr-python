@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from numpy.testutils import assert_array_equal
+from numpy.testing import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
