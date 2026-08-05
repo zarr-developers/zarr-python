@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import zarr_indexing
+import zarr_indexing.lazy_array as lazy_array_module
 from zarr_indexing import IndexTransform, LazyArray, ReadContext
 
 DOCS = Path(__file__).parents[1] / "docs"
@@ -411,13 +412,28 @@ def test_system_memory_cache_assembles_and_deduplicates_public_projections() -> 
 
     np.testing.assert_array_equal(cache.oindex[[1, 1], 2], np.array([10, 10]))
     assert tuple(source.reads) == ((0, 0),)
-    assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
+    assert cache.projection_uses == (("chunk_transform", "context.transform"),)
 
 
-def test_system_memory_cache_queues_all_parts_before_loading() -> None:
-    _, cache = make_documented_cache()
+def test_chunk_cache_queues_all_parts_before_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, cache = make_documented_cache()
+    planning_count = 0
+    original_plan_chunks = lazy_array_module.plan_chunks
 
-    np.testing.assert_array_equal(cache[1:5, 2], np.array([10, 18, 26, 34]))
+    def counted_plan_chunks(*args: Any, **kwargs: Any) -> Any:
+        nonlocal planning_count
+        planning_count += 1
+        return original_plan_chunks(*args, **kwargs)
+
+    with monkeypatch.context() as request_patch:
+        request_patch.setattr(lazy_array_module, "plan_chunks", counted_plan_chunks)
+        result = cache[1:5, 2]
+
+    np.testing.assert_array_equal(result, np.array([10, 18, 26, 34]))
+    assert planning_count == 1
+    assert source.reads == [(0, 0), (1, 0)]
 
     assert [
         (event.chunk_coords, event.previous.value, event.current.value) for event in cache.events
@@ -432,23 +448,44 @@ def test_system_memory_cache_queues_all_parts_before_loading() -> None:
 
 
 def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
-    """The reader boundary maps a complete transform through cached chunks."""
+    """The reader boundary consumes the prepared projections of real parts."""
     namespace = runpy.run_path(str(CACHE_EXAMPLE))
     reader_type = namespace["SystemMemoryChunkReader"]
     source_type = namespace["RecordingChunkSource"]
     source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
-    transform = IndexTransform.from_shape(source.shape)[1:5, 2].translate_domain_to((0,))
-    out = np.empty(transform.domain.shape, dtype=source.dtype)
-
     reader = reader_type(capacity=2)
-    assert reader.read_into(source, ReadContext(transform), out) is None
+    view = LazyArray(source).with_reader(reader).lazy[1:5, 2]
+    parts = tuple(view.parts())
+    out = np.empty(view.shape, dtype=source.dtype)
+    for part in parts:
+        destination = out[part.out_selection]
+        assert (
+            reader.read_into(
+                source,
+                ReadContext(part.view.transform, part.projection),
+                destination,
+            )
+            is None
+        )
 
     np.testing.assert_array_equal(out, np.array([10, 18, 26, 34]))
     assert source.reads == [(0, 0), (1, 0)]
     assert reader.projection_uses == [
-        ("chunk_transform", "cell_transform"),
-        ("chunk_transform", "cell_transform"),
+        ("chunk_transform", "context.transform"),
+        ("chunk_transform", "context.transform"),
     ]
+
+
+def test_chunk_cache_reader_requires_a_prepared_projection() -> None:
+    namespace = runpy.run_path(str(CACHE_EXAMPLE))
+    reader_type = namespace["SystemMemoryChunkReader"]
+    source_type = namespace["RecordingChunkSource"]
+    source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
+    transform = IndexTransform.from_shape(source.shape)[1:3, 2].translate_domain_to((0,))
+    out = np.empty(transform.domain.shape, dtype=source.dtype)
+
+    with pytest.raises(ValueError, match="requires context.projection"):
+        reader_type(capacity=2).read_into(source, ReadContext(transform), out)
 
 
 def test_system_memory_cache_separates_basic_and_orthogonal_indexing() -> None:
@@ -488,7 +525,7 @@ def test_system_memory_cache_assembles_a_scalar_selection() -> None:
     assert result.shape == ()
     assert result[()] == 10
     assert tuple(source.reads) == ((0, 0),)
-    assert cache.projection_uses == (("chunk_transform", "cell_transform"),)
+    assert cache.projection_uses == (("chunk_transform", "context.transform"),)
 
 
 def test_system_memory_cache_is_documentation_only() -> None:
@@ -527,7 +564,8 @@ def test_projection_examples_use_batched_transform_application(example: Path) ->
 
     assert "def evaluate_point" not in source
     assert ".chunk_transform.apply_many(" in source
-    assert ".cell_transform.apply_many(" in source
+    if example != CACHE_EXAMPLE:
+        assert ".cell_transform.apply_many(" in source
 
 
 @pytest.mark.parametrize(

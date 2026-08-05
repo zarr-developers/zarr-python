@@ -83,13 +83,20 @@ Its source represents already decoded chunks and records each read:
 ```
 
 `LazyArray` converts a cache selection into transforms and partitions, then
-allocates and assembles the result. `SystemMemoryChunkReader` receives one
-`ReadContext` for each materialized part. Its global `context.transform`
-directly addresses the raw source, while the supplied projection remains
-chunk-local. The reader plans its chunks, reads resident buffers, and applies
-the paired transforms. It owns cache state and source reads; it does not own
-result shape or assembly. `SystemMemoryChunkCache` is only the thin NumPy-style
-facade that configures that reader:
+allocates and assembles the result. The facade constructs exactly one tuple
+from `view.parts()`: it derives the chunk coordinates to pin from that tuple,
+then passes the same owned parts to `view.result(parts=parts)`. Planning is
+therefore performed once for the request rather than repeated during
+materialization.
+
+`SystemMemoryChunkReader` receives one `ReadContext` for each materialized
+part. Its global `context.transform` directly addresses the raw source, while
+`context.projection.chunk_transform` addresses the already identified chunk
+locally. The reader consumes that supplied projection directly; it never calls
+the chunk planner. `LazyArray` retains responsibility for the projection's
+result placement and final assembly. The reader owns only cache state and
+source reads, while `SystemMemoryChunkCache` remains the thin NumPy-style facade
+that prepares and pins the one plan:
 
 Its indexing dialects remain explicit: `cache[key]` accepts basic indexing
 (integers, slices, ellipsis, and new axes), while `cache.oindex[key]` combines
@@ -121,7 +128,9 @@ decoded chunks. Every read delta follows directly from the viewport request:
 Chunks required by an active request are pinned through assembly, so a request
 may temporarily span more chunks than the steady-state capacity. Capacity is
 counted in decoded chunks—not records or bytes—and eviction occurs only after
-all requested values have been placed.
+all requested values have been placed. Because pinning and materialization use
+the same prepared tuple, those lifecycle decisions cannot drift from the parts
+that are actually read.
 
 The event log makes the failure boundary equally explicit:
 

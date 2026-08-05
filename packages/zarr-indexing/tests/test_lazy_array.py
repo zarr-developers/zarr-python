@@ -1367,6 +1367,46 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_result_accepts_prepared_parts_from_the_same_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = reference()
+    view = LazyArray.from_numpy(data).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    parts = tuple(view.parts())
+
+    def unexpected_replan(self: LazyArray) -> Any:
+        raise AssertionError("result(parts=...) must not construct another partition plan")
+
+    monkeypatch.setattr(LazyArray, "parts", unexpected_replan)
+
+    np.testing.assert_array_equal(view.result(parts=parts), data[1:6, ::2, 1:])
+
+
+def test_result_rejects_prepared_parts_owned_by_another_view() -> None:
+    class ReadMustNotRun:
+        def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+            raise AssertionError("ownership must be validated before any read")
+
+    data = reference()
+    base = LazyArray.from_numpy(data).with_reader(ReadMustNotRun()).with_parts(PART_SHAPE)
+    view = base.lazy[1:6, ::2, 1:]
+    owned_parts = tuple(view.parts())
+    foreign_parts = tuple(base.lazy[1:6, ::2, 1:].parts())
+    mixed_parts = (owned_parts[0], *foreign_parts[1:])
+
+    with pytest.raises(ValueError, match="prepared parts do not belong to this view"):
+        view.result(parts=mixed_parts)
+
+
+def test_result_rejects_prepared_parts_that_do_not_tile_the_view() -> None:
+    data = reference()
+    view = LazyArray.from_numpy(data).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    parts = tuple(view.parts())
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=parts[:-1])
+
+
 @pytest.mark.parametrize("flavor", FLAVORS)
 @pytest.mark.parametrize(
     "build",

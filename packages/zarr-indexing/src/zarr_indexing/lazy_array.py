@@ -142,7 +142,7 @@ import math
 import operator
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
@@ -287,6 +287,11 @@ def _is_identity_transform(transform: IndexTransform, shape: tuple[int, ...]) ->
 # --------------------------------------------------------------------------- #
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class _PartOwner:
+    """Opaque identity shared only by one view and the parts it prepared."""
+
+
 def _partition_out_selection(
     cell_transform: IndexTransform,
 ) -> tuple[Any, ...]:
@@ -401,6 +406,20 @@ class Partition:
     Derived parts retain the same reader object; a shared stateful reader owns
     synchronization for concurrent calls.
 
+    A consumer that needs the plan before materialization can prepare it once
+    and reuse the same immutable parts for both scheduling and assembly:
+
+    ```python
+    parts = tuple(view.parts())
+    schedule(part.base_coords for part in parts)
+    values = view.result(parts=parts)
+    ```
+
+    Prepared parts are owned by the exact view that created them and must tile
+    it completely. Passing parts from another view, even an equivalent one, is
+    rejected without reading; omitting a part is likewise rejected rather than
+    returning a partly initialized result.
+
     Attributes
     ----------
     projection
@@ -441,6 +460,7 @@ class Partition:
     box: tuple[tuple[int, int], ...]
     view: LazyArray
     out_selection: tuple[Any, ...]
+    _owner: _PartOwner | None = field(default=None, repr=False, compare=False)
 
     @property
     def base_coords(self) -> tuple[int, ...]:
@@ -556,7 +576,7 @@ class LazyArray:
            [ 8, 10]])
     """
 
-    __slots__ = ("_array", "_parts", "_reader", "_transform", "_window")
+    __slots__ = ("_array", "_part_owner", "_parts", "_reader", "_transform", "_window")
 
     def __init__(self, array: _WrappedArray) -> None:
         if isinstance(array, np.matrix):
@@ -576,6 +596,7 @@ class LazyArray:
         self._transform = IndexTransform.from_shape(shape)
         self._parts = _discover_parts(array, shape)
         self._reader = basic_reader
+        self._part_owner = _PartOwner()
 
     @classmethod
     def from_numpy(cls, array: np.ndarray[Any, Any]) -> LazyArray:
@@ -604,6 +625,7 @@ class LazyArray:
         view._parts = parts
         view._window = window
         view._reader = reader
+        view._part_owner = _PartOwner()
         return view
 
     @property
@@ -986,6 +1008,7 @@ class LazyArray:
                     self._reader,
                 ),
                 out_selection=_partition_out_selection(projection.cell_transform),
+                _owner=self._part_owner,
             )
 
     # -- indexing -----------------------------------------------------------
@@ -1026,13 +1049,20 @@ class LazyArray:
         """
         return self._select(selection, "basic").result()
 
-    def result(self) -> Any:
+    def result(self, *, parts: Sequence[Partition] | None = None) -> Any:
         """Materialize this view.
 
         Every result starts as a fresh system-memory buffer. Each touched
         partition is read through the selected reader directly into its
         rectangular destination, or into an owned dense temporary before fancy
         placement. Empty views allocate without reading the source.
+
+        Parameters
+        ----------
+        parts
+            A reusable sequence previously returned by this exact view's
+            `parts()` method. Supplying it reuses that partition plan instead
+            of constructing another one. The parts must tile the view exactly.
 
         Returns
         -------
@@ -1047,19 +1077,31 @@ class LazyArray:
             If the partition walk does not cover the view. The output buffer is
             uninitialized where nothing was written, so an incomplete walk is
             reported rather than returned.
+        ValueError
+            If supplied parts were prepared by another view.
         """
+        prepared_parts = None if parts is None else tuple(parts)
+        if prepared_parts is not None and any(
+            # Module-private provenance deliberately crosses the two public
+            # wrapper types without becoming part of either public surface.
+            part._owner is not self._part_owner  # pyright: ignore[reportPrivateUsage]
+            for part in prepared_parts
+        ):
+            raise ValueError("prepared parts do not belong to this view")
+
         out_shape = self.shape
         out = self._output_buffer(out_shape)
         size = math.prod(out_shape)
         if size == 0:
             return out
 
-        if self._parts is None:
+        if prepared_parts is None and self._parts is None:
             _invoke_reader(self._reader, self._array, ReadContext(self._transform), out)
             return out
 
         written = 0
-        for part in self.parts():
+        selected_parts = self.parts() if prepared_parts is None else prepared_parts
+        for part in selected_parts:
             # Counted before the scatter, so a part addressing the wrong
             # number of axes is named rather than reported as a broadcast
             # failure against the buffer.
@@ -1083,6 +1125,11 @@ class LazyArray:
             # back process memory dressed as data. The parts are disjoint by
             # contract, so counting the cells each addresses is enough:
             # a gap undercounts and an overlap overcounts.
+            if prepared_parts is not None:
+                raise AssertionError(
+                    "prepared parts do not tile the view exactly: "
+                    f"they addressed {written} of the view's {size} cells"
+                )
             raise AssertionError(
                 f"the partition walk addressed {written} of the view's {size} "
                 "cells; this is a bug in zarr-indexing's partition walk"

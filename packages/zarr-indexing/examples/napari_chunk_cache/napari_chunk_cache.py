@@ -19,8 +19,6 @@ from zarr_indexing import (
     IndexDomain,
     LazyArray,
     ReadContext,
-    dimension_grids_from_chunks,
-    plan_chunks,
 )
 
 if TYPE_CHECKING:
@@ -275,18 +273,18 @@ class SystemMemoryChunkReader:
         out: np.ndarray[Any, Any],
         /,
     ) -> None:
-        grids = dimension_grids_from_chunks(source.chunks, source.shape)
-        projections = tuple(plan_chunks(context.transform, grids))
-        required = tuple(dict.fromkeys(projection.chunk_coords for projection in projections))
+        projection = context.projection
+        if projection is None:
+            raise ValueError("SystemMemoryChunkReader requires context.projection")
+        required = (projection.chunk_coords,)
         self._ensure_ready(source, required)
-        for projection in projections:
-            record = self._record(projection.chunk_coords)
-            assert record.buffer is not None
-            cell_points = _domain_points(projection.chunk_transform.domain)
-            chunk_points = projection.chunk_transform.apply_many(cell_points)
-            request_points = projection.cell_transform.apply_many(cell_points)
-            _gather_and_scatter(out, record.buffer, chunk_points, request_points)
-            self.projection_uses.append(("chunk_transform", "cell_transform"))
+        record = self._record(projection.chunk_coords)
+        assert record.buffer is not None
+        cell_points = _domain_points(projection.chunk_transform.domain)
+        chunk_points = projection.chunk_transform.apply_many(cell_points)
+        destination_points = _domain_points(context.transform.domain)
+        _gather_and_scatter(out, record.buffer, chunk_points, destination_points)
+        self.projection_uses.append(("chunk_transform", "context.transform"))
         if self._requests == 0:
             self._evict(pinned=frozenset())
 
@@ -333,9 +331,12 @@ class SystemMemoryChunkCache:
         self.reader.projection_uses.clear()
         lazy = self._lazy.lazy
         view = lazy.oindex[key] if orthogonal else lazy[key]
-        required = tuple(dict.fromkeys(part.base_coords for part in view.parts()))
+        # One prepared tuple is the request plan: pin from it, then hand the
+        # same owned parts back to LazyArray for assembly without replanning.
+        parts = tuple(view.parts())
+        required = tuple(dict.fromkeys(part.base_coords for part in parts))
         with self.reader.request(required):
-            return np.asarray(view.result())
+            return np.asarray(view.result(parts=parts))
 
 
 # --8<-- [end:chunk-cache-wrapper]
