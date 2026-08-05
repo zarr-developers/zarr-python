@@ -47,6 +47,26 @@ PART_SHAPE = (3, 2, 3)
 EXPLICIT_PARTS = ((3, 3, 1), (2, 2, 1), (3, 1))
 
 
+class IndexLike:
+    """A scalar integer selector implemented only through `__index__`."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def __index__(self) -> int:
+        return self.value
+
+
+class IntOnly:
+    def __int__(self) -> int:
+        return 2
+
+
+class BadIndex:
+    def __index__(self) -> int:
+        return 2.5  # type: ignore[return-value]
+
+
 def reference() -> np.ndarray[Any, np.dtype[np.int64]]:
     """The array every source flavor holds, and the oracle for every case."""
     return np.arange(int(np.prod(SHAPE)), dtype=np.int64).reshape(SHAPE)
@@ -1936,6 +1956,55 @@ def test_dask_from_array_roundtrip() -> None:
 def test_boolean_scalar_is_rejected() -> None:
     with pytest.raises(IndexError, match="boolean scalars are not valid indices"):
         make_source("numpy-uniform-parts").lazy[True]
+
+
+@pytest.mark.parametrize(
+    ("mode", "selection", "expected"),
+    [
+        pytest.param("basic", IndexLike(2), np.array(2), id="basic-scalar"),
+        pytest.param(
+            "basic",
+            slice(IndexLike(1), IndexLike(7), IndexLike(2)),
+            np.array([1, 3, 5]),
+            id="basic-slice-components",
+        ),
+        pytest.param("orthogonal", IndexLike(2), np.array(2), id="orthogonal-scalar"),
+        pytest.param("vectorized", IndexLike(2), np.array(2), id="vectorized-scalar"),
+    ],
+)
+def test_positional_selectors_support_the_index_protocol(
+    mode: str, selection: Any, expected: np.ndarray[Any, Any]
+) -> None:
+    source = LazyArray.from_numpy(np.arange(8))
+    if mode == "basic":
+        view = source.lazy[selection]
+    else:
+        view = getattr(source.lazy, "oindex" if mode == "orthogonal" else "vindex")[selection]
+
+    result = np.asarray(view.result())
+    assert result.shape == expected.shape
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_positional_selector_rejects_int_only_objects() -> None:
+    with pytest.raises(IndexError, match="unsupported selection type"):
+        LazyArray.from_numpy(np.arange(8)).lazy[IntOnly()]
+
+
+def test_positional_selector_propagates_malformed_index_protocol() -> None:
+    with pytest.raises(TypeError, match="__index__ returned non-int"):
+        LazyArray.from_numpy(np.arange(8)).lazy[BadIndex()]
+
+
+def test_positional_slice_propagates_malformed_index_protocol() -> None:
+    with pytest.raises(TypeError, match="__index__ returned non-int"):
+        LazyArray.from_numpy(np.arange(8)).lazy[:: BadIndex()]
+
+
+def test_protocol_objects_inside_an_index_array_remain_invalid() -> None:
+    selection = np.array([IndexLike(2)], dtype=object)
+    with pytest.raises(IndexError, match="integer or boolean"):
+        LazyArray.from_numpy(np.arange(8)).lazy.oindex[selection]
 
 
 def test_mask_shape_must_match_the_view() -> None:

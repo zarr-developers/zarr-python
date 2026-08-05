@@ -26,19 +26,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+from zarr_indexing._selector import as_scalar_index, is_bool_scalar, require_index
+
 if TYPE_CHECKING:
     from zarr_indexing.domain import IndexDomain
 
 SelectionMode = Literal["basic", "orthogonal", "vectorized"]
-
-
-def _is_bool_scalar(sel: Any) -> bool:
-    """Return True for a Python or NumPy boolean scalar.
-
-    `isinstance(True, int)` holds, so booleans have to be rejected before any
-    integer handling — `arr[True]` would otherwise silently mean `arr[1]`.
-    """
-    return isinstance(sel, (bool, np.bool_))
 
 
 def _as_index_array(sel: Any) -> np.ndarray[Any, np.dtype[Any]] | None:
@@ -59,22 +52,6 @@ def _as_index_array(sel: Any) -> np.ndarray[Any, np.dtype[Any]] | None:
             f"arrays used as indices must be of integer or boolean type; got dtype {arr.dtype}"
         )
     return None
-
-
-def _is_scalar_index(sel: Any) -> bool:
-    """Whether an entry is a scalar integer index.
-
-    A zero-dimensional integer array counts. NumPy treats `a[np.array(2), :]`
-    exactly as `a[2, :]` — the axis is dropped — but this took only Python and
-    NumPy integers, so a 0-d array fell through to the fancy path and was widened
-    into a length-1 index array, keeping an axis NumPy drops. That was a third
-    answer, agreeing with neither NumPy nor zarr.
-    """
-    if _is_bool_scalar(sel):
-        return False
-    if isinstance(sel, (int, np.integer)):
-        return True
-    return isinstance(sel, np.ndarray) and sel.ndim == 0 and sel.dtype.kind in "iu"
 
 
 def _axes_consumed(sel: Any, mode: SelectionMode) -> int:
@@ -111,12 +88,12 @@ def _normalize_slice(sel: slice, size: int, axis: int) -> tuple[int, int, int]:
     reads as a direction error rather than an empty selection. Collapsing it to
     `stop == start` keeps NumPy's "empty, not an error" answer.
     """
-    if sel.step is not None and not isinstance(sel.step, (int, np.integer)):
-        raise IndexError(f"slice step must be an integer; got {sel.step!r}")
-    step = 1 if sel.step is None else int(sel.step)
+    start_bound = None if sel.start is None else require_index(sel.start)
+    stop_bound = None if sel.stop is None else require_index(sel.stop)
+    step = 1 if sel.step is None else require_index(sel.step)
     if step == 0:
         raise ValueError(f"slice step cannot be zero (axis {axis})")  # ValueError: NumPy parity
-    start, stop, step = sel.indices(size)
+    start, stop, step = slice(start_bound, stop_bound, step).indices(size)
     stop = max(stop, start) if step > 0 else min(stop, start)
     return start, stop, step
 
@@ -151,7 +128,7 @@ def _expanded_axis_walk(entries: tuple[Any, ...], ndim: int, mode: SelectionMode
     the following entry resumes from once the skipped axes are accounted for.
     """
     for sel in entries:
-        if _is_bool_scalar(sel):
+        if is_bool_scalar(sel):
             raise IndexError(
                 "boolean scalars are not valid indices; use a boolean array "
                 "matching the shape of the axes it selects"
@@ -261,8 +238,9 @@ def split_scalar_axes(
     scalar_axes: dict[int, int] = {}
     remaining: list[Any] = []
     for sel, axis in zip(entries, axes, strict=True):
-        if _is_scalar_index(sel):
-            scalar_axes[axis] = _normalize_int(int(sel), domain.shape[axis], axis)
+        scalar = as_scalar_index(sel)
+        if scalar is not None:
+            scalar_axes[axis] = _normalize_int(scalar, domain.shape[axis], axis)
         else:
             remaining.append(sel)
 
@@ -326,7 +304,7 @@ def normalize_positional_selection(
         validate_advanced_selection(selection, domain, mode)
     else:
         for sel in entries:
-            if _is_bool_scalar(sel):
+            if is_bool_scalar(sel):
                 raise IndexError(
                     "boolean scalars are not valid indices; use a boolean array "
                     "matching the shape of the axes it selects"
@@ -385,8 +363,8 @@ def normalize_positional_selection(
         elif isinstance(sel, slice):
             start, stop, step = _normalize_slice(sel, size, axis)
             result.append(slice(start + origin[axis], stop + origin[axis], step))
-        elif isinstance(sel, (int, np.integer)):
-            result.append(_normalize_int(int(sel), size, axis) + origin[axis])
+        elif (scalar := as_scalar_index(sel)) is not None:
+            result.append(_normalize_int(scalar, size, axis) + origin[axis])
         else:
             raise IndexError(f"unsupported selection type: {type(sel)!r}")
         axis += 1

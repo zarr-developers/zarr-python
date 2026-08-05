@@ -98,8 +98,11 @@ the translation between the two.
 
 Two more NumPy rules the dialect keeps, in every mode:
 
-- A scalar integer drops its axis. It is a basic index wherever it appears,
-  applied before any advanced index rather than broadcast against one. So
+- A scalar integer drops its axis. Any non-boolean object implementing Python's
+  `SupportsIndex` protocol is accepted as one, including in slice bounds and
+  steps; an `__int__` method alone is deliberately not enough. A scalar is a
+  basic index wherever it appears, applied before any advanced index rather
+  than broadcast against one. So
   `lazy.oindex[0]` has the shape of `x[0]`, `lazy.oindex[0, [1, 2], :]` means
   `x[0][numpy.ix_([1, 2], ...)]`, and `lazy.oindex[0, 1, 2]` and
   `lazy.vindex[0, 1, 2]` are both zero-rank. Use a length-1 list to keep an

@@ -14,6 +14,26 @@ from zarr_indexing.transform import (
 )
 
 
+class IndexLike:
+    """A scalar integer selector implemented only through `__index__`."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def __index__(self) -> int:
+        return self.value
+
+
+class IntOnly:
+    def __int__(self) -> int:
+        return 2
+
+
+class BadIndex:
+    def __index__(self) -> int:
+        return 2.5  # type: ignore[return-value]
+
+
 class TestIndexTransformConstruction:
     def test_from_shape(self) -> None:
         t = IndexTransform.from_shape((10, 20))
@@ -491,6 +511,45 @@ class TestIndexTransformBasicIndexing:
         t = IndexTransform.from_shape((10, 20))
         result = t[2:8]
         assert result.domain.shape == (6, 20)
+
+    @pytest.mark.parametrize(
+        ("mode", "selection", "expected_selection"),
+        [
+            pytest.param("basic", IndexLike(2), 2, id="basic-scalar"),
+            pytest.param(
+                "basic",
+                slice(IndexLike(1), IndexLike(7), IndexLike(2)),
+                slice(1, 7, 2),
+                id="basic-slice-components",
+            ),
+            pytest.param("oindex", IndexLike(2), 2, id="orthogonal-scalar"),
+            pytest.param("vindex", IndexLike(2), 2, id="vectorized-scalar"),
+        ],
+    )
+    def test_literal_selectors_support_the_index_protocol(
+        self, mode: str, selection: object, expected_selection: object
+    ) -> None:
+        transform = IndexTransform.from_shape((8,))
+        if mode == "basic":
+            result = transform[selection]
+            expected = transform[expected_selection]
+        else:
+            result = getattr(transform, mode)[selection]
+            expected = getattr(transform, mode)[expected_selection]
+
+        assert result == expected
+
+    def test_literal_selector_rejects_int_only_objects(self) -> None:
+        with pytest.raises(IndexError, match="unsupported selection type"):
+            IndexTransform.from_shape((8,))[IntOnly()]
+
+    def test_literal_selector_propagates_malformed_index_protocol(self) -> None:
+        with pytest.raises(TypeError, match="__index__ returned non-int"):
+            IndexTransform.from_shape((8,))[BadIndex()]
+
+    def test_literal_slice_propagates_malformed_index_protocol(self) -> None:
+        with pytest.raises(TypeError, match="__index__ returned non-int"):
+            IndexTransform.from_shape((8,))[:: BadIndex()]
 
 
 class TestBasicIndexingOnArrayMaps:

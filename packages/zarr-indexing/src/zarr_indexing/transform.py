@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
+from zarr_indexing._selector import as_scalar_index, require_index
 from zarr_indexing.affine import checked_affine
 from zarr_indexing.boundary import validate_advanced_selection
 from zarr_indexing.domain import IndexDomain
@@ -903,8 +904,8 @@ def _normalize_basic_selection(selection: Any, ndim: int) -> tuple[int | slice |
             ellipsis_seen = True
             num_missing = ndim - n_real
             result.extend([slice(None)] * num_missing)
-        elif isinstance(sel, (int, np.integer)):
-            result.append(int(sel))
+        elif (scalar := as_scalar_index(sel)) is not None:
+            result.append(scalar)
         elif isinstance(sel, slice) or sel is None:
             result.append(sel)
         else:
@@ -1317,9 +1318,9 @@ def _normalize_oindex_selection(
             result.append(sel.astype(np.intp))
         elif isinstance(sel, slice):
             result.append(sel)
-        elif isinstance(sel, (int, np.integer)):
+        elif (scalar := as_scalar_index(sel)) is not None:
             # Convert integer scalars to 1-element arrays for orthogonal indexing
-            result.append(np.array([int(sel)], dtype=np.intp))
+            result.append(np.array([scalar], dtype=np.intp))
         elif isinstance(sel, (list, tuple)):
             array = np.asarray(sel)
             if array.dtype == np.bool_:
@@ -1524,8 +1525,8 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             processed.append(sel.astype(np.intp))
         elif isinstance(sel, (list, tuple)):
             processed.append(np.asarray(sel, dtype=np.intp))
-        elif isinstance(sel, (int, np.integer)):
-            processed.append(np.array([int(sel)], dtype=np.intp))
+        elif (scalar := as_scalar_index(sel)) is not None:
+            processed.append(np.array([scalar], dtype=np.intp))
         else:
             processed.append(sel)
 
@@ -1698,16 +1699,18 @@ def _resolve_slice_ts(sel: slice, dim: int, lo: int, hi: int) -> tuple[int, int,
 
     Returns `(start, step, origin, size)` in domain coordinates.
     """
-    step = 1 if sel.step is None else sel.step
+    start_bound = None if sel.start is None else require_index(sel.start)
+    stop_bound = None if sel.stop is None else require_index(sel.stop)
+    step = 1 if sel.step is None else require_index(sel.step)
     if step == 0:
         raise IndexError("slice step must not be zero")
     if step > 0:
-        start = lo if sel.start is None else sel.start
-        stop = hi if sel.stop is None else sel.stop
+        start = lo if start_bound is None else start_bound
+        stop = hi if stop_bound is None else stop_bound
         interval_lo, interval_hi = start, stop
     else:
-        start = hi - 1 if sel.start is None else sel.start
-        stop = lo - 1 if sel.stop is None else sel.stop
+        start = hi - 1 if start_bound is None else start_bound
+        stop = lo - 1 if stop_bound is None else stop_bound
         interval_lo, interval_hi = stop + 1, start + 1
     length = interval_hi - interval_lo
     if length < 0:
@@ -1765,7 +1768,7 @@ def _validate_array_selection(selection: Any, shape: tuple[int, ...], mode: str)
                     f"(single Boolean array) are supported; got {selection!r}"
                 )
             continue
-        if sel is Ellipsis or isinstance(sel, (int, np.integer)):
+        if sel is Ellipsis or as_scalar_index(sel) is not None:
             continue
         if isinstance(sel, (list, np.ndarray)):
             if mode == "orthogonal":
@@ -1790,7 +1793,7 @@ def _validate_basic_selection(selection: Any) -> None:
     """
     items = selection if isinstance(selection, tuple) else (selection,)
     for s in items:
-        if s is Ellipsis or isinstance(s, (int, np.integer, slice)):
+        if s is Ellipsis or isinstance(s, slice) or as_scalar_index(s) is not None:
             continue
         raise IndexError(f"unsupported selection type for basic indexing: {type(s)!r}")
 
