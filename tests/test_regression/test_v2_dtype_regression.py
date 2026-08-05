@@ -13,6 +13,7 @@ import zarr
 import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
+from zarr._constants import IS_WASM
 from zarr.abc.numcodec import Numcodec
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -30,6 +31,8 @@ def runner_installed() -> bool:
     """
     Check if a PEP-723 compliant python script runner is installed.
     """
+    if IS_WASM:
+        return False
     try:
         subprocess.check_output(["uv", "--version"])
         return True  # noqa: TRY300

@@ -9,6 +9,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")
@@ -120,6 +121,10 @@ def test_array_creates_implicit_groups(array):
 
 
 @settings(deadline=None)
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing(data: st.DataObject) -> None:
@@ -146,6 +151,10 @@ async def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @settings(deadline=None)
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
@@ -155,6 +164,10 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -191,6 +204,10 @@ async def test_oindex(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide run_sync does not preserve Python ContextVar across the JSPI boundary, so Hypothesis loses its build context when zarr strategies call sync()",
+)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.

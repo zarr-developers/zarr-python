@@ -8,6 +8,7 @@ from itertools import batched, chain, pairwise
 from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
+from zarr._constants import IS_WASM
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -57,20 +58,22 @@ def _resolve_max_workers() -> int:
     default = _os.cpu_count() or 1
     cfg = config.get("codec_pipeline.max_workers", default=None)
     if cfg is None:
-        return default
-    try:
-        return max(1, int(cfg))
-    except (TypeError, ValueError):
-        # This value arrives via the config/env layer (e.g.
-        # `ZARR_CODEC_PIPELINE__MAX_WORKERS`), so tolerate bad input here
-        # instead of raising mid-read.
-        warn(
-            f"Ignoring invalid `codec_pipeline.max_workers` config value {cfg!r}; "
-            f"falling back to {default}.",
-            category=ZarrUserWarning,
-            stacklevel=2,
-        )
-        return default
+        resolved = default
+    else:
+        try:
+            resolved = max(1, int(cfg))
+        except (TypeError, ValueError):
+            # This value arrives via the config/env layer (e.g.
+            # `ZARR_CODEC_PIPELINE__MAX_WORKERS`), so tolerate bad input here
+            # instead of raising mid-read.
+            warn(
+                f"Ignoring invalid `codec_pipeline.max_workers` config value {cfg!r}; "
+                f"falling back to {default}.",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
+            resolved = default
+    return 1 if IS_WASM else resolved
 
 
 def _get_pool(max_workers: int) -> ThreadPoolExecutor:
