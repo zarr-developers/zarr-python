@@ -19,7 +19,7 @@ from zarr_indexing import (
 )
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.grid import dimension_grids_from_chunks
-from zarr_indexing.output_map import ConstantMap, DimensionMap
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
 
 
@@ -288,6 +288,47 @@ def test_projection_invariants_for_fancy_selections(
             request_points.append(request_point)
 
     assert sorted(request_points) == sorted(_points(transform.domain))
+
+
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_orthogonal_array_map_plan_rejects_coordinate_below_grid(grid: Any) -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(ArrayMap(np.array([-1, 1], dtype=np.intp), input_dimension=0),),
+    )
+
+    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[-1, 1\]"):
+        list(plan_chunks(transform, (grid,)))
+
+
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_orthogonal_array_map_plan_rejects_coordinate_above_grid(grid: Any) -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(ArrayMap(np.array([1, 4], dtype=np.intp), input_dimension=0),),
+    )
+
+    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[1, 4\]"):
+        list(plan_chunks(transform, (grid,)))
+
+
+def test_nonempty_identity_plan_rejects_zero_size_fixed_dimension() -> None:
+    transform = IndexTransform.from_shape((4,))
+
+    with pytest.raises(ValueError, match="size must be > 0 when extent is nonzero"):
+        list(plan_chunks(transform, (FixedDimension(size=0, extent=4),)))
 
 
 @given(

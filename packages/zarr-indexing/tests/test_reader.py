@@ -11,6 +11,7 @@ import zarr_indexing.reader as reader_module
 from zarr_indexing import (
     ArrayMap,
     ChunkProjection,
+    ConstantMap,
     DimensionMap,
     IndexDomain,
     IndexTransform,
@@ -324,6 +325,28 @@ def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> No
     else:
         with pytest.raises(OverflowError, match="outside np.intp"):
             numpy_reader.read_into(np.arange(1), ReadContext(transform), out)
+
+
+def test_constant_outside_intp_has_transform_planner_reader_error_parity() -> None:
+    outside_intp = int(np.iinfo(np.intp).max) + 1
+    transform = IndexTransform(
+        domain=IndexDomain((), ()),
+        output=(ConstantMap(offset=outside_intp),),
+    )
+
+    with pytest.raises(OverflowError, match="outside np.intp range"):
+        transform.apply_many(np.zeros((1, 0), dtype=np.intp))
+
+    grids = dimension_grids_from_chunks((1,), (1,))
+    with pytest.raises(OverflowError, match="outside np.intp range"):
+        list(plan_chunks(transform, grids))
+
+    for reader, source in (
+        (basic_reader, BasicOnlySource(np.arange(1))),
+        (numpy_reader, np.arange(1)),
+    ):
+        with pytest.raises(OverflowError, match="outside np.intp range"):
+            reader.read_into(source, ReadContext(transform), np.empty((), dtype=np.intp))
 
 
 def test_numpy_reader_narrows_basic_slab_before_gather(

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
+import zarr_indexing.lazy_array as lazy_array_module
 from zarr_indexing import (
     ArrayMap,
     ChunkGrid,
@@ -34,7 +35,7 @@ from zarr_indexing import (
     array_map_dependent_axis,
     dimension_grids_from_chunks,
 )
-from zarr_indexing.lazy_array import _out_selection_cell_count
+from zarr_indexing.lazy_array import _out_selection_cell_count, _validate_prepared_parts
 from zarr_indexing.reader import Reader, basic_reader, numpy_reader
 from zarr_indexing.testing import repartition
 
@@ -139,6 +140,42 @@ def test_edge_dimension_grid_rejects_out_of_bounds_index() -> None:
 def test_edge_dimension_grid_rejects_out_of_bounds_chunk() -> None:
     with pytest.raises(IndexError, match="chunk index 2 is out of bounds"):
         EdgeDimensionGrid((3, 1)).chunk_offset(2)
+
+
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_compact_dimension_grid_rejects_vector_below_extent(grid: Any) -> None:
+    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[-1, 1\]"):
+        grid.indices_to_chunks(np.array([-1, 1], dtype=np.intp))
+
+
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_compact_dimension_grid_rejects_vector_above_extent(grid: Any) -> None:
+    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[1, 4\]"):
+        grid.indices_to_chunks(np.array([1, 4], dtype=np.intp))
+
+
+def test_fixed_dimension_rejects_zero_size_for_nonempty_extent() -> None:
+    with pytest.raises(ValueError, match="size must be > 0 when extent is nonzero"):
+        FixedDimension(size=0, extent=4)
+
+
+def test_fixed_dimension_retains_zero_size_for_zero_extent() -> None:
+    grid = FixedDimension(size=0, extent=0)
+
+    assert grid.nchunks == 0
+    assert grid.ngridcells == 0
 
 
 @pytest.mark.parametrize(
@@ -1373,11 +1410,74 @@ class _ReadMustNotRun:
         raise AssertionError("prepared-plan validation must happen before any read")
 
 
-def test_result_accepts_prepared_parts_from_the_same_view(
+def test_prepared_part_validation_allocates_boolean_coverage_bitmap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    data = reference()
-    view = LazyArray.from_numpy(data).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    view = LazyArray.from_numpy(reference()).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    parts = tuple(view.parts())
+    allocations: list[tuple[tuple[int, ...], np.dtype[Any]]] = []
+    real_zeros = np.zeros
+
+    def recording_zeros(shape: Any, *args: Any, **kwargs: Any) -> np.ndarray[Any, Any]:
+        result = real_zeros(shape, *args, **kwargs)
+        allocations.append((tuple(shape), result.dtype))
+        return result
+
+    monkeypatch.setattr(lazy_array_module.np, "zeros", recording_zeros)
+
+    _validate_prepared_parts(parts, view.shape)
+
+    assert allocations == [(view.shape, np.dtype(np.bool_))]
+
+
+@pytest.mark.parametrize(
+    ("data", "part_shape", "build", "expected"),
+    [
+        pytest.param(
+            np.arange(8),
+            (3,),
+            lambda array: array.lazy[1:7:2],
+            np.array([1, 3, 5]),
+            id="basic-reordered-parts",
+        ),
+        pytest.param(
+            np.arange(8),
+            (3,),
+            lambda array: array.lazy[3],
+            np.array(3),
+            id="scalar",
+        ),
+        pytest.param(
+            np.arange(20).reshape(4, 5),
+            (2, 3),
+            lambda array: array.lazy.oindex[[3, 1, 1], [4, 0]],
+            np.array([[19, 15], [9, 5], [9, 5]]),
+            id="orthogonal-fancy",
+        ),
+        pytest.param(
+            np.arange(20).reshape(4, 5),
+            (2, 3),
+            lambda array: array.lazy.vindex[[3, 1, 1], [4, 0, 4]],
+            np.array([19, 5, 9]),
+            id="correlated-fancy",
+        ),
+        pytest.param(
+            np.arange(8),
+            (3,),
+            lambda array: array.lazy[2:2],
+            np.array([], dtype=np.int64),
+            id="empty",
+        ),
+    ],
+)
+def test_result_accepts_prepared_parts_from_the_same_view(
+    monkeypatch: pytest.MonkeyPatch,
+    data: np.ndarray[Any, Any],
+    part_shape: tuple[int, ...],
+    build: Callable[[LazyArray], LazyArray],
+    expected: np.ndarray[Any, Any],
+) -> None:
+    view = build(LazyArray.from_numpy(data).with_parts(part_shape))
     parts = tuple(reversed(tuple(view.parts())))
 
     def unexpected_replan(self: LazyArray) -> Any:
@@ -1385,7 +1485,7 @@ def test_result_accepts_prepared_parts_from_the_same_view(
 
     monkeypatch.setattr(LazyArray, "parts", unexpected_replan)
 
-    np.testing.assert_array_equal(view.result(parts=parts), data[1:6, ::2, 1:])
+    np.testing.assert_array_equal(view.result(parts=parts), expected)
 
 
 def test_result_rejects_prepared_parts_owned_by_another_view() -> None:
@@ -1420,6 +1520,14 @@ def test_result_rejects_prepared_parts_with_a_duplicate_and_omission() -> None:
 
     with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
         view.result(parts=(first, first))
+
+
+def test_result_rejects_complete_prepared_parts_plus_a_duplicate() -> None:
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
+    first, second = tuple(view.parts())
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=(first, second, first))
 
 
 def test_result_rejects_overlapping_prepared_parts() -> None:

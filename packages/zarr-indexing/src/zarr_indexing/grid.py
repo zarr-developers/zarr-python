@@ -32,6 +32,16 @@ class DimensionGridLike(Protocol):
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
 
 
+def _bounded_indices(indices: npt.NDArray[np.intp], extent: int) -> npt.NDArray[np.intp]:
+    """Normalize a vector lookup and enforce the scalar grid bounds."""
+    arr = np.asarray(indices, dtype=np.intp)
+    if arr.size > 0 and (int(arr.min()) < 0 or int(arr.max()) >= extent):
+        raise IndexError(
+            f"indices must lie in [0, {extent}); got [{int(arr.min())}, {int(arr.max())}]"
+        )
+    return arr
+
+
 @dataclass(frozen=True)
 class FixedDimension:
     """Uniform chunk size with a boundary chunk clipped to the axis extent."""
@@ -46,6 +56,11 @@ class FixedDimension:
             raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
+        if self.size == 0 and self.extent > 0:
+            raise ValueError(
+                "FixedDimension size must be > 0 when extent is nonzero; "
+                f"got size {self.size} and extent {self.extent}"
+            )
         nchunks = 0 if self.size == 0 else (self.extent + self.size - 1) // self.size
         object.__setattr__(self, "nchunks", nchunks)
         object.__setattr__(self, "ngridcells", nchunks)
@@ -67,9 +82,10 @@ class FixedDimension:
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        arr = _bounded_indices(indices, self.extent)
         if self.size == 0:
-            return np.zeros_like(indices)
-        return indices // self.size
+            return np.zeros_like(arr)
+        return arr // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
         return FixedDimension(size=self.size, extent=new_extent)
@@ -128,7 +144,8 @@ class VaryingDimension:
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        return np.searchsorted(self.cumulative, indices, side="right")
+        arr = _bounded_indices(indices, self.extent)
+        return np.searchsorted(self.cumulative, arr, side="right")
 
     def with_extent(self, new_extent: int) -> VaryingDimension:
         if self.cumulative[-1] < new_extent:
@@ -399,11 +416,7 @@ class EdgeDimensionGrid:
         return self.sizes[chunk_ix]
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        arr = np.asarray(indices, dtype=np.intp)
-        if arr.size > 0 and (int(arr.min()) < 0 or int(arr.max()) >= self.extent):
-            raise IndexError(
-                f"indices must lie in [0, {self.extent}); got [{int(arr.min())}, {int(arr.max())}]"
-            )
+        arr = _bounded_indices(indices, self.extent)
         return (np.searchsorted(self._offsets, arr, side="right") - 1).astype(np.intp)
 
 

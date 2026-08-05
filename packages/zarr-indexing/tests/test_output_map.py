@@ -87,3 +87,13 @@ class TestArrayMap:
         assert left == right
         assert hash(left) == hash(right)
         assert left.index_array.dtype == np.dtype(np.intp)
+
+    def test_rejects_non_integer_index_array(self) -> None:
+        with pytest.raises(TypeError, match="index_array must have an integer dtype"):
+            ArrayMap(np.array([1.5, 2.0], dtype=np.float64))
+
+    def test_rejects_unsigned_index_array_value_outside_intp(self) -> None:
+        outside_intp = np.array([np.iinfo(np.uint64).max], dtype=np.uint64)
+
+        with pytest.raises(OverflowError, match="outside np.intp range"):
+            ArrayMap(outside_intp)

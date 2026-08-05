@@ -267,7 +267,8 @@ def _iter_chunk_transform_results(
         dg = dim_grids[out_dim]
         if isinstance(m, ConstantMap):
             # Single chunk
-            c = dg.index_to_chunk(m.offset)
+            coordinate = checked_affine(m.offset, 0, 0)
+            c = dg.index_to_chunk(coordinate)
             slot_dims.append((out_dim,))
             slot_candidates.append(((c,),))
         elif isinstance(m, DimensionMap):

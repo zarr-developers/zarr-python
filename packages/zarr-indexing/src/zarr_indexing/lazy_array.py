@@ -475,18 +475,19 @@ class Partition:
 
 def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, ...]) -> None:
     """Require `parts` to address every output cell exactly once."""
-    hits = np.zeros(out_shape, dtype=np.intp)
+    coverage = np.zeros(out_shape, dtype=np.bool_)
+    addressed = 0
     try:
         for part in parts:
             # Name a rank mismatch explicitly instead of letting NumPy treat
             # omitted selectors as implicit full slices.
-            _out_selection_cell_count(part.out_selection, out_shape)
-            # `add.at` accumulates repeated advanced coordinates instead of
-            # buffering them as ordinary advanced-index `+=` would.
-            np.add.at(hits, part.out_selection, 1)
+            addressed += _out_selection_cell_count(part.out_selection, out_shape)
+            # `logical_or.at` applies duplicate advanced coordinates one by one
+            # instead of buffering them as ordinary advanced indexing would.
+            np.logical_or.at(coverage, part.out_selection, True)
     except (AssertionError, IndexError, TypeError, ValueError) as error:
         raise AssertionError("prepared parts do not tile the view exactly") from error
-    if not np.all(hits == 1):
+    if addressed != math.prod(out_shape) or not np.all(coverage):
         raise AssertionError("prepared parts do not tile the view exactly")
 
 
@@ -883,8 +884,9 @@ class LazyArray:
         ------
         ValueError
             If `parts` has the wrong length or contains a non-positive extent.
-            Unlike partition discovery, this is a public API and validates
-            strictly.
+            Uniform part sizes must remain positive even for a zero-length
+            axis; use `with_parts_per_axis` for the accepted explicit zero-axis
+            spellings.
 
         Examples
         --------
@@ -921,8 +923,10 @@ class LazyArray:
         Raises
         ------
         ValueError
-            If `sizes` has the wrong length, contains a non-positive extent, or
-            declares sizes that do not sum to `base_shape`.
+            If `sizes` has the wrong length, contains a negative extent, uses a
+            zero extent on a nonempty axis, or declares sizes that do not sum
+            to `base_shape`. On a zero-length axis, `()`, `(0,)`, and repeated
+            zeros all describe no chunks.
 
         Examples
         --------
