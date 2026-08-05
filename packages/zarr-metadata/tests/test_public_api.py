@@ -3,7 +3,7 @@
 import importlib
 import pkgutil
 import re
-from typing import get_args
+from typing import Literal, get_args, get_origin
 
 import zarr_metadata as zm
 
@@ -58,6 +58,23 @@ EXPECTED = [
     "MetadataValidationError",
     "ProblemKind",
     "UNSET",
+    # Store keys — the names the documents are persisted under. Defined in the
+    # v2/v3 spec modules, re-exported through `zarr_metadata.model`.
+    "ZARR_V2_ARRAY_METADATA_STORE_KEY",
+    "ZarrV2ArrayMetadataStoreKey",
+    "ZARR_V2_GROUP_METADATA_STORE_KEY",
+    "ZarrV2GroupMetadataStoreKey",
+    "ZARR_V2_ATTRIBUTES_STORE_KEY",
+    "ZarrV2AttributesStoreKey",
+    "ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY",
+    "ZarrV2ConsolidatedMetadataStoreKey",
+    "ZARR_V3_ARRAY_METADATA_STORE_KEY",
+    "ZarrV3ArrayMetadataStoreKey",
+    "ZARR_V3_GROUP_METADATA_STORE_KEY",
+    "ZarrV3GroupMetadataStoreKey",
+    # Not a store key: v3 consolidated metadata is embedded in the group's own
+    # `zarr.json`, so it has no paired Literal alias.
+    "ZARR_V3_CONSOLIDATED_METADATA_KEY",
     # v2 data-type encoding union
     "ZarrV2DataTypeMetadata",
     # Category B — codec canonical unions
@@ -147,9 +164,9 @@ EXPECTED = [
     "RawBytesDataTypeName",
     "RawBytesFillValue",
     # Category E — constant+Literal pairs
-    "ARRAY_ORDER_V2",
+    "ZARR_V2_ARRAY_ORDER",
     "ZarrV2ArrayOrder",
-    "ARRAY_DIMENSION_SEPARATOR_V2",
+    "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZarrV2ArrayDimensionSeparator",
     "ENDIANNESS",
     "Endianness",
@@ -285,14 +302,19 @@ _STANDALONE_VOCAB = frozenset(
 )
 
 
-def _public_type_names() -> set[tuple[str, str]]:
-    """Every (module, CamelCase name) pair exported via a public `__all__`."""
+def _iter_module_names() -> set[str]:
+    """Every public module in the package, including the top-level namespace."""
     module_names = {"zarr_metadata"}
     for info in pkgutil.walk_packages(zm.__path__, prefix="zarr_metadata."):
         if not any(part.startswith("_") for part in info.name.split(".")[1:]):
             module_names.add(info.name)
+    return module_names
+
+
+def _public_type_names() -> set[tuple[str, str]]:
+    """Every (module, CamelCase name) pair exported via a public `__all__`."""
     out: set[tuple[str, str]] = set()
-    for module_name in module_names:
+    for module_name in _iter_module_names():
         module = importlib.import_module(module_name)
         for name in getattr(module, "__all__", ()):
             if name.startswith("_") or name.isupper() or name.islower():
@@ -323,6 +345,8 @@ def test_standalone_vocab_is_not_stale() -> None:
 
 
 def test_promoted_pairs_drift() -> None:
+    """Each promoted runtime constant holds exactly the values of the `Literal`
+    type it manifests, so the two cannot drift apart."""
     pairs = [
         (zm.ENDIANNESS, zm.Endianness),
         (zm.BLOSC_CNAME, zm.BloscCName),
@@ -331,7 +355,134 @@ def test_promoted_pairs_drift() -> None:
         (zm.NUMPY_TIME_UNIT, zm.NumpyTimeUnit),
         (zm.CAST_ROUNDING_MODE, zm.CastRoundingMode),
         (zm.CAST_OUT_OF_RANGE_MODE, zm.CastOutOfRangeMode),
-        (zm.ARRAY_ORDER_V2, zm.ZarrV2ArrayOrder),
+        (zm.ZARR_V2_ARRAY_ORDER, zm.ZarrV2ArrayOrder),
+        (zm.ZARR_V2_ARRAY_DIMENSION_SEPARATOR, zm.ZarrV2ArrayDimensionSeparator),
+        (zm.DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR, zm.DefaultChunkKeyEncodingSeparator),
+        (zm.V2_CHUNK_KEY_ENCODING_SEPARATOR, zm.V2ChunkKeyEncodingSeparator),
     ]
     for const, lit in pairs:
         assert set(const) == set(get_args(lit))
+
+
+def constant_name_for(type_name: str) -> str:
+    """Derive a constant's name from the name of the type it manifests.
+
+    The transformation is purely syntactic: split at each lowercase-to-uppercase
+    boundary and before an uppercase run that starts a new word, then uppercase.
+    Digit runs stay glued to the token they follow (`Uint8` -> `UINT8`,
+    `Crc32c` -> `CRC32C`), because a digit boundary in CamelCase does not mark a
+    word boundary in the spec vocabulary these names model.
+
+    Consecutive capitals do not split, so acronym-adjacent names derive badly:
+    `ZarrV2ZArrayJSON` -> `ZARR_V2ZARRAY_JSON` and `...JSONPartial` ->
+    `...JSONPARTIAL`. Every such name in the package today is a `TypedDict` or
+    `TypeAliasType` that backs no constant, so none reaches this function — but
+    a future `Literal` spelled that way would silently be held to a bad name.
+    Splitting acronyms correctly needs a vocabulary, not a regex, so the rule
+    stays syntactic and this stays a known limit.
+    """
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z][a-z])|(?<=[a-z])(?=[A-Z])", "_", type_name).upper()
+
+
+def _literal_backed_constants() -> list[tuple[str, str, str]]:
+    """Every (module, constant, type) triple where a module-level SCREAMING_SNAKE
+    constant holds exactly the values of a `Literal` type in the same module.
+
+    Pairing is by value, not by proximity: a constant manifests the type whose
+    members it enumerates. Constants with no such type (extension-field keys,
+    key sets, canonical bit patterns) are exempt from the naming rule and are
+    simply absent from the result.
+    """
+    out: list[tuple[str, str, str]] = []
+    for module_name in _iter_module_names():
+        module = importlib.import_module(module_name)
+        literals = {
+            name: frozenset(get_args(obj))
+            for name, obj in vars(module).items()
+            if not name.startswith("_")
+            and not name.isupper()
+            and get_origin(obj) is Literal
+            and get_args(obj)
+        }
+        if not literals:
+            continue
+        for const_name, value in vars(module).items():
+            if const_name.startswith("_") or not const_name.isupper():
+                continue
+            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if not all(isinstance(m, str) for m in members):
+                continue
+            matches = [t for t, args in literals.items() if args == members]
+            # A single unambiguous type means this constant manifests it. Ties
+            # (two Literals with identical members) carry no signal about which
+            # name the constant should take, so they are skipped.
+            if len(matches) == 1:
+                out.append((module_name, const_name, matches[0]))
+    return out
+
+
+def _value_tied_constants() -> set[str]:
+    """Constants whose manifested type is ambiguous because two or more `Literal`
+    types in the same module share its exact members.
+
+    These are invisible to the derivation check, so they are surfaced here and
+    counted, rather than silently dropped inside the pairing helper."""
+    tied: set[str] = set()
+    for module_name in _iter_module_names():
+        module = importlib.import_module(module_name)
+        literals = [
+            frozenset(get_args(obj))
+            for name, obj in vars(module).items()
+            if not name.startswith("_")
+            and not name.isupper()
+            and get_origin(obj) is Literal
+            and get_args(obj)
+        ]
+        for const_name, value in vars(module).items():
+            if const_name.startswith("_") or not const_name.isupper():
+                continue
+            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if not all(isinstance(m, str) for m in members):
+                continue
+            if sum(1 for args in literals if args == members) > 1:
+                tied.add(f"{module_name}.{const_name}")
+    return tied
+
+
+# Constants whose `Literal` type cannot be identified by value because another
+# `Literal` in the same module has identical members. Pairing is by value, so a
+# tie carries no signal about which name the constant should take. These are
+# checked by eye; the count below fails if the tied set grows silently.
+KNOWN_VALUE_TIES = 9
+
+
+def test_constant_names_derive_from_their_type_names() -> None:
+    """Every `Literal`-backed constant whose type can be identified by value has
+    a name that is the mechanical transform of that type's name.
+
+    Constants tied to more than one identically-valued `Literal` are exempt (see
+    `KNOWN_VALUE_TIES`), as are constants in private modules and those backing
+    no `Literal` at all — so this pins the rule for most of the package, not all
+    of it."""
+    pairs = _literal_backed_constants()
+    assert pairs, "found no Literal-backed constants to check"
+    violations = [
+        f"{module}: {const} should be {constant_name_for(type_name)} (manifests {type_name})"
+        for module, const, type_name in pairs
+        if const != constant_name_for(type_name)
+    ]
+    assert not violations, "constants whose names do not derive from their type:\n" + "\n".join(
+        violations
+    )
+
+
+def test_value_tied_constants_are_a_known_set() -> None:
+    """The derivation check cannot see constants whose type is ambiguous by
+    value. Pin how many there are, so the exempt set cannot grow unnoticed and
+    quietly shrink the rule's coverage."""
+    tied = _value_tied_constants()
+    assert len(tied) == KNOWN_VALUE_TIES, (
+        f"value-tied constants changed (expected {KNOWN_VALUE_TIES}, got {len(tied)}); "
+        f"these are unchecked by the derivation rule and must be named by hand:\n"
+        + "\n".join(sorted(tied))
+    )

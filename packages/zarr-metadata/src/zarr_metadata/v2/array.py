@@ -39,7 +39,7 @@ ZarrV2ArrayOrder = Literal["C", "F"]
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
-ARRAY_ORDER_V2: Final = ("C", "F")
+ZARR_V2_ARRAY_ORDER: Final = ("C", "F")
 """Tuple of permitted values for the `order` field of v2 array metadata."""
 
 ZarrV2ArrayDimensionSeparator = Literal[".", "/"]
@@ -51,7 +51,7 @@ ZarrV2ArrayDimensionSeparator = Literal[".", "/"]
 See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 """
 
-ARRAY_DIMENSION_SEPARATOR_V2: Final = (".", "/")
+ZARR_V2_ARRAY_DIMENSION_SEPARATOR: Final = (".", "/")
 """Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
 
 
@@ -149,12 +149,21 @@ class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False):
     """
 
 
+ZarrV2ArrayMetadataStoreKey = Literal[".zarray"]
+"""Literal type of the store key holding a v2 array's metadata document."""
+
+ZARR_V2_ARRAY_METADATA_STORE_KEY: Final[ZarrV2ArrayMetadataStoreKey] = ".zarray"
+"""The store key a v2 array's metadata document is persisted under."""
+
+
 __all__ = [
-    "ARRAY_DIMENSION_SEPARATOR_V2",
-    "ARRAY_ORDER_V2",
+    "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
+    "ZARR_V2_ARRAY_METADATA_STORE_KEY",
+    "ZARR_V2_ARRAY_ORDER",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadataJSON",
     "ZarrV2ArrayMetadataJSONPartial",
+    "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayOrder",
     "ZarrV2DataTypeMetadata",
     "ZarrV2ZArrayJSON",
