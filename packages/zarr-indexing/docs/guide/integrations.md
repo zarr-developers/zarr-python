@@ -87,7 +87,8 @@ allocates and assembles the result. The facade constructs exactly one tuple
 from `view.parts()`: it derives the chunk coordinates to pin from that tuple,
 then passes the same owned parts to `view.result(parts=parts)`. Planning is
 therefore performed once for the request rather than repeated during
-materialization.
+materialization. Neither pinning nor the result call rebuilds the plan; both
+reuse those prepared `Partition` objects.
 
 `SystemMemoryChunkReader` receives one `ReadContext` for each materialized
 part. Its global `context.transform` directly addresses the raw source, while
@@ -130,7 +131,8 @@ may temporarily span more chunks than the steady-state capacity. Capacity is
 counted in decoded chunks—not records or bytes—and eviction occurs only after
 all requested values have been placed. Because pinning and materialization use
 the same prepared tuple, those lifecycle decisions cannot drift from the parts
-that are actually read.
+that are actually read, and the cache never has to infer or reconstruct a
+projection.
 
 The event log makes the failure boundary equally explicit:
 

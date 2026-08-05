@@ -27,9 +27,10 @@ You can finish the tour with a practical mental model: indexing through
 
 The transform answers **which values?** and is independent of the backend. The
 reader answers **how do I obtain them?** and must preserve the transform
-exactly. `LazyArray(source)` assumes only basic indexing; use
-`LazyArray.from_numpy(array)` when the source is visibly a NumPy array and its
-optimized reader is appropriate.
+exactly. `LazyArray(source)` assumes a source with `shape`, `dtype`, and basic
+integer/slice indexing whose selected slabs can be converted to NumPy system
+memory. Use `LazyArray.from_numpy(array)` when the source is visibly a NumPy
+array and its optimized reader is appropriate.
 
 ## An index selects coordinates {#an-index-selects-coordinates}
 
@@ -71,18 +72,23 @@ sides of that description a precise meaning.
 
 `[0, 1)` is a **half-open interval**: start at 0, inclusive, and stop at 1, exclusive.
 The `[` includes the lower boundary, while the `)` excludes the upper boundary.
-For integer coordinates, `[0, 1)` therefore contains exactly one coordinate: `0`.
+For integer coordinates, `[0, 1)` therefore enumerates the ordered sequence
+`[0]`.
 
 Half-openness lets adjacent slices and chunks meet without a gap or overlap.
 Concatenation is ordered: the first interval is followed by the second. When
 the first interval's exclusive stop matches the second interval's inclusive
 start, the shared boundary coordinate appears exactly once.
 
-- `[0, 1) = {0}` — Start at 0 and stop before 1, so the interval contains only 0.
-- `[1, 3) = {1, 2}` — Start at 1 and stop before 3, so the interval contains 1 and 2.
+- `[0, 1) -> [0]` — Start at 0 and stop before 1, so the sequence contains only 0.
+- `[1, 3) -> [1, 2]` — Start at 1 and stop before 3, so the sequence contains 1 and 2.
 - `concat([0, 1), [1, 3)) = [0, 3)` — Append the second interval after the
   first. Their matching exclusive/inclusive boundary produces one continuous
   interval without a gap or duplicated coordinate.
+
+Explicit coordinates, including coordinate arrays, are always ordered
+sequences rather than mathematical sets. Their order is semantic, and repeated
+coordinates remain repeated in the result.
 
 In the transform algebra, **coordinates are just integers**. A negative
 coordinate is a real address in a domain, with the same status as zero or a
@@ -323,6 +329,11 @@ storage backend, codec pipeline, buffer, or scheduler. A Zarr reader, a task
 queue, or a viewport can consume the same logical plan and decide independently
 how and when to fetch its two chunks.
 
+A zero-length source axis has no chunks. `LazyArray` accepts a positive uniform
+part shape for that axis, or explicit per-axis spellings `()`, `(0,)`, and
+`(0, 0)`; each produces no parts and the same empty result. Zero-sized parts
+remain invalid on a nonempty axis.
+
 ## One cell domain, two projections {#one-cell-domain-two-projections}
 
 A chunk read has to answer two questions at once: which cells belong to this
@@ -351,6 +362,12 @@ The directions are exact: **shared synthetic input cell domain → request via
 `cell_transform`**, and **shared cell domain → chunk-local via
 `chunk_transform`**. Neither arrow starts at the request or maps one output
 space into the other.
+
+When `LazyArray.parts()` exposes this plan, `Partition.view.transform` is a
+different, global transform: it maps the part view directly into the raw wrapped
+source. Only `Partition.projection.chunk_transform` uses zero-origin
+chunk-local coordinates. Readers receive both so the global source address and
+the local planning frame cannot be confused.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |

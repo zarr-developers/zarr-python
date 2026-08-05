@@ -62,7 +62,7 @@ Four deliberate differences:
 | Dialect | One strict dialect everywhere: literal coordinates, no negative wrapping | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `zarr.Array.lazy` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
 | Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) exposes the partition structure so the caller's own scheduler — dask, a thread pool, a task queue — drives it |
 | Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
-| Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. Built-in readers accept system-memory/basic-indexing sources; other backends use explicit custom readers. A device reader owns transfer into the supplied system-memory output |
+| Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The default reader needs `shape`, `dtype`, basic integer/slice indexing, and selected slabs convertible to NumPy system memory; other backends use explicit custom readers. A device reader owns transfer into the supplied system-memory output |
 
 The mechanics of a
 [chunk plan](guide/index.md#a-request-becomes-a-chunk-plan) and its
@@ -109,6 +109,10 @@ with a region means scanning it. `oindex`, `vindex`, and boolean masks all
 produce one, and once an axis is a query, subsequent basic indexing cannot make
 it a box again. Nor can a second query be composed onto the axes an existing one
 broadcasts along — see [Current scope](#current-scope).
+
+Those coordinate arrays are ordered sequences, never mathematical sets. Their
+order and duplicate entries are part of the indexing semantics and must survive
+planning and materialization.
 
 [ndsel](ndsel.md) encodes the same split in its message kinds: `point`, `box`,
 and `slice` desugar to constant and affine output maps and are always boxes;
@@ -190,10 +194,12 @@ speculatively; `is_box` is the runtime check until then.
 TensorStore is the prior art for the transform algebra, as described above. At
 the execution boundary, this package instead gives each backend a `ReadContext`
 through a `Reader`. Its global transform answers **which values?**; the reader
-answers **how does this backend obtain them?** An optional projection retains a
-partition's chunk-local planning frame. The reader must preserve the global
-transform exactly, but it does not participate in indexing semantics,
-partitioning, scheduling, or result ownership.
+answers **how does this backend obtain them?** A partition view's transform
+directly addresses the raw source in global coordinates. Its optional
+projection retains the paired planning transforms, of which only
+`chunk_transform` addresses zero-origin chunk-local coordinates. The reader
+must preserve the global transform exactly, but it does not participate in
+indexing semantics, partitioning, scheduling, or result ownership.
 
 Earlier versions used a capability taxonomy modeled on historical indexing
 dialects. That model required deciding which fragment of a request a backend

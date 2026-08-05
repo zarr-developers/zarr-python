@@ -271,6 +271,35 @@ def test_viewport_consumer_uses_exact_non_crossing_source_keys() -> None:
     assert namespace["VIEWPORT_SOURCE_CHUNKS"] == ((0, 0), (0, 1))
 
 
+def test_default_source_contract_converts_basic_selected_slabs_to_system_memory() -> None:
+    """A source may return Python slabs as long as NumPy can convert each selected slab."""
+
+    class ListSlabSource:
+        def __init__(self) -> None:
+            self.data = np.arange(20).reshape(4, 5)
+            self.keys: list[tuple[Any, ...]] = []
+
+        @property
+        def shape(self) -> tuple[int, ...]:
+            return self.data.shape
+
+        @property
+        def dtype(self) -> np.dtype[Any]:
+            return self.data.dtype
+
+        def __getitem__(self, key: tuple[Any, ...]) -> object:
+            assert all(isinstance(item, (int, slice)) for item in key)
+            self.keys.append(key)
+            return self.data[key].tolist()
+
+    source = ListSlabSource()
+    result = LazyArray(source).with_parts((2, 3)).lazy.oindex[[3, 1, 1], 1:5:2].result()
+
+    np.testing.assert_array_equal(result, np.array([[16, 18], [6, 8], [6, 8]]))
+    assert source.keys
+    assert all(all(isinstance(item, (int, slice)) for item in key) for key in source.keys)
+
+
 def test_indexing_pattern_matrix_is_complete() -> None:
     namespace = runpy.run_path(str(DOCS / "examples" / "indexing_patterns.py"))
     cases = namespace["PATTERN_CASES"]
@@ -311,35 +340,43 @@ def test_prepend_projection_keeps_shared_chunk_local_and_request_spaces_distinct
     assert namespace["PREPEND_REQUEST_COORDS"] == ((-3,), (-2,), (-1,))
 
 
-def test_half_open_interval_examples_explain_ordered_concatenation_before_negative_coordinates() -> (
-    None
-):
-    chapter = (DOCS / "guide" / "index.md").read_text()
-    definition = "start at 0, inclusive, and stop at 1, exclusive"
-    examples = (
-        ("[0, 1) = {0}", "Start at 0 and stop before 1, so the interval contains only 0."),
-        (
-            "[1, 3) = {1, 2}",
-            "Start at 1 and stop before 3, so the interval contains 1 and 2.",
-        ),
-        (
-            "concat([0, 1), [1, 3)) = [0, 3)",
-            "Append the second interval after the first. Their matching "
-            "exclusive/inclusive boundary produces one continuous interval without "
-            "a gap or duplicated coordinate.",
-        ),
-    )
-    interval_section = chapter[: chapter.index("[-2, 3)")]
-    normalized_section = " ".join(interval_section.split())
+def test_coordinate_array_example_preserves_order_and_duplicates() -> None:
+    """Coordinate arrays are ordered sequences, not mathematical sets."""
+    view = LazyArray.from_numpy(np.arange(6)).with_parts((2,)).lazy.oindex[[4, 1, 1, 3]]
 
-    assert definition in chapter
-    assert all(
-        equation in normalized_section and explanation in normalized_section
-        for equation, explanation in examples
-    )
-    assert " ∪ " not in interval_section  # noqa: RUF001
-    assert chapter.index(definition) < chapter.index("[-2, 3)")
-    assert "half-open-intervals.svg" not in chapter
+    np.testing.assert_array_equal(view.result(), np.array([4, 1, 1, 3]))
+    assembled = np.empty(view.shape, dtype=view.dtype)
+    for part in view.parts():
+        assembled[part.out_selection] = part.view.result()
+    np.testing.assert_array_equal(assembled, np.array([4, 1, 1, 3]))
+
+
+def test_documented_partition_transform_is_global_and_projection_is_chunk_local() -> None:
+    source = np.arange(8)
+    part = tuple(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
+
+    assert part.view.transform.apply((0,)) == (4,)
+    assert part.view.array[part.view.transform.apply((0,))] == 4
+    assert part.projection.chunk_transform.apply((0,)) == (0,)
+
+
+@pytest.mark.parametrize(
+    ("mode", "parts"),
+    [
+        ("per-axis", ((0,), (3,))),
+        ("per-axis", ((), (3,))),
+        ("uniform", (1, 1)),
+        ("per-axis", ((0, 0), (3,))),
+    ],
+    ids=["single-zero", "empty-sequence", "positive-uniform", "repeated-zero"],
+)
+def test_documented_zero_length_axis_partition_spellings_execute(mode: str, parts: Any) -> None:
+    data = np.zeros((0, 3))
+    base = LazyArray.from_numpy(data)
+    view = base.with_parts(parts) if mode == "uniform" else base.with_parts_per_axis(parts)
+
+    assert view.result().shape == (0, 3)
+    assert tuple(view.parts()) == ()
 
 
 def test_visual_guide_is_one_scrolling_document_with_stable_section_links() -> None:

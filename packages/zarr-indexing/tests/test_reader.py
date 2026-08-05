@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, get_type_hints
+from typing import TYPE_CHECKING, Any, get_type_hints
 
 import numpy as np
 import numpy.typing as npt
@@ -14,9 +14,15 @@ from zarr_indexing import (
     DimensionMap,
     IndexDomain,
     IndexTransform,
+    LazyArray,
     ReadContext,
+    plan_chunks,
 )
+from zarr_indexing.grid import dimension_grids_from_chunks
 from zarr_indexing.reader import basic_reader, numpy_reader
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class BasicOnlySource:
@@ -40,6 +46,168 @@ class BasicOnlySource:
 
 SOURCE = np.arange(6 * 7 * 8).reshape(6, 7, 8)
 BASE = IndexTransform.from_shape(SOURCE.shape)
+
+
+SUCCESSFUL_CONTRACT_CASES = (
+    pytest.param(
+        np.arange(8),
+        IndexTransform.from_shape((8,))[3],
+        (3,),
+        np.zeros((1, 0), dtype=np.intp),
+        np.array([[3]], dtype=np.intp),
+        np.array(3),
+        lambda array: array.lazy[3],
+        id="constant",
+    ),
+    pytest.param(
+        np.arange(8),
+        IndexTransform.from_shape((8,))[1:8:2],
+        (3,),
+        np.array([[0], [1], [2], [3]], dtype=np.intp),
+        np.array([[1], [3], [5], [7]], dtype=np.intp),
+        np.array([1, 3, 5, 7]),
+        lambda array: array.lazy[1:8:2],
+        id="positive-affine",
+    ),
+    pytest.param(
+        np.arange(8),
+        IndexTransform.from_shape((8,))[::-2],
+        (3,),
+        np.array([[-3], [-2], [-1], [0]], dtype=np.intp),
+        np.array([[7], [5], [3], [1]], dtype=np.intp),
+        np.array([7, 5, 3, 1]),
+        lambda array: array.lazy[::-2],
+        id="negative-affine",
+    ),
+    pytest.param(
+        np.arange(8),
+        IndexTransform(
+            domain=IndexDomain.from_shape((3,)),
+            output=(DimensionMap(input_dimension=0, offset=2, stride=0),),
+        ),
+        (3,),
+        np.array([[0], [1], [2]], dtype=np.intp),
+        np.array([[2], [2], [2]], dtype=np.intp),
+        np.array([2, 2, 2]),
+        lambda array: array.lazy.oindex[[2, 2, 2]],
+        id="zero-affine",
+    ),
+    pytest.param(
+        np.arange(20).reshape(4, 5),
+        IndexTransform.from_shape((4, 5)).oindex[[3, 1, 1], [4, 0]],
+        (2, 3),
+        np.array([[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]], dtype=np.intp),
+        np.array([[3, 4], [3, 0], [1, 4], [1, 0], [1, 4], [1, 0]], dtype=np.intp),
+        np.array([[19, 15], [9, 5], [9, 5]]),
+        lambda array: array.lazy.oindex[[3, 1, 1], [4, 0]],
+        id="orthogonal-array",
+    ),
+    pytest.param(
+        np.arange(20).reshape(4, 5),
+        IndexTransform.from_shape((4, 5)).vindex[[3, 1, 1], [4, 0, 4]],
+        (2, 3),
+        np.array([[0], [1], [2]], dtype=np.intp),
+        np.array([[3, 4], [1, 0], [1, 4]], dtype=np.intp),
+        np.array([19, 5, 9]),
+        lambda array: array.lazy.vindex[[3, 1, 1], [4, 0, 4]],
+        id="correlated-array",
+    ),
+    pytest.param(
+        np.arange(8),
+        IndexTransform(
+            domain=IndexDomain((4,), (7,)),
+            output=(DimensionMap(input_dimension=0, offset=-3, stride=1),),
+        ),
+        (3,),
+        np.array([[4], [5], [6]], dtype=np.intp),
+        np.array([[1], [2], [3]], dtype=np.intp),
+        np.array([1, 2, 3]),
+        None,
+        id="non-zero-origin",
+    ),
+    pytest.param(
+        np.arange(8),
+        IndexTransform.from_shape((8,))[2:2],
+        (3,),
+        np.empty((0, 1), dtype=np.intp),
+        np.empty((0, 1), dtype=np.intp),
+        np.array([], dtype=np.intp),
+        lambda array: array.lazy[2:2],
+        id="empty",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    (
+        "source_data",
+        "transform",
+        "chunk_shape",
+        "request_coordinates",
+        "storage_coordinates",
+        "expected_values",
+        "lazy_selection",
+    ),
+    SUCCESSFUL_CONTRACT_CASES,
+)
+def test_successful_transform_contract_across_planning_readers_and_lazy_array(
+    source_data: np.ndarray[Any, Any],
+    transform: IndexTransform,
+    chunk_shape: tuple[int, ...],
+    request_coordinates: npt.NDArray[np.intp],
+    storage_coordinates: npt.NDArray[np.intp],
+    expected_values: np.ndarray[Any, Any],
+    lazy_selection: Callable[[LazyArray], LazyArray] | None,
+) -> None:
+    """One literal matrix keeps transform, planning, readers, and wrappers aligned."""
+    np.testing.assert_array_equal(transform.apply_many(request_coordinates), storage_coordinates)
+
+    grids = dimension_grids_from_chunks(chunk_shape, source_data.shape)
+    reconstructed_pairs = [
+        (
+            tuple(projection.cell_transform.apply(cell_coordinate)),
+            tuple(
+                local_coordinate + chunk_origin
+                for local_coordinate, chunk_origin in zip(
+                    projection.chunk_transform.apply(cell_coordinate),
+                    projection.chunk_domain.inclusive_min,
+                    strict=True,
+                )
+            ),
+        )
+        for projection in plan_chunks(transform, grids)
+        for cell_coordinate in _domain_coordinates(projection.cell_transform.domain)
+    ]
+    expected_pairs = list(
+        zip(
+            map(tuple, request_coordinates.tolist()),
+            map(tuple, storage_coordinates.tolist()),
+            strict=True,
+        )
+    )
+    assert sorted(reconstructed_pairs) == sorted(expected_pairs)
+
+    for reader_name, source in (
+        ("basic", BasicOnlySource(source_data)),
+        ("numpy", source_data),
+    ):
+        out = np.empty(transform.domain.shape, dtype=source_data.dtype)
+        reader = basic_reader if reader_name == "basic" else numpy_reader
+        assert reader.read_into(source, ReadContext(transform), out) is None
+        np.testing.assert_array_equal(out, expected_values)
+
+    if lazy_selection is not None:
+        view = lazy_selection(LazyArray.from_numpy(source_data).with_parts(chunk_shape))
+        np.testing.assert_array_equal(view.result(), expected_values)
+
+
+def _domain_coordinates(domain: IndexDomain) -> list[tuple[int, ...]]:
+    return [
+        tuple(
+            position + origin for position, origin in zip(index, domain.inclusive_min, strict=True)
+        )
+        for index in np.ndindex(*domain.shape)
+    ]
 
 
 def test_read_context_public_annotations_resolve() -> None:

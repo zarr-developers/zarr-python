@@ -4,6 +4,8 @@ from typing import Any
 
 import numpy as np
 import pytest
+from hypothesis import assume, given
+from hypothesis import strategies as st
 
 import zarr_indexing
 from zarr_indexing import (
@@ -286,6 +288,52 @@ def test_projection_invariants_for_fancy_selections(
             request_points.append(request_point)
 
     assert sorted(request_points) == sorted(_points(transform.domain))
+
+
+@given(
+    origin=st.integers(min_value=-4, max_value=4),
+    extent=st.integers(min_value=0, max_value=8),
+    stride=st.integers(min_value=-3, max_value=3),
+)
+def test_affine_projection_pairs_reconstruct_independent_source_coordinates(
+    origin: int, extent: int, stride: int
+) -> None:
+    """Bounded literal-domain examples preserve every request/storage pair."""
+    anchor = extent - 1 if stride < 0 else 0
+    offset = anchor - stride * origin
+    expected_pairs = [
+        ((coordinate,), (source_coordinate,))
+        for coordinate in range(origin, origin + extent)
+        if 0 <= (source_coordinate := offset + stride * coordinate) < extent
+    ]
+    assume(expected_pairs)
+
+    unrestricted = IndexTransform(
+        domain=IndexDomain((origin,), (origin + extent,)),
+        output=(DimensionMap(input_dimension=0, offset=offset, stride=stride),),
+    )
+    intersection = unrestricted.intersect(IndexDomain.from_shape((extent,)))
+    assume(intersection is not None)
+    transform, _ = intersection
+    grids = dimension_grids_from_chunks((min(3, extent),), (extent,))
+
+    reconstructed_pairs = [
+        (
+            _storage_of(projection.cell_transform, cell_coordinate),
+            tuple(
+                local_coordinate + chunk_origin
+                for local_coordinate, chunk_origin in zip(
+                    _storage_of(projection.chunk_transform, cell_coordinate),
+                    projection.chunk_domain.inclusive_min,
+                    strict=True,
+                )
+            ),
+        )
+        for projection in plan_chunks(transform, grids)
+        for cell_coordinate in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(reconstructed_pairs) == sorted(expected_pairs)
 
 
 def test_correlated_projection_preserves_nonzero_request_coordinates() -> None:
