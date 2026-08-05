@@ -359,7 +359,9 @@ class CastValue(ArrayArrayCodec):
         target_native = self.dtype.to_native_dtype()
 
         result = self._do_cast(
-            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
+            np.ascontiguousarray(arr),
+            target_dtype=target_native,
+            scalar_map=self._get_scalar_map("encode"),
         )
         return chunk_array.__class__.from_ndarray_like(result)
 
@@ -379,7 +381,9 @@ class CastValue(ArrayArrayCodec):
         target_native = chunk_spec.dtype.to_native_dtype()
 
         result = self._do_cast(
-            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("decode")
+            np.ascontiguousarray(arr),
+            target_dtype=target_native,
+            scalar_map=self._get_scalar_map("decode"),
         )
         return chunk_array.__class__.from_ndarray_like(result)
 
