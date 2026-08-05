@@ -317,7 +317,7 @@ class CastValue(ArrayArrayCodec):
             to_tgt = int if np.issubdtype(target_dtype, np.integer) else float
             scalar_map_entries = {to_src(k): to_tgt(v) for k, v in scalar_map.items()}
         return cast_array_rs(  # type: ignore[no-any-return]
-            arr,
+            np.ascontiguousarray(arr),
             target_dtype=target_dtype,
             rounding_mode=self.rounding,
             out_of_range_mode=self.out_of_range,
@@ -359,9 +359,7 @@ class CastValue(ArrayArrayCodec):
         target_native = self.dtype.to_native_dtype()
 
         result = self._do_cast(
-            np.ascontiguousarray(arr),
-            target_dtype=target_native,
-            scalar_map=self._get_scalar_map("encode"),
+            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
         )
         return chunk_array.__class__.from_ndarray_like(result)
 
@@ -381,9 +379,7 @@ class CastValue(ArrayArrayCodec):
         target_native = chunk_spec.dtype.to_native_dtype()
 
         result = self._do_cast(
-            np.ascontiguousarray(arr),
-            target_dtype=target_native,
-            scalar_map=self._get_scalar_map("decode"),
+            np.asarray(arr), target_dtype=target_native, scalar_map=self._get_scalar_map("decode")
         )
         return chunk_array.__class__.from_ndarray_like(result)
 

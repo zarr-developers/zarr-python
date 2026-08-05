@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from numpy.ma.testutils import assert_array_equal
+from numpy.testutils import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
@@ -502,21 +502,17 @@ def test_enforce_contiguous_arrays() -> None:
             zarr_format=3,
         )
 
-    # Cast before transpose: may fail on read.
+    # Cast before transpose
     array = make_array(
         [
             CastValue(data_type="uint16"),
             TransposeCodec(order=(1, 2, 0)),
         ]
     )
-
-    # Write should be ok
     array[:] = data
-
-    # Read may fail
     assert_array_equal(array[:], data)
 
-    # Cast after transpose: may fail on write
+    # Cast after transpose
     array = make_array(
         [
             TransposeCodec(order=(1, 2, 0)),
@@ -524,8 +520,5 @@ def test_enforce_contiguous_arrays() -> None:
         ]
     )
 
-    # Write may fail
     array[:] = data
-
-    # Read should be ok
     assert_array_equal(array[:], data)
