@@ -239,6 +239,71 @@ class Store(ABC):
         """
         ...
 
+    async def get_many(
+        self,
+        requests: Sequence[tuple[str, ByteRequest | None] | str],
+        *,
+        prototype: BufferPrototype,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Retrieve many values, possibly from different keys, at once.
+
+        This is the bulk counterpart to :meth:`get`: the whole set of requests
+        is handed to the store in a single call, so an implementation can fetch
+        them together — for example by coalescing reads that land in the same
+        underlying object into fewer requests — rather than one at a time. It
+        generalizes :meth:`get_ranges` (which reads many ranges from a *single*
+        key) to many keys, each with an optional byte range.
+
+        Yields one batch per underlying I/O operation, each a sequence of
+        ``(request_index, Buffer | None)`` tuples where ``request_index`` is the
+        position of the request in ``requests``. Every request is reported
+        exactly once across all batches; a ``None`` buffer means that key is
+        absent. Batches arrive in completion order, not request order, so
+        callers use the indices to reassemble results.
+
+        The default implementation fetches each request concurrently with
+        :meth:`get`, so every store gets a working version for free; stores
+        whose backend can retrieve many objects together (e.g.
+        :class:`~zarr.storage.FsspecStore`, which coalesces nearby reads via
+        ``fsspec``) should override it. Anything specific to *how* a store
+        batches or coalesces (concurrency limits, gap thresholds, ...) is an
+        implementation concern of that store, not part of this interface.
+
+        Parameters
+        ----------
+        requests : Sequence[tuple[str, ByteRequest | None] | str]
+            The values to retrieve. Each request is either a bare key (the
+            whole value) or a ``(key, byte_range)`` tuple; a ``byte_range`` of
+            ``None`` also means the whole value. A key may appear more than
+            once with different ranges.
+        prototype : BufferPrototype
+            The prototype of the output buffers. Stores may support a default
+            buffer prototype.
+
+        Yields
+        ------
+        Sequence[tuple[int, Buffer | None]]
+            One batch per underlying I/O operation, each a sequence of
+            ``(request_index, Buffer | None)`` tuples.
+        """
+        # Local imports to avoid an import cycle at module load time.
+        from zarr.core.common import concurrent_map
+        from zarr.core.config import config
+
+        indexed = [
+            (i, req, None) if isinstance(req, str) else (i, req[0], req[1])
+            for i, req in enumerate(requests)
+        ]
+
+        async def _fetch(
+            index: int, key: str, byte_range: ByteRequest | None
+        ) -> tuple[int, Buffer | None]:
+            return index, await self.get(key, prototype, byte_range)
+
+        results = await concurrent_map(indexed, _fetch, config.get("async.concurrency"))
+        for result in results:
+            yield [result]
+
     @abstractmethod
     async def exists(self, key: str) -> bool:
         """Check if a key exists in the store.
