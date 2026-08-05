@@ -13,6 +13,7 @@ from __future__ import annotations
 import operator
 import pickle
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -1367,12 +1368,17 @@ def test_a_query_bounding_box_is_only_a_hull() -> None:
 # ---------------------------------------------------------------------------
 
 
+class _ReadMustNotRun:
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        raise AssertionError("prepared-plan validation must happen before any read")
+
+
 def test_result_accepts_prepared_parts_from_the_same_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     data = reference()
     view = LazyArray.from_numpy(data).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
-    parts = tuple(view.parts())
+    parts = tuple(reversed(tuple(view.parts())))
 
     def unexpected_replan(self: LazyArray) -> Any:
         raise AssertionError("result(parts=...) must not construct another partition plan")
@@ -1383,12 +1389,8 @@ def test_result_accepts_prepared_parts_from_the_same_view(
 
 
 def test_result_rejects_prepared_parts_owned_by_another_view() -> None:
-    class ReadMustNotRun:
-        def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
-            raise AssertionError("ownership must be validated before any read")
-
     data = reference()
-    base = LazyArray.from_numpy(data).with_reader(ReadMustNotRun()).with_parts(PART_SHAPE)
+    base = LazyArray.from_numpy(data).with_reader(_ReadMustNotRun()).with_parts(PART_SHAPE)
     view = base.lazy[1:6, ::2, 1:]
     owned_parts = tuple(view.parts())
     foreign_parts = tuple(base.lazy[1:6, ::2, 1:].parts())
@@ -1400,11 +1402,57 @@ def test_result_rejects_prepared_parts_owned_by_another_view() -> None:
 
 def test_result_rejects_prepared_parts_that_do_not_tile_the_view() -> None:
     data = reference()
-    view = LazyArray.from_numpy(data).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    view = (
+        LazyArray.from_numpy(data)
+        .with_reader(_ReadMustNotRun())
+        .with_parts(PART_SHAPE)
+        .lazy[1:6, ::2, 1:]
+    )
     parts = tuple(view.parts())
 
     with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
         view.result(parts=parts[:-1])
+
+
+def test_result_rejects_prepared_parts_with_a_duplicate_and_omission() -> None:
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
+    first, _second = tuple(view.parts())
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=(first, first))
+
+
+def test_result_rejects_overlapping_prepared_parts() -> None:
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
+    first, second = tuple(view.parts())
+    overlapping = replace(second, out_selection=(slice(2, 6),))
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=(first, overlapping))
+
+
+def test_result_rejects_wrong_rank_prepared_parts() -> None:
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
+    first, second = tuple(view.parts())
+    wrong_rank = replace(first, out_selection=())
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=(wrong_rank, second))
+
+
+def test_result_rejects_empty_prepared_parts_for_a_nonempty_view() -> None:
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
+
+    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+        view.result(parts=())
+
+
+def test_result_accepts_empty_prepared_parts_for_an_empty_view() -> None:
+    view = (
+        LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,)).lazy[0:0]
+    )
+
+    np.testing.assert_array_equal(view.result(parts=()), np.array([], dtype=np.int64))
 
 
 @pytest.mark.parametrize("flavor", FLAVORS)
@@ -2025,8 +2073,6 @@ def test_result_refuses_a_partition_of_the_wrong_rank(monkeypatch: pytest.Monkey
     complete = LazyArray.parts
 
     def truncate(self: LazyArray) -> Any:
-        from dataclasses import replace
-
         return [replace(part, out_selection=part.out_selection[:-1]) for part in complete(self)]
 
     monkeypatch.setattr(LazyArray, "parts", truncate)

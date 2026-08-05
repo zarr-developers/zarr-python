@@ -473,6 +473,23 @@ class Partition:
         return self.projection.coverage == "full"
 
 
+def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, ...]) -> None:
+    """Require `parts` to address every output cell exactly once."""
+    hits = np.zeros(out_shape, dtype=np.intp)
+    try:
+        for part in parts:
+            # Name a rank mismatch explicitly instead of letting NumPy treat
+            # omitted selectors as implicit full slices.
+            _out_selection_cell_count(part.out_selection, out_shape)
+            # `add.at` accumulates repeated advanced coordinates instead of
+            # buffering them as ordinary advanced-index `+=` would.
+            np.add.at(hits, part.out_selection, 1)
+    except (AssertionError, IndexError, TypeError, ValueError) as error:
+        raise AssertionError("prepared parts do not tile the view exactly") from error
+    if not np.all(hits == 1):
+        raise AssertionError("prepared parts do not tile the view exactly")
+
+
 # --------------------------------------------------------------------------- #
 # Tokenization
 # --------------------------------------------------------------------------- #
@@ -1090,6 +1107,8 @@ class LazyArray:
             raise ValueError("prepared parts do not belong to this view")
 
         out_shape = self.shape
+        if prepared_parts is not None:
+            _validate_prepared_parts(prepared_parts, out_shape)
         out = self._output_buffer(out_shape)
         size = math.prod(out_shape)
         if size == 0:
