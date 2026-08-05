@@ -756,16 +756,14 @@ def _random_slices_only(rng: np.random.Generator, shape: tuple[int, ...]) -> tup
 
 
 def _random_chain(rng: np.random.Generator) -> list[tuple[str, tuple[Any, ...]]]:
-    """A chain of 2-4 steps with at most one fancy step, in either order.
+    """A chain of 2-4 steps, any of which may be fancy.
 
     A step spelled through `oindex` but carrying only slices is drawn separately
-    (`slices-only`): it is legal after a fancy step — genuine fancy-after-fancy
-    is not, and raises — and it exercises the reindexing of an existing index
-    array by a *slice* rather than by coordinates.
+    (`slices-only`): it narrows an existing index array by a *slice* rather than
+    by coordinates, a distinct code path kept at full weight.
     """
     n_steps = int(rng.integers(2, 5))
-    fancy_at = int(rng.integers(0, n_steps))
-    fancy_mode = "orthogonal" if rng.random() < 0.5 else "vectorized"
+    fancy_steps = {int(rng.integers(0, n_steps)) for _ in range(2)}
     slices_only_at = int(rng.integers(0, n_steps)) if rng.random() < 0.4 else -1
 
     chain: list[tuple[str, tuple[Any, ...]]] = []
@@ -773,8 +771,11 @@ def _random_chain(rng: np.random.Generator) -> list[tuple[str, tuple[Any, ...]]]
     for step in range(n_steps):
         if running.ndim == 0 or running.size == 0:
             break
-        mode = fancy_mode if step == fancy_at else "basic"
-        if step == slices_only_at and step != fancy_at:
+        if step in fancy_steps:
+            mode = "orthogonal" if rng.random() < 0.5 else "vectorized"
+        else:
+            mode = "basic"
+        if step == slices_only_at and step not in fancy_steps:
             mode = "orthogonal"
             selection = _random_slices_only(rng, running.shape)
         elif mode == "basic":
@@ -856,18 +857,99 @@ def test_a_slice_only_fancy_step_after_a_fancy_step_reads_real_data() -> None:
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
 
 
-def test_a_genuine_fancy_step_after_a_fancy_step_is_still_rejected() -> None:
-    """Coordinates landing on a broadcast axis of an existing selection raise.
+def test_a_fancy_step_composes_onto_any_axis_of_a_fancy_view() -> None:
+    """A second fancy step may land on axes the first one merely broadcasts along.
 
-    The documented limit: a second fancy step may re-index the axes the first one
-    varies over, but not the axes it merely broadcasts along.
+    Composition evaluates the existing index arrays at the new coordinates, so
+    `oindex` after `oindex`, `vindex` after `oindex`, and both orders around a
+    correlated gather all resolve — under every partitioning.
     """
     base = np.arange(24).reshape(3, 8)
-    view = LazyArray(base).lazy.oindex[np.array([0, 2]), :]
-    with pytest.raises(NotImplementedError, match="fancy-after-fancy"):
-        view.lazy.oindex[:, np.array([1, 3])]
-    with pytest.raises(NotImplementedError, match="fancy-after-fancy"):
-        view.lazy.vindex[np.array([0, 1]), np.array([1, 3])]
+    rows, cols = np.array([0, 2]), np.array([1, 3, 3])
+
+    for parts in (None, (2, 4), (1, 8), (3, 3)):
+        view = repartition(LazyArray(base), parts).lazy.oindex[rows, :]
+
+        composed = view.lazy.oindex[:, cols]
+        expected = base[np.ix_(rows, cols)]
+        assert composed.shape == expected.shape, f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(composed.result()), expected, err_msg=f"{parts}")
+
+        gathered = view.lazy.vindex[np.array([0, 1]), np.array([7, 0])]
+        np.testing.assert_array_equal(
+            np.asarray(gathered.result()),
+            base[np.ix_(rows, range(8))][[0, 1], [7, 0]],
+            err_msg=f"{parts}",
+        )
+
+        pointwise = repartition(LazyArray(base), parts).lazy.vindex[[0, 1, 2], [0, 2, 3]]
+        np.testing.assert_array_equal(
+            np.asarray(pointwise.lazy.oindex[[2, 0]].result()),
+            base[[0, 1, 2], [0, 2, 3]][[2, 0]],
+            err_msg=f"{parts}",
+        )
+        np.testing.assert_array_equal(
+            np.asarray(pointwise.lazy.vindex[[1, 1, 0]].result()),
+            base[[0, 1, 2], [0, 2, 3]][[1, 1, 0]],
+            err_msg=f"{parts}",
+        )
+
+
+def test_a_partial_vindex_after_an_oindex_resolves_the_mixed_transform() -> None:
+    """A composed transform can mix correlated and orthogonal index arrays.
+
+    `oindex` on the last axis then `vindex` on the first two leaves the
+    orthogonal gather in place while the new coordinate arrays are correlated;
+    resolution takes the pointwise path.
+    """
+    base = np.arange(60).reshape(3, 4, 5)
+    expected = base[:, :, [4, 0]][[0, 2], [1, 3]]
+
+    for parts in (None, (2, 2, 2), (3, 4, 5), (1, 1, 1)):
+        view = repartition(LazyArray(base), parts).lazy.oindex[:, :, [4, 0]]
+        composed = view.lazy.vindex[np.array([0, 2]), np.array([1, 3])]
+        assert composed.shape == expected.shape, f"parts={parts}"
+        np.testing.assert_array_equal(np.asarray(composed.result()), expected, err_msg=f"{parts}")
+
+
+def test_a_boolean_mask_composes_onto_a_fancy_view() -> None:
+    base = np.arange(60).reshape(3, 4, 5)
+    mask = np.array([True, False, True])
+    expected = base[[0, 1, 2]][mask]
+
+    for parts in (None, (2, 2, 2), (1, 4, 5)):
+        view = repartition(LazyArray(base), parts).lazy.oindex[[0, 1, 2], :, :]
+        np.testing.assert_array_equal(
+            np.asarray(view.lazy.oindex[mask].result()), expected, err_msg=f"{parts}"
+        )
+
+
+def test_an_ellipsis_only_vindex_step_preserves_a_correlated_gather() -> None:
+    """Regression: a slice-only vindex step misread correlated maps as orthogonal.
+
+    `vindex[...]` (and `vindex[..., scalar]`, whose remainder after the scalar
+    is split off is ellipsis-only) used to stamp each correlated map with its
+    block axis as an orthogonal binding. Two "orthogonal" maps then shared one
+    input axis, and the partition walk rejected its own transform mid-read.
+    """
+    base = np.arange(16).reshape(4, 4)
+
+    for parts in (None, (2, 2), (4, 4), (1, 3)):
+        pointwise = repartition(LazyArray(base), parts).lazy.vindex[[0, 1, 2], [0, 2, 3]]
+        np.testing.assert_array_equal(
+            np.asarray(pointwise.lazy.vindex[...].result()),
+            base[[0, 1, 2], [0, 2, 3]],
+            err_msg=f"{parts}",
+        )
+
+        planar = repartition(LazyArray(base), parts).lazy.vindex[
+            np.array([[0], [1]]), np.array([[1], [3]])
+        ]
+        np.testing.assert_array_equal(
+            np.asarray(planar.lazy.vindex[..., np.array(0)].result()),
+            base[[0, 1], [1, 3]],
+            err_msg=f"{parts}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1530,7 +1612,7 @@ def test_result_rejects_prepared_parts_that_do_not_tile_the_view() -> None:
     )
     parts = tuple(view.parts())
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=parts[:-1])
 
 
@@ -1538,7 +1620,7 @@ def test_result_rejects_prepared_parts_with_a_duplicate_and_omission() -> None:
     view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
     first, _second = tuple(view.parts())
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=(first, first))
 
 
@@ -1546,7 +1628,7 @@ def test_result_rejects_complete_prepared_parts_plus_a_duplicate() -> None:
     view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
     first, second = tuple(view.parts())
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=(first, second, first))
 
 
@@ -1555,7 +1637,7 @@ def test_result_rejects_overlapping_prepared_parts() -> None:
     first, second = tuple(view.parts())
     overlapping = replace(second, out_selection=(slice(2, 6),))
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=(first, overlapping))
 
 
@@ -1564,14 +1646,14 @@ def test_result_rejects_wrong_rank_prepared_parts() -> None:
     first, second = tuple(view.parts())
     wrong_rank = replace(first, out_selection=())
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=(wrong_rank, second))
 
 
 def test_result_rejects_empty_prepared_parts_for_a_nonempty_view() -> None:
     view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))
 
-    with pytest.raises(AssertionError, match="prepared parts do not tile the view exactly"):
+    with pytest.raises(ValueError, match="prepared parts do not tile the view exactly"):
         view.result(parts=())
 
 
@@ -2506,3 +2588,30 @@ def test_a_multidimensional_array_in_an_orthogonal_selection_is_refused() -> Non
     """
     with pytest.raises(IndexError, match="must be 1-dimensional"):
         LazyArray(np.arange(20).reshape(4, 5)).lazy.oindex[[[0, 1], [2, 3]], slice(None)]
+
+
+def test_with_parts_rejects_a_bare_integer() -> None:
+    """Both partitioning methods document ValueError for malformed input."""
+    view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
+    with pytest.raises(ValueError, match="one entry per dimension"):
+        view.with_parts(3)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="one entry per dimension"):
+        view.with_parts_per_axis(3)  # type: ignore[arg-type]
+
+
+def test_fancy_composition_over_an_empty_axis() -> None:
+    """Regression: composing fancy steps over an empty axis stays unpinned.
+
+    The empty-domain branch of `compose` produces index arrays that are
+    singleton on every non-empty axis; pinning one to an axis it merely
+    broadcasts along made a later basic step index a size-1 axis positionally
+    and raise, deep inside a legal chain.
+    """
+    base = np.empty((3, 0, 6), dtype=np.int64)
+    view = LazyArray(base).lazy.oindex[[2, 1], :, [5, 0, 3]]
+    assert view.shape == (2, 0, 3)
+    composed = view.lazy.oindex[[1, 0], :, [2, 2]]
+    assert composed.shape == (2, 0, 2)
+    scalar = composed.lazy.vindex[..., np.array(1)]
+    assert scalar.shape == (2, 0)
+    assert np.asarray(scalar.result()).shape == (2, 0)

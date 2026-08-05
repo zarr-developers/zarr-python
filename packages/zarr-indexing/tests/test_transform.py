@@ -10,6 +10,7 @@ from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
     IndexTransform,
     array_map_dependent_axis,
+    index_array_structure,
     selection_to_transform,
 )
 
@@ -1195,3 +1196,47 @@ def test_an_index_array_value_at_each_end_of_the_domain_is_accepted() -> None:
     array_map = transform.oindex[np.array([2, 9])].output[0]
     assert isinstance(array_map, ArrayMap)
     np.testing.assert_array_equal(array_map.index_array, np.array([2, 9]))
+
+
+# ---------------------------------------------------------------------------
+# Intersecting diagonal gathers
+# ---------------------------------------------------------------------------
+
+
+def test_intersecting_a_diagonal_gather_keeps_points_inside_the_domain() -> None:
+    """Index arrays sharing an input axis intersect pointwise, like vindex."""
+    rows = np.array([4, 0, 2])
+    cols = np.array([1, 5, 2])
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(index_array=rows, input_dimension=0),
+            ArrayMap(index_array=cols, input_dimension=0),
+        ),
+    )
+
+    result = transform.intersect(IndexDomain(inclusive_min=(0, 0), exclusive_max=(3, 3)))
+    assert result is not None
+    restricted, survivors = result
+    # Only the point (2, 2) has both coordinates inside [0, 3) x [0, 3).
+    assert restricted.domain.shape == (1,)
+    assert isinstance(survivors, np.ndarray)
+    np.testing.assert_array_equal(survivors, [2])
+    np.testing.assert_array_equal(restricted.apply((0,)), (2, 2))
+
+    assert transform.intersect(IndexDomain(inclusive_min=(0, 0), exclusive_max=(1, 1))) is None
+
+
+def test_index_array_structure_classifies_the_three_shapes() -> None:
+    base = IndexTransform.from_shape((4, 6))
+    assert index_array_structure(base[1:, ::2]) == "none"
+    assert index_array_structure(base.oindex[np.array([0, 2]), slice(None)]) == "orthogonal"
+    assert index_array_structure(base.vindex[np.array([0, 2]), np.array([1, 3])]) == "general"
+    diagonal = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(
+            ArrayMap(index_array=np.array([0, 1]), input_dimension=0),
+            ArrayMap(index_array=np.array([2, 3]), input_dimension=0),
+        ),
+    )
+    assert index_array_structure(diagonal) == "general"

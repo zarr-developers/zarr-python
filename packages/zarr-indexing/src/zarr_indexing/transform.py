@@ -577,13 +577,8 @@ def _intersect(
         # emptying its domain leaves the array at size 1.
         return None
 
-    correlated_dims = [
-        i
-        for i, m in enumerate(transform.output)
-        if isinstance(m, ArrayMap) and m.input_dimension is None
-    ]
-    if len(correlated_dims) > 0:
-        return _intersect_correlated(transform, output_domain, correlated_dims)
+    if index_array_structure(transform) == "general":
+        return _intersect_general(transform, output_domain)
     return _intersect_orthogonal(transform, output_domain)
 
 
@@ -711,18 +706,21 @@ def _intersect_orthogonal(
     return (result, out_indices)
 
 
-def _intersect_correlated(
+def _intersect_general(
     transform: IndexTransform,
     output_domain: IndexDomain,
-    correlated_dims: list[int],
 ) -> tuple[IndexTransform, np.ndarray[Any, np.dtype[np.intp]]] | None:
-    """Intersect a correlated (vindex) transform with an output domain.
+    """Intersect a transform with any index-array structure, pointwise.
 
-    The correlated ArrayMaps share their broadcast (dependency) axes; a broadcast
+    Every `ArrayMap` — correlated, orthogonal, or several sharing an axis — is
+    treated as a lookup table over the joint block of non-slice axes: a block
     point survives only if ALL its storage coordinates fall within the output
     domain. Residual DimensionMap dimensions are intersected independently (as in
     the orthogonal case) and preserved, so a partial vindex — e.g. two coordinate
     arrays over a 3-D array, leaving one slice dimension — resolves correctly.
+    Treating an orthogonal map this way forfeits its per-axis independence (the
+    block enumerates the outer product), which is why the pure-orthogonal case
+    keeps its own resolver.
 
     The surviving broadcast axes collapse to a single axis; the returned
     `out_indices` is the flat scatter index into the (row-major flattened)
@@ -734,18 +732,7 @@ def _intersect_correlated(
     result keeps only the residual slice axes and `out_indices` loses its leading
     points axis, so the sub-transform's rank still matches the view's.
     """
-    # Mixing correlated and orthogonal ArrayMaps in one transform is not produced
-    # by any single selection and is not supported here.
-    orthogonal_array_dims = [
-        i
-        for i, m in enumerate(transform.output)
-        if isinstance(m, ArrayMap) and m.input_dimension is not None
-    ]
-    if len(orthogonal_array_dims) > 0:
-        raise NotImplementedError(
-            "intersecting a transform with both correlated and orthogonal "
-            "ArrayMaps is not supported"
-        )
+    correlated_dims = [i for i, m in enumerate(transform.output) if isinstance(m, ArrayMap)]
 
     # The broadcast axes are exactly the input axes no `DimensionMap` binds: a
     # correlated transform's input domain is its residual slice axes plus the
@@ -757,6 +744,16 @@ def _intersect_correlated(
     broadcast_axes = tuple(a for a in range(transform.input_rank) if a not in bound_axes)
     broadcast_shape = tuple(transform.domain.shape[a] for a in broadcast_axes)
 
+    for out_dim in correlated_dims:
+        arr_map = cast("ArrayMap", transform.output[out_dim])
+        if any(a not in broadcast_axes for a in _array_map_dependency_axes(arr_map.index_array)):
+            # Reachable only by hand-building a transform: no selection binds
+            # the same input axis to both a slice map and an index array.
+            raise NotImplementedError(
+                "intersecting a transform whose index array varies over an "
+                "input dimension also bound by a slice map is not supported"
+            )
+
     # Joint bounds mask over the broadcast block.
     combined: np.ndarray[Any, np.dtype[np.bool_]] | None = None
     for out_dim in correlated_dims:
@@ -767,9 +764,13 @@ def _intersect_correlated(
         mask = (storage >= lo) & (storage < hi)
         combined = mask if combined is None else (combined & mask)
     assert combined is not None
-    # The correlated maps are singleton on every non-broadcast axis, so the mask
-    # collapses (C-order) to the broadcast block.
-    combined_bcast = combined.reshape(broadcast_shape)
+    # Index arrays are singleton on every non-broadcast axis, so the mask
+    # collapses (C-order) to the broadcast block. A map may also be singleton
+    # along a block axis it does not vary over (an orthogonal member, or a
+    # leftover broadcast axis), so the collapsed mask is broadcast up to the
+    # full block rather than reshaped.
+    combined_block = combined.reshape(tuple(combined.shape[a] for a in broadcast_axes))
+    combined_bcast = np.broadcast_to(combined_block, broadcast_shape)
     surviving = np.nonzero(combined_bcast.reshape(-1))[0].astype(np.intp)
     if surviving.size == 0:
         return None
@@ -797,12 +798,14 @@ def _intersect_correlated(
 
     n_points = int(surviving.size)
     n_slice = len(slice_dims)
-    corr_values = {
-        out_dim: cast("ArrayMap", transform.output[out_dim])
-        .index_array.reshape(broadcast_shape)
-        .reshape(-1)[surviving]
-        for out_dim in correlated_dims
-    }
+    corr_values: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
+    for out_dim in correlated_dims:
+        arr = cast("ArrayMap", transform.output[out_dim]).index_array
+        block = arr.reshape(tuple(arr.shape[a] for a in broadcast_axes))
+        corr_values[out_dim] = np.asarray(
+            np.ascontiguousarray(np.broadcast_to(block, broadcast_shape)).reshape(-1)[surviving],
+            dtype=np.intp,
+        )
 
     # A rank-0 broadcast block contributes no axis: the leading `(n_points,)` of
     # the domain, of every index array, and of `out_indices` is present only when
@@ -1002,104 +1005,30 @@ def _reindex_array(
     return np.asarray(result, dtype=np.intp)
 
 
-_FANCY_AFTER_FANCY_MSG = (
-    "applying a fancy (orthogonal/vectorized) selection to a view that already "
-    "has a fancy-indexed axis is not supported (fancy-after-fancy composition): "
-    "the new coordinates would index a broadcast axis of the existing selection. "
-    "Materialize the view first with `.result()` and index the array, or reorder "
-    "the selections so the fancy step is applied last."
-)
+def _compose_selection(
+    transform: IndexTransform,
+    selection: Any,
+    mode: Literal["orthogonal", "vectorized"],
+) -> IndexTransform:
+    """Apply an advanced selection to an array-carrying transform by composition.
 
-
-def _guard_fancy_after_fancy(m: ArrayMap, fancy_dims: set[int] | list[int]) -> None:
-    """Reject a fancy step that lands on a broadcast axis of an existing ArrayMap.
-
-    A new orthogonal/vectorized selection can only be absorbed into an existing
-    ArrayMap along the axes that map genuinely varies over (its dependency axes,
-    plus the recorded `input_dimension` for a degenerate length-1 orthogonal
-    selection). A fancy index targeting any other axis — a singleton axis the map
-    merely broadcasts over — cannot be reindexed and used to leak a raw NumPy
-    `IndexError` at resolve time. Raise a clear `NotImplementedError` instead.
+    The selection is applied to an identity transform over the current domain —
+    the same code path a fresh transform takes, so the dialect (placement,
+    bounds, domains) is identical by construction — and the result is chained
+    onto `transform` with `compose`, which evaluates the existing index arrays
+    at the new coordinates. This is how a second fancy step lands on *any* axis
+    of an already-fancy view: axes an existing array varies over, axes it merely
+    broadcasts along, or a mixture.
     """
-    dependent = set(_array_map_dependency_axes(m.index_array))
-    if m.input_dimension is not None:
-        dependent.add(m.input_dimension)
-    for d in fancy_dims:
-        if d < m.index_array.ndim and d not in dependent:
-            raise NotImplementedError(_FANCY_AFTER_FANCY_MSG)
+    # Deferred import: `composition` imports this module at import time.
+    from zarr_indexing.composition import compose
 
-
-def _reindex_array_oindex(
-    m: ArrayMap,
-    normalized: tuple[Any, ...] | list[Any],
-    domain: IndexDomain,
-    *,
-    outer: bool,
-) -> np.ndarray[Any, np.dtype[np.intp]]:
-    """Apply an oindex/vindex selection to an existing ArrayMap's index_array.
-
-    `outer` says which dialect the caller is in, and the two disagree whenever
-    more than one entry is an index array. Orthogonal indexing means the outer
-    product of the per-axis selections; vectorized indexing means the arrays
-    broadcast against each other into one axis. Applying the tuple positionally
-    gives NumPy's vectorized answer, so an orthogonal caller was getting a
-    selection one rank smaller than it asked for.
-
-    Dependency-aware in exactly the way `_reindex_array` is: an entry applies to
-    the array only along the axes the map genuinely varies over (its dependency
-    axes, plus the `input_dimension` recorded for a degenerate length-1
-    orthogonal selection). An entry landing on a **singleton** axis the map
-    merely broadcasts over does not touch its values — the singleton still
-    broadcasts over the narrowed domain, so it is preserved. Applying such a
-    slice positionally instead would index a size-1 axis out of range and
-    truncate the whole array to size 0.
-
-    Only slices ever take the broadcast path: `_guard_fancy_after_fancy` rejects
-    coordinates aimed at a broadcast axis before this is called.
-    """
-    arr = m.index_array
-    dependent = set(_array_map_dependency_axes(arr))
-    if m.input_dimension is not None:
-        dependent.add(m.input_dimension)
-
-    idx: list[Any] = []
-    for old_dim, sel in enumerate(normalized):
-        if old_dim >= arr.ndim:
-            break
-        if old_dim not in dependent:
-            # Broadcast axis: keep the singleton whatever the entry says.
-            idx.append(slice(None))
-            continue
-        lo = domain.inclusive_min[old_dim]
-        if isinstance(sel, np.ndarray):
-            # Values are literal domain coordinates; the stored array is
-            # indexed positionally, so shift by the domain origin.
-            idx.append(sel - lo)
-        elif isinstance(sel, slice):
-            hi = domain.exclusive_max[old_dim]
-            start, step, _origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
-            pos = start - lo
-            idx.append(_positional_slice(pos, size, step))
-        else:
-            idx.append(slice(None))
-
-    if len(idx) == 0:
-        return np.asarray(arr, dtype=np.intp)
-    if outer and sum(isinstance(entry, np.ndarray) for entry in idx) > 1:
-        # An open mesh, so each axis's selection applies independently. Only
-        # built when it would differ from the positional form, to leave the
-        # single-array path — every existing orthogonal selection — untouched.
-        selectors = [
-            entry
-            if isinstance(entry, np.ndarray)
-            else np.arange(arr.shape[axis])[entry]  # a slice, resolved on its own axis
-            for axis, entry in enumerate(idx)
-        ]
-        selectors.extend(np.arange(arr.shape[axis]) for axis in range(len(idx), arr.ndim))
-        result = arr[np.ix_(*selectors)]
+    identity = IndexTransform.identity(transform.domain)
+    if mode == "orthogonal":
+        outer = _apply_oindex(identity, selection)
     else:
-        result = arr[tuple(idx)]
-    return np.asarray(result, dtype=np.intp)
+        outer = _apply_vindex(identity, selection)
+    return compose(outer, transform)
 
 
 def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTransform:
@@ -1203,7 +1132,12 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             else:
                 array_input_dim: int | None = None
                 if m.input_dimension is not None:
-                    array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
+                    # The pinned axis either survives (renumbered) or was
+                    # consumed by an integer index. In the latter case the map
+                    # varies over no named axis anymore — reachable only when
+                    # the collapse above was skipped because the array is empty
+                    # — and keeping the stale number would alias another axis.
+                    array_input_dim = old_to_new_dim.get(m.input_dimension)
                 new_output.append(
                     ArrayMap(
                         index_array=new_arr,
@@ -1267,6 +1201,34 @@ def array_map_dependent_axis(m: ArrayMap) -> int | None:
         f"orthogonal ArrayMap must vary over exactly one axis; got dependency "
         f"axes {dep} with input_dimension={m.input_dimension}"
     )
+
+
+def index_array_structure(transform: IndexTransform) -> Literal["none", "orthogonal", "general"]:
+    """Classify how a transform's index arrays relate to its input axes.
+
+    Returns
+    -------
+    `"none"` when no output map is an `ArrayMap`; `"orthogonal"` when every
+    `ArrayMap` is bound to its own distinct input axis (an outer product, one
+    independent gather per axis); `"general"` otherwise — correlated (`vindex`)
+    maps, maps produced by composing fancy steps, or maps sharing an input axis
+    (a diagonal gather). The orthogonal resolvers narrow one axis at a time and
+    are only sound for `"orthogonal"`; everything else takes the pointwise path
+    that collapses the shared block.
+    """
+    seen: set[int] = set()
+    has_array = False
+    for m in transform.output:
+        if not isinstance(m, ArrayMap):
+            continue
+        has_array = True
+        if m.input_dimension is None:
+            return "general"
+        axis = array_map_dependent_axis(m)
+        if axis is None or axis in seen:
+            return "general"
+        seen.add(axis)
+    return "orthogonal" if has_array else "none"
 
 
 def _reshape_to_axis(
@@ -1342,8 +1304,15 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     """Apply orthogonal indexing to an IndexTransform.
 
     Each index array is applied independently per dimension (outer product).
+
+    A transform that already carries index arrays takes the composition path
+    (`_compose_selection`) instead of being rewritten in place, so the new
+    selection may land on any axis — including axes an existing array merely
+    broadcasts along.
     """
     validate_advanced_selection(selection, transform.domain, "orthogonal")
+    if any(isinstance(m, ArrayMap) for m in transform.output):
+        return _compose_selection(transform, selection, "orthogonal")
     normalized = _normalize_oindex_selection(selection, transform.domain.ndim)
 
     new_inclusive_min: list[int] = []
@@ -1421,19 +1390,10 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         else:
-            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-            _guard_fancy_after_fancy(m, list(dim_array.keys()))
-            new_arr = _reindex_array_oindex(m, normalized, transform.domain, outer=True)
-            array_input_dim: int | None = None
-            if m.input_dimension is not None:
-                array_input_dim = old_to_new_dim.get(m.input_dimension, m.input_dimension)
-            new_output.append(
-                ArrayMap(
-                    index_array=new_arr,
-                    offset=m.offset,
-                    stride=m.stride,
-                    input_dimension=array_input_dim,
-                )
+            # m: ArrayMap — unreachable: array-carrying transforms took the
+            # composition path at the top of this function.
+            raise AssertionError(  # noqa: TRY004 - unreachable, not a dispatch
+                "unreachable: ArrayMap transforms are composed"
             )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
@@ -1491,8 +1451,14 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     All array indices are broadcast together. Broadcast dimensions are prepended,
     followed by non-array (slice) dimensions.
+
+    A transform that already carries index arrays takes the composition path
+    (`_compose_selection`) instead of being rewritten in place; see
+    `_apply_oindex`.
     """
     validate_advanced_selection(selection, transform.domain, "vectorized")
+    if any(isinstance(m, ArrayMap) for m in transform.output):
+        return _compose_selection(transform, selection, "vectorized")
     if not isinstance(selection, tuple):
         selection = (selection,)
 
@@ -1627,29 +1593,10 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                     )
                 )
         else:
-            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-            _guard_fancy_after_fancy(m, array_dims)
-            new_arr = _reindex_array_oindex(m, processed, transform.domain, outer=False)
-            # Read the dependency back off the array that was just built, rather
-            # than carrying the one the old array had. The selection can change
-            # which axes a map varies over — a vectorized index applied to an
-            # orthogonal map makes it correlated — and the stale value outlived
-            # the shape that justified it, to be believed later by readers that
-            # trust it when the shape alone cannot say.
-            dependency = _array_map_dependency_axes(new_arr)
-            broadcast_axes = range(n_before, n_before + n_broadcast_dims)
-            new_input_dim = (
-                dependency[0]
-                if len(dependency) == 1 and dependency[0] not in broadcast_axes
-                else None
-            )
-            new_output.append(
-                ArrayMap(
-                    index_array=new_arr,
-                    offset=m.offset,
-                    stride=m.stride,
-                    input_dimension=new_input_dim,
-                )
+            # m: ArrayMap — unreachable: array-carrying transforms took the
+            # composition path at the top of this function.
+            raise AssertionError(  # noqa: TRY004 - unreachable, not a dispatch
+                "unreachable: ArrayMap transforms are composed"
             )
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))

@@ -11,7 +11,11 @@ import numpy as np
 from zarr_indexing.affine import checked_affine
 from zarr_indexing.chunk_resolution import ChunkProjection  # noqa: TC001 (runtime annotation)
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
+from zarr_indexing.transform import (
+    IndexTransform,
+    array_map_dependent_axis,
+    index_array_structure,
+)
 
 __all__ = [
     "BasicReader",
@@ -217,8 +221,8 @@ def _lower(array: Any, transform: IndexTransform) -> Any:
     always in the transform's own domain axis order and of exactly its domain
     shape.
     """
-    if any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output):
-        result = _lower_correlated(array, transform)
+    if index_array_structure(transform) == "general":
+        result = _lower_general(array, transform)
     else:
         result = _lower_orthogonal(array, transform)
     if isinstance(result, np.generic):
@@ -277,27 +281,37 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
     return _restore_domain_axis_order(result, axis_input_dims, transform.domain.shape)
 
 
-def _lower_correlated(array: Any, transform: IndexTransform) -> Any:
-    """Flatten the correlated axes, gather the points once, reshape back.
+def _lower_general(array: Any, transform: IndexTransform) -> Any:
+    """Flatten the index-array axes, gather the points once, reshape back.
 
-    Correlated (`vindex`) `ArrayMap`s address a list of *points*, not an outer
-    product, so they cannot be gathered one axis at a time. The correlated
-    storage axes are moved to the front and flattened, the per-point coordinates
-    are converted to offsets into that flat axis with row-major strides, and a
-    single `take` collects them.
+    The general path for every index-array structure the orthogonal resolver
+    cannot take: correlated (`vindex`) maps, maps sharing an input axis (a
+    diagonal gather), and mixtures of correlated and orthogonal maps. All
+    index arrays are treated as lookup tables over the joint block of
+    non-slice axes: the corresponding storage axes are moved to the front and
+    flattened, the per-point coordinates are converted to offsets into that
+    flat axis with row-major strides, and a single `take` collects them.
     """
     outputs = transform.output
-    correlated_dims = [
-        d for d, m in enumerate(outputs) if isinstance(m, ArrayMap) and m.input_dimension is None
-    ]
-    if any(isinstance(m, ArrayMap) and m.input_dimension is not None for m in outputs):
-        raise NotImplementedError(
-            "resolving a transform with both correlated and orthogonal ArrayMaps is not supported"
-        )
+    correlated_dims = [d for d, m in enumerate(outputs) if isinstance(m, ArrayMap)]
 
     slice_input_dims = {m.input_dimension for m in outputs if isinstance(m, DimensionMap)}
     broadcast_axes = [d for d in range(transform.input_rank) if d not in slice_input_dims]
     broadcast_shape = tuple(transform.domain.shape[d] for d in broadcast_axes)
+
+    for d in correlated_dims:
+        arr_map = outputs[d]
+        assert isinstance(arr_map, ArrayMap)
+        # The axes the array varies over (its non-singleton axes; see
+        # transform._array_map_dependency_axes) must all live in the block.
+        dependency = (axis for axis, size in enumerate(arr_map.index_array.shape) if size > 1)
+        if any(a not in broadcast_axes for a in dependency):
+            # Reachable only by hand-building a transform: no selection binds
+            # the same input axis to both a slice map and an index array.
+            raise NotImplementedError(
+                "resolving a transform whose index array varies over an input "
+                "dimension also bound by a slice map is not supported"
+            )
 
     # Gather any reversing or repeating slice axis first, then take the basic-slice
     # cut. The correlated axes keep their full extent: their coordinates are absolute.

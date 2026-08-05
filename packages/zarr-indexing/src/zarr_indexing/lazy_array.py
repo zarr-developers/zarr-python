@@ -477,7 +477,11 @@ class Partition:
 
 
 def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, ...]) -> None:
-    """Require `parts` to address every output cell exactly once."""
+    """Require `parts` to address every output cell exactly once.
+
+    Prepared parts are caller-supplied input, so a plan that does not tile the
+    view is a `ValueError`, not an assertion about this library's own walk.
+    """
     coverage = np.zeros(out_shape, dtype=np.bool_)
     addressed = 0
     try:
@@ -485,13 +489,18 @@ def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, .
             # Name a rank mismatch explicitly instead of letting NumPy treat
             # omitted selectors as implicit full slices.
             addressed += _out_selection_cell_count(part.out_selection, out_shape)
-            # `logical_or.at` applies duplicate advanced coordinates one by one
-            # instead of buffering them as ordinary advanced indexing would.
-            np.logical_or.at(coverage, part.out_selection, True)
+            if all(isinstance(selector, slice) for selector in part.out_selection):
+                # The common box part: plain assignment, no pointwise walk.
+                coverage[part.out_selection] = True
+            else:
+                # `logical_or.at` applies duplicate advanced coordinates one by
+                # one instead of buffering them as ordinary advanced indexing
+                # would.
+                np.logical_or.at(coverage, part.out_selection, True)
     except (AssertionError, IndexError, TypeError, ValueError) as error:
-        raise AssertionError("prepared parts do not tile the view exactly") from error
+        raise ValueError("prepared parts do not tile the view exactly") from error
     if addressed != math.prod(out_shape) or not np.all(coverage):
-        raise AssertionError("prepared parts do not tile the view exactly")
+        raise ValueError("prepared parts do not tile the view exactly")
 
 
 # --------------------------------------------------------------------------- #
@@ -898,12 +907,13 @@ class LazyArray:
         >>> [part.base_coords for part in view.with_parts((2, 3)).parts()]
         [(0, 0), (0, 1), (1, 0), (1, 1)]
         """
-        if any(isinstance(entry, Sequence) for entry in parts):
+        entries = self._part_entries(parts, "with_parts")
+        if any(isinstance(entry, Sequence) for entry in entries):
             raise ValueError(
                 "with_parts takes one integer per dimension; for per-axis box "
                 "sizes use with_parts_per_axis"
             )
-        return self._with_grids(dimension_grids_from_chunks(parts, self._base_shape))
+        return self._with_grids(dimension_grids_from_chunks(entries, self._base_shape))
 
     def with_parts_per_axis(self, sizes: Sequence[Sequence[int]]) -> LazyArray:
         """Return the same view, read in boxes of explicitly listed sizes.
@@ -938,7 +948,22 @@ class LazyArray:
         >>> [part.box for part in view.with_parts_per_axis(((1, 2), (4,))).parts()]
         [((0, 1), (0, 4)), ((1, 3), (0, 4))]
         """
-        return self._with_grids(dimension_grids_from_chunks(sizes, self._base_shape))
+        entries = self._part_entries(sizes, "with_parts_per_axis")
+        return self._with_grids(dimension_grids_from_chunks(entries, self._base_shape))
+
+    @staticmethod
+    def _part_entries(parts: Sequence[Any], method: str) -> tuple[Any, ...]:
+        """Materialize a partitioning argument, naming a non-iterable a ValueError.
+
+        Both partitioning methods document ValueError for malformed input; a
+        bare integer would otherwise surface as a TypeError from iteration.
+        """
+        try:
+            return tuple(parts)
+        except TypeError as error:
+            raise ValueError(
+                f"{method} takes one entry per dimension of base_shape; got {parts!r}"
+            ) from error
 
     def unpartitioned(self) -> LazyArray:
         """Return the same view, read in one pass.
@@ -1097,12 +1122,13 @@ class LazyArray:
 
         Raises
         ------
-        AssertionError
-            If the partition walk does not cover the view. The output buffer is
-            uninitialized where nothing was written, so an incomplete walk is
-            reported rather than returned.
         ValueError
-            If supplied parts were prepared by another view.
+            If supplied parts were prepared by another view, or do not tile
+            this view exactly. The output buffer is uninitialized where nothing
+            was written, so a bad plan is reported rather than returned.
+        AssertionError
+            If this library's own partition walk fails to cover the view — a
+            bug in zarr-indexing, never a consequence of the caller's input.
         """
         prepared_parts = None if parts is None else tuple(parts)
         if prepared_parts is not None and any(
@@ -1152,7 +1178,7 @@ class LazyArray:
             # contract, so counting the cells each addresses is enough:
             # a gap undercounts and an overlap overcounts.
             if prepared_parts is not None:
-                raise AssertionError(
+                raise ValueError(
                     "prepared parts do not tile the view exactly: "
                     f"they addressed {written} of the view's {size} cells"
                 )
@@ -1198,11 +1224,12 @@ class LazyArray:
         """A deterministic token: the wrapped array and the view.
 
         Two wrappers produce equal tokens when they wrap the same data and
-        address the same cells. The view contributes its canonical ndsel body,
-        so transforms that differ only in representation produce the same
-        token. See `_wrapped_token` for the determinism scope of the wrapped
-        array's contribution; dask is imported lazily and is never a
-        requirement of this package.
+        address the same cells. The view contributes a digest of its canonical
+        ndsel body, so transforms that differ only in representation produce
+        the same token, and a fancy selection with a large index array does not
+        embed that array's JSON in the token. See `_wrapped_token` for the
+        determinism scope of the wrapped array's contribution; dask is imported
+        lazily and is never a requirement of this package.
 
         The partitioning and reader are deliberately absent. Both decide how
         the data is read — in which boxes, and through which request strategy —
@@ -1211,10 +1238,11 @@ class LazyArray:
         token alike and a consumer that caches on tokens reuses one result for
         both.
         """
+        canonical = json.dumps(transform_to_canonical(self._transform), sort_keys=True)
         return (
             type(self).__qualname__,
             _wrapped_token(self._array),
-            json.dumps(transform_to_canonical(self._transform), sort_keys=True),
+            hashlib.sha256(canonical.encode()).hexdigest(),
         )
 
     def __len__(self) -> int:

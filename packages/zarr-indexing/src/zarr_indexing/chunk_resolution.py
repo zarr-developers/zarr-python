@@ -41,7 +41,11 @@ import numpy as np
 from zarr_indexing.affine import checked_affine
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_indexing.transform import IndexTransform, array_map_dependent_axis
+from zarr_indexing.transform import (
+    IndexTransform,
+    array_map_dependent_axis,
+    index_array_structure,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -499,12 +503,9 @@ def _cell_transform(
     """Convert private survivor bookkeeping into a direction-neutral transform."""
     if survivors is None:
         return IndexTransform.identity(restricted.domain)
-    if any(
-        isinstance(output_map, ArrayMap) and output_map.input_dimension is None
-        for output_map in original.output
-    ):
+    if index_array_structure(original) == "general":
         if isinstance(survivors, dict):
-            raise ValueError("correlated intersections require one shared survivor array")
+            raise ValueError("general intersections require one shared survivor array")
         return _correlated_cell_transform(original, restricted, survivors)
     return _orthogonal_cell_transform(original, restricted, survivors)
 

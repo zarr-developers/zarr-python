@@ -239,10 +239,6 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
             setattr(cls, _SOURCE, source)
         self.view = LazyArray(source)
         self.reader_choices = _reader_set(self.view, cls.readers)
-        # Genuine fancy-after-fancy raises `NotImplementedError` by design, so a
-        # chain carries at most one fancy step — in either order relative to the
-        # basic ones.
-        self.fancy_used = False
         self.chain: list[tuple[str, Any]] = []
 
     def _indexable(self) -> bool:
@@ -253,7 +249,7 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         """
         return self.model.ndim > 0 and self.model.size > 0
 
-    def _step(self, mode: SelectionMode, selection: tuple[Any, ...], *, fancy: bool) -> None:
+    def _step(self, mode: SelectionMode, selection: tuple[Any, ...]) -> None:
         self.chain.append((mode, selection))
         self.model = apply_selection(self.model, selection, mode)
         if mode == "basic":
@@ -262,7 +258,6 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
             self.view = self.view.lazy.oindex[selection]
         else:
             self.view = self.view.lazy.vindex[selection]
-        self.fancy_used = self.fancy_used or fancy
 
     # -- rules --------------------------------------------------------------
 
@@ -276,27 +271,29 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: self._indexable())
     @rule(data=st.data())
     def basic(self, data: st.DataObject) -> None:
-        self._step("basic", data.draw(basic_selections(self.model.shape)), fancy=False)
+        self._step("basic", data.draw(basic_selections(self.model.shape)))
 
-    @precondition(lambda self: self._indexable() and not self.fancy_used)
+    @precondition(lambda self: self._indexable())
     @rule(data=st.data())
     def orthogonal(self, data: st.DataObject) -> None:
-        self._step("orthogonal", data.draw(orthogonal_selections(self.model.shape)), fancy=True)
+        self._step("orthogonal", data.draw(orthogonal_selections(self.model.shape)))
 
-    @precondition(lambda self: self._indexable() and not self.fancy_used)
+    @precondition(lambda self: self._indexable())
     @rule(data=st.data())
     def vectorized(self, data: st.DataObject) -> None:
-        self._step("vectorized", data.draw(vectorized_selections(self.model.shape)), fancy=True)
+        self._step("vectorized", data.draw(vectorized_selections(self.model.shape)))
 
     @precondition(lambda self: self._indexable())
     @rule(data=st.data())
     def slices_only(self, data: st.DataObject) -> None:
         """An `oindex` step carrying only slices is not a fancy selection.
 
-        It narrows the view's own axes and composes like basic indexing, so it
-        is legal after a fancy step, where genuine coordinates are not.
+        It narrows the view's own axes and composes like basic indexing. Drawn
+        as its own rule so that narrowing an existing index array by slices —
+        a distinct code path from narrowing it with coordinates — stays
+        exercised at full weight.
         """
-        self._step("orthogonal", data.draw(slice_selections(self.model.shape)), fancy=False)
+        self._step("orthogonal", data.draw(slice_selections(self.model.shape)))
 
     @rule(data=st.data())
     def choose_reader(self, data: st.DataObject) -> None:

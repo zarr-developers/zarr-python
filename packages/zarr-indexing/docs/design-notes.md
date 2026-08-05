@@ -107,8 +107,9 @@ table of coordinates. It costs `O(n)` to store, it has no locality (the
 coordinates may repeat, reverse, or scatter arbitrarily), and intersecting it
 with a region means scanning it. `oindex`, `vindex`, and boolean masks all
 produce one, and once an axis is a query, subsequent basic indexing cannot make
-it a box again. Nor can a second query be composed onto the axes an existing one
-broadcasts along — see [Current scope](#current-scope).
+it a box again. A second query composes onto any axis of an existing one —
+including the axes it merely broadcasts along — by evaluating the existing
+lookup tables at the new coordinates.
 
 Those coordinate arrays are ordered sequences, never mathematical sets. Their
 order and duplicate entries are part of the indexing semantics and must survive
@@ -222,24 +223,26 @@ re-bases every view to origin 0, so the positional dialect never exposes it; a
 caller working with `IndexTransform` directly will see it, and re-bases
 explicitly with `translate_domain_to` for NumPy-shaped coordinates.
 
-Five limits remain, all intentional and all expected to be lifted. The first
-three raise `NotImplementedError` at the point of use rather than returning
-something approximate:
+Fancy selections compose without restriction: a second `oindex`/`vindex`/mask
+step may land on any axis of an already-fancy view, including axes an existing
+index array merely broadcasts along, so
+`lazy.oindex[[2, 0], :].lazy.oindex[:, [1, 3]]` selects the outer product it
+spells. An array-carrying transform is composed — the new selection is applied
+to an identity transform over the current domain and chained on with `compose`,
+which evaluates the existing lookup tables at the new coordinates — rather than
+rewritten in place. Resolution classifies the result by structure
+(`index_array_structure`): pure per-axis outer products keep the orthogonal
+resolvers, and everything else — correlated maps, mixtures, index arrays
+sharing an input axis (a diagonal gather, reachable only by hand-building a
+transform) — takes the pointwise path that collapses the joint block.
 
-- **Fancy after fancy.** A second `oindex`/`vindex`/mask step may re-index the
-  axes an existing index array *varies over*, but not the axes it merely
-  broadcasts along, so `lazy.oindex[[2, 0], :].lazy.oindex[:, [1, 3]]` raises.
-  Composing the two index arrays means either an outer product of lookup tables
-  or a joint gather, and which one is meant depends on how the axes line up.
-  A step spelled through `oindex` but carrying only slices is *not* a fancy
-  step: it narrows the view's own axes and composes like basic indexing.
-  *Planned.*
-- **Diagonal views.** A transform whose output maps share an input dimension —
-  reachable by building one directly, not through `LazyArray`'s selection
-  surface — cannot be resolved. *Planned.*
-- **Mixed correlated and orthogonal index arrays.** No single selection produces
-  a transform holding both a `vindex`-style and an `oindex`-style `ArrayMap`, so
-  resolving one is not implemented. *Planned.*
+Three limits remain, all intentional and all expected to be lifted:
+
+- **Affine diagonals.** A hand-built transform in which an *index array* and a
+  *slice map* bind the same input dimension, or two slice maps share one, is
+  rejected at resolution with `NotImplementedError`. No selection dialect
+  produces one; supporting them means lowering the slice maps into the joint
+  block too. *Planned.*
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.

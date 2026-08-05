@@ -393,3 +393,53 @@ def test_numpy_reader_preserves_a_mask_in_the_supplied_buffer() -> None:
     assert numpy_reader.read_into(source, ReadContext(transform), out) is None
     np.testing.assert_array_equal(np.ma.getmaskarray(out), np.ma.getmaskarray(source[:, 1:]))
     np.testing.assert_array_equal(np.ma.filled(out, 0), np.ma.filled(source[:, 1:], 0))
+
+
+# ---------------------------------------------------------------------------
+# Diagonal gathers — output maps sharing an input axis
+# ---------------------------------------------------------------------------
+
+
+def test_reading_a_diagonal_gather_transform() -> None:
+    """Two index arrays bound to the same input axis resolve pointwise.
+
+    No selection dialect produces this transform — it is the hand-built
+    diagonal-extraction form — but the reader resolves it through the same
+    pointwise path as a correlated gather.
+    """
+    data = np.arange(30).reshape(5, 6)
+    rows = np.array([4, 0, 2])
+    cols = np.array([1, 5, 2])
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((3,)),
+        output=(
+            ArrayMap(index_array=rows, input_dimension=0),
+            ArrayMap(index_array=cols, input_dimension=0),
+        ),
+    )
+
+    out = np.empty((3,), dtype=data.dtype)
+    basic_reader.read_into(data, ReadContext(transform), out)
+    np.testing.assert_array_equal(out, data[rows, cols])
+
+    out = np.empty((3,), dtype=data.dtype)
+    numpy_reader.read_into(data, ReadContext(transform), out)
+    np.testing.assert_array_equal(out, data[rows, cols])
+
+
+def test_reading_a_diagonal_gather_with_a_residual_slice_axis() -> None:
+    data = np.arange(60).reshape(5, 6, 2)
+    rows = np.array([[4], [0], [2]])
+    cols = np.array([[1], [5], [2]])
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((3, 2)),
+        output=(
+            ArrayMap(index_array=rows, input_dimension=0),
+            ArrayMap(index_array=cols, input_dimension=0),
+            DimensionMap(input_dimension=1),
+        ),
+    )
+
+    out = np.empty((3, 2), dtype=data.dtype)
+    basic_reader.read_into(data, ReadContext(transform), out)
+    np.testing.assert_array_equal(out, data[rows[:, 0], cols[:, 0], :])

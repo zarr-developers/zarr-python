@@ -213,6 +213,9 @@ def _compose_array(
     """
     arr_i = inner_map.index_array
     if any(extent == 0 for extent in outer.domain.shape):
+        # The empty map is singleton on every non-empty axis, so it varies over
+        # no axis at all; deliberately no `input_dimension`, which would pin it
+        # to an axis it merely broadcasts along.
         empty_shape = tuple(0 if extent == 0 else 1 for extent in outer.domain.shape)
         return ArrayMap(
             index_array=np.empty(empty_shape, dtype=arr_i.dtype),

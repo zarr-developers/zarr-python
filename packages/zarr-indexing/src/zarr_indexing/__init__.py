@@ -70,6 +70,7 @@ from zarr_indexing.reader import (
 from zarr_indexing.transform import (
     IndexTransform,
     array_map_dependent_axis,
+    index_array_structure,
     selection_to_transform,
 )
 
@@ -109,6 +110,7 @@ __all__ = [
     "basic_reader",
     "compose",
     "dimension_grids_from_chunks",
+    "index_array_structure",
     "index_domain_from_json",
     "index_domain_to_json",
     "index_transform_from_json",
