@@ -24,6 +24,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import parse_data_type
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
@@ -1437,6 +1438,19 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     _ = await root.create_group("bar")
     with pytest.raises(TypeError, match="Incompatible object"):
         await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+async def test_require_array_zdtype(store: Store, zarr_format: ZarrFormat) -> None:
+    """An existing array can be required with a ZDType, as well as a string or
+    a NumPy dtype. See https://github.com/zarr-developers/zarr-python/issues/3377
+    """
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await root.require_array("foo", shape=(10,), dtype="int32")
+
+    zdtype = parse_data_type("int32", zarr_format=zarr_format)
+    for dtype in (zdtype, np.dtype("int32"), "int32"):
+        foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=True)
+        assert foo.dtype == np.dtype("int32")
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
