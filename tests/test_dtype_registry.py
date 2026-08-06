@@ -170,7 +170,7 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
 )
 def test_parse_data_type(
     data_type: ZDType[Any, Any],
-    json_style: tuple[ZarrFormat, None | Literal["internal", "metadata"]],
+    json_style: tuple[ZarrFormat, Literal["internal", "metadata"] | None],
     dtype_parser_func: Any,
 ) -> None:
     """
