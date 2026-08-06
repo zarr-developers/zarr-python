@@ -28,7 +28,11 @@ _executor: ThreadPoolExecutor | None = None  # global executor placeholder
 
 
 class SyncError(Exception):
-    pass
+    """Internal: raised by `sync` when called from within a running event loop.
+
+    The public `run` wrapper translates this to `RuntimeError` (matching
+    `asyncio.run`); downstream code should not catch `SyncError` directly.
+    """
 
 
 def _get_lock() -> threading.Lock:
@@ -154,6 +158,75 @@ def sync[T](
         raise return_result
     else:
         return return_result
+
+
+def run[T](
+    coro: Coroutine[Any, Any, T],
+    *,
+    loop: asyncio.AbstractEventLoop | None = None,
+    timeout: float | None = None,
+) -> T:
+    """Run a coroutine to completion on a zarr-managed event loop and return its result.
+
+    This is the supported bridge for running zarr's asynchronous API
+    (`AsyncArray`, `AsyncGroup`, and their methods) from synchronous code. It
+    runs `coro` on an event loop managed by zarr, blocking the calling thread
+    until the coroutine finishes, then returns its result (or re-raises any
+    exception the coroutine raised).
+
+    The intended use is composing async zarr operations and running them
+    concurrently from a synchronous program. To run several operations
+    concurrently, build the composition inside a coroutine so that `gather`
+    binds to zarr's loop rather than the calling thread::
+
+        import asyncio
+        import zarr
+
+        group = zarr.run(zarr.api.asynchronous.open_group(store))
+
+        async def read_all():
+            return await asyncio.gather(*(g.getitem(...) for g in groups))
+
+        results = zarr.run(read_all())
+
+    Parameters
+    ----------
+    coro : Coroutine
+        The coroutine to run.
+    loop : asyncio.AbstractEventLoop, optional
+        The event loop to run `coro` on. If `None` (the default), zarr's
+        managed loop is used. Most callers should leave this unset.
+    timeout : float, optional
+        Maximum number of seconds to wait for `coro` to finish. If `None`
+        (the default), waits indefinitely. Raises `TimeoutError` if exceeded.
+
+    Returns
+    -------
+    The value returned by `coro`.
+
+    Raises
+    ------
+    RuntimeError
+        If called from within a running event loop on the calling thread. In
+        an async context, `await` the async API directly instead. (This
+        mirrors `asyncio.run`, which raises `RuntimeError` for the same
+        misuse.)
+    TimeoutError
+        If `coro` does not finish within `timeout` seconds.
+
+    Notes
+    -----
+    `zarr.run` commits to this signature and to running coroutines on a
+    zarr-managed loop. It does not commit to *how* that loop is managed (a
+    process-global loop, a dedicated thread, etc.); those internals may change.
+    """
+    try:
+        return sync(coro, loop=loop, timeout=timeout)
+    except SyncError as e:
+        raise RuntimeError(
+            "zarr.run cannot be called from within a running event loop. "
+            "In an async context, await the async API directly."
+        ) from e
 
 
 def _get_loop() -> asyncio.AbstractEventLoop:
