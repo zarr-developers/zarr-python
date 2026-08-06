@@ -29,3 +29,6 @@ jobs:
 
       - name: Check zarr-metadata changelog entries
         run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-metadata/changes
+
+      - name: Check zarr-indexing changelog entries
+        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-indexing/changes

@@ -4,7 +4,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#group-metadat
 """
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -54,7 +54,20 @@ class ZarrV3GroupMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
+ZarrV3GroupMetadataStoreKey = Literal["zarr.json"]
+"""Literal type of the store key holding a v3 group's metadata document."""
+
+ZARR_V3_GROUP_METADATA_STORE_KEY: Final[ZarrV3GroupMetadataStoreKey] = "zarr.json"
+"""The store key a v3 group's metadata document is persisted under.
+
+v3 uses one key for both node types; the document's `node_type` field
+distinguishes a group from an array.
+"""
+
+
 __all__ = [
+    "ZARR_V3_GROUP_METADATA_STORE_KEY",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3GroupMetadataJSONPartial",
+    "ZarrV3GroupMetadataStoreKey",
 ]

@@ -196,9 +196,9 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
-    Normalize the input to a ``BytesBytesCodec`` instance.
-    If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `BytesBytesCodec` instance.
+    If the input is already a `BytesBytesCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `BytesBytesCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import BytesBytesCodec
 
@@ -216,9 +216,9 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
 
 def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
-    Normalize the input to a ``ArrayBytesCodec`` instance.
-    If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `ArrayBytesCodec` instance.
+    If the input is already a `ArrayBytesCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `ArrayBytesCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import ArrayBytesCodec
 
@@ -236,9 +236,9 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
 
 def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
-    Normalize the input to a ``ArrayArrayCodec`` instance.
-    If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `ArrayArrayCodec` instance.
+    If the input is already a `ArrayArrayCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `ArrayArrayCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import ArrayArrayCodec
 
