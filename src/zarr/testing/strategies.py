@@ -292,7 +292,7 @@ def arrays(
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
-    dim_names: None | list[str | None] = None
+    dim_names: list[str | None] | None = None
     serializer: SerializerLike = "auto"
     compressors_unsearched: CompressorsLike = "auto"
 
@@ -328,7 +328,7 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            if all(s > c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
