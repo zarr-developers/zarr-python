@@ -300,10 +300,11 @@ def test_projection_invariants_for_fancy_selections(
 def test_orthogonal_array_map_plan_rejects_coordinate_below_grid(grid: Any) -> None:
     transform = IndexTransform(
         domain=IndexDomain.from_shape((2,)),
-        output=(ArrayMap(np.array([-1, 1], dtype=np.intp), input_dimension=0),),
+        output=(ArrayMap(np.array([-1, 1], dtype=np.intp)),),
     )
 
-    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[-1, 1\]"):
+    # The sorted 1-D fast path reports the first offending coordinate.
+    with pytest.raises(IndexError, match=r"index -1 is out of bounds"):
         list(plan_chunks(transform, (grid,)))
 
 
@@ -317,10 +318,11 @@ def test_orthogonal_array_map_plan_rejects_coordinate_below_grid(grid: Any) -> N
 def test_orthogonal_array_map_plan_rejects_coordinate_above_grid(grid: Any) -> None:
     transform = IndexTransform(
         domain=IndexDomain.from_shape((2,)),
-        output=(ArrayMap(np.array([1, 4], dtype=np.intp), input_dimension=0),),
+        output=(ArrayMap(np.array([1, 4], dtype=np.intp)),),
     )
 
-    with pytest.raises(IndexError, match=r"indices must lie in \[0, 4\); got \[1, 4\]"):
+    # The sorted 1-D fast path reports the first offending coordinate.
+    with pytest.raises(IndexError, match=r"index 4 is out of bounds"):
         list(plan_chunks(transform, (grid,)))
 
 
@@ -436,7 +438,7 @@ class TestSortedOneDimensionalPlan:
                 with monkeypatch.context() as context:
                     context.setattr(
                         chunk_resolution,
-                        "_one_dimensional_correlated_array_map",
+                        "_one_dimensional_array_map",
                         lambda _transform: None,
                     )
                     general = list(plan_chunks(transform, grid.dimensions))

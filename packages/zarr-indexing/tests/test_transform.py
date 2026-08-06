@@ -107,7 +107,6 @@ class TestIndexTransformApply:
                             np.array([[7], [11], [13]], dtype=np.intp),
                             offset=-1,
                             stride=2,
-                            input_dimension=0,
                         ),
                     ),
                 ),
@@ -1051,7 +1050,7 @@ class TestArrayMapDependencyAxes:
 
     def test_zero_length_axis_does_not_make_a_map_correlated(self) -> None:
         """An empty orthogonal selection is legal, so it must classify as one."""
-        m = ArrayMap(index_array=np.zeros((0, 4), dtype=np.intp), input_dimension=1)
+        m = ArrayMap(index_array=np.zeros((0, 4), dtype=np.intp))
         assert array_map_dependent_axis(m) == 1
 
 
@@ -1094,15 +1093,21 @@ class TestIntersectArrayMapClassification:
         assert any(isinstance(m, DimensionMap) for m in restricted.output)
         assert out_indices is not None
 
-    def test_length1_orthogonal_not_treated_as_correlated(self) -> None:
-        """A length-1 orthogonal array (all-singleton shape) is still an outer
-        product with the length-3 axis: out_indices is a dict, not a flat array."""
+    def test_length1_orthogonal_collapses_to_a_constant(self) -> None:
+        """A length-1 orthogonal array holds one coordinate: it is a ConstantMap.
+
+        The length-1 axis stays in the domain, and the remaining genuine array
+        intersects orthogonally — a single survivor vector, not a joint gather.
+        """
         t = IndexTransform.from_shape((6, 6)).oindex[np.array([2]), np.array([1, 3, 5])]
+        assert isinstance(t.output[0], ConstantMap)
+        assert t.domain.shape == (1, 3)
         chunk = IndexDomain(inclusive_min=(0, 0), exclusive_max=(6, 6))
         result = t.intersect(chunk)
         assert result is not None
         _restricted, out_indices = result
-        assert isinstance(out_indices, dict)
+        assert isinstance(out_indices, np.ndarray)
+        np.testing.assert_array_equal(out_indices, [0, 1, 2])
 
 
 class TestDerivedMapDependency:
@@ -1138,22 +1143,20 @@ class TestDerivedMapDependency:
         np.testing.assert_array_equal(partitioned, unpartitioned)
         np.testing.assert_array_equal(unpartitioned, np.array([[2, 20]]))
 
-    def test_an_array_map_claiming_an_axis_it_does_not_vary_over_is_rejected(self) -> None:
-        """The validation that would have caught the two above at their source."""
-        with pytest.raises(ValueError, match="varies over"):
-            IndexTransform(
-                domain=IndexDomain.from_shape((2, 3)),
-                output=(
-                    ArrayMap(index_array=np.array([[0, 1, 2]], dtype=np.intp), input_dimension=0),
-                ),
-            )
+    def test_dependency_axes_are_read_from_the_shape(self) -> None:
+        """What a map varies over is its non-singleton axes — nothing else.
 
-    def test_an_array_map_input_dimension_out_of_range_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="out of range"):
-            IndexTransform(
-                domain=IndexDomain.from_shape((3,)),
-                output=(ArrayMap(index_array=np.array([0], dtype=np.intp), input_dimension=99),),
-            )
+        The retired `input_dimension` field could contradict the array it rode
+        on; the shape cannot.
+        """
+        t = IndexTransform(
+            domain=IndexDomain.from_shape((2, 3)),
+            output=(
+                ArrayMap(index_array=np.array([[0, 1, 2]], dtype=np.intp)),
+                ArrayMap(index_array=np.array([[0], [1]], dtype=np.intp)),
+            ),
+        )
+        assert index_array_structure(t) == "orthogonal"
 
 
 def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
@@ -1210,8 +1213,8 @@ def test_intersecting_a_diagonal_gather_keeps_points_inside_the_domain() -> None
     transform = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
         output=(
-            ArrayMap(index_array=rows, input_dimension=0),
-            ArrayMap(index_array=cols, input_dimension=0),
+            ArrayMap(index_array=rows),
+            ArrayMap(index_array=cols),
         ),
     )
 
@@ -1235,8 +1238,8 @@ def test_index_array_structure_classifies_the_three_shapes() -> None:
     diagonal = IndexTransform(
         domain=IndexDomain.from_shape((2,)),
         output=(
-            ArrayMap(index_array=np.array([0, 1]), input_dimension=0),
-            ArrayMap(index_array=np.array([2, 3]), input_dimension=0),
+            ArrayMap(index_array=np.array([0, 1])),
+            ArrayMap(index_array=np.array([2, 3])),
         ),
     )
     assert index_array_structure(diagonal) == "general"

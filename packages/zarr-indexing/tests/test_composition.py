@@ -369,7 +369,6 @@ class TestComposeMultidimensionalArrayInner:
         array_map = result.output[0]
         assert isinstance(array_map, ArrayMap)
         assert array_map.index_array.shape == (2,)
-        assert array_map.input_dimension is None
         assert array_map.offset == -3
         assert array_map.stride == 4
         np.testing.assert_array_equal(array_map.index_array, np.array([7, 13], dtype=np.intp))
@@ -453,7 +452,7 @@ def test_composing_a_one_dimensional_inner_array_under_a_higher_rank_outer() -> 
     )
     inner = IndexTransform(
         domain=IndexDomain.from_shape((4,)),
-        output=(ArrayMap(index_array=np.array([7, 3, 5, 1], dtype=np.intp), input_dimension=0),),
+        output=(ArrayMap(index_array=np.array([7, 3, 5, 1], dtype=np.intp)),),
     )
     composed = compose(outer, inner)
     array_map = composed.output[0]
@@ -470,7 +469,7 @@ def test_composing_out_of_the_inner_domain_is_refused() -> None:
     )
     inner = IndexTransform(
         domain=IndexDomain.from_shape((2,)),
-        output=(ArrayMap(index_array=np.array([7, 3], dtype=np.intp), input_dimension=0),),
+        output=(ArrayMap(index_array=np.array([7, 3], dtype=np.intp)),),
     )
     with pytest.raises(BoundsCheckError, match="outside.*inner.*domain"):
         compose(outer, inner)

@@ -38,7 +38,13 @@ from zarr_indexing.affine import checked_affine
 from zarr_indexing.boundary import validate_advanced_selection
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    OutputIndexMap,
+    array_map_or_constant,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -105,29 +111,6 @@ class IndexTransform:
                         f"(index_array shape {m.index_array.shape}, "
                         f"domain shape {self.domain.shape})"
                     )
-                # `input_dimension` claims which axis the map varies over, and
-                # readers fall back to it when the shape alone cannot say. A
-                # value that names no axis, or names one the array does not
-                # actually vary over, is a claim the array contradicts — and it
-                # survives to be believed much later, by a scatter that files
-                # positions under the wrong axis. `DimensionMap` has always been
-                # range-checked here; this is the same check for the same field.
-                if m.input_dimension is not None:
-                    if m.input_dimension < 0 or m.input_dimension >= self.domain.ndim:
-                        raise ValueError(
-                            f"output[{i}].input_dimension = {m.input_dimension} "
-                            f"is out of range for input rank {self.domain.ndim}"
-                        )
-                    dependency = _array_map_dependency_axes(m.index_array)
-                    if len(dependency) > 1 or (
-                        len(dependency) == 1 and dependency[0] != m.input_dimension
-                    ):
-                        raise ValueError(
-                            f"output[{i}] claims input_dimension="
-                            f"{m.input_dimension} but its index array varies over "
-                            f"{dependency}; an orthogonal map varies over the one "
-                            f"axis it names, and a correlated one names none"
-                        )
 
     def __eq__(self, other: object) -> bool:
         """Value equality. `ArrayMap` compares its index array element-wise, so
@@ -471,7 +454,6 @@ class IndexTransform:
                         index_array=m.index_array,
                         offset=m.offset + s,
                         stride=m.stride,
-                        input_dimension=m.input_dimension,
                     )
                 )
         return IndexTransform(domain=self.domain, output=tuple(new_output))
@@ -558,8 +540,8 @@ def _intersect(
       its storage coordinates fall within the output domain; residual slice
       dimensions are intersected independently, as in the orthogonal case.
 
-    A `None` `input_dimension` marks a correlated map, so any such map routes the
-    whole transform through the correlated intersection.
+    The routing is `index_array_structure`: only a pure per-axis outer product
+    takes the orthogonal path.
 
     Returns `None` if the intersection is empty.
     """
@@ -654,10 +636,9 @@ def _intersect_orthogonal(
 
         else:
             # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-            # Orthogonal: the array varies over a single axis (its dependency
-            # axis, or `input_dimension` for a degenerate length-1 array). Filter
-            # along that axis and keep the array at full input rank so the
-            # singleton axes it broadcasts over are preserved.
+            # Orthogonal: the array varies over a single axis. Filter along that
+            # axis and keep the array at full input rank so the singleton axes
+            # it broadcasts over are preserved.
             axis = array_map_dependent_axis(m)
             if axis is None:
                 raise ValueError(
@@ -679,7 +660,6 @@ def _intersect_orthogonal(
                     index_array=np.asarray(filtered, dtype=np.intp),
                     offset=m.offset,
                     stride=m.stride,
-                    input_dimension=m.input_dimension,
                 )
             )
             new_max[d] = new_min[d] + int(survivors.size)
@@ -954,10 +934,6 @@ def _reindex_array(
     touch the array's values (it just narrows or drops that broadcast axis).
     """
     dependent = set(_array_map_dependency_axes(m.index_array))
-    if m.input_dimension is not None:
-        # Degenerate length-1 orthogonal selection: the recorded axis is a
-        # dependency even though its size (1) makes it look singleton.
-        dependent.add(m.input_dimension)
     arr = m.index_array
 
     # Build a numpy indexing tuple: one entry per old input dimension
@@ -1115,37 +1091,14 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             else:
                 raise RuntimeError(f"unexpected: dimension {d} not handled")
         else:
-            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-            old_axes = set(_array_map_dependency_axes(m.index_array))
-            if m.input_dimension is not None:
-                old_axes.add(m.input_dimension)
+            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap).
+            # A result narrowed to a single coordinate collapses to the
+            # ConstantMap it equals — whether an integer consumed the dependency
+            # axis or a slice narrowed it to one entry — so a non-empty ArrayMap
+            # always varies over at least one axis. Nothing here renumbers: the
+            # array's axes are the new domain's axes by construction.
             new_arr = _reindex_array(m, normalized, transform.domain)
-            if len(old_axes) > 0 and old_axes <= dropped_dims and new_arr.size == 1:
-                # Degenerate collapse: every input axis this map varied over was
-                # consumed by an integer index, so it now designates exactly one
-                # storage coordinate. Keeping it as an ArrayMap would leave a
-                # dangling `input_dimension` pointing at an axis that no longer
-                # exists — and, after renumbering, aliasing a *different* axis.
-                new_output.append(
-                    ConstantMap(offset=m.offset + m.stride * int(new_arr.reshape(-1)[0]))
-                )
-            else:
-                array_input_dim: int | None = None
-                if m.input_dimension is not None:
-                    # The pinned axis either survives (renumbered) or was
-                    # consumed by an integer index. In the latter case the map
-                    # varies over no named axis anymore — reachable only when
-                    # the collapse above was skipped because the array is empty
-                    # — and keeping the stale number would alias another axis.
-                    array_input_dim = old_to_new_dim.get(m.input_dimension)
-                new_output.append(
-                    ArrayMap(
-                        index_array=new_arr,
-                        offset=m.offset,
-                        stride=m.stride,
-                        input_dimension=array_input_dim,
-                    )
-                )
+            new_output.append(array_map_or_constant(new_arr, offset=m.offset, stride=m.stride))
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
 
@@ -1170,21 +1123,19 @@ def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, 
 def array_map_dependent_axis(m: ArrayMap) -> int | None:
     """Return the single input axis an orthogonal `ArrayMap` varies over.
 
-    Normally this is the array's one non-singleton axis. A degenerate length-1
-    orthogonal selection normalizes to an all-singleton shape (its dependency
-    axes are empty and indistinguishable by shape from a scalar), so
-    `input_dimension` breaks the tie — it records the live axis the map binds.
+    This is the array's one non-singleton axis, read from the shape — the
+    single source of truth for what a map depends on. The selection layer
+    collapses a single-coordinate map to a `ConstantMap`
+    (`array_map_or_constant`), so a non-empty map built by this package always
+    has at least one dependency axis.
 
     Returns
     -------
     int or None
         The axis the map varies over, or `None` when it varies over no input
-        axis at all — a correlated (`vindex`) map, or a map that has become
-        constant. `None` is a valid result, not an error: callers that need an
-        axis must handle it rather than reading a stale `input_dimension`.
-        Indexing operations collapse a map whose every dependency axis is
-        consumed by an integer index into a `ConstantMap`, so an
-        `input_dimension` surviving here always names a live axis.
+        axis at all — an empty map, or a hand-built all-singleton one. `None`
+        is a valid result, not an error; such maps resolve through the
+        pointwise (general) path.
 
     Raises
     ------
@@ -1196,10 +1147,9 @@ def array_map_dependent_axis(m: ArrayMap) -> int | None:
     if len(dep) == 1:
         return dep[0]
     if len(dep) == 0:
-        return m.input_dimension
+        return None
     raise ValueError(
-        f"orthogonal ArrayMap must vary over exactly one axis; got dependency "
-        f"axes {dep} with input_dimension={m.input_dimension}"
+        f"orthogonal ArrayMap must vary over exactly one axis; got dependency axes {dep}"
     )
 
 
@@ -1209,12 +1159,14 @@ def index_array_structure(transform: IndexTransform) -> Literal["none", "orthogo
     Returns
     -------
     `"none"` when no output map is an `ArrayMap`; `"orthogonal"` when every
-    `ArrayMap` is bound to its own distinct input axis (an outer product, one
-    independent gather per axis); `"general"` otherwise — correlated (`vindex`)
-    maps, maps produced by composing fancy steps, or maps sharing an input axis
-    (a diagonal gather). The orthogonal resolvers narrow one axis at a time and
-    are only sound for `"orthogonal"`; everything else takes the pointwise path
-    that collapses the shared block.
+    `ArrayMap` varies over exactly one input axis, each its own (an outer
+    product, one independent gather per axis); `"general"` otherwise —
+    correlated (`vindex`) maps sharing their non-singleton axes, maps produced
+    by composing fancy steps, maps sharing an input axis (a diagonal gather),
+    and empty or hand-built all-singleton maps whose shape names no axis. The
+    orthogonal resolvers narrow one axis at a time and are only sound for
+    `"orthogonal"`; everything else takes the pointwise path that collapses
+    the joint block. Everything is read off the index arrays' shapes.
     """
     seen: set[int] = set()
     has_array = False
@@ -1222,12 +1174,10 @@ def index_array_structure(transform: IndexTransform) -> Literal["none", "orthogo
         if not isinstance(m, ArrayMap):
             continue
         has_array = True
-        if m.input_dimension is None:
+        dep = _array_map_dependency_axes(m.index_array)
+        if len(dep) != 1 or dep[0] in seen:
             return "general"
-        axis = array_map_dependent_axis(m)
-        if axis is None or axis in seen:
-            return "general"
-        seen.add(axis)
+        seen.add(dep[0])
     return "orthogonal" if has_array else "none"
 
 
@@ -1361,22 +1311,13 @@ def _apply_oindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             d = m.input_dimension
             if d in dim_array:
                 new_axis = old_to_new_dim[d]
-                # Normalize to full input rank: the selection varies along its own
-                # new axis and is singleton on every other axis. The dependency
-                # axis is then derivable from the shape (a single non-singleton
-                # axis marks the selection orthogonal / outer-product rather than
-                # vectorized). `input_dimension` is kept populated as a
-                # compatibility shim for consumers not yet migrated to the
-                # shape-derived classifier.
+                # Normalize to full input rank: the selection varies along its
+                # own new axis and is singleton on every other axis, so the
+                # dependency axis is readable from the shape. A single-entry
+                # selection holds one coordinate and collapses to the
+                # ConstantMap it equals; its length-1 axis stays in the domain.
                 full_arr = _reshape_to_axis(dim_array[d], new_axis, new_dim_idx)
-                new_output.append(
-                    ArrayMap(
-                        index_array=full_arr,
-                        offset=m.offset,
-                        stride=m.stride,
-                        input_dimension=new_axis,
-                    )
-                )
+                new_output.append(array_map_or_constant(full_arr, offset=m.offset, stride=m.stride))
             elif d in dim_slice_params:
                 start, step, origin = dim_slice_params[d]
                 new_offset = m.offset + m.stride * (start - step * origin)
@@ -1573,13 +1514,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
                 full_arr = broadcast_arr.reshape(
                     (1,) * n_before + broadcast_shape + (1,) * (len(slice_dims) - n_before)
                 )
-                new_output.append(
-                    ArrayMap(
-                        index_array=full_arr,
-                        offset=m.offset,
-                        stride=m.stride,
-                    )
-                )
+                new_output.append(array_map_or_constant(full_arr, offset=m.offset, stride=m.stride))
             else:
                 # Slice dim: new coord `origin + k` maps to old `start + k*step`
                 start, step, origin = slice_dim_params[d]

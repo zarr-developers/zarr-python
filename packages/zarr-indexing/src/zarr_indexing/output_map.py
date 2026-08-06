@@ -85,29 +85,26 @@ class ArrayMap:
     Freshly constructed maps are normalized to the **full input rank** of their
     enclosing transform: `index_array` has the enclosing domain's rank, sized
     fully on the axes it varies over and singleton (size 1) elsewhere. The
-    dependency axes are therefore derivable from the shape (see
-    `transform._array_map_dependency_axes`), which distinguishes the two flavors
-    of multi-array fancy indexing:
+    shape is the single source of truth for what the map depends on — its
+    **dependency axes** are exactly its non-singleton axes (see
+    `transform._array_map_dependency_axes`) — and it distinguishes the two
+    flavors of multi-array fancy indexing:
 
     - **orthogonal** (`oindex`): each array varies along a single, *distinct*
       axis (all others singleton); the result is their outer product.
     - **vectorized** (`vindex`): the arrays are correlated and share the same
       non-singleton (broadcast) axes; the result is a pointwise scatter.
 
-    `input_dimension` records the single axis an orthogonal array varies over
-    (`None` for vectorized), binding it the way `DimensionMap` is bound. It is
-    usually redundant with the shape-derived classifier, but stays authoritative
-    for the shapes the classifier cannot distinguish: a length-1 orthogonal
-    selection normalizes to an all-singleton array (no non-singleton axis), and
-    length-1 vectorized arrays are equally degenerate. `None` therefore marks a
-    map as correlated, and an integer pins the dependency axis of a degenerate
-    orthogonal map (see `transform._array_map_dependent_axis`).
+    A map holding exactly one coordinate carries no shape to read a dependency
+    from, and none is needed: it is the `ConstantMap` it equals, and the
+    selection layer builds that instead (see `array_map_or_constant`). A
+    hand-built all-singleton `ArrayMap` is still a valid value; resolution
+    classifies it with the correlated maps and reads it pointwise.
     """
 
     index_array: npt.NDArray[np.integer[Any]]
     offset: int = 0
     stride: int = 1
-    input_dimension: int | None = None
 
     def __post_init__(self) -> None:
         """Own the index array and expose it read-only.
@@ -130,11 +127,11 @@ class ArrayMap:
         frozen = np.frombuffer(normalized.tobytes(), dtype=np.intp).reshape(normalized.shape)
         object.__setattr__(self, "index_array", frozen)
 
-    def __reduce__(self) -> tuple[object, tuple[object, int, int, int | None]]:
+    def __reduce__(self) -> tuple[object, tuple[object, int, int]]:
         """Reconstruct through `__init__`, preserving the ownership invariant."""
         return (
             type(self),
-            (self.index_array, self.offset, self.stride, self.input_dimension),
+            (self.index_array, self.offset, self.stride),
         )
 
     def __eq__(self, other: object) -> bool:
@@ -151,7 +148,6 @@ class ArrayMap:
         return (
             self.offset == other.offset
             and self.stride == other.stride
-            and self.input_dimension == other.input_dimension
             and self.index_array.shape == other.index_array.shape
             and bool(np.array_equal(self.index_array, other.index_array))
         )
@@ -166,11 +162,31 @@ class ArrayMap:
             (
                 self.offset,
                 self.stride,
-                self.input_dimension,
                 self.index_array.shape,
                 self.index_array.tobytes(),
             )
         )
+
+
+def array_map_or_constant(
+    index_array: npt.NDArray[np.integer[Any]],
+    offset: int = 0,
+    stride: int = 1,
+) -> ArrayMap | ConstantMap:
+    """An `ArrayMap`, collapsed to the `ConstantMap` it equals when it can be.
+
+    An index array holding exactly one coordinate maps every input cell to the
+    same place; representing it as a lookup table would leave a map whose shape
+    names no dependency axis, the one form the shape-derived classifier cannot
+    read. The selection and composition layers build their array maps through
+    this helper so that a non-empty `ArrayMap` always varies over at least one
+    axis. An empty array stays an `ArrayMap`: it maps no cell at all, and the
+    emptiness lives in the domain that accompanies it.
+    """
+    arr = np.asarray(index_array)
+    if arr.size == 1:
+        return ConstantMap(offset=checked_affine(offset, stride, int(arr.reshape(-1)[0])))
+    return ArrayMap(index_array=arr, offset=offset, stride=stride)
 
 
 OutputIndexMap = ConstantMap | DimensionMap | ArrayMap

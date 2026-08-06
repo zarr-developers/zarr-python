@@ -50,10 +50,12 @@ algebra builds itself is at full rank.
 The reason full rank matters here is that we *derive* meaning from those
 singletons rather than merely tolerating them: an array full-sized on one axis
 and singleton elsewhere is orthogonal, and one varying over several shared axes
-is vectorized, so the distinction is readable off the shape. `ArrayMap` also
-records the input dimension an *orthogonal* (`oindex`) array varies over, a field
-TensorStore's format has no slot for, so [the serializer](api/json.md) collapses
-it on the way out and reconstructs it on the way in.
+is vectorized, so the distinction is readable off the shape — and the shape is
+the *only* place it lives. An earlier `ArrayMap.input_dimension` field pinned
+the orthogonal axis redundantly and was retired: the one shape it disambiguated
+(a single-coordinate array, all axes singleton) is now normalized away at
+construction, collapsed to the `ConstantMap` it equals, exactly as
+[the serializer](api/json.md) has always collapsed it on the wire.
 
 Four deliberate differences:
 

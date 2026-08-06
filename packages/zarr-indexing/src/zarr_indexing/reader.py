@@ -438,10 +438,5 @@ def _decompose_basic(transform: IndexTransform) -> tuple[tuple[slice, ...], Inde
                 origin = int(coordinates.min())
                 key.append(slice(origin, int(coordinates.max()) + 1, 1))
                 local_index = checked_affine(-origin, 1, coordinates)
-            residual.append(
-                ArrayMap(
-                    index_array=local_index,
-                    input_dimension=output_map.input_dimension,
-                )
-            )
+            residual.append(ArrayMap(index_array=local_index))
     return tuple(key), IndexTransform(domain=transform.domain, output=tuple(residual))

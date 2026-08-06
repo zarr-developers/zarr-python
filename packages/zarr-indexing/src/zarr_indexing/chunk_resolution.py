@@ -156,25 +156,21 @@ def plan_chunks(
     return ChunkPlan(transform=transform, dimension_grids=grids)
 
 
-def _one_dimensional_correlated_array_map(
+def _one_dimensional_array_map(
     transform: IndexTransform,
 ) -> tuple[ArrayMap, np.ndarray[Any, np.dtype[np.intp]]] | None:
-    """Return a nonempty correlated 1-D ArrayMap and its storage coordinates.
+    """Return a nonempty 1-D single-ArrayMap transform's map and storage coords.
 
     A one-dimensional array selection has no cross-dimensional correlation to
-    preserve. The computed storage coordinates are also reused by general
-    resolution when they are unsorted.
+    preserve — the orthogonal and vectorized flavors coincide there — so the
+    sorted fast path applies to either spelling. The computed storage
+    coordinates are also reused by general resolution when they are unsorted.
     """
     if transform.input_rank != 1 or transform.output_rank != 1:
         return None
 
     m = transform.output[0]
-    if (
-        not isinstance(m, ArrayMap)
-        or m.input_dimension is not None
-        or m.index_array.ndim != 1
-        or m.index_array.size == 0
-    ):
+    if not isinstance(m, ArrayMap) or m.index_array.ndim != 1 or m.index_array.size == 0:
         return None
 
     return m, checked_affine(m.offset, m.stride, m.index_array)
@@ -200,7 +196,6 @@ def _iter_sorted_1d_array_map(
                     index_array=m.index_array[start:stop],
                     offset=m.offset,
                     stride=m.stride,
-                    input_dimension=m.input_dimension,
                 ),
             ),
         )
@@ -228,7 +223,7 @@ def _iter_chunk_transform_results(
         # array, and the emptiness shows only here.
         return
 
-    array_map_1d = _one_dimensional_correlated_array_map(transform)
+    array_map_1d = _one_dimensional_array_map(transform)
     if array_map_1d is not None:
         sorted_map, storage = array_map_1d
         if storage[0] <= storage[-1] and bool(np.all(storage[1:] >= storage[:-1])):
@@ -263,6 +258,7 @@ def _iter_chunk_transform_results(
     #   combinations no point touches — quadratic in the number of selected
     #   points for a diagonal selection — while the joint distinct set is
     #   bounded by the point count (see zarr-python gh-4174).
+    structure = index_array_structure(transform)
     correlated_dims: list[int] = []
     correlated_chunk_ids: list[np.ndarray[Any, np.dtype[np.intp]]] = []
     slot_dims: list[tuple[int, ...]] = []
@@ -316,12 +312,16 @@ def _iter_chunk_transform_results(
             # Keep the index-array shape: correlated maps broadcast against each
             # other below, and raveling first would lose the singleton axes.
             chunk_ids = dg.indices_to_chunks(storage)
-            if m.input_dimension is None:
-                correlated_dims.append(out_dim)
-                correlated_chunk_ids.append(chunk_ids)
-            else:
+            if structure == "orthogonal":
                 slot_dims.append((out_dim,))
                 slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
+            else:
+                # Every index array of a general transform joins one joint
+                # slot: their chunk ids broadcast over the shared block, so the
+                # distinct tuples enumerate only combinations some point
+                # actually touches.
+                correlated_dims.append(out_dim)
+                correlated_chunk_ids.append(chunk_ids)
 
     if len(correlated_dims) == 1:
         slot_dims.append((correlated_dims[0],))
@@ -454,7 +454,6 @@ def _orthogonal_cell_transform(
             ArrayMap(
                 index_array=positions.reshape(shape),
                 offset=original.domain.inclusive_min[input_dimension],
-                input_dimension=input_dimension,
             )
         )
     return IndexTransform(domain=restricted.domain, output=tuple(output))

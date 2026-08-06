@@ -26,7 +26,13 @@ import numpy as np
 
 from zarr_indexing.affine import checked_affine
 from zarr_indexing.errors import BoundsCheckError
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    OutputIndexMap,
+    array_map_or_constant,
+)
 from zarr_indexing.transform import IndexTransform
 
 
@@ -138,13 +144,11 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
 
     # outer_map: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
     # Affine post-composition leaves the index array (and hence its full
-    # input rank and dependency axes) untouched; carry the orthogonal
-    # binding through unchanged.
+    # input rank and dependency axes) untouched.
     return ArrayMap(
         index_array=outer_map.index_array,
         offset=offset_i + stride_i * outer_map.offset,
         stride=stride_i * outer_map.stride,
-        input_dimension=outer_map.input_dimension,
     )
 
 
@@ -184,18 +188,6 @@ def _positions_for_axis(
     return _array_positions(outer_map, inner_origin)
 
 
-def _composed_array_input_dimension(outer: IndexTransform, inner_map: ArrayMap) -> int | None:
-    """Carry an orthogonal binding through the coordinate substitution."""
-    if inner_map.input_dimension is None:
-        return None
-    outer_map = outer.output[inner_map.input_dimension]
-    if isinstance(outer_map, DimensionMap):
-        return outer_map.input_dimension
-    if isinstance(outer_map, ArrayMap):
-        return outer_map.input_dimension
-    return None
-
-
 def _compose_array(
     outer: IndexTransform, inner_map: ArrayMap, inner_origin: tuple[int, ...]
 ) -> OutputIndexMap:
@@ -213,9 +205,8 @@ def _compose_array(
     """
     arr_i = inner_map.index_array
     if any(extent == 0 for extent in outer.domain.shape):
-        # The empty map is singleton on every non-empty axis, so it varies over
-        # no axis at all; deliberately no `input_dimension`, which would pin it
-        # to an axis it merely broadcasts along.
+        # The empty map is singleton on every non-empty axis: it varies over no
+        # axis at all, and the emptiness lives in the domain emitted alongside.
         empty_shape = tuple(0 if extent == 0 else 1 for extent in outer.domain.shape)
         return ArrayMap(
             index_array=np.empty(empty_shape, dtype=arr_i.dtype),
@@ -227,12 +218,9 @@ def _compose_array(
         0 if size == 1 else _positions_for_axis(outer, outer_map, origin)
         for outer_map, origin, size in zip(outer.output, inner_origin, arr_i.shape, strict=True)
     )
+    # A gather narrowed to one coordinate — scalar or all-singleton — is the
+    # ConstantMap it equals; `array_map_or_constant` normalizes both.
     gathered = np.asarray(arr_i[positions])
     if gathered.ndim == 0:
         return ConstantMap(offset=checked_affine(inner_map.offset, inner_map.stride, int(gathered)))
-    return ArrayMap(
-        index_array=gathered,
-        offset=inner_map.offset,
-        stride=inner_map.stride,
-        input_dimension=_composed_array_input_dimension(outer, inner_map),
-    )
+    return array_map_or_constant(gathered, offset=inner_map.offset, stride=inner_map.stride)

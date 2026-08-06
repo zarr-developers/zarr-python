@@ -34,7 +34,6 @@ def _maps_equal(a: object, b: object) -> bool:
     return (
         a.offset == b.offset
         and a.stride == b.stride
-        and a.input_dimension == b.input_dimension
         and np.array_equal(a.index_array, b.index_array)
     )
 
@@ -220,8 +219,6 @@ class TestIndexTransformJSON:
         # axis on the dimension they do not vary over.
         assert restored.output[0].index_array.shape == (3, 1)
         np.testing.assert_array_equal(restored.output[0].index_array, idx.reshape(3, 1))
-        # input_dimension is reconstructed from the sole non-singleton axis.
-        assert restored.output[0].input_dimension == 0
         assert isinstance(restored.output[1], DimensionMap)
 
     def test_roundtrip_preserves_singleton_axes(self) -> None:
@@ -238,9 +235,6 @@ class TestIndexTransformJSON:
         assert rest1.index_array.shape == (1, 3)
         np.testing.assert_array_equal(rest0.index_array, orig0.index_array)
         np.testing.assert_array_equal(rest1.index_array, orig1.index_array)
-        # Distinct, exclusively-owned axes -> reconstructed as orthogonal.
-        assert rest0.input_dimension == 0
-        assert rest1.input_dimension == 1
 
     def test_with_labels(self) -> None:
         domain = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20), labels=("x", "y"))
@@ -308,15 +302,22 @@ class TestCanonicalRoundTrips:
         assert _transforms_equal(rt, t)
 
     def test_length1_degenerate_oindex_collapses(self) -> None:
-        """A length-1 oindex array becomes an all-singleton ArrayMap; the JSON
-        round-trip collapses it to a ConstantMap (behaviorally identical)."""
+        """A length-1 oindex selection is the ConstantMap it equals.
+
+        The selection layer collapses it at construction; a hand-built
+        all-singleton ArrayMap still collapses on serialize, so the canonical
+        wire form is a `constant` map either way.
+        """
         t = IndexTransform.from_shape((10, 20)).oindex[np.array([7]), :]
         m = t.output[0]
-        assert isinstance(m, ArrayMap)
-        assert m.index_array.size == 1
+        assert isinstance(m, ConstantMap)
+        assert m.offset == 7
 
-        rt = index_transform_from_json(index_transform_to_json(t))
-        # The degenerate array collapsed to a constant selecting the same cell.
+        hand_built = IndexTransform(
+            domain=t.domain,
+            output=(ArrayMap(index_array=np.array([[7]], dtype=np.intp)), t.output[1]),
+        )
+        rt = index_transform_from_json(index_transform_to_json(hand_built))
         rm = rt.output[0]
         assert isinstance(rm, ConstantMap)
         assert rm.offset == 7

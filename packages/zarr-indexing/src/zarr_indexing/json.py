@@ -19,37 +19,30 @@ Three engine constraints live **here and only here**:
 ## The `index_array` wire format (and the degenerate-collapse it documents)
 
 ndsel and TensorStore both **reject** an output map that carries *both*
-`input_dimension` and `index_array`. The in-memory `ArrayMap`, however, records
-an `input_dimension` to pin the axis an orthogonal (`oindex`) array varies over.
-This module bridges the gap:
+`input_dimension` and `index_array`; `input_dimension` belongs to affine
+(`single_input_dimension`) maps. The in-memory `ArrayMap` matches: what a map
+depends on is read from its full-rank array's shape (its non-singleton axes),
+so there is nothing to reconstruct on load. On serialize
+(`transform_to_canonical`):
 
-- **On serialize** (`transform_to_canonical`):
-  1. An all-singleton `index_array` (size 1) selects a single coordinate
-     regardless of input, so it is **collapsed to a `constant` map**
-     `{offset: offset + stride*value}`. The size-1 input dimension stays in the
-     domain, unconsumed — a valid transform. This makes a length-1 `oindex`
-     selection round-trip *behaviorally* (an `ArrayMap` becomes a `ConstantMap`)
-     rather than by object identity.
-  2. An **empty** `index_array` (size 0) collapses the same way, to
-     `{offset: 0}`. It names no cell, and it can only be empty because an input
-     dimension is — the full-rank invariant makes every axis either 1 or the
-     domain's extent — so nothing is ever read through it and the emptiness is
-     carried by the domain, which is emitted separately. TensorStore does the
-     same: `t[ts.d[0][[]]]` is `out[0] = 0`, emitted as `{}`. Emitting the array
-     instead would produce a document neither implementation could load, because
-     `ndarray.tolist()` renders every empty array as `[]` once the leading axis
-     is the zero-length one, and nested lists cannot spell the shape back —
-     `[[]]` is `(1, 0)` and nothing spells `(0, 1)`.
-  3. Non-degenerate `index_array` maps are emitted **without** `input_dimension`.
-
-- **On load** (`transform_from_canonical`): the in-memory `input_dimension` is
-  reconstructed from the full-rank array's dependency axes (its non-singleton
-  axes, see `transform._array_map_dependency_axes`). An array that solely owns a
-  single non-singleton axis is orthogonal (`input_dimension = that axis`); arrays
-  that share non-singleton axes, or vary over several, are correlated (`vindex`,
-  `input_dimension = None`). A single 1-D array over a rank-1 domain is
-  inherently ambiguous between the two flavors; it reconstructs as orthogonal,
-  which is behaviorally identical for the single-array case.
+1. An all-singleton `index_array` (size 1) selects a single coordinate
+   regardless of input, so it is **collapsed to a `constant` map**
+   `{offset: offset + stride*value}`. The size-1 input dimension stays in the
+   domain, unconsumed — a valid transform. The selection layer already builds
+   such maps as `ConstantMap` (`output_map.array_map_or_constant`); this covers
+   hand-built transforms.
+2. An **empty** `index_array` (size 0) collapses the same way, to
+   `{offset: 0}`. It names no cell, and it can only be empty because an input
+   dimension is — the full-rank invariant makes every axis either 1 or the
+   domain's extent — so nothing is ever read through it and the emptiness is
+   carried by the domain, which is emitted separately. TensorStore does the
+   same: `t[ts.d[0][[]]]` is `out[0] = 0`, emitted as `{}`. Emitting the array
+   instead would produce a document neither implementation could load, because
+   `ndarray.tolist()` renders every empty array as `[]` once the leading axis
+   is the zero-length one, and nested lists cannot spell the shape back —
+   `[[]]` is `(1, 0)` and nothing spells `(0, 1)`.
+3. Non-degenerate `index_array` maps are emitted with their array and bounds
+   only.
 
 `index_transform_to_json` / `index_transform_from_json` (and the `*_domain_*`
 variants) are these canonical converters under their historical names.
@@ -57,7 +50,6 @@ variants) are these canonical converters under their historical names.
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any, Required, TypedDict
 
 import numpy as np
@@ -65,19 +57,7 @@ import numpy as np
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.messages import NdselError, normalize_ndsel
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_indexing.transform import (
-    IndexTransform,
-    _array_map_dependency_axes,  # pyright: ignore[reportPrivateUsage]
-)
-
-# `_array_map_dependency_axes` is a leading-underscore helper in `transform.py`,
-# but it is deliberately shared with this module (the engine-level JSON <->
-# `IndexTransform` lowering below needs the same dependency-axis logic that
-# `transform.py`'s own array-reindexing helpers use). It is not part of the
-# package's public API; pyright's `reportPrivateUsage` flags the cross-module
-# import anyway. See `chunk_resolution.py`'s `_dimensions` suppression for the
-# analogous rationale — whether to promote either symbol out of "private" is
-# an open pre-publish API decision, not resolved here.
+from zarr_indexing.transform import IndexTransform
 
 # ---------------------------------------------------------------------------
 # TypedDict definitions (canonical JSON shapes)
@@ -247,9 +227,8 @@ def index_domain_from_json(data: IndexDomainJSON) -> IndexDomain:
 def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
     """Convert an output index map to its canonical JSON representation.
 
-    A degenerate all-singleton `ArrayMap` collapses to a `constant` map; a
-    non-degenerate one is emitted without `input_dimension` (see the module
-    docstring on the wire format).
+    A degenerate all-singleton `ArrayMap` collapses to a `constant` map (see
+    the module docstring on the wire format).
     """
     if isinstance(m, ConstantMap):
         return {"offset": m.offset}
@@ -286,20 +265,13 @@ def output_index_map_to_json(m: OutputIndexMap) -> OutputIndexMapJSON:
 
 
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
-    """Construct an output index map from its canonical JSON representation.
-
-    An `index_array` map's `input_dimension` is reconstructed from the array's
-    dependency axes in isolation (single non-singleton axis → orthogonal). The
-    transform-level loader classifies globally; use it when several maps may
-    share axes.
-    """
+    """Construct an output index map from its canonical JSON representation."""
     if "index_array" in data:
         arr = _lower_index_array(data["index_array"], "index_array")
         return ArrayMap(
             index_array=arr,
             offset=data.get("offset", 0),
             stride=data.get("stride", 1),
-            input_dimension=_solo_dependency_axis(arr),
         )
 
     if "input_dimension" in data:
@@ -310,12 +282,6 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
         )
 
     return ConstantMap(offset=data.get("offset", 0))
-
-
-def _solo_dependency_axis(arr: np.ndarray[Any, Any]) -> int | None:
-    """The single axis a lone `index_array` varies over, or `None` if not exactly one."""
-    dep = _array_map_dependency_axes(arr)
-    return dep[0] if len(dep) == 1 else None
 
 
 def _full_rank_index_array(
@@ -382,9 +348,9 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
 
     The body is first run through the message layer (`normalize_ndsel`) so that
     omitted fields — identity `output`, default bounds/labels — are filled and
-    validated, then lowered to the engine representation. `index_array` maps'
-    `input_dimension` values are reconstructed by global dependency-axis
-    ownership (see the module docstring).
+    validated, then lowered to the engine representation. Lower-rank
+    `index_array`s are widened to the full input rank on the way in (see the
+    module docstring).
     """
     if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise NdselError("invalid_json", f"a transform body must be a JSON object, got {data!r}")
@@ -415,12 +381,7 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
 
     output_raw: list[dict[str, Any]] = body["output"]
 
-    # Classify index_array maps globally: an axis owned by exactly one array map
-    # (and the map's sole non-singleton axis) marks that map orthogonal; shared
-    # or multiple non-singleton axes mark the maps correlated (vindex).
-    arrays: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
-    array_axes: dict[int, tuple[int, ...]] = {}
-    axis_owners: Counter[int] = Counter()
+    output: list[OutputIndexMap] = []
     for i, om in enumerate(output_raw):
         if "index_array" in om:
             where = f"output[{i}]"
@@ -430,22 +391,11 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
             # Widen it here, on the way in, so every transform that exists holds
             # the full-rank invariant the engine reads dependency axes from.
             arr = _full_rank_index_array(arr, domain, where)
-            arrays[i] = arr
-            dep = _array_map_dependency_axes(arr)
-            array_axes[i] = dep
-            axis_owners.update(dep)
-
-    output: list[OutputIndexMap] = []
-    for i, om in enumerate(output_raw):
-        if "index_array" in om:
-            dep = array_axes[i]
-            input_dim = dep[0] if len(dep) == 1 and axis_owners[dep[0]] == 1 else None
             output.append(
                 ArrayMap(
-                    index_array=arrays[i],
+                    index_array=arr,
                     offset=om.get("offset", 0),
                     stride=om.get("stride", 1),
-                    input_dimension=input_dim,
                 )
             )
         elif "input_dimension" in om:

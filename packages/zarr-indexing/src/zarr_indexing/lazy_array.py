@@ -168,7 +168,11 @@ from zarr_indexing.reader import (
     basic_reader,
     numpy_reader,
 )
-from zarr_indexing.transform import IndexTransform, selection_to_transform
+from zarr_indexing.transform import (
+    IndexTransform,
+    index_array_structure,
+    selection_to_transform,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -196,7 +200,7 @@ def _invoke_reader(
 
 def _is_correlated(transform: IndexTransform) -> bool:
     """True when the transform gathers a list of points rather than an outer product."""
-    return any(isinstance(m, ArrayMap) and m.input_dimension is None for m in transform.output)
+    return index_array_structure(transform) == "general"
 
 
 class ArrayLike(Protocol):

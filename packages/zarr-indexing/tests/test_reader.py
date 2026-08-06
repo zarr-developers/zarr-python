@@ -413,8 +413,8 @@ def test_reading_a_diagonal_gather_transform() -> None:
     transform = IndexTransform(
         domain=IndexDomain.from_shape((3,)),
         output=(
-            ArrayMap(index_array=rows, input_dimension=0),
-            ArrayMap(index_array=cols, input_dimension=0),
+            ArrayMap(index_array=rows),
+            ArrayMap(index_array=cols),
         ),
     )
 
@@ -434,8 +434,8 @@ def test_reading_a_diagonal_gather_with_a_residual_slice_axis() -> None:
     transform = IndexTransform(
         domain=IndexDomain.from_shape((3, 2)),
         output=(
-            ArrayMap(index_array=rows, input_dimension=0),
-            ArrayMap(index_array=cols, input_dimension=0),
+            ArrayMap(index_array=rows),
+            ArrayMap(index_array=cols),
             DimensionMap(input_dimension=1),
         ),
     )
