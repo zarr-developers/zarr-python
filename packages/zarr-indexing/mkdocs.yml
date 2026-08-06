@@ -1,3 +1,5 @@
+INHERIT: ../mkdocs-base.yml
+
 site_name: zarr-indexing
 # The package lives in the zarr-python monorepo; point the header source
 # widget at the package directory rather than the repository root.
@@ -6,10 +8,7 @@ repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr
 # Absolute because mkdocs would otherwise append this to repo_url's subpath.
 edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-indexing/docs/
 site_description: Composable, lazy coordinate transforms for Zarr array indexing.
-site_author: Davis Bennett
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-indexing.readthedocs.io/']
-docs_dir: docs
-use_directory_urls: true
 
 nav:
   - index.md
@@ -26,85 +25,3 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.messages</code>': api/messages.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.errors</code>': api/errors.md
   - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md
-
-watch:
-  - src
-
-theme:
-  language: en
-  name: material
-  logo: _static/logo_bw.png
-  favicon: _static/favicon-96x96.png
-
-  palette:
-    # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-
-    # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-
-  font:
-    text: Roboto
-    code: Roboto Mono
-
-  features:
-    - content.code.annotate
-    - content.code.copy
-    - navigation.indexes
-    - navigation.instant
-    - navigation.tracking
-    - search.suggest
-    - search.share
-
-plugins:
-  - autorefs
-  - search
-  - mkdocstrings:
-      enable_inventory: true
-      handlers:
-        python:
-          paths: [src]
-          options:
-            allow_inspection: true
-            docstring_section_style: list
-            docstring_style: numpy
-            inherited_members: true
-            line_length: 60
-            separate_signature: true
-            show_root_heading: true
-            show_signature_annotations: true
-            show_source: true
-            show_symbol_type_toc: true
-            signature_crossrefs: true
-            show_if_no_docstring: true
-            extensions:
-            - griffe_inherited_docstrings
-
-          inventories:
-            - https://docs.python.org/3/objects.inv
-            - https://numpy.org/doc/stable/objects.inv
-            - https://zarr.readthedocs.io/en/stable/objects.inv
-
-markdown_extensions:
-  - admonition
-  - attr_list
-  - def_list
-  - footnotes
-  - md_in_html
-  - pymdownx.details
-  - pymdownx.superfences
-  - toc:
-      permalink: true
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
