@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
-from zarr.errors import ZarrUserWarning
+from zarr.errors import URLPipelineError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
+    from zarr.abc.url_pipeline import URLPipelineAdapter
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
@@ -32,11 +33,14 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
+    "get_url_adapter",
+    "list_url_adapter_schemes",
     "register_buffer",
     "register_chunk_key_encoding",
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
+    "register_url_adapter",
 ]
 
 
@@ -62,6 +66,7 @@ _pipeline_registry: Registry[CodecPipeline] = Registry()
 _buffer_registry: Registry[Buffer] = Registry()
 _ndbuffer_registry: Registry[NDBuffer] = Registry()
 _chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
+_url_adapter_registry: Registry[URLPipelineAdapter] = Registry()
 
 """
 The registry module is responsible for managing implementations of codecs,
@@ -108,6 +113,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         entry_points.select(group="zarr", name="chunk_key_encoding")
     )
 
+    _url_adapter_registry.lazy_load_list.extend(entry_points.select(group="zarr.url_adapters"))
+
     _pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     _pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -124,6 +131,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         _buffer_registry,
         _ndbuffer_registry,
         _chunk_key_encoding_registry,
+        _url_adapter_registry,
     ]
 
 
@@ -301,6 +309,51 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
             f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(_chunk_key_encoding_registry)}."
         )
     return _chunk_key_encoding_registry[key]
+
+
+def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
+    """
+    Register a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
+    class for a URL scheme.
+    """
+    _url_adapter_registry.register(cls, scheme.lower())
+
+
+def list_url_adapter_schemes() -> set[str]:
+    """
+    The set of URL schemes with a registered URL pipeline adapter.
+
+    Includes adapters advertised via not-yet-loaded `zarr.url_adapters`
+    entry points; consulting this does not import any adapter code.
+    """
+    return set(_url_adapter_registry) | {e.name for e in _url_adapter_registry.lazy_load_list}
+
+
+def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
+    """
+    Get the URL pipeline adapter class registered for `scheme`.
+
+    Loads pending `zarr.url_adapters` entry points for this scheme only, so
+    resolving one scheme never imports other providers' packages.
+    """
+    key = scheme.lower()
+    if key not in _url_adapter_registry:
+        remaining = []
+        for entry_point in _url_adapter_registry.lazy_load_list:
+            if entry_point.name == key:
+                _url_adapter_registry.register(entry_point.load(), qualname=key)
+            else:
+                remaining.append(entry_point)
+        _url_adapter_registry.lazy_load_list[:] = remaining
+    try:
+        return _url_adapter_registry[key]
+    except KeyError:
+        registered = sorted(list_url_adapter_schemes())
+        raise URLPipelineError(
+            f"no URL pipeline adapter is registered for scheme {scheme!r}. "
+            f"Registered schemes: {registered}. Adapters are provided by "
+            "packages via the 'zarr.url_adapters' entry-point group."
+        ) from None
 
 
 _collect_entrypoints()

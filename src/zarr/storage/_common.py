@@ -21,9 +21,15 @@ from zarr.core.common import (
     AccessModeLiteral,
     ZarrFormat,
 )
-from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
+from zarr.errors import (
+    ContainsArrayAndGroupError,
+    ContainsArrayError,
+    ContainsGroupError,
+    URLPipelineError,
+)
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
+from zarr.storage._url_pipeline import is_url_pipeline, resolve_pipeline
 from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
@@ -348,6 +354,15 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
+    if isinstance(store_like, str) and is_url_pipeline(store_like):
+        result = await resolve_pipeline(store_like, mode=mode, storage_options=storage_options)
+        if result.path:
+            raise URLPipelineError(
+                f"the URL pipeline {store_like!r} resolves to a path inside a store; "
+                "use zarr.open() or make_store_path() instead of make_store()"
+            )
+        return result.store
+
     # Parse URL early so we can reuse the result for both validation and routing
     parsed = parse_store_url(store_like) if isinstance(store_like, str) else None
 
@@ -452,6 +467,17 @@ async def make_store_path(
     make_store
     """
     path_normalized = normalize_path(path)
+
+    if isinstance(store_like, str) and is_url_pipeline(store_like):
+        result = await resolve_pipeline(store_like, mode=mode, storage_options=storage_options)
+        combined_path = _join_paths([normalize_path(result.path), path_normalized])
+        # mode "a" (the zarr.open default) means open-or-create; when the
+        # pipeline resolved to a read-only resource, honor the "open" half
+        # rather than failing outright. Writes still fail at the store level.
+        open_mode: AccessModeLiteral | None = (
+            "r" if (mode == "a" and result.store.read_only) else mode
+        )
+        return await StorePath.open(result.store, path=combined_path, mode=open_mode)
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
