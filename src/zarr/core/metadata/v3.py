@@ -12,7 +12,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.chunk_grids import is_regular_nd
+from zarr.core.chunk_grids import FixedDimension, VaryingDimension
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunksTuple
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
@@ -372,32 +372,36 @@ ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
 def create_chunk_grid_metadata(
-    chunks: ChunksTuple,
+    chunks: ChunkGrid,
 ) -> ChunkGridMetadata:
-    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
+    """Construct a chunk grid metadata object from a normalized `ChunkGrid`.
 
-    Regular chunks produce a `RegularChunkGridMetadata`.
-    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+    Regular grids produce a `RegularChunkGridMetadata`.
+    Rectilinear grids produce a `RectilinearChunkGridMetadata`.
 
     Parameters
     ----------
-    chunks : ChunksTuple
-        Normalized chunk specification, as returned by
+    chunks : ChunkGrid
+        Normalized chunk grid, as returned by
         `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    if is_regular_nd(chunks):
-        # If we know the chunks specification is regular, then we can take the first
-        # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
-        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
-    else:
-        return RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
-        )
+    if chunks.is_regular:
+        return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
+    # Uniform dimensions stay bare ints — the rectilinear grid spec treats
+    # a bare int as a step size repeating to cover the axis.
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for dim in chunks.dimensions:
+        if isinstance(dim, FixedDimension):
+            chunk_shapes.append(dim.size)
+        elif isinstance(dim, VaryingDimension):
+            chunk_shapes.append(dim.edges)
+        else:
+            raise TypeError(f"Unknown dimension grid type: {type(dim)}")
+    return RectilinearChunkGridMetadata(chunk_shapes=tuple(chunk_shapes))
 
 
 def parse_chunk_grid(
