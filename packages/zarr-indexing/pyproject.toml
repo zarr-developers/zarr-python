@@ -34,6 +34,12 @@ dependencies = [
     "numpy>=2",
 ]
 
+[project.optional-dependencies]
+# `zarr_indexing.testing` — a Hypothesis state machine and selection strategies
+# for projects checking their own array against this package. Nothing else in
+# the package imports hypothesis.
+testing = ["hypothesis>=6.160.0"]
+
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
@@ -47,17 +53,20 @@ Documentation = "https://zarr-indexing.readthedocs.io/"
 # test suite, which already has zarr installed. `zarr` is intentionally NOT
 # listed here to avoid a workspace dependency cycle; run these tests from the
 # repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
-test = ["pytest"]
+# `hypothesis` arrives via the `testing` extra, which is what
+# `zarr_indexing.testing` needs; the repo-root `test` group pins the exact
+# version CI runs against. Bump the two together.
+test = ["pytest", "hypothesis>=6.160.0"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so the two sites render with the same toolchain.
-    "mkdocs-material==9.7.6",
+    "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.4",
+    "mkdocstrings==1.0.6",
     "mkdocstrings-python==2.0.5",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.15.20",
+    "ruff==0.15.22",
 ]
 
 [tool.hatch.version]
@@ -75,9 +84,18 @@ packages = ["src/zarr_indexing"]
 extend = "../../pyproject.toml"
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+# Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
+# foreign source's attributes may fail arbitrarily and discovery must degrade
+# to "no information"; a token call must never raise. Configured here (not as
+# noqa comments) because the pinned pre-commit ruff and the floating CI ruff
+# disagree on whether these rules fire, and RUF100 strips the comments.
+"src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
+
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
+pythonpath = ["."]
 xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
@@ -85,7 +103,11 @@ filterwarnings = [
 ]
 
 [tool.pyright]
-include = ["src"]
+include = [
+    "src",
+    "docs/snippets",
+    "tests/test_doc_examples.py",
+]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"

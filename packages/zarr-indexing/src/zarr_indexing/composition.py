@@ -20,8 +20,12 @@ substituting the outer map into the inner one:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
+from zarr_indexing.affine import checked_affine
+from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import IndexTransform
 
@@ -41,12 +45,65 @@ def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
             f"({inner.domain.ndim})"
         )
 
-    result_output = [_compose_single(outer, inner_map) for inner_map in inner.output]
+    _validate_outer_outputs(outer, inner)
+
+    result_output = [
+        _compose_single(outer, inner_map, inner.domain.inclusive_min) for inner_map in inner.output
+    ]
 
     return IndexTransform(domain=outer.domain, output=tuple(result_output))
 
 
-def _compose_single(outer: IndexTransform, inner_map: OutputIndexMap) -> OutputIndexMap:
+def _validate_outer_outputs(outer: IndexTransform, inner: IndexTransform) -> None:
+    """Prove that every intermediate coordinate is in the inner domain.
+
+    An empty outer domain has no points, so containment is vacuously true. For
+    a nonempty domain, each map form has an exact, constant-space range proof:
+    constants are singletons, dimension maps are affine intervals, and array
+    maps need only their extrema.
+    """
+    if any(extent == 0 for extent in outer.domain.shape):
+        return
+
+    for axis, (outer_map, inner_lo, inner_hi) in enumerate(
+        zip(
+            outer.output,
+            inner.domain.inclusive_min,
+            inner.domain.exclusive_max,
+            strict=True,
+        )
+    ):
+        output_lo, output_hi = _output_bounds(outer, outer_map)
+        if output_lo < inner_lo or output_hi >= inner_hi:
+            raise BoundsCheckError(
+                f"outer output dimension {axis} produces coordinates "
+                f"[{output_lo}, {output_hi}] outside the inner input domain "
+                f"[{inner_lo}, {inner_hi})"
+            )
+
+
+def _output_bounds(outer: IndexTransform, output_map: OutputIndexMap) -> tuple[int, int]:
+    """Return the exact inclusive bounds of one output map on a nonempty domain."""
+    if isinstance(output_map, ConstantMap):
+        return output_map.offset, output_map.offset
+
+    if isinstance(output_map, DimensionMap):
+        input_lo = outer.domain.inclusive_min[output_map.input_dimension]
+        input_hi = outer.domain.exclusive_max[output_map.input_dimension]
+        first = output_map.offset + output_map.stride * input_lo
+        last = output_map.offset + output_map.stride * (input_hi - 1)
+        return min(first, last), max(first, last)
+
+    index_lo = int(output_map.index_array.min())
+    index_hi = int(output_map.index_array.max())
+    first = output_map.offset + output_map.stride * index_lo
+    last = output_map.offset + output_map.stride * index_hi
+    return min(first, last), max(first, last)
+
+
+def _compose_single(
+    outer: IndexTransform, inner_map: OutputIndexMap, inner_origin: tuple[int, ...]
+) -> OutputIndexMap:
     """Compose a single inner output map with the full outer transform."""
     if isinstance(inner_map, ConstantMap):
         return ConstantMap(offset=inner_map.offset)
@@ -55,7 +112,7 @@ def _compose_single(outer: IndexTransform, inner_map: OutputIndexMap) -> OutputI
         return _compose_dimension(outer, inner_map)
 
     # inner_map: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
-    return _compose_array(outer, inner_map)
+    return _compose_array(outer, inner_map, inner_origin)
 
 
 def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> OutputIndexMap:
@@ -70,7 +127,7 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     outer_map = outer.output[dim_i]
 
     if isinstance(outer_map, ConstantMap):
-        return ConstantMap(offset=offset_i + stride_i * outer_map.offset)
+        return ConstantMap(offset=checked_affine(offset_i, stride_i, outer_map.offset))
 
     if isinstance(outer_map, DimensionMap):
         return DimensionMap(
@@ -91,43 +148,88 @@ def _compose_dimension(outer: IndexTransform, inner_map: DimensionMap) -> Output
     )
 
 
-def _compose_array(outer: IndexTransform, inner_map: ArrayMap) -> OutputIndexMap:
+def _dimension_positions(
+    outer: IndexTransform, outer_map: DimensionMap, inner_origin: int
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Build exact positional indices for an affine outer map."""
+    dimension = outer_map.input_dimension
+    extent = outer.domain.shape[dimension]
+    start = checked_affine(
+        outer_map.offset - inner_origin,
+        outer_map.stride,
+        outer.domain.inclusive_min[dimension],
+    )
+    shape = (1,) * dimension + (extent,) + (1,) * (outer.input_rank - dimension - 1)
+    if extent == 0:
+        return np.empty(shape, dtype=np.intp)
+    if extent == 1:
+        return np.full(shape, start, dtype=np.intp)
+    steps = np.arange(extent, dtype=np.intp)
+    return checked_affine(start, outer_map.stride, steps).reshape(shape)
+
+
+def _array_positions(outer_map: ArrayMap, inner_origin: int) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Build exact positional indices without fixed-width affine overflow."""
+    return checked_affine(outer_map.offset - inner_origin, outer_map.stride, outer_map.index_array)
+
+
+def _positions_for_axis(
+    outer: IndexTransform, outer_map: OutputIndexMap, inner_origin: int
+) -> int | np.ndarray[Any, np.dtype[np.intp]]:
+    """Convert one intermediate coordinate map to inner-array positions."""
+    if isinstance(outer_map, ConstantMap):
+        return outer_map.offset - inner_origin
+    if isinstance(outer_map, DimensionMap):
+        return _dimension_positions(outer, outer_map, inner_origin)
+    return _array_positions(outer_map, inner_origin)
+
+
+def _composed_array_input_dimension(outer: IndexTransform, inner_map: ArrayMap) -> int | None:
+    """Carry an orthogonal binding through the coordinate substitution."""
+    if inner_map.input_dimension is None:
+        return None
+    outer_map = outer.output[inner_map.input_dimension]
+    if isinstance(outer_map, DimensionMap):
+        return outer_map.input_dimension
+    if isinstance(outer_map, ArrayMap):
+        return outer_map.input_dimension
+    return None
+
+
+def _compose_array(
+    outer: IndexTransform, inner_map: ArrayMap, inner_origin: tuple[int, ...]
+) -> OutputIndexMap:
     """Compose when inner is an ArrayMap.
 
     storage = offset_i + stride_i * arr_i[intermediate]
     We need to evaluate arr_i at the intermediate coordinates produced by outer.
+
+    Both domains carry their own origin, and neither is necessarily 0 — a step-1
+    slice keeps its literal bounds and a negative step produces a negative
+    origin, so non-zero origins are the ordinary case here rather than the exotic
+    one. The intermediate coordinates are read over the *outer* domain's own
+    range, and the inner array is addressed positionally from the *inner*
+    domain's origin.
     """
     arr_i = inner_map.index_array
-    offset_i = inner_map.offset
-    stride_i = inner_map.stride
+    if any(extent == 0 for extent in outer.domain.shape):
+        empty_shape = tuple(0 if extent == 0 else 1 for extent in outer.domain.shape)
+        return ArrayMap(
+            index_array=np.empty(empty_shape, dtype=arr_i.dtype),
+            offset=inner_map.offset,
+            stride=inner_map.stride,
+        )
 
-    # Check if all outer outputs are constant
-    all_constant = all(isinstance(m, ConstantMap) for m in outer.output)
-
-    if all_constant:
-        # Evaluate arr_i at the single constant point
-        idx = tuple(m.offset for m in outer.output if isinstance(m, ConstantMap))
-        value = int(arr_i[idx])
-        return ConstantMap(offset=offset_i + stride_i * value)
-
-    # For 1D inner array with a single outer output (simple case)
-    if arr_i.ndim == 1 and len(outer.output) == 1:
-        outer_map = outer.output[0]
-
-        if isinstance(outer_map, DimensionMap):
-            dim_size = outer.domain.shape[outer_map.input_dimension]
-            user_indices = np.arange(dim_size, dtype=np.intp)
-            intermediate_vals = outer_map.offset + outer_map.stride * user_indices
-            new_arr = arr_i[intermediate_vals]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
-
-        if isinstance(outer_map, ArrayMap):
-            intermediate_vals = outer_map.offset + outer_map.stride * outer_map.index_array
-            new_arr = arr_i[intermediate_vals]
-            return ArrayMap(index_array=new_arr, offset=offset_i, stride=stride_i)
-
-    # General multi-dim case: not yet implemented
-    raise NotImplementedError(
-        "Composing a multi-dimensional inner array map with non-constant outer maps "
-        "is not yet supported."
+    positions = tuple(
+        0 if size == 1 else _positions_for_axis(outer, outer_map, origin)
+        for outer_map, origin, size in zip(outer.output, inner_origin, arr_i.shape, strict=True)
+    )
+    gathered = np.asarray(arr_i[positions])
+    if gathered.ndim == 0:
+        return ConstantMap(offset=checked_affine(inner_map.offset, inner_map.stride, int(gathered)))
+    return ArrayMap(
+        index_array=gathered,
+        offset=inner_map.offset,
+        stride=inner_map.stride,
+        input_dimension=_composed_array_input_dimension(outer, inner_map),
     )

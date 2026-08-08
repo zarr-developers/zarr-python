@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -13,6 +15,7 @@ from zarr_indexing.json import (
     output_index_map_from_json,
     output_index_map_to_json,
 )
+from zarr_indexing.messages import NdselError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
 
@@ -257,7 +260,9 @@ class TestIndexTransformJSON:
             "output": [
                 {"offset": 5},
                 {"offset": 10, "stride": 2, "input_dimension": 1},
-                {"offset": 0, "stride": 1, "index_array": [1, 2, 0]},
+                # Full input rank, which is what TensorStore itself requires:
+                # it rejects a rank-1 array over a rank-3 domain outright.
+                {"offset": 0, "stride": 1, "index_array": [[[1, 2, 0]]]},
             ],
         }
         t = index_transform_from_json(json)
@@ -270,7 +275,7 @@ class TestIndexTransformJSON:
         assert t.output[1].stride == 2
         assert t.output[1].input_dimension == 1
         assert isinstance(t.output[2], ArrayMap)
-        np.testing.assert_array_equal(t.output[2].index_array, [1, 2, 0])
+        np.testing.assert_array_equal(t.output[2].index_array, [[[1, 2, 0]]])
 
         # Roundtrip
         json_rt = index_transform_to_json(t)
@@ -324,6 +329,79 @@ class TestCanonicalRoundTrips:
         assert _transforms_equal(rt, t)
 
 
+def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> IndexTransformJSON:
+    return {
+        "input_rank": rank,
+        "input_inclusive_min": [0] * rank,
+        "input_exclusive_max": [extent] * rank,
+        "input_labels": [""] * rank,
+        "output": [{"offset": 0, "stride": 1, "index_array": index_array}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("index_array", "detail"),
+    [
+        ([0.9, 1.9], "float64"),
+        ([0, 1.5], "float64"),
+        ([True, False], "bool"),
+        (["a", "b"], "str"),
+        # Not lists at all, so they are turned away before their content is
+        # looked at: a bare string would be iterated into characters, and a bare
+        # integer would become a rank-0 array and then a length-1 map, so a
+        # document naming no cells would select one.
+        ("abc", "must be an array of integers"),
+        (5, "must be an array of integers"),
+        ([None, None], "object"),
+    ],
+    ids=["floats", "mixed", "bools", "strings", "string", "scalar", "nulls"],
+)
+def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) -> None:
+    """An `index_array` addresses storage cells, so it must be integral.
+
+    Lowering a float array silently truncated it (`[0.9, 1.9]` selected cells 0
+    and 1), a bool array coerced to 0/1, and a string array leaked a raw NumPy
+    `ValueError` from the middle of the conversion.
+    """
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(_index_array_body(index_array))
+    assert excinfo.value.reason == "invalid_json"
+    assert "index_array" in str(excinfo.value)
+    assert detail in str(excinfo.value)
+
+
+def test_a_ragged_index_array_is_rejected() -> None:
+    """A nested list that is not rectangular is not an array at all."""
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(_index_array_body([[0, 1], [2]]))
+    assert excinfo.value.reason == "invalid_json"
+
+
+@pytest.mark.parametrize(
+    ("index_array", "rank", "extent"),
+    [([0, 1], 1, 2), ([[0], [1]], 2, 2), ([], 1, 0)],
+    ids=["1d", "2d", "empty"],
+)
+def test_an_integer_index_array_is_accepted(index_array: Any, rank: int, extent: int) -> None:
+    """Integers of any nesting still lower, including an empty selection.
+
+    An empty array selects nothing, so the domain it is read over is empty too;
+    a domain with room for coordinates the array does not supply is rejected
+    (see `test_an_index_array_that_does_not_span_its_domain_is_rejected`).
+    """
+    t = index_transform_from_json(_index_array_body(index_array, rank, extent))
+    m = t.output[0]
+    assert isinstance(m, ArrayMap)
+    assert m.index_array.dtype == np.intp
+
+
+def test_a_non_integer_index_array_is_rejected_by_the_map_loader() -> None:
+    """The single-map loader enforces the same constraint as the transform one."""
+    with pytest.raises(NdselError) as excinfo:
+        output_index_map_from_json({"index_array": [0.5, 1.5]})
+    assert excinfo.value.reason == "invalid_json"
+
+
 def test_infinite_bound_rejected_on_lowering() -> None:
     body: IndexTransformJSON = {
         "input_rank": 1,
@@ -334,3 +412,175 @@ def test_infinite_bound_rejected_on_lowering() -> None:
     }
     with pytest.raises(ValueError, match="infinite"):
         index_transform_from_json(body)
+
+
+def test_a_lower_rank_index_array_is_widened_on_the_way_in() -> None:
+    """External JSON may broadcast a lower-rank array; the engine never holds one.
+
+    ndsel leaves index-array rank unvalidated, so a conformant producer may send
+    an array of lower rank. It is widened at the boundary, which keeps the
+    full-rank invariant true of every transform the engine builds.
+    """
+    # A rank-1 array widens into the trailing axis, so it spans that axis's
+    # extent of four.
+    body: IndexTransformJSON = {
+        "input_inclusive_min": [0, 0],
+        "input_exclusive_max": [3, 4],
+        "output": [{"index_array": [1, 2, 0, 2]}, {"input_dimension": 1}],
+    }
+    transform = index_transform_from_json(body)
+    array_map = transform.output[0]
+    assert isinstance(array_map, ArrayMap)
+    assert array_map.index_array.shape == (1, 4)
+    assert array_map.index_array.ndim == transform.domain.ndim
+
+
+def test_an_index_array_of_the_wrong_rank_is_rejected() -> None:
+    """Inside the engine, a rank that does not match the domain is a bug."""
+    with pytest.raises(ValueError, match="index_array has 1 dims"):
+        IndexTransform(
+            domain=IndexDomain.from_shape((3, 4)),
+            output=(ArrayMap(index_array=np.array([1, 2, 0], dtype=np.intp)),),
+        )
+
+
+def test_an_index_array_that_does_not_span_its_domain_is_rejected() -> None:
+    """An array with entries for only part of an axis is not a smaller selection.
+
+    Reading it that way is how a truncated index array turned into a partially
+    written result rather than an error.
+    """
+    with pytest.raises(ValueError, match="neither 1 nor the domain's extent"):
+        IndexTransform(
+            domain=IndexDomain.from_shape((3, 2)),
+            output=(
+                ArrayMap(index_array=np.zeros((3, 0), dtype=np.intp)),
+                DimensionMap(input_dimension=1),
+            ),
+        )
+
+
+def test_an_empty_index_array_collapses_to_a_constant() -> None:
+    """Selecting nothing must survive a trip through JSON.
+
+    An empty index array names no cell, and can only be empty because an input
+    dimension is, so nothing is ever read through it. It is degenerate in
+    exactly the way a size-1 array is, and collapses the same way — which is
+    also what TensorStore emits for `t[ts.d[0][[]]]`.
+
+    Emitting the array instead produced a document nothing could load:
+    `tolist()` renders every empty array as `[]` once the leading axis is the
+    zero-length one, so the rank went with it, and the loader put the dependency
+    back on a different axis by prepending singletons.
+    """
+    for shape, selection in (
+        ((5, 3), (np.array([], dtype=np.intp), slice(None))),
+        ((5, 5), (np.array([], dtype=np.intp), np.array([], dtype=np.intp))),
+    ):
+        transform = IndexTransform.from_shape(shape).oindex[selection]
+        body = index_transform_to_json(transform)
+
+        assert all("index_array" not in m for m in body["output"])
+        reloaded = index_transform_from_json(body)
+        assert reloaded.domain == transform.domain
+        assert index_transform_to_json(reloaded) == body
+
+
+def test_an_empty_index_array_from_elsewhere_is_recovered_from_the_domain() -> None:
+    """A producer that does emit one is still readable when the domain settles it.
+
+    This package never writes such a document, but ndsel does not forbid it, and
+    the domain names the axis unambiguously when exactly one dimension is empty.
+    """
+    body: IndexTransformJSON = {
+        "input_inclusive_min": [0, 0],
+        "input_exclusive_max": [0, 4],
+        "output": [{"index_array": []}, {"input_dimension": 1}],
+    }
+    array_map = index_transform_from_json(body).output[0]
+    assert isinstance(array_map, ArrayMap)
+    assert array_map.index_array.shape == (0, 1)
+
+
+def test_an_ambiguous_empty_index_array_is_rejected() -> None:
+    """Two zero-length dimensions leave nothing to recover the axis from."""
+    body: IndexTransformJSON = {
+        "input_inclusive_min": [0, 0],
+        "input_exclusive_max": [0, 0],
+        "output": [{"index_array": []}, {"input_dimension": 1}],
+    }
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(body)
+    assert excinfo.value.reason == "invalid_json"
+    assert "zero-length" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("document", "reason", "detail"),
+    [
+        (
+            {"input_inclusive_min": [0.0], "input_exclusive_max": [3], "input_labels": [""]},
+            "invalid_json",
+            "must be an integer",
+        ),
+        (
+            {"input_inclusive_min": [0], "input_exclusive_max": ["3"], "input_labels": [""]},
+            "invalid_json",
+            "must be an integer",
+        ),
+        (
+            {"input_inclusive_min": [False], "input_exclusive_max": [True], "input_labels": [""]},
+            "invalid_json",
+            "must be an integer",
+        ),
+        (
+            {"input_inclusive_min": [0], "input_exclusive_max": [3], "input_labels": [5]},
+            "invalid_json",
+            "must be a string",
+        ),
+        (
+            {"input_inclusive_min": [0], "input_exclusive_max": [2**200], "input_labels": [""]},
+            "invalid_json",
+            "64-bit signed range",
+        ),
+    ],
+    ids=["float", "string", "bool", "non-string-label", "out-of-range"],
+)
+def test_a_malformed_domain_document_is_rejected(document: Any, reason: str, detail: str) -> None:
+    """The domain loader validates what the message layer validates.
+
+    Reading the keys directly was a second, undefended way into the same
+    objects: a bare `int()` truncated `3.9` to 3, coerced `"3"` and `True`, and
+    let a non-string label into a `tuple[str, ...]` — each building a domain
+    that was not the document's, and re-dumping as a different document.
+    """
+    with pytest.raises(NdselError) as excinfo:
+        index_domain_from_json(document)
+    assert excinfo.value.reason == reason
+    assert detail in str(excinfo.value)
+
+
+def test_a_transform_body_cannot_reinterpret_itself_as_another_message() -> None:
+    """A `kind` inside the body must not change which message is being read."""
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json({"kind": "points", "coords": [[1, 2], [3, 4]]})
+    assert excinfo.value.reason == "invalid_json"
+    assert "kind" in str(excinfo.value)
+
+
+def test_an_engine_invariant_failure_leaves_the_loader_as_a_typed_error() -> None:
+    """A document is invalid input however deep the check that catches it lives.
+
+    The engine's rank and span invariants are the last gate a document passes,
+    and they raised a bare `ValueError` written in the engine's vocabulary.
+    """
+    body: IndexTransformJSON = {
+        "input_rank": 1,
+        "input_inclusive_min": [0],
+        "input_exclusive_max": [5],
+        "input_labels": [""],
+        "output": [{"index_array": [[1, 2], [3, 4]]}],
+    }
+    with pytest.raises(NdselError) as excinfo:
+        index_transform_from_json(body)
+    assert excinfo.value.reason == "rank_mismatch"

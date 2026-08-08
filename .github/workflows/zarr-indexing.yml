@@ -63,7 +63,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Run ruff
-        run: uvx ruff check .
+        # Pinned to the repo-wide ruff version (see pyproject.toml [dependency-groups] docs); bump together.
+        run: uvx ruff@0.15.22 check .
 
   pyright:
     name: pyright
@@ -85,7 +86,7 @@ jobs:
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        run: uv run --group test --with pyright pyright
 
   docs:
     name: docs

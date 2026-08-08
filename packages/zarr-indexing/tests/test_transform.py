@@ -4,8 +4,34 @@ import numpy as np
 import pytest
 
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError
+from zarr_indexing.lazy_array import LazyArray
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
-from zarr_indexing.transform import IndexTransform, selection_to_transform
+from zarr_indexing.transform import (
+    IndexTransform,
+    array_map_dependent_axis,
+    selection_to_transform,
+)
+
+
+class IndexLike:
+    """A scalar integer selector implemented only through `__index__`."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def __index__(self) -> int:
+        return self.value
+
+
+class IntOnly:
+    def __int__(self) -> int:
+        return 2
+
+
+class BadIndex:
+    def __index__(self) -> int:
+        return 2.5  # type: ignore[return-value]
 
 
 class TestIndexTransformConstruction:
@@ -48,6 +74,312 @@ class TestIndexTransformConstruction:
         maps = (DimensionMap(input_dimension=5),)
         with pytest.raises(ValueError, match="input_dimension"):
             IndexTransform(domain=domain, output=maps)
+
+
+class TestIndexTransformApply:
+    @pytest.mark.parametrize(
+        ("transform", "points", "expected"),
+        [
+            pytest.param(
+                IndexTransform.identity(IndexDomain((-2, 5), (1, 8))),
+                np.array([-2, 7], dtype=np.int64),
+                np.array([-2, 7], dtype=np.intp),
+                id="identity-negative-and-nonzero-origins",
+            ),
+            pytest.param(
+                IndexTransform(
+                    domain=IndexDomain((3,), (6,)),
+                    output=(
+                        ConstantMap(41),
+                        DimensionMap(0, offset=10, stride=-2),
+                    ),
+                ),
+                np.array([[3], [5]], dtype=np.int16),
+                np.array([[41, 4], [41, 0]], dtype=np.intp),
+                id="constant-and-negative-stride",
+            ),
+            pytest.param(
+                IndexTransform(
+                    domain=IndexDomain((-2, 5), (1, 8)),
+                    output=(
+                        ArrayMap(
+                            np.array([[7], [11], [13]], dtype=np.intp),
+                            offset=-1,
+                            stride=2,
+                            input_dimension=0,
+                        ),
+                    ),
+                ),
+                np.array(
+                    [
+                        [[-2, 5], [-1, 7]],
+                        [[0, 6], [-2, 6]],
+                    ],
+                    dtype=np.intp,
+                ),
+                np.array([[[13], [21]], [[25], [13]]], dtype=np.intp),
+                id="array-map-singleton-broadcast-multidimensional-batch",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((), ()), (ConstantMap(42),)),
+                np.empty((2, 0), dtype=np.intp),
+                np.array([[42], [42]], dtype=np.intp),
+                id="rank-zero-input",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((-1,), (2,)), ()),
+                np.array([[-1], [1]], dtype=np.intp),
+                np.empty((2, 0), dtype=np.intp),
+                id="rank-zero-output",
+            ),
+            pytest.param(
+                IndexTransform.identity(IndexDomain.from_shape((2,))),
+                np.empty((0, 1), dtype=np.intp),
+                np.empty((0, 1), dtype=np.intp),
+                id="empty-batch",
+            ),
+        ],
+    )
+    def test_apply_many_maps_integer_point_batches(
+        self,
+        transform: IndexTransform,
+        points: np.ndarray,
+        expected: np.ndarray,
+    ) -> None:
+        result = transform.apply_many(points)
+
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == np.dtype(np.intp)
+        assert result.flags.owndata
+
+    def test_apply_maps_one_point(self) -> None:
+        transform = IndexTransform(
+            IndexDomain((-2, 4), (1, 7)),
+            (
+                DimensionMap(1, offset=3, stride=-1),
+                DimensionMap(0, offset=2, stride=2),
+            ),
+        )
+
+        assert transform.apply((-1, 6)) == (-3, 0)
+
+    def test_apply_rejects_a_point_with_the_wrong_rank(self) -> None:
+        with pytest.raises(ValueError, match=r"point must have shape \(2,\), got \(1,\)"):
+            IndexTransform.from_shape((2, 3)).apply((1,))
+
+    def test_apply_rejects_an_explicitly_floating_rank_zero_point(self) -> None:
+        transform = IndexTransform(IndexDomain((), ()), ())
+        with pytest.raises(TypeError, match="integer dtype"):
+            transform.apply(np.array([], dtype=np.float64))
+
+    @pytest.mark.parametrize(
+        "points",
+        [
+            pytest.param(np.array(1, dtype=np.intp), id="no-coordinate-axis"),
+            pytest.param(np.zeros((4, 3), dtype=np.intp), id="wrong-trailing-size"),
+        ],
+    )
+    def test_apply_many_rejects_an_invalid_coordinate_axis(self, points: np.ndarray) -> None:
+        with pytest.raises(ValueError, match="trailing coordinate axis"):
+            IndexTransform.from_shape((2, 3)).apply_many(points)
+
+    @pytest.mark.parametrize(
+        "points",
+        [
+            pytest.param(np.array([[True]], dtype=np.bool_), id="bool"),
+            pytest.param(np.array([[1.0]], dtype=np.float64), id="float"),
+            pytest.param(np.array([["1"]], dtype=np.str_), id="string"),
+            pytest.param(np.array([[1]], dtype=object), id="object"),
+        ],
+    )
+    def test_apply_many_rejects_non_integer_coordinates(self, points: np.ndarray) -> None:
+        with pytest.raises(TypeError, match="integer dtype"):
+            IndexTransform.from_shape((2,)).apply_many(points)
+
+    def test_apply_many_reports_the_first_out_of_bounds_coordinate(self) -> None:
+        transform = IndexTransform.identity(IndexDomain((-2, 10), (2, 13)))
+        points = np.array(
+            [
+                [[-2, 10], [-1, 20]],
+                [[9, 11], [0, 12]],
+            ],
+            dtype=np.intp,
+        )
+
+        with pytest.raises(BoundsCheckError) as error:
+            transform.apply_many(points)
+
+        assert str(error.value) == (
+            "point at batch position (0, 1) has input dimension 1 coordinate 20 outside [10, 13)"
+        )
+
+    @pytest.mark.parametrize(
+        "beyond_intp",
+        [
+            pytest.param(int(np.iinfo(np.intp).max) + 1, id="first-uint64-coordinate"),
+            pytest.param(int(np.iinfo(np.uint64).max), id="maximum-uint64-coordinate"),
+        ],
+    )
+    def test_apply_many_maps_large_literal_coordinates_exactly(self, beyond_intp: int) -> None:
+        transform = IndexTransform(
+            IndexDomain((beyond_intp,), (beyond_intp + 1,)),
+            (DimensionMap(0, offset=-beyond_intp),),
+        )
+
+        result = transform.apply_many(np.array([[beyond_intp]], dtype=np.uint64))
+
+        np.testing.assert_array_equal(result, np.array([[0]], dtype=np.intp))
+        assert result.dtype == np.dtype(np.intp)
+        assert result.flags.owndata
+
+    @pytest.mark.parametrize(
+        ("transform", "points"),
+        [
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((1,)),
+                    (ConstantMap(np.iinfo(np.intp).max + 1),),
+                ),
+                [[0]],
+                id="constant",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((2,)),
+                    (DimensionMap(0, offset=np.iinfo(np.intp).max),),
+                ),
+                [[1]],
+                id="dimension",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain.from_shape((1,)),
+                    (
+                        ArrayMap(
+                            np.array([1], dtype=np.intp),
+                            offset=np.iinfo(np.intp).max,
+                        ),
+                    ),
+                ),
+                [[0]],
+                id="array",
+            ),
+            pytest.param(
+                IndexTransform.identity(
+                    IndexDomain(
+                        (int(np.iinfo(np.intp).max) + 1,),
+                        (int(np.iinfo(np.intp).max) + 2,),
+                    )
+                ),
+                np.array([[int(np.iinfo(np.intp).max) + 1]], dtype=np.uint64),
+                id="large-input-identity",
+            ),
+        ],
+    )
+    def test_apply_many_rejects_mapped_coordinates_outside_intp(
+        self, transform: IndexTransform, points: list[list[int]] | np.ndarray
+    ) -> None:
+        with pytest.raises(OverflowError, match="output coordinate.*np.intp"):
+            transform.apply_many(points)
+
+    def test_apply_many_rejects_affine_coordinate_overflow(self) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ArrayMap(np.array([2**62], dtype=np.intp), stride=4),),
+        )
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            transform.apply_many(np.array([[0]], dtype=np.intp))
+
+    def test_apply_rejects_affine_coordinate_overflow(self) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain.from_shape((1,)),
+            output=(ArrayMap(np.array([2**62], dtype=np.intp), stride=4),),
+        )
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            transform.apply((0,))
+
+
+class TestIndexTransformInverted:
+    @pytest.mark.parametrize(
+        ("transform", "points"),
+        [
+            pytest.param(
+                IndexTransform(
+                    IndexDomain((-3, 4), (1, 7)),
+                    (
+                        DimensionMap(1, offset=10),
+                        DimensionMap(0, offset=2, stride=-1),
+                    ),
+                ),
+                np.array([[-3, 4], [0, 6]], dtype=np.intp),
+                id="permutation-translation-reversal-nonzero-origin",
+            ),
+            pytest.param(
+                IndexTransform(
+                    IndexDomain((5, -2), (8, -1)),
+                    (DimensionMap(0, offset=3), ConstantMap(99)),
+                ),
+                np.array([[5, -2], [7, -2]], dtype=np.intp),
+                id="constant-and-unreferenced-singleton",
+            ),
+            pytest.param(
+                IndexTransform(IndexDomain((), ()), ()),
+                np.empty((1, 0), dtype=np.intp),
+                id="rank-zero",
+            ),
+        ],
+    )
+    def test_inverted_round_trips_points(
+        self, transform: IndexTransform, points: np.ndarray
+    ) -> None:
+        inverse = transform.inverted()
+        mapped = transform.apply_many(points)
+
+        np.testing.assert_array_equal(inverse.apply_many(mapped), points)
+        assert inverse.apply(transform.apply(tuple(points[0]))) == tuple(points[0])
+        assert inverse.inverted() == transform
+
+    def test_inverted_rejects_unequal_ranks(self) -> None:
+        transform = IndexTransform(IndexDomain.from_shape((2,)), (ConstantMap(1), ConstantMap(2)))
+        with pytest.raises(ValueError, match="input rank must equal output rank"):
+            transform.inverted()
+
+    def test_inverted_rejects_an_array_map(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2,)),
+            (ArrayMap(np.array([1, 0], dtype=np.intp)),),
+        )
+        with pytest.raises(ValueError, match="ArrayMap"):
+            transform.inverted()
+
+    def test_inverted_rejects_a_non_unit_stride(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2,)),
+            (DimensionMap(0, stride=2),),
+        )
+        with pytest.raises(ValueError, match=r"stride must be \+1 or -1"):
+            transform.inverted()
+
+    def test_inverted_rejects_a_repeated_input_dimension(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2, 1)),
+            (DimensionMap(0), DimensionMap(0, offset=5)),
+        )
+        with pytest.raises(ValueError, match="referenced more than once"):
+            transform.inverted()
+
+    def test_inverted_rejects_an_unreferenced_non_singleton_dimension(self) -> None:
+        transform = IndexTransform(
+            IndexDomain.from_shape((2, 2)),
+            (DimensionMap(0), ConstantMap(7)),
+        )
+        with pytest.raises(ValueError, match="unreferenced input dimension 1.*extent 2"):
+            transform.inverted()
+
+    def test_inverted_rejects_input_labels_that_cannot_be_preserved(self) -> None:
+        transform = IndexTransform.identity(IndexDomain((0,), (2,), labels=("row",)))
+        with pytest.raises(ValueError, match="input labels cannot be represented"):
+            transform.inverted()
 
 
 class TestIndexTransformBasicIndexing:
@@ -179,6 +511,45 @@ class TestIndexTransformBasicIndexing:
         t = IndexTransform.from_shape((10, 20))
         result = t[2:8]
         assert result.domain.shape == (6, 20)
+
+    @pytest.mark.parametrize(
+        ("mode", "selection", "expected_selection"),
+        [
+            pytest.param("basic", IndexLike(2), 2, id="basic-scalar"),
+            pytest.param(
+                "basic",
+                slice(IndexLike(1), IndexLike(7), IndexLike(2)),
+                slice(1, 7, 2),
+                id="basic-slice-components",
+            ),
+            pytest.param("oindex", IndexLike(2), 2, id="orthogonal-scalar"),
+            pytest.param("vindex", IndexLike(2), 2, id="vectorized-scalar"),
+        ],
+    )
+    def test_literal_selectors_support_the_index_protocol(
+        self, mode: str, selection: object, expected_selection: object
+    ) -> None:
+        transform = IndexTransform.from_shape((8,))
+        if mode == "basic":
+            result = transform[selection]
+            expected = transform[expected_selection]
+        else:
+            result = getattr(transform, mode)[selection]
+            expected = getattr(transform, mode)[expected_selection]
+
+        assert result == expected
+
+    def test_literal_selector_rejects_int_only_objects(self) -> None:
+        with pytest.raises(IndexError, match="unsupported selection type"):
+            IndexTransform.from_shape((8,))[IntOnly()]
+
+    def test_literal_selector_propagates_malformed_index_protocol(self) -> None:
+        with pytest.raises(TypeError, match="__index__ returned non-int"):
+            IndexTransform.from_shape((8,))[BadIndex()]
+
+    def test_literal_slice_propagates_malformed_index_protocol(self) -> None:
+        with pytest.raises(TypeError, match="__index__ returned non-int"):
+            IndexTransform.from_shape((8,))[:: BadIndex()]
 
 
 class TestBasicIndexingOnArrayMaps:
@@ -350,6 +721,17 @@ class TestIndexTransformVindex:
         assert result.domain.shape == (3,)
         assert isinstance(result.output[0], ArrayMap)
 
+    def test_vindex_multidimensional_boolean_list_mask(self) -> None:
+        result = IndexTransform.from_shape((2, 3)).vindex[
+            [[True, False, True], [False, True, False]]
+        ]
+
+        assert result.domain.shape == (3,)
+        np.testing.assert_array_equal(
+            result.apply_many(np.array([[0], [1], [2]], dtype=np.intp)),
+            np.array([[0, 0], [0, 2], [1, 1]], dtype=np.intp),
+        )
+
     def test_vindex_broadcast_different_shapes(self) -> None:
         t = IndexTransform.from_shape((10, 20))
         idx0 = np.array([1, 2, 3], dtype=np.intp)
@@ -366,6 +748,20 @@ class TestIndexTransformVindex:
         assert isinstance(result.output[1], ArrayMap)
         assert result.output[0].index_array.shape == (2,)
         assert result.output[1].index_array.shape == (2,)
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_direct_advanced_index_rejects_float_arrays(mode: str) -> None:
+    helper = getattr(IndexTransform.from_shape((5,)), mode)
+    with pytest.raises(IndexError, match="integer or boolean"):
+        helper[np.array([1.9, 3.2])]
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_direct_advanced_index_rejects_wrong_length_boolean_mask(mode: str) -> None:
+    helper = getattr(IndexTransform.from_shape((5,)), mode)
+    with pytest.raises(IndexError, match="boolean index.*dimension 5"):
+        helper[np.array([True, False])]
 
 
 class TestSelectionToTransform:
@@ -468,6 +864,72 @@ class TestIndexTransformIntersect:
         # input 2->5, input 3->7. Both in [4,8).
         assert restricted.domain.inclusive_min == (2,)
         assert restricted.domain.exclusive_max == (4,)
+
+    @pytest.mark.parametrize(
+        ("input_domain", "output_domain", "output_map", "expected"),
+        [
+            (
+                (2**53, 2**53 + 3),
+                (2**53 + 1, 2**53 + 2),
+                DimensionMap(input_dimension=0),
+                (2**53 + 1, 2**53 + 2),
+            ),
+            (
+                (-(2**53) - 2, -(2**53) + 1),
+                (-(2**53) - 1, -(2**53)),
+                DimensionMap(input_dimension=0),
+                (-(2**53) - 1, -(2**53)),
+            ),
+            (
+                (-(2**53) - 2, -(2**53) + 1),
+                (2**53 + 1, 2**53 + 2),
+                DimensionMap(input_dimension=0, stride=-1),
+                (-(2**53) - 1, -(2**53)),
+            ),
+            (
+                (2**53, 2**53 + 3),
+                (-(2**53) - 2, -(2**53) - 1),
+                DimensionMap(input_dimension=0, stride=-1),
+                (2**53 + 2, 2**53 + 3),
+            ),
+        ],
+        ids=[
+            "positive-coordinates-positive-stride",
+            "negative-coordinates-positive-stride",
+            "positive-coordinates-negative-stride",
+            "negative-coordinates-negative-stride",
+        ],
+    )
+    def test_dimension_intersection_is_exact_above_float_precision(
+        self,
+        input_domain: tuple[int, int],
+        output_domain: tuple[int, int],
+        output_map: DimensionMap,
+        expected: tuple[int, int],
+    ) -> None:
+        transform = IndexTransform(
+            domain=IndexDomain((input_domain[0],), (input_domain[1],)),
+            output=(output_map,),
+        )
+
+        result = transform.intersect(IndexDomain((output_domain[0],), (output_domain[1],)))
+
+        assert result is not None
+        restricted, _surviving = result
+        assert restricted.domain == IndexDomain((expected[0],), (expected[1],))
+
+    def test_dimension_intersection_accepts_unbounded_python_integer_precision(self) -> None:
+        huge = 10**400
+        transform = IndexTransform(
+            domain=IndexDomain((huge,), (huge + 2,)),
+            output=(DimensionMap(input_dimension=0),),
+        )
+
+        result = transform.intersect(IndexDomain((huge + 1,), (huge + 2,)))
+
+        assert result is not None
+        restricted, _surviving = result
+        assert restricted.domain == IndexDomain((huge + 1,), (huge + 2,))
 
     def test_array_partial(self) -> None:
         arr = np.array([3, 8, 15, 22], dtype=np.intp)
@@ -577,6 +1039,20 @@ class TestArrayMapDependencyAxes:
 
         assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()
 
+    def test_zero_length_axis_has_no_dependency(self) -> None:
+        """An axis of size 0 carries no dependency either: it selects nothing, so
+        the array does not vary along it any more than along a singleton."""
+        from zarr_indexing.transform import _array_map_dependency_axes
+
+        assert _array_map_dependency_axes(np.zeros((0, 4), dtype=np.intp)) == (1,)
+        assert _array_map_dependency_axes(np.zeros((3, 0), dtype=np.intp)) == (0,)
+        assert _array_map_dependency_axes(np.zeros((0, 1), dtype=np.intp)) == ()
+
+    def test_zero_length_axis_does_not_make_a_map_correlated(self) -> None:
+        """An empty orthogonal selection is legal, so it must classify as one."""
+        m = ArrayMap(index_array=np.zeros((0, 4), dtype=np.intp), input_dimension=1)
+        assert array_map_dependent_axis(m) == 1
+
 
 class TestIntersectArrayMapClassification:
     """`_intersect` must distinguish orthogonal (outer-product) ArrayMaps from
@@ -626,3 +1102,96 @@ class TestIntersectArrayMapClassification:
         assert result is not None
         _restricted, out_indices = result
         assert isinstance(out_indices, dict)
+
+
+class TestDerivedMapDependency:
+    """A map's `input_dimension` must describe the array it is built with.
+
+    Three separate failures came from one stale value: a vectorized index applied
+    to an orthogonal map makes it correlated, but the old dependency was carried
+    onto the new array anyway. Readers fall back to that field when the shape
+    alone cannot say, so the wrong axis was believed much later — by a scatter
+    that filed positions under it, which is why the answer depended on how the
+    read was partitioned.
+    """
+
+    def test_a_vindex_over_a_fancy_view_is_marked_correlated(self) -> None:
+        base = np.arange(6)
+        view = (
+            LazyArray(base)
+            .lazy.oindex[np.array([0, 1])]
+            .lazy.vindex[np.array([[0, 1, 0], [1, 0, 1]])]
+        )
+        np.testing.assert_array_equal(
+            np.asarray(view.result()), base[[0, 1]][[[0, 1, 0], [1, 0, 1]]]
+        )
+
+    def test_the_same_view_resolves_alike_however_it_is_partitioned(self) -> None:
+        base = np.arange(36).reshape(6, 6)
+
+        def build(array: LazyArray) -> LazyArray:
+            return array.lazy.oindex[np.array([-3, -6, -4]), -4].lazy.vindex[np.array([[-2, -3]])]
+
+        unpartitioned = np.asarray(build(LazyArray(base)).result())
+        partitioned = np.asarray(build(LazyArray(base).with_parts((3, 3))).result())
+        np.testing.assert_array_equal(partitioned, unpartitioned)
+        np.testing.assert_array_equal(unpartitioned, np.array([[2, 20]]))
+
+    def test_an_array_map_claiming_an_axis_it_does_not_vary_over_is_rejected(self) -> None:
+        """The validation that would have caught the two above at their source."""
+        with pytest.raises(ValueError, match="varies over"):
+            IndexTransform(
+                domain=IndexDomain.from_shape((2, 3)),
+                output=(
+                    ArrayMap(index_array=np.array([[0, 1, 2]], dtype=np.intp), input_dimension=0),
+                ),
+            )
+
+    def test_an_array_map_input_dimension_out_of_range_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="out of range"):
+            IndexTransform(
+                domain=IndexDomain.from_shape((3,)),
+                output=(ArrayMap(index_array=np.array([0], dtype=np.intp), input_dimension=99),),
+            )
+
+
+def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
+    """`oindex` after `vindex` means the outer product, not a joint gather.
+
+    The reindexing applied its index tuple positionally, which is NumPy's
+    *vectorized* rule, so two arrays collapsed into one axis and the result came
+    back a rank short of what was asked for.
+    """
+    base = np.arange(14).reshape(7, 2)
+    view = LazyArray(base).lazy.vindex[
+        np.array([[5, 5], [1, 2], [0, 4]]), np.array([[1, 1], [1, 0], [1, 0]])
+    ]
+    result = np.asarray(view.lazy.oindex[np.array([1, 1, 0]), np.array([1, 1, 0, 1])].result())
+    assert result.shape == (3, 4)
+    np.testing.assert_array_equal(result, np.array([[4, 4, 3, 4], [4, 4, 3, 4], [11, 11, 11, 11]]))
+
+
+@pytest.mark.parametrize(
+    ("value", "description"),
+    [(1, "one below the lower bound"), (10, "the exclusive upper bound itself")],
+)
+def test_an_index_array_value_just_outside_the_domain_is_refused(
+    value: int, description: str
+) -> None:
+    """The bound checks are probed at the boundary, not comfortably past it.
+
+    Both were only ever exercised from well outside the domain, so relaxing
+    either by one — `lo - 1` instead of `lo` — went unnoticed while letting a
+    view read a cell it does not address.
+    """
+    transform = IndexTransform.from_shape((12,))[2:10]
+    with pytest.raises(BoundsCheckError, match="out of bounds"):
+        transform.oindex[np.array([value, 3])]
+
+
+def test_an_index_array_value_at_each_end_of_the_domain_is_accepted() -> None:
+    """The other side of the same boundary: the extremes themselves are in range."""
+    transform = IndexTransform.from_shape((12,))[2:10]
+    array_map = transform.oindex[np.array([2, 9])].output[0]
+    assert isinstance(array_map, ArrayMap)
+    np.testing.assert_array_equal(array_map.index_array, np.array([2, 9]))

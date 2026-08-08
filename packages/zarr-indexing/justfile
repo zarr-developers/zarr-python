@@ -15,13 +15,14 @@ default:
 test *args:
     uv run --project ../.. --group test --with-editable . python -m pytest tests {{ args }}
 
-# Lint with the same invocation CI uses
+# Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
+# version (see pyproject.toml [dependency-groups] docs); bump together.
 lint:
-    uvx ruff check .
+    uvx ruff@0.15.22 check .
 
-# Type-check the package sources
+# Type-check the package sources, documentation Python, and their contract tests
 typecheck:
-    uv run --group test --with pyright pyright src
+    uv run --group test --with pyright pyright
 
 # Run everything CI runs for this package
 check: lint typecheck test docs-check
