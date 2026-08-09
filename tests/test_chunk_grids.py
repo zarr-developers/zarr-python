@@ -5,8 +5,8 @@ import pytest
 
 from tests.conftest import Expect, ExpectFail
 from zarr.core.chunk_grids import (
-    ChunkLayout,
     _guess_regular_chunks,
+    _ResolvedChunks,
     normalize_chunks_1d,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -110,13 +110,13 @@ def test_resolve_outer_and_inner_chunks(
 
 
 def test_chunk_layout_nested() -> None:
-    """Test that ChunkLayout supports recursive nesting for nested sharding."""
+    """Test that _ResolvedChunks supports recursive nesting for nested sharding."""
     leaf = normalize_chunks_nd((5, 5), (100, 100))
-    mid = ChunkLayout(
+    mid = _ResolvedChunks(
         outer_chunks=normalize_chunks_nd((25, 25), (100, 100)),
-        inner=ChunkLayout(outer_chunks=leaf),
+        inner=_ResolvedChunks(outer_chunks=leaf),
     )
-    top = ChunkLayout(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
+    top = _ResolvedChunks(outer_chunks=normalize_chunks_nd((50, 50), (100, 100)), inner=mid)
 
     # Three levels: top -> mid -> leaf
     _assert_chunks_equal(top.outer_chunks, ((50, 50), (50, 50)))
