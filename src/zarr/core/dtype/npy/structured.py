@@ -592,10 +592,14 @@ class Struct(Structured):
             # The "struct" data type has a stable Zarr V3 specification
             # (https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/struct),
             # so unlike the legacy "structured" alias it does not emit an unstable-spec warning.
-            fields_v3 = [
+            # `fields` is emitted as a tuple, not a list: a JSON array is a
+            # typed fixed-length container, which `tuple` models faithfully.
+            # This matches zarr-metadata's `StructConfiguration.fields` type.
+            # `json.dumps` serializes tuple and list identically.
+            fields_v3 = tuple(
                 {"name": f_name, "data_type": f_dtype.to_json(zarr_format=zarr_format)}
                 for f_name, f_dtype in self.fields
-            ]
+            )
             return cast(
                 "StructJSON_V3",
                 {"name": self._zarr_v3_name, "configuration": {"fields": fields_v3}},

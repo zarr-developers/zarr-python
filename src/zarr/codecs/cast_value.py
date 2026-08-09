@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Final, TypedDict, cast
 
 import numpy as np
+from zarr_metadata import CAST_VALUE_CODEC_NAME
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -22,6 +23,13 @@ from zarr.core.dtype import get_data_type_from_json
 
 if TYPE_CHECKING:
     from typing import NotRequired, Self
+
+    from zarr_metadata.v3.codec.cast_value import (
+        CastOutOfRangeMode as OutOfRangeMode,
+    )
+    from zarr_metadata.v3.codec.cast_value import (
+        CastRoundingMode as RoundingMode,
+    )
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
@@ -31,17 +39,6 @@ if TYPE_CHECKING:
     class ScalarMapJSON(TypedDict):
         encode: NotRequired[list[tuple[object, object]]]
         decode: NotRequired[list[tuple[object, object]]]
-
-
-RoundingMode = Literal[
-    "nearest-even",
-    "towards-zero",
-    "towards-positive",
-    "towards-negative",
-    "nearest-away",
-]
-
-OutOfRangeMode = Literal["clamp", "wrap"]
 
 
 class ScalarMap(TypedDict, total=False):
@@ -230,7 +227,7 @@ class CastValue(ArrayArrayCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
-            data, "cast_value", require_configuration=True
+            data, CAST_VALUE_CODEC_NAME, require_configuration=True
         )
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
@@ -241,12 +238,18 @@ class CastValue(ArrayArrayCodec):
         if self.out_of_range is not None:
             config["out_of_range"] = self.out_of_range
         if self.scalar_map is not None:
-            json_map: dict[str, list[tuple[object, object]]] = {}
+            # Emit ScalarMap entries as a tuple of 2-tuples. JSON Arrays are
+            # typed fixed-length containers at the spec level; the
+            # in-memory canonical shape is `tuple[tuple[object, object], ...]`
+            # to match `zarr_metadata.v3.codec.cast_value.ScalarMap`.
+            json_map: dict[str, tuple[tuple[object, object], ...]] = {}
             for direction in ("encode", "decode"):
                 if direction in self.scalar_map:
-                    json_map[direction] = [(k, v) for k, v in self.scalar_map[direction].items()]
+                    json_map[direction] = tuple(
+                        (k, v) for k, v in self.scalar_map[direction].items()
+                    )
             config["scalar_map"] = cast("JSON", json_map)
-        return {"name": "cast_value", "configuration": config}
+        return {"name": CAST_VALUE_CODEC_NAME, "configuration": config}
 
     def validate(
         self,

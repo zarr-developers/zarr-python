@@ -18,6 +18,7 @@ from typing import (
 )
 
 import numpy as np
+import zarr_metadata
 
 from zarr.core.dtype.common import (
     ENDIANNESS_STR,
@@ -33,26 +34,11 @@ if TYPE_CHECKING:
 IntLike = SupportsInt | SupportsIndex | bytes | str
 FloatLike = SupportsIndex | SupportsFloat | bytes | str
 ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | None
-DateTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
-]
-DATETIME_UNIT: Final = (
-    "Y",
-    "M",
-    "W",
-    "D",
-    "h",
-    "m",
-    "s",
-    "ms",
-    "us",
-    "μs",
-    "ns",
-    "ps",
-    "fs",
-    "as",
-    "generic",
-)
+# Re-exported under zarr-python's historical names; canonical definitions live
+# in `zarr_metadata`. Plain assignments (not `import as`) so these remain
+# explicitly importable from this module.
+DateTimeUnit = zarr_metadata.NumpyTimeUnit
+DATETIME_UNIT: Final = zarr_metadata.NUMPY_TIME_UNIT
 
 IntishFloat = NewType("IntishFloat", float)
 """A type for floats that represent integers, like 1.0 (but not 1.1)."""

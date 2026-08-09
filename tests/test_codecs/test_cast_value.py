@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
@@ -8,6 +8,11 @@ import pytest
 import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr.codecs.cast_value import CastValue
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3.codec.cast_value import CastValueCodecObject
+
+    from zarr.core.common import JSON
 
 try:
     import cast_value_rs  # noqa: F401
@@ -26,14 +31,25 @@ requires_cast_value_rs = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 
 
+_CAST_VALUE_MINIMAL: CastValueCodecObject = {
+    "name": "cast_value",
+    "configuration": {"data_type": "uint8"},
+}
+_CAST_VALUE_FULL: CastValueCodecObject = {
+    "name": "cast_value",
+    "configuration": {
+        "data_type": "uint8",
+        "rounding": "towards-zero",
+        "out_of_range": "clamp",
+        "scalar_map": {"encode": (("NaN", 0),)},
+    },
+}
+
+
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(
-            input=CastValue(data_type="uint8"),
-            output={"name": "cast_value", "configuration": {"data_type": "uint8"}},
-            id="minimal",
-        ),
+        Expect(input=CastValue(data_type="uint8"), output=_CAST_VALUE_MINIMAL, id="minimal"),
         Expect(
             input=CastValue(
                 data_type="uint8",
@@ -41,51 +57,53 @@ requires_cast_value_rs = pytest.mark.skipif(
                 out_of_range="clamp",
                 scalar_map={"encode": [("NaN", 0)]},
             ),
-            output={
-                "name": "cast_value",
-                "configuration": {
-                    "data_type": "uint8",
-                    "rounding": "towards-zero",
-                    "out_of_range": "clamp",
-                    "scalar_map": {"encode": [("NaN", 0)]},
-                },
-            },
+            output=_CAST_VALUE_FULL,
             id="full",
         ),
     ],
     ids=lambda c: c.id,
 )
-def test_to_dict(case: Expect[CastValue, dict[str, Any]]) -> None:
+def test_to_dict(case: Expect[CastValue, CastValueCodecObject]) -> None:
     """to_dict produces the expected JSON structure."""
     assert case.input.to_dict() == case.output
+
+
+_CAST_VALUE_FROM_DICT_DEFAULTS: CastValueCodecObject = {
+    "name": "cast_value",
+    "configuration": {"data_type": "float32"},
+}
+_CAST_VALUE_FROM_DICT_EXPLICIT: CastValueCodecObject = {
+    "name": "cast_value",
+    "configuration": {
+        "data_type": "int16",
+        "rounding": "towards-zero",
+        "out_of_range": "clamp",
+    },
+}
 
 
 @pytest.mark.parametrize(
     "case",
     [
         Expect(
-            input={"name": "cast_value", "configuration": {"data_type": "float32"}},
+            input=_CAST_VALUE_FROM_DICT_DEFAULTS,
             output=("float32", "nearest-even", None),
             id="defaults",
         ),
         Expect(
-            input={
-                "name": "cast_value",
-                "configuration": {
-                    "data_type": "int16",
-                    "rounding": "towards-zero",
-                    "out_of_range": "clamp",
-                },
-            },
+            input=_CAST_VALUE_FROM_DICT_EXPLICIT,
             output=("int16", "towards-zero", "clamp"),
             id="explicit",
         ),
     ],
     ids=lambda c: c.id,
 )
-def test_from_dict(case: Expect[dict[str, Any], tuple[str, str, str | None]]) -> None:
+def test_from_dict(
+    case: Expect[CastValueCodecObject, tuple[str, str, str | None]],
+) -> None:
     """from_dict deserializes configuration with correct values and defaults."""
-    codec = CastValue.from_dict(case.input)
+    # cast: from_dict accepts the wider `dict[str, JSON]`.
+    codec = CastValue.from_dict(cast("dict[str, JSON]", case.input))
     dtype_name, rounding, out_of_range = case.output
     assert codec.dtype.to_native_dtype() == np.dtype(dtype_name)
     assert codec.rounding == rounding

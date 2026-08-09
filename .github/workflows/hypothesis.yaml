@@ -41,6 +41,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        fetch-depth: 0  # grab all tags so hatch-vcs derives real versions for zarr-python and the in-tree zarr-metadata
         persist-credentials: false
     - name: Set HYPOTHESIS_PROFILE based on trigger
       env:
