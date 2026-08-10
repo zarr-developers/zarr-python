@@ -127,3 +127,7 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets:
       base_path: [docs, examples]
+      # Fail the build on an unresolvable include or missing region instead
+      # of silently rendering nothing. tests/test_doc_examples.py mirrors
+      # base_path when it verifies the include graph.
+      check_paths: true
