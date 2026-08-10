@@ -120,7 +120,7 @@ class ArrayV2Metadata(Metadata):
     def chunk_grid(self) -> ChunkGrid:
         """Backwards-compatible chunk grid property.
 
-        .. deprecated::
+        !!! warning "Deprecated"
             Access the chunk grid via the array layer instead.
             This property will be removed in a future release.
         """

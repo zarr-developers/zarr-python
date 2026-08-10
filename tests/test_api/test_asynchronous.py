@@ -75,6 +75,7 @@ def test_get_shape_chunks(
                 "chunks": (10,),
                 "shape": (100,),
                 "dtype": np.dtype("f8"),
+                "fill_value": np.float64(0.0),
                 "compressor": None,
                 "filters": None,
                 "order": "C",

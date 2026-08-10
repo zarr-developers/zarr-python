@@ -1069,7 +1069,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of this class class.
+            If the input data is not a valid representation of this class.
         """
 
         if cls._check_json_v2(data):
