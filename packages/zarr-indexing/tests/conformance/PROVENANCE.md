@@ -5,9 +5,10 @@ The JSON fixtures in this directory (`point.json`, `box.json`, `slice.json`,
 unmodified**, from the ndsel reference repository.
 
 - **Source:** <https://github.com/zarr-developers/ndsel>
-- **Branch:** `main` (merge of d-v-b/ndsel#2, negative `step`)
-- **Commit:** `92d6a32df0cd1ac47d548f14f42909a95997cf19` (previously vendored:
-  `c59bc556c`, itself byte-identical to `c132b4c1caa3205830ce35a42502363171f650a7`)
+- **Branch:** `main` (merge of d-v-b/ndsel#3, empty `index_array` serialization)
+- **Commit:** `49b9e1db1ca93c55f320b025a666367de87a9014` (previously vendored:
+  `92d6a32df0cd1ac47d548f14f42909a95997cf19`, before that `c59bc556c`, itself
+  byte-identical to `c132b4c1caa3205830ce35a42502363171f650a7`)
 - **Path in source:** `conformance/`
 
 **Do not edit these files.** They are vendored as-is so that
@@ -31,3 +32,8 @@ ndsel PR #2 (merged) specified negative `step`, which changed two fixtures:
 Re-vendoring those two files and teaching `zarr_indexing.messages` the new
 desugaring are one change: the corpus is the definition of correct here, so it
 lands in the same commit as the code that satisfies it.
+
+ndsel PR #3 (merged) specified empty `index_array` serialization, adding two
+fixtures to `transform.json`: `normalize` carries an empty `index_array`
+verbatim (it is not rewritten to a constant map), while a producer SHOULD
+collapse it to a constant output map — which `zarr_indexing.json` already does.
