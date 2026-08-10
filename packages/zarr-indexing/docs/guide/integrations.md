@@ -95,7 +95,7 @@ This remains a **napari-like consumer, not a napari integration**. It models
 only decoded chunks resident in system memory, synchronously.
 
 For setup instructions and the complete executable, see the
-[system-memory chunk cache example](../examples/napari_chunk_cache.md).
+[system-memory chunk cache example](../examples/system_memory_chunk_cache.md).
 
 ```text
                          read succeeds
@@ -113,13 +113,13 @@ EVICTED -> QUEUED
 The example keeps the lifecycle records and transitions explicit:
 
 ```python
---8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-types"
+--8<-- "system_memory_chunk_cache/system_memory_chunk_cache.py:chunk-cache-types"
 ```
 
 Its source represents already decoded chunks and records each read:
 
 ```python
---8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-source"
+--8<-- "system_memory_chunk_cache/system_memory_chunk_cache.py:chunk-cache-source"
 ```
 
 `LazyArray` converts a cache selection into transforms and partitions, then
@@ -146,13 +146,13 @@ as orthogonal by plain square brackets; callers choose that behavior through
 the named accessor.
 
 ```python
---8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-wrapper"
+--8<-- "system_memory_chunk_cache/system_memory_chunk_cache.py:chunk-cache-wrapper"
 ```
 
 ### Follow one viewport through the cache
 
 ```python
---8<-- "napari_chunk_cache/napari_chunk_cache.py:chunk-cache-worked-example"
+--8<-- "system_memory_chunk_cache/system_memory_chunk_cache.py:chunk-cache-worked-example"
 ```
 
 The worked example uses a 6-by-8 image, 3-by-4 chunks, and capacity for two

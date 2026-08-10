@@ -42,5 +42,5 @@ Its types are intentionally not exported by `zarr_indexing`.
 
 ```bash
 cd packages/zarr-indexing
-uv run --with-editable . examples/napari_chunk_cache/napari_chunk_cache.py
+uv run --with-editable . examples/system_memory_chunk_cache/system_memory_chunk_cache.py
 ```

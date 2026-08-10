@@ -36,7 +36,7 @@ DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
 STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
 DOC_SNIPPETS_DIR = DOCS / "snippets"
-CACHE_EXAMPLE = STANDALONE_EXAMPLES / "napari_chunk_cache" / "napari_chunk_cache.py"
+CACHE_EXAMPLE = STANDALONE_EXAMPLES / "system_memory_chunk_cache" / "system_memory_chunk_cache.py"
 
 # Mirrors `pymdownx.snippets: base_path` in mkdocs.yml. If that list changes,
 # change this one in the same commit.
