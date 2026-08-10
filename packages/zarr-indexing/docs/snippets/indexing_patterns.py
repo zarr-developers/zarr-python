@@ -1,10 +1,10 @@
-"""Executable reference matrix for the public lazy indexing modes."""
+"""Executable reference matrix: every indexing pattern modeled as an IndexTransform."""
 
 from typing import Any, Literal, TypedDict
 
 import numpy as np
 
-from zarr_indexing import LazyArray
+from zarr_indexing import ArrayMap, IndexTransform, ReadContext, numpy_reader
 
 
 # --8<-- [start:indexing-patterns]
@@ -12,7 +12,7 @@ class PatternCase(TypedDict):
     """One documented selection and its independently evaluated NumPy result."""
 
     name: str
-    mode: Literal["basic", "orthogonal", "vectorized"]
+    mode: Literal["basic", "oindex", "vindex"]
     selection: Any
     expected: Any
     shape: tuple[int, ...]
@@ -20,6 +20,7 @@ class PatternCase(TypedDict):
 
 
 image = np.arange(48).reshape(6, 8)
+t = IndexTransform.from_shape(image.shape)
 rows = np.array([4, 1, 1], dtype=np.intp)
 columns = np.array([2, 5], dtype=np.intp)
 mask = image % 5 == 0
@@ -63,7 +64,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         "name": "boolean-mask",
-        "mode": "vectorized",
+        "mode": "vindex",
         "selection": mask,
         "expected": image[mask],
         "shape": (10,),
@@ -71,7 +72,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         "name": "orthogonal",
-        "mode": "orthogonal",
+        "mode": "oindex",
         "selection": (rows, columns),
         "expected": image[np.ix_(rows, columns)],
         "shape": (3, 2),
@@ -79,7 +80,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         "name": "vectorized",
-        "mode": "vectorized",
+        "mode": "vindex",
         "selection": (vector_rows, vector_columns),
         "expected": image[vector_rows, vector_columns],
         "shape": (3,),
@@ -87,7 +88,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         "name": "broadcasting",
-        "mode": "vectorized",
+        "mode": "vindex",
         "selection": (broadcast_rows, broadcast_columns),
         "expected": image[broadcast_rows, broadcast_columns],
         "shape": (2, 3),
@@ -95,7 +96,7 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         "name": "repeated-out-of-order",
-        "mode": "orthogonal",
+        "mode": "oindex",
         "selection": (rows, slice(2, 6)),
         "expected": image[rows, 2:6],
         "shape": (3, 4),
@@ -103,17 +104,30 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
 )
 
-lazy = LazyArray.from_numpy(image)
-for case in PATTERN_CASES:
-    accessor = {
-        "basic": lazy.lazy,
-        "orthogonal": lazy.lazy.oindex,
-        "vectorized": lazy.lazy.vindex,
-    }[case["mode"]]
-    view = accessor[case["selection"]]
-    result = view.result()
 
-    np.testing.assert_array_equal(result, case["expected"])
-    assert result.shape == case["shape"]
-    assert ("box" if view.is_box else "query") == case["category"]
+def compile_selection(mode: str, selection: Any) -> IndexTransform:
+    """A selection in any dialect compiles to a transform through its accessor."""
+    if mode == "basic":
+        return t[selection]
+    return getattr(t, mode)[selection]
+
+
+def resolve(transform: IndexTransform) -> np.ndarray[Any, Any]:
+    """Materialize a transform against `image` through the public reader."""
+    out = np.empty(transform.domain.shape, dtype=image.dtype)
+    numpy_reader.read_into(image, ReadContext(transform), out)
+    return out
+
+
+def category(transform: IndexTransform) -> str:
+    """A box carries only constant and affine maps; one lookup table makes a query."""
+    return "query" if any(isinstance(m, ArrayMap) for m in transform.output) else "box"
+
+
+for case in PATTERN_CASES:
+    transform = compile_selection(case["mode"], case["selection"])
+
+    assert transform.domain.shape == case["shape"]
+    assert category(transform) == case["category"]
+    np.testing.assert_array_equal(resolve(transform), case["expected"])
 # --8<-- [end:indexing-patterns]

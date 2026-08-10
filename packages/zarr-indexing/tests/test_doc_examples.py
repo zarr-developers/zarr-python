@@ -171,12 +171,13 @@ def test_indexing_pattern_matrix_is_complete() -> None:
 
 @pytest.mark.parametrize("case", PATTERN_CASES, ids=lambda case: case["name"])
 def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
+    """The wrapper agrees with the matrix the snippet proves at the transform level."""
     image = PATTERN_NAMESPACE["image"]
     lazy = LazyArray.from_numpy(image)
     accessor = {
         "basic": lazy.lazy,
-        "orthogonal": lazy.lazy.oindex,
-        "vectorized": lazy.lazy.vindex,
+        "oindex": lazy.lazy.oindex,
+        "vindex": lazy.lazy.vindex,
     }[case["mode"]]
     view = accessor[case["selection"]]
     result = view.result()

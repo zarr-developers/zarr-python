@@ -1,39 +1,52 @@
 # Indexing pattern reference
 
+Every NumPy indexing pattern compiles to an `IndexTransform`. This page is
+the matrix: one row per pattern, each showing the transform it produces —
+its result shape and whether it is a **box** (constant and affine maps
+only: an interval and stride per dimension) or a **query** (at least one
+explicit coordinate list, whose order and repeats are semantic).
+
 ## Selection matrix
 
-The table uses the 6-by-8 NumPy `image` and names from the executable matrix below.
-`lazy` means `LazyArray.from_numpy(image)`. A **box** has an interval and stride per source
-dimension; a **query** carries explicit source coordinates.
+The table uses a 6-by-8 `image` and the names from the executable matrix
+below. `t` is `IndexTransform.from_shape((6, 8))`; each expression compiles
+a selection into a transform without touching data.
 
-| Case | Expression | Result shape | Category | API mode |
-| --- | --- | --- | --- | --- |
-| Basic slice | `lazy.lazy[1:5, ::2]` | `(4, 4)` | box | `lazy` |
-| Integer axis removal | `lazy.lazy[2, :]` | `(8,)` | box | `lazy` |
-| Negative stride | `lazy.lazy[::-2, :]` | `(3, 8)` | box | `lazy` |
-| Empty selection | `lazy.lazy[2:2, :]` | `(0, 8)` | box | `lazy` |
-| Boolean mask | `lazy.lazy.vindex[mask]` | `(10,)` | query | `vindex` |
-| Orthogonal | `lazy.lazy.oindex[rows, columns]` | `(3, 2)` | query | `oindex` |
-| Vectorized | `lazy.lazy.vindex[vector_rows, vector_columns]` | `(3,)` | query | `vindex` |
-| Broadcasting | `lazy.lazy.vindex[broadcast_rows, broadcast_columns]` | `(2, 3)` | query | `vindex` |
-| Repeated, out of order | `lazy.lazy.oindex[rows, 2:6]` | `(3, 4)` | query | `oindex` |
+| Case | Expression | Result shape | Category |
+| --- | --- | --- | --- |
+| Basic slice | `t[1:5, ::2]` | `(4, 4)` | box |
+| Integer axis removal | `t[2, :]` | `(8,)` | box |
+| Negative stride | `t[::-2, :]` | `(3, 8)` | box |
+| Empty selection | `t[2:2, :]` | `(0, 8)` | box |
+| Boolean mask | `t.vindex[mask]` | `(10,)` | query |
+| Orthogonal | `t.oindex[rows, columns]` | `(3, 2)` | query |
+| Vectorized | `t.vindex[vector_rows, vector_columns]` | `(3,)` | query |
+| Broadcasting | `t.vindex[broadcast_rows, broadcast_columns]` | `(2, 3)` | query |
+| Repeated, out of order | `t.oindex[rows, 2:6]` | `(3, 4)` | query |
 
-The [LazyArray API](../api/lazy_array.md) is the source of truth for negative
-indices, axis removal, empty views, broadcasting, and the placement of advanced
-indices. See the [design notes](../design-notes.md) for intentionally unsupported
-compositions. Those edge cases are linked here rather than restating their
-normalization and lowering rules.
+The category is structural, read straight off the transform's output maps:
+basic indexing composes to `ConstantMap` and `DimensionMap` entries and
+stays a box at any depth; one `ArrayMap` — from `oindex`, `vindex`, or a
+mask — makes a query permanently. See the
+[design notes](../design-notes.md#bounding-box-selections-vs-query-selections)
+for why consumers dispatch on the distinction.
 
 ## Executable NumPy references
 
-Every expected value is evaluated directly with NumPy. Orthogonal arrays use
-`numpy.ix_`; the basic and vectorized rows use NumPy's direct indexing. The
-same matrix applies each selection to `LazyArray`, then checks values, result
-shape, and box/query category.
+Every expected value is evaluated directly with NumPy (`numpy.ix_` for the
+orthogonal rows; direct indexing for the rest). The same matrix compiles
+each selection through the transform accessors, then checks shape,
+category, and — resolved through the public reader — values:
 
 ```python
 --8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
+
+`LazyArray` adds nothing to these semantics: it is a regular array-like
+API whose `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors compile the
+same dialects to the same transforms — the only difference is the return
+type, a view instead of an array. The test suite holds the wrapper to this
+matrix.
 
 ## Positions vs literal coordinates
 
