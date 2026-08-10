@@ -26,10 +26,27 @@ if TYPE_CHECKING:
 class DimensionGridLike(Protocol):
     """The per-dimension chunk-mapping surface consumed by chunk resolution."""
 
-    def index_to_chunk(self, idx: int) -> int: ...
-    def chunk_offset(self, chunk_ix: int) -> int: ...
-    def chunk_size(self, chunk_ix: int) -> int: ...
-    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
+    def index_to_chunk(self, idx: int) -> int:
+        """Map a global source index to the index of the chunk that contains it.
+
+        Implementers must raise `IndexError` when `idx` lies outside `[0, extent)`.
+        """
+        ...
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        """The global source coordinate at which chunk `chunk_ix` begins."""
+        ...
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        """The declared length of chunk `chunk_ix`, i.e. its codec buffer size along this axis."""
+        ...
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_to_chunk`: map global source indices to chunk indices.
+
+        Implementers must raise `IndexError` if any index lies outside `[0, extent)`.
+        """
+        ...
 
 
 def _bounded_indices(indices: npt.NDArray[np.intp], extent: int) -> npt.NDArray[np.intp]:
@@ -66,35 +83,59 @@ class FixedDimension:
         object.__setattr__(self, "ngridcells", nchunks)
 
     def index_to_chunk(self, idx: int) -> int:
+        """Map a global source index to its chunk index (`idx // size`).
+
+        Raises `IndexError` when `idx` lies outside `[0, extent)`.
+        """
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"index {idx} is out of bounds for extent {self.extent}")
         return 0 if self.size == 0 else idx // self.size
 
     def chunk_offset(self, chunk_ix: int) -> int:
+        """The global source coordinate where chunk `chunk_ix` begins (`chunk_ix * size`).
+
+        Not bounds-checked: chunk indices past the last chunk extrapolate linearly.
+        """
         return chunk_ix * self.size
 
     def chunk_size(self, chunk_ix: int) -> int:
+        """The declared chunk length, `size` for every chunk.
+
+        The boundary chunk is not clipped here; use `data_size` for the valid data length.
+        """
         return self.size
 
     def data_size(self, chunk_ix: int) -> int:
+        """The number of valid data elements in chunk `chunk_ix`, clipped to `extent`.
+
+        Interior chunks report `size`; the boundary chunk reports the remainder, and chunk
+        indices at or past `nchunks` report 0.
+        """
         if self.size == 0:
             return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_to_chunk` over an array of global source indices.
+
+        Raises `IndexError` if any index lies outside `[0, extent)`.
+        """
         arr = _bounded_indices(indices, self.extent)
         if self.size == 0:
             return np.zeros_like(arr)
         return arr // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
+        """Return a copy with the same chunk size and the axis extent set to `new_extent`."""
         return FixedDimension(size=self.size, extent=new_extent)
 
     def resize(self, new_extent: int) -> FixedDimension:
+        """Return a copy resized to `new_extent`; the fixed chunk size covers any new extent."""
         return FixedDimension(size=self.size, extent=new_extent)
 
     @property
     def size_repr(self) -> str:
+        """The chunk size rendered as a scalar for `ChunkGrid.__repr__`."""
         return str(self.size)
 
 
@@ -129,25 +170,47 @@ class VaryingDimension:
         object.__setattr__(self, "ngridcells", len(edges_tuple))
 
     def index_to_chunk(self, idx: int) -> int:
+        """Map a global source index to the chunk whose edge interval contains it.
+
+        Raises `IndexError` when `idx` lies outside `[0, extent)`.
+        """
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"index {idx} is out of bounds for extent {self.extent}")
         return bisect.bisect_right(self.cumulative, idx)
 
     def chunk_offset(self, chunk_ix: int) -> int:
+        """The global source coordinate where chunk `chunk_ix` begins (sum of prior edges)."""
         return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
 
     def chunk_size(self, chunk_ix: int) -> int:
+        """The declared edge length of chunk `chunk_ix`.
+
+        Trailing chunks are not clipped to `extent` here; use `data_size` for that.
+        """
         return self.edges[chunk_ix]
 
     def data_size(self, chunk_ix: int) -> int:
+        """The number of valid data elements in chunk `chunk_ix`, clipped to `extent`.
+
+        Grid cells that lie entirely at or past `extent` report 0.
+        """
         offset = self.chunk_offset(chunk_ix)
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_to_chunk` over an array of global source indices.
+
+        Raises `IndexError` if any index lies outside `[0, extent)`.
+        """
         arr = _bounded_indices(indices, self.extent)
         return np.searchsorted(self.cumulative, arr, side="right")
 
     def with_extent(self, new_extent: int) -> VaryingDimension:
+        """Return a copy with the same edges re-clipped to `new_extent`.
+
+        The existing edges must already cover the new extent; raises `ValueError` when
+        `new_extent` exceeds the sum of edges. Use `resize` to grow past the edges.
+        """
         if self.cumulative[-1] < new_extent:
             raise ValueError(
                 f"VaryingDimension edge sum {self.cumulative[-1]} is less than new extent "
@@ -156,6 +219,11 @@ class VaryingDimension:
         return VaryingDimension(self.edges, extent=new_extent)
 
     def resize(self, new_extent: int) -> VaryingDimension:
+        """Return a copy resized to `new_extent`.
+
+        Shrinking (or growing within the existing edges) keeps the edges and re-clips them;
+        growing past the sum of edges appends one new trailing edge covering the remainder.
+        """
         if new_extent == self.extent:
             return self
         if new_extent > self.cumulative[-1]:
@@ -164,6 +232,7 @@ class VaryingDimension:
 
     @property
     def size_repr(self) -> str:
+        """The edge lengths rendered as a tuple for `ChunkGrid.__repr__`."""
         return repr(self.edges)
 
 
@@ -172,20 +241,59 @@ class DimensionGrid(Protocol):
     """Structural interface shared by the compact dimension grids."""
 
     @property
-    def nchunks(self) -> int: ...
+    def nchunks(self) -> int:
+        """The number of chunks holding data within `extent`."""
+        ...
+
     @property
-    def ngridcells(self) -> int: ...
+    def ngridcells(self) -> int:
+        """The number of declared grid cells; may exceed `nchunks` when trailing cells are empty."""
+        ...
+
     @property
-    def extent(self) -> int: ...
-    def index_to_chunk(self, idx: int) -> int: ...
-    def chunk_offset(self, chunk_ix: int) -> int: ...
-    def chunk_size(self, chunk_ix: int) -> int: ...
-    def data_size(self, chunk_ix: int) -> int: ...
-    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
-    def with_extent(self, new_extent: int) -> DimensionGrid: ...
-    def resize(self, new_extent: int) -> DimensionGrid: ...
+    def extent(self) -> int:
+        """The axis length in global source coordinates."""
+        ...
+
+    def index_to_chunk(self, idx: int) -> int:
+        """Map a global source index to the chunk index that contains it.
+
+        Implementers must raise `IndexError` when `idx` lies outside `[0, extent)`.
+        """
+        ...
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        """The global source coordinate at which chunk `chunk_ix` begins."""
+        ...
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        """The declared (codec buffer) length of chunk `chunk_ix`, never clipped to `extent`."""
+        ...
+
+    def data_size(self, chunk_ix: int) -> int:
+        """The valid data length of chunk `chunk_ix`, clipped to `extent` at the boundary."""
+        ...
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_to_chunk`; must raise `IndexError` for indices outside `[0, extent)`."""
+        ...
+
+    def with_extent(self, new_extent: int) -> DimensionGrid:
+        """Return a grid with the existing chunk layout re-clipped to `new_extent`.
+
+        Implementers must not invent new grid cells: raise `ValueError` when the declared
+        layout cannot cover `new_extent`.
+        """
+        ...
+
+    def resize(self, new_extent: int) -> DimensionGrid:
+        """Return a grid covering `new_extent`, extending the chunk layout when it must grow."""
+        ...
+
     @property
-    def size_repr(self) -> str: ...
+    def size_repr(self) -> str:
+        """A compact rendering of the chunk sizes, used by `ChunkGrid.__repr__`."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -197,10 +305,15 @@ class ChunkSpec:
 
     @property
     def shape(self) -> tuple[int, ...]:
+        """The shape of the valid data region described by `slices`.
+
+        Smaller than `codec_shape` on boundary chunks, where the array extent clips the chunk.
+        """
         return tuple(chunk_slice.stop - chunk_slice.start for chunk_slice in self.slices)
 
     @property
     def is_boundary(self) -> bool:
+        """Whether the valid data region is smaller than the full codec buffer on any axis."""
         return self.shape != self.codec_shape
 
 
@@ -227,6 +340,19 @@ class ChunkGrid:
     def from_sizes(
         cls, array_shape: Sequence[int], chunk_sizes: Sequence[int | Sequence[int]]
     ) -> ChunkGrid:
+        """Build a grid from an array shape and one chunk-size spec per dimension.
+
+        An `int` entry gives a fixed chunk size along that axis; a sequence of ints gives
+        explicit per-chunk edge lengths. A uniform sequence consistent with the axis extent
+        collapses to a fixed dimension, so the result may report `is_regular`.
+
+        Parameters
+        ----------
+        array_shape : Sequence[int]
+            The array extent along each dimension, in global source coordinates.
+        chunk_sizes : Sequence[int | Sequence[int]]
+            Per-dimension chunk layout: a single size or explicit edge lengths.
+        """
         extents = _shape_tuple(array_shape)
         if len(extents) != len(chunk_sizes):
             raise ValueError(
@@ -253,18 +379,29 @@ class ChunkGrid:
 
     @property
     def ndim(self) -> int:
+        """The number of dimensions."""
         return len(self.dimensions)
 
     @property
     def is_regular(self) -> bool:
+        """Whether every dimension uses a single fixed chunk size.
+
+        False when any axis carries explicit (rectilinear) per-chunk edge lengths.
+        """
         return self._is_regular
 
     @property
     def grid_shape(self) -> tuple[int, ...]:
+        """The number of data-bearing chunks along each dimension."""
         return tuple(dimension.nchunks for dimension in self.dimensions)
 
     @property
     def chunk_shape(self) -> tuple[int, ...]:
+        """The uniform declared chunk shape of a regular grid.
+
+        Raises `ValueError` for rectilinear grids, which have no single chunk shape;
+        use `grid[coords]` for per-chunk sizes instead.
+        """
         if not self.is_regular:
             raise ValueError(
                 "chunk_shape is only available for regular chunk grids. "
@@ -276,12 +413,22 @@ class ChunkGrid:
 
     @property
     def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension tuples of each chunk's valid data length.
+
+        Boundary chunks report their clipped extent, not the declared codec size.
+        """
         return tuple(
             tuple(dimension.data_size(index) for index in range(dimension.nchunks))
             for dimension in self.dimensions
         )
 
     def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
+        """Look up the `ChunkSpec` at the given chunk coordinates (grid cells, not indices).
+
+        Returns `None` when any coordinate falls outside the grid; raises `ValueError`
+        when the number of coordinates does not match `ndim`. The spec's slices are in
+        global source coordinates.
+        """
         if isinstance(coords, int):
             coords = (coords,)
         if len(coords) != self.ndim:
@@ -300,6 +447,7 @@ class ChunkGrid:
         return ChunkSpec(tuple(slices), tuple(codec_shape))
 
     def __iter__(self) -> Iterator[ChunkSpec]:
+        """Yield a `ChunkSpec` for every data-bearing chunk in row-major (C) order."""
         for coords in itertools.product(
             *(range(dimension.nchunks) for dimension in self.dimensions)
         ):
@@ -313,6 +461,12 @@ class ChunkGrid:
         origin: Sequence[int] | None = None,
         selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[int, ...]]:
+        """Iterate chunk coordinates over a rectangular grid region in row-major (C) order.
+
+        `origin` defaults to the grid origin and `selection_shape` to the rest of the grid.
+        The region is not bounds-checked: an oversized region yields coordinates outside
+        the grid, which `__getitem__` resolves to `None`.
+        """
         origin_parsed = (0,) * self.ndim if origin is None else tuple(origin)
         selection_shape_parsed = (
             tuple(
@@ -335,15 +489,27 @@ class ChunkGrid:
         origin: Sequence[int] | None = None,
         selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
+        """Yield each chunk's valid-data slices, in global source coordinates.
+
+        Covers the same region as `all_chunk_coords`, silently skipping coordinates
+        that fall outside the grid.
+        """
         for coords in self.all_chunk_coords(origin=origin, selection_shape=selection_shape):
             spec = self[coords]
             if spec is not None:
                 yield spec.slices
 
     def get_nchunks(self) -> int:
+        """The total number of data-bearing chunks: the product of `grid_shape` (1 if 0-d)."""
         return reduce(operator.mul, (dimension.nchunks for dimension in self.dimensions), 1)
 
     def update_shape(self, new_shape: tuple[int, ...]) -> ChunkGrid:
+        """Return a grid resized to `new_shape` by resizing each dimension.
+
+        Fixed axes keep their chunk size; rectilinear axes gain one trailing edge when
+        grown past their declared edges. Raises `ValueError` when `new_shape` does not
+        have `ndim` entries.
+        """
         if len(new_shape) != self.ndim:
             raise ValueError(
                 f"new_shape has {len(new_shape)} dimensions but chunk grid has {self.ndim} dimensions"
@@ -364,6 +530,16 @@ class EdgeDimensionGrid:
     sizes: tuple[int, ...]
 
     def __init__(self, sizes: Sequence[int]) -> None:
+        """Build a one-axis grid from explicit per-chunk sizes.
+
+        Every size must be positive; raises `ValueError` otherwise. A zero-length axis
+        is spelled as an empty sequence (no chunks), not as a zero size.
+
+        Parameters
+        ----------
+        sizes : Sequence[int]
+            The length of each chunk along the axis, in order.
+        """
         normalized = tuple(int(size) for size in sizes)
         for index, size in enumerate(normalized):
             if size <= 0:
@@ -379,10 +555,12 @@ class EdgeDimensionGrid:
 
     @property
     def num_chunks(self) -> int:
+        """The number of chunks along the axis."""
         return len(self.sizes)
 
     @property
     def extent(self) -> int:
+        """The axis length in global source coordinates: the sum of all chunk sizes."""
         return int(self._offsets[-1])
 
     def __repr__(self) -> str:
@@ -397,11 +575,19 @@ class EdgeDimensionGrid:
         return hash((type(self).__name__, self.sizes))
 
     def index_to_chunk(self, idx: int) -> int:
+        """Map a global source index to the chunk whose interval contains it.
+
+        Raises `IndexError` when `idx` lies outside `[0, extent)`.
+        """
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"index {idx} is out of bounds for an axis of extent {self.extent}")
         return int(np.searchsorted(self._offsets, idx, side="right")) - 1
 
     def chunk_offset(self, chunk_ix: int) -> int:
+        """The global source coordinate where chunk `chunk_ix` begins.
+
+        Raises `IndexError` when `chunk_ix` lies outside `[0, num_chunks)`.
+        """
         if chunk_ix < 0 or chunk_ix >= len(self.sizes):
             raise IndexError(
                 f"chunk index {chunk_ix} is out of bounds for {len(self.sizes)} chunks"
@@ -409,6 +595,10 @@ class EdgeDimensionGrid:
         return int(self._offsets[chunk_ix])
 
     def chunk_size(self, chunk_ix: int) -> int:
+        """The length of chunk `chunk_ix`; every chunk holds data, so no boundary clipping applies.
+
+        Raises `IndexError` when `chunk_ix` lies outside `[0, num_chunks)`.
+        """
         if chunk_ix < 0 or chunk_ix >= len(self.sizes):
             raise IndexError(
                 f"chunk index {chunk_ix} is out of bounds for {len(self.sizes)} chunks"
@@ -416,6 +606,10 @@ class EdgeDimensionGrid:
         return self.sizes[chunk_ix]
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_to_chunk` over an array of global source indices.
+
+        Raises `IndexError` if any index lies outside `[0, extent)`.
+        """
         arr = _bounded_indices(indices, self.extent)
         return (np.searchsorted(self._offsets, arr, side="right") - 1).astype(np.intp)
 

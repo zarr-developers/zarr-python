@@ -71,6 +71,12 @@ class NdselError(ValueError):
     """
 
     def __init__(self, reason: str, detail: str = "") -> None:
+        """Store `reason` and `detail` and compose the message as `"reason: detail"`.
+
+        `reason` is a spec reason code (one of `REASON_CODES`); `detail` is
+        optional human-readable context, and when empty the message is the
+        bare `reason`.
+        """
         self.reason = reason
         self.detail = detail
         super().__init__(f"{reason}: {detail}" if detail else reason)

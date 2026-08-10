@@ -126,19 +126,23 @@ class IndexTransform:
 
     @property
     def input_rank(self) -> int:
+        """Number of input dimensions — the rank of `domain`."""
         return self.domain.ndim
 
     @property
     def output_rank(self) -> int:
+        """Number of output (storage) dimensions — one per output map."""
         return len(self.output)
 
     @classmethod
     def identity(cls, domain: IndexDomain) -> IndexTransform:
+        """The identity transform over `domain`: input coordinate `i` maps to storage `i`."""
         output = tuple(DimensionMap(input_dimension=i) for i in range(domain.ndim))
         return cls(domain=domain, output=output)
 
     @classmethod
     def from_shape(cls, shape: tuple[int, ...]) -> IndexTransform:
+        """The identity transform over a zero-origin domain of the given `shape`."""
         return cls.identity(IndexDomain.from_shape(shape))
 
     def apply(self, point: Sequence[int]) -> tuple[int, ...]:
@@ -459,6 +463,13 @@ class IndexTransform:
         return IndexTransform(domain=self.domain, output=tuple(new_output))
 
     def __getitem__(self, selection: Any) -> IndexTransform:
+        """Compose a basic selection (int, slice, ellipsis, newaxis) into a new transform.
+
+        No I/O occurs. Integers and slice bounds are literal domain coordinates
+        (TensorStore convention): negative values are not counted from the end,
+        and out-of-domain values raise `BoundsCheckError`. Integer indices drop
+        their input dimension; `None` inserts a size-1 dimension.
+        """
         return _apply_basic_indexing(self, selection)
 
     def translate_domain_by(self, shift: tuple[int, ...]) -> IndexTransform:
@@ -503,10 +514,20 @@ class IndexTransform:
 
     @property
     def oindex(self) -> _OIndexHelper:
+        """Accessor for the orthogonal (outer-product) indexing dialect.
+
+        `transform.oindex[sel]` applies each index array independently per
+        dimension and returns a new transform, without I/O.
+        """
         return _OIndexHelper(self)
 
     @property
     def vindex(self) -> _VIndexHelper:
+        """Accessor for the vectorized (coordinate/mask) indexing dialect.
+
+        `transform.vindex[sel]` broadcasts all index arrays together, NumPy
+        fancy-indexing style, and returns a new transform, without I/O.
+        """
         return _VIndexHelper(self)
 
 

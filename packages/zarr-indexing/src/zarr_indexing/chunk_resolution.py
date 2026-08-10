@@ -126,6 +126,7 @@ class ChunkPlan:
         return _iter_chunk_projections(self.transform, self.dimension_grids)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
+        """Equivalent to `projections()`: each iteration performs a fresh chunk walk."""
         return self.projections()
 
 

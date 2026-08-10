@@ -613,6 +613,10 @@ class LazyArray:
     __slots__ = ("_array", "_part_owner", "_parts", "_reader", "_transform", "_window")
 
     def __init__(self, array: _WrappedArray) -> None:
+        """Wrap `array` without reading it; parameters are documented on the class.
+
+        The only validation here is the `numpy.matrix` rejection (`TypeError`).
+        """
         if isinstance(array, np.matrix):
             # `np.matrix` keeps every result two-dimensional, so `m[1]` has shape
             # `(1, n)` where every other array-like gives `(n,)`. A view's shape
@@ -701,10 +705,12 @@ class LazyArray:
 
     @property
     def ndim(self) -> int:
+        """Number of dimensions of this view — the transform's input rank."""
         return self._transform.input_rank
 
     @property
     def size(self) -> int:
+        """Total number of elements in this view (the product of `shape`)."""
         return math.prod(self.shape)
 
     @property
@@ -1250,6 +1256,7 @@ class LazyArray:
         )
 
     def __len__(self) -> int:
+        """The length of the first axis, as for a NumPy array; `TypeError` on a 0-d view."""
         if self.ndim == 0:
             raise TypeError("len() of unsized object")
         return self.shape[0]

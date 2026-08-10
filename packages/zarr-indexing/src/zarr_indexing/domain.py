@@ -64,14 +64,17 @@ class IndexDomain:
 
     @property
     def ndim(self) -> int:
+        """Number of dimensions."""
         return len(self.inclusive_min)
 
     @property
     def origin(self) -> tuple[int, ...]:
+        """The lower corner of the domain — an alias for `inclusive_min`, and may be negative."""
         return self.inclusive_min
 
     @property
     def shape(self) -> tuple[int, ...]:
+        """Per-dimension extents: `exclusive_max - inclusive_min` for each dimension."""
         cached = self._shape
         if cached is None:
             cached = tuple(
@@ -81,6 +84,12 @@ class IndexDomain:
         return cached
 
     def contains(self, index: tuple[int, ...]) -> bool:
+        """Whether the literal coordinate `index` lies inside this domain.
+
+        Coordinates are literal, not NumPy-style offsets: a negative value is
+        the coordinate itself, valid only if the domain's bounds include it.
+        A tuple of the wrong length is simply not contained (returns `False`).
+        """
         if len(index) != self.ndim:
             return False
         return all(
@@ -89,6 +98,11 @@ class IndexDomain:
         )
 
     def contains_domain(self, other: IndexDomain) -> bool:
+        """Whether every coordinate of `other` lies inside this domain.
+
+        An empty `other` within this domain's bounds is contained. A rank
+        mismatch returns `False` rather than raising.
+        """
         if other.ndim != self.ndim:
             return False
         return all(
@@ -103,6 +117,13 @@ class IndexDomain:
         )
 
     def intersect(self, other: IndexDomain) -> IndexDomain | None:
+        """Return the overlap of this domain with `other`, or `None` if they are disjoint.
+
+        Raises
+        ------
+        ValueError
+            If the two domains have different ranks.
+        """
         if other.ndim != self.ndim:
             raise ValueError(
                 f"Cannot intersect domains with different ranks: {self.ndim} vs {other.ndim}"
@@ -118,6 +139,15 @@ class IndexDomain:
         return IndexDomain(inclusive_min=new_min, exclusive_max=new_max)
 
     def translate(self, offset: tuple[int, ...]) -> IndexDomain:
+        """Return this domain shifted by `offset` per dimension; the shape is unchanged.
+
+        Offsets may be negative, and the result may have a negative origin.
+
+        Raises
+        ------
+        ValueError
+            If `offset` does not have one entry per dimension.
+        """
         if len(offset) != self.ndim:
             raise ValueError(
                 f"Offset must have same length as domain dimensions. "
