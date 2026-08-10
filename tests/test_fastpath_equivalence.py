@@ -196,34 +196,43 @@ def test_merge_complete_chunk_returns_view_and_write_does_not_mutate_source() ->
 
 # ---------------------------------------------------------------------------
 # Whole-shard bulk decode under arbitrary indexing: the bulk decode only fires
-# for a *contiguous full-shard* read, but it is reached through the partial-read
-# path (`_decode_partial_sync`), whose only gate is `indexer.shape ==
-# shard_spec.shape`. A reordering coordinate/orthogonal selection that happens
-# to touch every chunk (so the flattened point count equals the shard shape)
-# must NOT be served by the bulk path in natural order — it must honor the
-# selection. This pins the END-TO-END read (the gate lives in the array read
-# path, not in `_decode_full_shard_bulk_if_uncompressed` itself), which
-# `test_bulk_shard_decode_equals_general_decode` (BasicIndexer only) cannot
-# reach. See the vindex-on-uncompressed-shard corruption bug.
+# for an *identity full-shard* read (every dimension a whole-dim step-1 slice),
+# but it is reached through the partial-read path (`_decode_partial_sync`) for
+# any indexer. A reordering or duplicating coordinate/orthogonal selection can
+# have an output shape equal to the shard shape — trivially in 1-D (any
+# selection of `shard_len` points), and in >=2-D whenever an axis-0 index array
+# has exactly `shard_shape[0]` entries — and must NOT be served by the bulk
+# path in natural order; it must honor the selection. This pins the END-TO-END
+# read, which `test_bulk_shard_decode_equals_general_decode` (identity
+# BasicIndexer only) cannot reach. See the vindex- and
+# oindex-on-uncompressed-shard corruption bugs.
 # ---------------------------------------------------------------------------
 
 
 @st.composite
 def _uncompressed_shard_index_cases(draw: st.DrawFn) -> dict[str, Any]:
-    # 1-D is where the trigger is easiest: a CoordinateIndexer's `.shape` is the
-    # flattened point count, which equals a 1-D shard shape exactly when the
-    # selection visits `shard_len` points.
-    chunk = draw(st.integers(1, 4))
-    grid = draw(st.integers(1, 4))
-    shard_len = chunk * grid
+    ndim = draw(st.integers(1, 2))
+    chunk_shape = tuple(draw(st.integers(1, 4)) for _ in range(ndim))
+    grid = tuple(draw(st.integers(1, 4)) for _ in range(ndim))
+    shard_shape = tuple(c * g for c, g in zip(chunk_shape, grid, strict=True))
     dtype = draw(_DTYPES)
-    data = draw(npst.arrays(dtype=np.dtype(dtype), shape=(shard_len,)))
-    perm = draw(st.permutations(list(range(shard_len))))
+    data = draw(npst.arrays(dtype=np.dtype(dtype), shape=shard_shape))
+    dim0 = shard_shape[0]
+    # axis-0 index array sized to the dimension: either a permutation
+    # (reordering, no duplicates) or an arbitrary list (duplicates likely) —
+    # both keep the output shape equal to the shard shape.
+    if draw(st.booleans()):
+        idx = np.array(draw(st.permutations(list(range(dim0)))), dtype=np.intp)
+    else:
+        idx = np.array(
+            draw(st.lists(st.integers(0, dim0 - 1), min_size=dim0, max_size=dim0)),
+            dtype=np.intp,
+        )
     return {
-        "chunk": chunk,
-        "shard_len": shard_len,
+        "chunk_shape": chunk_shape,
+        "shard_shape": shard_shape,
         "data": data,
-        "perm": np.array(perm),
+        "idx": idx,
         "endian": draw(st.sampled_from(["little", "big"])),
         "index_location": draw(st.sampled_from(["start", "end"])),
         "subchunk_write_order": draw(
@@ -235,33 +244,44 @@ def _uncompressed_shard_index_cases(draw: st.DrawFn) -> dict[str, Any]:
 @settings(max_examples=200, deadline=None)
 @given(case=_uncompressed_shard_index_cases())
 def test_reordering_read_on_uncompressed_shard_honors_selection(case: dict[str, Any]) -> None:
-    """A reordering vindex/oindex over a full uncompressed shard must return the
-    permuted data, not the shard in natural order — under the Fused pipeline
-    (where the bulk-decode fast path engages) exactly as under numpy."""
-    perm = case["perm"]
+    """A reordering or duplicating fancy/vindex/oindex read over a full
+    uncompressed shard must return the selected data, not the shard in natural
+    order — under the Fused pipeline (where the bulk-decode fast path engages)
+    exactly as under numpy."""
+    idx = case["idx"]
     data = case["data"]
+    ndim = data.ndim
     serializer = BytesCodec(endian=case["endian"])
 
     with zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
         arr = zarr.create_array(
             store=MemoryStore(),
-            shape=(case["shard_len"],),
-            chunks=(case["chunk"],),
-            shards=(case["shard_len"],),
+            shape=case["shard_shape"],
+            chunks=case["chunk_shape"],
+            shards={"shape": case["shard_shape"], "index_location": case["index_location"]},
             dtype=data.dtype,
             serializer=serializer,
             compressors=None,
             filters=None,
             fill_value=0,
         )
-        arr[:] = data
+        arr[...] = data
 
-        # vindex with a full-coverage permutation: flattened point count ==
-        # shard shape, so the buggy gate would mis-classify this as a contiguous
-        # full-shard read and return data unpermuted.
-        np.testing.assert_array_equal(arr.vindex[perm], data[perm])
-        # oindex with a single reordering index list along the only axis.
-        np.testing.assert_array_equal(arr.oindex[perm], data[perm])
+        # axis-0 index array (rest full slices): an OrthogonalIndexer whose
+        # output shape equals the shard shape but which reorders/duplicates rows.
+        rest = (slice(None),) * (ndim - 1)
+        np.testing.assert_array_equal(arr[(idx, *rest)], data[idx])
+        np.testing.assert_array_equal(arr.oindex[(idx, *rest)], data[idx])
+        if ndim == 1:
+            # coordinate selection: flattened point count == shard shape.
+            np.testing.assert_array_equal(arr.vindex[idx], data[idx])
+        else:
+            # 2-D broadcast index arrays: full-coverage coordinate selection
+            # whose shape equals the shard shape.
+            cols = np.arange(case["shard_shape"][1])
+            np.testing.assert_array_equal(
+                arr.vindex[idx[:, None], cols[None, :]], data[idx[:, None], cols[None, :]]
+            )
 
 
 # ---------------------------------------------------------------------------

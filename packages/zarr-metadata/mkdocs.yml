@@ -1,0 +1,108 @@
+site_name: zarr-metadata
+# The package lives in the zarr-python monorepo; point the header source
+# widget at the package directory rather than the repository root.
+repo_name: zarr-python/packages/zarr-metadata
+repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata
+# Absolute because mkdocs would otherwise append this to repo_url's subpath.
+edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-metadata/docs/
+site_description: Spec-defined metadata types, models, and validators for Zarr v2 and v3.
+site_author: Davis Bennett
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io/']
+docs_dir: docs
+use_directory_urls: true
+
+nav:
+  - index.md
+  - API Reference:
+      - api/index.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/model.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/pydantic.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/v2.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3</code>':
+        - api/v3/index.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_grid</code>': api/v3/chunk_grid.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_key_encoding</code>': api/v3/chunk_key_encoding.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.codec</code>': api/v3/codec.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.data_type</code>': api/v3/data_type.md
+  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md
+
+watch:
+  - src
+
+theme:
+  language: en
+  name: material
+  logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
+
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - navigation.indexes
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.share
+
+plugins:
+  - autorefs
+  - search
+  - mkdocstrings:
+      enable_inventory: true
+      handlers:
+        python:
+          paths: [src]
+          options:
+            allow_inspection: true
+            docstring_section_style: list
+            docstring_style: numpy
+            inherited_members: true
+            line_length: 60
+            separate_signature: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            show_if_no_docstring: true
+            extensions:
+            - griffe_inherited_docstrings
+
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://zarr.readthedocs.io/en/stable/objects.inv
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite

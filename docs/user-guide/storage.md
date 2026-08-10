@@ -1,7 +1,7 @@
 # Storage guide
 
 Zarr-Python supports multiple storage backends, including: local file systems,
-Zip files, remote stores via [fsspec](https://filesystem-spec.readthedocs.io) (S3, HTTP, etc.), and in-memory stores. In
+Zip files, remote stores via [fsspec](https://filesystem-spec.readthedocs.io/en/latest/) (S3, HTTP, etc.), and in-memory stores. In
 Zarr-Python 3, stores must implement the abstract store API from
 [`zarr.abc.store.Store`][].
 
@@ -12,7 +12,7 @@ Zarr-Python 3, stores must implement the abstract store API from
 ## Implicit Store Creation
 
 In most cases, it is not required to create a `Store` object explicitly. Passing a string
-(or other [StoreLike value](#storelike)) to Zarr's top level API will result in the store
+(or other [StoreLike value](#user-guide-store-like)) to Zarr's top level API will result in the store
 being created automatically:
 
 ```python exec="true" session="storage" source="above" result="ansi"
@@ -41,10 +41,7 @@ group = zarr.create_group(store=data)
 print(group)
 ```
 
-<!-- markdownlint-disable-next-line MD042 -- empty link is an intentional MkDocs anchor target -->
-[](){#user-guide-store-like}
-
-### StoreLike
+### StoreLike {#user-guide-store-like}
 
 `StoreLike` values can be:
 
@@ -124,12 +121,25 @@ array = zarr.create_array(store=store, shape=(2,), dtype='float64')
 print(array)
 ```
 
+In place of a path, `ZipStore` also accepts an open binary file object (for
+example a file opened with `fsspec`, or an `obstore` reader), enabling zip
+archives on remote storage. The file must stay open for as long as the store
+is in use:
+
+```python exec="true" session="storage" source="above" result="ansi"
+store.close()
+f = open('data.zip', mode='rb')  # must stay open while the store is used
+array = zarr.open_array(store=zarr.storage.ZipStore(f), mode='r')
+print(array[:])
+f.close()
+```
+
 ### Remote Store
 
 The [`zarr.storage.FsspecStore`][] stores the contents of a Zarr hierarchy following the same
 logical layout as the [`LocalStore`][zarr.storage.LocalStore], except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
-[`zarr.storage.FsspecStore`][] is backed by [fsspec](https://filesystem-spec.readthedocs.io) and can support any backend
+[`zarr.storage.FsspecStore`][] is backed by [fsspec](https://filesystem-spec.readthedocs.io/en/latest/) and can support any backend
 that implements the [AbstractFileSystem](https://filesystem-spec.readthedocs.io/en/stable/api.html#fsspec.spec.AbstractFileSystem)
 API. `storage_options` can be used to configure the fsspec backend:
 
