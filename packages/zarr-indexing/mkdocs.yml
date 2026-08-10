@@ -22,19 +22,21 @@ validation:
   nav:
     omitted_files: warn
 
+# Deliberately flat: at this size only two collections (Examples, API
+# Reference) earn a section. The audience split (array users vs backend
+# integrators) is routed by the guide's opening and the landing page's
+# annotated links, not by nav taxonomy.
 nav:
   - index.md
-  - Use lazy indexing:
-      - Visual guide: guide/index.md
-  - Practical reference:
-      - Indexing patterns: guide/patterns.md
-      - Integration boundaries: guide/integrations.md
+  - Visual guide: guide/index.md
+  - Indexing patterns: guide/patterns.md
+  - Integration boundaries: guide/integrations.md
   - Examples:
       - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md
       - Lazy indexing with Dask: examples/lazy_indexing_dask.md
       - System-memory chunk cache: examples/system_memory_chunk_cache.md
-  - ndsel.md
-  - design-notes.md
+  - The ndsel wire format: ndsel.md
+  - Design notes: design-notes.md
   - API Reference:
       - api/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.transform</code>': api/transform.md
