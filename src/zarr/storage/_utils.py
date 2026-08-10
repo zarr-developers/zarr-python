@@ -6,7 +6,8 @@ from pathlib import Path, PureWindowsPath
 from urllib.parse import urlparse
 
 if importlib.util.find_spec("upath"):
-    from upath.core import UPath
+    # Re-exported for zarr.storage._common, which needs it to recognize UPath store_like values.
+    from upath.core import UPath as UPath
 else:
 
     class UPath:  # type: ignore[no-redef]

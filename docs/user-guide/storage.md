@@ -90,6 +90,15 @@ print(group)
 - an FSSpec [FSMap object](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap),
   which will create an [FsspecStore](#remote-store).
 
+- a [universal-pathlib](https://github.com/fsspec/universal_pathlib) `UPath`, which will create an
+  [FsspecStore](#remote-store), or a [local store](#local-store) if the `UPath` is local. The
+  `UPath` carries its own storage options, so passing `storage_options` alongside one is an error:
+
+   ```python exec="false" reason="requires universal-pathlib, which is not in the docs environment"
+   from upath import UPath
+   group = zarr.open_group(UPath('s3://noaa-nwm-retro-v2-zarr-pds', anon=True), mode='r')
+   ```
+
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
 
