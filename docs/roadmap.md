@@ -111,7 +111,6 @@ backends, including a Python-heavy backend, but also a Rust-based backend, via b
 
 Internally we will branch over two kinds of backends: synchronous and asynchronous. The synchronous backend is suitable for arrays and groups persisted to low-latency storage like in-memory stores, where async scheduling is pure friction. The asynchronous backend will use `async` and provide concurrent APIs where it helps: for arrays and groups persisted to high-latency storage.
 
-
 ### Lazy indexing
 
 The Zarr-Python Array API was initially designed to mirror NumPy, with eager
@@ -157,7 +156,6 @@ passed explicitly": a typed config object replacing the untyped global `donfig`
 dict, array-scoped runtime config passed at open time, a registry redesign that
 addresses implementations by stable identity and resolves plugin name-conflicts
 deliberately, and named profiles replacing global mutators.
-
 
 ### Coordinated and distributed writes
 
