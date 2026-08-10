@@ -169,17 +169,34 @@ def test_indexing_pattern_matrix_is_complete() -> None:
     assert {case["name"] for case in PATTERN_CASES} == REQUIRED_PATTERNS
 
 
-def test_pattern_page_json_blocks_are_the_models_wire_forms() -> None:
-    """Each JSON body on the patterns page is the canonical form of its model, in order."""
+def test_pattern_page_tabs_are_the_models() -> None:
+    """Both tabs of every matrix entry are the executable model, in order.
+
+    The JSON tab must be the model's canonical wire form; the Python tab
+    must evaluate (in the executable matrix's namespace) to the model
+    itself. Either tab drifting from the snippet fails here.
+    """
     import json
+    import textwrap
 
     from zarr_indexing import transform_to_canonical
 
     page = (DOCS / "guide" / "patterns.md").read_text()
-    blocks = re.findall(r"```json\n(.*?)```", page, re.DOTALL)
-    assert len(blocks) == len(PATTERN_CASES)
-    for block, case in zip(blocks, PATTERN_CASES, strict=True):
+
+    json_blocks = re.findall(r"```json\n(.*?)```", page, re.DOTALL)
+    assert len(json_blocks) == len(PATTERN_CASES)
+    for block, case in zip(json_blocks, PATTERN_CASES, strict=True):
         assert json.loads(block) == transform_to_canonical(case["transform"]), case["name"]
+
+    python_blocks = [
+        textwrap.dedent(block)
+        for block in re.findall(r"```python\n(.*?)```", page, re.DOTALL)
+        if "--8<--" not in block
+    ]
+    assert len(python_blocks) == len(PATTERN_CASES)
+    for block, case in zip(python_blocks, PATTERN_CASES, strict=True):
+        constructed = eval(block, dict(PATTERN_NAMESPACE))
+        assert constructed == case["transform"], case["name"]
 
 
 @pytest.mark.parametrize("case", PATTERN_CASES, ids=lambda case: case["name"])

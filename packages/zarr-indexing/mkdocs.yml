@@ -90,6 +90,7 @@ theme:
   features:
     - content.code.annotate
     - content.code.copy
+    - content.tabs.link
     - navigation.indexes
     - navigation.instant
     - navigation.tracking
@@ -140,6 +141,10 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  # Content tabs (Python/JSON pairs in the pattern matrix); content.tabs.link
+  # in the theme features keeps every pair switched together.
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.snippets:
       base_path: [docs, examples]
       # Fail the build on an unresolvable include or missing region instead
