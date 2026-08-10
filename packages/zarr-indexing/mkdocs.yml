@@ -22,15 +22,19 @@ validation:
   nav:
     omitted_files: warn
 
-# Deliberately flat: at this size only two collections (Examples, API
-# Reference) earn a section. The audience split (array users vs backend
-# integrators) is routed by the guide's opening and the landing page's
-# annotated links, not by nav taxonomy.
+# Top-level rank is consistent: collections (Guide, Examples, API Reference)
+# and standalone artifacts (landing, ndsel spec, design notes, changelog).
+# Guide mirrors the docs/guide/ directory — its three pages are one
+# collection (learn / look up / integrate), pydantic's Concepts pattern at
+# small scale; navigation.indexes makes the Guide entry itself land on the
+# visual guide. No tabs: at eight content pages, hiding sections costs more
+# than it organizes.
 nav:
   - index.md
-  - Visual guide: guide/index.md
-  - Indexing patterns: guide/patterns.md
-  - Integration boundaries: guide/integrations.md
+  - Guide:
+      - guide/index.md
+      - Indexing patterns: guide/patterns.md
+      - Integration boundaries: guide/integrations.md
   - Examples:
       - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md
       - Lazy indexing with Dask: examples/lazy_indexing_dask.md
