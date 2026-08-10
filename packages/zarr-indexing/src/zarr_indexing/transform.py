@@ -75,13 +75,35 @@ class IndexTransform:
     An `IndexTransform` has:
 
     - `domain`: an `IndexDomain` describing the valid input coordinates
-      (the user-facing shape, possibly with non-zero origin).
+      (the result's coordinate range, possibly with non-zero origin).
     - `output`: a tuple of output maps (one per output dimension), each
       describing which output coordinates the inputs touch.
 
-    For a freshly opened array, the transform is the identity: input
-    coordinate `i` maps to output coordinate `i`. Indexing operations
-    compose new transforms without I/O.
+    In array-indexing terms: `domain` describes the coordinates of the result
+    array an indexing operation produces, and `output` is the rule relating
+    each result coordinate to a coordinate in the source. Note the direction —
+    the transform's input side is the result, its output side addresses the
+    source; the coordinate mapping runs opposite to the data flow.
+
+    Indexing an existing transform composes a new one without I/O.
+
+    Examples
+    --------
+    The operation "every other element of a 100-element array, starting at
+    index 0" — `array[::2]` — is a 50-cell domain whose cell `i` reads
+    output coordinate `2 * i`:
+
+    >>> domain = IndexDomain.from_shape((50,))
+    >>> output = (DimensionMap(input_dimension=0, offset=0, stride=2),)
+    >>> transform = IndexTransform(domain=domain, output=output)
+    >>> transform.apply((0,)), transform.apply((1,)), transform.apply((49,))
+    ((0,), (2,), (98,))
+
+    The selection compiler derives the identical transform from the source's
+    shape and the slice:
+
+    >>> transform == IndexTransform.from_shape((100,))[::2]
+    True
     """
 
     domain: IndexDomain
@@ -1195,6 +1217,18 @@ def array_map_dependent_axis(m: ArrayMap) -> int | None:
     ValueError
         If the map varies over more than one axis, which makes it correlated
         rather than orthogonal.
+
+    Examples
+    --------
+    An `oindex` selection on axis 1 of a rank-2 transform stores its
+    coordinates full-sized on axis 1 and singleton on axis 0, so the
+    dependency axis is read straight off the shape:
+
+    >>> m = ArrayMap(index_array=np.array([[4, 0, 2]]))
+    >>> m.index_array.shape
+    (1, 3)
+    >>> array_map_dependent_axis(m)
+    1
     """
     dep = _array_map_dependency_axes(m.index_array)
     if len(dep) == 1:
@@ -1220,6 +1254,22 @@ def index_array_structure(transform: IndexTransform) -> Literal["none", "orthogo
     orthogonal resolvers narrow one axis at a time and are only sound for
     `"orthogonal"`; everything else takes the pointwise path that collapses
     the joint block. Everything is read off the index arrays' shapes.
+
+    Examples
+    --------
+    >>> t = IndexTransform.from_shape((4, 5))
+    >>> index_array_structure(t)
+    'none'
+
+    `oindex` arrays each vary over their own axis (an outer product):
+
+    >>> index_array_structure(t.oindex[[0, 2], [1, 3]])
+    'orthogonal'
+
+    `vindex` arrays are correlated — they share the broadcast axis:
+
+    >>> index_array_structure(t.vindex[np.array([0, 2]), np.array([1, 3])])
+    'general'
     """
     seen: set[int] = set()
     has_array = False
@@ -1743,6 +1793,18 @@ def selection_to_transform(
     Negative indices are treated as literal coordinates (TensorStore convention).
     The caller (Array layer) is responsible for converting numpy-style negative
     indices before calling this function.
+
+    Examples
+    --------
+    The `mode` picks the dialect; the result is the composed transform the
+    corresponding accessor builds:
+
+    >>> t = IndexTransform.from_shape((10,))
+    >>> selection_to_transform(slice(2, 8), t, mode="basic") == t[2:8]
+    True
+    >>> s = selection_to_transform(([9, 0, 0],), t, mode="orthogonal")
+    >>> s.apply((0,)), s.apply((1,)), s.apply((2,))
+    ((9,), (0,), (0,))
     """
     if mode == "basic":
         _validate_basic_selection(selection)

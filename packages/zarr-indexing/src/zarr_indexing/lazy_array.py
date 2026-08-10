@@ -461,6 +461,19 @@ class Partition:
         between a blind overwrite and a read-modify-write. Fancy projections
         report `False` because their coverage is deliberately `unknown` until
         duplicate-aware proof is added.
+
+    Examples
+    --------
+    Assembling every part's result at its `out_selection` reproduces the view:
+
+    >>> import numpy as np
+    >>> source = np.arange(12).reshape(3, 4)
+    >>> view = LazyArray.from_numpy(source).with_parts((2, 2))
+    >>> out = np.empty(view.shape, dtype=view.dtype)
+    >>> for part in view.parts():
+    ...     out[part.out_selection] = part.view.result()
+    >>> bool((out == source).all())
+    True
     """
 
     projection: ChunkProjection

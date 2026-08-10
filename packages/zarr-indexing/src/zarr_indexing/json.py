@@ -75,7 +75,18 @@ BoundJSON = int | str | list[IndexValueJSON]
 
 
 class IndexDomainJSON(TypedDict, total=False):
-    """Canonical JSON representation of an IndexDomain."""
+    """Canonical JSON representation of an IndexDomain.
+
+    Examples
+    --------
+    >>> doc: IndexDomainJSON = {
+    ...     "input_inclusive_min": [0],
+    ...     "input_exclusive_max": [4],
+    ...     "input_labels": ["x"],
+    ... }
+    >>> index_domain_from_json(doc).shape
+    (4,)
+    """
 
     input_inclusive_min: Required[list[BoundJSON]]
     """Per-dimension lower bounds; `"-inf"` is legal on the wire but cannot be lowered."""
@@ -96,6 +107,15 @@ class OutputIndexMapJSON(TypedDict, total=False):
     - `{"offset": 0, "stride": 1, "input_dimension": 0}` — single_input_dimension
     - `{"offset": 0, "stride": 1, "index_array": [...],
        "index_array_bounds": ["-inf", "+inf"]}` — index_array
+
+    Examples
+    --------
+    >>> constant: OutputIndexMapJSON = {"offset": 5}
+    >>> output_index_map_from_json(constant)
+    ConstantMap(offset=5)
+    >>> affine: OutputIndexMapJSON = {"offset": 0, "stride": 2, "input_dimension": 1}
+    >>> output_index_map_from_json(affine)
+    DimensionMap(input_dimension=1, offset=0, stride=2)
     """
 
     offset: int
@@ -115,7 +135,20 @@ class OutputIndexMapJSON(TypedDict, total=False):
 
 
 class IndexTransformJSON(TypedDict, total=False):
-    """Canonical JSON representation of an IndexTransform (spec section 4.3)."""
+    """Canonical JSON representation of an IndexTransform (spec section 4.3).
+
+    Examples
+    --------
+    >>> doc: IndexTransformJSON = {
+    ...     "input_rank": 1,
+    ...     "input_inclusive_min": [0],
+    ...     "input_exclusive_max": [2],
+    ...     "input_labels": [""],
+    ...     "output": [{"offset": 1, "stride": 2, "input_dimension": 0}],
+    ... }
+    >>> transform_from_canonical(doc).domain.shape
+    (2,)
+    """
 
     input_rank: Required[int]
     """The number of input dimensions; the bounds and labels lists match it in length."""
@@ -205,7 +238,16 @@ def _emit_labels(labels: tuple[str, ...] | None, rank: int) -> list[str]:
 
 
 def index_domain_to_json(domain: IndexDomain) -> IndexDomainJSON:
-    """Convert an IndexDomain to its canonical JSON representation."""
+    """Convert an IndexDomain to its canonical JSON representation.
+
+    Examples
+    --------
+    >>> domain = IndexDomain(inclusive_min=(0,), exclusive_max=(3,))
+    >>> index_domain_to_json(domain)
+    {'input_inclusive_min': [0], 'input_exclusive_max': [3], 'input_labels': ['']}
+    >>> index_domain_from_json(index_domain_to_json(domain)) == domain
+    True
+    """
     return {
         "input_inclusive_min": list(domain.inclusive_min),
         "input_exclusive_max": list(domain.exclusive_max),
@@ -220,6 +262,16 @@ def index_domain_from_json(data: IndexDomainJSON) -> IndexDomain:
     body is. Reading the keys directly would be a second, undefended way into
     the same objects: `int(value)` alone accepts `3.9`, `"3"` and `True`, and
     each of those builds a domain that is not the document's.
+
+    Examples
+    --------
+    >>> domain = index_domain_from_json(
+    ...     {"input_inclusive_min": [1], "input_exclusive_max": [4], "input_labels": [""]}
+    ... )
+    >>> (domain.inclusive_min, domain.exclusive_max)
+    ((1,), (4,))
+    >>> domain.shape
+    (3,)
     """
     # The annotation says what a well-formed caller passes; this is a parser of
     # documents that arrive from elsewhere, so the shape is checked rather than
@@ -356,6 +408,16 @@ def transform_to_canonical(transform: IndexTransform) -> IndexTransformJSON:
     The result is fully explicit (spec section 4.3): `input_rank`, fully written
     bounds and labels, and an explicit `output` with `offset`/`stride` present
     on every affine and array map.
+
+    Examples
+    --------
+    >>> body = transform_to_canonical(IndexTransform.from_shape((6,))[1:5:2])
+    >>> (body["input_inclusive_min"], body["input_exclusive_max"])
+    ([0], [2])
+    >>> body["output"]
+    [{'offset': 1, 'stride': 2, 'input_dimension': 0}]
+    >>> index_transform_to_json is transform_to_canonical  # the historical name
+    True
     """
     return {
         "input_rank": transform.domain.ndim,
@@ -374,6 +436,17 @@ def transform_from_canonical(data: IndexTransformJSON) -> IndexTransform:
     validated, then lowered to the engine representation. Lower-rank
     `index_array`s are widened to the full input rank on the way in (see the
     module docstring).
+
+    Examples
+    --------
+    >>> body = transform_to_canonical(IndexTransform.from_shape((6,))[1:5:2])
+    >>> transform = transform_from_canonical(body)
+    >>> transform.domain.shape
+    (2,)
+    >>> transform_to_canonical(transform) == body  # the round trip is exact
+    True
+    >>> index_transform_from_json is transform_from_canonical  # the historical name
+    True
     """
     if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise NdselError("invalid_json", f"a transform body must be a JSON object, got {data!r}")

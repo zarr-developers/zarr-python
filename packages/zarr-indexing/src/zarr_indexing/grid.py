@@ -24,7 +24,19 @@ if TYPE_CHECKING:
 
 
 class DimensionGridLike(Protocol):
-    """The per-dimension chunk-mapping surface consumed by chunk resolution."""
+    """The per-dimension chunk-mapping surface consumed by chunk resolution.
+
+    Examples
+    --------
+    `EdgeDimensionGrid` provides this surface. Chunk sizes `(2, 3)` tile
+    source coordinates `[0, 5)`, so index 4 lands in the second chunk:
+
+    >>> grid = EdgeDimensionGrid([2, 3])
+    >>> grid.index_to_chunk(4)
+    1
+    >>> grid.chunk_offset(1), grid.chunk_size(1)
+    (2, 3)
+    """
 
     def index_to_chunk(self, idx: int) -> int:
         """Map a global source index to the index of the chunk that contains it.
@@ -61,7 +73,21 @@ def _bounded_indices(indices: npt.NDArray[np.intp], extent: int) -> npt.NDArray[
 
 @dataclass(frozen=True)
 class FixedDimension:
-    """Uniform chunk size with a boundary chunk clipped to the axis extent."""
+    """Uniform chunk size with a boundary chunk clipped to the axis extent.
+
+    Examples
+    --------
+    Chunks of size 3 on an axis of extent 10 give 4 chunks. The last chunk
+    still declares a codec buffer of 3 but holds only 1 valid element:
+
+    >>> dim = FixedDimension(size=3, extent=10)
+    >>> dim.nchunks
+    4
+    >>> dim.index_to_chunk(7)
+    2
+    >>> dim.chunk_size(3), dim.data_size(3)
+    (3, 1)
+    """
 
     size: int
     """The declared chunk length along this axis; every chunk's codec buffer size."""
@@ -148,7 +174,23 @@ class FixedDimension:
 
 @dataclass(frozen=True, init=False)
 class VaryingDimension:
-    """Explicit chunk edge lengths, with trailing data clipped to ``extent``."""
+    """Explicit chunk edge lengths, with trailing data clipped to ``extent``.
+
+    Examples
+    --------
+    Edges `(2, 3, 5)` clipped to extent 9: the last chunk declares 5 but
+    holds only 4 valid elements, and index 4 lands in the second chunk:
+
+    >>> dim = VaryingDimension(edges=(2, 3, 5), extent=9)
+    >>> dim.nchunks
+    3
+    >>> dim.index_to_chunk(4)
+    1
+    >>> dim.chunk_offset(2)
+    5
+    >>> dim.chunk_size(2), dim.data_size(2)
+    (5, 4)
+    """
 
     edges: tuple[int, ...]
     """The declared per-chunk edge lengths, in order; codec buffer sizes, unclipped."""
@@ -253,7 +295,20 @@ class VaryingDimension:
 
 @runtime_checkable
 class DimensionGrid(Protocol):
-    """Structural interface shared by the compact dimension grids."""
+    """Structural interface shared by the compact dimension grids.
+
+    Examples
+    --------
+    `FixedDimension` satisfies the protocol structurally:
+
+    >>> dim = FixedDimension(size=2, extent=5)
+    >>> isinstance(dim, DimensionGrid)
+    True
+    >>> dim.nchunks, dim.extent
+    (3, 5)
+    >>> dim.with_extent(4).nchunks
+    2
+    """
 
     @property
     def nchunks(self) -> int:
@@ -313,7 +368,21 @@ class DimensionGrid(Protocol):
 
 @dataclass(frozen=True)
 class ChunkSpec:
-    """A chunk's valid data region and its full codec buffer shape."""
+    """A chunk's valid data region and its full codec buffer shape.
+
+    Examples
+    --------
+    The last chunk of a size-10 axis chunked by 3 holds one valid element
+    (`slices`), while its codec buffer still spans 3:
+
+    >>> spec = ChunkGrid.from_sizes((10,), (3,))[3]
+    >>> spec.slices
+    (slice(9, 10, 1),)
+    >>> spec.shape, spec.codec_shape
+    ((1,), (3,))
+    >>> spec.is_boundary
+    True
+    """
 
     slices: tuple[slice, ...]
     """Per-dimension bounds of the valid data region, in global source coordinates."""
@@ -337,7 +406,22 @@ class ChunkSpec:
 
 @dataclass(frozen=True)
 class ChunkGrid:
-    """A concrete regular or rectilinear arrangement of chunks for one array."""
+    """A concrete regular or rectilinear arrangement of chunks for one array.
+
+    Examples
+    --------
+    A `(3, 4)` array with `(2, 2)` chunks has a `(2, 2)` grid whose bottom
+    row of chunks is clipped to one valid row of data:
+
+    >>> grid = ChunkGrid.from_sizes((3, 4), (2, 2))
+    >>> grid.grid_shape
+    (2, 2)
+    >>> grid.chunk_sizes
+    ((2, 1), (2, 2))
+    >>> spec = grid[1, 0]
+    >>> spec.shape, spec.codec_shape, spec.is_boundary
+    ((1, 2), (2, 2), True)
+    """
 
     dimensions: tuple[DimensionGrid, ...]
     """One per-axis grid, each mapping that axis's source indices to chunks."""
@@ -543,7 +627,23 @@ class ChunkGrid:
 
 
 class EdgeDimensionGrid:
-    """An explicitly edge-based grid for coordinate-origin examples and planners."""
+    """An explicitly edge-based grid for coordinate-origin examples and planners.
+
+    Examples
+    --------
+    Chunk sizes `(2, 3)` tile source coordinates `[0, 5)`; lookups outside
+    that range raise:
+
+    >>> grid = EdgeDimensionGrid([2, 3])
+    >>> grid.num_chunks, grid.extent
+    (2, 5)
+    >>> grid.index_to_chunk(2)
+    1
+    >>> grid.index_to_chunk(5)
+    Traceback (most recent call last):
+        ...
+    IndexError: index 5 is out of bounds for an axis of extent 5
+    """
 
     __slots__ = ("_offsets", "sizes")
 
@@ -657,7 +757,20 @@ def _entry_kind(entry: Any) -> str:
 def dimension_grids_from_chunks(
     chunks: Sequence[int] | Sequence[Sequence[int]], shape: Sequence[int]
 ) -> tuple[DimensionGrid, ...]:
-    """Build compact dimensions from regular sizes or explicit per-axis edges."""
+    """Build compact dimensions from regular sizes or explicit per-axis edges.
+
+    Examples
+    --------
+    One integer per dimension builds fixed grids, ready for `plan_chunks`:
+
+    >>> from zarr_indexing import IndexTransform, plan_chunks
+    >>> grids = dimension_grids_from_chunks((2, 2), shape=(3, 4))
+    >>> [type(grid).__name__ for grid in grids]
+    ['FixedDimension', 'FixedDimension']
+    >>> plan = plan_chunks(IndexTransform.from_shape((3, 4))[1, :], grids)
+    >>> [p.chunk_coords for p in plan]
+    [(0, 0), (0, 1)]
+    """
     shape_t = _shape_tuple(shape)
     entries: tuple[Any, ...] = tuple(chunks)
     if len(entries) != len(shape_t):

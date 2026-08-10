@@ -47,7 +47,7 @@ jobs:
       - name: Sync test dependency group
         run: uv sync --group test --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing python -m pytest packages/zarr-indexing/tests
+        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing python -m pytest packages/zarr-indexing/tests packages/zarr-indexing/src/zarr_indexing
       # TensorStore is the oracle for the parity tests
       # (test_ndsel_tensorstore.py skips without it). It ships binary wheels
       # only, so it rides in as a run-time overlay here rather than joining a

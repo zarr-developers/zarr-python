@@ -44,6 +44,22 @@ def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
     The result maps user coords (rank m) to output coords (rank p).
 
     Precondition: `outer.output_rank == inner.domain.ndim`.
+
+    Examples
+    --------
+    Chained indexing — `source[2:5]`, then `[::-1]` on the result — collapses
+    to a single transform (a reversed axis keeps literal coordinates, so the
+    composed domain is `[-4, -1)`):
+
+    >>> inner = IndexTransform.from_shape((10,))[2:5]
+    >>> outer = IndexTransform.identity(inner.domain)[::-1]
+    >>> chained = compose(outer, inner)
+    >>> chained == inner[::-1]
+    True
+    >>> [chained.apply((i,)) for i in (-4, -3, -2)]
+    [(4,), (3,), (2,)]
+    >>> np.arange(10)[2:5][::-1].tolist()
+    [4, 3, 2]
     """
     if outer.output_rank != inner.domain.ndim:
         raise ValueError(

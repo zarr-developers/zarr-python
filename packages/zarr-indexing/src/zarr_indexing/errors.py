@@ -26,6 +26,18 @@ class VindexInvalidSelectionError(IndexError):
     error. Other invalid entries raise plain `IndexError`, and the
     engine-level `IndexTransform.vindex` is wider — it accepts residual
     slice dimensions without raising.
+
+    Examples
+    --------
+    Raised by the wrapper, not the engine — a slice inside `vindex`:
+
+    >>> import numpy as np
+    >>> from zarr_indexing import LazyArray
+    >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
+    >>> view.lazy.vindex[np.array([0, 2]), :]
+    Traceback (most recent call last):
+        ...
+    zarr_indexing.errors.VindexInvalidSelectionError: ...
     """
 
 
@@ -37,4 +49,19 @@ class BoundsCheckError(IndexError):
     algebra are literal: they are never clamped, and a negative value below
     the domain's `inclusive_min` is out of bounds rather than counted from
     the end.
+
+    Examples
+    --------
+    >>> from zarr_indexing import IndexTransform
+    >>> IndexTransform.from_shape((8,)).apply((9,))
+    Traceback (most recent call last):
+        ...
+    zarr_indexing.errors.BoundsCheckError: ...
+
+    A negative index is a literal coordinate, not "from the end":
+
+    >>> IndexTransform.from_shape((8,))[-1]
+    Traceback (most recent call last):
+        ...
+    zarr_indexing.errors.BoundsCheckError: ...
     """

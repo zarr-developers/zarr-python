@@ -94,6 +94,23 @@ class ChunkProjection:
     coverage
         Whether the request is proven to cover the whole grid cell exactly
         once. Fancy selections are conservatively ``"unknown"``.
+
+    Examples
+    --------
+    Row 1 of a `(3, 4)` array with `(2, 2)` chunks touches only part of the
+    first chunk, whose domain spans rows `[0, 2)` and columns `[0, 2)`:
+
+    >>> from zarr_indexing import IndexTransform
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((2, 2), shape=(3, 4))
+    >>> plan = plan_chunks(IndexTransform.from_shape((3, 4))[1, :], grids)
+    >>> first = next(iter(plan))
+    >>> first.chunk_coords
+    (0, 0)
+    >>> first.chunk_domain.shape
+    (2, 2)
+    >>> first.coverage
+    'partial'
     """
 
     chunk_coords: tuple[int, ...]
@@ -116,6 +133,20 @@ class ChunkPlan:
 
     Construct plans with `plan_chunks`; iterating either the plan or
     `projections()` performs a fresh chunk walk.
+
+    Examples
+    --------
+    Row 1 of a `(3, 4)` array with `(2, 2)` chunks crosses two chunks, and
+    the plan can be walked again after it is exhausted:
+
+    >>> from zarr_indexing import IndexTransform
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((2, 2), shape=(3, 4))
+    >>> plan = plan_chunks(IndexTransform.from_shape((3, 4))[1, :], grids)
+    >>> [p.chunk_coords for p in plan]
+    [(0, 0), (0, 1)]
+    >>> [p.chunk_coords for p in plan.projections()]
+    [(0, 0), (0, 1)]
     """
 
     transform: IndexTransform
@@ -150,6 +181,20 @@ def plan_chunks(
     -------
     ChunkPlan
         A reusable plan whose projections are computed lazily.
+
+    Examples
+    --------
+    Row 1 of a `(3, 4)` array with `(2, 2)` chunks touches the two chunks in
+    the top grid row, each contributing a `(2, 2)` chunk domain:
+
+    >>> from zarr_indexing import IndexTransform
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((2, 2), shape=(3, 4))
+    >>> plan = plan_chunks(IndexTransform.from_shape((3, 4))[1, :], grids)
+    >>> [p.chunk_coords for p in plan]
+    [(0, 0), (0, 1)]
+    >>> [p.chunk_domain.shape for p in plan]
+    [(2, 2), (2, 2)]
     """
     grids = tuple(dimension_grids)
     if len(grids) != transform.output_rank:

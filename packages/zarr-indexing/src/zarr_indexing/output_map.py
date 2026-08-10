@@ -54,6 +54,18 @@ class ConstantMap:
 
     Every input cell maps to `offset`. Arises from integer indexing (e.g.,
     `arr[5]` fixes one dimension to coordinate 5).
+
+    Examples
+    --------
+    Every input cell maps to the same output coordinate — the NumPy analogy
+    is a broadcast (`np.broadcast_to(5, (3,))`), not an index:
+
+    >>> from zarr_indexing.domain import IndexDomain
+    >>> from zarr_indexing.transform import IndexTransform
+    >>> domain = IndexDomain.from_shape((3,))
+    >>> t = IndexTransform(domain=domain, output=(ConstantMap(offset=5),))
+    >>> t.apply((0,)), t.apply((1,)), t.apply((2,))
+    ((5,), (5,), (5,))
     """
 
     offset: int = 0
@@ -67,6 +79,17 @@ class DimensionMap:
     Maps each input coordinate `i` to `offset + stride * i`, where the input
     range comes from the enclosing `IndexTransform`'s domain. Arises from slice
     indexing (e.g., `arr[2:10:3]` gives offset=2, stride=3).
+
+    Examples
+    --------
+    The slice `arr[2:11:3]` reads coordinates `2, 5, 8` — the rule
+    `offset + stride * i` with `offset=2`, `stride=3`:
+
+    >>> m = DimensionMap(input_dimension=0, offset=2, stride=3)
+    >>> [m.offset + m.stride * i for i in range(3)]
+    [2, 5, 8]
+    >>> np.arange(11)[2:11:3].tolist()
+    [2, 5, 8]
     """
 
     input_dimension: int
@@ -106,6 +129,17 @@ class ArrayMap:
     selection layer builds that instead (see `array_map_or_constant`). A
     hand-built all-singleton `ArrayMap` is still a valid value; resolution
     classifies it with the correlated maps and reads it pointwise.
+
+    Examples
+    --------
+    The fancy selection `arr[[5, 1, 1]]` reads coordinate 5, then 1, then 1
+    — order and the duplicate preserved, exactly as NumPy fancy indexing:
+
+    >>> m = ArrayMap(index_array=np.array([5, 1, 1]))
+    >>> [m.offset + m.stride * c for c in m.index_array.tolist()]
+    [5, 1, 1]
+    >>> np.arange(10)[[5, 1, 1]].tolist()
+    [5, 1, 1]
     """
 
     index_array: npt.NDArray[np.integer[Any]]

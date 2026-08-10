@@ -94,10 +94,17 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests"]
+# src is collected for its doctests: every public object's Examples section
+# executes under --doctest-modules, so the documented examples cannot rot.
+testpaths = ["tests", "src/zarr_indexing"]
 pythonpath = ["."]
 xfail_strict = true
-addopts = ["-ra", "--strict-config", "--strict-markers"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "--doctest-modules"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "ELLIPSIS",
+    "IGNORE_EXCEPTION_DETAIL",
+]
 filterwarnings = [
     "error",
 ]

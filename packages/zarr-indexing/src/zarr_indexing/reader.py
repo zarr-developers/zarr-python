@@ -34,7 +34,17 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ReadContext:
-    """A source-global transform and optional projection for a partitioned read."""
+    """A source-global transform and optional projection for a partitioned read.
+
+    Examples
+    --------
+    >>> transform = IndexTransform.from_shape((6,))[1:5:2]
+    >>> context = ReadContext(transform)
+    >>> context.transform.domain.shape
+    (2,)
+    >>> context.projection is None
+    True
+    """
 
     transform: IndexTransform
     """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
@@ -50,6 +60,18 @@ class Reader(Protocol):
     [`LazyArray`][zarr_indexing.lazy_array.LazyArray]. Part reads may run
     concurrently, so a stateful implementation must synchronize its own
     mutable state. `LazyArray` deliberately adds no serialization.
+
+    Examples
+    --------
+    The protocol is not `runtime_checkable`; an object satisfies it by
+    exposing a conforming `read_into`, as `basic_reader` does:
+
+    >>> transform = IndexTransform.from_shape((6,))[1:5:2]
+    >>> source = np.arange(6)
+    >>> out = np.empty(transform.domain.shape, dtype=source.dtype)
+    >>> basic_reader.read_into(source, ReadContext(transform), out)
+    >>> out.tolist()
+    [1, 3]
     """
 
     def read_into(
@@ -90,6 +112,15 @@ class BasicReader:
     Slice results must permit conversion to NumPy system memory. Device arrays
     that reject implicit conversion require a custom reader responsible for
     transferring values into the supplied system-memory output buffer.
+
+    Examples
+    --------
+    >>> transform = IndexTransform.from_shape((6,))[1:5:2]
+    >>> source = np.arange(6)
+    >>> out = np.empty(transform.domain.shape, dtype=source.dtype)
+    >>> BasicReader().read_into(source, ReadContext(transform), out)
+    >>> out.tolist() == source[1:5:2].tolist()
+    True
     """
 
     __slots__ = ()
@@ -109,6 +140,15 @@ class NumPyReader:
     [`LazyArray.from_numpy`][zarr_indexing.lazy_array.LazyArray.from_numpy]. It
     applies the complete transform with NumPy operations and is applicable to
     `numpy.ndarray` sources, including `numpy.ma.MaskedArray`.
+
+    Examples
+    --------
+    >>> transform = IndexTransform.from_shape((3, 4))[::2, 1:3]
+    >>> source = np.arange(12).reshape(3, 4)
+    >>> out = np.empty(transform.domain.shape, dtype=source.dtype)
+    >>> NumPyReader().read_into(source, ReadContext(transform), out)
+    >>> out.tolist()
+    [[1, 2], [9, 10]]
     """
 
     __slots__ = ()
@@ -139,6 +179,18 @@ class UnitStepReader:
 
     Slice results must permit conversion to NumPy system memory, exactly as
     for `BasicReader`.
+
+    Examples
+    --------
+    The source below is only ever asked for step-1 slices — here the cover
+    `slice(1, 4, 1)` — and the stride is replayed against the block:
+
+    >>> transform = IndexTransform.from_shape((6,))[1:5:2]
+    >>> source = np.arange(6)
+    >>> out = np.empty(transform.domain.shape, dtype=source.dtype)
+    >>> UnitStepReader().read_into(source, ReadContext(transform), out)
+    >>> out.tolist()
+    [1, 3]
     """
 
     __slots__ = ()

@@ -68,6 +68,14 @@ class NdselError(ValueError):
     Carries the spec `reason` code (one of `REASON_CODES`) so callers and the
     conformance harness can assert on it directly, plus a human-readable
     `detail`.
+
+    Examples
+    --------
+    >>> try:
+    ...     normalize_ndsel({"kind": "bogus"})
+    ... except NdselError as error:
+    ...     (error.reason, str(error))
+    ('unknown_kind', "unknown_kind: unknown kind 'bogus'")
     """
 
     def __init__(self, reason: str, detail: str = "") -> None:
@@ -711,6 +719,14 @@ def normalize_ndsel(obj: Any) -> dict[str, Any]:
     Accepts any of the five message kinds and returns the bare canonical
     `IndexTransform` body of spec section 4.3 — no `kind` field. Raises
     `NdselError` (carrying a reason code) for any invalid input.
+
+    Examples
+    --------
+    >>> body = normalize_ndsel({"kind": "box", "shape": [2, 3]})
+    >>> (body["input_rank"], body["input_inclusive_min"], body["input_exclusive_max"])
+    (2, [0, 0], [2, 3])
+    >>> body["output"][0]
+    {'offset': 0, 'stride': 1, 'input_dimension': 0}
     """
     message = _require_object(obj)
     kind = _message_kind(message)
@@ -725,6 +741,14 @@ def parse_ndsel(obj: Any) -> dict[str, Any]:
     JSON types, upper-bound exclusivity, domain ordering, step signs) and
     raises `NdselError` otherwise, but does not desugar it. Useful for
     validating a message you intend to keep in its compact shorthand form.
+
+    Examples
+    --------
+    >>> message = {"kind": "point", "coords": [3, 4]}
+    >>> parse_ndsel(message) is message
+    True
+    >>> normalize_ndsel(message)["output"]
+    [{'offset': 3}, {'offset': 4}]
     """
     message = _require_object(obj)
     _message_kind(message)

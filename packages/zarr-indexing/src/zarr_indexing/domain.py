@@ -25,6 +25,22 @@ class IndexDomain:
 
     The valid coordinates are the integers in
     `[inclusive_min[d], exclusive_max[d])` for each dimension `d`.
+
+    Examples
+    --------
+    >>> domain = IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
+    >>> domain.shape
+    (8, 15)
+
+    Unlike a NumPy shape, a domain keeps literal coordinates: narrowing to
+    `[5, 10)` gives a region whose valid coordinates are 5 through 9, not
+    re-zeroed:
+
+    >>> view = IndexDomain.from_shape((10,)).narrow(slice(5, 10))
+    >>> view.origin, view.shape
+    ((5,), (5,))
+    >>> view.contains((5,)), view.contains((0,))
+    (True, False)
     """
 
     inclusive_min: tuple[int, ...]

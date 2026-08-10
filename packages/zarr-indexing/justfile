@@ -13,7 +13,7 @@ default:
 # invocation CI uses.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests {{ args }}
+    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}
 
 # Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
 # version (see pyproject.toml [dependency-groups] docs); bump together.
