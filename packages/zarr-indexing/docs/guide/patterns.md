@@ -1,52 +1,57 @@
 # Indexing pattern reference
 
-Every NumPy indexing pattern compiles to an `IndexTransform`. This page is
-the matrix: one row per pattern, each showing the transform it produces —
-its result shape and whether it is a **box** (constant and affine maps
-only: an interval and stride per dimension) or a **query** (at least one
-explicit coordinate list, whose order and repeats are semantic).
+Every NumPy indexing idiom is modeled by an `IndexTransform`: a domain (the
+result's coordinates) and one output map per source dimension. This page
+builds that model **by hand for each idiom**, so the anatomy is explicit —
+which map kind an idiom needs, where the offset and stride go, and how an
+index array's shape spells outer-product versus pointwise. Each model is
+then proven equal to what the selection compiler derives, and its values
+are checked against NumPy.
 
-## Selection matrix
+## The idiom-to-model matrix
 
-The table uses a 6-by-8 `image` and the names from the executable matrix
-below. `t` is `IndexTransform.from_shape((6, 8))`; each expression compiles
-a selection into a transform without touching data.
+Over a 6-by-8 `image`; the full constructions, with per-idiom commentary,
+are in the executable matrix below.
 
-| Case | Expression | Result shape | Category |
+| NumPy idiom | Result shape | Category | Output maps (the model) |
 | --- | --- | --- | --- |
-| Basic slice | `t[1:5, ::2]` | `(4, 4)` | box |
-| Integer axis removal | `t[2, :]` | `(8,)` | box |
-| Negative stride | `t[::-2, :]` | `(3, 8)` | box |
-| Empty selection | `t[2:2, :]` | `(0, 8)` | box |
-| Boolean mask | `t.vindex[mask]` | `(10,)` | query |
-| Orthogonal | `t.oindex[rows, columns]` | `(3, 2)` | query |
-| Vectorized | `t.vindex[vector_rows, vector_columns]` | `(3,)` | query |
-| Broadcasting | `t.vindex[broadcast_rows, broadcast_columns]` | `(2, 3)` | query |
-| Repeated, out of order | `t.oindex[rows, 2:6]` | `(3, 4)` | query |
+| `image[1:5, ::2]` | `(4, 4)` | box | `DimensionMap(0, offset=1)`, `DimensionMap(1, stride=2)` |
+| `image[2, :]` | `(8,)` | box | `ConstantMap(2)`, `DimensionMap(0)` |
+| `image[::-2, :]` | `(3, 8)` | box | `DimensionMap(0, offset=5, stride=-2)`, `DimensionMap(1)` |
+| `image[2:2, :]` | `(0, 8)` | box | `DimensionMap(0, offset=2)`, `DimensionMap(1)` — emptiness lives in the domain |
+| `image[mask]` | `(10,)` | query | two correlated `ArrayMap`s: the mask's nonzero rows and columns |
+| `image[np.ix_(rows, cols)]` | `(3, 2)` | query | `ArrayMap` shaped `(3, 1)`, `ArrayMap` shaped `(1, 2)` — distinct axes |
+| `image[vrows, vcols]` | `(3,)` | query | two 1-D `ArrayMap`s on one shared axis — pointwise |
+| `image[brows, bcols]` | `(2, 3)` | query | two `ArrayMap`s carrying the full `(2, 3)` broadcast block |
+| `image[rows, 2:6]` | `(3, 4)` | query | `ArrayMap` shaped `(3, 1)`, `DimensionMap(1, offset=2)` |
 
-The category is structural, read straight off the transform's output maps:
-basic indexing composes to `ConstantMap` and `DimensionMap` entries and
-stays a box at any depth; one `ArrayMap` — from `oindex`, `vindex`, or a
-mask — makes a query permanently. See the
-[design notes](../design-notes.md#bounding-box-selections-vs-query-selections)
-for why consumers dispatch on the distinction.
+Two structural rules do all the work:
 
-## Executable NumPy references
+- **Category**: `ConstantMap` and `DimensionMap` entries keep a selection a
+  box at any composition depth; one `ArrayMap` makes it a query permanently.
+  See the [design notes](../design-notes.md#bounding-box-selections-vs-query-selections)
+  for why consumers dispatch on this.
+- **Fancy flavor is spelled by shape**: index arrays varying over distinct
+  axes (singleton elsewhere) form an outer product; arrays sharing their
+  non-singleton axes pair pointwise.
 
-Every expected value is evaluated directly with NumPy (`numpy.ix_` for the
-orthogonal rows; direct indexing for the rest). The same matrix compiles
-each selection through the transform accessors, then checks shape,
-category, and — resolved through the public reader — values:
+## The executable matrix
+
+Each case hand-builds the model, checks shape, category, and NumPy values
+(resolved through the public reader), then proves the selection compiler
+derives the same transform. One wrinkle the last assert documents: compiled
+*basic* selections keep literal domains (`t[1:5, ...]` starts at
+coordinate 1 — see [Positions vs literal coordinates](#positions-vs-literal-coordinates)),
+so they equal the zero-origin models after `translate_domain_to`:
 
 ```python
 --8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
 
-`LazyArray` adds nothing to these semantics: it is a regular array-like
-API whose `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors compile the
-same dialects to the same transforms — the only difference is the return
-type, a view instead of an array. The test suite holds the wrapper to this
-matrix.
+`LazyArray` adds nothing to these semantics: it is a regular array-like API
+whose `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors compile the same
+dialects to the same transforms — the only difference is the return type, a
+view instead of an array. The test suite holds the wrapper to this matrix.
 
 ## Positions vs literal coordinates
 
