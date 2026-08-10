@@ -2,8 +2,8 @@
 
 `compose(outer, inner)` is the operation that makes views stack. `outer` maps
 user coordinates to intermediate coordinates, `inner` maps those intermediate
-coordinates to storage, and the result maps user coordinates straight to
-storage — so a view of a view of an array is still a single
+coordinates to output coordinates, and the result maps user coordinates
+straight through — so a view of a view of an array is still a single
 `IndexTransform`, and indexing never accumulates layers to walk at read time.
 
 Composition works one output map at a time, and each case reduces to
@@ -40,8 +40,8 @@ def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
     """Compose two IndexTransforms.
 
     `outer` maps user coords (rank m) to intermediate coords (rank n).
-    `inner` maps intermediate coords (rank n) to storage coords (rank p).
-    The result maps user coords (rank m) to storage coords (rank p).
+    `inner` maps intermediate coords (rank n) to output coords (rank p).
+    The result maps user coords (rank m) to output coords (rank p).
 
     Precondition: `outer.output_rank == inner.domain.ndim`.
     """

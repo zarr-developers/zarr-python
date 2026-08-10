@@ -108,7 +108,7 @@ class OutputIndexMapJSON(TypedDict, total=False):
     """The input dimension the single_input_dimension form reads."""
 
     index_array: NestedIntList
-    """Nested lists of storage coordinates, one nesting level per input dimension."""
+    """Nested lists of output coordinates, one nesting level per input dimension."""
 
     index_array_bounds: list[IndexValueJSON]
     """Bounds the `index_array` values are promised to lie in; `["-inf", "+inf"]` if unconstrained."""
@@ -130,7 +130,7 @@ class IndexTransformJSON(TypedDict, total=False):
     """Per-dimension names; the empty string marks an unlabeled dimension."""
 
     output: Required[list[OutputIndexMapJSON]]
-    """One output map per storage dimension."""
+    """One output map per output dimension."""
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +160,7 @@ def _lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp
 
     The message layer carries `index_array` verbatim — the spec defers its shape
     and type to the engine — so this is where the content is checked. An index
-    array names storage cells, and nothing but an integer names one: converting
+    array names output coordinates, and nothing but an integer names one: converting
     `[0.9, 1.9]` would silently read cells 0 and 1, and `[true, false]` cells 1
     and 0. Strings raise here rather than leaking NumPy's own conversion error.
     """
@@ -183,7 +183,7 @@ def _lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp
         raise NdselError(
             "invalid_json",
             f"{where} must hold integers, got an array of {arr.dtype.name}; an "
-            f"index array names storage cells, which floats, booleans and "
+            f"index array names output coordinates, which floats, booleans and "
             f"strings do not",
         )
     return np.asarray(arr, dtype=np.intp)

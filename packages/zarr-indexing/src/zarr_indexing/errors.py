@@ -18,12 +18,14 @@ __all__ = [
 
 
 class VindexInvalidSelectionError(IndexError):
-    """A vectorized (`vindex`) selection used an unsupported form.
+    """A wrapper `vindex` selection contained a slice.
 
-    Raised when a `vindex` selection is anything other than a coordinate
-    selection (a tuple of integer arrays) or a mask selection (a single
-    boolean array) — for example, when it contains a slice. Orthogonal
-    (`oindex`) selections are not subject to this restriction.
+    Raised by `LazyArray`'s selection validation: the wrapper's vectorized
+    dialect accepts coordinate selections (integer arrays, with scalars and
+    an ellipsis) or a single boolean mask, and rejects slices with this
+    error. Other invalid entries raise plain `IndexError`, and the
+    engine-level `IndexTransform.vindex` is wider — it accepts residual
+    slice dimensions without raising.
     """
 
 

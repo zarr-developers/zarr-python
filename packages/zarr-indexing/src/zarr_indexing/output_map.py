@@ -1,7 +1,7 @@
 """Output index maps — three ordered mappings to integer coordinates.
 
-An output index map describes how request cells address one dimension of
-storage. Its coordinates form an **ordered, duplicate-preserving sequence**
+An output index map describes how input cells address one dimension of
+the output space. Its coordinates form an **ordered, duplicate-preserving sequence**
 aligned with the input domain, never a mathematical set. Three representations
 cover the cases that arise in practice:
 
@@ -50,19 +50,19 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class ConstantMap:
-    """A constant storage-coordinate mapping.
+    """A constant output-coordinate mapping.
 
     Every input cell maps to `offset`. Arises from integer indexing (e.g.,
     `arr[5]` fixes one dimension to coordinate 5).
     """
 
     offset: int = 0
-    """The fixed storage coordinate every input cell maps to."""
+    """The fixed output coordinate every input cell maps to."""
 
 
 @dataclass(frozen=True, slots=True)
 class DimensionMap:
-    """An ordered affine mapping to storage coordinates.
+    """An ordered affine mapping to output coordinates.
 
     Maps each input coordinate `i` to `offset + stride * i`, where the input
     range comes from the enclosing `IndexTransform`'s domain. Arises from slice
@@ -73,10 +73,10 @@ class DimensionMap:
     """The input (domain) dimension whose coordinate this map reads."""
 
     offset: int = 0
-    """The storage coordinate that input coordinate `0` maps to."""
+    """The output coordinate that input coordinate `0` maps to."""
 
     stride: int = 1
-    """The storage step per unit input step; negative walks backward, zero repeats `offset`."""
+    """The output-coordinate step per unit input step; negative walks backward, zero repeats `offset`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +113,7 @@ class ArrayMap:
     duplicates are semantic. Its non-singleton axes are the map's dependency axes."""
 
     offset: int = 0
-    """Constant term of the affine adjustment: storage is `offset + stride * index_array[i]`."""
+    """Constant term of the affine adjustment: the output coordinate is `offset + stride * index_array[i]`."""
 
     stride: int = 1
     """Multiplier applied to each `index_array` value before `offset` is added."""

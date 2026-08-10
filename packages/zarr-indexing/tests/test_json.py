@@ -358,7 +358,7 @@ def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> Index
     ids=["floats", "mixed", "bools", "strings", "string", "scalar", "nulls"],
 )
 def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) -> None:
-    """An `index_array` addresses storage cells, so it must be integral.
+    """An `index_array` addresses output coordinates, so it must be integral.
 
     Lowering a float array silently truncated it (`[0.9, 1.9]` selected cells 0
     and 1), a bool array coerced to 0/1, and a string array leaked a raw NumPy

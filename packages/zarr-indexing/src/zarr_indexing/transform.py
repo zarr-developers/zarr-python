@@ -1,8 +1,8 @@
 """Index transforms — composable, lazy coordinate mappings.
 
 An `IndexTransform` pairs an **input domain** (the coordinates a user sees)
-with a tuple of **output maps** (the storage coordinates those inputs map to).
-One output map per storage dimension. See `output_map.py` for the three
+with a tuple of **output maps** (the output coordinates those inputs map to).
+One output map per output dimension. See `output_map.py` for the three
 output map types.
 
 Key operations:
@@ -11,7 +11,7 @@ Key operations:
   produces a new transform with a narrower input domain and adjusted output
   maps. No I/O occurs. This is how lazy slicing works.
 
-- **intersect(output_domain)** — restrict to storage coordinates within a
+- **intersect(output_domain)** — restrict to output coordinates within a
   region. This is chunk resolution: "which of my coordinates fall in this
   chunk?"
 
@@ -70,17 +70,17 @@ class _PointOutOfBounds(Exception):
 
 @dataclass(frozen=True, slots=True)
 class IndexTransform:
-    """A composable mapping from input coordinates to storage coordinates.
+    """A composable mapping from input coordinates to output coordinates.
 
     An `IndexTransform` has:
 
     - `domain`: an `IndexDomain` describing the valid input coordinates
       (the user-facing shape, possibly with non-zero origin).
-    - `output`: a tuple of output maps (one per storage dimension), each
-      describing which storage coordinates the inputs touch.
+    - `output`: a tuple of output maps (one per output dimension), each
+      describing which output coordinates the inputs touch.
 
     For a freshly opened array, the transform is the identity: input
-    coordinate `i` maps to storage coordinate `i`. Indexing operations
+    coordinate `i` maps to output coordinate `i`. Indexing operations
     compose new transforms without I/O.
     """
 
@@ -88,7 +88,7 @@ class IndexTransform:
     """The input domain: the request coordinates this transform accepts."""
 
     output: tuple[OutputIndexMap, ...]
-    """One output map per storage dimension, each producing that dimension's coordinate."""
+    """One output map per output dimension, each producing that dimension's coordinate."""
 
     def __post_init__(self) -> None:
         for i, m in enumerate(self.output):
@@ -150,12 +150,12 @@ class IndexTransform:
 
     @property
     def output_rank(self) -> int:
-        """Number of output (storage) dimensions — one per output map."""
+        """Number of output dimensions — one per output map."""
         return len(self.output)
 
     @classmethod
     def identity(cls, domain: IndexDomain) -> IndexTransform:
-        """The identity transform over `domain`: input coordinate `i` maps to storage `i`."""
+        """The identity transform over `domain`: input coordinate `i` maps to output coordinate `i`."""
         output = tuple(DimensionMap(input_dimension=i) for i in range(domain.ndim))
         return cls(domain=domain, output=output)
 
@@ -456,7 +456,7 @@ class IndexTransform:
         ]
         | None
     ):
-        """Restrict this transform to storage coordinates within output_domain.
+        """Restrict this transform to output coordinates within output_domain.
 
         Returns `(restricted_transform, out_indices)` or None if empty.
 
@@ -579,7 +579,7 @@ def _intersect(
 ):
     """Intersect a transform with an output domain (e.g., a chunk's bounds).
 
-    For each output dimension, restrict to storage coordinates within
+    For each output dimension, restrict to output coordinates within
     `[output_domain.inclusive_min[d], output_domain.exclusive_max[d])`.
 
     Two flavors of fancy indexing require different treatment, distinguished by
@@ -590,7 +590,7 @@ def _intersect(
       independently and the input domain narrowed per axis.
     - **correlated** (`vindex`): the ArrayMaps share their (broadcast) dependency
       axes and scatter through a single flat index. A point survives only if ALL
-      its storage coordinates fall within the output domain; residual slice
+      its output coordinates fall within the output domain; residual slice
       dimensions are intersected independently, as in the orthogonal case.
 
     The routing is `index_array_structure`: only a pure per-axis outer product
@@ -620,11 +620,11 @@ def _intersect(
 def _intersect_dimension_map(
     m: DimensionMap, input_lo: int, input_hi: int, lo: int, hi: int
 ) -> tuple[int, int] | None:
-    """Narrow a DimensionMap's input range to storage coordinates in `[lo, hi)`.
+    """Narrow a DimensionMap's input range to output coordinates in `[lo, hi)`.
 
     `input_lo`/`input_hi` are the current (possibly already narrowed) input
     range for the map's axis. Returns the new `(input_lo, input_hi)` or `None`
-    if no input produces an in-bounds storage coordinate.
+    if no input produces an in-bounds output coordinate.
     """
     if input_lo >= input_hi:
         return None
@@ -747,7 +747,7 @@ def _intersect_general(
 
     Every `ArrayMap` — correlated, orthogonal, or several sharing an axis — is
     treated as a lookup table over the joint block of non-slice axes: a block
-    point survives only if ALL its storage coordinates fall within the output
+    point survives only if ALL its output coordinates fall within the output
     domain. Residual DimensionMap dimensions are intersected independently (as in
     the orthogonal case) and preserved, so a partial vindex — e.g. two coordinate
     arrays over a 3-D array, leaving one slice dimension — resolves correctly.
