@@ -169,6 +169,19 @@ def test_indexing_pattern_matrix_is_complete() -> None:
     assert {case["name"] for case in PATTERN_CASES} == REQUIRED_PATTERNS
 
 
+def test_pattern_page_json_blocks_are_the_models_wire_forms() -> None:
+    """Each JSON body on the patterns page is the canonical form of its model, in order."""
+    import json
+
+    from zarr_indexing import transform_to_canonical
+
+    page = (DOCS / "guide" / "patterns.md").read_text()
+    blocks = re.findall(r"```json\n(.*?)```", page, re.DOTALL)
+    assert len(blocks) == len(PATTERN_CASES)
+    for block, case in zip(blocks, PATTERN_CASES, strict=True):
+        assert json.loads(block) == transform_to_canonical(case["transform"]), case["name"]
+
+
 @pytest.mark.parametrize("case", PATTERN_CASES, ids=lambda case: case["name"])
 def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
     """The wrapper agrees with the matrix the snippet proves at the transform level."""
