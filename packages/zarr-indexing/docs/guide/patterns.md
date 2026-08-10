@@ -11,19 +11,22 @@ are checked against NumPy.
 ## The idiom-to-model matrix
 
 Over a 6-by-8 `image`; the full constructions, with per-idiom commentary,
-are in the executable matrix below.
+are in the executable matrix below. Each row is the complete model — both
+constructor halves. The domain is the result's coordinates, so its shape is
+the result shape; every one here is zero-origin, spelled
+`IndexDomain.from_shape(...)`.
 
-| NumPy idiom | Result shape | Category | Output maps (the model) |
+| NumPy idiom | Domain | Category | Output maps |
 | --- | --- | --- | --- |
-| `image[1:5, ::2]` | `(4, 4)` | box | `DimensionMap(0, offset=1)`, `DimensionMap(1, stride=2)` |
-| `image[2, :]` | `(8,)` | box | `ConstantMap(2)`, `DimensionMap(0)` |
-| `image[::-2, :]` | `(3, 8)` | box | `DimensionMap(0, offset=5, stride=-2)`, `DimensionMap(1)` |
-| `image[2:2, :]` | `(0, 8)` | box | `DimensionMap(0, offset=2)`, `DimensionMap(1)` — emptiness lives in the domain |
-| `image[mask]` | `(10,)` | query | two correlated `ArrayMap`s: the mask's nonzero rows and columns |
-| `image[np.ix_(rows, columns)]` | `(3, 2)` | query | `ArrayMap` shaped `(3, 1)`, `ArrayMap` shaped `(1, 2)` — distinct axes |
-| `image[vector_rows, vector_columns]` | `(3,)` | query | two 1-D `ArrayMap`s on one shared axis — pointwise |
-| `image[broadcast_rows, broadcast_columns]` | `(2, 3)` | query | two `ArrayMap`s carrying the full `(2, 3)` broadcast block |
-| `image[rows, 2:6]` | `(3, 4)` | query | `ArrayMap` shaped `(3, 1)`, `DimensionMap(1, offset=2)` |
+| `image[1:5, ::2]` | `from_shape((4, 4))` | box | `DimensionMap(0, offset=1)`, `DimensionMap(1, stride=2)` |
+| `image[2, :]` | `from_shape((8,))` | box | `ConstantMap(2)`, `DimensionMap(0)` |
+| `image[::-2, :]` | `from_shape((3, 8))` | box | `DimensionMap(0, offset=5, stride=-2)`, `DimensionMap(1)` |
+| `image[2:2, :]` | `from_shape((0, 8))` | box | `DimensionMap(0, offset=2)`, `DimensionMap(1)` — emptiness lives in the domain |
+| `image[mask]` | `from_shape((10,))` | query | two correlated `ArrayMap`s: the mask's nonzero rows and columns |
+| `image[np.ix_(rows, columns)]` | `from_shape((3, 2))` | query | `ArrayMap` shaped `(3, 1)`, `ArrayMap` shaped `(1, 2)` — distinct axes |
+| `image[vector_rows, vector_columns]` | `from_shape((3,))` | query | two 1-D `ArrayMap`s on one shared axis — pointwise |
+| `image[broadcast_rows, broadcast_columns]` | `from_shape((2, 3))` | query | two `ArrayMap`s carrying the full `(2, 3)` broadcast block |
+| `image[rows, 2:6]` | `from_shape((3, 4))` | query | `ArrayMap` shaped `(3, 1)`, `DimensionMap(1, offset=2)` |
 
 Two structural rules do all the work:
 
