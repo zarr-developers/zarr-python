@@ -204,6 +204,13 @@ def _correlated_map_coords(
     broadcast up to it explicitly.
     """
     coords = checked_affine(m.offset, m.stride, m.index_array)
+    if math.prod(broadcast_shape) == 0:
+        # A zero-extent broadcast axis makes the correlated block empty — for
+        # example an ArrayMap composed over an empty domain, which the package
+        # promises resolves like any other. The per-axis reshape below cannot
+        # express that block (a 0-size array does not reshape to the non-zero
+        # singleton axes), and there is no coordinate to produce anyway.
+        return np.empty(0, dtype=np.intp)
     if coords.ndim == input_rank:
         # Drop the axes bound by a slice, which the map is singleton along.
         # Removing size-1 axes by reshape preserves element order wherever they
@@ -260,6 +267,12 @@ def _lower(array: Any, transform: IndexTransform) -> Any:
     always in the transform's own domain axis order and of exactly its domain
     shape.
     """
+    if math.prod(transform.domain.shape) == 0:
+        # An empty domain selects nothing, and its maps may legitimately be
+        # empty along the vanished axes (an ArrayMap composed over an empty
+        # domain, which the package promises resolves like any other). The
+        # resolvers below cannot evaluate such maps — and have no reason to.
+        return np.empty(transform.domain.shape, dtype=np.asanyarray(array).dtype)
     if index_array_structure(transform) == "general":
         result = _lower_general(array, transform)
     else:
