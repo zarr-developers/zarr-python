@@ -125,15 +125,46 @@ source coordinate  | 2   3   4
 source value       | 12  13  14
 ```
 
-This slice needs one `DimensionMap`, which describes how its one request
-coordinate becomes the source coordinate `i + 2`. The transform system also
-has three map forms:
+A transform speaks function vocabulary while this guide speaks array
+vocabulary. The two line up like this:
 
-- `ConstantMap` is a map whose source coordinate does not vary; the later
-  result-array section returns to that form.
-- `DimensionMap` describes an arithmetic rule, such as request `i` becoming
-  source coordinate `i + 2`.
-- `ArrayMap` stores explicit coordinates for irregular or fancy indexing.
+| the API says | this guide says |
+| --- | --- |
+| input space (`domain`, `input_rank`) | request coordinates — the result being built |
+| output space (`output`, one map per dimension) | source coordinates — where values are read |
+
+`output` names the output side of the coordinate *function*, not the data:
+values flow source → request, against the arrow. The neutral names exist
+because transforms compose — in a chain, an interior transform's output space
+is just the next transform's input space, neither a request nor a source.
+
+### The three map kinds, in NumPy terms
+
+Every output dimension is produced by one of three map forms. Each has a
+NumPy counterpart, shown executably below.
+
+`DimensionMap` is an arithmetic rule — the slice above is one, mapping
+request `i` to source coordinate `i + 2`:
+
+```python
+--8<-- "snippets/output_maps.py:dimension-map"
+```
+
+`ArrayMap` stores explicit source coordinates for irregular or fancy
+indexing; order and repeats survive into the result:
+
+```python
+--8<-- "snippets/output_maps.py:array-map"
+```
+
+`ConstantMap` reads the same source coordinate for every request cell. This
+is the one form with no NumPy selection counterpart — an integer index drops
+the axis, while a constant map keeps it at any extent — so its NumPy
+counterpart is a broadcast, not an index:
+
+```python
+--8<-- "snippets/output_maps.py:constant-map"
+```
 
 Together, the request domain and these per-source-dimension maps are the
 complete reusable description of an index.
