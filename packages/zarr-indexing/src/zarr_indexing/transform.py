@@ -177,7 +177,7 @@ class IndexTransform:
 
     @classmethod
     def identity(cls, domain: IndexDomain) -> IndexTransform:
-        """The identity transform over `domain`: input coordinate `i` maps to output coordinate `i`."""
+        """The identity transform over `domain`: every result cell reads the source at its own address."""
         output = tuple(DimensionMap(input_dimension=i) for i in range(domain.ndim))
         return cls(domain=domain, output=output)
 
@@ -504,7 +504,10 @@ class IndexTransform:
         ]
         | None
     ):
-        """Restrict this transform to output coordinates within output_domain.
+        """Keep only the cells whose source coordinates fall inside `output_domain`.
+
+        Chunk resolution is the canonical caller: intersecting a request with
+        one chunk's box keeps the cells that chunk can serve.
 
         Returns `(restricted_transform, out_indices)` or None if empty.
 
@@ -516,7 +519,13 @@ class IndexTransform:
         return _intersect(self, output_domain)
 
     def translate(self, shift: tuple[int, ...]) -> IndexTransform:
-        """Shift all output coordinates by `shift`."""
+        """Shift the source coordinates every cell reads by `shift`, per dimension.
+
+        The domain is untouched: the result keeps its cells, and each one
+        reads from a shifted source address — for example, making a chunk's
+        global addresses chunk-local by translating by the chunk's negated
+        origin.
+        """
         if len(shift) != self.output_rank:
             raise ValueError(f"shift must have length {self.output_rank}, got {len(shift)}")
         new_output: list[OutputIndexMap] = []
