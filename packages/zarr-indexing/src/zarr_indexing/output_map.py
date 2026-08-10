@@ -57,6 +57,7 @@ class ConstantMap:
     """
 
     offset: int = 0
+    """The fixed storage coordinate every input cell maps to."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,8 +70,13 @@ class DimensionMap:
     """
 
     input_dimension: int
+    """The input (domain) dimension whose coordinate this map reads."""
+
     offset: int = 0
+    """The storage coordinate that input coordinate `0` maps to."""
+
     stride: int = 1
+    """The storage step per unit input step; negative walks backward, zero repeats `offset`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +109,14 @@ class ArrayMap:
     """
 
     index_array: npt.NDArray[np.integer[Any]]
+    """Explicit coordinates at the enclosing transform's full input rank; order and
+    duplicates are semantic. Its non-singleton axes are the map's dependency axes."""
+
     offset: int = 0
+    """Constant term of the affine adjustment: storage is `offset + stride * index_array[i]`."""
+
     stride: int = 1
+    """Multiplier applied to each `index_array` value before `offset` is added."""
 
     def __post_init__(self) -> None:
         """Own the index array and expose it read-only.

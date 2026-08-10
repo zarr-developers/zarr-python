@@ -37,7 +37,10 @@ class ReadContext:
     """A source-global transform and optional projection for a partitioned read."""
 
     transform: IndexTransform
+    """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
+
     projection: ChunkProjection | None = None
+    """The partition plan when this read is one part of a partitioned view, else `None`."""
 
 
 class Reader(Protocol):

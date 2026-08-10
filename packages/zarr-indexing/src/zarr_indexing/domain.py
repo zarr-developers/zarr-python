@@ -28,8 +28,13 @@ class IndexDomain:
     """
 
     inclusive_min: tuple[int, ...]
+    """The lower corner: each dimension's smallest literal coordinate. May be negative."""
+
     exclusive_max: tuple[int, ...]
+    """Each dimension's upper bound, excluded: valid coordinates end at `exclusive_max - 1`."""
+
     labels: tuple[str, ...] | None = None
+    """Optional per-dimension names; carried through the wire format, never consulted by indexing."""
     # Lazily-memoized shape. Excluded from init/repr/eq/hash: it is derived
     # state, not part of the domain's identity. The domain is frozen, so the
     # value is computed at most once (see `shape`). `None` is the unset

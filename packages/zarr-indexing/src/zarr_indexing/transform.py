@@ -69,7 +69,10 @@ class IndexTransform:
     """
 
     domain: IndexDomain
+    """The input domain: the request coordinates this transform accepts."""
+
     output: tuple[OutputIndexMap, ...]
+    """One output map per storage dimension, each producing that dimension's coordinate."""
 
     def __post_init__(self) -> None:
         for i, m in enumerate(self.output):

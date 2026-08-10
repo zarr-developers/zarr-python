@@ -78,8 +78,13 @@ class IndexDomainJSON(TypedDict, total=False):
     """Canonical JSON representation of an IndexDomain."""
 
     input_inclusive_min: Required[list[BoundJSON]]
+    """Per-dimension lower bounds; `"-inf"` is legal on the wire but cannot be lowered."""
+
     input_exclusive_max: Required[list[BoundJSON]]
+    """Per-dimension exclusive upper bounds; `"+inf"` is legal on the wire but cannot be lowered."""
+
     input_labels: Required[list[str]]
+    """Per-dimension names; the empty string marks an unlabeled dimension."""
 
 
 class OutputIndexMapJSON(TypedDict, total=False):
@@ -94,20 +99,38 @@ class OutputIndexMapJSON(TypedDict, total=False):
     """
 
     offset: int
+    """Constant term; alone it is the whole constant form."""
+
     stride: int
+    """Multiplier applied to the input coordinate or to each `index_array` value."""
+
     input_dimension: int
+    """The input dimension the single_input_dimension form reads."""
+
     index_array: NestedIntList
+    """Nested lists of storage coordinates, one nesting level per input dimension."""
+
     index_array_bounds: list[IndexValueJSON]
+    """Bounds the `index_array` values are promised to lie in; `["-inf", "+inf"]` if unconstrained."""
 
 
 class IndexTransformJSON(TypedDict, total=False):
     """Canonical JSON representation of an IndexTransform (spec section 4.3)."""
 
     input_rank: Required[int]
+    """The number of input dimensions; the bounds and labels lists match it in length."""
+
     input_inclusive_min: Required[list[BoundJSON]]
+    """Per-dimension lower bounds; `"-inf"` is legal on the wire but cannot be lowered."""
+
     input_exclusive_max: Required[list[BoundJSON]]
+    """Per-dimension exclusive upper bounds; `"+inf"` is legal on the wire but cannot be lowered."""
+
     input_labels: Required[list[str]]
+    """Per-dimension names; the empty string marks an unlabeled dimension."""
+
     output: Required[list[OutputIndexMapJSON]]
+    """One output map per storage dimension."""
 
 
 # ---------------------------------------------------------------------------

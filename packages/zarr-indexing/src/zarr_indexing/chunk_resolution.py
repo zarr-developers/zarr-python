@@ -119,7 +119,10 @@ class ChunkPlan:
     """
 
     transform: IndexTransform
+    """The composed request this plan partitions."""
+
     dimension_grids: tuple[DimensionGridLike, ...]
+    """One grid per storage dimension, defining the chunk layout the plan walks."""
 
     def projections(self) -> Iterator[ChunkProjection]:
         """Return a fresh iterator over the chunks touched by this plan."""

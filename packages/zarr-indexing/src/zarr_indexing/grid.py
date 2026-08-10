@@ -64,9 +64,16 @@ class FixedDimension:
     """Uniform chunk size with a boundary chunk clipped to the axis extent."""
 
     size: int
+    """The declared chunk length along this axis; every chunk's codec buffer size."""
+
     extent: int
+    """The axis length in global source coordinates."""
+
     nchunks: int = field(init=False, repr=False)
+    """Derived: the number of chunks holding data within `extent`."""
+
     ngridcells: int = field(init=False, repr=False)
+    """Derived: the number of declared grid cells; equals `nchunks` for a fixed dimension."""
 
     def __post_init__(self) -> None:
         if self.size < 0:
@@ -144,10 +151,18 @@ class VaryingDimension:
     """Explicit chunk edge lengths, with trailing data clipped to ``extent``."""
 
     edges: tuple[int, ...]
+    """The declared per-chunk edge lengths, in order; codec buffer sizes, unclipped."""
+
     cumulative: tuple[int, ...]
+    """Prefix sums of `edges`; derived, and what index lookups binary-search."""
+
     extent: int
+    """The axis length in global source coordinates; at most the sum of `edges`."""
     nchunks: int = field(init=False, repr=False)
+    """Derived: the number of chunks holding data within `extent`."""
+
     ngridcells: int = field(init=False, repr=False)
+    """Derived: the number of declared edges; exceeds `nchunks` when trailing cells are empty."""
 
     def __init__(self, edges: Sequence[int], extent: int) -> None:
         edges_tuple = tuple(edges)
@@ -301,7 +316,10 @@ class ChunkSpec:
     """A chunk's valid data region and its full codec buffer shape."""
 
     slices: tuple[slice, ...]
+    """Per-dimension bounds of the valid data region, in global source coordinates."""
+
     codec_shape: tuple[int, ...]
+    """The declared (codec buffer) chunk shape, unclipped by the array extent."""
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -322,6 +340,8 @@ class ChunkGrid:
     """A concrete regular or rectilinear arrangement of chunks for one array."""
 
     dimensions: tuple[DimensionGrid, ...]
+    """One per-axis grid, each mapping that axis's source indices to chunks."""
+
     _is_regular: bool = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -528,6 +548,7 @@ class EdgeDimensionGrid:
     __slots__ = ("_offsets", "sizes")
 
     sizes: tuple[int, ...]
+    """The length of each chunk along the axis, in order; every entry is positive."""
 
     def __init__(self, sizes: Sequence[int]) -> None:
         """Build a one-axis grid from explicit per-chunk sizes.
