@@ -191,8 +191,8 @@ class IndexTransform:
 
         In array-indexing terms: `point` names a cell of the result array, and
         the returned tuple — each `output` map evaluated at `point` — names the
-        source-array cell its value is read from. No data is touched; this is
-        the coordinate arrow, running result to source.
+        source-array cell its value is read from: the coordinate arrow,
+        running result to source.
 
         Parameters
         ----------
@@ -248,7 +248,7 @@ class IndexTransform:
 
         The vectorized form of `apply`: each row of `points` names a result
         cell, and the corresponding output row names the source-array cell
-        its value is read from. No data is touched.
+        its value is read from.
 
         Parameters
         ----------
@@ -606,7 +606,7 @@ class IndexTransform:
         """Accessor for the orthogonal (outer-product) indexing dialect.
 
         `transform.oindex[sel]` applies each index array independently per
-        dimension and returns a new transform, without I/O.
+        dimension and returns a new transform.
         """
         return _OIndexHelper(self)
 
@@ -615,7 +615,7 @@ class IndexTransform:
         """Accessor for the vectorized (coordinate/mask) indexing dialect.
 
         `transform.vindex[sel]` broadcasts all index arrays together, NumPy
-        fancy-indexing style, and returns a new transform, without I/O.
+        fancy-indexing style, and returns a new transform.
         """
         return _VIndexHelper(self)
 
