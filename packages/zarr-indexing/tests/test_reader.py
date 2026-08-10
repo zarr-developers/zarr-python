@@ -20,7 +20,7 @@ from zarr_indexing import (
     plan_chunks,
 )
 from zarr_indexing.grid import dimension_grids_from_chunks
-from zarr_indexing.reader import basic_reader, numpy_reader
+from zarr_indexing.reader import basic_reader, numpy_reader, unit_step_reader
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,6 +41,18 @@ class BasicOnlySource:
 
     def __getitem__(self, key: tuple[Any, ...]) -> np.ndarray[Any, Any]:
         assert all(isinstance(item, slice) and (item.step or 1) > 0 for item in key)
+        self.keys.append(key)
+        return self.data[key]
+
+
+class UnitStepOnlySource(BasicOnlySource):
+    """A source that rejects everything but ascending unit-step slices."""
+
+    def __getitem__(self, key: tuple[Any, ...]) -> np.ndarray[Any, Any]:
+        assert all(
+            isinstance(item, slice) and item.step == 1 and 0 <= item.start <= item.stop <= size
+            for item, size in zip(key, self.data.shape, strict=True)
+        )
         self.keys.append(key)
         return self.data[key]
 
@@ -188,12 +200,12 @@ def test_successful_transform_contract_across_planning_readers_and_lazy_array(
     )
     assert sorted(reconstructed_pairs) == sorted(expected_pairs)
 
-    for reader_name, source in (
-        ("basic", BasicOnlySource(source_data)),
-        ("numpy", source_data),
+    for reader, source in (
+        (basic_reader, BasicOnlySource(source_data)),
+        (numpy_reader, source_data),
+        (unit_step_reader, UnitStepOnlySource(source_data)),
     ):
         out = np.empty(transform.domain.shape, dtype=source_data.dtype)
-        reader = basic_reader if reader_name == "basic" else numpy_reader
         assert reader.read_into(source, ReadContext(transform), out) is None
         np.testing.assert_array_equal(out, expected_values)
 
@@ -290,7 +302,7 @@ READER_CASES = (
 
 
 @pytest.mark.parametrize(("source_data", "transform", "expected"), READER_CASES)
-@pytest.mark.parametrize("reader_name", ["basic", "numpy"])
+@pytest.mark.parametrize("reader_name", ["basic", "numpy", "unit-step"])
 def test_builtin_readers_match_the_transform(
     source_data: np.ndarray[Any, Any],
     transform: IndexTransform,
@@ -302,13 +314,17 @@ def test_builtin_readers_match_the_transform(
         source = BasicOnlySource(source_data)
         result = basic_reader.read_into(source, ReadContext(transform), out)
         assert len(source.keys) == 1
+    elif reader_name == "unit-step":
+        source = UnitStepOnlySource(source_data)
+        result = unit_step_reader.read_into(source, ReadContext(transform), out)
+        assert len(source.keys) == 1
     else:
         result = numpy_reader.read_into(source_data, ReadContext(transform), out)
     assert result is None
     np.testing.assert_array_equal(out, expected)
 
 
-@pytest.mark.parametrize("reader_name", ["basic", "numpy"])
+@pytest.mark.parametrize("reader_name", ["basic", "numpy", "unit-step"])
 def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> None:
     transform = IndexTransform(
         domain=IndexDomain.from_shape((1,)),
@@ -322,9 +338,41 @@ def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> No
     if reader_name == "basic":
         with pytest.raises(OverflowError, match="outside np.intp"):
             basic_reader.read_into(BasicOnlySource(np.arange(1)), ReadContext(transform), out)
+    elif reader_name == "unit-step":
+        with pytest.raises(OverflowError, match="outside np.intp"):
+            unit_step_reader.read_into(
+                UnitStepOnlySource(np.arange(1)), ReadContext(transform), out
+            )
     else:
         with pytest.raises(OverflowError, match="outside np.intp"):
             numpy_reader.read_into(np.arange(1), ReadContext(transform), out)
+
+
+def test_unit_step_reader_reads_through_lazy_array() -> None:
+    """The full dialect resolves through a source that only accepts unit-step slices.
+
+    `UnitStepOnlySource` asserts the shape of every key it receives, so each
+    selection here also proves no strided, descending, or non-slice key
+    reached the source — partitioned and unpartitioned alike.
+    """
+    selections: tuple[Callable[[LazyArray], LazyArray], ...] = (
+        lambda v: v.lazy[1:5, ::2, ::-1],
+        lambda v: v.lazy[5:1:-2, None, 3, ::3],
+        lambda v: v.lazy.oindex[[3, 0, 3], ::-2, [7, 7]],
+        lambda v: v.lazy.vindex[np.array([[0, 5]]), np.array([[6], [0]]), 2],
+        lambda v: v.lazy[2:2, :, ::-1],
+        lambda v: v.lazy[::5, 6, 1:8:4],
+    )
+    for select in selections:
+        for parts in (None, (2, 3, 8), (6, 7, 1)):
+            source = UnitStepOnlySource(SOURCE)
+            view = LazyArray(source).with_reader(unit_step_reader)
+            if parts is not None:
+                view = view.with_parts(parts)
+            expected = select(LazyArray.from_numpy(SOURCE)).result()
+            np.testing.assert_array_equal(select(view).result(), expected)
+            # An empty view allocates without reading; every other one must read.
+            assert (len(source.keys) > 0) == (expected.size > 0)
 
 
 def test_constant_outside_intp_has_transform_planner_reader_error_parity() -> None:

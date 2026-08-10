@@ -64,8 +64,10 @@ from zarr_indexing.reader import (
     NumPyReader,
     ReadContext,
     Reader,
+    UnitStepReader,
     basic_reader,
     numpy_reader,
+    unit_step_reader,
 )
 from zarr_indexing.transform import (
     IndexTransform,
@@ -103,6 +105,7 @@ __all__ = [
     "Partition",
     "ReadContext",
     "Reader",
+    "UnitStepReader",
     "VaryingDimension",
     "VindexInvalidSelectionError",
     "__version__",
@@ -122,4 +125,5 @@ __all__ = [
     "selection_to_transform",
     "transform_from_canonical",
     "transform_to_canonical",
+    "unit_step_reader",
 ]

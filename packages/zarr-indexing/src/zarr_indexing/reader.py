@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import numpy as np
 
@@ -22,8 +25,10 @@ __all__ = [
     "NumPyReader",
     "ReadContext",
     "Reader",
+    "UnitStepReader",
     "basic_reader",
     "numpy_reader",
+    "unit_step_reader",
 ]
 
 
@@ -113,8 +118,39 @@ class NumPyReader:
         out[...] = _lower(block, residual)
 
 
+class UnitStepReader:
+    """Reader for sources whose basic indexing accepts only step-1 slices.
+
+    Each transform is decomposed into the smallest enclosing ascending
+    unit-step slab and a residual transform, so the source only ever receives
+    `slice(start, stop, 1)` on every axis — the one form an API without
+    general strided reads (an FFI binding, an HTTP range endpoint) supports.
+    `BasicReader` instead pushes strided and reversed slices down, which
+    reads less but asks more of the source.
+
+    The residual lowering applies strides, reversals, and gathers to the
+    in-memory block, so a strided selection over-reads its cover by the
+    stride factor. Partitioning the wrapping
+    [`LazyArray`][zarr_indexing.lazy_array.LazyArray] (`with_parts`) bounds
+    each cover by a part.
+
+    Slice results must permit conversion to NumPy system memory, exactly as
+    for `BasicReader`.
+    """
+
+    __slots__ = ()
+
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        """Read one transform through an ascending unit-step slab into `out`."""
+        transform = context.transform
+        key, residual = _decompose_unit_step(transform)
+        block = np.asanyarray(source[key])
+        out[...] = _lower(block, residual)
+
+
 basic_reader: Final = BasicReader()
 numpy_reader: Final = NumPyReader()
+unit_step_reader: Final = UnitStepReader()
 
 
 def _take(array: Any, indices: np.ndarray[Any, np.dtype[np.intp]], axis: int) -> Any:
@@ -415,7 +451,48 @@ def _push_slice_for_dimension_map(
     )
 
 
+def _push_unit_slice_for_dimension_map(
+    m: DimensionMap, transform: IndexTransform
+) -> tuple[slice, DimensionMap]:
+    """The unit-step slice covering a `DimensionMap`, and its block-local map.
+
+    Strides and reversals stay in the residual: the source is only ever asked
+    for a contiguous ascending slice, and the original stride is replayed
+    against the in-memory block. The cover therefore over-reads a strided
+    selection by its stride factor, which is the price of a source that
+    accepts nothing but `slice(start, stop, 1)`.
+    """
+    d = m.input_dimension
+    lo = transform.domain.inclusive_min[d]
+    hi = max(transform.domain.exclusive_max[d], lo)
+    if hi == lo:
+        return slice(0, 0, 1), DimensionMap(input_dimension=d, offset=-lo, stride=1)
+    first = checked_affine(m.offset, m.stride, lo)
+    if m.stride == 0:
+        return (
+            slice(first, first + 1, 1),
+            DimensionMap(input_dimension=d, offset=0, stride=0),
+        )
+    last = checked_affine(m.offset, m.stride, hi - 1)
+    origin = min(first, last)
+    return (
+        slice(origin, max(first, last) + 1, 1),
+        DimensionMap(input_dimension=d, offset=m.offset - origin, stride=m.stride),
+    )
+
+
 def _decompose_basic(transform: IndexTransform) -> tuple[tuple[slice, ...], IndexTransform]:
+    return _decompose(transform, _push_slice_for_dimension_map)
+
+
+def _decompose_unit_step(transform: IndexTransform) -> tuple[tuple[slice, ...], IndexTransform]:
+    return _decompose(transform, _push_unit_slice_for_dimension_map)
+
+
+def _decompose(
+    transform: IndexTransform,
+    push_dimension_map: Callable[[DimensionMap, IndexTransform], tuple[slice, DimensionMap]],
+) -> tuple[tuple[slice, ...], IndexTransform]:
     key: list[slice] = []
     residual: list[OutputIndexMap] = []
     for output_map in transform.output:
@@ -424,7 +501,7 @@ def _decompose_basic(transform: IndexTransform) -> tuple[tuple[slice, ...], Inde
             key.append(slice(coordinate, coordinate + 1, 1))
             residual.append(ConstantMap(offset=0))
         elif isinstance(output_map, DimensionMap):
-            pushed, local = _push_slice_for_dimension_map(output_map, transform)
+            pushed, local = push_dimension_map(output_map, transform)
             key.append(pushed)
             residual.append(local)
         else:
