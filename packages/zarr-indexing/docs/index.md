@@ -2,6 +2,14 @@
 
 Composable, lazy coordinate transforms for Zarr array indexing.
 
+Many arrays only support plain slicing: a chunked store, an FFI binding, an
+HTTP endpoint. `zarr-indexing` grafts the full NumPy indexing dialect onto
+such a source — negative steps, `oindex`, `vindex`, boolean masks, and
+chains of all of them. Selections compose without reading anything; data
+moves only when you ask for values; and a request can be turned into an
+exact plan of the chunks it touches, for a reader, writer, or scheduler you
+control.
+
 <div class="grid cards" markdown>
 
 - **Use lazy indexing**

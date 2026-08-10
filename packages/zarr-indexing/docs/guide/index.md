@@ -1,36 +1,19 @@
 # Visual guide
 
-Start with a familiar NumPy selection and follow it through the six ideas that
-make indexing lazy and partitionable: coordinates, transforms, composition,
-result axes, chunk planning, and paired projections. The opening slice keeps
-the coordinate story one-dimensional before the result-array section introduces
-the 3-by-4 image used in later chunk planning.
+The whole model in one sentence: indexing through `LazyArray.lazy` builds a
+view, chunk planning partitions its coordinates, and `result()` materializes
+the view. This page follows one familiar NumPy selection, `source[2:5]`,
+through those stages.
 
-1. [An index selects coordinates](#an-index-selects-coordinates) begins with
-   the values and order of `source[2:5]`.
-2. [Coordinates are addresses](#coordinates-are-addresses) explains literal
-   coordinate domains, NumPy positions, and the request-to-source mapping
-   between them.
-3. [Lazy views compose](#lazy-views-compose) shows how repeated indexing
-   becomes one description and identifies exactly when data is read.
-4. [An index defines a result array](#an-index-defines-a-result-array) explains
-   how an index chooses points and arranges the resulting axes.
-5. [A request becomes a chunk plan](#a-request-becomes-a-chunk-plan) divides
-   a higher-dimensional request over a 2-by-2 chunk grid without choosing a source or
-   scheduler.
-6. [One cell domain, two projections](#one-cell-domain-two-projections) pairs
-   chunk-local reads with their exact positions in the requested result.
+The first four sections are for anyone indexing arrays: coordinates,
+transforms, composition, and result axes. **If you are using lazy indexing
+rather than building a storage backend, you can stop after section four.**
+The last two sections are for integrators: they turn a request into a chunk
+plan and pair each chunk read with its place in the result.
 
-You can finish the tour with a practical mental model: indexing through
-`LazyArray.lazy` builds a view, chunk planning partitions its coordinates, and
-`result()` materializes that view.
-
-The transform answers **which values?** and is independent of the backend. The
-reader answers **how do I obtain them?** and must preserve the transform
-exactly. `LazyArray(source)` assumes a source with `shape`, `dtype`, and basic
-integer/slice indexing whose selected slabs can be converted to NumPy system
-memory. Use `LazyArray.from_numpy(array)` when the source is visibly a NumPy
-array and its optimized reader is appropriate.
+Throughout, one division of labor holds: the transform answers **which
+values?** and is independent of the backend; the reader answers **how do I
+obtain them?** and must preserve the transform exactly.
 
 ## An index selects coordinates {#an-index-selects-coordinates}
 
@@ -51,8 +34,7 @@ result value      | 12  13  14
 
 The result defines its own coordinates: `0`, `1`, and `2`. The aligned rows
 make the correspondence explicit: those result coordinates receive values
-`12`, `13`, and `14` from source coordinates `2`, `3`, and `4`. This is logical
-placement, not physical read order.
+`12`, `13`, and `14` from source coordinates `2`, `3`, and `4`.
 
 The wrapper below gives the same familiar selection a lazy spelling. Indexing
 through `.lazy` creates `view`; the last line asks for its values and checks the
@@ -102,40 +84,21 @@ coordinate |   -2     -1      0      1      2
 status     | address address address address address
 ```
 
-`IndexDomain` makes those bounds explicit. In the first half of this executable
-example, narrowing at `-1` means selecting the literal address `-1`. The final
-assertion deliberately contrasts that with a NumPy-style position in the wrapper
-while preserving a one-element result array.
+`IndexDomain` makes those bounds explicit. In the example below, narrowing the
+domain at `-1` selects the literal address `-1`; the wrapper at the end treats
+`-1` the way NumPy does — as the last position.
 
 ```python
 --8<-- "snippets/coordinate_origins.py:coordinate-origin"
 ```
 
-### Prepending does not renumber
+Why carry literal coordinates at all? They let independently described
+regions keep stable addresses — a domain can even grow at its lower end
+without renumbering what is already there. The [design
+notes](../design-notes.md#negative-origin-domains-and-prependable-grids) work
+through that prepending example; nothing else in this guide depends on it.
 
-Literal coordinates let a domain grow at its lower end without changing the
-identity of anything already present. Prepending three cells extends `[0, 6)`
-to `[-3, 6)`: the new cells receive addresses `-3`, `-2`, and `-1`, while the
-old cells keep addresses `0` through `5`. Coordinate `0` does not become
-coordinate `3`.
-
-The adjacent intervals `[-3, 0)`, `[0, 3)`, and `[3, 6)` follow the same
-half-open adjacency rule: each stopping boundary is included exactly once as
-the next interval's starting boundary.
-
-```text
-before [0, 6):
-
-                  |  0   1   2  |  3   4   5  |
-chunk coordinate  |      0      |      1      |
-
-after [-3, 6):
-
-| -3  -2  -1  |  0   1   2  |  3   4   5  |
-|     -1      |      0      |      1      |  chunk coordinate
-```
-
-That literal model and NumPy's positional model are both useful, but they answer
+The literal model and NumPy's positional model are both useful, but they answer
 different questions:
 
 | Surface | Meaning of an integer index | Meaning of `-1` |
@@ -145,25 +108,7 @@ different questions:
 
 `LazyArray` uses positions because it is an array-like wrapper: each derived
 view starts at position zero and negative indices wrap exactly as they do in
-NumPy. The lower-level domain and transform types keep literal coordinates so
-independently described regions can retain stable addresses.
-
-The same distinction matters for chunk grids. `EdgeDimensionGrid` is the
-convenient concrete grid for a zero-origin array: its chunk offsets are prefix
-sums starting at zero. `DimensionGridLike` is the more general protocol
-consumed by chunk planning, so it admits grids with negative chunk and cell
-coordinates, including the prependable example below.
-
-```python
---8<-- "snippets/coordinate_origins.py:prepend-grid"
-```
-
-Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Both public
-projection transforms share the same synthetic input cell domain `[0, 3)`.
-Evaluating its three points shows the two distinct outputs:
-`chunk_transform` produces zero-origin chunk-local coordinates `0, 1, 2`,
-while `cell_transform` produces the literal request coordinates `-3, -2, -1`.
-The shared input domain is not itself the chunk-local coordinate frame.
+NumPy. The lower-level domain and transform types keep literal coordinates.
 
 ### A transform points from the request to the source
 
@@ -230,12 +175,15 @@ description; the assertion's call to `result()` is the first operation in the
 example that materializes the selected data.
 
 !!! warning "Stop here: the materialization boundary"
-    Indexing through `.lazy[...]` is lazy. Calling `result()`, indexing the
-    wrapper eagerly with `view[...]`, converting it with `numpy.asarray`, or
-    passing it to a NumPy function materializes data. Python arithmetic such as
-    `view + 1` is outside this wrapper's deferred scope and raises `TypeError`;
-    NumPy arithmetic such as `numpy.add(view, 1)` converts and materializes the
-    view. This wrapper defers indexing, not a general compute graph.
+    Indexing through `.lazy[...]` never reads. These do:
+
+    - `result()`
+    - eager indexing of the wrapper: `view[...]`
+    - `numpy.asarray(view)`, or passing the view to any NumPy function
+      (`numpy.add(view, 1)` converts, and therefore materializes, the view)
+
+    Python arithmetic such as `view + 1` raises `TypeError` instead: this
+    wrapper defers indexing, not a general compute graph.
 
 ## An index defines a result array {#an-index-defines-a-result-array}
 
@@ -305,12 +253,11 @@ request coordinates    0, 1                  2, 3
 Every planned chunk keeps three coordinate frames distinct:
 
 - `chunk_coords` identifies a cell in the chunk grid. Chunk coordinates are
-  integers, so the prepended chunk from the coordinates section really has
-  coordinate `-1`; it is not an alias for the final chunk.
+  literal integers, so a grid that grows at its lower end can hold a chunk
+  whose coordinate really is `-1` — not an alias for the final chunk (see the
+  [design notes](../design-notes.md#negative-origin-domains-and-prependable-grids)).
 - `chunk_domain` gives that chunk's bounds in **global source coordinates**.
-  Here the two domains are `[0, 2) × [0, 2)` and
-  `[0, 2) × [2, 4)`. For the prepended one-dimensional example, chunk `-1`
-  has the global domain `[-3, 0)`.
+  Here the two domains are `[0, 2) × [0, 2)` and `[0, 2) × [2, 4)`.
 - Chunk-local positions start from zero inside each chunk. Global column 2 is
   therefore local column 0 in chunk `(0, 1)`. This zero-origin local frame is
   separate from both the global `chunk_domain` and the possibly negative
@@ -337,8 +284,14 @@ remain invalid on a nonempty axis.
 ## One cell domain, two projections {#one-cell-domain-two-projections}
 
 A chunk read has to answer two questions at once: which cells belong to this
-chunk, and where does each of those cells belong in the requested result? A
-paired projection answers both from one shared cell domain.
+chunk, and where does each of those cells belong in the requested result?
+
+Think of a projection as a small table with one row per selected cell. For
+each row, `chunk_transform` gives the cell's zero-origin address inside the
+chunk, and `cell_transform` gives the position in the requested result that
+receives its value. The row numbers of that table are the shared **cell
+domain** — a synthetic input space both transforms accept, which is why one
+input point can be evaluated on both sides.
 
 ```text
 left chunk (0, 0)
@@ -374,14 +327,10 @@ the local planning frame cannot be confused.
 | `cell_transform` | Literal coordinates in the original request; its output rank is the request rank |
 | `chunk_transform` | Zero-origin coordinates in the selected chunk's local frame; its output rank is the source rank |
 
-Both transforms have exactly the same synthetic input cell domain. That domain
-enumerates corresponding cells; it is not either output coordinate space. A
-consumer can therefore evaluate one input point on both sides: the
-`chunk_transform` result says which zero-origin chunk-local coordinate to read,
-and the `cell_transform` result says which literal request coordinate receives
-that value. The canonical row selection has a one-dimensional request and a
-two-dimensional source, so its paired projections have request rank one and
-source rank two.
+The cell domain enumerates corresponding cells; it is not itself either
+output coordinate space. The canonical row selection has a one-dimensional
+request and a two-dimensional source, so its paired projections have request
+rank one and source rank two.
 
 ### Order and duplicates need the request-side projection
 

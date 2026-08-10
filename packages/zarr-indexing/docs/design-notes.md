@@ -192,6 +192,47 @@ rectangular-only view is a plausible next step, but it should be introduced by
 a consumer that needs the guarantee in its signatures rather than
 speculatively; `is_box` is the runtime check until then.
 
+## Negative-origin domains and prependable grids
+
+Literal coordinates let a domain grow at its lower end without changing the
+identity of anything already present. Prepending three cells extends `[0, 6)`
+to `[-3, 6)`: the new cells receive addresses `-3`, `-2`, and `-1`, while the
+old cells keep addresses `0` through `5`. Coordinate `0` does not become
+coordinate `3`.
+
+The adjacent intervals `[-3, 0)`, `[0, 3)`, and `[3, 6)` follow the half-open
+adjacency rule: each stopping boundary is included exactly once as the next
+interval's starting boundary.
+
+```text
+before [0, 6):
+
+                  |  0   1   2  |  3   4   5  |
+chunk coordinate  |      0      |      1      |
+
+after [-3, 6):
+
+| -3  -2  -1  |  0   1   2  |  3   4   5  |
+|     -1      |      0      |      1      |  chunk coordinate
+```
+
+The same holds for chunk grids. `EdgeDimensionGrid` is the convenient
+concrete grid for a zero-origin array: its chunk offsets are prefix sums
+starting at zero. `DimensionGridLike` is the more general protocol consumed
+by chunk planning, so it admits grids with negative chunk and cell
+coordinates, including this prependable example:
+
+```python
+--8<-- "snippets/coordinate_origins.py:prepend-grid"
+```
+
+Here the literal cell domain `[-3, 0)` belongs to chunk `-1`. Both public
+projection transforms share the same synthetic input cell domain `[0, 3)`.
+Evaluating its three points shows the two distinct outputs:
+`chunk_transform` produces zero-origin chunk-local coordinates `0, 1, 2`,
+while `cell_transform` produces the literal request coordinates `-3, -2, -1`.
+The shared input domain is not itself the chunk-local coordinate frame.
+
 ## Related work
 
 TensorStore is the prior art for the transform algebra, as described above. At

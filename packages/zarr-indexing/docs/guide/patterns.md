@@ -1,16 +1,5 @@
 # Indexing pattern reference
 
-| Surface | Meaning of an integer index | Meaning of `-1` |
-| --- | --- | --- |
-| `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The address `-1`, when the domain contains it |
-| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before transform composition |
-
-The wrapper's three indexing modes all use positions in the current view. Each
-derived view begins at position zero, while the transform algebra underneath
-retains literal coordinates. The
-[Coordinates are addresses](index.md#coordinates-are-addresses) section develops
-that distinction with non-zero and negative-origin domains.
-
 ## Selection matrix
 
 The table uses the 6-by-8 NumPy `image` and names from the executable matrix below.
@@ -45,6 +34,19 @@ shape, and box/query category.
 ```python
 --8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
+
+## Positions vs literal coordinates
+
+| Surface | Meaning of an integer index | Meaning of `-1` |
+| --- | --- | --- |
+| `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The address `-1`, when the domain contains it |
+| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before transform composition |
+
+The wrapper's three indexing modes all use positions in the current view. Each
+derived view begins at position zero, while the transform algebra underneath
+retains literal coordinates. The
+[Coordinates are addresses](index.md#coordinates-are-addresses) section develops
+that distinction with non-zero and negative-origin domains.
 
 ---
 
