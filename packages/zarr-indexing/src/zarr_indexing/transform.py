@@ -169,12 +169,12 @@ class IndexTransform:
 
         Parameters
         ----------
-        point : sequence of int
+        point : Sequence[int]
             One literal coordinate for each input dimension.
 
         Returns
         -------
-        tuple of int
+        tuple[int, ...]
             One coordinate for each output map.
 
         Raises
@@ -212,14 +212,13 @@ class IndexTransform:
 
         Parameters
         ----------
-        points : array-like
+        points : numpy.typing.ArrayLike
             Integer coordinates with shape ``batch_shape + (input_rank,)``.
 
         Returns
         -------
-        numpy.ndarray
-            An owned ``np.intp`` array with shape
-            ``batch_shape + (output_rank,)``.
+        numpy.typing.NDArray[numpy.intp]
+            An owned array with shape ``batch_shape + (output_rank,)``.
 
         Raises
         ------

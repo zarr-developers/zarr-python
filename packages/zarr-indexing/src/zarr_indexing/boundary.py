@@ -220,7 +220,7 @@ def split_scalar_axes(
 
     Returns
     -------
-    tuple
+    tuple[tuple[Any, ...] | None, Any]
         `(basic_selection, remaining_selection)`. `basic_selection` is a
         full-rank basic selection in **literal** domain coordinates that drops
         the scalar axes, or `None` when the selection has no scalar entries (in
@@ -284,7 +284,7 @@ def normalize_positional_selection(
 
     Returns
     -------
-    tuple
+    tuple[Any, ...]
         The selection with every coordinate expressed in literal domain
         coordinates.
 

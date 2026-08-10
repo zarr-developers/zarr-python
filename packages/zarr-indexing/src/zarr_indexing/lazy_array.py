@@ -1125,7 +1125,7 @@ class LazyArray:
 
         Returns
         -------
-        array
+        numpy.ndarray
             An array of shape `self.shape`, identical whatever partitioning is
             in force, always in fresh system memory. A view with a zero-rank
             domain returns a zero-dimensional array, not a scalar.
