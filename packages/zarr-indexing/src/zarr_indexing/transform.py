@@ -53,6 +53,22 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
+class _PointOutOfBounds(Exception):
+    """Internal signal from the shared point kernel: one coordinate left the domain.
+
+    Never escapes this module. `apply` and `apply_many` format it as the
+    public `BoundsCheckError`, each in its own vocabulary — the kernel knows
+    batches, but a single-point caller must never hear about them.
+    """
+
+    dimension: int
+    value: int
+    lower: int
+    upper: int
+    batch_position: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class IndexTransform:
     """A composable mapping from input coordinates to storage coordinates.
 
@@ -182,7 +198,13 @@ class IndexTransform:
         # an integer dtype, but it is the unique point in a rank-zero domain.
         if self.input_rank == 0 and isinstance(point, (list, tuple)):
             coordinates = coordinates.astype(np.intp)
-        result = self._apply_points(coordinates)
+        try:
+            result = self._apply_points(coordinates)
+        except _PointOutOfBounds as error:
+            raise BoundsCheckError(
+                f"coordinate {error.value} on input dimension {error.dimension} "
+                f"is outside the domain [{error.lower}, {error.upper})"
+            ) from None
         return tuple(int(value) for value in result)
 
     def apply_many(self, points: npt.ArrayLike) -> npt.NDArray[np.intp]:
@@ -218,10 +240,21 @@ class IndexTransform:
                 "points must have a trailing coordinate axis of size "
                 f"{self.input_rank}, got shape {coordinates.shape}"
             )
-        return self._apply_points(coordinates)
+        try:
+            return self._apply_points(coordinates)
+        except _PointOutOfBounds as error:
+            raise BoundsCheckError(
+                f"point at batch position {error.batch_position} has input dimension "
+                f"{error.dimension} coordinate {error.value} outside "
+                f"[{error.lower}, {error.upper})"
+            ) from None
 
     def _apply_points(self, points: np.ndarray[Any, Any]) -> npt.NDArray[np.intp]:
-        """Vectorized implementation shared by ``apply`` and ``apply_many``."""
+        """Vectorized implementation shared by ``apply`` and ``apply_many``.
+
+        Out-of-domain coordinates raise the internal `_PointOutOfBounds`
+        signal; each public entry point formats it in its own vocabulary —
+        `apply` never mentions a batch, `apply_many` names the batch position."""
         if not np.issubdtype(points.dtype, np.integer):
             raise TypeError(f"points must have an integer dtype, got {points.dtype}")
 
@@ -241,10 +274,7 @@ class IndexTransform:
             value = int(points[point_index])
             lower = self.domain.inclusive_min[dimension]
             upper = self.domain.exclusive_max[dimension]
-            raise BoundsCheckError(
-                f"point at batch position {batch_position} has input dimension "
-                f"{dimension} coordinate {value} outside [{lower}, {upper})"
-            )
+            raise _PointOutOfBounds(dimension, value, lower, upper, batch_position)
 
         batch_shape = points.shape[:-1]
         result = np.empty(batch_shape + (self.output_rank,), dtype=np.intp)

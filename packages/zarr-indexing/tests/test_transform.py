@@ -213,6 +213,18 @@ class TestIndexTransformApply:
             "point at batch position (0, 1) has input dimension 1 coordinate 20 outside [10, 13)"
         )
 
+    def test_apply_reports_a_single_point_error_without_batch_vocabulary(self) -> None:
+        transform = IndexTransform.identity(IndexDomain((-10,), (10,)))
+
+        with pytest.raises(BoundsCheckError) as error:
+            transform.apply((11,))
+
+        assert str(error.value) == (
+            "coordinate 11 on input dimension 0 is outside the domain [-10, 10)"
+        )
+        assert error.value.__cause__ is None
+        assert error.value.__suppress_context__
+
     @pytest.mark.parametrize(
         "beyond_intp",
         [
