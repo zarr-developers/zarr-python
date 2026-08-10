@@ -50,6 +50,7 @@ REGIONS = {
     "indexing-patterns": DOC_SNIPPETS_DIR / "indexing_patterns.py",
     "zarr-consumer": DOC_SNIPPETS_DIR / "integrations.py",
     "viewport-consumer": DOC_SNIPPETS_DIR / "integrations.py",
+    "dense-box-repartition": DOC_SNIPPETS_DIR / "integrations.py",
     "chunk-cache-types": CACHE_EXAMPLE,
     "chunk-cache-source": CACHE_EXAMPLE,
     "chunk-cache-wrapper": CACHE_EXAMPLE,

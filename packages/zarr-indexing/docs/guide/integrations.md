@@ -27,6 +27,46 @@ example intentionally begins with already decoded in-memory chunks: storage
 keys, codecs, scheduling, caching, and asynchronous orchestration remain the
 consumer's policy rather than responsibilities of the plan.
 
+## One slab read or many part reads
+
+A backend with its own native subset read — a Rust or C zarr implementation,
+a database, an HTTP range endpoint — resolves a **dense box** (`is_box` with
+every stride 1) best as a single read: hand it the whole selection and let it
+dispatch to chunks, decode in parallel, and partial-decode shards on its own
+side of the boundary. Splitting that read along this library's partitioning
+only adds round-trips. Every **other** selection — a strided box, an `oindex`
+or `vindex` gather — is where the partitioning earns its keep: each part's
+cover stays inside one part, so a sparse selection can never force a read of
+its whole bounding hull.
+
+The composed view carries enough to make that call at materialization time,
+and re-partitioning is a pure setter, so the policy is three lines:
+
+```python
+--8<-- "snippets/integrations.py:dense-box-repartition"
+```
+
+The corner gather reads four single cells instead of the 10-by-10 hull, and
+the dense box becomes exactly one backend call. Both regimes go through
+`result()`; only the partitioning in force differs.
+
+### Sources that accept only unit-step slices
+
+The default `basic_reader` pushes strided and descending selections down as
+positive-step slices, which reads the minimum but assumes the source accepts
+any step. Many backends do not: FFI bindings and range requests often
+support nothing but `slice(start, stop, 1)`. Select
+[`unit_step_reader`][zarr_indexing.reader.UnitStepReader] for such a source
+and every key it receives is an ascending unit-step slice per axis, with
+strides, reversals, and gathers applied to the in-memory block instead:
+
+```python
+view = LazyArray(source).with_reader(unit_step_reader)
+```
+
+A strided selection then over-reads its cover by the stride factor, which the
+partitioning above bounds by one part.
+
 ## napari-like consumer
 
 This is a **napari-like consumer**, not a napari integration. It models the

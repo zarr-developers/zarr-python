@@ -138,3 +138,30 @@ assert VIEWPORT_SOURCE_KEYS == (
 )
 assert VIEWPORT_SOURCE_CHUNKS == ((0, 0), (0, 1))
 # --8<-- [end:viewport-consumer]
+
+
+# --8<-- [start:dense-box-repartition]
+def materialize(view: LazyArray) -> Any:
+    """Read a dense box as one slab; resolve everything else per part."""
+    strides = view.strides()
+    if view.is_box and strides is not None and all(s == 1 for s in strides):
+        view = view.with_parts(view.base_shape)
+    return view.result()
+
+
+slab_source = RecordingArray(np.arange(100).reshape(10, 10), chunks=(4, 4))
+slab = LazyArray(slab_source)
+
+dense = slab.lazy[2:9, 1:8]  # a dense box: every stride 1
+assert materialize(dense).shape == (7, 7)
+assert len(slab_source.keys) == 1  # one slab read; the source dispatches
+
+slab_source.keys.clear()
+gather = slab.lazy.oindex[[0, 9], [0, 9]]  # a query: keep the chunk parts
+assert materialize(gather).tolist() == [[0, 9], [90, 99]]
+assert len(slab_source.keys) == 4  # four covers, each inside one chunk
+assert all(
+    (key[0].stop - key[0].start) * (key[1].stop - key[1].start) == 1
+    for key in slab_source.keys
+)
+# --8<-- [end:dense-box-repartition]
