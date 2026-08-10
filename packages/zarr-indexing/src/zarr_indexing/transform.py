@@ -187,7 +187,12 @@ class IndexTransform:
         return cls.identity(IndexDomain.from_shape(shape))
 
     def apply(self, point: Sequence[int]) -> tuple[int, ...]:
-        """Map one input coordinate to an output coordinate.
+        """Map one coordinate of `domain` to the source coordinate that fills it.
+
+        In array-indexing terms: `point` names a cell of the result array, and
+        the returned tuple — each `output` map evaluated at `point` — names the
+        source-array cell its value is read from. No data is touched; this is
+        the coordinate arrow, running result to source.
 
         Parameters
         ----------
@@ -211,6 +216,15 @@ class IndexTransform:
         OverflowError
             If a mapped output coordinate cannot be represented by
             ``np.intp``.
+
+        Examples
+        --------
+        The `[::2]` transform reads result cell `i` from source coordinate
+        `2 * i`, so cell 3 of the result holds `source[6]`:
+
+        >>> transform = IndexTransform.from_shape((100,))[::2]
+        >>> transform.apply((3,))
+        (6,)
         """
         coordinates = np.asarray(point)
         expected_shape = (self.input_rank,)
@@ -230,7 +244,11 @@ class IndexTransform:
         return tuple(int(value) for value in result)
 
     def apply_many(self, points: npt.ArrayLike) -> npt.NDArray[np.intp]:
-        """Map an array of input coordinates to output coordinates.
+        """Map a batch of `domain` coordinates to the source coordinates that fill them.
+
+        The vectorized form of `apply`: each row of `points` names a result
+        cell, and the corresponding output row names the source-array cell
+        its value is read from. No data is touched.
 
         Parameters
         ----------
@@ -254,6 +272,14 @@ class IndexTransform:
         OverflowError
             If a mapped output coordinate cannot be represented by
             ``np.intp``.
+
+        Examples
+        --------
+        Three result cells of the `[::2]` transform, located in one call:
+
+        >>> transform = IndexTransform.from_shape((100,))[::2]
+        >>> transform.apply_many(np.array([[0], [1], [49]])).tolist()
+        [[0], [2], [98]]
         """
         coordinates = np.asarray(points)
         if coordinates.ndim == 0 or coordinates.shape[-1] != self.input_rank:
