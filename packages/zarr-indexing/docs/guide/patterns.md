@@ -20,9 +20,9 @@ are in the executable matrix below.
 | `image[::-2, :]` | `(3, 8)` | box | `DimensionMap(0, offset=5, stride=-2)`, `DimensionMap(1)` |
 | `image[2:2, :]` | `(0, 8)` | box | `DimensionMap(0, offset=2)`, `DimensionMap(1)` — emptiness lives in the domain |
 | `image[mask]` | `(10,)` | query | two correlated `ArrayMap`s: the mask's nonzero rows and columns |
-| `image[np.ix_(rows, cols)]` | `(3, 2)` | query | `ArrayMap` shaped `(3, 1)`, `ArrayMap` shaped `(1, 2)` — distinct axes |
-| `image[vrows, vcols]` | `(3,)` | query | two 1-D `ArrayMap`s on one shared axis — pointwise |
-| `image[brows, bcols]` | `(2, 3)` | query | two `ArrayMap`s carrying the full `(2, 3)` broadcast block |
+| `image[np.ix_(rows, columns)]` | `(3, 2)` | query | `ArrayMap` shaped `(3, 1)`, `ArrayMap` shaped `(1, 2)` — distinct axes |
+| `image[vector_rows, vector_columns]` | `(3,)` | query | two 1-D `ArrayMap`s on one shared axis — pointwise |
+| `image[broadcast_rows, broadcast_columns]` | `(2, 3)` | query | two `ArrayMap`s carrying the full `(2, 3)` broadcast block |
 | `image[rows, 2:6]` | `(3, 4)` | query | `ArrayMap` shaped `(3, 1)`, `DimensionMap(1, offset=2)` |
 
 Two structural rules do all the work:

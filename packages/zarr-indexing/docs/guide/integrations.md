@@ -35,9 +35,12 @@ every stride 1) best as a single read: hand it the whole selection and let it
 dispatch to chunks, decode in parallel, and partial-decode shards on its own
 side of the boundary. Splitting that read along this library's partitioning
 only adds round-trips. Every **other** selection — a strided box, an `oindex`
-or `vindex` gather — is where the partitioning earns its keep: each part's
-cover stays inside one part, so a sparse selection can never force a read of
-its whole bounding hull.
+or `vindex` gather — is where the partitioning earns its keep. The **cover**
+of a read is the smallest step-1 slab enclosing every coordinate it needs;
+partitioned, each part's cover is bounded by that part's box, so a sparse
+selection can never force one read of its whole bounding hull (the smallest
+rectangle containing every selected coordinate — a thousand rows for the two
+of `oindex[[0, 999]]`).
 
 The composed view carries enough to make that call at materialization time,
 and re-partitioning is a pure setter, so the policy is three lines:
@@ -71,7 +74,11 @@ partitioning above bounds by one part.
 
 This is a **napari-like consumer**, not a napari integration. It models the
 boundary a viewport could use without importing or claiming support for
-napari. `RecordingArray` exposes a chunked, basic-indexing source; composing the
+napari. `RecordingArray` exposes a chunked, basic-indexing source — and its
+`chunks` attribute is why the reads below split along `(2, 2)` boxes:
+`LazyArray` discovers a partitioning from the wrapped array at construction
+(`read_chunk_sizes`, then `chunks`), with `with_parts` as the explicit
+override. Composing the
 visible slice records no reads. Only `result()` materializes it, with the exact
 source selectors `1:2, 0:2` and `1:2, 2:4`; neither selector crosses into an
 untouched neighboring chunk.

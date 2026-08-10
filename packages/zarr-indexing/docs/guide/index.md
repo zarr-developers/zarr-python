@@ -141,7 +141,13 @@ is just the next transform's input space, neither a request nor a source.
 ### The three map kinds, in NumPy terms
 
 Every output dimension is produced by one of three map forms. Each has a
-NumPy counterpart, shown executably below.
+NumPy counterpart, shown executably below. The examples share one helper —
+and it doubles as the answer to how a bare transform meets data at all: a
+reader materializes it into a buffer.
+
+```python
+--8<-- "snippets/output_maps.py:resolve-helper"
+```
 
 `DimensionMap` is an arithmetic rule — the slice above is one, mapping
 request `i` to source coordinate `i + 2`:
@@ -157,10 +163,13 @@ indexing; order and repeats survive into the result:
 --8<-- "snippets/output_maps.py:array-map"
 ```
 
-`ConstantMap` reads the same source coordinate for every request cell. This
-is the one form with no NumPy selection counterpart — an integer index drops
-the axis, while a constant map keeps it at any extent — so its NumPy
-counterpart is a broadcast, not an index:
+`ConstantMap` fixes one source coordinate for every request cell. Whether an
+axis appears in the result is decided by the **domain**, never by the map:
+`image[2, :]` compiles to a `ConstantMap(2)` with no corresponding domain
+axis (the axis is dropped), while pairing a constant map with a length-`n`
+domain axis that no map consumes yields `n` cells all reading one
+coordinate — a broadcast, the one arrangement with no NumPy index
+counterpart:
 
 ```python
 --8<-- "snippets/output_maps.py:constant-map"
@@ -294,9 +303,16 @@ Every planned chunk keeps three coordinate frames distinct:
   separate from both the global `chunk_domain` and the possibly negative
   chunk coordinate.
 
-`plan_chunks` needs only a transform and a grid. The executable example builds
-the canonical 2-by-2 chunk grid, plans the request, and iterates the same plan again
-to show that planning is reusable.
+`plan_chunks` needs only a transform and the chunk layout: one grid object
+per source dimension. A per-dimension grid answers four questions — which
+chunk contains a source index, where a chunk starts, how long it is, and
+the vectorized form of the first (`index_to_chunk`, `chunk_offset`,
+`chunk_size`, `indices_to_chunks`). The library builds these from chunk
+sizes via `dimension_grids_from_chunks`; the executable example hand-rolls
+one instead, to show that the whole contract is those four answers. It
+plans the canonical request over 2-by-2 chunks, and iterates the same plan
+again to show that planning is reusable. (The two transforms it inspects on
+each projection are the next section's subject.)
 
 ```python
 --8<-- "snippets/chunk_projection.py:chunk-projection"
@@ -306,6 +322,12 @@ The plan describes work but does not perform it. It contains no array source,
 storage backend, codec pipeline, buffer, or scheduler. A Zarr reader, a task
 queue, or a viewport can consume the same logical plan and decide independently
 how and when to fetch its two chunks.
+
+On the wrapper, this partitioning is called **parts**: `with_parts(shape)`
+gives a `LazyArray` a grid of uniform boxes to divide its reads along
+(re-partitioning is a pure setter — it changes how a read is divided, never
+what `result()` returns), and a wrapped array advertising its own `chunks`
+is partitioned that way automatically.
 
 A zero-length source axis has no chunks. `LazyArray` accepts a positive uniform
 part shape for that axis, or explicit per-axis spellings `()`, `(0,)`, and
@@ -347,11 +369,16 @@ The directions are exact: **shared synthetic input cell domain → request via
 `chunk_transform`**. Neither arrow starts at the request or maps one output
 space into the other.
 
-When `LazyArray.parts()` exposes this plan, `Partition.view.transform` is a
-different, global transform: it maps the part view directly into the raw wrapped
-source. Only `Partition.projection.chunk_transform` uses zero-origin
-chunk-local coordinates. Readers receive both so the global source address and
-the local planning frame cannot be confused.
+On the wrapper, `view.parts()` returns one `Partition` per planned chunk;
+each bundles a sub-view of the request (`.view`), that chunk's projection
+(`.projection`), and the NumPy selection placing its values in the result
+(`.out_selection`).
+
+Within one `Partition`, the frames divide: `Partition.view.transform` is a
+different, global transform — it maps the part view directly into the raw
+wrapped source — while only `Partition.projection.chunk_transform` uses
+zero-origin chunk-local coordinates. Readers receive both so the global
+source address and the local planning frame cannot be confused.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |
@@ -365,9 +392,12 @@ rank one and source rank two.
 
 ### Order and duplicates need the request-side projection
 
-Orthogonal indexing can visit source cells in an order that does not match
-chunk order, and it can visit one source cell more than once. In the request
-below, row 4 comes first and row 1 appears twice.
+Orthogonal indexing (`.lazy.oindex`) applies each axis's indexer
+independently, like `numpy.ix_` — an outer product; the
+[pattern reference](patterns.md) develops the dialects. It can visit source
+cells in an order that does not match chunk order, and it can visit one
+source cell more than once. In the request below, row 4 comes first and
+row 1 appears twice.
 
 ```text
 request position |   0      1      2
@@ -384,9 +414,12 @@ say which request positions receive them, especially when the chunks are
 processed in a different order.
 
 The executable example assembles the 3-by-4 request from a 6-by-8 source with
-3-by-4 chunks. Each part reads through the chunk-local side; `out_selection` is
-the wrapper's NumPy lowering of the request-side placement. The assertion
-checks the reordered, duplicated result against direct NumPy indexing.
+3-by-4 chunks. Each `Partition` resolves its own sub-view — the global
+transform addressing the raw source — and `out_selection` places those
+values at their request-side positions; the paired projection stays
+available on `part.projection` for consumers that read chunks directly.
+The assertion checks the reordered, duplicated result against direct NumPy
+indexing.
 
 ```python
 --8<-- "snippets/chunk_projection.py:advanced-projection"
@@ -401,5 +434,5 @@ correspondence between every request position and its chunk-local source cell.
 <nav aria-label="Guide navigation">
   <strong>Previous:</strong> <a href="../">zarr-indexing</a>
   ·
-  <strong>Next:</strong> <a href="../api/">API reference</a>
+  <strong>Next:</strong> <a href="patterns/">Indexing patterns</a>
 </nav>

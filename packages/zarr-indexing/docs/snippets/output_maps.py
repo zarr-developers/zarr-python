@@ -14,6 +14,7 @@ from zarr_indexing import (
     numpy_reader,
 )
 
+# --8<-- [start:resolve-helper]
 source = np.array([10, 11, 12, 13, 14, 15])
 
 
@@ -22,6 +23,7 @@ def resolve(transform: IndexTransform, values: np.ndarray[Any, Any]) -> np.ndarr
     out = np.empty(transform.domain.shape, dtype=values.dtype)
     numpy_reader.read_into(values, ReadContext(transform), out)
     return out
+# --8<-- [end:resolve-helper]
 
 
 # --8<-- [start:dimension-map]

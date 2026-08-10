@@ -4,10 +4,10 @@ import numpy as np
 
 from zarr_indexing import LazyArray
 
+# --8<-- [start:axis-shape-comparison]
 image = np.arange(12).reshape(3, 4)
 lazy = LazyArray.from_numpy(image)
 
-# --8<-- [start:axis-shape-comparison]
 integer_view = lazy.lazy[1, :]
 slice_view = lazy.lazy[1:2, :]
 
