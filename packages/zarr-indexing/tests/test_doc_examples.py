@@ -12,16 +12,20 @@ Two kinds of test live here, and nothing else:
    assert the behavior itself: error paths, cache lifecycle invariants, and
    contracts stated in prose about types the docs define.
 
-Editorial choices — section order, exact wording, teaching progression,
-navigation entries — are deliberately not pinned here. They belong to review
-and to `mkdocs build --strict` (which `check_paths: true` makes fail on any
-unresolvable include), not to this suite.
+Editorial choices — section order, exact wording, teaching progression — are
+deliberately not pinned here; they belong to review. Structural breakage
+belongs to `mkdocs build --strict`, whose configuration makes it actually
+fail on the relevant classes: `check_paths: true` for unresolvable includes,
+and `validation` set to warn (strict turns warnings into errors) for broken
+link anchors and nav-omitted pages.
 """
 
 from __future__ import annotations
 
 import re
 import runpy
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -57,9 +61,12 @@ def _markdown_includes() -> tuple[tuple[str, str, str | None], ...]:
 INCLUDES = _markdown_includes()
 # In-process executables: every snippet, plus the one standalone example that
 # is importable as a module. The lazy_indexing_* examples are CLI scripts
-# (they call sys.exit) and are run as subprocesses by the repository-root
-# tests/test_examples.py instead.
+# (they parse argv and call sys.exit), so they run as subprocesses below —
+# no other test in the repository executes them.
 EXECUTABLES = (*sorted(DOC_SNIPPETS_DIR.glob("*.py")), CACHE_EXAMPLE)
+CLI_EXAMPLES = tuple(
+    script for script in sorted(STANDALONE_EXAMPLES.glob("*/*.py")) if script not in EXECUTABLES
+)
 
 PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOC_SNIPPETS_DIR / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
@@ -122,6 +129,21 @@ def test_snippet_directories_hold_only_their_kind() -> None:
 def test_documentation_example_executes(example: Path) -> None:
     """Examples are executable contracts; their inline asserts are the values check."""
     runpy.run_path(str(example), run_name="__main__")
+
+
+@pytest.mark.parametrize("script", CLI_EXAMPLES, ids=lambda path: path.stem)
+def test_cli_example_runs_as_a_subprocess(script: Path) -> None:
+    """The CLI examples exit 0 when run the way their READMEs instruct."""
+    if "dask" in script.stem:
+        pytest.importorskip("dask.array")
+    completed = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        cwd=script.parent,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
 
 
 @pytest.mark.parametrize(

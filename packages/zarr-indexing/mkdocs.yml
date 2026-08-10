@@ -13,6 +13,15 @@ use_directory_urls: true
 exclude_docs: |
   snippets/*.py
 
+# --strict promotes warnings to errors, but broken link anchors and pages
+# missing from nav are only INFO by default — a strict build passed with
+# both breakages. Warn so strict actually fails on them.
+validation:
+  links:
+    anchors: warn
+  nav:
+    omitted_files: warn
+
 nav:
   - index.md
   - Use lazy indexing:
