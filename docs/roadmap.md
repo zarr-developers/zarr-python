@@ -100,15 +100,15 @@ The following section details how we want to evolve the internal logic that driv
 
 ### Foundation: swappable backends
 
-We propose to refactor Zarr-Python internals around a *swappable engine* — a protocol, or protocols, 
-that define the core routines a Zarr implementation must support. Zarr-Python becomes one user-facing 
+We propose to refactor Zarr-Python internals around a *swappable engine* — a protocol, or protocols,
+that define the core routines a Zarr implementation must support. Zarr-Python becomes one user-facing
 API that can be driven by multiple backends, including externally defined backends. We think this will allow users on many different platforms to get the best performance for their particular environment while retaining a familiar API.
 
 #### Rust bindings
 
-We want a Python backend (i.e., the status quo), but also a Rust-based backend, via bindings to the 
-[`zarrs`](https://docs.rs/zarrs/latest/zarrs/) crate. The [zarrs-python](https://zarrs-python.readthedocs.io/en/latest/) project demonstrates that 
-bridging `zarrs` and Zarr-Python buys a *lot* of performance in the specific case of chunk encoding. But zarrs-python is constrained today by limited 
+We want a Python backend (i.e., the status quo), but also a Rust-based backend, via bindings to the
+[`zarrs`](https://docs.rs/zarrs/latest/zarrs/) crate. The [zarrs-python](https://zarrs-python.readthedocs.io/en/latest/) project demonstrates that
+bridging `zarrs` and Zarr-Python buys a *lot* of performance in the specific case of chunk encoding. But zarrs-python is constrained today by limited
 modularity in Zarr-Python internals. Refactoring our internals around swappable backends should address this limitation.
 
 Any Python package that interfaces with `zarrs` will need Pythonic bindings to the Rust library. So we are *very* excited about the [zarrista](https://developmentseed.org/zarrista/latest/) package, which aims to provide complete Python bindings for `zarrs`.
@@ -139,7 +139,7 @@ background.
 
 First-class support for ML-specific dtypes — `bfloat16`, the `float8`
 variants, packed `int4`/`uint4` — via
-[`ml_dtypes`](https://github.com/jax-ml/ml_dtypes). These data types have specifications written up in `zarr-extensions`, but there's no simple to get them integrated in Zarr-Python today. 
+[`ml_dtypes`](https://github.com/jax-ml/ml_dtypes). These data types have specifications written up in `zarr-extensions`, but there's no simple to get them integrated in Zarr-Python today.
 
 ### Device-agnostic IO
 
