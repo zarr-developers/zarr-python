@@ -73,21 +73,29 @@ class _KeyState:
     ``None`` when nothing is known about the key as a whole.  ``ranges`` holds
     the key's cached byte-range reads.
 
-    Because everything known about a key lives in this one record, every
-    mutation for the key goes through one slot under one lock, and the
-    invariant *absent implies no ranges* is asserted at the mutation points
-    (``assert_coherent``) instead of being maintained across parallel
-    structures: a key can never simultaneously be marked missing and hold
-    cached bytes, so full-key and byte-range answers cannot diverge.
+    Because everything known about a key lives in this one record, every source
+    observation for the key — bytes or absence, full-key or ranged — replaces
+    the whole record in one locked mutation, so the record only ever holds
+    knowledge from a single source generation.  The two halves are therefore
+    *mutually exclusive*: a record holds a full slot **or** byte ranges, never
+    both (``assert_coherent``).  A cached full value answers ranged reads by
+    slicing, so keeping ranges alongside it would be redundant as well as
+    divergence-prone, and an absent marker can never sit next to cached bytes.
     """
 
     full: _Entry | None = None
     ranges: dict[ByteRequest, _RangeEntry] = field(default_factory=dict)
 
     def assert_coherent(self) -> None:
-        """Assert the record invariant: a key marked absent holds no range data."""
-        assert self.full is None or self.full.present or not self.ranges, (
-            "cache incoherent: key marked absent still holds byte-range data"
+        """Assert the record invariant: full slot and byte ranges are exclusive.
+
+        Called at the end of the locked sections that fill either half, where it
+        fires if that half was recorded without superseding the other.  Note that
+        ``python -O`` strips it, so it is a development check, not a guarantee;
+        ``CacheStore._assert_invariants`` sweeps the whole state for tests.
+        """
+        assert self.full is None or not self.ranges, (
+            "cache incoherent: key holds a full slot and byte-range data at once"
         )
 
     @property
@@ -128,10 +136,16 @@ class CacheStore(WrapperStore[Store]):
     as the cache backend. This provides persistent caching capabilities with
     time-based expiration, size-based eviction, and flexible cache storage options.
 
-    Full-key reads are cached in the Store-backed cache.  Byte-range reads are
-    cached in memory, inside the key's tracking record, so that partial reads
-    never pollute the filesystem (or other persistent backend).  Both share
-    the same ``max_size`` budget and LRU eviction policy.
+    Full-key reads are cached in the Store-backed cache.  A cached full value also
+    answers byte-range reads of that key, by asking the cache store for the range
+    instead of the source.  Ranges of a key with no cached value are cached in
+    memory, inside the key's tracking record, so that partial reads never pollute
+    the filesystem (or other persistent backend).
+
+    Both halves share the same ``max_size`` budget, and eviction is LRU over
+    *keys*: the least-recently-used key is chosen first (absent markers before
+    cached data), then its least-recently-used slot within the record.  Touching
+    any of a key's slots therefore keeps the rest of that key resident.
 
     Parameters
     ----------
@@ -261,13 +275,21 @@ class CacheStore(WrapperStore[Store]):
         store._state = self._state
         return store
 
+    def _slot_is_fresh(self, slot: _Entry | _RangeEntry) -> bool:
+        """Check whether an already-looked-up slot is still within ``max_age_seconds``.
+
+        Uses monotonic time for accurate elapsed time measurement.
+        """
+        if self.max_age_seconds == "infinity":
+            return True
+        return time.monotonic() - slot.insert_time < self.max_age_seconds
+
     def _is_fresh(self, key: str, byte_range: ByteRequest | None = None) -> bool:
         """Check if a tracked slot (full-key, or one byte range) is still fresh.
 
-        Uses monotonic time for accurate elapsed time measurement.  A key with no
-        tracked slot for the request is treated as not fresh (except under an
-        infinite TTL, matching the previous behaviour of routing unseen keys
-        through the cache path).
+        A key with no tracked slot for the request is treated as not fresh (except
+        under an infinite TTL, matching the previous behaviour of routing unseen
+        keys through the cache path).
         """
         if self.max_age_seconds == "infinity":
             return True
@@ -276,10 +298,21 @@ class CacheStore(WrapperStore[Store]):
             return False
         slot: _Entry | _RangeEntry | None
         slot = state.full if byte_range is None else state.ranges.get(byte_range)
-        if slot is None:
-            return False
-        elapsed = time.monotonic() - slot.insert_time
-        return elapsed < self.max_age_seconds
+        return slot is not None and self._slot_is_fresh(slot)
+
+    def _has_fresh_value(self, key: str) -> bool:
+        """Is a fresh full value for *key* cached (as opposed to absent/unknown)?
+
+        Such a value is the newest thing known about the key, and can serve any
+        byte range of it by slicing — see ``_get_try_cache``.
+        """
+        state = self._state.entries.get(key)
+        return (
+            state is not None
+            and state.full is not None
+            and state.full.present
+            and self._slot_is_fresh(state.full)
+        )
 
     # ------------------------------------------------------------------
     # tracking-state mutation helpers (all require ``self._state.lock``)
@@ -305,18 +338,6 @@ class CacheStore(WrapperStore[Store]):
             self._state.current_size = max(0, self._state.current_size - range_entry.size)
         state.ranges.clear()
 
-    def _drop_full_slot(self, key: str) -> None:
-        """Remove *key*'s full slot (value or marker) from tracking.
-
-        Byte-range entries for the key are left in place.  Must be called while
-        holding ``self._state.lock``.
-        """
-        state = self._state.entries.get(key)
-        if state is not None:
-            self._reclaim_full(state)
-            if state.is_empty:
-                del self._state.entries[key]
-
     def _drop_key(self, key: str) -> None:
         """Remove everything tracked for *key* (full slot and byte ranges).
 
@@ -327,24 +348,13 @@ class CacheStore(WrapperStore[Store]):
             self._reclaim_full(state)
             self._reclaim_ranges(state)
 
-    def _invalidate_range_entries(self, key: str) -> None:
-        """Drop *key*'s cached byte-range entries (the source data changed).
-
-        Must be called while holding ``self._state.lock``.
-        """
-        state = self._state.entries.get(key)
-        if state is not None:
-            self._reclaim_ranges(state)
-            if state.is_empty:
-                del self._state.entries[key]
-
     async def _record_missing(self, key: str) -> None:
         """Record *key* as known-missing (absent in the source store).
 
         Replaces the key's whole record: any previously cached value bytes and
-        byte-range buffers are reclaimed in the same mutation, so the invariant
-        *absent implies no ranges* holds by construction.  The caller has already
-        removed any backing-store value for *key*.
+        byte-range buffers are reclaimed in the same mutation, so the record holds
+        only this observation.  The caller has already removed any backing-store
+        value for *key*.
 
         Charges a flat ``_NEGATIVE_ENTRY_SIZE`` against the shared ``max_size``
         budget.  A negative marker is strictly lower priority than cached data: it
@@ -353,10 +363,7 @@ class CacheStore(WrapperStore[Store]):
         (detected in O(1) via ``negative_count``).  Must be called while holding
         ``self._state.lock``.  Staleness is bounded by ``max_age_seconds``.
         """
-        old = self._state.entries.pop(key, None)
-        if old is not None:
-            self._reclaim_full(old)
-            self._reclaim_ranges(old)
+        self._drop_key(key)
 
         if self.max_size is not None:
             # Make room by evicting older absent markers only — never cached values.
@@ -385,20 +392,6 @@ class CacheStore(WrapperStore[Store]):
         self._state.entries[key] = state
         self._state.current_size += _NEGATIVE_ENTRY_SIZE
         self._state.negative_count += 1
-
-    def _evict_missing(self, key: str) -> None:
-        """Drop any negative entry for *key* (it is now present or being written).
-
-        Only removes an *absent* slot — a present (cached) value for the same key is
-        left untouched — and reclaims the marker's charged bytes.  Must be called
-        while holding ``self._state.lock``.
-        """
-        state = self._state.entries.get(key)
-        if state is not None and state.full is not None and not state.full.present:
-            state.assert_coherent()
-            self._reclaim_full(state)
-            if state.is_empty:
-                del self._state.entries[key]
 
     async def _accommodate_value(self, value_size: int) -> None:
         """Evict until ``value_size`` more bytes fit within ``max_size``.
@@ -490,45 +483,48 @@ class CacheStore(WrapperStore[Store]):
     async def _track_entry(self, key: str, value: Buffer) -> bool:
         """Register a full-key value in the shared size / LRU tracking.
 
-        Returns ``True`` if the entry was tracked, ``False`` if the value
-        exceeds ``max_size`` and was skipped.  Callers should roll back any
-        data they already stored when this returns ``False``.
+        Returns ``True`` if the entry was tracked, ``False`` if the value exceeds
+        ``max_size`` and was skipped (the key's previous state is dropped either
+        way).  Callers should roll back any data they already stored when this
+        returns ``False``.
 
-        This method holds the lock for the entire operation to ensure atomicity.
+        Must be called while holding ``self._state.lock``, which the callers hold
+        across the backing-store write as well, so the value and its record are
+        published together.
         """
         value_size = len(value)
 
-        # Check if value exceeds max size
+        # Drop everything previously known about the key, reclaiming its bytes.
+        # The caller observed the key's full value at the source, which supersedes
+        # both the old full slot and any byte ranges cached from an older
+        # generation (once the new value is tracked, ranged reads are served by
+        # slicing it). Dropping the old full slot first also removes it from the
+        # eviction candidates so ``_accommodate_value`` cannot select the very slot
+        # being (re)tracked — which would double-subtract its size, stop the
+        # eviction loop early, and (for a present overwrite) delete the value the
+        # caller just wrote to the backing store. The caller has already written
+        # the new value, so the backing store is not touched here.
+        state = self._state.entries.get(key)
+        if state is not None:
+            self._reclaim_full(state)
+            self._reclaim_ranges(state)
+            del self._state.entries[key]
+
+        # The observation is recorded even when the value itself is too large to
+        # cache, so the checks above are not skipped by an early return.
         if self.max_size is not None and value_size > self.max_size:
             return False
 
-        async with self._state.lock:
-            # Drop the key's existing full slot first, reclaiming its bytes. This
-            # removes the slot from the eviction candidates so ``_accommodate_value``
-            # cannot select the very slot being (re)tracked — which would
-            # double-subtract its size, stop the eviction loop early, and (for a
-            # present overwrite) delete the value the caller just wrote to the
-            # backing store. The key's *other* slots (byte-range entries) remain
-            # fair game for eviction. The caller has already written the new value,
-            # so the backing store is not touched here.
-            state = self._state.entries.get(key)
-            if state is not None:
-                self._reclaim_full(state)
-                if state.is_empty:
-                    del self._state.entries[key]
-
-            # Make room for the new value, then track it (the record is appended
-            # or re-inserted as most-recently-used).
-            await self._accommodate_value(value_size)
-            state = self._state.entries.pop(key, None)
-            if state is None:
-                state = _KeyState()
-            now = time.monotonic()
-            state.full = _Entry(insert_time=now, size=value_size, present=True, last_used=now)
-            state.assert_coherent()
-            self._state.entries[key] = state
-            self._state.current_size += value_size
-
+        # Make room for the new value, then track it (the record is appended
+        # as most-recently-used).
+        await self._accommodate_value(value_size)
+        now = time.monotonic()
+        state = _KeyState(
+            full=_Entry(insert_time=now, size=value_size, present=True, last_used=now)
+        )
+        state.assert_coherent()
+        self._state.entries[key] = state
+        self._state.current_size += value_size
         return True
 
     async def _track_range(self, key: str, byte_range: ByteRequest, value: Buffer) -> bool:
@@ -536,42 +532,50 @@ class CacheStore(WrapperStore[Store]):
 
         Returns ``True`` if the range was cached, ``False`` if the value exceeds
         ``max_size`` (nothing is stored in that case, so there is nothing to roll
-        back).  Observing bytes for a key proves it exists in the source, so any
-        absent marker is dropped in the same locked mutation — this is the single
-        point where ranges are recorded, so a record can never hold both a marker
-        and range data (``assert_coherent``), even when the range itself is too
-        large to cache.
+        back).
+
+        These bytes were just read from the source, so they supersede the key's
+        full slot: an absent marker is disproved by them, and a cached value can
+        only still be here if it was stale or unreadable (a fresh one would have
+        served this range by slicing instead of reaching the source). Either way
+        the full slot is dropped in the same locked mutation — deleting the
+        backing value with it, so nothing untracked is left for the cache path to
+        serve — and this is the single point where ranges are recorded, so a
+        record can never hold both a full slot and range data
+        (``assert_coherent``), even when the range itself is too large to cache.
+
+        Must be called while holding ``self._state.lock``.
         """
         value_size = len(value)
 
-        async with self._state.lock:
-            state = self._state.entries.get(key)
-            if state is not None:
-                if state.full is not None and not state.full.present:
-                    # Bytes came back for this key: the absent marker is stale.
-                    self._reclaim_full(state)
-                # Drop any slot being replaced so accommodation cannot select it.
-                old = state.ranges.pop(byte_range, None)
-                if old is not None:
-                    self._state.current_size = max(0, self._state.current_size - old.size)
-                if state.is_empty:
-                    del self._state.entries[key]
+        state = self._state.entries.get(key)
+        if state is not None:
+            if state.full is not None:
+                had_value = state.full.present
+                self._reclaim_full(state)
+                if had_value:
+                    await self._cache.delete(key)
+            # Drop any slot being replaced so accommodation cannot select it.
+            old = state.ranges.pop(byte_range, None)
+            if old is not None:
+                self._state.current_size = max(0, self._state.current_size - old.size)
+            if state.is_empty:
+                del self._state.entries[key]
 
-            if self.max_size is not None and value_size > self.max_size:
-                return False
+        if self.max_size is not None and value_size > self.max_size:
+            return False
 
-            await self._accommodate_value(value_size)
-            state = self._state.entries.pop(key, None)
-            if state is None:
-                state = _KeyState()
-            now = time.monotonic()
-            state.ranges[byte_range] = _RangeEntry(
-                buffer=value, insert_time=now, size=value_size, last_used=now
-            )
-            state.assert_coherent()
-            self._state.entries[key] = state
-            self._state.current_size += value_size
-
+        await self._accommodate_value(value_size)
+        state = self._state.entries.pop(key, None)
+        if state is None:
+            state = _KeyState()
+        now = time.monotonic()
+        state.ranges[byte_range] = _RangeEntry(
+            buffer=value, insert_time=now, size=value_size, last_used=now
+        )
+        state.assert_coherent()
+        self._state.entries[key] = state
+        self._state.current_size += value_size
         return True
 
     async def _update_access_order(self, key: str, byte_range: ByteRequest | None = None) -> None:
@@ -605,17 +609,24 @@ class CacheStore(WrapperStore[Store]):
     ) -> None:
         """Handle a cache miss by storing or cleaning up after a source-store fetch.
 
-        ``prior_slot`` is the key's full slot as observed just *before* the
-        source fetch began (``None`` if there was none). It guards the absent path
+        ``prior_slot`` is the key's full slot as observed just *before* the source
+        fetch began (``None`` if there was none). It guards both full-key paths
         against a write/miss race: if the key's slot now holds a *different* present
-        entry, a concurrent ``set`` completed during the fetch, and the stale
-        "absent" result must not shadow the new value. Identity (not timestamps) is
-        used so the check is immune to coarse clocks.  Known blind spot: a
-        concurrent writer that leaves no present slot behind (``cache_set_data=False``,
-        or ``set_if_not_exists``, whose override drops tracking rather than inserting
-        a present slot) cannot be detected here, so its write may be shadowed by the
-        stale absent observation until the finite default ``max_age_seconds`` expires
-        the marker.
+        entry, a concurrent ``set`` completed during the fetch, so neither the stale
+        "absent" result nor the stale fetched bytes may overwrite the new value.
+        Identity (not timestamps) is used so the check is immune to coarse clocks,
+        and the guard, the backing-store write and the tracking mutation share one
+        locked section. Known blind spot: a concurrent mutation that leaves no present
+        slot behind cannot be detected here — ``cache_set_data=False``,
+        ``set_if_not_exists`` (whose override drops tracking rather than inserting a
+        present slot), a ``set`` whose value exceeds ``max_size`` (not cached, so no
+        slot), and ``delete`` (which removes the record, leaving no identity to
+        compare against) — so its effect may be shadowed by this older observation
+        until the finite default ``max_age_seconds`` expires the record.
+
+        Byte-range fetches carry no such guard: they never write the backing store,
+        and both outcomes (bytes, or absence) only invalidate the key's record, so a
+        lost race costs at most one extra source round-trip.
         """
         if result is None:
             if byte_range is None:
@@ -638,30 +649,42 @@ class CacheStore(WrapperStore[Store]):
                     else:
                         self._drop_key(key)
             else:
+                # A ranged read came back empty. That is evidence about the key
+                # itself, so the key's whole record — cached value included — is
+                # dropped: keeping it would let ``get(key)`` serve bytes for a key
+                # this same instance just reported nothing for. Deliberately *not*
+                # recorded as an absent marker: whether ``get(key, byte_range) is
+                # None`` implies the key is absent (rather than the range being
+                # unsatisfiable) is a store-contract question left to the follow-up
+                # interval work, and invalidating needs no answer to it — worst case
+                # it costs one extra source round-trip.
                 async with self._state.lock:
-                    state = self._state.entries.get(key)
-                    if state is not None:
-                        old = state.ranges.pop(byte_range, None)
-                        if old is not None:
-                            self._state.current_size = max(0, self._state.current_size - old.size)
-                        if state.is_empty:
-                            del self._state.entries[key]
+                    self._drop_key(key)
+                    await self._cache.delete(key)
         else:
             if byte_range is None:
-                await self._cache.set(key, result)
-                # ``_track_entry`` overwrites the key's full slot with a present
-                # entry, so any prior negative marker is structurally replaced —
-                # no separate negative-cache eviction is needed here.
-                tracked = await self._track_entry(key, result)
-                if not tracked:
-                    # Value too large for the cache — roll back so the backing cache
-                    # holds no untracked (uncounted, unevictable) orphan.
-                    await self._cache.delete(key)
+                async with self._state.lock:
+                    state = self._state.entries.get(key)
+                    current = state.full if state is not None else None
+                    if current is not None and current.present and current is not prior_slot:
+                        # A concurrent write completed during this fetch — these
+                        # bytes are from before it, so leave the newer value alone.
+                        return
+                    await self._cache.set(key, result)
+                    # ``_track_entry`` replaces the key's whole record with a present
+                    # entry, so any prior negative marker or stale byte range is
+                    # structurally superseded in the same locked section.
+                    if not await self._track_entry(key, result):
+                        # Value too large for the cache — roll back so the backing
+                        # cache holds no untracked (uncounted, unevictable) orphan.
+                        await self._cache.delete(key)
             else:
                 # ``_track_range`` stores the buffer inside the key's record and
-                # drops any stale absent marker in the same locked mutation, so a
-                # successful ranged read can never leave the key marked missing.
-                await self._track_range(key, byte_range, result)
+                # drops the key's full slot in the same locked mutation, so a
+                # successful ranged read can leave neither an absent marker nor a
+                # superseded value behind.
+                async with self._state.lock:
+                    await self._track_range(key, byte_range, result)
 
     def _prior_full_slot(self, key: str) -> _Entry | None:
         """Snapshot the key's full slot for ``_cache_miss``'s write/miss race guard."""
@@ -675,6 +698,17 @@ class CacheStore(WrapperStore[Store]):
         if byte_range is None:
             # Full-key read — use Store-backed cache
             maybe_cached = await self._cache.get(key, prototype)
+            if maybe_cached is not None:
+                self._state.hits += 1
+                await self._update_access_order(key)
+                return maybe_cached
+        elif self._has_fresh_value(key):
+            # A fresh full value is cached: slice the range out of it rather than
+            # asking the source. Both answers then come from the one observation,
+            # so they cannot disagree, and the round-trip is saved outright. The
+            # Store-backed cache does the slicing, so the whole value is never
+            # materialised for a small range.
+            maybe_cached = await self._cache.get(key, prototype, byte_range)
             if maybe_cached is not None:
                 self._state.hits += 1
                 await self._update_access_order(key)
@@ -747,7 +781,7 @@ class CacheStore(WrapperStore[Store]):
             async with self._state.lock:
                 state = self._state.entries.get(key)
                 slot = state.full if state is not None else None
-                if slot is not None and not slot.present and self._is_fresh(key):
+                if slot is not None and not slot.present and self._slot_is_fresh(slot):
                     self._state.negative_hits += 1
                     # Mark the marker most-recently-used so eviction stays LRU:
                     # a frequently-probed absent key should outlive cold markers.
@@ -755,10 +789,13 @@ class CacheStore(WrapperStore[Store]):
                     self._state.entries.move_to_end(key)
                     return None
 
-        if not self._is_fresh(key, byte_range):
-            return await self._get_no_cache(key, prototype, byte_range)
-        else:
+        # A ranged read also goes through the cache path when the key's *full*
+        # value is cached and fresh, because that value can serve any range of it.
+        if self._is_fresh(key, byte_range) or (
+            byte_range is not None and self._has_fresh_value(key)
+        ):
             return await self._get_try_cache(key, prototype, byte_range)
+        return await self._get_no_cache(key, prototype, byte_range)
 
     async def set(self, key: str, value: Buffer) -> None:
         """
@@ -772,23 +809,22 @@ class CacheStore(WrapperStore[Store]):
             The data to store
         """
         await super().set(key, value)
-        # Invalidate all cached byte-range entries (source data changed) and drop any
-        # negative entry — the key now has a value. (No ``cache_missing`` gate here:
-        # a marker recorded before the flag was flipped off must still be cleared.)
-        async with self._state.lock:
-            self._invalidate_range_entries(key)
-            self._evict_missing(key)
+        # Either way the key's whole record is replaced in one locked section: the
+        # value just written supersedes any cached byte ranges, any stale value and
+        # any negative marker. (No ``cache_missing`` gate on the marker: one
+        # recorded before the flag was flipped off must still be cleared.)
         if self.cache_set_data:
-            await self._cache.set(key, value)
-            tracked = await self._track_entry(key, value)
-            if not tracked:
-                # Value too large for the cache — roll back so the backing cache
-                # holds no untracked (uncounted, unevictable) orphan.
-                await self._cache.delete(key)
-        else:
-            await self._cache.delete(key)
             async with self._state.lock:
-                self._drop_full_slot(key)
+                await self._cache.set(key, value)
+                if not await self._track_entry(key, value):
+                    # Value too large for the cache — roll back so the backing cache
+                    # holds no untracked (uncounted, unevictable) orphan, and no
+                    # record of the value it replaced survives either.
+                    await self._cache.delete(key)
+        else:
+            async with self._state.lock:
+                self._drop_key(key)
+                await self._cache.delete(key)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
@@ -871,9 +907,7 @@ class CacheStore(WrapperStore[Store]):
 
     async def clear_cache(self) -> None:
         """Clear all cached data and tracking information."""
-        # Clear the cache store if it supports clear
-        if hasattr(self._cache, "clear"):
-            await self._cache.clear()
+        await self._cache.clear()
 
         # Reset tracking. Cumulative performance counters (hits/misses/evictions/
         # negative_hits) are lifetime stats and intentionally survive a clear.
@@ -881,6 +915,52 @@ class CacheStore(WrapperStore[Store]):
             self._state.entries.clear()
             self._state.current_size = 0
             self._state.negative_count = 0
+
+    async def _assert_invariants(self) -> None:
+        """Check the whole tracking state against the backing cache (test helper).
+
+        ``_KeyState.assert_coherent`` only sees the record being mutated, so this
+        sweeps every record and cross-checks the incrementally maintained
+        aggregates — ``negative_count`` (which gates both the marker cap and the
+        O(1) eviction fast path) and ``current_size`` — against a recount, plus the
+        two cross-store facts the records claim: a cached value has a backing value
+        of the tracked length, and nothing untracked is left in the backing store.
+        It is O(number of tracked keys) and issues one backing read per cached
+        value, so it is for tests and debugging, not for the hot path.
+        """
+        # Local import: only this debug helper needs a prototype of its own.
+        from zarr.core.buffer import default_buffer_prototype
+
+        state = self._state
+        negative = sum(
+            1 for s in state.entries.values() if s.full is not None and not s.full.present
+        )
+        assert negative == state.negative_count, (
+            f"negative_count drift: {state.negative_count} tracked, {negative} counted"
+        )
+        size = sum(s.tracked_size for s in state.entries.values())
+        assert size == state.current_size, (
+            f"current_size drift: {state.current_size} tracked, {size} counted"
+        )
+        assert self.max_size is None or size <= self.max_size, (
+            f"cache over budget: {size} > {self.max_size}"
+        )
+        for key, record in state.entries.items():
+            record.assert_coherent()
+            assert not record.is_empty, f"empty record retained for {key}"
+            if record.full is not None and record.full.present:
+                cached = await self._cache.get(key, default_buffer_prototype())
+                assert cached is not None, (
+                    f"{key} tracked as cached but absent from the cache store"
+                )
+                assert len(cached) == record.full.size, (
+                    f"{key} tracked as {record.full.size} bytes, cache store holds {len(cached)}"
+                )
+        async for cached_key in self._cache.list():
+            tracked = state.entries.get(cached_key)
+            full = tracked.full if tracked is not None else None
+            assert full is not None, f"untracked value for {cached_key} left in the cache store"
+            assert full.present, f"{cached_key} marked absent but holds a value in the cache store"
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""
