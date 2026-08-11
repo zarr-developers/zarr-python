@@ -26,13 +26,13 @@ import numpy as np
 import pytest
 from hypothesis import settings
 
-import zarr_indexing.testing.stateful as stateful
 from zarr_indexing import LazyArray, ReadContext
 from zarr_indexing.reader import basic_reader, numpy_reader
 from zarr_indexing.testing import (
     DEFAULT_SETTINGS,
     ChainedIndexingStateMachine,
     state_machine_test,
+    stateful,
 )
 
 

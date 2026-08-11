@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pytest
 
@@ -28,8 +30,10 @@ class IntOnly:
 
 
 class BadIndex:
+    """An `__index__` that lies: the protocol requires an integer."""
+
     def __index__(self) -> int:
-        return 2.5  # type: ignore[return-value]
+        return cast("int", 2.5)
 
 
 class TestIndexTransformConstruction:

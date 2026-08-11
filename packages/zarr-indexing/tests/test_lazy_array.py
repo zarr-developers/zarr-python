@@ -14,7 +14,7 @@ import operator
 import pickle
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
@@ -62,8 +62,10 @@ class IntOnly:
 
 
 class BadIndex:
+    """An `__index__` that lies: the protocol requires an integer."""
+
     def __index__(self) -> int:
-        return 2.5  # type: ignore[return-value]
+        return cast("int", 2.5)
 
 
 def reference() -> np.ndarray[Any, np.dtype[np.int64]]:
