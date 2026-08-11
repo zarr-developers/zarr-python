@@ -30,7 +30,6 @@ and the wire format built on top of it.
 - [`zarr_indexing.transform`](transform.md) — `IndexTransform`, which pairs a
   domain with output maps, plus the indexing (`[...]`, `.oindex`, `.vindex`),
   `intersect`, and `translate` operations, and `selection_to_transform`
-- [`zarr_indexing.composition`](composition.md) — `compose`, which chains two
   transforms into one
 
 **Chunk resolution**

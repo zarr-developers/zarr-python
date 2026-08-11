@@ -42,12 +42,29 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr_indexing.affine import checked_affine
+from zarr_indexing._affine import checked_affine
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr_indexing.json import OutputIndexMapJSON
+
+
+def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, ...]:
+    """Return the input axes on which a normalized index array varies.
+
+    Normalized `ArrayMap` index arrays carry the full input rank of their
+    enclosing transform: an axis the array varies over has its full size, while
+    an axis the array is independent of is a singleton (size 1). The dependency
+    axes are therefore exactly the axes of size 2 or more. An orthogonal
+    (`oindex`) array depends on a single axis; a vectorized (`vindex`) array
+    depends on all of the (shared) broadcast axes.
+
+    A size-**0** axis carries no dependency either: the array has no values to
+    vary, so an empty selection stays the flavor it was made as rather than
+    reading as correlated with every other axis.
+    """
+    return tuple(axis for axis, size in enumerate(index_array.shape) if size > 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +159,7 @@ class ArrayMap:
     fully on the axes it varies over and singleton (size 1) elsewhere. The
     shape is the single source of truth for what the map depends on — its
     **dependency axes** are exactly its non-singleton axes (see
-    `transform._array_map_dependency_axes`) — and it distinguishes the two
+    `_array_map_dependency_axes`) — and it distinguishes the two
     flavors of multi-array fancy indexing:
 
     - **orthogonal** (`oindex`): each array varies along a single, *distinct*
@@ -237,6 +254,68 @@ class ArrayMap:
                 self.index_array.shape,
                 self.index_array.tobytes(),
             )
+        )
+
+    @property
+    def dependency_axes(self) -> tuple[int, ...]:
+        """Every input axis this map varies over: its non-singleton axes.
+
+        One axis means orthogonal, several mean correlated, and none means
+        the map is degenerate — the shape is the single source of truth for
+        all three.
+
+        Examples
+        --------
+        >>> ArrayMap(index_array=np.array([[4, 0, 2]])).dependency_axes
+        (1,)
+        >>> ArrayMap(index_array=np.array([[1, 2], [3, 4]])).dependency_axes
+        (0, 1)
+        """
+        return _array_map_dependency_axes(self.index_array)
+
+    @property
+    def dependent_axis(self) -> int | None:
+        """Return the single input axis an orthogonal `ArrayMap` varies over.
+
+        This is the array's one non-singleton axis, read from the shape — the
+        single source of truth for what a map depends on. The selection layer
+        collapses a single-coordinate map to a `ConstantMap`
+        (`array_map_or_constant`), so a non-empty map built by this package always
+        has at least one dependency axis.
+
+        Returns
+        -------
+        int or None
+            The axis the map varies over, or `None` when it varies over no input
+            axis at all — an empty map, or a hand-built all-singleton one. `None`
+            is a valid result, not an error; such maps resolve through the
+            pointwise (general) path.
+
+        Raises
+        ------
+        ValueError
+            If the map varies over more than one axis, which makes it correlated
+            rather than orthogonal.
+
+        Examples
+        --------
+        An `oindex` selection on axis 1 of a rank-2 transform stores its
+        coordinates full-sized on axis 1 and singleton on axis 0, so the
+        dependency axis is read straight off the shape:
+
+        >>> m = ArrayMap(index_array=np.array([[4, 0, 2]]))
+        >>> m.index_array.shape
+        (1, 3)
+        >>> m.dependent_axis
+        1
+        """
+        dep = self.dependency_axes
+        if len(dep) == 1:
+            return dep[0]
+        if len(dep) == 0:
+            return None
+        raise ValueError(
+            f"orthogonal ArrayMap must vary over exactly one axis; got dependency axes {dep}"
         )
 
     def to_json(self) -> OutputIndexMapJSON:

@@ -46,7 +46,6 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.transform</code>': api/transform.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.domain</code>': api/domain.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.output_map</code>': api/output_map.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.composition</code>': api/composition.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.chunk_resolution</code>': api/chunk_resolution.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.grid</code>': api/grid.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.lazy_array</code>': api/lazy_array.md

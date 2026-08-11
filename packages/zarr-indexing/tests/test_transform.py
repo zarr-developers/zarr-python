@@ -9,9 +9,6 @@ from zarr_indexing.lazy_array import LazyArray
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
     IndexTransform,
-    array_map_dependent_axis,
-    index_array_structure,
-    selection_to_transform,
 )
 
 
@@ -779,7 +776,7 @@ def test_direct_advanced_index_rejects_wrong_length_boolean_mask(mode: str) -> N
 class TestSelectionToTransform:
     def test_basic_slice(self) -> None:
         t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform((slice(2, 8), slice(5, 15)), t, "basic")
+        result = t.select((slice(2, 8), slice(5, 15)), "basic")
         assert result.domain.shape == (6, 10)
         assert result.domain.origin == (2, 5)  # preserved literal coordinates
         assert isinstance(result.output[0], DimensionMap)
@@ -787,20 +784,20 @@ class TestSelectionToTransform:
 
     def test_basic_int(self) -> None:
         t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform((3, slice(None)), t, "basic")
+        result = t.select((3, slice(None)), "basic")
         assert result.input_rank == 1
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 3
 
     def test_basic_ellipsis(self) -> None:
         t = IndexTransform.from_shape((10, 20))
-        result = selection_to_transform(Ellipsis, t, "basic")
+        result = t.select(Ellipsis, "basic")
         assert result.domain.shape == (10, 20)
 
     def test_orthogonal(self) -> None:
         t = IndexTransform.from_shape((10, 20))
         idx = np.array([1, 3, 5], dtype=np.intp)
-        result = selection_to_transform((idx, slice(None)), t, "orthogonal")
+        result = t.select((idx, slice(None)), "orthogonal")
         assert result.domain.shape == (3, 20)
         assert isinstance(result.output[0], ArrayMap)
 
@@ -808,7 +805,7 @@ class TestSelectionToTransform:
         t = IndexTransform.from_shape((10, 20))
         idx0 = np.array([1, 3], dtype=np.intp)
         idx1 = np.array([5, 7], dtype=np.intp)
-        result = selection_to_transform((idx0, idx1), t, "vectorized")
+        result = t.select((idx0, idx1), "vectorized")
         assert result.domain.shape == (2,)
         assert isinstance(result.output[0], ArrayMap)
         assert isinstance(result.output[1], ArrayMap)
@@ -821,7 +818,7 @@ class TestSelectionToTransform:
         the composed map stays the identity (out = in).
         """
         t = IndexTransform.from_shape((100,))[10:50]
-        result = selection_to_transform(slice(15, 30), t, "basic")
+        result = t.select(slice(15, 30), "basic")
         assert (result.domain.inclusive_min, result.domain.exclusive_max) == ((15,), (30,))
         assert isinstance(result.output[0], DimensionMap)
         assert result.output[0].offset == 0
@@ -1023,47 +1020,39 @@ class TestIndexTransformTranslate:
 
 
 class TestArrayMapDependencyAxes:
-    """`_array_map_dependency_axes` derives the input axes an array varies on
+    """`ArrayMap.dependency_axes` derives the input axes an array varies on
     from its (full-rank) shape: non-singleton axes vary, singleton axes do not."""
 
     def test_orthogonal_single_axis(self) -> None:
-        from zarr_indexing.transform import _array_map_dependency_axes
-
         t = IndexTransform.from_shape((10, 20)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
         m0, m1 = t.output[0], t.output[1]
         assert isinstance(m0, ArrayMap)
         assert isinstance(m1, ArrayMap)
-        assert _array_map_dependency_axes(m0.index_array) == (0,)
-        assert _array_map_dependency_axes(m1.index_array) == (1,)
+        assert m0.dependency_axes == (0,)
+        assert m1.dependency_axes == (1,)
 
     def test_vectorized_shares_axes(self) -> None:
-        from zarr_indexing.transform import _array_map_dependency_axes
-
         t = IndexTransform.from_shape((10, 20)).vindex[np.array([1, 3]), np.array([2, 4])]
         m0, m1 = t.output[0], t.output[1]
         assert isinstance(m0, ArrayMap)
         assert isinstance(m1, ArrayMap)
-        assert _array_map_dependency_axes(m0.index_array) == (0,)
-        assert _array_map_dependency_axes(m1.index_array) == (0,)
+        assert m0.dependency_axes == (0,)
+        assert m1.dependency_axes == (0,)
 
     def test_scalar_array_has_no_dependency(self) -> None:
-        from zarr_indexing.transform import _array_map_dependency_axes
-
-        assert _array_map_dependency_axes(np.ones((1, 1), dtype=np.intp)) == ()
+        assert ArrayMap(np.ones((1, 1), dtype=np.intp)).dependency_axes == ()
 
     def test_zero_length_axis_has_no_dependency(self) -> None:
         """An axis of size 0 carries no dependency either: it selects nothing, so
         the array does not vary along it any more than along a singleton."""
-        from zarr_indexing.transform import _array_map_dependency_axes
-
-        assert _array_map_dependency_axes(np.zeros((0, 4), dtype=np.intp)) == (1,)
-        assert _array_map_dependency_axes(np.zeros((3, 0), dtype=np.intp)) == (0,)
-        assert _array_map_dependency_axes(np.zeros((0, 1), dtype=np.intp)) == ()
+        assert ArrayMap(np.zeros((0, 4), dtype=np.intp)).dependency_axes == (1,)
+        assert ArrayMap(np.zeros((3, 0), dtype=np.intp)).dependency_axes == (0,)
+        assert ArrayMap(np.zeros((0, 1), dtype=np.intp)).dependency_axes == ()
 
     def test_zero_length_axis_does_not_make_a_map_correlated(self) -> None:
         """An empty orthogonal selection is legal, so it must classify as one."""
         m = ArrayMap(index_array=np.zeros((0, 4), dtype=np.intp))
-        assert array_map_dependent_axis(m) == 1
+        assert m.dependent_axis == 1
 
 
 class TestIntersectArrayMapClassification:
@@ -1168,7 +1157,7 @@ class TestDerivedMapDependency:
                 ArrayMap(index_array=np.array([[0], [1]], dtype=np.intp)),
             ),
         )
-        assert index_array_structure(t) == "orthogonal"
+        assert t.index_array_structure == "orthogonal"
 
 
 def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
@@ -1244,9 +1233,9 @@ def test_intersecting_a_diagonal_gather_keeps_points_inside_the_domain() -> None
 
 def test_index_array_structure_classifies_the_three_shapes() -> None:
     base = IndexTransform.from_shape((4, 6))
-    assert index_array_structure(base[1:, ::2]) == "none"
-    assert index_array_structure(base.oindex[np.array([0, 2]), slice(None)]) == "orthogonal"
-    assert index_array_structure(base.vindex[np.array([0, 2]), np.array([1, 3])]) == "general"
+    assert (base[1:, ::2]).index_array_structure == "none"
+    assert (base.oindex[np.array([0, 2]), slice(None)]).index_array_structure == "orthogonal"
+    assert (base.vindex[np.array([0, 2]), np.array([1, 3])]).index_array_structure == "general"
     diagonal = IndexTransform(
         domain=IndexDomain.from_shape((2,)),
         output=(
@@ -1254,4 +1243,4 @@ def test_index_array_structure_classifies_the_three_shapes() -> None:
             ArrayMap(index_array=np.array([2, 3])),
         ),
     )
-    assert index_array_structure(diagonal) == "general"
+    assert diagonal.index_array_structure == "general"

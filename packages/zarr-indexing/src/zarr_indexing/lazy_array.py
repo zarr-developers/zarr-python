@@ -169,8 +169,6 @@ from zarr_indexing.reader import (
 )
 from zarr_indexing.transform import (
     IndexTransform,
-    index_array_structure,
-    selection_to_transform,
 )
 
 if TYPE_CHECKING:
@@ -199,7 +197,7 @@ def _invoke_reader(
 
 def _is_correlated(transform: IndexTransform) -> bool:
     """True when the transform gathers a list of points rather than an outer product."""
-    return index_array_structure(transform) == "general"
+    return transform.index_array_structure == "general"
 
 
 class ArrayLike(Protocol):
@@ -1108,7 +1106,7 @@ class LazyArray:
             # ones, dropping their axes. Split them into their own step.
             scalar_selection, selection = split_scalar_axes(selection, transform.domain, mode)
             if scalar_selection is not None:
-                transform = selection_to_transform(scalar_selection, transform, "basic")
+                transform = transform.select(scalar_selection, "basic")
                 transform = transform.translate_domain_to((0,) * transform.input_rank)
         literal = normalize_positional_selection(selection, transform.domain, mode)
         if mode == "basic":
@@ -1117,7 +1115,7 @@ class LazyArray:
             # selection contract and rejects it.
             composed = transform[literal]
         else:
-            composed = selection_to_transform(literal, transform, mode)
+            composed = transform.select(literal, mode)
         return LazyArray._derive(self._array, composed, self._parts, self._window, self._reader)
 
     def __getitem__(self, selection: Any) -> Any:

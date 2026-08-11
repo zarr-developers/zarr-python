@@ -24,7 +24,7 @@ from typing import Any
 
 import numpy as np
 
-from zarr_indexing.affine import checked_affine
+from zarr_indexing._affine import checked_affine
 from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import (
     ArrayMap,

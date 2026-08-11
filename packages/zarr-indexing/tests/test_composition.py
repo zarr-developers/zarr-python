@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
@@ -19,7 +18,7 @@ class TestComposeConstantInner:
             domain=IndexDomain.from_shape((5,)),
             output=(ConstantMap(offset=42),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 42
 
@@ -36,7 +35,7 @@ class TestComposeDimensionInner:
             domain=IndexDomain.from_shape((10,)),
             output=(DimensionMap(input_dimension=0, offset=10, stride=3),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 25
 
@@ -51,7 +50,7 @@ class TestComposeDimensionInner:
         )
 
         with pytest.raises(OverflowError, match="outside np.intp"):
-            compose(outer, inner)
+            outer.compose(inner)
 
     def test_dimension_inner_dimension_outer(self) -> None:
         outer = IndexTransform(
@@ -62,7 +61,7 @@ class TestComposeDimensionInner:
             domain=IndexDomain.from_shape((10,)),
             output=(DimensionMap(input_dimension=0, offset=10, stride=3),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], DimensionMap)
         assert result.output[0].offset == 25
         assert result.output[0].stride == 6
@@ -78,7 +77,7 @@ class TestComposeDimensionInner:
             domain=IndexDomain.from_shape((10,)),
             output=(DimensionMap(input_dimension=0, offset=10, stride=3),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ArrayMap)
         assert result.output[0].offset == 25
         assert result.output[0].stride == 6
@@ -98,7 +97,7 @@ class TestComposeArrayInner:
             domain=IndexDomain.from_shape((3,)),
             output=(ArrayMap(index_array=inner_arr, offset=0, stride=1),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 20
 
@@ -113,7 +112,7 @@ class TestComposeArrayInner:
         )
 
         with pytest.raises(OverflowError, match="outside np.intp"):
-            compose(outer, inner)
+            outer.compose(inner)
 
     def test_array_inner_array_outer(self) -> None:
         outer_arr = np.array([0, 2, 1], dtype=np.intp)
@@ -126,7 +125,7 @@ class TestComposeArrayInner:
             domain=IndexDomain.from_shape((3,)),
             output=(ArrayMap(index_array=inner_arr, offset=0, stride=1),),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ArrayMap)
         expected = np.array([10, 30, 20], dtype=np.intp)
         np.testing.assert_array_equal(result.output[0].index_array, expected)
@@ -156,8 +155,8 @@ def _storage_of(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int,
 
 
 def _assert_composes_pointwise(outer: IndexTransform, inner: IndexTransform) -> None:
-    """`compose(outer, inner)` must agree with running the two in sequence."""
-    composed = compose(outer, inner)
+    """`outer.compose(inner)` must agree with running the two in sequence."""
+    composed = outer.compose(inner)
     assert composed.domain == outer.domain
     lo = outer.domain.inclusive_min
     hi = outer.domain.exclusive_max
@@ -177,7 +176,7 @@ class TestComposeOverANonZeroOriginDomain:
         inner = IndexTransform.from_shape((10,)).oindex[np.array([3, 1, 4, 1, 5])]
         outer = IndexTransform.identity(IndexDomain.from_shape((5,)))[1:4]
         assert outer.domain.inclusive_min == (1,)
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ArrayMap)
         np.testing.assert_array_equal(
             result.output[0].index_array, np.array([1, 4, 1], dtype=np.intp)
@@ -188,7 +187,7 @@ class TestComposeOverANonZeroOriginDomain:
         inner = IndexTransform.from_shape((10,)).oindex[np.array([3, 1, 4, 1, 5])]
         outer = IndexTransform.identity(IndexDomain.from_shape((5,)))[::-1]
         assert outer.domain.inclusive_min == (-4,)
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ArrayMap)
         np.testing.assert_array_equal(
             result.output[0].index_array, np.array([5, 1, 4, 1, 3], dtype=np.intp)
@@ -223,7 +222,7 @@ class TestComposeMultiDim:
     def test_2d_identity_compose(self) -> None:
         a = IndexTransform.from_shape((10, 20))
         b = IndexTransform.from_shape((10, 20))
-        result = compose(a, b)
+        result = a.compose(b)
         assert result.domain.shape == (10, 20)
         for i in range(2):
             m = result.output[i]
@@ -247,7 +246,7 @@ class TestComposeMultiDim:
                 DimensionMap(input_dimension=1, offset=0, stride=1),
             ),
         )
-        result = compose(outer, inner)
+        result = outer.compose(inner)
         assert isinstance(result.output[0], ConstantMap)
         assert result.output[0].offset == 17
         assert isinstance(result.output[1], DimensionMap)
@@ -259,7 +258,7 @@ class TestComposeMultiDim:
         outer = IndexTransform.from_shape((10,))
         inner = IndexTransform.from_shape((10, 20))
         with pytest.raises(ValueError, match="rank"):
-            compose(outer, inner)
+            outer.compose(inner)
 
 
 class TestComposeInnerDomainValidation:
@@ -286,7 +285,7 @@ class TestComposeInnerDomainValidation:
             output=(DimensionMap(input_dimension=0),),
         )
 
-        result = compose(outer, inner)
+        result = outer.compose(inner)
 
         assert result.domain == outer.domain
         _assert_composes_pointwise(outer, inner)
@@ -299,7 +298,7 @@ class TestComposeInnerDomainValidation:
         inner = IndexTransform.identity(IndexDomain((0,), (2,)))
 
         with pytest.raises(BoundsCheckError, match="outside.*inner.*domain"):
-            compose(outer, inner)
+            outer.compose(inner)
 
     def test_rejects_affine_outer_range_crossing_inner_domain(self) -> None:
         outer = IndexTransform(
@@ -309,7 +308,7 @@ class TestComposeInnerDomainValidation:
         inner = IndexTransform.identity(IndexDomain((10**100,), (10**100 + 2,)))
 
         with pytest.raises(BoundsCheckError, match="outside.*inner.*domain"):
-            compose(outer, inner)
+            outer.compose(inner)
 
     def test_empty_outer_domain_does_not_evaluate_nonexistent_points(self) -> None:
         outer = IndexTransform(
@@ -318,7 +317,7 @@ class TestComposeInnerDomainValidation:
         )
         inner = IndexTransform.identity(IndexDomain((0,), (2,)))
 
-        result = compose(outer, inner)
+        result = outer.compose(inner)
 
         assert result.domain.shape == (0,)
         assert result.output == (ConstantMap(offset=99),)
@@ -338,7 +337,7 @@ class TestComposeMultidimensionalArrayInner:
         )
         outer = IndexTransform.identity(inner.domain)
 
-        result = compose(outer, inner)
+        result = outer.compose(inner)
 
         assert result == inner
         _assert_composes_pointwise(outer, inner)
@@ -362,7 +361,7 @@ class TestComposeMultidimensionalArrayInner:
             ),
         )
 
-        result = compose(outer, inner)
+        result = outer.compose(inner)
 
         assert result.domain == outer.domain
         assert len(result.output) == 1
@@ -388,7 +387,7 @@ class TestComposeMultidimensionalArrayInner:
         )
 
         with pytest.raises(BoundsCheckError, match="outside.*inner.*domain"):
-            compose(outer, inner)
+            outer.compose(inner)
 
     def test_rank_zero_array_map_composition(self) -> None:
         domain = IndexDomain((), ())
@@ -398,7 +397,7 @@ class TestComposeMultidimensionalArrayInner:
             output=(ArrayMap(np.array(7, dtype=np.intp), offset=2, stride=3),),
         )
 
-        result = compose(outer, inner)
+        result = outer.compose(inner)
 
         assert result.domain == domain
         assert result.output == (ConstantMap(offset=23),)
@@ -415,8 +414,8 @@ class TestComposeChain:
             domain=IndexDomain.from_shape((110,)),
             output=(DimensionMap(input_dimension=0, offset=5, stride=2),),
         )
-        bc = compose(b, c)
-        abc = compose(a, bc)
+        bc = b.compose(c)
+        abc = a.compose(bc)
         assert isinstance(abc.output[0], DimensionMap)
         assert abc.output[0].offset == 25
         assert abc.output[0].stride == 2
@@ -436,7 +435,7 @@ def test_composing_an_inner_array_with_a_broadcast_axis_wider_than_one_cell() ->
         domain=IndexDomain(inclusive_min=(0, 0), exclusive_max=(2, 1)),
         output=(ArrayMap(index_array=np.array([[13]], dtype=np.intp), offset=-2, stride=2),),
     )
-    composed = compose(outer, inner)
+    composed = outer.compose(inner)
     assert composed.output[0] == ConstantMap(offset=24)
 
 
@@ -454,7 +453,7 @@ def test_composing_a_one_dimensional_inner_array_under_a_higher_rank_outer() -> 
         domain=IndexDomain.from_shape((4,)),
         output=(ArrayMap(index_array=np.array([7, 3, 5, 1], dtype=np.intp)),),
     )
-    composed = compose(outer, inner)
+    composed = outer.compose(inner)
     array_map = composed.output[0]
     assert isinstance(array_map, ArrayMap)
     assert array_map.index_array.shape == (2, 1)
@@ -472,4 +471,4 @@ def test_composing_out_of_the_inner_domain_is_refused() -> None:
         output=(ArrayMap(index_array=np.array([7, 3], dtype=np.intp)),),
     )
     with pytest.raises(BoundsCheckError, match="outside.*inner.*domain"):
-        compose(outer, inner)
+        outer.compose(inner)

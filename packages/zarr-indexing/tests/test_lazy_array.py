@@ -32,7 +32,6 @@ from zarr_indexing import (
     LazyArray,
     ReadContext,
     VaryingDimension,
-    array_map_dependent_axis,
     dimension_grids_from_chunks,
 )
 from zarr_indexing.lazy_array import _out_selection_cell_count, _validate_prepared_parts
@@ -270,8 +269,8 @@ def test_dimension_grids_from_chunks_rejects_non_sequence_entry() -> None:
 def test_array_map_dependent_axis_reports_no_axis() -> None:
     """A map varying over nothing answers None rather than a stale binding."""
     correlated = ArrayMap(index_array=np.array([[1], [2]], dtype=np.intp))
-    assert array_map_dependent_axis(correlated) == 0
-    assert array_map_dependent_axis(ArrayMap(index_array=np.array([[3]], dtype=np.intp))) is None
+    assert correlated.dependent_axis == 0
+    assert ArrayMap(index_array=np.array([[3]], dtype=np.intp)).dependent_axis is None
 
 
 def test_scalar_on_a_fancy_axis_collapses_to_a_constant() -> None:

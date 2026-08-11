@@ -18,7 +18,7 @@ Key operations:
 - **translate(shift)** — shift all output coordinates. This makes coordinates
   chunk-local: "express my coordinates relative to the chunk origin."
 
-- **compose(outer, inner)** — chain two transforms. See `composition.py`.
+- **`transform.compose(inner)`** — chain two transforms into one.
 
 The transform is the atomic unit that connects user-facing indexing to
 chunk-level I/O. A wrapper holds one — `LazyArray` starts from the identity —
@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
+from zarr_indexing._affine import checked_affine
 from zarr_indexing._selector import as_scalar_index, require_index
-from zarr_indexing.affine import checked_affine
 from zarr_indexing.boundary import validate_advanced_selection
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
@@ -621,6 +621,116 @@ class IndexTransform:
         """
         return _VIndexHelper(self)
 
+    @property
+    def index_array_structure(self) -> Literal["none", "orthogonal", "general"]:
+        """Classify how a transform's index arrays relate to its input axes.
+
+        Returns
+        -------
+        `"none"` when no output map is an `ArrayMap`; `"orthogonal"` when every
+        `ArrayMap` varies over exactly one input axis, each its own (an outer
+        product, one independent gather per axis); `"general"` otherwise —
+        correlated (`vindex`) maps sharing their non-singleton axes, maps produced
+        by composing fancy steps, maps sharing an input axis (a diagonal gather),
+        and empty or hand-built all-singleton maps whose shape names no axis. The
+        orthogonal resolvers narrow one axis at a time and are only sound for
+        `"orthogonal"`; everything else takes the pointwise path that collapses
+        the joint block. Everything is read off the index arrays' shapes.
+
+        Examples
+        --------
+        >>> t = IndexTransform.from_shape((4, 5))
+        >>> t.index_array_structure
+        'none'
+
+        `oindex` arrays each vary over their own axis (an outer product):
+
+        >>> t.oindex[[0, 2], [1, 3]].index_array_structure
+        'orthogonal'
+
+        `vindex` arrays are correlated — they share the broadcast axis:
+
+        >>> t.vindex[np.array([0, 2]), np.array([1, 3])].index_array_structure
+        'general'
+        """
+        seen: set[int] = set()
+        has_array = False
+        for m in self.output:
+            if not isinstance(m, ArrayMap):
+                continue
+            has_array = True
+            dep = m.dependency_axes
+            if len(dep) != 1 or dep[0] in seen:
+                return "general"
+            seen.add(dep[0])
+        return "orthogonal" if has_array else "none"
+
+    def select(
+        self,
+        selection: Any,
+        mode: Literal["basic", "orthogonal", "vectorized"] = "basic",
+    ) -> IndexTransform:
+        """Convert a user selection into a composed IndexTransform.
+
+        Negative indices are treated as literal coordinates (TensorStore convention).
+        The caller (Array layer) is responsible for converting numpy-style negative
+        indices before calling this function.
+
+        Examples
+        --------
+        The `mode` picks the dialect; the result is the composed self the
+        corresponding accessor builds:
+
+        >>> t = IndexTransform.from_shape((10,))
+        >>> t.select(slice(2, 8)) == t[2:8]
+        True
+        >>> s = t.select(([9, 0, 0],), mode="orthogonal")
+        >>> s.apply((0,)), s.apply((1,)), s.apply((2,))
+        ((9,), (0,), (0,))
+        """
+        if mode == "basic":
+            _validate_basic_selection(selection)
+            return self[selection]
+        elif mode == "orthogonal":
+            _validate_array_selection(selection, self.domain.shape, mode)
+            return self.oindex[selection]
+        elif mode == "vectorized":
+            _validate_array_selection(selection, self.domain.shape, mode)
+            return self.vindex[selection]
+        else:
+            raise ValueError(f"Unknown mode: {mode!r}")
+
+    def compose(self, inner: IndexTransform) -> IndexTransform:
+        """Chain `inner` onto this transform, yielding one direct transform.
+
+        This transform maps its own input coordinates to `inner`'s input
+        coordinates, and `inner` maps those onward; the result maps this
+        transform's input coordinates straight to `inner`'s output
+        coordinates. Composition is what keeps a view of a view a single
+        description rather than a stack of layers, and it is exact: index
+        arrays are evaluated at the new coordinates rather than accumulated.
+
+        The precondition is that this transform's output rank equals `inner`'s
+        input rank; a mismatch, or coordinates leaving `inner`'s domain, raises.
+
+        Examples
+        --------
+        Chained indexing — `source[2:5]`, then `[::-1]` on the result —
+        collapses to one transform (a reversed axis keeps literal coordinates,
+        so the composed domain is `[-4, -1)`):
+
+        >>> inner = IndexTransform.from_shape((10,))[2:5]
+        >>> outer = IndexTransform.identity(inner.domain)[::-1]
+        >>> chained = outer.compose(inner)
+        >>> chained == inner[::-1]
+        True
+        >>> [chained.apply((i,)) for i in (-4, -3, -2)]
+        [(4,), (3,), (2,)]
+        """
+        from zarr_indexing._composition import compose
+
+        return compose(self, inner)
+
     # -- serialization ------------------------------------------------------
 
     def to_json(self) -> IndexTransformJSON:
@@ -760,7 +870,7 @@ def _intersect(
     `[output_domain.inclusive_min[d], output_domain.exclusive_max[d])`.
 
     Two flavors of fancy indexing require different treatment, distinguished by
-    the ArrayMaps' dependency axes (see `_array_map_dependency_axes`):
+    the ArrayMaps' dependency axes (see `ArrayMap.dependency_axes`):
 
     - **orthogonal** (`oindex`): each ArrayMap varies over a single, distinct
       input axis, forming an outer product. Every output dimension is intersected
@@ -789,7 +899,7 @@ def _intersect(
         # emptying its domain leaves the array at size 1.
         return None
 
-    if index_array_structure(transform) == "general":
+    if transform.index_array_structure == "general":
         return _intersect_general(transform, output_domain)
     return _intersect_orthogonal(transform, output_domain)
 
@@ -869,7 +979,7 @@ def _intersect_orthogonal(
             # Orthogonal: the array varies over a single axis. Filter along that
             # axis and keep the array at full input rank so the singleton axes
             # it broadcasts over are preserved.
-            axis = array_map_dependent_axis(m)
+            axis = m.dependent_axis
             if axis is None:
                 raise ValueError(
                     f"output[{out_dim}] is an ArrayMap that varies over no input "
@@ -956,7 +1066,7 @@ def _intersect_general(
 
     for out_dim in correlated_dims:
         arr_map = cast("ArrayMap", transform.output[out_dim])
-        if any(a not in broadcast_axes for a in _array_map_dependency_axes(arr_map.index_array)):
+        if any(a not in broadcast_axes for a in arr_map.dependency_axes):
             # Reachable only by hand-building a transform: no selection binds
             # the same input axis to both a slice map and an index array.
             raise NotImplementedError(
@@ -1163,7 +1273,7 @@ def _reindex_array(
     array only along its dependency axes; a selection on a singleton axis does not
     touch the array's values (it just narrows or drops that broadcast axis).
     """
-    dependent = set(_array_map_dependency_axes(m.index_array))
+    dependent = set(m.dependency_axes)
     arr = m.index_array
 
     # Build a numpy indexing tuple: one entry per old input dimension
@@ -1227,14 +1337,13 @@ def _compose_selection(
     broadcasts along, or a mixture.
     """
     # Deferred import: `composition` imports this module at import time.
-    from zarr_indexing.composition import compose
 
     identity = IndexTransform.identity(transform.domain)
     if mode == "orthogonal":
         outer = _apply_oindex(identity, selection)
     else:
         outer = _apply_vindex(identity, selection)
-    return compose(outer, transform)
+    return outer.compose(transform)
 
 
 def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTransform:
@@ -1331,112 +1440,6 @@ def _apply_basic_indexing(transform: IndexTransform, selection: Any) -> IndexTra
             new_output.append(array_map_or_constant(new_arr, offset=m.offset, stride=m.stride))
 
     return IndexTransform(domain=new_domain, output=tuple(new_output))
-
-
-def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, ...]:
-    """Return the input axes on which a normalized index array varies.
-
-    Normalized `ArrayMap` index arrays carry the full input rank of their
-    enclosing transform: an axis the array varies over has its full size, while
-    an axis the array is independent of is a singleton (size 1). The dependency
-    axes are therefore exactly the axes of size 2 or more. An orthogonal
-    (`oindex`) array depends on a single axis; a vectorized (`vindex`) array
-    depends on all of the (shared) broadcast axes.
-
-    A size-**0** axis carries no dependency either: the array has no values to
-    vary, so an empty selection stays the flavor it was made as rather than
-    reading as correlated with every other axis.
-    """
-    return tuple(axis for axis, size in enumerate(index_array.shape) if size > 1)
-
-
-def array_map_dependent_axis(m: ArrayMap) -> int | None:
-    """Return the single input axis an orthogonal `ArrayMap` varies over.
-
-    This is the array's one non-singleton axis, read from the shape — the
-    single source of truth for what a map depends on. The selection layer
-    collapses a single-coordinate map to a `ConstantMap`
-    (`array_map_or_constant`), so a non-empty map built by this package always
-    has at least one dependency axis.
-
-    Returns
-    -------
-    int or None
-        The axis the map varies over, or `None` when it varies over no input
-        axis at all — an empty map, or a hand-built all-singleton one. `None`
-        is a valid result, not an error; such maps resolve through the
-        pointwise (general) path.
-
-    Raises
-    ------
-    ValueError
-        If the map varies over more than one axis, which makes it correlated
-        rather than orthogonal.
-
-    Examples
-    --------
-    An `oindex` selection on axis 1 of a rank-2 transform stores its
-    coordinates full-sized on axis 1 and singleton on axis 0, so the
-    dependency axis is read straight off the shape:
-
-    >>> m = ArrayMap(index_array=np.array([[4, 0, 2]]))
-    >>> m.index_array.shape
-    (1, 3)
-    >>> array_map_dependent_axis(m)
-    1
-    """
-    dep = _array_map_dependency_axes(m.index_array)
-    if len(dep) == 1:
-        return dep[0]
-    if len(dep) == 0:
-        return None
-    raise ValueError(
-        f"orthogonal ArrayMap must vary over exactly one axis; got dependency axes {dep}"
-    )
-
-
-def index_array_structure(transform: IndexTransform) -> Literal["none", "orthogonal", "general"]:
-    """Classify how a transform's index arrays relate to its input axes.
-
-    Returns
-    -------
-    `"none"` when no output map is an `ArrayMap`; `"orthogonal"` when every
-    `ArrayMap` varies over exactly one input axis, each its own (an outer
-    product, one independent gather per axis); `"general"` otherwise —
-    correlated (`vindex`) maps sharing their non-singleton axes, maps produced
-    by composing fancy steps, maps sharing an input axis (a diagonal gather),
-    and empty or hand-built all-singleton maps whose shape names no axis. The
-    orthogonal resolvers narrow one axis at a time and are only sound for
-    `"orthogonal"`; everything else takes the pointwise path that collapses
-    the joint block. Everything is read off the index arrays' shapes.
-
-    Examples
-    --------
-    >>> t = IndexTransform.from_shape((4, 5))
-    >>> index_array_structure(t)
-    'none'
-
-    `oindex` arrays each vary over their own axis (an outer product):
-
-    >>> index_array_structure(t.oindex[[0, 2], [1, 3]])
-    'orthogonal'
-
-    `vindex` arrays are correlated — they share the broadcast axis:
-
-    >>> index_array_structure(t.vindex[np.array([0, 2]), np.array([1, 3])])
-    'general'
-    """
-    seen: set[int] = set()
-    has_array = False
-    for m in transform.output:
-        if not isinstance(m, ArrayMap):
-            continue
-        has_array = True
-        dep = _array_map_dependency_axes(m.index_array)
-        if len(dep) != 1 or dep[0] in seen:
-            return "general"
-        seen.add(dep[0])
-    return "orthogonal" if has_array else "none"
 
 
 def _reshape_to_axis(
@@ -1936,39 +1939,3 @@ def _validate_basic_selection(selection: Any) -> None:
         if s is Ellipsis or isinstance(s, slice) or as_scalar_index(s) is not None:
             continue
         raise IndexError(f"unsupported selection type for basic indexing: {type(s)!r}")
-
-
-def selection_to_transform(
-    selection: Any,
-    transform: IndexTransform,
-    mode: Literal["basic", "orthogonal", "vectorized"],
-) -> IndexTransform:
-    """Convert a user selection into a composed IndexTransform.
-
-    Negative indices are treated as literal coordinates (TensorStore convention).
-    The caller (Array layer) is responsible for converting numpy-style negative
-    indices before calling this function.
-
-    Examples
-    --------
-    The `mode` picks the dialect; the result is the composed transform the
-    corresponding accessor builds:
-
-    >>> t = IndexTransform.from_shape((10,))
-    >>> selection_to_transform(slice(2, 8), t, mode="basic") == t[2:8]
-    True
-    >>> s = selection_to_transform(([9, 0, 0],), t, mode="orthogonal")
-    >>> s.apply((0,)), s.apply((1,)), s.apply((2,))
-    ((9,), (0,), (0,))
-    """
-    if mode == "basic":
-        _validate_basic_selection(selection)
-        return transform[selection]
-    elif mode == "orthogonal":
-        _validate_array_selection(selection, transform.domain.shape, mode)
-        return transform.oindex[selection]
-    elif mode == "vectorized":
-        _validate_array_selection(selection, transform.domain.shape, mode)
-        return transform.vindex[selection]
-    else:
-        raise ValueError(f"Unknown mode: {mode!r}")

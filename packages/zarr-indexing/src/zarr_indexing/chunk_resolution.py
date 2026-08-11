@@ -38,13 +38,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from zarr_indexing.affine import checked_affine
+from zarr_indexing._affine import checked_affine
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import (
     IndexTransform,
-    array_map_dependent_axis,
-    index_array_structure,
 )
 
 if TYPE_CHECKING:
@@ -307,7 +305,7 @@ def _iter_chunk_transform_results(
     #   combinations no point touches — quadratic in the number of selected
     #   points for a diagonal selection — while the joint distinct set is
     #   bounded by the point count (see zarr-python gh-4174).
-    structure = index_array_structure(transform)
+    structure = transform.index_array_structure
     correlated_dims: list[int] = []
     correlated_chunk_ids: list[np.ndarray[Any, np.dtype[np.intp]]] = []
     slot_dims: list[tuple[int, ...]] = []
@@ -484,7 +482,7 @@ def _orthogonal_cell_transform(
             raise TypeError(
                 f"survivors for output dimension {output_dimension} do not describe an ArrayMap"
             )
-        input_dimension = array_map_dependent_axis(output_map)
+        input_dimension = output_map.dependent_axis
         if input_dimension is None:
             raise ValueError(
                 f"output dimension {output_dimension} has no orthogonal input dimension"
@@ -551,7 +549,7 @@ def _cell_transform(
     """Convert private survivor bookkeeping into a direction-neutral transform."""
     if survivors is None:
         return IndexTransform.identity(restricted.domain)
-    if index_array_structure(original) == "general":
+    if original.index_array_structure == "general":
         if isinstance(survivors, dict):
             raise ValueError("general intersections require one shared survivor array")
         return _correlated_cell_transform(original, restricted, survivors)

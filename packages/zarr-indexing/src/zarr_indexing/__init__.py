@@ -11,7 +11,7 @@ Key types:
 - `IndexTransform` — maps input coordinates to storage coordinates
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single
   output dimension can depend on the input (see `output_map.py`)
-- `compose` — chain two transforms into one
+- `IndexTransform.compose` — chain two transforms into one
 
 `LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
 indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
@@ -32,7 +32,6 @@ from zarr_indexing.chunk_resolution import (
     ChunkProjection,
     plan_chunks,
 )
-from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.grid import (
@@ -71,9 +70,6 @@ from zarr_indexing.reader import (
 )
 from zarr_indexing.transform import (
     IndexTransform,
-    array_map_dependent_axis,
-    index_array_structure,
-    selection_to_transform,
 )
 
 __version__ = version("zarr-indexing")
@@ -109,16 +105,12 @@ __all__ = [
     "VaryingDimension",
     "VindexInvalidSelectionError",
     "__version__",
-    "array_map_dependent_axis",
     "basic_reader",
-    "compose",
     "dimension_grids_from_chunks",
-    "index_array_structure",
     "normalize_ndsel",
     "numpy_reader",
     "output_index_map_from_json",
     "parse_ndsel",
     "plan_chunks",
-    "selection_to_transform",
     "unit_step_reader",
 ]

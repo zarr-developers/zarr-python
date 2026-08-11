@@ -11,13 +11,11 @@ if TYPE_CHECKING:
 
 import numpy as np
 
-from zarr_indexing.affine import checked_affine
+from zarr_indexing._affine import checked_affine
 from zarr_indexing.chunk_resolution import ChunkProjection  # noqa: TC001 (runtime annotation)
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import (
     IndexTransform,
-    array_map_dependent_axis,
-    index_array_structure,
 )
 
 __all__ = [
@@ -325,7 +323,7 @@ def _lower(array: Any, transform: IndexTransform) -> Any:
         # domain, which the package promises resolves like any other). The
         # resolvers below cannot evaluate such maps — and have no reason to.
         return np.empty(transform.domain.shape, dtype=np.asanyarray(array).dtype)
-    if index_array_structure(transform) == "general":
+    if transform.index_array_structure == "general":
         result = _lower_general(array, transform)
     else:
         result = _lower_orthogonal(array, transform)
@@ -371,7 +369,7 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
             hi = transform.domain.exclusive_max[d]
             selection.append(slice(m.offset + m.stride * lo, m.offset + m.stride * hi, m.stride))
         if isinstance(m, ArrayMap):
-            axis = array_map_dependent_axis(m)
+            axis = m.dependent_axis
             if axis is None:
                 raise NotImplementedError(
                     "resolving an orthogonal ArrayMap that varies over no input "
