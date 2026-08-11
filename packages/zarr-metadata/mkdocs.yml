@@ -25,6 +25,9 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.codec</code>': api/v3/codec.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.data_type</code>': api/v3/data_type.md
   - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md
+  # This site is a Read the Docs subproject of zarr-python; give readers a way
+  # back to the parent docs, which list every companion package.
+  - 'zarr-python ↪': https://zarr.readthedocs.io/
 
 watch:
   - src
