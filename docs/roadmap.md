@@ -24,7 +24,7 @@ The [3.0 release](https://github.com/zarr-developers/zarr-python/releases/tag/v3
 was a total redesign of the library's internals, with three goals: full support
 for the Zarr V2 and V3 storage formats, storage APIs that are ergonomic for high-latency
 storage (such as cloud storage), and backwards compatibility with Zarr-Python 2.x where
-possible. Those goals were largely achieved! Going by the content of issues issues and pull requests 
+possible. Those goals were largely achieved! Going by the content of issues issues and pull requests
 submitted to the library, few users are grappling with 2.x -> 3.x migration issues. Instead, we see
 users asking for things like better APIs, where "better" usually means faster.
 
@@ -32,7 +32,7 @@ The 3.x redesign was carried out under hard backwards-compatibility
 constraints, and it inherited many structural patterns from the 2.x
 implementation it replaced. The library has never had a release cycle whose
 primary goal was the *shape* of the internals. The next body of work — which we
-call **"v4"** — is that overdue investment. We think iterating on the internals of 
+call **"v4"** — is that overdue investment. We think iterating on the internals of
 the library will make it *much* easier to bring faster, more expressive APIs to Zarr-Python
 users.
 
@@ -127,8 +127,8 @@ selection round-trips to storage independently.
 We can fix this by introducing an API for lazy indexing. Under this model, an array indexing operation
 like `array[::2]` desugars to a declarative state like `(array, selection)`. Chained selections like
 `array[10:100][::2]` are fused immediately, and we defer actual IO for the time when the result of
-indexing is needed. [TensorStore](https://google.github.io/tensorstore/) is an excellent role model 
-for Zarr-Python here, and we can deliver this functionality without breaking ordinary indexing behavior. 
+indexing is needed. [TensorStore](https://google.github.io/tensorstore/) is an excellent role model
+for Zarr-Python here, and we can deliver this functionality without breaking ordinary indexing behavior.
 See this [discussion](https://github.com/zarr-developers/zarr-python/discussions/1603) for more
 background.
 
@@ -138,7 +138,7 @@ First-class support for ML-specific dtypes — `bfloat16`, the `float8`
 variants, packed `int4`/`uint4` — via
 [`ml_dtypes`](https://github.com/jax-ml/ml_dtypes), using the exact identifiers
 registered in `zarr-extensions` so the data stays readable by other
-implementations. 
+implementations.
 
 Ragged arrays, variable-length strings, and an investigation
 of Apache Arrow as a substrate for the dtypes the Array API cannot express are
@@ -164,17 +164,17 @@ deliberately, and named profiles replacing global mutators.
 
 ### Coordinated and distributed writes
 
-This area is actually an unfinished aspect of the 2.x -> 3.0 migration: Zarr-Python 2.x supported 
-synchronization logic via file-based locks, and we have not implemented equivalent functionality in 
+This area is actually an unfinished aspect of the 2.x -> 3.0 migration: Zarr-Python 2.x supported
+synchronization logic via file-based locks, and we have not implemented equivalent functionality in
 3.x. We don't have concrete plans for closing this gap. Re-implementing simple object-based locking, for
-backends that support it, is a direct solution we should consider. But a transactional storage model, 
-where a sequence of basic storage operations like reading and writing could be submitted in a batch and 
-executed serially, with rollbacks under failure, is also quite appealing. 
+backends that support it, is a direct solution we should consider. But a transactional storage model,
+where a sequence of basic storage operations like reading and writing could be submitted in a batch and
+executed serially, with rollbacks under failure, is also quite appealing.
 As with array indexing, TensorStore is the trailblazer here, and we can learn from its example.
 
-We can also avoid the need for synchronization mechanisms entirely with better planning. 
-Many users of the 2.x synchronization tooling wanted to simply write values from one chunked source 
-to another, without worrying about chunk alignment. This can be addressed e.g. by creating a write 
+We can also avoid the need for synchronization mechanisms entirely with better planning.
+Many users of the 2.x synchronization tooling wanted to simply write values from one chunked source
+to another, without worrying about chunk alignment. This can be addressed e.g. by creating a write
 plan that partitions the input chunks into batches where within each batch, writes avoid race conditions.
 
 ## How to get involved
