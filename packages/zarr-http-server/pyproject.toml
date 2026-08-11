@@ -44,7 +44,7 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/README.md"
 
 [dependency-groups]
-test = ["pytest", "httpx", "httpx2"]
+test = ["pytest", "httpx", "httpx2", "hypothesis"]
 examples = [
     # Optional dependencies to run the README examples. Reading a served
     # array back with `zarr.open_array(url)` goes through FsspecStore, which
