@@ -225,6 +225,12 @@ example that materializes the selected data.
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.
 
+    Nor does it write. There is no `__setitem__`, so `view[...] = values`
+    raises `TypeError` too, and a wrapped source needs no `__setitem__` of
+    its own. A consumer that writes plans the selection with `plan_chunks`
+    and performs its own read-modify-write, keeping chunk atomicity and
+    concurrent-writer policy on the backend's side of the boundary.
+
 ## An index defines a result array {#an-index-defines-a-result-array}
 
 An index chooses source points and also defines how those points are arranged in

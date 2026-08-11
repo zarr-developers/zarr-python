@@ -602,12 +602,21 @@ class LazyArray:
     dialect differs from `zarr.Array.lazy` and why every non-indexing NumPy
     operation materializes the view.
 
+    This wrapper describes **reads**. It defines no `__setitem__`, so
+    assigning into a view raises `TypeError`. Writing belongs to the
+    consumer: plan the selection with
+    [`plan_chunks`][zarr_indexing.chunk_resolution.plan_chunks] and own the
+    read-modify-write, since chunk atomicity and concurrent-writer policy are
+    the backend's to decide, not an indexing plan's.
+
     Parameters
     ----------
     array
         The array to wrap. It must expose `shape`, `dtype`, and `__getitem__`
-        with basic (integer/slice) indexing. Its partitioning, if it advertises
-        one, is discovered here; use `with_parts` to choose a different one.
+        with basic (integer/slice) indexing; `__setitem__` is not required, so
+        a read-only source wraps as well as a writable one. Its partitioning,
+        if it advertises one, is discovered here; use `with_parts` to choose
+        a different one.
         This conservative constructor selects `basic_reader`; use `from_numpy`
         for a NumPy array or `with_reader` to select another backend adapter.
 
