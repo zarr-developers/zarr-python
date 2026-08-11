@@ -1180,7 +1180,7 @@ class TestBackgroundServerBoundedShutdown:
         def make_slow_request() -> None:
             try:
                 httpx.get(f"http://127.0.0.1:{port}/slow", timeout=10)
-            except Exception as exc:  # connection drop when the server force-closes is expected
+            except Exception as exc:  # noqa: BLE001 -- connection drop when the server force-closes is expected
                 request_errors.append(exc)
 
         request_thread = threading.Thread(target=make_slow_request, daemon=True)

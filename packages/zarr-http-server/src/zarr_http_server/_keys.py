@@ -203,7 +203,7 @@ def is_valid_node_key(node: Array[Any] | Group, key: str) -> bool:
 
     try:
         child = node[child_name]
-    except Exception:
+    except Exception:  # noqa: BLE001 -- any failure to open the child means the key is unverifiable
         # A child that cannot be opened cannot vouch for the key. Beyond a
         # missing name (KeyError), this covers metadata this process cannot
         # parse -- unreadable JSON, or a codec supplied by a plugin the
