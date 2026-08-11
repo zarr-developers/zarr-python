@@ -135,7 +135,9 @@ First-class support for ML-specific dtypes — `bfloat16`, the `float8`
 variants, packed `int4`/`uint4` — via
 [`ml_dtypes`](https://github.com/jax-ml/ml_dtypes), using the exact identifiers
 registered in `zarr-extensions` so the data stays readable by other
-implementations. Ragged arrays, variable-length strings, and an investigation
+implementations. 
+
+Ragged arrays, variable-length strings, and an investigation
 of Apache Arrow as a substrate for the dtypes the Array API cannot express are
 follow-on work on the same substrate.
 
