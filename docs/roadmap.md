@@ -4,7 +4,7 @@ This page describes where Zarr-Python is headed: the goals for the next major
 cycle of work, the changes we intend to make, and how those changes will be
 released. It is a living document; discussion and counter-proposals are welcome
 on the
-[zarr-python issue tracker](https://github.com/zarr-developers/zarr-python/issues).
+[Zarr-Python issue tracker](https://github.com/zarr-developers/zarr-python/issues).
 
 *The history of this roadmap, including the detailed technical proposals it
 was distilled from, can be traced in the
@@ -24,8 +24,8 @@ The [3.0 release](https://github.com/zarr-developers/zarr-python/releases/tag/v3
 was a total redesign of the library's internals, with three goals: full support
 for the Zarr V2 and V3 storage formats, storage APIs that are ergonomic for high-latency
 storage (such as cloud storage), and backwards compatibility with Zarr-Python 2.x where
-possible. Those goals were largely achieved! Going by the content of issues issues and pull requests
-submitted to the library, few users are grappling with 2.x -> 3.x migration issues. Instead, we see
+possible. Those goals were largely achieved! Going by the content of issues and pull requests
+submitted to the library, few users are grappling with 2.x → 3.x migration issues. Instead, we see
 users asking for things like better APIs, where "better" usually means faster.
 
 The 3.x redesign was carried out under hard backwards-compatibility
@@ -53,15 +53,16 @@ directions:
 - Accelerate the implementation of new codecs, chunk grids, chunk key
   encodings, etc.
 
-An important design input: [zarrs](https://github.com/zarrs/zarrs) (Rust) and
+An important design input: [`zarrs`](https://github.com/zarrs/zarrs) (Rust) and
 [TensorStore](https://github.com/google/tensorstore) (C++) are two independent
 Zarr implementations that use architectural patterns we want to learn from.
 We see them as complementary rather than competitive.
 
 !!! note
-  Many of the features in this roadmap will not require breaking public 3.x APIs. We can and will
-  ship those features in 3.x releases; at the same time, we consider it clarifying to frame the
-  coherent development direction as vectored at a 4.0 milestone.
+
+    Many of the features in this roadmap will not require breaking public 3.x APIs. We can and will
+    ship those features in 3.x releases; at the same time, we consider it clarifying to frame the
+    coherent development direction as vectored at a 4.0 milestone.
 
 ## The Zarr stack
 
@@ -87,41 +88,43 @@ without re-implementing the layers above it. The v4 direction is to re-shape
 Zarr-Python around the stack, so that each level is something you can depend
 on, conform to, or replace, without buying every other level:
 
-- **A focused package per level** — `zarr-metadata`, `zarr-storage`,
-  `zarr-codec`, `zarr-dtype`, all composed in the `zarr` package. The Rust `zarrs` library
-  successfully uses a structure like this, and we are keen to share the benefits of a more modular, maintainable codebase. The first two subpackages,
-  [`zarr-metadata`](https://zarr.readthedocs.io/projects/zarr-metadata/en/latest/) and `[zarr-indexing`](https://zarr.readthedocs.io/projects/zarr-indexing/en/latest/), are already
-  published.
-- **A documented interface per level** — capability protocols for stores, a
-  small stateless codec API, pure-data dtypes.
-- **A conformance suite per level** — so that alternative implementations of a
-  level can verify they behave correctly.
-- **Engine pluggability at the chunk-decoding level** — alternative engines
-  (zarrs, TensorStore) can take over IO without re-implementing hierarchy
-  traversal, indexing, or metadata handling.
+We want to break this monolith into separate Python packages, e.g. `zarr-metadata`, `zarr-indexing`, `zarr-storage`,
+`zarr-codec`, `zarr-dtype`, each with narrow scope, all composed in the `zarr` package. The Rust `zarrs` library
+successfully uses a structure like this, and we are keen to share the benefits of a more modular, maintainable codebase. Two of these subpackages,
+[`zarr-metadata`](https://zarr.readthedocs.io/projects/zarr-metadata/en/latest/) and [`zarr-indexing`](https://zarr.readthedocs.io/projects/zarr-indexing/en/latest/), are already
+published.
 
 ## What we intend to change
 
-Each theme below is backed by a detailed technical proposal; the summaries
-here describe the intended end state.
+The following section details how we want to evolve the internal logic that drives Zarr-Python.
 
 ### Foundation: swappable backends
 
-We propose to refactor Zarr-Python internals around a *swappable engine* — a single protocol that defines the core routines a
-Zarr implementation must support. Zarr-Python becomes one user-facing API that can be driven by multiple
-backends. We want a Python-centric backend (status quo), but also a Rust-based backend, via bindings to the `zarrs` crate.
-In particular we are excited about the [`zarrista`](https://developmentseed.org/zarrista/latest/) package, which aims to provide complete Python bindings for `zarrs`.
+We propose to refactor Zarr-Python internals around a *swappable engine* — a protocol, or protocols, 
+that define the core routines a Zarr implementation must support. Zarr-Python becomes one user-facing 
+API that can be driven by multiple backends, including externally defined backends. We think this will allow users on many different platforms to get the best performance for their particular environment while retaining a familiar API.
+
+#### Rust bindings
+
+We want a Python backend (i.e., the status quo), but also a Rust-based backend, via bindings to the 
+[`zarrs`](https://docs.rs/zarrs/latest/zarrs/) crate. The [zarrs-python](https://zarrs-python.readthedocs.io/en/latest/) project demonstrates that 
+bridging `zarrs` and Zarr-Python buys a *lot* of performance in the specific case of chunk encoding. But zarrs-python is constrained today by limited 
+modularity in Zarr-Python internals. Refactoring our internals around swappable backends should address this limitation.
+
+Any Python package that interfaces with `zarrs` will need Pythonic bindings to the Rust library. So we are *very* excited about the [zarrista](https://developmentseed.org/zarrista/latest/) package, which aims to provide complete Python bindings for `zarrs`.
+
+#### Sync / Async partitioning
 
 Internally we will branch over two kinds of backends: synchronous and asynchronous. The synchronous backend is suitable for arrays and groups persisted to low-latency storage like in-memory stores or local file systems, where async scheduling is pure friction. The asynchronous backend will use Python's `async` support and will provide concurrent APIs where it helps: for arrays and groups persisted to high-latency storage.
 
 ### Lazy indexing
 
 The Zarr-Python Array API was initially designed to mirror NumPy, with eager
-array indexing syntax. `Array.__getitem__` performs IO eagerly and returns a NumPy arrays.
+array indexing syntax. `Array.__getitem__` performs IO eagerly and returns a NumPy array.
 That was helpful to the dominant use-case at the time of its creation, but it
-means deferred I/O and computation currently require an external library
-such as Dask. It means there is no built-in support for representing multi
-step reads as a single deferred plan. Further, it means that every chained
+means deferred IO and computation currently require an external library
+such as Dask. It means there is no built-in support for representing multi-step
+reads as a single deferred plan. Further, it means that every chained
 selection round-trips to storage independently.
 
 We can fix this by introducing an API for lazy indexing. Under this model, an array indexing operation
@@ -164,7 +167,7 @@ deliberately, and named profiles replacing global mutators.
 
 ### Coordinated and distributed writes
 
-This area is actually an unfinished aspect of the 2.x -> 3.0 migration: Zarr-Python 2.x supported
+This area is actually an unfinished aspect of the 2.x → 3.0 migration: Zarr-Python 2.x supported
 synchronization logic via file-based locks, and we have not implemented equivalent functionality in
 3.x. We don't have concrete plans for closing this gap. Re-implementing simple object-based locking, for
 backends that support it, is a direct solution we should consider. But a transactional storage model,
@@ -175,7 +178,7 @@ As with array indexing, TensorStore is the trailblazer here, and we can learn fr
 We can also avoid the need for synchronization mechanisms entirely with better planning.
 Many users of the 2.x synchronization tooling wanted to simply write values from one chunked source
 to another, without worrying about chunk alignment. This can be addressed e.g. by creating a write
-plan that partitions the input chunks into batches where within each batch, writes avoid race conditions.
+plan that partitions the input chunks into batches within which writes cannot race.
 
 ## How to get involved
 
