@@ -841,7 +841,7 @@ class ShardingCodec(
         # `_sentinel` distinguishes "not computed yet" from a memoized `None`
         # (an empty chunk).
         _sentinel = object()
-        scalar_complete_result: Buffer | None | object = _sentinel
+        scalar_complete_result: Buffer | object | None = _sentinel
 
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
             if is_scalar and is_complete_chunk:
