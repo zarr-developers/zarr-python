@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import errno
 import ntpath
+import sys
 import threading
 import time
+from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, overload
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
@@ -124,8 +126,51 @@ class BackgroundServer:
         self.shutdown()
 
 
-def _parse_range_header(range_header: str) -> ByteRequest | None:
+class _RangeVerdict(Enum):
+    """The outcome of a Range header that does not name a readable range."""
+
+    IGNORE = auto()
+    """Serve the full representation with 200, as if no Range had been sent."""
+
+    UNSATISFIABLE = auto()
+    """Answer 416: the range is well-formed but names nothing readable."""
+
+
+_MAX_BYTE_POS = sys.maxsize
+"""Largest byte position this server will pass to a store.
+
+Range bounds arrive as arbitrary-precision Python integers, but a store
+ultimately turns them into an index-sized `seek`/`read`. Feeding an oversized
+value through raises `OverflowError`/`ValueError` from deep inside the store
+rather than producing a response, so bounds are clamped or rejected here.
+"""
+
+
+def _parse_int(text: str) -> int | None:
+    """Parse a byte position, accepting only the canonical spelling of one.
+
+    `int` is lenient in ways an HTTP byte position is not -- it accepts
+    surrounding whitespace, a leading `+`/`-`, underscore separators, and
+    non-ASCII decimal digits -- so `bytes=+0-1` and `bytes=0_0-1` would parse.
+    RFC 9110 defines a byte position as 1*DIGIT.
+    """
+    if not text.isascii() or not text.isdigit():
+        return None
+    return int(text)
+
+
+def _parse_range_header(range_header: str) -> ByteRequest | _RangeVerdict:
     """Parse an HTTP Range header into a ByteRequest.
+
+    A header this server cannot turn into a single read is *ignored* rather
+    than rejected. RFC 9110 §14.2 requires a server to ignore a Range whose
+    unit it does not recognize, and permits ignoring one it cannot parse; in
+    both cases the correct answer is the full representation, not 416.
+    Answering 416 would tell a client the object is unreadable when it is
+    merely the request that was unsupported -- and a client coalescing two
+    chunk reads into one multi-range request would take that at face value.
+
+    416 is reserved for a well-formed range that genuinely names nothing.
 
     Parameters
     ----------
@@ -134,35 +179,54 @@ def _parse_range_header(range_header: str) -> ByteRequest | None:
 
     Returns
     -------
-    ByteRequest or None
-        A ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``,
-        or ``None`` if the header cannot be parsed.
+    ByteRequest or _RangeVerdict
+        A ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``
+        for a readable range, otherwise the verdict to apply.
     """
     if not range_header.startswith("bytes="):
-        return None
+        # An unrecognized range unit; RFC 9110 §14.2 says MUST ignore.
+        return _RangeVerdict.IGNORE
     range_spec = range_header[len("bytes=") :]
-    try:
-        if range_spec.startswith("-"):
-            # suffix request: bytes=-N
-            suffix = int(range_spec[1:])
-            return SuffixByteRequest(suffix=suffix)
-        parts = range_spec.split("-", 1)
-        if len(parts) != 2:
-            return None
-        start_str, end_str = parts
-        start = int(start_str)
-        if end_str == "":
-            # offset request: bytes=N-
-            return OffsetByteRequest(offset=start)
-        # range request: bytes=N-M (HTTP end is inclusive, ByteRequest end is exclusive)
-        end = int(end_str) + 1
-        if start >= end:
-            # An inverted range like "bytes=5-2" is unsatisfiable, not a read
-            # of negative length.
-            return None
-        return RangeByteRequest(start=start, end=end)
-    except ValueError:
-        return None
+    if "," in range_spec:
+        # A multipart range. Legal to send, and legal to answer with the whole
+        # representation; this server does not build multipart/byteranges.
+        return _RangeVerdict.IGNORE
+
+    if range_spec.startswith("-"):
+        # suffix request: bytes=-N
+        suffix = _parse_int(range_spec[1:])
+        if suffix is None:
+            return _RangeVerdict.IGNORE
+        if suffix == 0:
+            # "the last zero bytes" names nothing.
+            return _RangeVerdict.UNSATISFIABLE
+        return SuffixByteRequest(suffix=min(suffix, _MAX_BYTE_POS))
+
+    parts = range_spec.split("-", 1)
+    if len(parts) != 2:
+        return _RangeVerdict.IGNORE
+    start_str, end_str = parts
+    start = _parse_int(start_str)
+    if start is None:
+        return _RangeVerdict.IGNORE
+    if start > _MAX_BYTE_POS:
+        # No object can be this long, so the range starts past every end.
+        return _RangeVerdict.UNSATISFIABLE
+    if end_str == "":
+        # offset request: bytes=N-
+        return OffsetByteRequest(offset=start)
+    end_pos = _parse_int(end_str)
+    if end_pos is None:
+        return _RangeVerdict.IGNORE
+    # HTTP end is inclusive, ByteRequest end is exclusive. A last-byte-pos at
+    # or past the end of the object is satisfiable -- RFC 9110 §14.1.2 says to
+    # clamp it -- so an oversized bound is capped rather than refused.
+    end = min(end_pos, _MAX_BYTE_POS - 1) + 1
+    if start >= end:
+        # An inverted range like "bytes=5-2" is unsatisfiable, not a read
+        # of negative length.
+        return _RangeVerdict.UNSATISFIABLE
+    return RangeByteRequest(start=start, end=end)
 
 
 def _is_drive_qualified(path: str) -> bool:
@@ -212,33 +276,55 @@ def _names_nothing(exc: OSError) -> bool:
     return exc.errno in (errno.ENAMETOOLONG, errno.EINVAL)
 
 
-def _content_range(byte_range: ByteRequest, length: int) -> str | None:
-    """Build a `Content-Range` value for a 206 response, if the offsets are known.
+def _content_range(byte_range: RangeByteRequest | OffsetByteRequest, length: int) -> str:
+    """Build a `Content-Range` value for a 206 response.
 
     Parameters
     ----------
-    byte_range : ByteRequest
-        The range that was served.
+    byte_range : RangeByteRequest or OffsetByteRequest
+        The range that was served. A suffix request is resolved to an absolute
+        range before reaching here, because RFC 9110 §15.3.7 requires every
+        single-part 206 to carry a `Content-Range` and a suffix's first-byte
+        position is not knowable without the object's size.
     length : int
         The number of bytes actually returned.
 
     Returns
     -------
-    str or None
-        A `bytes <first>-<last>/*` value, or `None` for a suffix request,
-        whose absolute offset cannot be known without the object's size.
+    str
+        A `bytes <first>-<last>/*` value.
     """
-    if isinstance(byte_range, RangeByteRequest):
-        start = byte_range.start
-    elif isinstance(byte_range, OffsetByteRequest):
-        start = byte_range.offset
-    else:
-        return None
+    start = byte_range.start if isinstance(byte_range, RangeByteRequest) else byte_range.offset
     # The total length is unknown here; RFC 9110 permits "*" in its place.
     return f"bytes {start}-{start + length - 1}/*"
 
 
-async def _get_response(store: Store, path: str, byte_range: ByteRequest | None = None) -> Response:
+async def _resolve_suffix(
+    store: Store, path: str, byte_range: SuffixByteRequest
+) -> RangeByteRequest | _RangeVerdict:
+    """Turn a suffix request into an absolute range using the object's size.
+
+    A suffix range names its bytes relative to an end this server does not
+    otherwise need to know. Resolving it here is what lets the 206 carry a
+    `Content-Range`, which RFC 9110 requires and which a caller reading a
+    shard index needs in order to locate what it was given.
+    """
+    try:
+        size = await store.getsize(path)
+    except FileNotFoundError:
+        return _RangeVerdict.UNSATISFIABLE
+    if size == 0:
+        return _RangeVerdict.UNSATISFIABLE
+    # A suffix longer than the object is satisfiable and yields the whole
+    # object, per RFC 9110 §14.1.2.
+    return RangeByteRequest(start=max(0, size - byte_range.suffix), end=size)
+
+
+async def _get_response(
+    store: Store,
+    path: str,
+    byte_range: RangeByteRequest | OffsetByteRequest | None = None,
+) -> Response:
     """Fetch a key from the store and return an HTTP response."""
     from starlette.responses import Response
 
@@ -247,10 +333,18 @@ async def _get_response(store: Store, path: str, byte_range: ByteRequest | None 
 
     try:
         buf = await store.get(path, proto, byte_range=byte_range)
-    except MemoryError:
-        # A range so wide the store cannot allocate for it cannot be
-        # satisfied; that is the client's range, not a server fault.
-        return Response(status_code=416)
+    except (MemoryError, OverflowError):
+        # The client's last-byte-pos is wider than the store can materialize
+        # -- it sizes its read from the range, not from the object. RFC 9110
+        # §14.1.2 makes a last-byte-pos at or past the end of the object
+        # satisfiable and clamps it to the end, so re-read from the same start
+        # to EOF, which is what the clamped range denotes. Refusing with 416
+        # would deny a request that is merely over-wide, and a client asking
+        # for "from here to well past the end" is asking a normal question.
+        if not isinstance(byte_range, RangeByteRequest):
+            raise
+        byte_range = OffsetByteRequest(offset=byte_range.start)
+        buf = await store.get(path, proto, byte_range=byte_range)
     except OSError as exc:
         if not _names_nothing(exc):
             # A real I/O failure, which must not be reported as a miss. Under
@@ -273,8 +367,7 @@ async def _get_response(store: Store, path: str, byte_range: ByteRequest | None 
         # The range lies wholly beyond the end of the object.
         return Response(status_code=416)
 
-    content_range = _content_range(byte_range, len(body))
-    headers = {"Content-Range": content_range} if content_range is not None else None
+    headers = {"Content-Range": _content_range(byte_range, len(body))}
     return Response(content=body, status_code=206, media_type=content_type, headers=headers)
 
 
@@ -318,6 +411,12 @@ async def _handle_request(request: Request) -> Response:
     store_key = f"{prefix}/{path}" if prefix else path
 
     if request.method == "PUT":
+        if store.read_only:
+            # The store will refuse this with a ValueError from deep inside
+            # `set`, which is a 500 -- a server fault. Refusing to write to a
+            # read-only store is not a fault, it is the answer.
+            return Response(status_code=403)
+
         max_body_size: int | None = request.app.state.max_body_size
         if max_body_size is None:
             body = await request.body()
@@ -351,11 +450,19 @@ async def _handle_request(request: Request) -> Response:
         return Response(status_code=204)
 
     range_header = request.headers.get("range")
-    byte_range: ByteRequest | None = None
+    byte_range: RangeByteRequest | OffsetByteRequest | None = None
     if range_header is not None:
-        byte_range = _parse_range_header(range_header)
-        if byte_range is None:
+        parsed = _parse_range_header(range_header)
+        if parsed is _RangeVerdict.UNSATISFIABLE:
             return Response(status_code=416)
+        if isinstance(parsed, SuffixByteRequest):
+            parsed = await _resolve_suffix(store, store_key, parsed)
+            if parsed is _RangeVerdict.UNSATISFIABLE:
+                return Response(status_code=416)
+        # _RangeVerdict.IGNORE falls through with byte_range still None, which
+        # serves the full representation with 200.
+        if not isinstance(parsed, _RangeVerdict):
+            byte_range = parsed
 
     return await _get_response(store, store_key, byte_range)
 

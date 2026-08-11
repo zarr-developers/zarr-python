@@ -11,7 +11,13 @@ from starlette.testclient import TestClient
 from zarr.buffer import cpu
 from zarr.storage import LocalStore
 
-from zarr_http_server._serve import CorsOptions, _parse_range_header, node_app, store_app
+from zarr_http_server._serve import (
+    CorsOptions,
+    _parse_range_header,
+    _RangeVerdict,
+    node_app,
+    store_app,
+)
 
 if TYPE_CHECKING:
     import pathlib
@@ -196,8 +202,16 @@ class TestShardedArrayByteRangeReads:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-class TestMalformedRangeHeaders:
-    """Malformed Range headers must return 416, never crash the server."""
+class TestUnusableRangeHeadersAreIgnored:
+    """A Range this server cannot turn into a read is ignored, not refused.
+
+    RFC 9110 §14.2 requires ignoring a Range whose unit is unrecognized and
+    permits ignoring one that will not parse; either way the answer is 200
+    with the full representation. Refusing with 416 would tell a client the
+    object is unreadable when only the request shape was unsupported -- and
+    a multi-range request, which is legal to send and which proxies and
+    download accelerators do send, would take that at face value.
+    """
 
     @pytest.mark.parametrize(
         "header",
@@ -206,43 +220,34 @@ class TestMalformedRangeHeaders:
             "bytes=-abc",
             "bytes=abc-",
             "bytes=0-7,10-20",
+            "chars=0-7",
+            "bytes=",
+            "bytes=+0-1",
         ],
     )
-    def test_malformed_range_returns_416(self, store: Store, header: str) -> None:
-        """Range headers with non-numeric values, multiple ranges, or other
-        malformed syntax should return 416 Range Not Satisfiable instead of
-        crashing the server."""
-        buf = cpu.buffer_prototype.buffer.from_bytes(b"some data here")
-        sync(store.set("key", buf))
+    def test_unusable_range_serves_full_representation(self, store: Store, header: str) -> None:
+        """Non-numeric bounds, multi-range, a non-'bytes' unit, an empty spec
+        and a non-canonical byte position all fall back to a plain 200."""
+        body = b"some data here"
+        sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(body)))
 
-        app = store_app(store)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(store_app(store), raise_server_exceptions=False)
 
         response = client.get("/key", headers={"Range": header})
-        assert response.status_code == 416
-
-    def test_non_bytes_unit_returns_416(self, store: Store) -> None:
-        """A Range header using a unit other than 'bytes' (e.g. 'chars=0-7')
-        should return 416 because only byte ranges are supported."""
-        buf = cpu.buffer_prototype.buffer.from_bytes(b"some data")
-        sync(store.set("key", buf))
-
-        app = store_app(store)
-        client = TestClient(app)
-
-        response = client.get("/key", headers={"Range": "chars=0-7"})
-        assert response.status_code == 416
+        assert response.status_code == 200
+        assert response.content == body
+        assert "content-range" not in response.headers
 
 
 class TestParseRangeHeader:
+    """Unit tests for _parse_range_header."""
+
     def test_parser_rejects_an_inverted_range(self) -> None:
         """Pin the parser itself: on a MemoryStore an unguarded inverted range
         happens to return b"" and still yields 416, so the status code alone
         cannot tell whether the guard is present."""
-        assert _parse_range_header("bytes=5-2") is None
-        assert _parse_range_header("bytes=0-0") is not None
-
-    """Unit tests for _parse_range_header."""
+        assert _parse_range_header("bytes=5-2") is _RangeVerdict.UNSATISFIABLE
+        assert _parse_range_header("bytes=0-0") is not _RangeVerdict.UNSATISFIABLE
 
     def test_valid_range(self) -> None:
         """'bytes=0-99' should parse into a RangeByteRequest with start=0 and
@@ -269,23 +274,37 @@ class TestParseRangeHeader:
         assert result == OffsetByteRequest(offset=10)
 
     def test_non_bytes_unit(self) -> None:
-        """A Range header with a non-'bytes' unit should return None."""
-        assert _parse_range_header("chars=0-7") is None
+        """An unrecognized range unit must be ignored, per RFC 9110 §14.2."""
+        assert _parse_range_header("chars=0-7") is _RangeVerdict.IGNORE
 
     def test_garbage_values(self) -> None:
-        """Non-numeric values in the byte range should return None instead
-        of raising a ValueError."""
-        assert _parse_range_header("bytes=abc-def") is None
+        """Non-numeric bounds are ignored rather than raising a ValueError."""
+        assert _parse_range_header("bytes=abc-def") is _RangeVerdict.IGNORE
 
     def test_multi_range(self) -> None:
-        """Multi-range requests (e.g. bytes=0-7,10-20) are not supported and
-        should return None."""
-        assert _parse_range_header("bytes=0-7,10-20") is None
+        """Multi-range requests (e.g. bytes=0-7,10-20) are legal to send; this
+        server does not build multipart/byteranges, so it serves the whole
+        representation instead of refusing."""
+        assert _parse_range_header("bytes=0-7,10-20") is _RangeVerdict.IGNORE
 
     def test_empty_spec(self) -> None:
-        """A Range header with no range specifier after 'bytes=' should
-        return None."""
-        assert _parse_range_header("bytes=") is None
+        """A Range header with no range specifier after 'bytes=' is ignored."""
+        assert _parse_range_header("bytes=") is _RangeVerdict.IGNORE
+
+    def test_non_canonical_byte_position(self) -> None:
+        """`int` would accept these; RFC 9110 defines a byte position as
+        1*DIGIT, so they are not ranges and the header is ignored."""
+        assert _parse_range_header("bytes=+0-1") is _RangeVerdict.IGNORE
+        assert _parse_range_header("bytes= 0-1") is _RangeVerdict.IGNORE
+        assert _parse_range_header("bytes=0_0-1") is _RangeVerdict.IGNORE
+
+    def test_oversized_start_is_unsatisfiable(self) -> None:
+        """A first-byte-pos past any possible object names nothing."""
+        assert _parse_range_header("bytes=99999999999999999999-") is _RangeVerdict.UNSATISFIABLE
+
+    def test_zero_length_suffix_is_unsatisfiable(self) -> None:
+        """ "The last zero bytes" names nothing."""
+        assert _parse_range_header("bytes=-0") is _RangeVerdict.UNSATISFIABLE
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1097,21 +1116,37 @@ class TestBackgroundServerReportsBoundPort:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-class TestUnopenableChildIsNotAnError:
-    """A child a node_app cannot open makes a key unverifiable, not the
-    request an error -- validating key *shape* never needs to decode data."""
+class TestUnopenableChildIsAnError:
+    """A child that cannot be *judged* must not be reported as absent.
 
-    def test_child_with_unparseable_metadata_returns_404(self, store: Store) -> None:
-        """A corrupt child metadata document must yield 404, not a 500 that
-        makes the whole subtree unservable with a traceback per request."""
+    404 is a claim about the store's contents, and under the v3 spec an
+    absent chunk is an uninitialized one -- so a correct reader answers 404
+    by silently substituting the array's fill value. Returning it for a child
+    whose metadata could not be read would materialize zeros over data that
+    exists. Only a genuinely missing member is a 404; corrupt metadata, an
+    I/O error, or a codec this process lacks all surface as 5xx.
+    """
+
+    def test_child_with_unparseable_metadata_is_not_reported_as_missing(self, store: Store) -> None:
+        """A corrupt child metadata document must not yield 404."""
         root = zarr.open_group(store, mode="w")
         root.create_array("good", shape=(2,), chunks=(2,), dtype="f8")
         sync(store.set("junk/zarr.json", cpu.buffer_prototype.buffer.from_bytes(b"not json")))
 
-        client = TestClient(node_app(root))
+        client = TestClient(node_app(root), raise_server_exceptions=False)
 
         assert client.get("/good/zarr.json").status_code == 200
-        assert client.get("/junk/zarr.json").status_code == 404
+        assert client.get("/junk/zarr.json").status_code >= 500
+        assert client.get("/junk/c/0").status_code >= 500
+
+    def test_absent_child_is_reported_as_missing(self, store: Store) -> None:
+        """A member that simply is not there is still a plain 404."""
+        root = zarr.open_group(store, mode="w")
+        root.create_array("good", shape=(2,), chunks=(2,), dtype="f8")
+
+        client = TestClient(node_app(root), raise_server_exceptions=False)
+
+        assert client.get("/nope/zarr.json").status_code == 404
         assert client.get("/junk/c/0").status_code == 404
 
 

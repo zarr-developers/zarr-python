@@ -83,29 +83,17 @@ def decode_chunk_key(array: Array[Any], key: str) -> tuple[int, ...] | None:
     """
     try:
         if array.metadata.zarr_format == 2:
-            parts = key.split(array.metadata.dimension_separator)
-            coords = tuple(int(p) for p in parts)
+            coords = tuple(int(p) for p in key.split(array.metadata.dimension_separator))
             # A 0-d v2 array holds its single chunk under "0", which decodes
             # to a 1-tuple that no 0-d grid could match.
             if len(array.shape) == 0:
                 return () if coords == (0,) else None
             return coords
 
-        encoding = array.metadata.chunk_key_encoding
-        separator = getattr(encoding, "separator", "/")
-        if encoding.name == "default":
-            # Default v3 keys have the form "c<sep>0<sep>1<sep>2".
-            prefix = "c" + separator
-            if key == "c":
-                return ()
-            if not key.startswith(prefix):
-                return None
-            return tuple(int(p) for p in key[len(prefix) :].split(separator))
-        if encoding.name == "v2":
-            return tuple(int(p) for p in key.split(separator))
-
-        # Unknown encoding — fall back to the encoding's own decode.
-        return encoding.decode_chunk_key(key)
+        # Ask zarr rather than predicting it: the encoding owns its own
+        # grammar, so a new or third-party chunk key encoding decodes here
+        # without this package knowing anything about it.
+        return array.metadata.chunk_key_encoding.decode_chunk_key(key)
     except (ValueError, TypeError, NotImplementedError):
         return None
 
@@ -119,9 +107,17 @@ def _shard_grid_shape(array: Array[Any]) -> tuple[int, ...]:
 def is_valid_chunk_key(array: Array[Any], key: str) -> bool:
     """Check whether *key* is a valid chunk key for *array*.
 
-    Tries to decode the key and checks that the resulting coordinates fall
-    within the storage grid (shard grid if sharding is used, chunk grid
-    otherwise).
+    Decodes the key, checks that the resulting coordinates fall within the
+    storage grid (shard grid if sharding is used, chunk grid otherwise), and
+    requires the key to be spelled exactly as zarr itself would spell it.
+
+    That last check is what makes the accepted key set equal to the set of
+    keys zarr can actually read. Decoding alone is lenient -- `int` accepts
+    leading zeros, a leading `+`/`-`, surrounding whitespace, underscore
+    separators, and non-ASCII decimal digits -- so `c/00/00` and `c/0/0`
+    decode to the same coordinates while naming *different* store keys. A
+    write to the non-canonical spelling would be stored under a key no reader
+    ever looks up: the client sees success and the data is invisible.
 
     Parameters
     ----------
@@ -140,7 +136,9 @@ def is_valid_chunk_key(array: Array[Any], key: str) -> bool:
     grid = _shard_grid_shape(array)
     if len(coords) != len(grid):
         return False
-    return all(0 <= c < g for c, g in zip(coords, grid, strict=True))
+    if not all(0 <= c < g for c, g in zip(coords, grid, strict=True)):
+        return False
+    return array.metadata.encode_chunk_key(coords) == key
 
 
 def is_valid_array_key(array: Array[Any], key: str) -> bool:
@@ -203,13 +201,18 @@ def is_valid_node_key(node: Array[Any] | Group, key: str) -> bool:
 
     try:
         child = node[child_name]
-    except Exception:  # noqa: BLE001 -- any failure to open the child means the key is unverifiable
-        # A child that cannot be opened cannot vouch for the key. Beyond a
-        # missing name (KeyError), this covers metadata this process cannot
-        # parse -- unreadable JSON, or a codec supplied by a plugin the
-        # server does not have installed. Validating a key's *shape* never
-        # needs to decode data, so an unopenable child makes the key
-        # unverifiable, not the request an error.
+    except KeyError:
+        # There is no such member, so no key beneath it can be valid.
+        #
+        # Only a missing name is caught here. Anything else -- an I/O error
+        # reading the child's metadata, unparsable JSON, a codec from a
+        # plugin this process lacks -- means the key could not be *judged*,
+        # which is not the same as judging it absent. Reporting those as 404
+        # would be a lie with teeth: under the v3 spec an absent chunk is an
+        # uninitialized one, so a correct reader answers a 404 by silently
+        # substituting the array's fill value over data that exists. Letting
+        # them propagate surfaces a 500, which is the honest answer and the
+        # one a client cannot mistake for data.
         return False
 
     return is_valid_node_key(child, remainder)
