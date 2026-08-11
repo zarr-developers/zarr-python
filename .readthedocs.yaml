@@ -13,7 +13,7 @@ build:
       # base there. Read the Docs strips shell quoting from commands, so the
       # exclude pathspecs must use the quote-free :! form, not ':(exclude)'.
       - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- :!packages/zarr-metadata :!packages/zarr-indexing;
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- :!packages/zarr-metadata :!packages/zarr-indexing :!packages/zarr-http-server;
         then
           exit 183;
         fi

@@ -45,12 +45,23 @@ Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packag
 
 [dependency-groups]
 test = ["pytest", "httpx", "httpx2"]
-docs = [
+examples = [
     # Optional dependencies to run the README examples. Reading a served
     # array back with `zarr.open_array(url)` goes through FsspecStore, which
     # needs an HTTP-capable fsspec; `examples/serve.py` uses httpx.
     "fsspec[http]",
     "httpx",
+]
+docs = [
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so the two sites render with the same toolchain.
+    "mkdocs-material==9.7.7",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.6",
+    "mkdocstrings-python==2.0.5",
+    "griffe-inherited-docstrings==1.1.3",
+    # mkdocstrings uses ruff to format rendered signatures
+    "ruff==0.16.0",
 ]
 
 # Dev-only: resolve zarr from the repo root so package tests run against

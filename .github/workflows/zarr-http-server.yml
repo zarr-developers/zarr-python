@@ -48,12 +48,12 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Sync test dependency groups
-        # The docs group carries the deps the README examples need, so the
+        # The examples group carries the deps the README examples need, so the
         # test that reads a served array back with a zarr client runs here
         # instead of silently skipping.
-        run: uv sync --group test --group docs --python ${{ matrix.python-version }}
+        run: uv sync --group test --group examples --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --group test --group docs pytest tests
+        run: uv run --group test --group examples pytest tests
 
   ruff:
     name: ruff
@@ -93,9 +93,29 @@ jobs:
       - name: Run mypy
         run: uv run --group test --with mypy mypy src
 
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-http-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Build docs
+        run: just docs-check
+
   zarr-http-server-complete:
     name: zarr-http-server complete
-    needs: [test, ruff, mypy]
+    needs: [test, ruff, mypy, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
