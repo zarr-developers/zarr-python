@@ -538,6 +538,16 @@ class CacheStore(WrapperStore[Store]):
         await self._cache_miss(key, byte_range, result, prior_entry)
         return result
 
+    @property
+    def _supports_sync_io(self) -> bool:
+        # The caching logic lives only in the async get/set/delete overrides;
+        # the sync methods inherited from `WrapperStore` delegate straight to
+        # the source store, so a sync-capable consumer (the fused codec
+        # pipeline) would write and delete around the cache, leaving stale
+        # entries that later async reads serve as current data. Opt out of
+        # sync IO until the sync surface is cache-aware.
+        return False
+
     async def get(
         self,
         key: str,

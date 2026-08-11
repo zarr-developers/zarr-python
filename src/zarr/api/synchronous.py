@@ -106,10 +106,10 @@ def consolidate_metadata(
     Returns
     -------
     group: Group
-        The group, with the ``consolidated_metadata`` field set to include
+        The group, with the `consolidated_metadata` field set to include
         the metadata of each child node. If the Store doesn't support
         consolidated metadata, this function raises a `TypeError`.
-        See ``Store.supports_consolidated_metadata``.
+        See `Store.supports_consolidated_metadata`.
 
     """
     return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
@@ -247,7 +247,7 @@ def open(
 
 def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
     """
-    Alias for [`open_group`][zarr.api.synchronous.open_group] with ``use_consolidated=True``.
+    Alias for [`open_group`][zarr.api.synchronous.open_group] with `use_consolidated=True`.
     """
     return Group(
         sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
@@ -303,7 +303,7 @@ def save_array(
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving. The default is ``None``, which will
+        The zarr format to use when saving. The default is `None`, which will
         use the default Zarr format defined in the global configuration object.
     path : str or None, optional
         The path within the store where the array will be saved.
@@ -530,17 +530,17 @@ def open_group(
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
-        store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
+        store (in the `zarr.json` for Zarr format 3 and in the `.zmetadata` file
         for Zarr format 2).
 
-        To explicitly require consolidated metadata, set ``use_consolidated=True``,
+        To explicitly require consolidated metadata, set `use_consolidated=True`,
         which will raise an exception if consolidated metadata is not found.
 
-        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
+        To explicitly *not* use consolidated metadata, set `use_consolidated=False`,
         which will fall back to using the regular, non consolidated metadata.
 
         Zarr format 2 allowed configuring the key storing the consolidated metadata
-        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
+        (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
 
     Returns
@@ -587,12 +587,12 @@ def create_group(
     path : str, optional
         Group path within store.
     overwrite : bool, optional
-        If True, pre-existing data at ``path`` will be deleted before
+        If True, pre-existing data at `path` will be deleted before
         creating the group.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-        If no ``zarr_format`` is provided, the default format will be used.
-        This default can be changed by modifying the value of ``default_zarr_format``
+        If no `zarr_format` is provided, the default format will be used.
+        This default can be changed by modifying the value of `default_zarr_format`
         in [`zarr.config`][zarr.config].
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
@@ -662,27 +662,27 @@ def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
-        False, will be set to ``shape``, i.e., single chunk for the whole array.
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
         If an int, the chunk size in each dimension will be given by the value
-        of ``chunks``. Default is True.
+        of `chunks`. Default is True.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
-        Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
+        Zarr format 2 only. Zarr format 3 arrays should use `codecs` instead.
 
-        If neither ``compressor`` nor ``filters`` are provided, the default compressor
+        If neither `compressor` nor `filters` are provided, the default compressor
         [`zarr.codecs.ZstdCodec`][] is used.
 
-        If ``compressor`` is set to ``None``, no compression is used.
+        If `compressor` is set to `None`, no compression is used.
     fill_value : Any, optional
         Fill value for the array.
     order : {'C', 'F'}, optional
-        Deprecated in favor of the ``config`` keyword argument.
-        Pass ``{'order': <value>}`` to ``create`` instead of using this parameter.
+        Deprecated in favor of the `config` keyword argument.
+        Pass `{'order': <value>}` to `create` instead of using this parameter.
         Memory layout to be used within each chunk.
-        If not specified, the ``array.order`` parameter in the global config will be used.
+        If not specified, the `array.order` parameter in the global config will be used.
     store : StoreLike or None, default=None
         StoreLike object to open. See the
         [storage documentation in the user guide][user-guide-store-like]
@@ -690,12 +690,12 @@ def create(
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in ``store`` at ``path`` before
+        If True, delete all pre-existing data in `store` at `path` before
         creating the array.
     path : str, optional
         Path under which array is stored.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. If not provided, ``store`` will be used
+        Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -708,14 +708,14 @@ def create(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        The default value of `"auto"` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
         [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -731,17 +731,17 @@ def create(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-        Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
+        Zarr format 2 only. Zarr format 3 arrays should use `chunk_key_encoding` instead.
     write_empty_chunks : bool, optional
-        Deprecated in favor of the ``config`` keyword argument.
-        Pass ``{'write_empty_chunks': <value>}`` to ``create`` instead of using this parameter.
+        Deprecated in favor of the `config` keyword argument.
+        Pass `{'write_empty_chunks': <value>}` to `create` instead of using this parameter.
         If True, all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill value
         prior to storing. If a chunk is uniformly equal to the fill value, then
         that chunk is not be stored, and the store entry for that chunk's key
         is deleted.
     zarr_format : {2, 3, None}, optional
-        The Zarr format to use when creating an array. The default is ``None``,
+        The Zarr format to use when creating an array. The default is `None`,
         which instructs Zarr to choose the default Zarr format value defined in the
         runtime configuration.
     meta_array : array-like, optional
@@ -754,15 +754,15 @@ def create(
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
         Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
-        Default is ``("default", "/")``.
+        Default is `("default", "/")`.
     codecs : Sequence of Codecs or dicts, optional
         An iterable of Codec or dict serializations of Codecs. Zarr V3 only.
 
-        The elements of ``codecs`` specify the transformation from array values to stored bytes.
-        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+        The elements of `codecs` specify the transformation from array values to stored bytes.
+        Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
-        For most data types, the default codecs are the tuple ``(BytesCodec(), ZstdCodec())``;
+        For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;
         data types that require a special [`zarr.abc.codec.ArrayBytesCodec`][], like variable-length strings or bytes,
         will use the [`zarr.abc.codec.ArrayBytesCodec`][] required for the data type instead of [`zarr.codecs.BytesCodec`][].
     dimension_names : Iterable[str | None] | None = None
@@ -849,24 +849,24 @@ def create_array(
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
     name : str or None, optional
-        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        The name of the array within the store. If `name` is `None`, the array will be located
         at the root of the store.
     shape : ShapeLike, optional
-        Shape of the array. Must be ``None`` if ``data`` is provided.
+        Shape of the array. Must be `None` if `data` is provided.
     dtype : ZDTypeLike | None
-        Data type of the array. Must be ``None`` if ``data`` is provided.
+        Data type of the array. Must be `None` if `data` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
-        ``shape`` and ``dtype`` parameters must be ``None``.
+        `shape` and `dtype` parameters must be `None`.
     chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
         If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
         A nested list of per-dimension edge sizes creates a rectilinear grid.
         Rectilinear chunk grids are experimental and must be explicitly enabled
-        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        with `zarr.config.set({'array.rectilinear_chunks': True})` while the
         feature is stabilizing.
     shards : tuple[int, ...], optional
-        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        Shard shape of the array. The default value of `None` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -879,35 +879,35 @@ def create_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        The default value of `"auto"` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
         [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
         returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no ``compressors`` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
+        If no `compressors` are provided, a default set of compressors will be used.
+        These defaults can be changed by modifying the value of `array.v3_default_compressors`
         in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default compressors.
+        Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
-        If no ``compressor`` is provided, a default compressor will be used.
+        If no `compressor` is provided, a default compressor will be used.
         in [`zarr.config`][zarr.config].
-        Use ``None`` to omit the default compressor.
+        Use `None` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+        If no `serializer` is provided, a default serializer will be used.
+        These defaults can be changed by modifying the value of `array.v3_default_serializer`
         in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
@@ -916,17 +916,17 @@ def create_array(
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-        If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
+        order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+        If no `order` is provided, a default order will be used.
+        This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
         Attributes for the array.
     chunk_key_encoding : ChunkKeyEncodingLike, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
     dimension_names : Iterable[str], optional
         The names of the dimensions (default is None).
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -935,13 +935,13 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-        If ``True``, all existing paths in the store will be deleted.
+        If `True`, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
-        If a pre-existing array-like object was provided to this function via the ``data`` parameter
-        then ``write_data`` determines whether the values in that array-like object should be
-        written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+        If a pre-existing array-like object was provided to this function via the `data` parameter
+        then `write_data` determines whether the values in that array-like object should be
+        written to the Zarr array created by this function. If `write_data` is `False`, then the
         array will be left empty.
 
     Returns
@@ -998,7 +998,7 @@ def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: ChunksLike | Literal["auto", "keep"] = "keep",
-    shards: ShardsLike | None | Literal["keep"] = "keep",
+    shards: ShardsLike | Literal["keep"] | None = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
@@ -1024,10 +1024,10 @@ def from_array(
         The array to copy.
     write_data : bool, default True
         Whether to copy the data from the input array to the new array.
-        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        If `write_data` is `False`, the new array will be created with the same metadata as the
         input array, but without any data.
     name : str or None, optional
-        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        The name of the array within the store. If `name` is `None`, the array will be located
         at the root of the store.
     chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
         Chunk shape of the array.
@@ -1038,7 +1038,7 @@ def from_array(
         - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
         - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
           Rectilinear chunk grids are experimental and must be explicitly enabled
-          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          with `zarr.config.set({'array.rectilinear_chunks': True})` while the
           feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
@@ -1063,16 +1063,16 @@ def from_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
-        If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
+        The default value of `"keep"` instructs Zarr to infer `filters` from `data`.
+        If that inference is not possible, Zarr will fall back to the behavior specified by `"auto"`,
         which is to choose default filters based on the data type of the array and the Zarr format specified.
-        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple ``()``.
+        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple `()`.
         The only cases where default filters are not empty is when the Zarr format is 2, and the
         data type is a variable-length data type like [`zarr.dtype.VariableLengthUTF8`][] or
         [`zarr.dtype.VariableLengthUTF8`][]. In these cases, the default filters is a tuple with a
         single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -1089,17 +1089,17 @@ def from_array(
         - "auto": Automatically determine the compressors based on the array's dtype.
         - "keep": Retain the compressors of the input array if it is a zarr Array.
 
-        If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+        If no `compressors` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         Following values are supported:
 
-        - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
-        - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
+        - dict[str, JSON]: A dict representation of an `ArrayBytesCodec`.
+        - ArrayBytesCodec: An instance of `ArrayBytesCodec`.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          ``array.v3_default_serializer`` in [`zarr.config`][zarr.config].
+          `array.v3_default_serializer` in [`zarr.config`][zarr.config].
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
@@ -1110,7 +1110,7 @@ def from_array(
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
         If not specified, defaults to the memory order of the data array.
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
@@ -1120,8 +1120,8 @@ def from_array(
         If not specified, defaults to the attributes of the data array.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
         If not specified and the data array has the same zarr format as the target array,
         the chunk key encoding of the data array is used.
     dimension_names : Iterable[str | None] | None
@@ -1399,11 +1399,13 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyArray:
     path : str
         The path to the new array.
     **kwargs
-        Any keyword arguments to pass to the array constructor.
+        Additional keyword arguments passed to `open_array`.
+        If `mode` is omitted or `None`, it defaults to `"a"`. Pass `mode="r"` when
+        opening an existing array from a read-only store.
 
     Returns
     -------
-    AsyncArray
+    Array
         The opened array.
     """
     return Array(sync(async_api.open_like(a, path=path, **kwargs)))

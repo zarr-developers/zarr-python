@@ -9,8 +9,8 @@ is instantiated once per pipeline (``TestBatchedPipeline`` / ``TestFusedPipeline
 Each test also runs over a *store axis* that exercises both code paths the
 synchronous pipelines branch on:
 
-* ``sync``  -> ``MemoryStore`` (supports ``get_sync``/``set_sync``: fast path)
-* ``async`` -> ``LatencyStore(MemoryStore())`` (NOT sync-capable: async fallback)
+* ``sync``  -> ``MemoryStore`` (full sync surface: fast path)
+* ``async`` -> ``_NoSyncIOStore(MemoryStore())`` (NOT sync-capable: async fallback)
 
 The async axis is deliberate: a regression that only affects the async fallback
 of the default pipeline (e.g. a codec-spec-evolution bug that surfaces only on
@@ -50,14 +50,22 @@ if TYPE_CHECKING:
 STORE_KINDS = ["sync", "async"]
 
 
+class _NoSyncIOStore(LatencyStore):
+    """An in-memory store that advertises no sync IO capability, so a
+    synchronous pipeline must fall back to its async path. (A plain wrapper
+    won't do: `WrapperStore` forwards the wrapped store's sync capability.)"""
+
+    @property
+    def _supports_sync_io(self) -> bool:
+        return False
+
+
 def _make_store(kind: str) -> Store:
     if kind == "sync":
         # MemoryStore supports get_sync/set_sync -> synchronous fast path.
         return MemoryStore()
     if kind == "async":
-        # LatencyStore is NOT SupportsGetSync/SupportsSetSync, so a synchronous
-        # pipeline must fall back to its async path. Zero latency keeps it fast.
-        return LatencyStore(MemoryStore(), get_latency=0.0, set_latency=0.0)
+        return _NoSyncIOStore(MemoryStore(), get_latency=0.0, set_latency=0.0)
     raise AssertionError(kind)
 
 

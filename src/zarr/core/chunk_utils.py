@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-from zarr.abc.codec import GetResult, SupportsSyncCodec
+from zarr.abc.codec import GetResult, SupportsSyncCodec, _codec_supports_sync
 from zarr.core.indexing import is_scalar
 
 if TYPE_CHECKING:
@@ -238,16 +238,26 @@ class ChunkTransform:
     )
 
     def __post_init__(self) -> None:
-        from zarr.core.codec_pipeline import codecs_from_list
+        from zarr.core.codec_pipeline import codecs_from_list_unchecked
 
-        non_sync = [c for c in self.codecs if not isinstance(c, SupportsSyncCodec)]
+        # _codec_supports_sync, not a bare isinstance check: a codec can satisfy
+        # the SupportsSyncCodec protocol structurally yet be unable to run
+        # synchronously (ShardingCodec whose inner/index chain contains an
+        # async-only codec). Such codecs opt out via `_sync_capable`, and the
+        # TypeError here is what makes FusedCodecPipeline.evolve_from_array_spec
+        # decline the sync fast path and fall back to the async pipeline.
+        non_sync = [c for c in self.codecs if not _codec_supports_sync(c)]
         if non_sync:
             names = ", ".join(type(c).__name__ for c in non_sync)
             raise TypeError(
                 f"All codecs must implement SupportsSyncCodec. The following do not: {names}"
             )
 
-        aa, ab, bb = codecs_from_list(list(self.codecs))
+        # `ChunkTransform` is built from a codec chain that already went
+        # through `codecs_from_list` when the owning pipeline was constructed
+        # (see `FusedCodecPipeline.evolve_from_array_spec`), so re-splitting it
+        # here must not re-emit that chain's advisory warnings.
+        aa, ab, bb = codecs_from_list_unchecked(list(self.codecs))
         # SupportsSyncCodec was verified above; the cast is purely for mypy.
         self._aa_codecs = cast("tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ...]", tuple(aa))
         self._ab_codec = cast("SupportsSyncCodec[NDBuffer, Buffer]", ab)
