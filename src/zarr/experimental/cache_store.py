@@ -349,9 +349,9 @@ class CacheStore(WrapperStore[Store]):
         Charges a flat ``_NEGATIVE_ENTRY_SIZE`` against the shared ``max_size``
         budget.  A negative marker is strictly lower priority than cached data: it
         may only displace *other* (older) absent markers to fit, never a cached
-        value, and is skipped entirely if the budget is full of cached values.
-        Must be called while holding ``self._state.lock``.  Staleness is bounded
-        by ``max_age_seconds``.
+        value, and is skipped entirely if the budget is full of cached values
+        (detected in O(1) via ``negative_count``).  Must be called while holding
+        ``self._state.lock``.  Staleness is bounded by ``max_age_seconds``.
         """
         old = self._state.entries.pop(key, None)
         if old is not None:
@@ -361,9 +361,11 @@ class CacheStore(WrapperStore[Store]):
         if self.max_size is not None:
             # Make room by evicting older absent markers only — never cached values.
             while self._state.current_size + _NEGATIVE_ENTRY_SIZE > self.max_size:
-                lru_absent = self._lru_absent_key()
-                if lru_absent is None:
+                if self._state.negative_count == 0:
                     return  # only cached values fill the budget — don't record the miss
+                lru_absent = self._lru_absent_key()
+                if lru_absent is None:  # pragma: no cover - count implies one exists
+                    return
                 await self._evict_slot(lru_absent)
         else:
             # No byte budget to share: bound the marker *count* instead, so a scan
@@ -435,12 +437,15 @@ class CacheStore(WrapperStore[Store]):
     def _next_eviction_candidate(self) -> str | None:
         """Return the key to evict from next, preferring absent markers (LRU-first).
 
-        The entries are walked in LRU order: the first key marked absent is
-        returned; if none are, the least-recently-used key is the candidate.
-        Must be called while holding self._state.lock.
+        When no absent markers exist (``negative_count == 0``) the least-recently-
+        used key is the candidate in O(1) — the common all-positive case never scans.
+        Otherwise the entries are walked in LRU order for the first marker.  Must be
+        called while holding self._state.lock.
         """
+        if self._state.negative_count == 0:
+            return next(iter(self._state.entries), None)
         candidate = self._lru_absent_key()
-        if candidate is None:
+        if candidate is None:  # pragma: no cover - negative_count > 0 implies one exists
             return next(iter(self._state.entries), None)
         return candidate
 
