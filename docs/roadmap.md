@@ -109,7 +109,7 @@ Refactor the internals around a *swappable engine* — a single protocol that de
 Zarr implementation must support. Zarr-Python becomes one user-facing API that can be driven by multiple
 backends, including a Python-heavy backend, but also a Rust-based backend, via bindings to the `zarrs` crate.
 
-Internally we will branch over two kinds of backends: synchronous and asynchronous. The synchronous backend is suitable for arrays and groups persisted to low-latency storage like in-memory stores, where async scheduling is pure friction. The asynchronous backend will use `async` and provide concurrent APIs where it helps: for arrays and groups persisted to high-latency storage.
+Internally we will branch over two kinds of backends: synchronous and asynchronous. The synchronous backend is suitable for arrays and groups persisted to low-latency storage like in-memory stores or local file systems, where async scheduling is pure friction. The asynchronous backend will use Python's `async` support and will provide concurrent APIs where it helps: for arrays and groups persisted to high-latency storage.
 
 ### Lazy indexing
 
