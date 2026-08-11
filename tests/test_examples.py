@@ -18,15 +18,6 @@ PEP_723_REGEX: Final = r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| 
 # This is the absolute path to the local Zarr installation. Moving this test to a different directory will break it.
 ZARR_PROJECT_PATH = Path(".").absolute()
 
-# Packages that live in this repository. An example declares them by their
-# published name, so that the example works for a reader who just runs it, and
-# the test substitutes the local checkout, so that CI exercises the code in the
-# working tree rather than a released or `main` version.
-LOCAL_PACKAGES: Final = {
-    "zarr": ZARR_PROJECT_PATH,
-    "zarr-indexing": ZARR_PROJECT_PATH / "packages" / "zarr-indexing",
-}
-
 
 def set_dep(script: str, dependency: str) -> str:
     """
@@ -63,15 +54,11 @@ def set_dep(script: str, dependency: str) -> str:
 
 def resave_script(source_path: Path, dest_path: Path) -> None:
     """
-    Read a script from source_path and save it to dest_path after inserting the absolute paths to
-    the local copies of this repository's packages in the PEP-723 header.
-
-    A dependency the script does not declare is left alone, so each example only gets the local
-    packages it actually uses.
+    Read a script from source_path and save it to dest_path after inserting the absolute path to the
+    local Zarr project directory in the PEP-723 header.
     """
-    dest_text = source_path.read_text()
-    for name, path in LOCAL_PACKAGES.items():
-        dest_text = set_dep(dest_text, f"{name} @ file:///{path}")
+    source_text = source_path.read_text()
+    dest_text = set_dep(source_text, f"zarr @ file:///{ZARR_PROJECT_PATH}")
     dest_path.write_text(dest_text)
 
 
