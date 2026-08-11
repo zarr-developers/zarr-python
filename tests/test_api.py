@@ -419,7 +419,7 @@ async def test_open_group_unspecified_version(tmp_path: Path, zarr_format: ZarrF
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 @pytest.mark.parametrize("path", [None, "some_path"])
-def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
+def test_save(store: Store, n_args: int, n_kwargs: int, path: str | None) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}

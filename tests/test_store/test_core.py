@@ -33,7 +33,7 @@ _ContainsFunc = Callable[[StorePath, ZarrFormat], Awaitable[bool]]
 )
 def store_like(
     request: pytest.FixtureRequest,
-) -> Generator[None | str | Path | StorePath | MemoryStore | dict[Any, Any], None, None]:
+) -> Generator[str | Path | StorePath | MemoryStore | dict[Any, Any] | None, None, None]:
     if request.param == "none":
         yield None
     elif request.param == "temp_dir_str":
