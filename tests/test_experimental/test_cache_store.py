@@ -1843,6 +1843,80 @@ class TestCacheStoreRecordCoherence:
         assert result.to_bytes() == b"value"
         await cs._assert_invariants()
 
+    async def test_delete_dir_invalidates_cached_keys(self) -> None:
+        """``delete_dir`` must not bypass the cache: every key under the prefix is
+        dropped, so an overwrite of an array does not leave its chunks readable."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+
+        await source.set("p/k", CPUBuffer.from_bytes(b"AAAAA"))
+        await source.set("q/k", CPUBuffer.from_bytes(b"BBBBB"))
+        assert await cs.get("p/k", proto) is not None
+        assert await cs.get("q/k", proto) is not None
+
+        await cs.delete_dir("p")
+
+        assert "p/k" not in cs._state.entries
+        assert await cs._cache.get("p/k", proto) is None
+        assert await cs.get("p/k", proto) is None
+        # A sibling prefix is untouched.
+        kept = await cs.get("q/k", proto)
+        assert kept is not None
+        assert kept.to_bytes() == b"BBBBB"
+        await cs._assert_invariants()
+
+    async def test_clear_also_clears_the_cache(self) -> None:
+        """``clear`` has the same bypass shape as ``delete_dir``: emptying the
+        source must not leave the cache serving what it held."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"AAAAA"))
+        assert await cs.get("k", proto) is not None
+
+        await cs.clear()
+
+        assert not cs._state.entries
+        assert await cs._cache.get("k", proto) is None
+        assert await cs.get("k", proto) is None
+
+    async def test_get_ranges_uses_the_cache(self) -> None:
+        """``get_ranges`` (the sharded partial-read path) goes through this store's
+        ``get``, so a cached full value serves its ranges and nothing reaches the
+        source."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"0123456789"))
+        assert await cs.get("k", proto) is not None
+        await source.delete("k")  # only the cache can answer now
+
+        requested: list[ByteRequest | None] = [RangeByteRequest(0, 4), SuffixByteRequest(2)]
+        observed: dict[int, bytes] = {}
+        async for group in cs.get_ranges("k", requested, prototype=proto):
+            for index, buffer in group:
+                assert buffer is not None
+                observed[index] = buffer.to_bytes()
+        assert observed == {0: b"0123", 1: b"89"}
+
+    async def test_get_partial_values_uses_the_cache(self) -> None:
+        """``get_partial_values`` likewise routes through ``get`` rather than
+        straight to the source store."""
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore())
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"0123456789"))
+        assert await cs.get("k", proto) is not None
+        await source.delete("k")
+
+        results = await cs.get_partial_values(proto, [("k", RangeByteRequest(0, 4)), ("k", None)])
+        assert [b.to_bytes() for b in results if b is not None] == [b"0123", b"0123456789"]
+        assert len(results) == 2
+
     async def test_negative_count_matches_the_records(self) -> None:
         """``negative_count`` gates both the marker cap and the O(1) eviction fast
         path, so check it against a recount rather than against itself."""
@@ -1900,7 +1974,9 @@ class TestCacheStoreRecordCoherence:
                 cache_missing=rng.choice([True, False]),
             )
             for _ in range(120):
-                key = f"k{rng.randrange(6)}"
+                # Two prefixes of three keys each, so ``delete_dir`` has something
+                # to match and something to leave alone.
+                key = f"p{rng.randrange(2)}/k{rng.randrange(3)}"
                 match rng.randrange(6):
                     case 0:
                         await cs.get(key, proto, byte_range=rng.choice(byte_ranges))
@@ -1915,7 +1991,7 @@ class TestCacheStoreRecordCoherence:
                         # Out-of-band write: the source moves on without the cache.
                         await source.set(key, CPUBuffer.from_bytes(b"o" * 30))
                     case _:
-                        await cs.delete_dir("k")
+                        await cs.delete_dir(f"p{rng.randrange(2)}")
                 await cs._assert_invariants()
 
 

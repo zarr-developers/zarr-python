@@ -8,11 +8,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRequest, Store
+from zarr.core.common import concurrent_map
 from zarr.storage._wrapper import WrapperStore
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
+
     from zarr.core.buffer.core import Buffer, BufferPrototype
 
 # Nominal byte cost charged to ``max_size`` for a negative (known-absent) entry.
@@ -140,7 +143,8 @@ class CacheStore(WrapperStore[Store]):
     answers byte-range reads of that key, by asking the cache store for the range
     instead of the source.  Ranges of a key with no cached value are cached in
     memory, inside the key's tracking record, so that partial reads never pollute
-    the filesystem (or other persistent backend).
+    the filesystem (or other persistent backend); ``get_ranges`` and
+    ``get_partial_values`` are routed through ``get``, so they use the cache too.
 
     Both halves share the same ``max_size`` budget, and eviction is LRU over
     *keys*: the least-recently-used key is chosen first (absent markers before
@@ -862,6 +866,88 @@ class CacheStore(WrapperStore[Store]):
         async with self._state.lock:
             self._drop_key(key)
         await self._cache.delete(key)
+
+    async def delete_dir(self, prefix: str) -> None:
+        """
+        Delete a prefix from the underlying store and drop its cached keys.
+
+        ``WrapperStore.delete_dir`` delegates straight to the source store, so
+        without this override no ``delete`` runs for the keys under *prefix* and
+        the cache keeps serving them (for the whole ``max_age_seconds`` window)
+        after e.g. an ``overwrite=True`` array creation.
+        """
+        await super().delete_dir(prefix)
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+        await self._cache.delete_dir(prefix)
+        async with self._state.lock:
+            for key in [k for k in self._state.entries if k.startswith(prefix)]:
+                self._drop_key(key)
+
+    async def clear(self) -> None:
+        """Clear the underlying store, and with it everything cached from it.
+
+        Same bypass as ``delete_dir``: ``WrapperStore.clear`` delegates to the
+        source store, which would leave the cache serving values for keys that no
+        longer exist anywhere.
+        """
+        await super().clear()
+        await self.clear_cache()
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
+    ) -> list[Buffer | None]:
+        """Partial-value reads routed through ``self.get``, so they use the cache.
+
+        ``WrapperStore`` forwards this straight to the source store, which would
+        read around the cache: the reads would neither be served from it nor
+        recorded in it, and their observations would not supersede the keys'
+        records.
+        """
+
+        async def _get(key: str, byte_range: ByteRequest | None) -> Buffer | None:
+            return await self.get(key, prototype=prototype, byte_range=byte_range)
+
+        return await concurrent_map(key_ranges, _get, limit=None)
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Byte-range reads routed through the coalescing ``Store.get_ranges``.
+
+        The ``WrapperStore`` delegation would bypass this store's ``get`` — and so
+        the cache — for the sharded partial-read path, which is exactly the mixed
+        full/range workload this cache targets: the shard index read goes through
+        ``get`` while the chunk reads would not. Routing through the ``Store``
+        default runs the same coalescer over ``self.get`` instead, so a cached full
+        value serves every range of it by slicing and uncached ranges are recorded.
+        ``None`` for a coalescing kwarg means "use the ``Store`` default".
+        """
+        kwargs: dict[str, int] = {}
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
+        async for group in Store.get_ranges(self, key, byte_ranges, prototype=prototype, **kwargs):
+            yield group
+
+    async def _get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
+        """Batch reads routed through ``self.get`` (see ``get_partial_values``)."""
+        async for req in Store._get_many(self, requests):
+            yield req
 
     def cache_info(self) -> dict[str, Any]:
         """Return information about the cache state.
