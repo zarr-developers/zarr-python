@@ -86,9 +86,9 @@ needs metadata handling has to install the full dependency footprint of the
 whole library, and a faster chunk-decoding implementation cannot plug in
 without re-implementing the layers above it. The v4 direction is to re-shape
 Zarr-Python around the stack, so that each level is something you can depend
-on, conform to, or replace, without buying every other level:
+on, conform to, or replace, without buying every other level.
 
-We want to break this monolith into separate Python packages, e.g. `zarr-metadata`, `zarr-indexing`, `zarr-storage`,
+We plan to "stackify" Zarr-Python by spinning core functionality out into separate Python packages, e.g. `zarr-metadata`, `zarr-indexing`, `zarr-storage`,
 `zarr-codec`, `zarr-dtype`, each with narrow scope, all composed in the `zarr` package. The Rust `zarrs` library
 successfully uses a structure like this, and we are keen to share the benefits of a more modular, maintainable codebase. Two of these subpackages,
 [`zarr-metadata`](https://zarr.readthedocs.io/projects/zarr-metadata/en/latest/) and [`zarr-indexing`](https://zarr.readthedocs.io/projects/zarr-indexing/en/latest/), are already
@@ -139,13 +139,7 @@ background.
 
 First-class support for ML-specific dtypes — `bfloat16`, the `float8`
 variants, packed `int4`/`uint4` — via
-[`ml_dtypes`](https://github.com/jax-ml/ml_dtypes), using the exact identifiers
-registered in `zarr-extensions` so the data stays readable by other
-implementations.
-
-Ragged arrays, variable-length strings, and an investigation
-of Apache Arrow as a substrate for the dtypes the Array API cannot express are
-follow-on work on the same substrate.
+[`ml_dtypes`](https://github.com/jax-ml/ml_dtypes). These data types have specifications written up in `zarr-extensions`, but there's no simple to get them integrated in Zarr-Python today. 
 
 ### Device-agnostic IO
 
@@ -169,7 +163,7 @@ deliberately, and named profiles replacing global mutators.
 
 This area is actually an unfinished aspect of the 2.x → 3.0 migration: Zarr-Python 2.x supported
 synchronization logic via file-based locks, and we have not implemented equivalent functionality in
-3.x. We don't have concrete plans for closing this gap. Re-implementing simple object-based locking, for
+3.x. We don't have *concrete* plans for closing this gap. Re-implementing simple object-based locking, for
 backends that support it, is a direct solution we should consider. But a transactional storage model,
 where a sequence of basic storage operations like reading and writing could be submitted in a batch and
 executed serially, with rollbacks under failure, is also quite appealing.
