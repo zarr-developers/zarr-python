@@ -22,7 +22,7 @@ repository.*
 
 The [3.0 release](https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0)
 was a total redesign of the library's internals, with three goals: full support
-for the Zarr V2 and V3 storage formats, storage APIs ergonomic for high-latency
+for the Zarr V2 and V3 storage formats, storage APIs that are ergonomic for high-latency
 (cloud) storage, and backwards compatibility with Zarr-Python 2.x where
 possible. Those goals were largely achieved, and more than a year on, the
 2.x → 3.x transition is effectively resolved, in the sense that it the transition
