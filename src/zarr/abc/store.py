@@ -662,6 +662,15 @@ class SyncByteSetter(SyncByteGetter, Protocol):
 
 @runtime_checkable
 class SupportsGetSync(Protocol):
+    """Store protocol for synchronous reads (`get_sync`).
+
+    The store sync surface is all-or-nothing: a store implementing any of the
+    `*_sync` methods must implement all of them (`SupportsSyncStore`), because
+    consumers mix sync reads, writes, and deletes within one operation.
+    Capability-gated callers consult `_store_supports_sync_io` rather than the
+    individual protocols.
+    """
+
     def get_sync(
         self,
         key: str,
@@ -673,16 +682,52 @@ class SupportsGetSync(Protocol):
 
 @runtime_checkable
 class SupportsSetSync(Protocol):
+    """Store protocol for synchronous writes (`set_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def set_sync(self, key: str, value: Buffer) -> None: ...
 
 
 @runtime_checkable
 class SupportsDeleteSync(Protocol):
+    """Store protocol for synchronous deletes (`delete_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def delete_sync(self, key: str) -> None: ...
 
 
 @runtime_checkable
-class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol):
+    """The full store sync surface: `get_sync`, `set_sync`, and `delete_sync`."""
+
+
+def _store_supports_sync_io(store: object) -> bool:
+    """Whether `store` can serve the full synchronous IO surface right now.
+
+    Structural membership in `SupportsSyncStore` is necessary but not always
+    sufficient: a store can present the `*_sync` methods while its ability to
+    run them depends on runtime state the type system cannot see. Wrapper
+    stores are the canonical case — `WrapperStore` delegates the sync methods
+    to the store it wraps, so they only work when the wrapped store is itself
+    sync-capable. Such stores opt out dynamically via a `_supports_sync_io`
+    attribute/property (absent means capable).
+
+    This is an interim, private convention pending a formal sync/async store
+    architecture — the store-side twin of the codec-side `_sync_capable`
+    convention consulted by `zarr.abc.codec._codec_supports_sync`.
+
+    Synchronous IO is all-or-nothing: consumers such as the fused codec
+    pipeline mix synchronous reads, writes, and deletes within one batch
+    (e.g. a partial-chunk write reads existing bytes and an all-fill chunk is
+    deleted), so a partial sync surface never satisfies this predicate.
+    """
+    return isinstance(store, SupportsSyncStore) and getattr(store, "_supports_sync_io", True)
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

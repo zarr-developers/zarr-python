@@ -734,6 +734,29 @@ async def test_delete_empty_shards(store: Store) -> None:
     assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
+def test_structured_dtype_fill_value() -> None:
+    """Sharded arrays with a structured dtype are writable and readable even though
+    the fill value is an (unhashable) ``np.void`` scalar: the sharding codec's
+    chunk-spec caches key on ``ArraySpec``, whose hash must handle void fills
+    (see https://github.com/zarr-developers/zarr-python/issues/3054)."""
+    dtype = np.dtype([("a", "i4"), ("b", "f4")])
+    arr = zarr.create_array(
+        MemoryStore(),
+        shape=(8,),
+        chunks=(2,),
+        shards=(4,),
+        dtype=dtype,
+        fill_value=(1, 2.0),
+    )
+    data = np.array([(i, i / 2) for i in range(8)], dtype=dtype)
+    arr[:4] = data[:4]
+
+    expected = np.zeros(8, dtype=dtype)
+    expected[:4] = data[:4]
+    expected[4:] = (1, 2.0)  # untouched shard reads back as the fill value
+    assert np.array_equal(arr[:], expected)
+
+
 def test_pickle() -> None:
     """ShardingCodec round-trips through pickle, including the non-serialized
     ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
