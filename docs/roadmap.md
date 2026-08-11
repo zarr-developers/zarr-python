@@ -24,15 +24,17 @@ The [3.0 release](https://github.com/zarr-developers/zarr-python/releases/tag/v3
 was a total redesign of the library's internals, with three goals: full support
 for the Zarr V2 and V3 storage formats, storage APIs that are ergonomic for high-latency
 storage (such as cloud storage), and backwards compatibility with Zarr-Python 2.x where
-possible. Those goals were largely achieved, and more than a year on, the
-2.x → 3.x transition is effectively resolved, in the sense that it the transition
-is no longer the prevailing source of issues and pull requests.
+possible. Those goals were largely achieved! Going by the content of issues issues and pull requests 
+submitted to the library, few users are grappling with 2.x -> 3.x migration issues. Instead, we see
+users asking for things like better APIs, where "better" usually means faster.
 
 The 3.x redesign was carried out under hard backwards-compatibility
 constraints, and it inherited many structural patterns from the 2.x
 implementation it replaced. The library has never had a release cycle whose
 primary goal was the *shape* of the internals. The next body of work — which we
-call **"v4"** — is that overdue investment.
+call **"v4"** — is that overdue investment. We think iterating on the internals of 
+the library will make it *much* easier to bring faster, more expressive APIs to Zarr-Python
+users.
 
 ## Goals
 
