@@ -45,7 +45,7 @@ should be *foundational* for the growing number of Python packages that work
 with data in the Zarr format. Concretely, that means pushing in these
 directions:
 
-- Deliver excellent performance, out of the box, by whatever means necessary (e.g., Rust bindings).
+- Deliver excellent performance, out of the box, while retaining maintainability.
 - Make Zarr-Python APIs ergonomic and useful for developers.
 - Expand our scope to cover vital quality-of-life routines like data copying,
   rechunking, and the like.
