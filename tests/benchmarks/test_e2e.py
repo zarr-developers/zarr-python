@@ -4,8 +4,10 @@ Benchmarks for end-to-end read/write performance of Zarr
 
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
+import warnings
 from functools import lru_cache
 from operator import getitem, setitem
 from typing import TYPE_CHECKING, Any, Literal
@@ -21,12 +23,27 @@ from zarr.testing.store import LatencyStore
 
 
 def clear_cache() -> None:
+    """Drop the OS page cache between benchmark rounds.
+
+    Requires passwordless sudo, so it is opt-in: set `ZARR_BENCHMARK_CLEAR_CACHE=1`
+    to enable it (as the benchmark CI jobs do). By default this is a no-op, so a
+    plain `pytest` run never prompts for a sudo password (see issue #4199).
+    `sudo -n` guarantees we fail instead of blocking on a password prompt even
+    when the variable is set.
+    """
+    if os.environ.get("ZARR_BENCHMARK_CLEAR_CACHE", "") not in ("1", "true"):
+        return
     if platform.system() == "Darwin":
-        subprocess.call(["sync", "&&", "sudo", "purge"])
+        subprocess.call(["sync"])
+        subprocess.call(["sudo", "-n", "purge"])
     elif platform.system() == "Linux":
-        subprocess.call(["sudo", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
+        subprocess.call(["sudo", "-n", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
     else:
-        raise Exception("Unsupported platform")  # noqa: TRY002
+        warnings.warn(
+            f"ZARR_BENCHMARK_CLEAR_CACHE is set but cache clearing is not supported on "
+            f"{platform.system()}; skipping.",
+            stacklevel=2,
+        )
 
 
 if TYPE_CHECKING:
@@ -46,7 +63,8 @@ def _data(shape: tuple[int]) -> np.ndarray:
     noise_level = 1
     pattern = (np.sin(np.linspace(0, 2 * np.pi, period)) * 50 + 128).round().astype(np.uint8)
     data = np.tile(pattern, int(np.ceil(n / period)))[:n].astype(np.int16)
-    data += np.random.randint(-noise_level, noise_level + 1, size=n, dtype=np.int16)
+    rng = np.random.default_rng(0)
+    data += rng.integers(-noise_level, noise_level + 1, size=n, dtype=np.int16)
     return np.clip(data, 0, 255).astype(np.uint8)
 
 
@@ -172,7 +190,7 @@ def test_read_array(
     get_data: Callable[[tuple[int]], np.ndarray | int],
 ) -> None:
     """
-    Test the time required to fill an array with a single value
+    Test the time required to read the entirety of an array
     """
     arr = create_array(
         bench_store,
@@ -190,3 +208,51 @@ def test_read_array(
         return (arr, Ellipsis), {}
 
     benchmark.pedantic(getitem, setup=setup, rounds=3)  # type: ignore[no-untyped-call]
+
+
+_CONCURRENT_READ_THREADS = 8
+_concurrent_layout = Layout(shape=(64_000_000,), chunks=(4_000_000,), shards=None)
+
+
+@pytest.mark.parametrize("pipeline", ["batched", "fused_full_threaded"], indirect=True)
+@pytest.mark.parametrize("compression_name", ["zstd", None])
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_read_array_concurrent(
+    bench_store: Store,
+    compression_name: CompressorName,
+    pipeline: str,
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Dask-style access: several user threads each reading one chunk per call.
+
+    All sync-API calls are serviced by the one global event loop, so this
+    measures how much of each read's IO+compute the pipeline runs while
+    holding the loop: anything inline serializes the readers.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    layout = _concurrent_layout
+    arr = create_array(
+        bench_store,
+        dtype="uint8",
+        shape=layout.shape,
+        chunks=layout.chunks,
+        shards=layout.shards,
+        compressors=compressors[compression_name],  # type: ignore[arg-type]
+        fill_value=0,
+    )
+    arr[:] = _data(layout.shape)
+    selections = [
+        slice(start, start + layout.chunks[0])
+        for start in range(0, layout.shape[0], layout.chunks[0])
+    ]
+
+    def read_all_chunks_concurrently() -> None:
+        with ThreadPoolExecutor(max_workers=_CONCURRENT_READ_THREADS) as executor:
+            list(executor.map(lambda sel: arr[sel], selections))
+
+    def setup() -> tuple[tuple[()], dict]:  # type: ignore[type-arg]
+        clear_cache()
+        return (), {}
+
+    benchmark.pedantic(read_all_chunks_concurrently, setup=setup, rounds=3)  # type: ignore[no-untyped-call]
