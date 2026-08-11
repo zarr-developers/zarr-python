@@ -3,7 +3,7 @@
 This library is for modelling and transforming NumPy-style array indexing expressions. It separates
 the *declaration* of an array indexing expression from the result of that expression.
 
-The main consumer is the `zarr` package.
+Developed for use in [`zarr`](https://zarr.readthedocs.io).
 
 Inspired by [TensorStore](https://google.github.io/tensorstore/), which pioneered
 the approach used here.
