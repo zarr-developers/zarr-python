@@ -123,11 +123,11 @@ selection round-trips to storage independently.
 
 We can fix this by introducing an API for lazy indexing. Under this model, an indexing operation
 like `array[::2]`desugars to a declarative state like `(array, selection)`. Chained selections like
- `array[10:100][::2]` are fused immediately, and we defer actual IO for the time when the result of
- indexing is needed. TensorStore is an excellent role model for Zarr-Python here, and we can deliver
- this functionality without breaking ordinary indexing behavior. See this
- [classic discussion](https://github.com/zarr-developers/zarr-python/discussions/1603) for more
- background.
+`array[10:100][::2]` are fused immediately, and we defer actual IO for the time when the result of
+indexing is needed. TensorStore is an excellent role model for Zarr-Python here, and we can deliver
+this functionality without breaking ordinary indexing behavior. See this
+[classic discussion](https://github.com/zarr-developers/zarr-python/discussions/1603) for more
+background.
 
 ### Data types
 
