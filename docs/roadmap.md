@@ -170,7 +170,7 @@ executed serially, with rollbacks under failure, is also quite appealing.
 As with array indexing, TensorStore is the trailblazer here, and we can learn from its example.
 
 We can also avoid the need for synchronization mechanisms entirely with better planning.
-Many users of the 2.x synchronization tooling wanted to simply write values from one chunked source
+Many users of the 2.x synchronization tooling needed to simply write values from one chunked source
 to another, without worrying about chunk alignment. This can be addressed e.g. by creating a write
 plan that partitions the input chunks into batches within which writes cannot race.
 
