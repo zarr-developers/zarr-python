@@ -187,8 +187,10 @@ for), or malformed syntax all return 200 with the full representation.
 
 ### Write Support
 
-By default only `GET` requests are accepted.  To enable writes, pass
-`methods={"GET", "PUT"}`:
+By default only reads are accepted: `GET`, and `HEAD` alongside it. Starlette
+routes `HEAD` wherever `GET` goes, as RFC 9110 §9.3.2 asks of every origin
+server, so naming `GET` gets you both — a `HEAD` is answered from the value's
+size without transferring it. To enable writes, pass `methods={"GET", "PUT"}`:
 
 ```python
 app = store_app(store, methods={"GET", "PUT"})
@@ -213,6 +215,15 @@ Note that `store_app` exposes every key in the store, so `PUT` grants
 unrestricted write access to all of it. `node_app` confines writes to keys
 belonging to the node -- though a client that can write a node's metadata can
 change what that node contains, and so what it will serve.
+
+`store_app` also does not *validate* keys, because it proxies the store's raw
+key space and has no array semantics to check against. A client that misspells
+a chunk key — `c/00/00` where zarr writes `c/0/0` — gets a successful write to
+a key no reader will ever consult, so the data is stored but invisible to
+anyone opening the array. `node_app` rejects such a key with 404, since it
+knows which node it is serving and therefore which keys are real. If you are
+serving a zarr hierarchy to clients you do not control and writes are enabled,
+prefer `node_app`.
 
 ### Shutting Down
 

@@ -1425,3 +1425,104 @@ class TestUvicornOptionsAreNotSealedOff:
             assert response.status_code in (200, 404)
         finally:
             server.shutdown()
+
+
+class TestHeadDoesNotTransferTheBody:
+    """A HEAD body is discarded at the wire, so building one is pure waste."""
+
+    def test_head_does_not_read_the_value(self, tmp_path: pathlib.Path) -> None:
+        """The regression this class exists for: HEAD used to fall through to
+        the GET handler and pull the whole object to report its length."""
+        read = {"bytes": 0}
+
+        class CountingLocal(LocalStore):
+            async def get(self, key: str, prototype: Any, byte_range: Any = None) -> Any:
+                buf = await super().get(key, prototype, byte_range)
+                if buf is not None:
+                    read["bytes"] += len(buf)
+                return buf
+
+        store = CountingLocal(str(tmp_path / "root"))
+        payload = b"x" * 100_000
+        sync(store.set("big", cpu.buffer_prototype.buffer.from_bytes(payload)))
+        client = TestClient(store_app(store))
+
+        read["bytes"] = 0
+        response = client.head("/big")
+
+        assert response.status_code == 200
+        assert response.headers["content-length"] == str(len(payload))
+        assert read["bytes"] == 0, "HEAD read the value to report its length"
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_head_of_a_missing_key_is_404(self, store: Store) -> None:
+        client = TestClient(store_app(store))
+        assert client.head("/nope").status_code == 404
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestMetadataContentType:
+    """Metadata documents are JSON in every zarr format, not just v3."""
+
+    @pytest.mark.parametrize(
+        ("zarr_format", "key"), [(3, "zarr.json"), (2, ".zarray"), (2, ".zattrs")]
+    )
+    def test_metadata_is_served_as_json(
+        self, store: Store, zarr_format: ZarrFormat, key: str
+    ) -> None:
+        zarr.create_array(
+            store, name="a", shape=(4,), chunks=(2,), dtype="i4", zarr_format=zarr_format
+        )
+        sync(store.set(f"a/{key}", cpu.buffer_prototype.buffer.from_bytes(b"{}")))
+
+        response = TestClient(store_app(store)).get(f"/a/{key}")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/json")
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestCorsAllowMethodsMatchTheRoute:
+    """Advertising a method the route rejects is a promise the server cannot
+    keep: the browser caches the preflight and every later call 405s."""
+
+    def test_wildcard_expands_to_what_is_served(self, store: Store) -> None:
+        """`"*"` is the idiomatic "everything this app does", so it expands to
+        exactly that rather than to every verb Starlette knows."""
+        app = store_app(
+            store, methods={"GET"}, cors_options={"allow_origins": ["*"], "allow_methods": ["*"]}
+        )
+
+        preflight = TestClient(app).options(
+            "/k", headers={"Origin": "https://e.test", "Access-Control-Request-Method": "GET"}
+        )
+
+        advertised = preflight.headers["access-control-allow-methods"]
+        assert set(advertised.replace(" ", "").split(",")) == {"GET", "HEAD"}
+
+    def test_advertising_an_unserved_method_is_rejected(self, store: Store) -> None:
+        with pytest.raises(ValueError, match="does not serve"):
+            store_app(
+                store,
+                methods={"GET"},
+                cors_options={"allow_origins": ["*"], "allow_methods": ["GET", "DELETE"]},
+            )
+
+    def test_head_counts_as_served_when_get_is(self, store: Store) -> None:
+        """Starlette routes HEAD wherever GET goes, so naming it is not an error."""
+        store_app(
+            store,
+            methods={"GET"},
+            cors_options={"allow_origins": ["*"], "allow_methods": ["GET", "HEAD"]},
+        )
+
+    def test_absent_allow_methods_is_left_alone(self, store: Store) -> None:
+        """Starlette's GET-only default stands; widening it to everything
+        served would newly advertise PUT on a write-enabled app."""
+        app = store_app(store, methods={"GET", "PUT"}, cors_options={"allow_origins": ["*"]})
+
+        preflight = TestClient(app).options(
+            "/k", headers={"Origin": "https://e.test", "Access-Control-Request-Method": "GET"}
+        )
+
+        assert "PUT" not in preflight.headers["access-control-allow-methods"]

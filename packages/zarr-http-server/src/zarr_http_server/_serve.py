@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, overload
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.buffer import cpu
 
-from zarr_http_server._keys import is_valid_node_key
+from zarr_http_server._keys import array_metadata_keys, group_metadata_keys, is_valid_node_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -81,9 +81,28 @@ HTTPMethod = Literal["GET", "PUT", "HEAD"]
 `GET` and `HEAD` read a key; `PUT` writes one. Other verbs are not accepted:
 the handler has no behavior for them, so serving them would silently answer
 as if they were `GET`.
+
+`HEAD` is served whenever `GET` is, named or not -- Starlette routes it
+alongside `GET`, which is what RFC 9110 §9.3.2 asks of an origin server. It is
+answered from the value's size rather than by building and discarding a body.
 """
 
 _SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
+
+_STARTUP_TIMEOUT = 5.0
+"""Seconds to wait for a background server to report that it is listening."""
+
+_STARTUP_ABANDON_TIMEOUT = 5.0
+"""Seconds to wait for a server that failed to start to stop again."""
+
+_SHUTDOWN_JOIN_MARGIN = 1.0
+"""Seconds to wait beyond uvicorn's graceful bound before forcing shutdown.
+
+uvicorn spends a fixed ~0.2s tearing down (a 0.1s loop tick plus a 0.1s
+sleep) before its own `timeout_graceful_shutdown` wait begins, so a join that
+merely equals that bound is guaranteed to expire first and escalate to
+`force_exit` -- which makes uvicorn skip ASGI lifespan shutdown.
+"""
 
 DEFAULT_MAX_BODY_SIZE = 256 * 1024 * 1024
 """Default cap on a `PUT` body, in bytes.
@@ -158,21 +177,44 @@ class BackgroundServer:
     def shutdown(self) -> None:
         """Signal the server to shut down and wait for it to stop.
 
-        Waits up to ``shutdown_timeout`` seconds (set when the server was
-        started) for the server thread to exit on its own -- uvicorn's own
-        graceful-shutdown wait for in-flight requests is bounded by the same
-        value via ``timeout_graceful_shutdown``. If the thread is still
-        alive after that, ``force_exit`` is set on the underlying uvicorn
-        server to tear it down immediately rather than block forever on a
-        stuck or slow in-flight request.
+        Waits for the server thread to exit on its own, then escalates to
+        ``force_exit`` if it has not, so a request wedged outside uvicorn's
+        loop cannot block here forever.
+
+        Raises
+        ------
+        RuntimeError
+            If the thread is still running after both waits. Returning
+            normally would report success for a server that is still bound to
+            its port and still serving, which the caller cannot detect any
+            other way.
         """
         self._server.should_exit = True
-        self._thread.join(timeout=self._shutdown_timeout)
+        # Outlast uvicorn's own graceful wait rather than matching it. uvicorn
+        # spends roughly 0.2s on teardown (a 0.1s loop tick plus a 0.1s sleep)
+        # *before* its `timeout_graceful_shutdown` wait even begins, so an
+        # equal bound here always expires first -- escalating to force_exit on
+        # the path that is supposed to be the orderly one, which makes uvicorn
+        # skip ASGI lifespan shutdown entirely.
+        self._thread.join(timeout=self._graceful_timeout + _SHUTDOWN_JOIN_MARGIN)
         if self._thread.is_alive():
             self._server.force_exit = True
-            # Bounded again: force_exit is observed by uvicorn's loop, so a
-            # request wedged outside it would otherwise block here forever.
             self._thread.join(timeout=self._shutdown_timeout)
+
+        if self._thread.is_alive():
+            raise RuntimeError(
+                "Server thread did not stop within "
+                f"{self._graceful_timeout + _SHUTDOWN_JOIN_MARGIN + self._shutdown_timeout:.1f}s, "
+                "even after force_exit. The server may still be serving and "
+                "holding its port; a request blocked in a store call cannot be "
+                "cancelled from here."
+            )
+
+    @property
+    def _graceful_timeout(self) -> float:
+        """uvicorn's own graceful-shutdown bound, whoever configured it."""
+        configured = self._server.config.timeout_graceful_shutdown
+        return float(configured) if configured is not None else float(self._shutdown_timeout)
 
     def __enter__(self) -> Self:
         return self
@@ -386,6 +428,48 @@ async def _resolve_suffix(
     return RangeByteRequest(start=max(0, size - byte_range.suffix), end=size)
 
 
+_JSON_BASENAMES = (
+    array_metadata_keys(2)
+    | array_metadata_keys(3)
+    | group_metadata_keys(2)
+    | group_metadata_keys(3)
+)
+"""Metadata documents that are JSON, for every zarr format.
+
+Derived from the same tables that decide which keys a node owns, so a v2
+array's `.zarray` is typed as JSON rather than as opaque bytes -- and adding a
+document in one place cannot leave the media type behind in the other.
+"""
+
+
+def content_type_for(path: str) -> str:
+    """Media type for a store key, chosen by its basename."""
+    if path.rsplit("/", 1)[-1] in _JSON_BASENAMES:
+        return "application/json"
+    return "application/octet-stream"
+
+
+async def _head_response(store: Store, path: str, content_type: str) -> Response:
+    """Answer a HEAD without transferring the value.
+
+    A HEAD body is discarded at the wire, so routing HEAD through the GET
+    handler reads the whole object -- megabytes of chunk or shard -- to report
+    a length. `Store.getsize` is a `stat` on a filesystem store and an
+    info/HEAD call on a remote one.
+    """
+    from starlette.responses import Response
+
+    try:
+        size = await store.getsize(path)
+    except FileNotFoundError:
+        return Response(status_code=404)
+    except OSError as exc:
+        if not _names_nothing(exc):
+            raise
+        return Response(status_code=404)
+    return Response(status_code=200, media_type=content_type, headers={"Content-Length": str(size)})
+
+
 async def _get_response(
     store: Store,
     path: str,
@@ -395,7 +479,7 @@ async def _get_response(
     from starlette.responses import Response
 
     proto = cpu.buffer_prototype
-    content_type = "application/json" if path.endswith("zarr.json") else "application/octet-stream"
+    content_type = content_type_for(path)
 
     try:
         buf = await store.get(path, proto, byte_range=byte_range)
@@ -515,6 +599,13 @@ async def _handle_request(request: Request) -> Response:
             return Response(status_code=404)
         return Response(status_code=204)
 
+    if request.method == "HEAD":
+        # A HEAD body is discarded at the wire, so reading the value to build
+        # one transfers the whole object to answer a question about its size.
+        # `getsize` is a stat on a filesystem store and a HEAD/info call on a
+        # remote one.
+        return await _head_response(store, store_key, content_type_for(path))
+
     range_header = request.headers.get("range")
     byte_range: RangeByteRequest | OffsetByteRequest | None = None
     if range_header is not None:
@@ -572,16 +663,67 @@ def _make_starlette_app(
     )
 
     if cors_options is not None:
+        # Typed loosely on purpose: unpacking a merged TypedDict loses the
+        # per-key types, so the looseness is contained to this block rather
+        # than spread across casts at each use.
+        merged: dict[str, Any] = {**_CORS_DEFAULTS, **cors_options}
+        if "allow_methods" in merged:
+            # Only when the caller said something. Absent, Starlette's own
+            # `GET`-only default stands: widening it to everything served
+            # would newly advertise `PUT` cross-origin on a write-enabled app
+            # that never asked for it.
+            merged["allow_methods"] = _reconcile_allow_methods(
+                merged["allow_methods"], served=_served_methods(methods)
+            )
         app.add_middleware(
             CORSMiddleware,
             # Our defaults first, so a key the caller supplied wins outright
             # rather than being merged into -- an explicit `expose_headers: []`
-            # means "expose nothing", not "expose our default". The cast is
-            # confined to the call: `CorsOptions` is a TypedDict, but
-            # unpacking a merged one loses the per-key types.
-            **cast("dict[str, Any]", {**_CORS_DEFAULTS, **cors_options}),
+            # means "expose nothing", not "expose our default".
+            **merged,
         )
     return app
+
+
+def _served_methods(methods: set[HTTPMethod]) -> frozenset[str]:
+    """The methods the route will actually answer.
+
+    Starlette adds `HEAD` to any route that serves `GET`, which RFC 9110
+    §9.3.2 asks of every origin server, so `HEAD` is served whenever `GET` is
+    whether or not it was named.
+    """
+    served = set(methods)
+    if "GET" in served:
+        served.add("HEAD")
+    return frozenset(served)
+
+
+def _reconcile_allow_methods(allow_methods: list[str], *, served: frozenset[str]) -> list[str]:
+    """Check `cors_options["allow_methods"]` against what the route serves.
+
+    An advertised method the route rejects is a promise the server cannot
+    keep: a browser caches the preflight and every later cross-origin call
+    fails with 405 after a successful handshake. The reverse is worse -- the
+    same silence lets `allow_methods=["*"]` on a write-enabled app hand every
+    origin on the internet write access, which is exactly the footgun the
+    `methods` validation above exists to prevent.
+
+    `"*"` expands to what is actually served rather than being rejected: it
+    is the idiomatic spelling of "everything this app does", and the app
+    cannot do more than it serves.
+    """
+    if "*" in allow_methods:
+        return sorted(served)
+
+    unserved = sorted(set(allow_methods) - served)
+    if unserved:
+        raise ValueError(
+            f"cors_options['allow_methods'] advertises {', '.join(unserved)}, "
+            f"which this app does not serve (it serves {', '.join(sorted(served))}). "
+            "A browser would cache that preflight and every such request would "
+            "then fail with 405."
+        )
+    return list(allow_methods)
 
 
 def _start_server(
@@ -629,7 +771,7 @@ def _start_server(
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
 
-    deadline = time.monotonic() + 5.0
+    deadline = time.monotonic() + _STARTUP_TIMEOUT
     while not server.started:
         if not thread.is_alive():
             # uvicorn logs the underlying error and calls sys.exit, which in a
@@ -640,7 +782,18 @@ def _start_server(
                 "may already be in use. See the server log for the cause."
             )
         if time.monotonic() > deadline:
-            raise RuntimeError("Server failed to start within 5 seconds")
+            # The thread is still alive here, unlike the branch above, and it
+            # is about to finish starting. Raising without stopping it would
+            # leave a server bound to the port with no handle to shut it down
+            # -- a daemon thread serving for the rest of the process, and a
+            # retry on the same port failing with the other error above.
+            server.should_exit = True
+            server.force_exit = True
+            thread.join(timeout=_STARTUP_ABANDON_TIMEOUT)
+            raise RuntimeError(
+                f"Server failed to start within {_STARTUP_TIMEOUT:g} seconds; "
+                "it has been signalled to stop."
+            )
         time.sleep(0.01)
 
     # Report the port the socket actually bound rather than the one asked for,
@@ -688,7 +841,8 @@ def store_app(
         The zarr store to serve.
     methods : set of HTTPMethod, optional
         The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
+        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
+        method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     max_body_size : int or None, optional
@@ -736,7 +890,8 @@ def node_app(
         The zarr array or group to serve.
     methods : set of HTTPMethod, optional
         The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
+        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
+        method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     max_body_size : int or None, optional
@@ -830,7 +985,8 @@ def serve_store(
         The port to bind to. Defaults to ``8000``.
     methods : set of HTTPMethod, optional
         The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
+        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
+        method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     max_body_size : int or None, optional
@@ -949,7 +1105,8 @@ def serve_node(
         The port to bind to. Defaults to ``8000``.
     methods : set of HTTPMethod, optional
         The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`. Passing any other method raises `ValueError`.
+        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
+        method raises `ValueError`.
     cors_options : CorsOptions, optional
         If provided, CORS middleware will be added with the given options.
     max_body_size : int or None, optional
