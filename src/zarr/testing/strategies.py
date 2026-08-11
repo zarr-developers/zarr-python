@@ -132,7 +132,7 @@ array_shapes = npst.array_shapes(max_dims=4, min_side=3, max_side=5) | npst.arra
 
 
 @st.composite
-def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
+def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[str | None] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
 
@@ -292,7 +292,7 @@ def arrays(
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
-    dim_names: None | list[str | None] = None
+    dim_names: list[str | None] | None = None
     serializer: SerializerLike = "auto"
     compressors_unsearched: CompressorsLike = "auto"
 
@@ -325,7 +325,7 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            if all(s > c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
