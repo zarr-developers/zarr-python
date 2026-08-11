@@ -45,11 +45,6 @@ should be *foundational* for the growing number of Python packages that work
 with data in the Zarr format. Concretely, that means pushing in these
 directions:
 
-!!! note
-  Many of the features described below will not require breaking public 3.x APIs. We can and will
-  ship those features in 3.x releases; at the same time, we consider it clarifying to frame the
-  coherent development direction as vectored at a 4.0 milestone.
-
 - Deliver excellent performance, out of the box, by whatever means necessary (e.g., Rust bindings).
 - Make Zarr-Python APIs ergonomic and useful for developers.
 - Expand our scope to cover vital quality-of-life routines like data copying,
@@ -61,7 +56,12 @@ directions:
 An important design input: [zarrs](https://github.com/zarrs/zarrs) (Rust) and
 [TensorStore](https://github.com/google/tensorstore) (C++) are two independent
 Zarr implementations that use architectural patterns we want to learn from.
-We see them a complementary rather than competitive.
+We see them as complementary rather than competitive.
+
+!!! note
+  Many of the features in this roadmap will not require breaking public 3.x APIs. We can and will
+  ship those features in 3.x releases; at the same time, we consider it clarifying to frame the
+  coherent development direction as vectored at a 4.0 milestone.
 
 ## The Zarr stack
 
@@ -107,9 +107,10 @@ here describe the intended end state.
 
 ### Foundation: swappable backends
 
-Refactor the internals around a *swappable engine* — a single protocol that defines the core routines a
+We propose to refactor Zarr-Python internals around a *swappable engine* — a single protocol that defines the core routines a
 Zarr implementation must support. Zarr-Python becomes one user-facing API that can be driven by multiple
-backends, including a Python-heavy backend, but also a Rust-based backend, via bindings to the `zarrs` crate.
+backends. We want a Python-centric backend (status quo), but also a Rust-based backend, via bindings to the `zarrs` crate.
+In particular we are excited about the [`zarrista`](https://developmentseed.org/zarrista/latest/) package, which aims to provide complete Python bindings for `zarrs`.
 
 Internally we will branch over two kinds of backends: synchronous and asynchronous. The synchronous backend is suitable for arrays and groups persisted to low-latency storage like in-memory stores or local file systems, where async scheduling is pure friction. The asynchronous backend will use Python's `async` support and will provide concurrent APIs where it helps: for arrays and groups persisted to high-latency storage.
 
@@ -123,12 +124,12 @@ such as Dask. It means there is no built-in support for representing multi
 step reads as a single deferred plan. Further, it means that every chained
 selection round-trips to storage independently.
 
-We can fix this by introducing an API for lazy indexing. Under this model, an indexing operation
-like `array[::2]`desugars to a declarative state like `(array, selection)`. Chained selections like
+We can fix this by introducing an API for lazy indexing. Under this model, an array indexing operation
+like `array[::2]` desugars to a declarative state like `(array, selection)`. Chained selections like
 `array[10:100][::2]` are fused immediately, and we defer actual IO for the time when the result of
-indexing is needed. TensorStore is an excellent role model for Zarr-Python here, and we can deliver
-this functionality without breaking ordinary indexing behavior. See this
-[classic discussion](https://github.com/zarr-developers/zarr-python/discussions/1603) for more
+indexing is needed. [TensorStore](https://google.github.io/tensorstore/) is an excellent role model 
+for Zarr-Python here, and we can deliver this functionality without breaking ordinary indexing behavior. 
+See this [discussion](https://github.com/zarr-developers/zarr-python/discussions/1603) for more
 background.
 
 ### Data types
@@ -163,14 +164,18 @@ deliberately, and named profiles replacing global mutators.
 
 ### Coordinated and distributed writes
 
-Give the two patterns that actually produce large Zarr archives — parallel
-disjoint-region writes and append-along-axis growth — a design home: disjoint
-chunk-aligned region writes with alignment *checked* rather than assumed, a
-create-then-hand-out-regions primitive, and single-writer resize/append, all on
-plain Zarr V3. Stronger guarantees (atomicity, reader isolation, concurrent
-appenders) are enabled through the seam a transactional engine such as
-[Icechunk](https://icechunk.io/) builds on, rather than implemented in
-Zarr-Python itself.
+This area is actually an unfinished aspect of the 2.x -> 3.0 migration: Zarr-Python 2.x supported 
+synchronization logic via file-based locks, and we have not implemented equivalent functionality in 
+3.x. We don't have concrete plans for closing this gap. Re-implementing simple object-based locking, for
+backends that support it, is a direct solution we should consider. But a transactional storage model, 
+where a sequence of basic storage operations like reading and writing could be submitted in a batch and 
+executed serially, with rollbacks under failure, is also quite appealing. 
+As with array indexing, TensorStore is the trailblazer here, and we can learn from its example.
+
+We can also avoid the need for synchronization mechanisms entirely with better planning. 
+Many users of the 2.x synchronization tooling wanted to simply write values from one chunked source 
+to another, without worrying about chunk alignment. This can be addressed e.g. by creating a write 
+plan that partitions the input chunks into batches where within each batch, writes avoid race conditions.
 
 ## How to get involved
 
