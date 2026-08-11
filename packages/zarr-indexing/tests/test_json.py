@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.json import (
-    IndexTransformJSON,
-    index_domain_from_json,
-    index_domain_to_json,
-    index_transform_from_json,
-    index_transform_to_json,
-    output_index_map_from_json,
-    output_index_map_to_json,
-)
 from zarr_indexing.messages import NdselError
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    output_index_map_from_json,
+)
 from zarr_indexing.transform import IndexTransform
+
+if TYPE_CHECKING:
+    from zarr_indexing.json import IndexTransformJSON
 
 
 def _maps_equal(a: object, b: object) -> bool:
@@ -51,45 +50,45 @@ def _transforms_equal(a: IndexTransform, b: IndexTransform) -> bool:
 class TestIndexDomainJSON:
     def test_roundtrip(self) -> None:
         domain = IndexDomain(inclusive_min=(2, 5), exclusive_max=(10, 20))
-        json = index_domain_to_json(domain)
+        json = domain.to_json()
         assert json == {
             "input_inclusive_min": [2, 5],
             "input_exclusive_max": [10, 20],
             "input_labels": ["", ""],
         }
-        restored = index_domain_from_json(json)
+        restored = IndexDomain.from_json(json)
         assert restored == domain
 
     def test_with_labels(self) -> None:
         domain = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20), labels=("x", "y"))
-        json = index_domain_to_json(domain)
+        json = domain.to_json()
         assert json["input_labels"] == ["x", "y"]
-        restored = index_domain_from_json(json)
+        restored = IndexDomain.from_json(json)
         assert restored.labels == ("x", "y")
 
     def test_without_labels_emits_empty_and_round_trips_to_none(self) -> None:
         domain = IndexDomain.from_shape((5,))
-        json = index_domain_to_json(domain)
+        json = domain.to_json()
         # Canonical form always writes labels; an unlabeled domain gets [""]*rank.
         assert json["input_labels"] == [""]
-        restored = index_domain_from_json(json)
+        restored = IndexDomain.from_json(json)
         assert restored.labels is None
 
     def test_zero_origin(self) -> None:
         domain = IndexDomain.from_shape((10, 20, 30))
-        json = index_domain_to_json(domain)
+        json = domain.to_json()
         assert json == {
             "input_inclusive_min": [0, 0, 0],
             "input_exclusive_max": [10, 20, 30],
             "input_labels": ["", "", ""],
         }
-        assert index_domain_from_json(json) == domain
+        assert IndexDomain.from_json(json) == domain
 
 
 class TestOutputIndexMapJSON:
     def test_constant(self) -> None:
         m = ConstantMap(offset=42)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json == {"offset": 42}
         restored = output_index_map_from_json(json)
         assert isinstance(restored, ConstantMap)
@@ -97,7 +96,7 @@ class TestOutputIndexMapJSON:
 
     def test_constant_zero(self) -> None:
         m = ConstantMap(offset=0)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json == {"offset": 0}
         restored = output_index_map_from_json(json)
         assert isinstance(restored, ConstantMap)
@@ -105,7 +104,7 @@ class TestOutputIndexMapJSON:
 
     def test_dimension(self) -> None:
         m = DimensionMap(input_dimension=1, offset=10, stride=3)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json == {"offset": 10, "stride": 3, "input_dimension": 1}
         restored = output_index_map_from_json(json)
         assert isinstance(restored, DimensionMap)
@@ -116,7 +115,7 @@ class TestOutputIndexMapJSON:
     def test_dimension_stride_1_written(self) -> None:
         """Canonical form writes stride even at its default of 1."""
         m = DimensionMap(input_dimension=0)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json == {"offset": 0, "stride": 1, "input_dimension": 0}
         restored = output_index_map_from_json(json)
         assert isinstance(restored, DimensionMap)
@@ -125,7 +124,7 @@ class TestOutputIndexMapJSON:
     def test_array(self) -> None:
         arr = np.array([1, 5, 9], dtype=np.intp)
         m = ArrayMap(index_array=arr, offset=2, stride=3)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         # Canonical: stride/offset present, index_array_bounds present, and
         # no input_dimension (ndsel/TensorStore reject it beside index_array).
         assert json == {
@@ -143,7 +142,7 @@ class TestOutputIndexMapJSON:
     def test_array_stride_1_written(self) -> None:
         arr = np.array([0, 1, 2], dtype=np.intp)
         m = ArrayMap(index_array=arr)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json["stride"] == 1
         restored = output_index_map_from_json(json)
         assert isinstance(restored, ArrayMap)
@@ -152,7 +151,7 @@ class TestOutputIndexMapJSON:
     def test_array_2d(self) -> None:
         arr = np.array([[1, 2], [3, 4]], dtype=np.intp)
         m = ArrayMap(index_array=arr)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json["index_array"] == [[1, 2], [3, 4]]
         restored = output_index_map_from_json(json)
         assert isinstance(restored, ArrayMap)
@@ -161,7 +160,7 @@ class TestOutputIndexMapJSON:
     def test_degenerate_singleton_array_collapses_to_constant(self) -> None:
         """An all-singleton index_array selects one coordinate -> constant map."""
         m = ArrayMap(index_array=np.array([[4]], dtype=np.intp), offset=1, stride=2)
-        json = output_index_map_to_json(m)
+        json = m.to_json()
         assert json == {"offset": 1 + 2 * 4}
         restored = output_index_map_from_json(json)
         assert isinstance(restored, ConstantMap)
@@ -171,7 +170,7 @@ class TestOutputIndexMapJSON:
 class TestIndexTransformJSON:
     def test_identity(self) -> None:
         t = IndexTransform.from_shape((10, 20))
-        json = index_transform_to_json(t)
+        json = t.to_json()
         assert json == {
             "input_rank": 2,
             "input_inclusive_min": [0, 0],
@@ -182,7 +181,7 @@ class TestIndexTransformJSON:
                 {"offset": 0, "stride": 1, "input_dimension": 1},
             ],
         }
-        restored = index_transform_from_json(json)
+        restored = IndexTransform.from_json(json)
         assert restored.domain == t.domain
         assert len(restored.output) == 2
         for orig, rest in zip(t.output, restored.output, strict=True):
@@ -190,8 +189,8 @@ class TestIndexTransformJSON:
 
     def test_sliced(self) -> None:
         t = IndexTransform.from_shape((100,))[10:50:2]
-        json = index_transform_to_json(t)
-        restored = index_transform_from_json(json)
+        json = t.to_json()
+        restored = IndexTransform.from_json(json)
         assert restored.domain.shape == t.domain.shape
         assert isinstance(restored.output[0], DimensionMap)
         orig = t.output[0]
@@ -201,8 +200,8 @@ class TestIndexTransformJSON:
 
     def test_with_constant(self) -> None:
         t = IndexTransform.from_shape((10, 20))[3]
-        json = index_transform_to_json(t)
-        restored = index_transform_from_json(json)
+        json = t.to_json()
+        restored = IndexTransform.from_json(json)
         assert isinstance(restored.output[0], ConstantMap)
         assert restored.output[0].offset == 3
         assert isinstance(restored.output[1], DimensionMap)
@@ -210,10 +209,10 @@ class TestIndexTransformJSON:
     def test_with_array(self) -> None:
         idx = np.array([1, 5, 9], dtype=np.intp)
         t = IndexTransform.from_shape((10, 20)).oindex[idx, :]
-        json = index_transform_to_json(t)
+        json = t.to_json()
         # The oindex array must not carry input_dimension on the wire.
         assert "input_dimension" not in json["output"][0]
-        restored = index_transform_from_json(json)
+        restored = IndexTransform.from_json(json)
         assert isinstance(restored.output[0], ArrayMap)
         # Orthogonal arrays are normalized to full input rank with a singleton
         # axis on the dimension they do not vary over.
@@ -224,7 +223,7 @@ class TestIndexTransformJSON:
     def test_roundtrip_preserves_singleton_axes(self) -> None:
         """Full-rank orthogonal arrays keep their singleton axes across JSON."""
         t = IndexTransform.from_shape((10, 20)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
-        restored = index_transform_from_json(index_transform_to_json(t))
+        restored = IndexTransform.from_json(t.to_json())
         orig0, orig1 = t.output[0], t.output[1]
         rest0, rest1 = restored.output[0], restored.output[1]
         assert isinstance(orig0, ArrayMap)
@@ -239,9 +238,9 @@ class TestIndexTransformJSON:
     def test_with_labels(self) -> None:
         domain = IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20), labels=("x", "y"))
         t = IndexTransform.identity(domain)
-        json = index_transform_to_json(t)
+        json = t.to_json()
         assert json["input_labels"] == ["x", "y"]
-        restored = index_transform_from_json(json)
+        restored = IndexTransform.from_json(json)
         assert restored.domain.labels == ("x", "y")
 
     def test_tensorstore_compatible_format(self) -> None:
@@ -259,7 +258,7 @@ class TestIndexTransformJSON:
                 {"offset": 0, "stride": 1, "index_array": [[[1, 2, 0]]]},
             ],
         }
-        t = index_transform_from_json(json)
+        t = IndexTransform.from_json(json)
         assert t.domain.shape == (100, 200, 3)
         assert t.domain.labels == ("x", "y", "channel")
         assert isinstance(t.output[0], ConstantMap)
@@ -272,8 +271,8 @@ class TestIndexTransformJSON:
         np.testing.assert_array_equal(t.output[2].index_array, [[[1, 2, 0]]])
 
         # Roundtrip
-        json_rt = index_transform_to_json(t)
-        t_rt = index_transform_from_json(json_rt)
+        json_rt = t.to_json()
+        t_rt = IndexTransform.from_json(json_rt)
         assert t_rt.domain == t.domain
 
 
@@ -283,22 +282,22 @@ class TestCanonicalRoundTrips:
 
     def test_oindex_multi_axis(self) -> None:
         t = IndexTransform.from_shape((10, 20, 30)).oindex[np.array([1, 3]), :, np.array([2, 4, 6])]
-        rt = index_transform_from_json(index_transform_to_json(t))
+        rt = IndexTransform.from_json(t.to_json())
         assert _transforms_equal(rt, t)
 
     def test_oindex_with_slice(self) -> None:
         t = IndexTransform.from_shape((10, 20))[2:8].oindex[np.array([3, 5, 7]), :]
-        rt = index_transform_from_json(index_transform_to_json(t))
+        rt = IndexTransform.from_json(t.to_json())
         assert _transforms_equal(rt, t)
 
     def test_vindex(self) -> None:
         t = IndexTransform.from_shape((10, 20)).vindex[np.array([1, 3, 5]), np.array([2, 4, 6])]
-        rt = index_transform_from_json(index_transform_to_json(t))
+        rt = IndexTransform.from_json(t.to_json())
         assert _transforms_equal(rt, t)
 
     def test_vindex_with_residual_slice(self) -> None:
         t = IndexTransform.from_shape((10, 20, 30)).vindex[np.array([1, 3]), np.array([2, 4]), :]
-        rt = index_transform_from_json(index_transform_to_json(t))
+        rt = IndexTransform.from_json(t.to_json())
         assert _transforms_equal(rt, t)
 
     def test_length1_degenerate_oindex_collapses(self) -> None:
@@ -317,7 +316,7 @@ class TestCanonicalRoundTrips:
             domain=t.domain,
             output=(ArrayMap(index_array=np.array([[7]], dtype=np.intp)), t.output[1]),
         )
-        rt = index_transform_from_json(index_transform_to_json(hand_built))
+        rt = IndexTransform.from_json(hand_built.to_json())
         rm = rt.output[0]
         assert isinstance(rm, ConstantMap)
         assert rm.offset == 7
@@ -326,7 +325,7 @@ class TestCanonicalRoundTrips:
 
     def test_slices_and_constants(self) -> None:
         t = IndexTransform.from_shape((10, 20, 30))[2:8:2, 5, :]
-        rt = index_transform_from_json(index_transform_to_json(t))
+        rt = IndexTransform.from_json(t.to_json())
         assert _transforms_equal(rt, t)
 
 
@@ -365,7 +364,7 @@ def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) ->
     `ValueError` from the middle of the conversion.
     """
     with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json(_index_array_body(index_array))
+        IndexTransform.from_json(_index_array_body(index_array))
     assert excinfo.value.reason == "invalid_json"
     assert "index_array" in str(excinfo.value)
     assert detail in str(excinfo.value)
@@ -374,7 +373,7 @@ def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) ->
 def test_a_ragged_index_array_is_rejected() -> None:
     """A nested list that is not rectangular is not an array at all."""
     with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json(_index_array_body([[0, 1], [2]]))
+        IndexTransform.from_json(_index_array_body([[0, 1], [2]]))
     assert excinfo.value.reason == "invalid_json"
 
 
@@ -390,7 +389,7 @@ def test_an_integer_index_array_is_accepted(index_array: Any, rank: int, extent:
     a domain with room for coordinates the array does not supply is rejected
     (see `test_an_index_array_that_does_not_span_its_domain_is_rejected`).
     """
-    t = index_transform_from_json(_index_array_body(index_array, rank, extent))
+    t = IndexTransform.from_json(_index_array_body(index_array, rank, extent))
     m = t.output[0]
     assert isinstance(m, ArrayMap)
     assert m.index_array.dtype == np.intp
@@ -412,7 +411,7 @@ def test_infinite_bound_rejected_on_lowering() -> None:
         "output": [{"offset": 0, "stride": 1, "input_dimension": 0}],
     }
     with pytest.raises(ValueError, match="infinite"):
-        index_transform_from_json(body)
+        IndexTransform.from_json(body)
 
 
 def test_a_lower_rank_index_array_is_widened_on_the_way_in() -> None:
@@ -429,7 +428,7 @@ def test_a_lower_rank_index_array_is_widened_on_the_way_in() -> None:
         "input_exclusive_max": [3, 4],
         "output": [{"index_array": [1, 2, 0, 2]}, {"input_dimension": 1}],
     }
-    transform = index_transform_from_json(body)
+    transform = IndexTransform.from_json(body)
     array_map = transform.output[0]
     assert isinstance(array_map, ArrayMap)
     assert array_map.index_array.shape == (1, 4)
@@ -479,12 +478,12 @@ def test_an_empty_index_array_collapses_to_a_constant() -> None:
         ((5, 5), (np.array([], dtype=np.intp), np.array([], dtype=np.intp))),
     ):
         transform = IndexTransform.from_shape(shape).oindex[selection]
-        body = index_transform_to_json(transform)
+        body = transform.to_json()
 
         assert all("index_array" not in m for m in body["output"])
-        reloaded = index_transform_from_json(body)
+        reloaded = IndexTransform.from_json(body)
         assert reloaded.domain == transform.domain
-        assert index_transform_to_json(reloaded) == body
+        assert reloaded.to_json() == body
 
 
 def test_an_empty_index_array_from_elsewhere_is_recovered_from_the_domain() -> None:
@@ -498,7 +497,7 @@ def test_an_empty_index_array_from_elsewhere_is_recovered_from_the_domain() -> N
         "input_exclusive_max": [0, 4],
         "output": [{"index_array": []}, {"input_dimension": 1}],
     }
-    array_map = index_transform_from_json(body).output[0]
+    array_map = IndexTransform.from_json(body).output[0]
     assert isinstance(array_map, ArrayMap)
     assert array_map.index_array.shape == (0, 1)
 
@@ -511,7 +510,7 @@ def test_an_ambiguous_empty_index_array_is_rejected() -> None:
         "output": [{"index_array": []}, {"input_dimension": 1}],
     }
     with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json(body)
+        IndexTransform.from_json(body)
     assert excinfo.value.reason == "invalid_json"
     assert "zero-length" in str(excinfo.value)
 
@@ -556,7 +555,7 @@ def test_a_malformed_domain_document_is_rejected(document: Any, reason: str, det
     that was not the document's, and re-dumping as a different document.
     """
     with pytest.raises(NdselError) as excinfo:
-        index_domain_from_json(document)
+        IndexDomain.from_json(document)
     assert excinfo.value.reason == reason
     assert detail in str(excinfo.value)
 
@@ -564,7 +563,7 @@ def test_a_malformed_domain_document_is_rejected(document: Any, reason: str, det
 def test_a_transform_body_cannot_reinterpret_itself_as_another_message() -> None:
     """A `kind` inside the body must not change which message is being read."""
     with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json({"kind": "points", "coords": [[1, 2], [3, 4]]})
+        IndexTransform.from_json({"kind": "points", "coords": [[1, 2], [3, 4]]})
     assert excinfo.value.reason == "invalid_json"
     assert "kind" in str(excinfo.value)
 
@@ -583,5 +582,5 @@ def test_an_engine_invariant_failure_leaves_the_loader_as_a_typed_error() -> Non
         "output": [{"index_array": [[1, 2], [3, 4]]}],
     }
     with pytest.raises(NdselError) as excinfo:
-        index_transform_from_json(body)
+        IndexTransform.from_json(body)
     assert excinfo.value.reason == "rank_mismatch"

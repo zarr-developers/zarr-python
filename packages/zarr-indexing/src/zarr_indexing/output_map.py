@@ -47,6 +47,8 @@ from zarr_indexing.affine import checked_affine
 if TYPE_CHECKING:
     import numpy.typing as npt
 
+    from zarr_indexing.json import OutputIndexMapJSON
+
 
 @dataclass(frozen=True, slots=True)
 class ConstantMap:
@@ -70,6 +72,16 @@ class ConstantMap:
 
     offset: int = 0
     """The fixed output coordinate every input cell maps to."""
+
+    def to_json(self) -> OutputIndexMapJSON:
+        """Convert to the canonical wire form: the bare `constant` map.
+
+        Examples
+        --------
+        >>> ConstantMap(5).to_json()
+        {'offset': 5}
+        """
+        return {"offset": self.offset}
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +112,20 @@ class DimensionMap:
 
     stride: int = 1
     """The output-coordinate step per unit input step; negative walks backward, zero repeats `offset`."""
+
+    def to_json(self) -> OutputIndexMapJSON:
+        """Convert to the canonical wire form: the `single_input_dimension` map.
+
+        Examples
+        --------
+        >>> DimensionMap(input_dimension=1, offset=0, stride=2).to_json()
+        {'offset': 0, 'stride': 2, 'input_dimension': 1}
+        """
+        return {
+            "offset": self.offset,
+            "stride": self.stride,
+            "input_dimension": self.input_dimension,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +238,66 @@ class ArrayMap:
                 self.index_array.tobytes(),
             )
         )
+
+    def to_json(self) -> OutputIndexMapJSON:
+        """Convert to the canonical wire form, collapsing a degenerate map.
+
+        A map holding exactly one coordinate, or none at all, is emitted as a
+        `constant` map — see the module note on the wire format in
+        [`zarr_indexing.json`][zarr_indexing.json]. Both are degenerate: the
+        first selects one coordinate whatever the input, and the second names
+        no cell and can only be empty because an input dimension is, so the
+        emptiness travels in the domain instead.
+
+        Examples
+        --------
+        >>> ArrayMap(np.array([[4], [1], [1]])).to_json()["index_array"]
+        [[4], [1], [1]]
+        >>> ArrayMap(np.array([7])).to_json()  # degenerate: one coordinate
+        {'offset': 7}
+        """
+        if self.index_array.size == 1:
+            value = int(self.index_array.reshape(-1)[0])
+            return {"offset": self.offset + self.stride * value}
+        if self.index_array.size == 0:
+            return {"offset": 0}
+        return {
+            "offset": self.offset,
+            "stride": self.stride,
+            "index_array": self.index_array.tolist(),
+            "index_array_bounds": ["-inf", "+inf"],
+        }
+
+
+def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
+    """Construct the output map a canonical wire form names.
+
+    The wire form is a tagged union — `index_array`, then `input_dimension`,
+    else constant — so loading it dispatches to the right kind here rather
+    than on any one of them.
+
+    Examples
+    --------
+    >>> output_index_map_from_json({"offset": 5})
+    ConstantMap(offset=5)
+    >>> output_index_map_from_json({"offset": 0, "stride": 2, "input_dimension": 1})
+    DimensionMap(input_dimension=1, offset=0, stride=2)
+    """
+    from zarr_indexing._wire import lower_index_array
+
+    if "index_array" in data:
+        return ArrayMap(
+            index_array=lower_index_array(data["index_array"], "index_array"),
+            offset=data.get("offset", 0),
+            stride=data.get("stride", 1),
+        )
+    if "input_dimension" in data:
+        return DimensionMap(
+            input_dimension=data["input_dimension"],
+            offset=data.get("offset", 0),
+            stride=data.get("stride", 1),
+        )
+    return ConstantMap(offset=data.get("offset", 0))
 
 
 def array_map_or_constant(

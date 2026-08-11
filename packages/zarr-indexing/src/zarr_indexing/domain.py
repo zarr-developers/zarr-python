@@ -14,9 +14,12 @@ Unlike NumPy, domains can have **non-zero origins**. After slicing
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from zarr_indexing.errors import BoundsCheckError
+
+if TYPE_CHECKING:
+    from zarr_indexing.json import IndexDomainJSON
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +238,65 @@ class IndexDomain:
         return IndexDomain(
             inclusive_min=tuple(new_inclusive_min),
             exclusive_max=tuple(new_exclusive_max),
+        )
+
+    # -- serialization ------------------------------------------------------
+
+    def to_json(self) -> IndexDomainJSON:
+        """Convert to the canonical ndsel JSON representation.
+
+        Examples
+        --------
+        >>> IndexDomain(inclusive_min=(0,), exclusive_max=(3,)).to_json()
+        {'input_inclusive_min': [0], 'input_exclusive_max': [3], 'input_labels': ['']}
+        """
+        from zarr_indexing._wire import emit_labels
+
+        return {
+            "input_inclusive_min": list(self.inclusive_min),
+            "input_exclusive_max": list(self.exclusive_max),
+            "input_labels": emit_labels(self.labels, self.ndim),
+        }
+
+    @classmethod
+    def from_json(cls, data: IndexDomainJSON) -> IndexDomain:
+        """Construct from the canonical ndsel JSON representation.
+
+        The document is validated by the message layer first, exactly as a
+        transform body is. Reading the keys directly would be a second,
+        undefended way into the same objects: `int(value)` alone accepts
+        `3.9`, `"3"` and `True`, and each of those builds a domain that is
+        not the document's.
+
+        Examples
+        --------
+        >>> domain = IndexDomain.from_json(
+        ...     {"input_inclusive_min": [1], "input_exclusive_max": [4], "input_labels": [""]}
+        ... )
+        >>> (domain.inclusive_min, domain.exclusive_max, domain.shape)
+        ((1,), (4,), (3,))
+        >>> IndexDomain.from_json(domain.to_json()) == domain
+        True
+        """
+        from zarr_indexing._wire import lower_bound, lower_labels
+        from zarr_indexing.messages import NdselError, normalize_ndsel
+
+        # The annotation says what a well-formed caller passes; this is a parser
+        # of documents that arrive from elsewhere, so the shape is checked
+        # rather than assumed.
+        if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise NdselError("invalid_json", f"an index domain must be a JSON object, got {data!r}")
+        body = normalize_ndsel({**data, "kind": "transform"})
+        return cls(
+            inclusive_min=tuple(
+                lower_bound(b, f"input_inclusive_min[{i}]")
+                for i, b in enumerate(body["input_inclusive_min"])
+            ),
+            exclusive_max=tuple(
+                lower_bound(b, f"input_exclusive_max[{i}]")
+                for i, b in enumerate(body["input_exclusive_max"])
+            ),
+            labels=lower_labels(body["input_labels"]),
         )
 
 

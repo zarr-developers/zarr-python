@@ -49,16 +49,16 @@ from zarr_indexing.json import (
     IndexDomainJSON,
     IndexTransformJSON,
     OutputIndexMapJSON,
-    index_domain_from_json,
-    index_domain_to_json,
-    index_transform_from_json,
-    index_transform_to_json,
-    transform_from_canonical,
-    transform_to_canonical,
 )
 from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    OutputIndexMap,
+    output_index_map_from_json,
+)
 from zarr_indexing.reader import (
     BasicReader,
     NumPyReader,
@@ -114,16 +114,11 @@ __all__ = [
     "compose",
     "dimension_grids_from_chunks",
     "index_array_structure",
-    "index_domain_from_json",
-    "index_domain_to_json",
-    "index_transform_from_json",
-    "index_transform_to_json",
     "normalize_ndsel",
     "numpy_reader",
+    "output_index_map_from_json",
     "parse_ndsel",
     "plan_chunks",
     "selection_to_transform",
-    "transform_from_canonical",
-    "transform_to_canonical",
     "unit_step_reader",
 ]

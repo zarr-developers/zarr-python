@@ -160,7 +160,6 @@ from zarr_indexing.chunk_resolution import (
     plan_chunks,
 )
 from zarr_indexing.grid import DimensionGrid, FixedDimension, dimension_grids_from_chunks
-from zarr_indexing.json import transform_to_canonical
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
     ReadContext,
@@ -1270,7 +1269,7 @@ class LazyArray:
         token alike and a consumer that caches on tokens reuses one result for
         both.
         """
-        canonical = json.dumps(transform_to_canonical(self._transform), sort_keys=True)
+        canonical = json.dumps(self._transform.to_json(), sort_keys=True)
         return (
             type(self).__qualname__,
             _wrapped_token(self._array),

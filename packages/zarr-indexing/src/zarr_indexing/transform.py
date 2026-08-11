@@ -51,6 +51,8 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
+    from zarr_indexing.json import IndexTransformJSON
+
 
 @dataclass(frozen=True, slots=True)
 class _PointOutOfBounds(Exception):
@@ -126,7 +128,7 @@ class IndexTransform:
                 # The rank is what makes the dependency axes readable from the
                 # shape, so a mismatch is a bug rather than a spelling. External
                 # JSON may use a lower-rank array that broadcasts against the
-                # domain; `transform_from_canonical` widens those on the way in,
+                # domain; `from_json` widens those on the way in,
                 # so the invariant holds for every transform that exists.
                 if m.index_array.ndim != self.domain.ndim:
                     raise ValueError(
@@ -618,6 +620,124 @@ class IndexTransform:
         fancy-indexing style, and returns a new transform.
         """
         return _VIndexHelper(self)
+
+    # -- serialization ------------------------------------------------------
+
+    def to_json(self) -> IndexTransformJSON:
+        """Convert to the canonical ndsel transform body (spec section 4.3).
+
+        The result is fully explicit: `input_rank`, fully written bounds and
+        labels, and an `output` carrying `offset`/`stride` on every affine and
+        array map. It is field-for-field a TensorStore `IndexTransform` minus
+        the `kind` discriminator, so it loads directly into
+        `tensorstore.IndexTransform(json=...)`.
+
+        Examples
+        --------
+        >>> body = IndexTransform.from_shape((6,))[1:5:2].to_json()
+        >>> (body["input_inclusive_min"], body["input_exclusive_max"])
+        ([0], [2])
+        >>> body["output"]
+        [{'offset': 1, 'stride': 2, 'input_dimension': 0}]
+        """
+        from zarr_indexing._wire import emit_labels
+
+        return {
+            "input_rank": self.domain.ndim,
+            "input_inclusive_min": list(self.domain.inclusive_min),
+            "input_exclusive_max": list(self.domain.exclusive_max),
+            "input_labels": emit_labels(self.domain.labels, self.domain.ndim),
+            "output": [m.to_json() for m in self.output],
+        }
+
+    @classmethod
+    def from_json(cls, data: IndexTransformJSON) -> IndexTransform:
+        """Construct from a canonical (or canonicalizable) ndsel transform body.
+
+        The body is first run through the message layer (`normalize_ndsel`) so
+        that omitted fields — identity `output`, default bounds and labels —
+        are filled and validated, then lowered to the engine representation.
+        Lower-rank `index_array`s are widened to the full input rank on the way
+        in.
+
+        Examples
+        --------
+        >>> body = IndexTransform.from_shape((6,))[1:5:2].to_json()
+        >>> transform = IndexTransform.from_json(body)
+        >>> transform.domain.shape
+        (2,)
+        >>> transform.to_json() == body  # the round trip is exact
+        True
+        """
+        from zarr_indexing._wire import (
+            full_rank_index_array,
+            lower_bound,
+            lower_index_array,
+            lower_labels,
+        )
+        from zarr_indexing.messages import NdselError, normalize_ndsel
+
+        if not isinstance(data, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise NdselError(
+                "invalid_json", f"a transform body must be a JSON object, got {data!r}"
+            )
+        kind = data.get("kind", "transform")
+        if kind != "transform":
+            # Spelled before normalization so a body carrying its own `kind`
+            # cannot reinterpret the document as some other message and return
+            # a selection this constructor never promised.
+            raise NdselError("invalid_json", f"a transform body cannot carry kind {kind!r}")
+        body = normalize_ndsel({**data, "kind": "transform"})
+
+        domain = IndexDomain(
+            inclusive_min=tuple(
+                lower_bound(b, f"input_inclusive_min[{i}]")
+                for i, b in enumerate(body["input_inclusive_min"])
+            ),
+            exclusive_max=tuple(
+                lower_bound(b, f"input_exclusive_max[{i}]")
+                for i, b in enumerate(body["input_exclusive_max"])
+            ),
+            labels=lower_labels(body["input_labels"]),
+        )
+
+        output: list[OutputIndexMap] = []
+        for i, om in enumerate(body["output"]):
+            if "index_array" in om:
+                where = f"output[{i}]"
+                arr = lower_index_array(om["index_array"], f"{where}.index_array")
+                # ndsel leaves index-array rank unvalidated, so an external
+                # producer may send an array of lower rank that broadcasts
+                # against the domain. Widen it here, on the way in, so every
+                # transform that exists holds the full-rank invariant the
+                # engine reads dependency axes from.
+                output.append(
+                    ArrayMap(
+                        index_array=full_rank_index_array(arr, domain, where),
+                        offset=om.get("offset", 0),
+                        stride=om.get("stride", 1),
+                    )
+                )
+            elif "input_dimension" in om:
+                output.append(
+                    DimensionMap(
+                        input_dimension=om["input_dimension"],
+                        offset=om.get("offset", 0),
+                        stride=om.get("stride", 1),
+                    )
+                )
+            else:
+                output.append(ConstantMap(offset=om.get("offset", 0)))
+
+        try:
+            return cls(domain=domain, output=tuple(output))
+        except ValueError as exc:
+            # The engine's invariants are the last gate a document passes, and
+            # they speak in the engine's vocabulary. A document that fails them
+            # is invalid input, so it leaves here as one — with the engine's
+            # account of what was wrong kept, since it names the offending
+            # output map and axis.
+            raise NdselError("rank_mismatch", str(exc)) from exc
 
 
 def _positions_from_origin(coordinates: np.ndarray[Any, Any], origin: int) -> npt.NDArray[np.intp]:

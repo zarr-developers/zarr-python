@@ -20,7 +20,7 @@ before a transform is serialized. `zarr-indexing` implements ndsel in two layers
 Constraints that only make sense for a real array — finite bounds, index
 arrays as `ndarray`s — live in the engine layer and nowhere else. As a result,
 `messages` normalizes a message with `"-inf"` bounds that
-`json.transform_from_canonical` refuses to lower.
+`IndexTransform.from_json` refuses to lower.
 
 ## Two entry points
 
@@ -81,19 +81,19 @@ normalization intact.
 The engine layer converts between canonical bodies and `IndexTransform`s:
 
 ```python
-from zarr_indexing import transform_from_canonical, transform_to_canonical
+from zarr_indexing import IndexTransform
 
-t = transform_from_canonical(canonical)
-transform_to_canonical(t) == canonical
+t = IndexTransform.from_json(canonical)
+t.to_json() == canonical
 ```
 
-`index_transform_to_json` / `index_transform_from_json` (and the
-`index_domain_*` variants) are these same converters under their historical
-names.
+`IndexDomain` carries the same pair for a bare domain body, and each output
+map kind has a `to_json`; `output_index_map_from_json` dispatches the wire's
+tagged union back to the right kind.
 
 Two engine constraints apply here and only here. A canonical body carrying a
 `"-inf"` or `"+inf"` bound cannot be lowered — an `IndexDomain` addresses a
-finite array — so `transform_from_canonical` raises. And implicit bounds lower
+finite array — so `IndexTransform.from_json` raises. And implicit bounds lower
 *by value*: the `[n]`-bracket flag is a message-layer concern, and the engine
 keeps only the integer.
 
@@ -121,9 +121,9 @@ representation rather than preserving it. An all-singleton `index_array` — siz
 a `constant` map on serialize:
 
 ```python
-from zarr_indexing import IndexTransform, transform_to_canonical
+from zarr_indexing import IndexTransform
 
-transform_to_canonical(IndexTransform.from_shape((100, 100)).oindex[[5], 0:2])
+IndexTransform.from_shape((100, 100)).oindex[[5], 0:2].to_json()
 # {'input_rank': 2,
 #  'input_inclusive_min': [0, 0],
 #  'input_exclusive_max': [1, 2],

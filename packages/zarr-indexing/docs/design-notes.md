@@ -124,15 +124,15 @@ exactly when none of its output maps carries an `index_array`. A consumer can
 therefore classify a selection off the wire without materializing anything:
 
 ```python
-from zarr_indexing import IndexTransform, transform_to_canonical
+from zarr_indexing import IndexTransform
 
-transform_to_canonical(IndexTransform.from_shape((100, 80))[10:50, ::4])["output"]
+IndexTransform.from_shape((100, 80))[10:50, ::4].to_json()["output"]
 # [{'offset': 0, 'stride': 1, 'input_dimension': 0},
 #  {'offset': 0, 'stride': 4, 'input_dimension': 1}]
 
 import numpy as np
 gather = IndexTransform.from_shape((100, 80)).oindex[np.array([90, 3, 3]), slice(None)]
-transform_to_canonical(gather)["output"][0]
+gather.to_json()["output"][0]
 # {'offset': 0, 'stride': 1, 'index_array': [[90], [3], [3]],
 #  'index_array_bounds': ['-inf', '+inf']}
 ```

@@ -179,14 +179,12 @@ def test_pattern_page_tabs_are_the_models() -> None:
     import json
     import textwrap
 
-    from zarr_indexing import transform_to_canonical
-
     page = (DOCS / "guide" / "patterns.md").read_text()
 
     json_blocks = re.findall(r"```json\n(.*?)```", page, re.DOTALL)
     assert len(json_blocks) == len(PATTERN_CASES)
     for block, case in zip(json_blocks, PATTERN_CASES, strict=True):
-        assert json.loads(block) == transform_to_canonical(case["transform"]), case["name"]
+        assert json.loads(block) == case["transform"].to_json(), case["name"]
 
     python_blocks = [
         textwrap.dedent(block)

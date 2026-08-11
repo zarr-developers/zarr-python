@@ -12,7 +12,7 @@ are checked against NumPy.
 
 Each idiom over a 6-by-8 `image`, shown two ways: the Python construction,
 and the same transform in **wire form** — the [ndsel](../ndsel.md)
-canonical body `transform_to_canonical` produces. Both spell the whole
+canonical body `to_json` produces. Both spell the whole
 object: a domain whose extent is the result shape, then one output map per
 source dimension. The index-array variables (`rows`, `columns`,
 `mask_rows, mask_columns = np.nonzero(mask)`, and friends) are defined in
