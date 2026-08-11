@@ -15,11 +15,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from zarr.core.buffer.core import Buffer, BufferPrototype
 
-# A cache entry identifier.  Plain ``str`` for full-key entries that live in
-# the Store-backed cache; ``(str, ByteRequest)`` for byte-range entries that
-# live in the in-memory range cache.
-_CacheEntryKey = str | tuple[str, ByteRequest]
-
 # Nominal byte cost charged to ``max_size`` for a negative (known-absent) entry.
 # Such entries carry no data, but each one occupies an index slot (the key plus a
 # small ``_Entry`` record), so it is charged a flat overhead.  This lets a single
@@ -37,45 +32,92 @@ _MAX_NEGATIVE_ENTRIES = 100_000
 
 @dataclass(slots=True)
 class _Entry:
-    """A single cache slot, tracked in ``_CacheState.entries``.
+    """The full-key slot of a ``_KeyState``.
 
-    ``present=True`` (the default): a value is cached for this key — in the
-    Store-backed cache for full keys, or the in-memory range cache for
-    byte-range keys — occupying ``size`` bytes.
+    ``present=True`` (the default): the key's full value is cached in the
+    Store-backed cache, occupying ``size`` bytes.
 
-    ``present=False``: the full key is known-*absent* in the source store (a
+    ``present=False``: the key is known-*absent* in the source store (a
     negative-cache entry). It carries no data, but is charged a flat
     ``_NEGATIVE_ENTRY_SIZE`` against ``max_size`` for the index slot it occupies,
     so cached values and miss-markers share one memory budget. Its staleness is
     bounded by ``max_age_seconds``.
-
-    Because every key maps to exactly one ``_Entry``, "present" and "absent" are
-    mutually exclusive by construction: a key cannot simultaneously be cached and
-    marked missing.
     """
 
     insert_time: float
     size: int = 0
     present: bool = True
+    last_used: float = 0.0
+
+
+@dataclass(slots=True)
+class _RangeEntry:
+    """A cached byte-range of a key's value.
+
+    Held in memory inside the key's ``_KeyState`` so partial reads never touch
+    the persistent backend.  ``insert_time`` bounds staleness via
+    ``max_age_seconds``; ``last_used`` orders eviction within the key.
+    """
+
+    buffer: Buffer
+    insert_time: float
+    size: int
+    last_used: float
+
+
+@dataclass(slots=True)
+class _KeyState:
+    """All cached knowledge about a single source key.
+
+    ``full`` is the full-key slot: a cached value, a known-absent marker, or
+    ``None`` when nothing is known about the key as a whole.  ``ranges`` holds
+    the key's cached byte-range reads.
+
+    Because everything known about a key lives in this one record, every
+    mutation for the key goes through one slot under one lock, and the
+    invariant *absent implies no ranges* is asserted at the mutation points
+    (``assert_coherent``) instead of being maintained across parallel
+    structures: a key can never simultaneously be marked missing and hold
+    cached bytes, so full-key and byte-range answers cannot diverge.
+    """
+
+    full: _Entry | None = None
+    ranges: dict[ByteRequest, _RangeEntry] = field(default_factory=dict)
+
+    def assert_coherent(self) -> None:
+        """Assert the record invariant: a key marked absent holds no range data."""
+        assert self.full is None or self.full.present or not self.ranges, (
+            "cache incoherent: key marked absent still holds byte-range data"
+        )
+
+    @property
+    def is_empty(self) -> bool:
+        return self.full is None and not self.ranges
+
+    @property
+    def tracked_size(self) -> int:
+        """Total bytes this record charges against the shared budget."""
+        full_size = self.full.size if self.full is not None else 0
+        return full_size + sum(r.size for r in self.ranges.values())
 
 
 @dataclass(slots=True)
 class _CacheState:
-    # Single source of truth for every tracked key (full-key and byte-range,
-    # present and absent).  Ordered for LRU eviction; ``move_to_end`` marks a key
-    # most-recently-used.  Replaces the former parallel cache_order / key_sizes /
-    # key_insert_times / missing_keys structures so a key has one unambiguous state.
-    entries: OrderedDict[_CacheEntryKey, _Entry] = field(default_factory=OrderedDict)
+    # Single source of truth: one record per source key, holding the full-key
+    # state (value / absent marker) *and* the key's byte-range buffers.  Ordered
+    # for key-level LRU eviction; ``move_to_end`` marks a key most-recently-used.
+    # Replaces the former flat entry dict (tuple keys for byte ranges) plus the
+    # separate range cache, so a key has one unambiguous, atomically-mutated state.
+    entries: OrderedDict[str, _KeyState] = field(default_factory=OrderedDict)
     current_size: int = 0
-    # Number of entries with ``present=False``, maintained incrementally so the
-    # negative-marker cap (``_MAX_NEGATIVE_ENTRIES``) is O(1) to enforce.
+    # Number of keys whose full slot is an absent marker, maintained incrementally
+    # so the negative-marker cap and the eviction-candidate fast path are O(1).
     negative_count: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     hits: int = 0
     misses: int = 0
     evictions: int = 0
     negative_hits: int = 0
-    range_cache: dict[str, dict[ByteRequest, Buffer]] = field(default_factory=dict)
 
 
 class CacheStore(WrapperStore[Store]):
@@ -87,8 +129,8 @@ class CacheStore(WrapperStore[Store]):
     time-based expiration, size-based eviction, and flexible cache storage options.
 
     Full-key reads are cached in the Store-backed cache.  Byte-range reads are
-    cached in a separate in-memory dictionary so that partial reads never
-    pollute the filesystem (or other persistent backend).  Both caches share
+    cached in memory, inside the key's tracking record, so that partial reads
+    never pollute the filesystem (or other persistent backend).  Both share
     the same ``max_size`` budget and LRU eviction policy.
 
     Parameters
@@ -114,9 +156,10 @@ class CacheStore(WrapperStore[Store]):
         ``get`` that finds the key absent in the source store records that absence, so
         subsequent ``get``s for the same key return ``None`` without a source round-trip.
         This benefits repeated reads of sparse arrays (most chunks absent). Negative
-        entries respect ``max_age_seconds`` and are evicted when the key is written
-        (``set``/``set_if_not_exists``). Only full-key reads are affected (not byte-range
-        reads or ``exists``). Default is True.
+        entries respect ``max_age_seconds`` and are dropped when the key is written
+        (``set``/``set_if_not_exists``) or when a byte-range read observes data for
+        the key. Only full-key reads consult the negative cache (not byte-range reads
+        or ``exists``). Default is True.
 
         Notes:
 
@@ -218,65 +261,126 @@ class CacheStore(WrapperStore[Store]):
         store._state = self._state
         return store
 
-    def _is_fresh(self, entry_key: _CacheEntryKey) -> bool:
-        """Check if a tracked entry (present or absent) is still fresh.
+    def _is_fresh(self, key: str, byte_range: ByteRequest | None = None) -> bool:
+        """Check if a tracked slot (full-key, or one byte range) is still fresh.
 
         Uses monotonic time for accurate elapsed time measurement.  A key with no
-        entry is treated as not fresh (except under an infinite TTL, matching the
-        previous behaviour of routing unseen keys through the cache path).
+        tracked slot for the request is treated as not fresh (except under an
+        infinite TTL, matching the previous behaviour of routing unseen keys
+        through the cache path).
         """
         if self.max_age_seconds == "infinity":
             return True
-        entry = self._state.entries.get(entry_key)
-        if entry is None:
+        state = self._state.entries.get(key)
+        if state is None:
             return False
-        elapsed = time.monotonic() - entry.insert_time
+        slot: _Entry | _RangeEntry | None
+        slot = state.full if byte_range is None else state.ranges.get(byte_range)
+        if slot is None:
+            return False
+        elapsed = time.monotonic() - slot.insert_time
         return elapsed < self.max_age_seconds
+
+    # ------------------------------------------------------------------
+    # tracking-state mutation helpers (all require ``self._state.lock``)
+    # ------------------------------------------------------------------
+
+    def _reclaim_full(self, state: _KeyState) -> None:
+        """Drop *state*'s full slot, reclaiming its charged bytes.
+
+        Must be called while holding ``self._state.lock``.
+        """
+        if state.full is not None:
+            self._state.current_size = max(0, self._state.current_size - state.full.size)
+            if not state.full.present:
+                self._state.negative_count -= 1
+            state.full = None
+
+    def _reclaim_ranges(self, state: _KeyState) -> None:
+        """Drop all of *state*'s byte-range entries, reclaiming their bytes.
+
+        Must be called while holding ``self._state.lock``.
+        """
+        for range_entry in state.ranges.values():
+            self._state.current_size = max(0, self._state.current_size - range_entry.size)
+        state.ranges.clear()
+
+    def _drop_full_slot(self, key: str) -> None:
+        """Remove *key*'s full slot (value or marker) from tracking.
+
+        Byte-range entries for the key are left in place.  Must be called while
+        holding ``self._state.lock``.
+        """
+        state = self._state.entries.get(key)
+        if state is not None:
+            self._reclaim_full(state)
+            if state.is_empty:
+                del self._state.entries[key]
+
+    def _drop_key(self, key: str) -> None:
+        """Remove everything tracked for *key* (full slot and byte ranges).
+
+        Must be called while holding ``self._state.lock``.
+        """
+        state = self._state.entries.pop(key, None)
+        if state is not None:
+            self._reclaim_full(state)
+            self._reclaim_ranges(state)
+
+    def _invalidate_range_entries(self, key: str) -> None:
+        """Drop *key*'s cached byte-range entries (the source data changed).
+
+        Must be called while holding ``self._state.lock``.
+        """
+        state = self._state.entries.get(key)
+        if state is not None:
+            self._reclaim_ranges(state)
+            if state.is_empty:
+                del self._state.entries[key]
 
     async def _record_missing(self, key: str) -> None:
         """Record *key* as known-missing (absent in the source store).
+
+        Replaces the key's whole record: any previously cached value bytes and
+        byte-range buffers are reclaimed in the same mutation, so the invariant
+        *absent implies no ranges* holds by construction.  The caller has already
+        removed any backing-store value for *key*.
 
         Charges a flat ``_NEGATIVE_ENTRY_SIZE`` against the shared ``max_size``
         budget.  A negative marker is strictly lower priority than cached data: it
         may only displace *other* (older) absent markers to fit, never a cached
         value, and is skipped entirely if the budget is full of cached values.
-
-        The caller (``_cache_miss``) has already removed any backing-store value and
-        tracking slot for *key*, so this records a fresh marker.  Must be called
-        while holding ``self._state.lock``.  Staleness is bounded by
-        ``max_age_seconds`` via ``_is_fresh``.
+        Must be called while holding ``self._state.lock``.  Staleness is bounded
+        by ``max_age_seconds``.
         """
-        # Drop any pre-existing slot for this key, reclaiming its bytes.
         old = self._state.entries.pop(key, None)
         if old is not None:
-            self._state.current_size = max(0, self._state.current_size - old.size)
-            if not old.present:
-                self._state.negative_count -= 1
+            self._reclaim_full(old)
+            self._reclaim_ranges(old)
 
         if self.max_size is not None:
             # Make room by evicting older absent markers only — never cached values.
             while self._state.current_size + _NEGATIVE_ENTRY_SIZE > self.max_size:
-                lru_absent = next(
-                    (k for k, e in self._state.entries.items() if not e.present), None
-                )
+                lru_absent = self._lru_absent_key()
                 if lru_absent is None:
                     return  # only cached values fill the budget — don't record the miss
-                await self._evict_key(lru_absent)
+                await self._evict_slot(lru_absent)
         else:
             # No byte budget to share: bound the marker *count* instead, so a scan
             # over a huge sparse key space cannot grow the index without limit.
             while self._state.negative_count >= _MAX_NEGATIVE_ENTRIES:
-                lru_absent = next(
-                    (k for k, e in self._state.entries.items() if not e.present), None
-                )
+                lru_absent = self._lru_absent_key()
                 if lru_absent is None:  # pragma: no cover - count implies one exists
                     break
-                await self._evict_key(lru_absent)
+                await self._evict_slot(lru_absent)
 
-        # The key was popped above, so this assignment appends it as most-recent.
-        self._state.entries[key] = _Entry(
-            insert_time=time.monotonic(), size=_NEGATIVE_ENTRY_SIZE, present=False
+        now = time.monotonic()
+        state = _KeyState(
+            full=_Entry(insert_time=now, size=_NEGATIVE_ENTRY_SIZE, present=False, last_used=now)
         )
+        state.assert_coherent()
+        # The key was popped above, so this assignment appends it as most-recent.
+        self._state.entries[key] = state
         self._state.current_size += _NEGATIVE_ENTRY_SIZE
         self._state.negative_count += 1
 
@@ -287,11 +391,12 @@ class CacheStore(WrapperStore[Store]):
         left untouched — and reclaims the marker's charged bytes.  Must be called
         while holding ``self._state.lock``.
         """
-        entry = self._state.entries.get(key)
-        if entry is not None and not entry.present:
-            self._state.current_size = max(0, self._state.current_size - entry.size)
-            self._state.negative_count -= 1
-            del self._state.entries[key]
+        state = self._state.entries.get(key)
+        if state is not None and state.full is not None and not state.full.present:
+            state.assert_coherent()
+            self._reclaim_full(state)
+            if state.is_empty:
+                del self._state.entries[key]
 
     async def _accommodate_value(self, value_size: int) -> None:
         """Evict until ``value_size`` more bytes fit within ``max_size``.
@@ -308,57 +413,77 @@ class CacheStore(WrapperStore[Store]):
         while self._state.current_size + value_size > self.max_size:
             lru_key = self._next_eviction_candidate()
             if lru_key is None:
-                # Defensive: the sole caller (``_track_entry``) guarantees
-                # ``value_size <= max_size``, so an empty cache always has room.
+                # Defensive: the callers guarantee ``value_size <= max_size``,
+                # so an empty cache always has room.
                 break  # pragma: no cover
-            await self._evict_key(lru_key)
+            await self._evict_slot(lru_key)
 
-    def _next_eviction_candidate(self) -> _CacheEntryKey | None:
-        """Return the next entry to evict, preferring absent markers (LRU-first).
+    def _lru_absent_key(self) -> str | None:
+        """Return the least-recently-used key marked absent, or ``None``.
 
-        Walks entries in LRU order: the first absent entry found is returned; if
-        none are absent, the least-recently-used present entry is returned.  Must
-        be called while holding self._state.lock.
+        Must be called while holding self._state.lock.
         """
-        lru_present: _CacheEntryKey | None = None
-        for entry_key, entry in self._state.entries.items():
-            if not entry.present:
-                return entry_key
-            if lru_present is None:
-                lru_present = entry_key
-        return lru_present
+        return next(
+            (
+                key
+                for key, state in self._state.entries.items()
+                if state.full is not None and not state.full.present
+            ),
+            None,
+        )
 
-    async def _evict_key(self, entry_key: _CacheEntryKey) -> None:
-        """Evict a cache entry.
+    def _next_eviction_candidate(self) -> str | None:
+        """Return the key to evict from next, preferring absent markers (LRU-first).
+
+        The entries are walked in LRU order: the first key marked absent is
+        returned; if none are, the least-recently-used key is the candidate.
+        Must be called while holding self._state.lock.
+        """
+        candidate = self._lru_absent_key()
+        if candidate is None:
+            return next(iter(self._state.entries), None)
+        return candidate
+
+    async def _evict_slot(self, key: str) -> None:
+        """Evict *key*'s least-recently-used slot, removing an emptied record.
 
         Must be called while holding self._state.lock.
 
-        For ``str`` keys the entry is deleted from the Store-backed cache.
-        For ``(str, ByteRequest)`` keys the entry is removed from the
-        in-memory range cache.
+        The full-key slot competes with the key's byte-range entries on
+        ``last_used``.  Evicting a present full slot deletes the value from the
+        Store-backed cache; absent markers and byte-range entries live only in
+        memory.
         """
-        entry = self._state.entries.pop(entry_key, None)
-        key_size = entry.size if entry is not None else 0
-        if entry is not None and not entry.present:
-            self._state.negative_count -= 1
+        state = self._state.entries.get(key)
+        if state is None:
+            # Tracking already dropped (e.g. by a concurrent operation) — make
+            # sure no orphaned value lingers in the backing cache.
+            await self._cache.delete(key)
+            return
 
-        if isinstance(entry_key, str):
-            # Absent markers store no value in the backing cache — skip the delete.
-            if entry is None or entry.present:
-                await self._cache.delete(entry_key)
-        else:
-            base_key, byte_range = entry_key
-            per_key = self._state.range_cache.get(base_key)
-            if per_key is not None:
-                per_key.pop(byte_range, None)
-                if not per_key:
-                    del self._state.range_cache[base_key]
+        lru_range: ByteRequest | None = None
+        lru_range_used = float("inf")
+        for byte_range, range_entry in state.ranges.items():
+            if range_entry.last_used < lru_range_used:
+                lru_range = byte_range
+                lru_range_used = range_entry.last_used
 
-        self._state.current_size = max(0, self._state.current_size - key_size)
-        self._state.evictions += 1
+        if state.full is not None and (lru_range is None or state.full.last_used <= lru_range_used):
+            entry = state.full
+            self._reclaim_full(state)
+            self._state.evictions += 1
+            if entry.present:
+                await self._cache.delete(key)
+        elif lru_range is not None:
+            range_entry = state.ranges.pop(lru_range)
+            self._state.current_size = max(0, self._state.current_size - range_entry.size)
+            self._state.evictions += 1
 
-    async def _track_entry(self, entry_key: _CacheEntryKey, value: Buffer) -> bool:
-        """Register *entry_key* in the shared size / LRU tracking.
+        if state.is_empty:
+            self._state.entries.pop(key, None)
+
+    async def _track_entry(self, key: str, value: Buffer) -> bool:
+        """Register a full-key value in the shared size / LRU tracking.
 
         Returns ``True`` if the entry was tracked, ``False`` if the value
         exceeds ``max_size`` and was skipped.  Callers should roll back any
@@ -373,59 +498,94 @@ class CacheStore(WrapperStore[Store]):
             return False
 
         async with self._state.lock:
-            # Pop any existing slot for this key first, reclaiming its bytes. Popping
-            # (rather than leaving it in place) is essential: it removes the key from
-            # the eviction candidates so ``_accommodate_value`` cannot select the very
-            # key being (re)tracked — which would double-subtract its size, stop the
-            # eviction loop early, and (for a present overwrite) delete the value the
-            # caller just wrote to the backing store. The caller has already written
-            # the new value, so we do not touch the backing store here.
-            old = self._state.entries.pop(entry_key, None)
-            if old is not None:
-                self._state.current_size = max(0, self._state.current_size - old.size)
-                if not old.present:
-                    self._state.negative_count -= 1
+            # Drop the key's existing full slot first, reclaiming its bytes. This
+            # removes the slot from the eviction candidates so ``_accommodate_value``
+            # cannot select the very slot being (re)tracked — which would
+            # double-subtract its size, stop the eviction loop early, and (for a
+            # present overwrite) delete the value the caller just wrote to the
+            # backing store. The key's *other* slots (byte-range entries) remain
+            # fair game for eviction. The caller has already written the new value,
+            # so the backing store is not touched here.
+            state = self._state.entries.get(key)
+            if state is not None:
+                self._reclaim_full(state)
+                if state.is_empty:
+                    del self._state.entries[key]
 
-            # Make room for the new value, then track it (appended as most-recent).
+            # Make room for the new value, then track it (the record is appended
+            # or re-inserted as most-recently-used).
             await self._accommodate_value(value_size)
-            self._state.entries[entry_key] = _Entry(
-                insert_time=time.monotonic(), size=value_size, present=True
-            )
+            state = self._state.entries.pop(key, None)
+            if state is None:
+                state = _KeyState()
+            now = time.monotonic()
+            state.full = _Entry(insert_time=now, size=value_size, present=True, last_used=now)
+            state.assert_coherent()
+            self._state.entries[key] = state
             self._state.current_size += value_size
 
         return True
 
-    async def _update_access_order(self, entry_key: _CacheEntryKey) -> None:
-        """Update the access order for LRU tracking."""
+    async def _track_range(self, key: str, byte_range: ByteRequest, value: Buffer) -> bool:
+        """Register a byte-range read in the key's record.
+
+        Returns ``True`` if the range was cached, ``False`` if the value exceeds
+        ``max_size`` (nothing is stored in that case, so there is nothing to roll
+        back).  Observing bytes for a key proves it exists in the source, so any
+        absent marker is dropped in the same locked mutation — this is the single
+        point where ranges are recorded, so a record can never hold both a marker
+        and range data (``assert_coherent``), even when the range itself is too
+        large to cache.
+        """
+        value_size = len(value)
+
         async with self._state.lock:
-            # Re-check membership under the lock: the entry may have been evicted
+            state = self._state.entries.get(key)
+            if state is not None:
+                if state.full is not None and not state.full.present:
+                    # Bytes came back for this key: the absent marker is stale.
+                    self._reclaim_full(state)
+                # Drop any slot being replaced so accommodation cannot select it.
+                old = state.ranges.pop(byte_range, None)
+                if old is not None:
+                    self._state.current_size = max(0, self._state.current_size - old.size)
+                if state.is_empty:
+                    del self._state.entries[key]
+
+            if self.max_size is not None and value_size > self.max_size:
+                return False
+
+            await self._accommodate_value(value_size)
+            state = self._state.entries.pop(key, None)
+            if state is None:
+                state = _KeyState()
+            now = time.monotonic()
+            state.ranges[byte_range] = _RangeEntry(
+                buffer=value, insert_time=now, size=value_size, last_used=now
+            )
+            state.assert_coherent()
+            self._state.entries[key] = state
+            self._state.current_size += value_size
+
+        return True
+
+    async def _update_access_order(self, key: str, byte_range: ByteRequest | None = None) -> None:
+        """Mark a slot — and its key's record — most-recently-used for LRU tracking."""
+        async with self._state.lock:
+            # Re-check membership under the lock: the record may have been evicted
             # by a concurrent operation between the call and acquiring the lock.
-            if entry_key in self._state.entries:
-                self._state.entries.move_to_end(entry_key)
-
-    def _remove_from_tracking(self, entry_key: _CacheEntryKey) -> None:
-        """Remove an entry from tracking, reclaiming any bytes it accounted for.
-
-        Must be called while holding self._state.lock.
-        """
-        entry = self._state.entries.pop(entry_key, None)
-        if entry is not None:
-            self._state.current_size = max(0, self._state.current_size - entry.size)
-            if not entry.present:
-                self._state.negative_count -= 1
-
-    def _invalidate_range_entries(self, key: str) -> None:
-        """Remove all byte-range entries for *key* from the range cache and tracking.
-
-        Must be called while holding self._state.lock.
-        """
-        per_key = self._state.range_cache.pop(key, None)
-        if per_key is not None:
-            for byte_range in per_key:
-                entry_key: _CacheEntryKey = (key, byte_range)
-                entry = self._state.entries.pop(entry_key, None)
-                if entry is not None:
-                    self._state.current_size = max(0, self._state.current_size - entry.size)
+            state = self._state.entries.get(key)
+            if state is None:
+                return
+            now = time.monotonic()
+            if byte_range is None:
+                if state.full is not None:
+                    state.full.last_used = now
+            else:
+                range_entry = state.ranges.get(byte_range)
+                if range_entry is not None:
+                    range_entry.last_used = now
+            self._state.entries.move_to_end(key)
 
     # ------------------------------------------------------------------
     # get helpers
@@ -436,50 +596,55 @@ class CacheStore(WrapperStore[Store]):
         key: str,
         byte_range: ByteRequest | None,
         result: Buffer | None,
-        prior_entry: _Entry | None,
+        prior_slot: _Entry | None,
     ) -> None:
         """Handle a cache miss by storing or cleaning up after a source-store fetch.
 
-        ``prior_entry`` is the key's tracked entry as observed just *before* the
+        ``prior_slot`` is the key's full slot as observed just *before* the
         source fetch began (``None`` if there was none). It guards the absent path
         against a write/miss race: if the key's slot now holds a *different* present
         entry, a concurrent ``set`` completed during the fetch, and the stale
         "absent" result must not shadow the new value. Identity (not timestamps) is
-        used so the check is immune to coarse clocks.
+        used so the check is immune to coarse clocks.  Known blind spot: a
+        concurrent writer that leaves no present slot behind (``cache_set_data=False``,
+        or ``set_if_not_exists``, whose override drops tracking rather than inserting
+        a present slot) cannot be detected here, so its write may be shadowed by the
+        stale absent observation until the finite default ``max_age_seconds`` expires
+        the marker.
         """
         if result is None:
             if byte_range is None:
                 async with self._state.lock:
-                    entry = self._state.entries.get(key)
-                    if entry is not None and entry.present and entry is not prior_entry:
+                    state = self._state.entries.get(key)
+                    current = state.full if state is not None else None
+                    if current is not None and current.present and current is not prior_slot:
                         # A concurrent write completed during this fetch — the key now
                         # has a (cached) value. Recording the miss would shadow it, so
                         # drop the stale "absent" observation instead.
                         return
-                    # The key is absent in the source: drop any (stale) cached value and
-                    # byte-range entries for it, then either remember the miss (so a
-                    # repeat read short-circuits without a source round-trip) or just
-                    # drop the tracking slot — ``_record_missing`` replaces the slot
-                    # itself, reclaiming the bytes of any prior cached value.
+                    # The key is absent in the source: drop any (stale) cached value
+                    # for it, then either remember the miss (so a repeat read
+                    # short-circuits without a source round-trip) or just drop the
+                    # tracking record. Either way the key's byte-range entries go in
+                    # the same mutation, so full-key and ranged reads cannot diverge.
                     await self._cache.delete(key)
-                    self._invalidate_range_entries(key)
                     if self.cache_missing:
                         await self._record_missing(key)
                     else:
-                        self._remove_from_tracking(key)
+                        self._drop_key(key)
             else:
-                entry_key: _CacheEntryKey = (key, byte_range)
                 async with self._state.lock:
-                    per_key = self._state.range_cache.get(key)
-                    if per_key is not None:
-                        per_key.pop(byte_range, None)
-                        if not per_key:
-                            del self._state.range_cache[key]
-                    self._remove_from_tracking(entry_key)
+                    state = self._state.entries.get(key)
+                    if state is not None:
+                        old = state.ranges.pop(byte_range, None)
+                        if old is not None:
+                            self._state.current_size = max(0, self._state.current_size - old.size)
+                        if state.is_empty:
+                            del self._state.entries[key]
         else:
             if byte_range is None:
                 await self._cache.set(key, result)
-                # ``_track_entry`` overwrites the key's single slot with a present
+                # ``_track_entry`` overwrites the key's full slot with a present
                 # entry, so any prior negative marker is structurally replaced —
                 # no separate negative-cache eviction is needed here.
                 tracked = await self._track_entry(key, result)
@@ -488,16 +653,15 @@ class CacheStore(WrapperStore[Store]):
                     # holds no untracked (uncounted, unevictable) orphan.
                     await self._cache.delete(key)
             else:
-                entry_key = (key, byte_range)
-                self._state.range_cache.setdefault(key, {})[byte_range] = result
-                tracked = await self._track_entry(entry_key, result)
-                if not tracked:
-                    # Value too large for the cache — roll back the insertion
-                    per_key = self._state.range_cache.get(key)
-                    if per_key is not None:
-                        per_key.pop(byte_range, None)
-                        if not per_key:
-                            del self._state.range_cache[key]
+                # ``_track_range`` stores the buffer inside the key's record and
+                # drops any stale absent marker in the same locked mutation, so a
+                # successful ranged read can never leave the key marked missing.
+                await self._track_range(key, byte_range, result)
+
+    def _prior_full_slot(self, key: str) -> _Entry | None:
+        """Snapshot the key's full slot for ``_cache_miss``'s write/miss race guard."""
+        state = self._state.entries.get(key)
+        return state.full if state is not None else None
 
     async def _get_try_cache(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
@@ -511,21 +675,20 @@ class CacheStore(WrapperStore[Store]):
                 await self._update_access_order(key)
                 return maybe_cached
         else:
-            # Byte-range read — use in-memory range cache
-            entry_key: _CacheEntryKey = (key, byte_range)
-            per_key = self._state.range_cache.get(key)
-            if per_key is not None:
-                cached_buf = per_key.get(byte_range)
-                if cached_buf is not None:
+            # Byte-range read — served from the key's in-memory record
+            state = self._state.entries.get(key)
+            if state is not None:
+                range_entry = state.ranges.get(byte_range)
+                if range_entry is not None:
                     self._state.hits += 1
-                    await self._update_access_order(entry_key)
-                    return cached_buf
+                    await self._update_access_order(key, byte_range)
+                    return range_entry.buffer
 
         # Cache miss — fetch from source store
         self._state.misses += 1
-        prior_entry = self._state.entries.get(key) if byte_range is None else None
+        prior_slot = self._prior_full_slot(key) if byte_range is None else None
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result, prior_entry)
+        await self._cache_miss(key, byte_range, result, prior_slot)
         return result
 
     async def _get_no_cache(
@@ -533,9 +696,9 @@ class CacheStore(WrapperStore[Store]):
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._state.misses += 1
-        prior_entry = self._state.entries.get(key) if byte_range is None else None
+        prior_slot = self._prior_full_slot(key) if byte_range is None else None
         result = await super().get(key, prototype, byte_range)
-        await self._cache_miss(key, byte_range, result, prior_entry)
+        await self._cache_miss(key, byte_range, result, prior_slot)
         return result
 
     @property
@@ -577,16 +740,17 @@ class CacheStore(WrapperStore[Store]):
         # key has no positive entry and would otherwise be routed straight to the source.
         if self.cache_missing and byte_range is None:
             async with self._state.lock:
-                entry = self._state.entries.get(key)
-                if entry is not None and not entry.present and self._is_fresh(key):
+                state = self._state.entries.get(key)
+                slot = state.full if state is not None else None
+                if slot is not None and not slot.present and self._is_fresh(key):
                     self._state.negative_hits += 1
                     # Mark the marker most-recently-used so eviction stays LRU:
                     # a frequently-probed absent key should outlive cold markers.
+                    slot.last_used = time.monotonic()
                     self._state.entries.move_to_end(key)
                     return None
 
-        entry_key: _CacheEntryKey = (key, byte_range) if byte_range is not None else key
-        if not self._is_fresh(entry_key):
+        if not self._is_fresh(key, byte_range):
             return await self._get_no_cache(key, prototype, byte_range)
         else:
             return await self._get_try_cache(key, prototype, byte_range)
@@ -604,11 +768,11 @@ class CacheStore(WrapperStore[Store]):
         """
         await super().set(key, value)
         # Invalidate all cached byte-range entries (source data changed) and drop any
-        # negative entry — the key now has a value.
+        # negative entry — the key now has a value. (No ``cache_missing`` gate here:
+        # a marker recorded before the flag was flipped off must still be cleared.)
         async with self._state.lock:
             self._invalidate_range_entries(key)
-            if self.cache_missing:
-                self._evict_missing(key)
+            self._evict_missing(key)
         if self.cache_set_data:
             await self._cache.set(key, value)
             tracked = await self._track_entry(key, value)
@@ -619,7 +783,7 @@ class CacheStore(WrapperStore[Store]):
         else:
             await self._cache.delete(key)
             async with self._state.lock:
-                self._remove_from_tracking(key)
+                self._drop_full_slot(key)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
@@ -640,10 +804,8 @@ class CacheStore(WrapperStore[Store]):
         # always safe. We do not populate the positive cache here: there is no
         # guaranteed-fresh value to store (the write may have been a no-op).
         async with self._state.lock:
-            self._invalidate_range_entries(key)
+            self._drop_key(key)
         await self._cache.delete(key)
-        async with self._state.lock:
-            self._remove_from_tracking(key)
 
     async def delete(self, key: str) -> None:
         """
@@ -655,17 +817,21 @@ class CacheStore(WrapperStore[Store]):
             The key to delete
         """
         await super().delete(key)
-        # Invalidate all cached byte-range entries
+        # Drop the key's whole record: full slot and byte-range entries together.
         async with self._state.lock:
-            self._invalidate_range_entries(key)
+            self._drop_key(key)
         await self._cache.delete(key)
-        async with self._state.lock:
-            self._remove_from_tracking(key)
 
     def cache_info(self) -> dict[str, Any]:
-        """Return information about the cache state."""
-        present = sum(1 for entry in self._state.entries.values() if entry.present)
-        missing = len(self._state.entries) - present
+        """Return information about the cache state.
+
+        Counts are per source key: ``tracked_keys`` is the number of keys with any
+        tracked state, ``missing_keys`` the number marked absent, and
+        ``cached_keys`` the number holding cached data (a full value and/or
+        byte-range entries).  A key is never counted as both cached and missing.
+        """
+        tracked = len(self._state.entries)
+        missing = self._state.negative_count
         return {
             "cache_store_type": type(self._cache).__name__,
             "max_age_seconds": "infinity"
@@ -675,8 +841,8 @@ class CacheStore(WrapperStore[Store]):
             "current_size": self._state.current_size,
             "cache_set_data": self.cache_set_data,
             "cache_missing": self.cache_missing,
-            "tracked_keys": len(self._state.entries),
-            "cached_keys": present,
+            "tracked_keys": tracked,
+            "cached_keys": tracked - missing,
             "missing_keys": missing,
         }
 
@@ -708,13 +874,12 @@ class CacheStore(WrapperStore[Store]):
         # negative_hits) are lifetime stats and intentionally survive a clear.
         async with self._state.lock:
             self._state.entries.clear()
-            self._state.range_cache.clear()
             self._state.current_size = 0
             self._state.negative_count = 0
 
     def __repr__(self) -> str:
         """Return string representation of the cache store."""
-        cached_keys = sum(1 for entry in self._state.entries.values() if entry.present)
+        cached_keys = len(self._state.entries) - self._state.negative_count
         return (
             f"{self.__class__.__name__}("
             f"store={self._store!r}, "
