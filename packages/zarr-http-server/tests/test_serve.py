@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -9,7 +10,7 @@ import pytest
 import zarr
 from starlette.testclient import TestClient
 from zarr.buffer import cpu
-from zarr.storage import LocalStore
+from zarr.storage import LocalStore, MemoryStore
 
 from zarr_http_server._serve import (
     CorsOptions,
@@ -1015,6 +1016,48 @@ class TestHostileKeysAreNotServerErrors:
 
         assert client.get(path).status_code == 404
         assert client.put(path, content=b"x").status_code == 404
+
+
+class TestGenericStoreFailuresAreNotMisses:
+    """Only an error that answers about the *name* may become a 404.
+
+    `ENAMETOOLONG` says no such name is expressible, which is an answer about
+    the key. `EINVAL` is POSIX's catch-all and is reachable on a perfectly
+    ordinary short key -- a bad seek, an unsupported filesystem feature -- so
+    reporting it as absence would have a v3 reader write fill values over a
+    chunk that exists but could not be read.
+    """
+
+    @staticmethod
+    def _store_failing_with(code: int) -> Store:
+        class Failing(MemoryStore):
+            async def get(self, key: str, prototype: Any, byte_range: Any = None) -> Any:
+                raise OSError(code, os.strerror(code))
+
+            async def set(self, key: str, value: Any) -> None:
+                raise OSError(code, os.strerror(code))
+
+        return Failing()
+
+    def test_einval_is_not_reported_as_absent(self) -> None:
+        """The regression this class exists for."""
+        client = TestClient(
+            store_app(self._store_failing_with(errno.EINVAL), methods={"GET", "PUT"}),
+            raise_server_exceptions=False,
+        )
+
+        assert client.get("/c/0/0").status_code >= 500
+        assert client.put("/c/0/0", content=b"data").status_code >= 500
+
+    def test_enametoolong_is_still_a_miss(self) -> None:
+        """A name the store cannot express holds nothing, so 404 is honest."""
+        client = TestClient(
+            store_app(self._store_failing_with(errno.ENAMETOOLONG), methods={"GET", "PUT"}),
+            raise_server_exceptions=False,
+        )
+
+        assert client.get("/c/0/0").status_code == 404
+        assert client.put("/c/0/0", content=b"data").status_code == 404
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

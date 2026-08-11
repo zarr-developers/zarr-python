@@ -256,13 +256,24 @@ def _is_drive_qualified(path: str) -> bool:
 
 
 def _names_nothing(exc: OSError) -> bool:
-    """Whether an `OSError` says the key cannot name anything, not that I/O failed.
+    """Whether an `OSError` answers about the *name*, rather than reporting failure.
 
-    A key longer than the filesystem permits, or containing bytes it forbids,
-    can never identify a stored object, so a miss is the honest answer. Every
-    other `errno` -- a full disk, a read-only mount, a permissions problem, a
-    device error -- describes a failure to complete the operation and must
-    surface as such.
+    `ENAMETOOLONG` is the store saying no such name is expressible here. That
+    is an answer about the key -- nothing can be stored under it, so a miss is
+    honest -- and it is unreachable for real data, because `encode_chunk_key`
+    never produces a segment near a filesystem's length limit. Answering 404
+    therefore cannot make a reader substitute fill values over a chunk that
+    exists, and it keeps a client from turning a freely chosen key into a 5xx.
+
+    Every other `errno` describes a failure to complete the operation and must
+    surface as one. `EINVAL` was accepted here and was the dangerous case: it
+    is POSIX's catch-all, reachable on a perfectly ordinary short key through
+    a bad seek or an unsupported filesystem feature. Under the v3 spec an
+    absent chunk is an uninitialized one, so reporting such a failure as 404
+    has a correct reader write fill values over data that is merely
+    unreadable. When in doubt the store's own signal is the one to trust:
+    `None` means absent, a raised error means the request could not be
+    answered.
 
     Parameters
     ----------
@@ -273,7 +284,7 @@ def _names_nothing(exc: OSError) -> bool:
     -------
     bool
     """
-    return exc.errno in (errno.ENAMETOOLONG, errno.EINVAL)
+    return exc.errno == errno.ENAMETOOLONG
 
 
 def _content_range(byte_range: RangeByteRequest | OffsetByteRequest, length: int) -> str:
