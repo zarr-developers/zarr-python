@@ -96,6 +96,34 @@ with serve_node(arr, host="127.0.0.1", port=8000, background=True) as server:
 # Server is shut down automatically when the block exits.
 ```
 
+### Uvicorn Configuration
+
+`serve_store` and `serve_node` name the options most callers need — `host`,
+`port`, `background`, `shutdown_timeout` — and forward anything else to
+`uvicorn.Config` through `uvicorn_options`, so nothing uvicorn can do is out
+of reach:
+
+```python
+server = serve_store(
+    store,
+    host="0.0.0.0",
+    port=8443,
+    background=True,
+    uvicorn_options={
+        "ssl_keyfile": "key.pem",
+        "ssl_certfile": "cert.pem",
+        "proxy_headers": True,
+        "forwarded_allow_ips": "10.0.0.0/8",
+        "log_level": "warning",
+    },
+)
+```
+
+Keys you pass are merged over the ones set for you, so they win. `server.url`
+reflects the scheme actually in use (`https` when TLS is configured) and is
+`None` when the server is not bound to a TCP host and port — a `uds` or `fd`
+bind has no URL to report.
+
 ### CORS Support
 
 Both `store_app` and `node_app` (and their `serve_*` counterparts) accept a
@@ -115,6 +143,21 @@ app = store_app(
 )
 ```
 
+`CorsOptions` carries every parameter Starlette's `CORSMiddleware` accepts —
+`allow_headers`, `allow_credentials`, `allow_origin_regex`,
+`allow_private_network`, `expose_headers` and `max_age` as well as the two
+above — so configuring CORS never means reaching around this package. All keys
+are optional.
+
+Two defaults differ from Starlette's, because the server knows things the
+caller should not have to. It emits `Content-Range` on every ranged response,
+which is *not* a CORS-safelisted response header, so `expose_headers` defaults
+to `["Content-Range"]` — otherwise a browser client can read the bytes but not
+learn which bytes it got. And it accepts a `Range` request header, so
+`allow_headers` defaults to `["Range"]` — otherwise a preflight naming `Range`
+is rejected. A key you supply replaces the default outright, so
+`expose_headers=[]` means "expose nothing".
+
 ### HTTP Range Requests
 
 The server supports the standard `Range` header for partial reads.  The three
@@ -127,9 +170,20 @@ forms defined by [RFC 7233](https://httpwg.org/specs/rfc7233.html) are supported
 | `bytes=-50`          | Last 50 bytes                  |
 
 A successful range request returns HTTP 206 (Partial Content) with a
-`Content-Range` header. A range that cannot be satisfied -- one lying wholly
-beyond the end of the object, or an inverted one such as `bytes=5-2` --
-returns 416 (Range Not Satisfiable).
+`Content-Range` header, including for suffix ranges — the server resolves
+`bytes=-50` against the object's size so the response says which bytes it
+carries.
+
+A range that is well-formed but names nothing readable — one lying wholly
+beyond the end of the object, an inverted one such as `bytes=5-2`, or
+`bytes=-0` — returns 416 (Range Not Satisfiable). A last-byte-position past
+the end of the object is *not* in that category: per RFC 9110 §14.1.2 it is
+clamped, so `bytes=0-999999` on a short object returns the whole thing.
+
+A `Range` header the server cannot use is **ignored** rather than refused, per
+RFC 9110 §14.2: an unrecognized unit (`chars=0-7`), a multi-range request
+(`bytes=0-7, 10-20`, which this server does not build multipart responses
+for), or malformed syntax all return 200 with the full representation.
 
 ### Write Support
 

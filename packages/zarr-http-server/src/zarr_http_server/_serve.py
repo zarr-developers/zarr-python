@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, overload
+from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, overload
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.buffer import cpu
@@ -15,6 +15,8 @@ from zarr.buffer import cpu
 from zarr_http_server._keys import is_valid_node_key
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import uvicorn
     from starlette.applications import Starlette
     from starlette.requests import Request
@@ -34,9 +36,43 @@ __all__ = [
 ]
 
 
-class CorsOptions(TypedDict):
+class CorsOptions(TypedDict, total=False):
+    """Options forwarded to Starlette's `CORSMiddleware`.
+
+    Every parameter the middleware accepts appears here, so configuring CORS
+    never requires reaching around this package. Keys left out fall back to
+    the defaults described below; a key that is present is used verbatim,
+    including an empty list.
+
+    Two defaults differ from Starlette's own, because this server knows
+    something its caller should not have to. It emits `Content-Range` on
+    every ranged response, which is *not* a CORS-safelisted response header --
+    with Starlette's empty `expose_headers` a browser client can read the
+    bytes but not learn which bytes it got. And it accepts a `Range` request
+    header, which Starlette's empty `allow_headers` would reject at preflight.
+
+    * `expose_headers` defaults to `["Content-Range"]`
+    * `allow_headers` defaults to `["Range"]`
+
+    Everything else defaults to the middleware's own value: no origins, `GET`
+    only, no credentials, no origin regex, no private-network access, and a
+    600-second preflight cache.
+    """
+
     allow_origins: list[str]
     allow_methods: list[str]
+    allow_headers: list[str]
+    allow_credentials: bool
+    allow_origin_regex: str | None
+    allow_private_network: bool
+    expose_headers: list[str]
+    max_age: int
+
+
+_CORS_DEFAULTS: CorsOptions = {
+    "expose_headers": ["Content-Range"],
+    "allow_headers": ["Range"],
+}
 
 
 HTTPMethod = Literal["GET", "PUT", "HEAD"]
@@ -69,6 +105,16 @@ class BackgroundServer:
     ----------
     server : uvicorn.Server
         The running uvicorn server instance.
+    thread : threading.Thread
+        The daemon thread running the server.
+    host : str or None
+        The host the server was asked to bind, or ``None`` when it is not
+        listening on a TCP socket.
+    port : int or None
+        The port actually bound, or ``None`` when the server is not listening
+        on a TCP socket.
+    scheme : str, optional
+        URL scheme the server is reachable over. Defaults to ``"http"``.
     shutdown_timeout : int, optional
         Seconds to wait for in-flight requests to finish gracefully during
         :meth:`shutdown` before forcing the server closed. Defaults to ``5``.
@@ -85,20 +131,29 @@ class BackgroundServer:
         server: uvicorn.Server,
         thread: threading.Thread,
         *,
-        host: str,
-        port: int,
+        host: str | None,
+        port: int | None,
+        scheme: str = "http",
         shutdown_timeout: int = 5,
     ) -> None:
         self._server = server
         self._thread = thread
         self.host = host
         self.port = port
+        self.scheme = scheme
         self._shutdown_timeout = shutdown_timeout
 
     @property
-    def url(self) -> str:
-        """The base URL of the running server."""
-        return f"http://{self.host}:{self.port}"
+    def url(self) -> str | None:
+        """The base URL of the running server.
+
+        ``None`` when the server is not listening on a TCP socket -- a unix
+        socket or an inherited file descriptor has no host and port, and
+        inventing one would be a URL that connects to nothing.
+        """
+        if self.host is None or self.port is None:
+            return None
+        return f"{self.scheme}://{self.host}:{self.port}"
 
     def shutdown(self) -> None:
         """Signal the server to shut down and wait for it to stop.
@@ -519,8 +574,12 @@ def _make_starlette_app(
     if cors_options is not None:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=cors_options["allow_origins"],
-            allow_methods=cors_options["allow_methods"],
+            # Our defaults first, so a key the caller supplied wins outright
+            # rather than being merged into -- an explicit `expose_headers: []`
+            # means "expose nothing", not "expose our default". The cast is
+            # confined to the call: `CorsOptions` is a TypedDict, but
+            # unpacking a merged one loses the per-key types.
+            **cast("dict[str, Any]", {**_CORS_DEFAULTS, **cors_options}),
         )
     return app
 
@@ -532,6 +591,7 @@ def _start_server(
     port: int,
     background: bool,
     shutdown_timeout: int = 5,
+    uvicorn_options: Mapping[str, object] | None = None,
 ) -> BackgroundServer | None:
     """Create a uvicorn server for *app* and either block or run in a daemon thread.
 
@@ -539,10 +599,25 @@ def _start_server(
     in-flight requests (``timeout_graceful_shutdown``), and, for a
     background server, is also the bound :meth:`BackgroundServer.shutdown`
     uses before forcing the server thread closed.
+
+    ``uvicorn_options`` is merged over the three options set here, so a caller
+    can reach any `uvicorn.Config` parameter -- TLS, proxy headers, root path,
+    log level, a unix socket -- without this package having to mirror them.
     """
     import uvicorn
 
-    config = uvicorn.Config(app, host=host, port=port, timeout_graceful_shutdown=shutdown_timeout)
+    options: dict[str, object] = {
+        "host": host,
+        "port": port,
+        "timeout_graceful_shutdown": shutdown_timeout,
+    }
+    if uvicorn_options is not None:
+        options.update(uvicorn_options)
+
+    # uvicorn.Config's parameters are individually typed and there are ~50 of
+    # them; `Mapping[str, object]` is the honest type for the public argument,
+    # so the cast is confined to the call itself.
+    config = uvicorn.Config(app, **cast("dict[str, Any]", options))
     server = uvicorn.Server(config)
 
     if not background:
@@ -569,16 +644,32 @@ def _start_server(
         time.sleep(0.01)
 
     # Report the port the socket actually bound rather than the one asked for,
-    # so `port=0` ("pick a free port") yields a usable `url`.
-    bound_port = port
+    # so `port=0` ("pick a free port") yields a usable `url`. A unix-socket or
+    # file-descriptor bind has no host and port at all, so both stay None and
+    # `url` reports None rather than naming an address nothing is listening on.
+    bound_port: int | None = None
     for bound in server.servers:
         for sock in bound.sockets:
-            bound_port = int(sock.getsockname()[1])
+            sockname = sock.getsockname()
+            if isinstance(sockname, tuple) and len(sockname) >= 2:
+                bound_port = int(sockname[1])
             break
         break
 
+    # The host is taken from the request rather than the socket: a wildcard
+    # bind reports "0.0.0.0", which is not an address a client can connect to.
+    requested_host = options.get("host")
+    bound_host = (
+        str(requested_host) if bound_port is not None and requested_host is not None else None
+    )
+
     return BackgroundServer(
-        server, thread, host=host, port=bound_port, shutdown_timeout=shutdown_timeout
+        server,
+        thread,
+        host=bound_host,
+        port=bound_port,
+        scheme="https" if config.is_ssl else "http",
+        shutdown_timeout=shutdown_timeout,
     )
 
 
@@ -678,6 +769,7 @@ def serve_store(
     max_body_size: int | None = ...,
     background: Literal[False] = ...,
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> None: ...
 
 
@@ -692,6 +784,7 @@ def serve_store(
     max_body_size: int | None = ...,
     background: Literal[True],
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> BackgroundServer: ...
 
 
@@ -706,6 +799,7 @@ def serve_store(
     max_body_size: int | None = ...,
     background: bool,
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> BackgroundServer | None: ...
 
 
@@ -719,6 +813,7 @@ def serve_store(
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
     shutdown_timeout: int = 5,
+    uvicorn_options: Mapping[str, object] | None = None,
 ) -> BackgroundServer | None:
     """Serve every key in a zarr ``Store`` over HTTP.
 
@@ -763,7 +858,12 @@ def serve_store(
     """
     app = store_app(store, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
     return _start_server(
-        app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
+        app,
+        host=host,
+        port=port,
+        background=background,
+        shutdown_timeout=shutdown_timeout,
+        uvicorn_options=uvicorn_options,
     )
 
 
@@ -778,6 +878,7 @@ def serve_node(
     max_body_size: int | None = ...,
     background: Literal[False] = ...,
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> None: ...
 
 
@@ -792,6 +893,7 @@ def serve_node(
     max_body_size: int | None = ...,
     background: Literal[True],
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> BackgroundServer: ...
 
 
@@ -806,6 +908,7 @@ def serve_node(
     max_body_size: int | None = ...,
     background: bool,
     shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
 ) -> BackgroundServer | None: ...
 
 
@@ -819,6 +922,7 @@ def serve_node(
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
     shutdown_timeout: int = 5,
+    uvicorn_options: Mapping[str, object] | None = None,
 ) -> BackgroundServer | None:
     """Serve only the keys belonging to a zarr ``Array`` or ``Group`` over HTTP.
 
@@ -873,5 +977,10 @@ def serve_node(
     """
     app = node_app(node, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
     return _start_server(
-        app, host=host, port=port, background=background, shutdown_timeout=shutdown_timeout
+        app,
+        host=host,
+        port=port,
+        background=background,
+        shutdown_timeout=shutdown_timeout,
+        uvicorn_options=uvicorn_options,
     )

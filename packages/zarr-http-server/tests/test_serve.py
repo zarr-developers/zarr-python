@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import os
+import socket
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -1274,3 +1275,153 @@ class TestBackgroundServerBoundedShutdown:
         assert elapsed < 3.0, f"shutdown() took {elapsed:.2f}s, expected well under 3s"
 
         request_thread.join(timeout=10)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestCorsOptionsCoverTheMiddleware:
+    """`CorsOptions` exposes every `CORSMiddleware` parameter, with our own
+    defaults only for the two the server knows about."""
+
+    _ORIGIN = "https://viewer.example"
+
+    def _client(self, store: Store, cors: CorsOptions) -> TestClient:
+        return TestClient(store_app(store, methods={"GET"}, cors_options=cors))
+
+    def test_ranged_response_is_readable_cross_origin(self, store: Store) -> None:
+        """`Content-Range` is not CORS-safelisted, so without `expose_headers`
+        a browser reads the bytes but cannot learn which bytes it got."""
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"0123456789")))
+        client = self._client(store, {"allow_origins": [self._ORIGIN], "allow_methods": ["GET"]})
+
+        response = client.get("/k", headers={"Origin": self._ORIGIN, "Range": "bytes=0-3"})
+
+        assert response.status_code == 206
+        assert response.headers["access-control-expose-headers"] == "Content-Range"
+
+    def test_range_survives_a_preflight(self, store: Store) -> None:
+        """A preflight naming `Range` must be allowed, not answered 400."""
+        client = self._client(store, {"allow_origins": [self._ORIGIN], "allow_methods": ["GET"]})
+
+        preflight = client.options(
+            "/k",
+            headers={
+                "Origin": self._ORIGIN,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "range",
+            },
+        )
+
+        assert preflight.status_code == 200
+        assert "Range" in preflight.headers["access-control-allow-headers"]
+
+    def test_caller_value_replaces_the_default(self, store: Store) -> None:
+        """Our defaults apply only to absent keys; a supplied key wins outright
+        so `expose_headers: []` means "expose nothing", not "expose ours"."""
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+        base: CorsOptions = {"allow_origins": [self._ORIGIN], "allow_methods": ["GET"]}
+
+        empty = self._client(store, {**base, "expose_headers": []})
+        assert (
+            "access-control-expose-headers"
+            not in empty.get("/k", headers={"Origin": self._ORIGIN}).headers
+        )
+
+        custom = self._client(store, {**base, "expose_headers": ["X-Custom"]})
+        assert (
+            custom.get("/k", headers={"Origin": self._ORIGIN}).headers[
+                "access-control-expose-headers"
+            ]
+            == "X-Custom"
+        )
+
+    def test_parameters_beyond_the_original_two_are_reachable(self, store: Store) -> None:
+        """The regression this class exists for: `CorsOptions` used to carry
+        only `allow_origins` and `allow_methods`, sealing the rest away."""
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+        client = self._client(
+            store,
+            {
+                "allow_origin_regex": r"https://.*\.example",
+                "allow_credentials": True,
+                "max_age": 30,
+            },
+        )
+        origin = "https://sub.example"
+
+        response = client.get("/k", headers={"Origin": origin})
+        assert response.headers["access-control-allow-origin"] == origin
+        assert response.headers["access-control-allow-credentials"] == "true"
+
+        preflight = client.options(
+            "/k", headers={"Origin": origin, "Access-Control-Request-Method": "GET"}
+        )
+        assert preflight.headers["access-control-max-age"] == "30"
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+class TestUvicornOptionsAreNotSealedOff:
+    """`uvicorn.Config` takes ~50 parameters; naming four of them and dropping
+    the rest would put TLS, proxy headers, `root_path` and log level out of
+    reach entirely."""
+
+    def test_options_reach_uvicorn_config(self, store: Store) -> None:
+        """A key this signature does not name still lands on the Config."""
+        from zarr_http_server import serve_store
+
+        server = serve_store(
+            store,
+            host="127.0.0.1",
+            port=0,
+            background=True,
+            uvicorn_options={"root_path": "/api", "log_level": "warning"},
+        )
+        assert server is not None
+        try:
+            config = server._server.config
+            assert config.root_path == "/api"
+            assert config.log_level == "warning"
+            # Ours still apply where the caller did not override them.
+            assert config.timeout_graceful_shutdown == 5
+        finally:
+            server.shutdown()
+
+    def test_caller_options_win_over_ours(self, store: Store) -> None:
+        """The merge order is ours-then-theirs, so a caller can override even
+        an option this signature sets itself."""
+        from zarr_http_server import serve_store
+
+        server = serve_store(
+            store,
+            host="127.0.0.1",
+            port=0,
+            background=True,
+            shutdown_timeout=5,
+            uvicorn_options={"timeout_graceful_shutdown": 11},
+        )
+        assert server is not None
+        try:
+            assert server._server.config.timeout_graceful_shutdown == 11
+        finally:
+            server.shutdown()
+
+    @pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="needs unix domain sockets")
+    def test_non_tcp_bind_reports_no_url(self, store: Store, tmp_path: pathlib.Path) -> None:
+        """A unix-socket bind has no host and port, so `url` must say so rather
+        than naming an address nothing is listening on."""
+        import httpx
+
+        from zarr_http_server import serve_store
+
+        sock = str(tmp_path / "s.sock")
+        server = serve_store(store, background=True, uvicorn_options={"uds": sock})
+        assert server is not None
+        try:
+            assert server.url is None
+            assert server.host is None
+            assert server.port is None
+            # ...and it really is serving, just not over TCP.
+            with httpx.Client(transport=httpx.HTTPTransport(uds=sock)) as client:
+                response = client.get("http://localhost/zarr.json", timeout=10)
+            assert response.status_code in (200, 404)
+        finally:
+            server.shutdown()
