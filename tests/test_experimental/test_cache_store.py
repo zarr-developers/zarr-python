@@ -1604,6 +1604,33 @@ class TestCacheStoreNegativeCaching:
         assert r3 in ranges
         assert cs._state.current_size <= 100
 
+    async def test_lru_ordering_survives_a_frozen_clock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Recency ordering must not depend on wall-clock resolution: on Windows
+        the monotonic clock ticks ~15.6 ms, so an entire touch-then-evict sequence
+        can land on one timestamp. Freeze the clock to force universal ties and
+        assert the use-tick ordering still evicts the true LRU range."""
+        import time as _time
+
+        monkeypatch.setattr(_time, "monotonic", lambda: 1000.0)
+        source = MemoryStore()
+        cs = CacheStore(source, cache_store=MemoryStore(), max_size=100)
+        proto = default_buffer_prototype()
+
+        await source.set("k", CPUBuffer.from_bytes(b"x" * 120))
+        r1 = RangeByteRequest(0, 40)
+        r2 = RangeByteRequest(40, 80)
+        r3 = RangeByteRequest(80, 120)
+        assert await cs.get("k", proto, byte_range=r1) is not None
+        assert await cs.get("k", proto, byte_range=r2) is not None
+        assert await cs.get("k", proto, byte_range=r1) is not None
+        assert await cs.get("k", proto, byte_range=r3) is not None
+        ranges = cs._state.entries["k"].ranges
+        assert r1 in ranges
+        assert r2 not in ranges
+        assert r3 in ranges
+
     async def test_eviction_candidate_prefers_markers_else_lru_key(self) -> None:
         """Candidate selection: with no markers the LRU key is returned (O(1) fast
         path); with markers present, the LRU marker wins over an older cached value."""

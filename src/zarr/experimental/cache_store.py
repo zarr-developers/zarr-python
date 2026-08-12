@@ -59,7 +59,7 @@ class _RangeEntry:
 
     Held in memory inside the key's ``_KeyState`` so partial reads never touch
     the persistent backend.  ``insert_time`` bounds staleness via
-    ``max_age_seconds``; ``last_used`` orders eviction within the key.
+    ``max_age_seconds``; ``last_used`` orders eviction within the key (a monotonic use-tick, not wall time — coarse clocks tie).
     """
 
     buffer: Buffer
@@ -124,6 +124,10 @@ class _CacheState:
     # Number of keys whose full slot is an absent marker, maintained incrementally
     # so the negative-marker cap and the eviction-candidate fast path are O(1).
     negative_count: int = 0
+    # Monotonic use-counter for within-key LRU ordering. Wall-clock recency ties
+    # on coarse clocks (Windows monotonic granularity ~15.6 ms) and mis-evicts;
+    # real time is kept only where TTL needs it (``insert_time``).
+    use_tick: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     hits: int = 0
     misses: int = 0
@@ -388,8 +392,14 @@ class CacheStore(WrapperStore[Store]):
                 await self._evict_slot(lru_absent)
 
         now = time.monotonic()
+        self._state.use_tick += 1
         state = _KeyState(
-            full=_Entry(insert_time=now, size=_NEGATIVE_ENTRY_SIZE, present=False, last_used=now)
+            full=_Entry(
+                insert_time=now,
+                size=_NEGATIVE_ENTRY_SIZE,
+                present=False,
+                last_used=self._state.use_tick,
+            )
         )
         state.assert_coherent()
         # The key was popped above, so this assignment appends it as most-recent.
@@ -523,8 +533,14 @@ class CacheStore(WrapperStore[Store]):
         # as most-recently-used).
         await self._accommodate_value(value_size)
         now = time.monotonic()
+        self._state.use_tick += 1
         state = _KeyState(
-            full=_Entry(insert_time=now, size=value_size, present=True, last_used=now)
+            full=_Entry(
+                insert_time=now,
+                size=value_size,
+                present=True,
+                last_used=self._state.use_tick,
+            )
         )
         state.assert_coherent()
         self._state.entries[key] = state
@@ -574,8 +590,9 @@ class CacheStore(WrapperStore[Store]):
         if state is None:
             state = _KeyState()
         now = time.monotonic()
+        self._state.use_tick += 1
         state.ranges[byte_range] = _RangeEntry(
-            buffer=value, insert_time=now, size=value_size, last_used=now
+            buffer=value, insert_time=now, size=value_size, last_used=self._state.use_tick
         )
         state.assert_coherent()
         self._state.entries[key] = state
@@ -590,14 +607,15 @@ class CacheStore(WrapperStore[Store]):
             state = self._state.entries.get(key)
             if state is None:
                 return
-            now = time.monotonic()
+            self._state.use_tick += 1
+            tick = self._state.use_tick
             if byte_range is None:
                 if state.full is not None:
-                    state.full.last_used = now
+                    state.full.last_used = tick
             else:
                 range_entry = state.ranges.get(byte_range)
                 if range_entry is not None:
-                    range_entry.last_used = now
+                    range_entry.last_used = tick
             self._state.entries.move_to_end(key)
 
     # ------------------------------------------------------------------
@@ -789,7 +807,8 @@ class CacheStore(WrapperStore[Store]):
                     self._state.negative_hits += 1
                     # Mark the marker most-recently-used so eviction stays LRU:
                     # a frequently-probed absent key should outlive cold markers.
-                    slot.last_used = time.monotonic()
+                    self._state.use_tick += 1
+                    slot.last_used = self._state.use_tick
                     self._state.entries.move_to_end(key)
                     return None
 
