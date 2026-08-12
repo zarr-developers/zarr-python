@@ -1,5 +1,16 @@
 # Development verbs for the zarr-http-server package. Recipes run with this
 # directory as the working directory regardless of where `just` is invoked.
+#
+# CI calls these recipes rather than repeating their commands, so a green run
+# in .github/workflows/zarr-http-server.yml means the same thing as a green
+# `just check` here.
+
+# Pinned to the ruff that .pre-commit-config.yaml uses, so this and the
+# pre-commit gate enforce one standard. An unpinned `uvx ruff` floats to the
+# newest release: when ruff 0.16 began selecting BLE001 under the root
+# config's `B` prefix, this job failed on rules the pinned ruff never enforced,
+# with no code change to blame. Bump alongside the pre-commit rev.
+ruff_version := "0.16.0"
 
 # List available recipes
 default:
@@ -12,9 +23,9 @@ default:
 test *args:
     uv run --group test --group examples pytest tests {{ args }}
 
-# Lint with the same invocation CI uses
+# Lint the package sources and tests
 lint:
-    uvx ruff check .
+    uvx ruff@{{ ruff_version }} check .
 
 # This package type-checks with mypy (see [tool.mypy] in pyproject.toml)
 # rather than the pyright used by the other packages under packages/.

@@ -1,5 +1,10 @@
 name: zarr-http-server
 
+# Job steps delegate to packages/zarr-http-server/justfile, the single source
+# of truth for this package's verbs; CI owns only the python matrix and
+# caching. Keeping the commands in one place is what makes `just check`
+# locally mean the same thing as a green run here.
+
 on:
   push:
     branches: [main]
@@ -47,13 +52,15 @@ jobs:
           enable-cache: true
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Sync test dependency groups
         # The examples group carries the deps the README examples need, so the
         # test that reads a served array back with a zarr client runs here
         # instead of silently skipping.
         run: uv sync --group test --group examples --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --group test --group examples pytest tests
+        run: just test
 
   ruff:
     name: ruff
@@ -68,8 +75,10 @@ jobs:
           persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run ruff
-        run: uvx ruff check .
+        run: just lint
 
   mypy:
     name: mypy
@@ -88,10 +97,12 @@ jobs:
           enable-cache: true
       - name: Set up Python
         run: uv python install 3.12
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
       - name: Run mypy
-        run: uv run --group test --with mypy mypy src
+        run: just typecheck
 
   docs:
     name: docs
