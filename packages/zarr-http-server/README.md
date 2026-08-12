@@ -9,7 +9,7 @@ ASGI app, so any HTTP-capable client — including zarr-python itself, via
 `FsspecStore` or `ObjectStore` — can read the data. The app is built on
 [Starlette](https://www.starlette.io/) and can be run with any ASGI server;
 the `serve` / `serve_background` helpers run it with
-[Uvicorn](https://www.uvicorn.org/).
+[Uvicorn](https://uvicorn.dev/).
 
 > [!WARNING]
 > This package is experimental. Its API may change or be removed at any point.
