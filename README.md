@@ -51,5 +51,3 @@ This repository contains several packages:
 - [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata.
 - [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays.
 - [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data.
-
-For data saved in the Zarr V2 format, many chunk encoding implementations are defined in the [`numcodecs`](https://github.com/zarr-developers/numcodecs/) library.
