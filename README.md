@@ -45,9 +45,8 @@ For more details, including how to install from source, see the [installation do
 
 ## Ecosystem
 
-This repository contains several packages:
+In addition to the primary `zarr` implementation, this repository contains other packages that provide specialized functionality with minimal dependencies:
 
-- [`zarr`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): The Python implementation of the Zarr storage format.
-- [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata.
-- [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays.
-- [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data.
+- [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata. Install with `pip install zarr-metadata`.
+- [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays. Install with `pip install zarr-indexing`.
+- [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data. Install with `pip install zarr-http-server`.
