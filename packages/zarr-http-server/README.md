@@ -71,6 +71,14 @@ on. These are two functions rather than one with a flag, because they differ
 in the only thing that matters at a call site: whether control comes back. The
 handle is also a context manager:
 
+Both default to `port="auto"`, which prefers port 8000 but falls back to any
+free port if it is taken, reporting the result through `server.url` and
+uvicorn's startup line. An **explicit** port means the opposite — bind exactly
+that or fail — because a caller who names one usually has a proxy or a
+container port mapping expecting the server there, and silently moving would
+break it while looking healthy. `port=0` keeps its usual meaning of "any free
+port, no preference".
+
 The example below also *reads back* over HTTP, which is a client-side
 concern: `zarr.open_array(server.url)` goes through `FsspecStore`, which needs
 an HTTP-capable fsspec that `zarr-http-server` does not pull in.
@@ -161,10 +169,11 @@ server.shutdown()
 
 Two things make this comfortable in a kernel you re-run. `serve_background`
 runs Uvicorn in a daemon thread with its own event loop, so it never touches
-the kernel's loop and cannot block it. And it defaults to `port=0`, asking the
-OS for a free port — re-running a start cell without stopping the previous
-server is the classic notebook mistake, and a fixed port fails there with
-*address already in use*. `server.url` reports the port actually bound.
+the kernel's loop and cannot block it. And its default `port="auto"` falls
+back to a free port when 8000 is taken — re-running a start cell without
+stopping the previous server is the classic notebook mistake, and a fixed port
+fails there with *address already in use*. `server.url` reports the port
+actually bound.
 
 If you forget to stop one, the thread is a daemon, so restarting the kernel
 always clears it — and since each start takes a fresh port, a forgotten server

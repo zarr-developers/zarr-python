@@ -3,7 +3,9 @@
 from importlib.metadata import version
 
 from zarr_http_server._serve import (
+    AUTO_PORT,
     DEFAULT_MAX_BODY_SIZE,
+    DEFAULT_PORT,
     READ_ONLY_HTTP_METHODS,
     READ_WRITE_HTTP_METHODS,
     BackgroundServer,
@@ -19,7 +21,9 @@ from zarr_http_server._serve import (
 __version__ = version("zarr-http-server")
 
 __all__ = [
+    "AUTO_PORT",
     "DEFAULT_MAX_BODY_SIZE",
+    "DEFAULT_PORT",
     "READ_ONLY_HTTP_METHODS",
     "READ_WRITE_HTTP_METHODS",
     "BackgroundServer",

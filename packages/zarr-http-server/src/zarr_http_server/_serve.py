@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 import ntpath
+import socket
 import sys
 import threading
 import time
 from enum import Enum, auto
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, get_args
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
@@ -26,7 +29,9 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest, Store
 
 __all__ = [
+    "AUTO_PORT",
     "DEFAULT_MAX_BODY_SIZE",
+    "DEFAULT_PORT",
     "READ_ONLY_HTTP_METHODS",
     "READ_WRITE_HTTP_METHODS",
     "BackgroundServer",
@@ -138,6 +143,22 @@ writable deployments findable: grepping for `READ_WRITE_HTTP_METHODS` (or for
 """
 
 _SUPPORTED_METHODS: frozenset[str] = READ_WRITE_HTTP_METHODS
+
+_LOGGER = logging.getLogger("uvicorn.error")
+"""uvicorn's own logger, so a port fallback appears alongside its startup lines."""
+
+DEFAULT_PORT = 8000
+"""Port tried first when `port="auto"`."""
+
+AUTO_PORT: Literal["auto"] = "auto"
+"""Sentinel for `port`: prefer `DEFAULT_PORT`, but settle for any free port.
+
+An explicit port is a requirement -- it binds that port or fails -- because a
+caller who names one usually has something else expecting the server there.
+`"auto"` says the opposite: no particular port is needed, so a collision
+should not stop the server from starting. `port=0` keeps its usual meaning of
+"any free port", with no preference.
+"""
 
 _STARTUP_TIMEOUT = 5.0
 """Seconds to wait for a background server to report that it is listening."""
@@ -805,15 +826,15 @@ def _build_server(
     app: Starlette,
     *,
     host: str,
-    port: int,
+    port: int | Literal["auto"],
     shutdown_timeout: int,
     uvicorn_options: Mapping[str, object] | None,
-) -> tuple[uvicorn.Server, dict[str, object]]:
-    """Configure a `uvicorn.Server` for *app*, and report the options used.
+) -> tuple[uvicorn.Server, dict[str, object], socket.socket | None]:
+    """Configure a `uvicorn.Server` for *app*, and report how it will bind.
 
-    The options come back so a caller can see what was actually asked for --
-    `serve_background` needs the host to build a URL, and a key from
-    `uvicorn_options` may have replaced the one passed here.
+    Returns the options actually used -- a key from `uvicorn_options` may have
+    replaced one passed here -- and, for `port="auto"`, the socket already
+    bound on the caller's behalf, which must be handed to `Server.run`.
     """
     import uvicorn
 
@@ -825,17 +846,68 @@ def _build_server(
     if uvicorn_options is not None:
         options.update(uvicorn_options)
 
+    sock: socket.socket | None = None
+    if options.get("port") == AUTO_PORT:
+        if _binds_without_a_port(options):
+            # A uds or fd bind ignores host and port; leave a valid int in
+            # place of the sentinel so `Config` still type-checks.
+            options["port"] = DEFAULT_PORT
+        else:
+            # Bind here rather than probing and handing uvicorn a port number:
+            # probing would release the port before uvicorn claimed it, which
+            # is the bind-then-close race that makes "find a free port" helpers
+            # flaky. Holding the socket means nothing can take it in between.
+            sock = _bind_preferred_or_free(str(options["host"]), DEFAULT_PORT)
+            # Keep Config agreeing with reality, so uvicorn's own "running on
+            # ..." line names the port it is really serving.
+            options["port"] = sock.getsockname()[1]
+
     # uvicorn.Config's parameters are individually typed and there are ~50 of
     # them; `Mapping[str, object]` is the honest type for the public argument,
     # so the cast is confined to the call itself.
-    return uvicorn.Server(uvicorn.Config(app, **cast("dict[str, Any]", options))), options
+    return uvicorn.Server(uvicorn.Config(app, **cast("dict[str, Any]", options))), options, sock
+
+
+def _binds_without_a_port(options: Mapping[str, object]) -> bool:
+    """Whether these options bind something other than a TCP host and port."""
+    return options.get("uds") is not None or options.get("fd") is not None
+
+
+def _bind_preferred_or_free(host: str, preferred: int) -> socket.socket:
+    """Bind *preferred* on *host* if it is free, otherwise any free port.
+
+    The address family comes from `getaddrinfo` rather than being assumed:
+    hard-coding `AF_INET` would fail for an IPv6 host such as ``"::1"``.
+    """
+    for candidate in (preferred, 0):
+        family, socktype, proto, _, sockaddr = socket.getaddrinfo(
+            host, candidate, type=socket.SOCK_STREAM
+        )[0]
+        sock = socket.socket(family, socktype, proto)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(sockaddr)
+        except OSError:
+            sock.close()
+            if candidate == 0:
+                # Nothing is free, which is a real failure rather than a
+                # reason to keep looking.
+                raise
+            _LOGGER.info(
+                "port %d is in use; binding a free port instead. Pass an "
+                "explicit port to require a particular one.",
+                preferred,
+            )
+            continue
+        return sock
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def serve(
     app: Starlette,
     *,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int | Literal["auto"] = AUTO_PORT,
     shutdown_timeout: int = 5,
     uvicorn_options: Mapping[str, object] | None = None,
 ) -> None:
@@ -874,21 +946,21 @@ def serve(
         reverse proxy, `root_path` when mounted under a prefix, `log_level`,
         `limit_concurrency`, or a `uds` / `fd` bind.
     """
-    server, _ = _build_server(
+    server, _, sock = _build_server(
         app,
         host=host,
         port=port,
         shutdown_timeout=shutdown_timeout,
         uvicorn_options=uvicorn_options,
     )
-    server.run()
+    server.run(sockets=[sock] if sock is not None else None)
 
 
 def serve_background(
     app: Starlette,
     *,
     host: str = "127.0.0.1",
-    port: int = 0,
+    port: int | Literal["auto"] = AUTO_PORT,
     shutdown_timeout: int = 5,
     uvicorn_options: Mapping[str, object] | None = None,
 ) -> BackgroundServer:
@@ -939,7 +1011,7 @@ def serve_background(
         If the server does not start -- most often because the port is
         already in use.
     """
-    server, options = _build_server(
+    server, options, sock = _build_server(
         app,
         host=host,
         port=port,
@@ -949,7 +1021,9 @@ def serve_background(
 
     # uvicorn skips signal-handler installation off the main thread
     # (Server.capture_signals), so no workaround is needed here.
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(
+        target=partial(server.run, sockets=[sock] if sock is not None else None), daemon=True
+    )
     thread.start()
 
     deadline = time.monotonic() + _STARTUP_TIMEOUT

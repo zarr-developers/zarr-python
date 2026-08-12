@@ -21,6 +21,7 @@ from zarr_http_server._serve import (
     READ_WRITE_HTTP_METHODS,
     CorsOptions,
     ReadOnlyHTTPMethod,
+    _bind_preferred_or_free,
     _parse_range_header,
     _RangeVerdict,
     node_app,
@@ -1737,5 +1738,94 @@ class TestServeAnyApp:
             assert server.url is not None
             assert httpx.get(f"{server.url}/first/c/0", timeout=30).content == first_chunk
             assert httpx.get(f"{server.url}/second/c/0", timeout=30).content == second_chunk
+        finally:
+            server.shutdown()
+
+
+class TestPortSelection:
+    """`port="auto"` prefers a predictable port but never fails over one.
+
+    An explicit port means the opposite -- bind exactly that or fail -- because
+    a caller who names one usually has something else expecting the server
+    there, and silently moving would break it while looking healthy.
+    """
+
+    @staticmethod
+    def _free_port() -> int:
+        """A port that was free a moment ago. Only ever used as the *preferred*
+        port, never bound afterwards, so the usual bind-then-close race does
+        not apply: if something takes it, that is the case under test."""
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
+
+    def test_preferred_port_is_used_when_free(self) -> None:
+        preferred = self._free_port()
+
+        sock = _bind_preferred_or_free("127.0.0.1", preferred)
+        try:
+            assert sock.getsockname()[1] == preferred
+        finally:
+            sock.close()
+
+    def test_falls_back_when_the_preferred_port_is_taken(self) -> None:
+        with socket.socket() as squatter:
+            squatter.bind(("127.0.0.1", 0))
+            squatter.listen()
+            taken = int(squatter.getsockname()[1])
+
+            sock = _bind_preferred_or_free("127.0.0.1", taken)
+            try:
+                assert sock.getsockname()[1] != taken
+            finally:
+                sock.close()
+
+    def test_address_family_follows_the_host(self) -> None:
+        """Hard-coding AF_INET would bind the wrong family for an IPv6 host."""
+        try:
+            sock = _bind_preferred_or_free("::1", 0)
+        except OSError:  # pragma: no cover - depends on the host's networking
+            pytest.skip("no IPv6 loopback available")
+        try:
+            assert sock.family == socket.AF_INET6
+        finally:
+            sock.close()
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_auto_produces_a_working_server(self, store: Store) -> None:
+        """Whichever port it lands on, `url` names it and the server answers."""
+        import httpx
+
+        server = serve_background(store_app(store))
+        try:
+            assert server.url is not None
+            assert server.port is not None
+            assert httpx.get(f"{server.url}/nope", timeout=30).status_code == 404
+        finally:
+            server.shutdown()
+
+    # uvicorn answers a failed bind with `sys.exit` on its own thread, which
+    # pytest reports as an unhandled thread exception -- and this package turns
+    # warnings into errors. That exit is exactly what the RuntimeError below
+    # reports to the caller, so it is expected here rather than a defect.
+    @pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_an_explicit_port_that_is_taken_fails(self, store: Store) -> None:
+        """The regression this class exists for: `auto` must not leak into the
+        explicit case, where a collision has to be loud."""
+        with socket.socket() as squatter:
+            squatter.bind(("127.0.0.1", 0))
+            squatter.listen()
+            taken = int(squatter.getsockname()[1])
+
+            with pytest.raises(RuntimeError, match="may already be in use"):
+                serve_background(store_app(store), port=taken)
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_port_zero_still_means_any_free_port(self, store: Store) -> None:
+        """`0` keeps its OS meaning rather than being folded into `auto`."""
+        server = serve_background(store_app(store), port=0)
+        try:
+            assert server.port not in (0, None)
         finally:
             server.shutdown()
