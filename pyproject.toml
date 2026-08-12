@@ -100,12 +100,12 @@ test = [
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
     "numpydoc==1.10.0",
-    "hypothesis==6.160.0",
+    "hypothesis==6.164.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.11.31",
+    "uv==0.12.0",
 ]
 remote-tests = [
     {include-group = "test"},
