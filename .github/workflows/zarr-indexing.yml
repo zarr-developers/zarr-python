@@ -26,28 +26,35 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: packages/zarr-indexing
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       # The transform tests exercise chunk resolution against zarr's ChunkGrid,
-      # so they run from the repo root against the root environment (which
-      # provides `zarr`) with this package as an editable overlay rather than in
-      # package isolation.
+      # so they run against the repo-root environment (which provides `zarr`)
+      # with this package as an editable overlay rather than in package
+      # isolation. The recipes carry that invocation; this step only fixes the
+      # interpreter the matrix asked for.
       - name: Sync test dependency group
-        run: uv sync --group test --python ${{ matrix.python-version }}
+        run: uv sync --project ../.. --group test --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing python -m pytest packages/zarr-indexing/tests
+        # Suites and invocation live in packages/zarr-indexing/justfile.
+        run: just test
+      - name: Run pytest (tensorstore parity)
+        run: just test-tensorstore
 
   ruff:
     name: ruff
@@ -57,13 +64,16 @@ jobs:
         shell: bash
         working-directory: packages/zarr-indexing
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run ruff
-        run: uvx ruff check .
+        # The ruff version pin lives in packages/zarr-indexing/justfile.
+        run: just lint
 
   pyright:
     name: pyright
@@ -73,19 +83,22 @@ jobs:
         shell: bash
         working-directory: packages/zarr-indexing
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
       - name: Set up Python
         run: uv python install 3.12
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run pyright
-        run: uv run --group test --with pyright pyright src
+        # The pyright invocation lives in packages/zarr-indexing/justfile.
+        run: just typecheck
 
   docs:
     name: docs
@@ -95,11 +108,11 @@ jobs:
         shell: bash
         working-directory: packages/zarr-indexing
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
       - name: Install just

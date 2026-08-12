@@ -584,6 +584,24 @@ def test_with_read_only_shares_filesystem(tmp_path: pathlib.Path) -> None:
     assert not source.read_only
 
 
+def test_make_async_preserves_unserializable_storage_options() -> None:
+    """A sync instance of an async filesystem whose storage options hold objects that
+    cannot round-trip through JSON (e.g. an Azure credential) must still convert.
+
+    See https://github.com/zarr-developers/zarr-python/issues/4220
+    """
+    pytest.importorskip("aiohttp")
+    credential = object()  # stand-in for e.g. azure.identity.DefaultAzureCredential
+    sync_fs = fsspec.filesystem("http", client_kwargs={"auth": credential})
+    assert sync_fs.async_impl
+    assert not sync_fs.asynchronous
+
+    async_fs = _make_async(sync_fs)
+
+    assert async_fs.asynchronous
+    assert async_fs.client_kwargs["auth"] is credential
+
+
 @pytest.mark.parametrize("asynchronous", [True, False])
 def test_make_async(asynchronous: bool, endpoint_url: str) -> None:
     s3_filesystem = s3fs.S3FileSystem(

@@ -101,12 +101,12 @@ test = [
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
     "numpydoc==1.10.0",
-    "hypothesis==6.160.0",
+    "hypothesis==6.164.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.11.31",
+    "uv==0.12.0",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -130,7 +130,7 @@ docs = [
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.3",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.15.22",
+    "ruff==0.16.0",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
@@ -161,9 +161,9 @@ omit = [
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
 # this filter `git describe` matches the most recent tag of any shape,
-# including the `zarr_metadata-v*` tags used to release the zarr-metadata
-# subpackage — which would make a from-source build report a `0.2.x` version
-# instead of `3.x`.
+# including the `zarr_metadata-v*` and `zarr_http_server-v*` tags used to
+# release the subpackages under `packages/` — which would make a from-source
+# build report e.g. a `0.2.x` version instead of `3.x`.
 version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
