@@ -96,6 +96,50 @@ with serve_node(arr, host="127.0.0.1", port=8000, background=True) as server:
 # Server is shut down automatically when the block exits.
 ```
 
+### Serving Several Nodes
+
+Serving two arrays does not mean running two servers. Which approach fits
+depends on where the arrays live.
+
+If they share a parent group, serve the parent — `node_app` recurses through
+its members, so both are reachable under one port and node scoping still
+applies to everything outside it:
+
+```python
+server = serve_node(root, port=0, background=True)
+# -> /a/zarr.json, /a/c/0, /b/zarr.json, ...
+```
+
+If everything in the store is safe to expose, `serve_store(store)` does the
+same for the whole key space.
+
+Otherwise — arrays in *different* stores, or nodes that are not siblings —
+`store_app` and `node_app` return plain Starlette apps, so mount them and run
+the result with `serve`:
+
+```python
+from starlette.applications import Starlette
+from starlette.routing import Mount
+
+from zarr_http_server import node_app, serve
+
+app = Starlette(routes=[
+    Mount("/first", app=node_app(one)),
+    Mount("/second", app=node_app(other)),
+])
+server = serve(app, port=0, background=True)
+```
+
+Each mount keeps its own validation, so a request under one cannot reach
+another's data — `/first/../second/zarr.json` and its percent-encoded
+spellings all return 404.
+
+`serve` runs any ASGI app; `serve_store` and `serve_node` are shorthands for
+the one-store and one-node cases. The split is that what an app *serves*
+(`methods`, `cors_options`, `max_body_size`) is settled when the app is built,
+while `serve` only decides how it runs (`host`, `port`, `background`,
+`shutdown_timeout`, `uvicorn_options`).
+
 ### Serving from a Notebook
 
 A notebook needs a server that outlives the cell that started it, so the

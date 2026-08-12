@@ -34,6 +34,7 @@ __all__ = [
     "HTTPMethod",
     "ReadOnlyHTTPMethod",
     "node_app",
+    "serve",
     "serve_node",
     "serve_store",
     "store_app",
@@ -801,25 +802,105 @@ def _reconcile_allow_methods(allow_methods: list[str], *, served: frozenset[str]
     return list(allow_methods)
 
 
-def _start_server(
+@overload
+def serve(
     app: Starlette,
     *,
-    host: str,
-    port: int,
-    background: bool,
+    host: str = ...,
+    port: int = ...,
+    background: Literal[False] = ...,
+    shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
+) -> None: ...
+
+
+@overload
+def serve(
+    app: Starlette,
+    *,
+    host: str = ...,
+    port: int = ...,
+    background: Literal[True],
+    shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
+) -> BackgroundServer: ...
+
+
+@overload
+def serve(
+    app: Starlette,
+    *,
+    host: str = ...,
+    port: int = ...,
+    background: bool = ...,
+    shutdown_timeout: int = ...,
+    uvicorn_options: Mapping[str, object] | None = ...,
+) -> BackgroundServer | None: ...
+
+
+def serve(
+    app: Starlette,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    background: bool = False,
     shutdown_timeout: int = 5,
     uvicorn_options: Mapping[str, object] | None = None,
 ) -> BackgroundServer | None:
-    """Create a uvicorn server for *app* and either block or run in a daemon thread.
+    """Run any ASGI app under Uvicorn, blocking or in a daemon thread.
 
-    ``shutdown_timeout`` bounds uvicorn's own graceful-shutdown wait for
-    in-flight requests (``timeout_graceful_shutdown``), and, for a
-    background server, is also the bound :meth:`BackgroundServer.shutdown`
-    uses before forcing the server thread closed.
+    :func:`serve_store` and :func:`serve_node` are shorthands for the common
+    case of one store or one node. Use this when the app is something you
+    composed yourself -- most often several nodes mounted under one server:
 
-    ``uvicorn_options`` is merged over the three options set here, so a caller
-    can reach any `uvicorn.Config` parameter -- TLS, proxy headers, root path,
-    log level, a unix socket -- without this package having to mirror them.
+    .. code-block:: python
+
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
+
+        app = Starlette(routes=[
+            Mount("/first", app=node_app(one)),
+            Mount("/second", app=node_app(other)),
+        ])
+        server = serve(app, port=0, background=True)
+
+    The two halves stay separate: what the app serves (`methods`,
+    `cors_options`, `max_body_size`) is settled when the app is built, and
+    this function only decides how it runs.
+
+    Parameters
+    ----------
+    app : Starlette
+        The ASGI app to run.
+    host : str, optional
+        The host to bind to. Defaults to ``"127.0.0.1"``.
+    port : int, optional
+        The port to bind to. Defaults to ``8000``. Pass ``0`` to let the OS
+        choose a free one, then read :attr:`BackgroundServer.url` for it.
+    background : bool, optional
+        Run in a daemon thread and return a :class:`BackgroundServer` rather
+        than blocking. Defaults to ``False``.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully when the
+        server is shut down. Defaults to ``5``. Bounds uvicorn's own
+        ``timeout_graceful_shutdown`` and, for a background server, the wait
+        :meth:`BackgroundServer.shutdown` uses before forcing it closed.
+    uvicorn_options : Mapping[str, object], optional
+        Extra options passed straight to `uvicorn.Config`, merged over the
+        ones set here (`host`, `port`, `timeout_graceful_shutdown`), so a
+        caller key wins. This is the escape hatch for anything uvicorn can do
+        that this signature does not name -- TLS via `ssl_keyfile` /
+        `ssl_certfile`, `proxy_headers` and `forwarded_allow_ips` behind a
+        reverse proxy, `root_path` when mounted under a prefix, `log_level`,
+        `limit_concurrency`, or a `uds` / `fd` bind. Binding somewhere other
+        than a TCP host and port leaves
+        :attr:`BackgroundServer.url` as ``None``.
+
+    Returns
+    -------
+    BackgroundServer or None
+        A handle when ``background=True``, otherwise ``None`` once the
+        blocking server has stopped.
     """
     import uvicorn
 
@@ -1090,7 +1171,7 @@ def serve_store(
         automatic shutdown.
     """
     app = store_app(store, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
-    return _start_server(
+    return serve(
         app,
         host=host,
         port=port,
@@ -1210,7 +1291,7 @@ def serve_node(
         automatic shutdown.
     """
     app = node_app(node, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
-    return _start_server(
+    return serve(
         app,
         host=host,
         port=port,

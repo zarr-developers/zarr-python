@@ -9,11 +9,14 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 import numpy as np
 import pytest
 import zarr
+from starlette.applications import Starlette
+from starlette.routing import Mount
 from starlette.testclient import TestClient
 from zarr.buffer import cpu
 from zarr.storage import LocalStore, MemoryStore
 
 from zarr_http_server._serve import (
+    _SHUTDOWN_JOIN_MARGIN,
     READ_ONLY_HTTP_METHODS,
     READ_WRITE_HTTP_METHODS,
     CorsOptions,
@@ -21,6 +24,7 @@ from zarr_http_server._serve import (
     _parse_range_header,
     _RangeVerdict,
     node_app,
+    serve,
     store_app,
 )
 
@@ -31,6 +35,13 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
 
 ZarrFormat = Literal[2, 3]
+
+SHUTDOWN_TIMEOUT = 1
+"""shutdown_timeout used by the bounded-shutdown test."""
+
+SLOW_HANDLER_SECONDS = 5
+"""How long that test's handler sleeps -- far longer than the shutdown bound,
+so an unbounded join would be obvious."""
 
 
 def sync[T](coro: Coroutine[Any, Any, T]) -> T:
@@ -1241,19 +1252,17 @@ class TestBackgroundServerBoundedShutdown:
         from starlette.responses import Response
         from starlette.routing import Route
 
-        from zarr_http_server._serve import _start_server
-
         async def slow(request: Any) -> Response:
             # Sleeps far longer than shutdown_timeout below, so a correct
             # implementation must force the connection closed rather than
             # wait for this to finish.
-            await asyncio.sleep(5)
+            await asyncio.sleep(SLOW_HANDLER_SECONDS)
             return Response(status_code=204)
 
         app = Starlette(routes=[Route("/slow", slow, methods=["GET"])])
         port = _get_free_port()
-        server = _start_server(
-            app, host="127.0.0.1", port=port, background=True, shutdown_timeout=1
+        server = serve(
+            app, host="127.0.0.1", port=port, background=True, shutdown_timeout=SHUTDOWN_TIMEOUT
         )
         assert server is not None
 
@@ -1273,9 +1282,18 @@ class TestBackgroundServerBoundedShutdown:
         server.shutdown()
         elapsed = time.monotonic() - start
 
-        # shutdown_timeout=1 plus some scheduling slack; well under the
-        # 5-second handler sleep an unbounded join would have waited out.
-        assert elapsed < 3.0, f"shutdown() took {elapsed:.2f}s, expected well under 3s"
+        # The property is that shutdown is *bounded*, not that it hits a
+        # particular wall-clock number. Derive the bound from the timeouts
+        # that produce it rather than hard-coding one: shutdown() waits
+        # `shutdown_timeout + _SHUTDOWN_JOIN_MARGIN` for a graceful stop, then
+        # `shutdown_timeout` more after force_exit. A literal here silently
+        # loses its headroom whenever one of those constants changes -- which
+        # is what happened when the margin was introduced.
+        bound = (SHUTDOWN_TIMEOUT + _SHUTDOWN_JOIN_MARGIN) + SHUTDOWN_TIMEOUT + 1.0
+        assert elapsed < bound, f"shutdown() took {elapsed:.2f}s, expected under {bound:.1f}s"
+        # ...and the point of it all: far less than the handler's own sleep,
+        # which an unbounded join would have waited out in full.
+        assert elapsed < SLOW_HANDLER_SECONDS
 
         request_thread.join(timeout=10)
 
@@ -1663,3 +1681,63 @@ class TestMethodSetConstants:
         # Read-only is a strict subset: the only difference is the write verb.
         assert READ_ONLY_HTTP_METHODS < READ_WRITE_HTTP_METHODS
         assert {"PUT"} == READ_WRITE_HTTP_METHODS - READ_ONLY_HTTP_METHODS
+
+
+class TestServeAnyApp:
+    """`serve` runs whatever ASGI app it is handed, which is what makes
+    several nodes on one port possible."""
+
+    @staticmethod
+    def _two_mounted_arrays() -> tuple[Starlette, bytes, bytes]:
+        """Two arrays in *separate* stores, so no common parent exists and
+        mounting is the only way to serve both from one server."""
+        first, second = MemoryStore(), MemoryStore()
+        one = zarr.create_array(first, shape=(4,), chunks=(2,), dtype="i4", compressors=None)
+        other = zarr.create_array(second, shape=(4,), chunks=(2,), dtype="i4", compressors=None)
+        one[:] = 7
+        other[:] = 9
+
+        app = Starlette(
+            routes=[Mount("/first", app=node_app(one)), Mount("/second", app=node_app(other))]
+        )
+        return app, np.full(2, 7, dtype="i4").tobytes(), np.full(2, 9, dtype="i4").tobytes()
+
+    def test_mounted_apps_each_serve_their_own_node(self) -> None:
+        app, first_chunk, second_chunk = self._two_mounted_arrays()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        assert client.get("/first/zarr.json").status_code == 200
+        assert client.get("/second/zarr.json").status_code == 200
+        assert client.get("/first/c/0").content == first_chunk
+        assert client.get("/second/c/0").content == second_chunk
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/first/%2e%2e/second/zarr.json",
+            "/first/..%2f..%2fsecond/zarr.json",
+            "/first/%2e%2e%2fsecond/c/0",
+            "/first/%2fsecond/zarr.json",
+        ],
+    )
+    def test_one_mount_cannot_reach_another(self, path: str) -> None:
+        """Per-node validation runs inside each mount, so composing apps does
+        not widen what any of them serves."""
+        app, _, _ = self._two_mounted_arrays()
+
+        assert TestClient(app, raise_server_exceptions=False).get(path).status_code == 404
+
+    def test_serve_runs_a_composed_app_in_the_background(self) -> None:
+        """The gap `serve` closes: a composed app previously had no way to use
+        the background-server ergonomics, only a blocking `uvicorn.run`."""
+        import httpx
+
+        app, first_chunk, second_chunk = self._two_mounted_arrays()
+
+        server = serve(app, host="127.0.0.1", port=0, background=True)
+        try:
+            assert server.url is not None
+            assert httpx.get(f"{server.url}/first/c/0", timeout=30).content == first_chunk
+            assert httpx.get(f"{server.url}/second/c/0", timeout=30).content == second_chunk
+        finally:
+            server.shutdown()
