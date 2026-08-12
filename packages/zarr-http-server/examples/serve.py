@@ -29,7 +29,9 @@ data = np.arange(1000, dtype="uint8").reshape(10, 10, 10)
 arr = zarr.create_array(store, data=data, chunks=(5, 5, 5), write_data=True, compressors=None)
 
 # -- serve it in the background ---------------------------------------------
-with serve_node(arr, host="127.0.0.1", port=8000, background=True) as server:
+# port=0 asks the OS for a free port, so running this twice -- or running it
+# while something else holds 8000 -- works. `server.url` reports what it bound.
+with serve_node(arr, host="127.0.0.1", port=0, background=True) as server:
     # -- fetch metadata ------------------------------------------------------
     resp = httpx.get(f"{server.url}/zarr.json")
     assert resp.status_code == 200

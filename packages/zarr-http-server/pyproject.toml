@@ -44,7 +44,17 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/README.md"
 
 [dependency-groups]
-test = ["pytest", "httpx", "httpx2", "hypothesis"]
+test = [
+    "pytest",
+    "httpx",
+    "httpx2",
+    "hypothesis",
+    # Executing examples/serve_notebook.ipynb in the suite: nbformat reads it,
+    # nbclient runs it, ipykernel is the kernel it runs in.
+    "nbformat",
+    "nbclient",
+    "ipykernel",
+]
 examples = [
     # Optional dependencies to run the README examples. Reading a served
     # array back with `zarr.open_array(url)` goes through FsspecStore, which

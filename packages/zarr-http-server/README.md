@@ -96,6 +96,41 @@ with serve_node(arr, host="127.0.0.1", port=8000, background=True) as server:
 # Server is shut down automatically when the block exits.
 ```
 
+### Serving from a Notebook
+
+A notebook needs a server that outlives the cell that started it, so the
+`with serve_node(...)` form above is the wrong shape — it shuts the server down
+as soon as the block ends. Start it, keep the handle, and stop it later:
+
+```python
+# cell 1 — start
+server = serve_node(array, host="127.0.0.1", port=0, background=True)
+print(server.url)          # e.g. http://127.0.0.1:54635
+
+# cell 2..n — use it, across as many cells as you like
+httpx.get(f"{server.url}/zarr.json")
+
+# last cell — stop
+server.shutdown()
+```
+
+Two arguments do the work. `background=True` runs Uvicorn in a daemon thread
+with its own event loop, so it never touches the kernel's loop and cannot
+block it. `port=0` asks the OS for a free port, which matters because
+re-running a start cell without stopping the previous server is the classic
+notebook mistake: with a fixed port that fails with *address already in use*,
+while `port=0` just picks another one. `server.url` reports the port actually
+bound.
+
+If you forget to stop one, the thread is a daemon, so restarting the kernel
+always clears it — and since each start takes a fresh port, a forgotten server
+does not block the next one.
+
+[`examples/serve_notebook.ipynb`](examples/serve_notebook.ipynb) is a runnable
+version of this, covering metadata and chunk reads, byte ranges, and that
+writes are refused by default. It is executed by the test suite, so it cannot
+drift from the code.
+
 ### Uvicorn Configuration
 
 `serve_store` and `serve_node` name the options most callers need — `host`,
@@ -299,6 +334,10 @@ with serve_node(arr, background=True, shutdown_timeout=30) as server:
 `examples/serve.py` creates an in-memory Zarr array, serves it over HTTP with
 `serve_node`, and fetches the `zarr.json` metadata document and a raw chunk
 using `httpx`.
+
+`examples/serve_notebook.ipynb` is the notebook equivalent, showing how to
+start a server in one cell and stop it in another. Both are executed by the
+test suite.
 
 Running it with uv is the simplest route — the script declares its own
 dependencies inline, so uv installs them for you:
