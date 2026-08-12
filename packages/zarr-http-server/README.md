@@ -185,6 +185,34 @@ RFC 9110 §14.2: an unrecognized unit (`chars=0-7`), a multi-range request
 (`bytes=0-7, 10-20`, which this server does not build multipart responses
 for), or malformed syntax all return 200 with the full representation.
 
+### Read-only Serving
+
+Read-only is the default. `store_app(store)` and `serve_store(store)` accept
+`GET` and `HEAD` and answer **405** to `PUT`, `POST`, `DELETE` and `PATCH` —
+no argument is needed to get there.
+
+`POST` is not merely unrouted, it is unconfigurable: the accepted methods are
+`GET`, `HEAD` and `PUT`, and asking for anything else raises `ValueError` when
+the app is built. There is no handler behavior for `POST`, so no configuration
+can produce one.
+
+For a guarantee that does not depend on getting `methods` right, make the
+*store* read-only. The store refuses writes itself, so no routing mistake —
+now or in a later edit — can produce one:
+
+```python
+app = store_app(store.with_read_only(True))
+
+# For a node, open it read-only and node_app inherits that store:
+app = node_app(zarr.open_array(store, mode="r"))
+```
+
+These two layers are independent, and the store is the stronger one: it holds
+even if the HTTP layer is misconfigured. Asking for both at once —
+`methods={"GET", "PUT"}` on a read-only store — is a contradiction that can
+never succeed, so it raises `ValueError` at construction rather than turning
+into a 403 for whichever client tries to write first.
+
 ### Write Support
 
 By default only reads are accepted: `GET`, and `HEAD` alongside it. Starlette

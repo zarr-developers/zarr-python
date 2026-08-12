@@ -1526,3 +1526,77 @@ class TestCorsAllowMethodsMatchTheRoute:
         )
 
         assert "PUT" not in preflight.headers["access-control-allow-methods"]
+
+
+class TestReadOnlyServing:
+    """The guarantees a read-only deployment rests on.
+
+    Two independent layers: `methods` decides what the route answers, and the
+    store decides whether a write could succeed at all. The second is the one
+    that survives a misconfiguration of the first, so both are pinned here.
+    """
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    @pytest.mark.parametrize("method", ["PUT", "POST", "DELETE", "PATCH"])
+    def test_default_app_refuses_every_mutating_method(self, store: Store, method: str) -> None:
+        """The default is read-only: no argument is needed to get there, and
+        nothing a client sends can write."""
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+        before = sync(store.get("k", cpu.buffer_prototype)).to_bytes()
+        client = TestClient(store_app(store), raise_server_exceptions=False)
+
+        response = client.request(method, "/k", content=b"overwritten")
+
+        assert response.status_code == 405
+        assert sync(store.get("k", cpu.buffer_prototype)).to_bytes() == before
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_post_can_never_be_enabled(self, store: Store) -> None:
+        """POST is not merely unrouted, it is unconfigurable: there is no
+        handler behavior for it, so asking is an error rather than a no-op."""
+        with pytest.raises(ValueError, match="Unsupported HTTP method"):
+            store_app(store, methods={"GET", "POST"})  # type: ignore[arg-type]
+
+    def test_read_only_store_refuses_writes_independently_of_methods(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The layer that survives getting `methods` wrong.
+
+        Constructed through the private builder because the public entry
+        points now reject this combination outright; the handler check stays
+        as the backstop for a store whose `read_only` is not fixed.
+        """
+        from zarr_http_server._serve import _make_starlette_app
+
+        writable = LocalStore(str(tmp_path / "root"))
+        sync(writable.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+
+        app = _make_starlette_app(methods={"GET", "PUT"})
+        app.state.store = writable.with_read_only(True)
+        app.state.node = None
+        app.state.prefix = ""
+        app.state.max_body_size = None
+
+        response = TestClient(app, raise_server_exceptions=False).put("/k", content=b"x")
+
+        assert response.status_code == 403
+        assert sync(writable.get("k", cpu.buffer_prototype)).to_bytes() == b"data"
+
+    def test_put_on_a_read_only_store_is_rejected_at_construction(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """A write that could never succeed is a configuration error, not a
+        runtime 403 delivered to whoever happens to try first."""
+        store = LocalStore(str(tmp_path / "root")).with_read_only(True)
+
+        with pytest.raises(ValueError, match="store is read-only"):
+            store_app(store, methods={"GET", "PUT"})
+
+    def test_read_only_node_is_rejected_at_construction(self, tmp_path: pathlib.Path) -> None:
+        """The same check applies to a node, whose store it inherits."""
+        store = LocalStore(str(tmp_path / "root"))
+        zarr.create_array(store, shape=(4,), chunks=(2,), dtype="i4", compressors=None)
+        read_only_array = zarr.open_array(store, mode="r")
+
+        with pytest.raises(ValueError, match="store is read-only"):
+            node_app(read_only_array, methods={"GET", "PUT"})

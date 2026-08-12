@@ -685,6 +685,29 @@ def _make_starlette_app(
     return app
 
 
+def _reject_writes_to_a_read_only_store(store: Store, methods: set[HTTPMethod] | None) -> None:
+    """Refuse a configuration whose writes can never succeed.
+
+    A store's `read_only` is fixed when it is built, so asking to serve `PUT`
+    from one is a contradiction that would only reveal itself as a 403 on the
+    first write a client attempts -- possibly long after deployment, and to
+    the client rather than to whoever misconfigured it. Saying so at
+    construction matches how unsupported `methods` and contradictory
+    `cors_options` are already handled.
+
+    Raises
+    ------
+    ValueError
+        If `methods` asks for `PUT` on a read-only store.
+    """
+    if methods is not None and "PUT" in methods and store.read_only:
+        raise ValueError(
+            "methods asks for PUT, but the store is read-only, so no write "
+            "could ever succeed. Drop PUT to serve reads, or pass a writable "
+            "store (`store.with_read_only(False)`)."
+        )
+
+
 def _served_methods(methods: set[HTTPMethod]) -> frozenset[str]:
     """The methods the route will actually answer.
 
@@ -856,6 +879,7 @@ def store_app(
     Starlette
         An ASGI application.
     """
+    _reject_writes_to_a_read_only_store(store, methods)
     app = _make_starlette_app(methods=methods, cors_options=cors_options)
     app.state.store = store
     app.state.node = None
@@ -905,6 +929,7 @@ def node_app(
     Starlette
         An ASGI application.
     """
+    _reject_writes_to_a_read_only_store(node.store_path.store, methods)
     app = _make_starlette_app(methods=methods, cors_options=cors_options)
     app.state.store = node.store_path.store
     app.state.node = node
