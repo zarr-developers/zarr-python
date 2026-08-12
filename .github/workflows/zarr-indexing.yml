@@ -26,6 +26,7 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: packages/zarr-indexing
     strategy:
       fail-fast: false
       matrix:
@@ -38,23 +39,22 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       # The transform tests exercise chunk resolution against zarr's ChunkGrid,
-      # so they run from the repo root against the root environment (which
-      # provides `zarr`) with this package as an editable overlay rather than in
-      # package isolation.
+      # so they run against the repo-root environment (which provides `zarr`)
+      # with this package as an editable overlay rather than in package
+      # isolation. The recipes carry that invocation; this step only fixes the
+      # interpreter the matrix asked for.
       - name: Sync test dependency group
-        run: uv sync --group test --python ${{ matrix.python-version }}
+        run: uv sync --project ../.. --group test --python ${{ matrix.python-version }}
       - name: Run pytest
-        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing python -m pytest packages/zarr-indexing/tests packages/zarr-indexing/src/zarr_indexing
-      # TensorStore is the oracle for the parity tests
-      # (test_ndsel_tensorstore.py skips without it). It ships binary wheels
-      # only, so it rides in as a run-time overlay here rather than joining a
-      # dependency group; if a future matrix Python lacks a tensorstore wheel,
-      # gate this step on the matrix version.
+        # Suites and invocation live in packages/zarr-indexing/justfile.
+        run: just test
       - name: Run pytest (tensorstore parity)
-        run: uv run --no-sync --group test --with-editable ./packages/zarr-indexing --with 'tensorstore>=0.1.84' python -m pytest packages/zarr-indexing/tests/test_ndsel_tensorstore.py packages/zarr-indexing/tests/test_tensorstore_parity.py
+        run: just test-tensorstore
 
   ruff:
     name: ruff
@@ -69,9 +69,11 @@ jobs:
           persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run ruff
-        # Pinned to the repo-wide ruff version (see pyproject.toml [dependency-groups] docs); bump together.
-        run: uvx ruff@0.15.22 check .
+        # The ruff version pin lives in packages/zarr-indexing/justfile.
+        run: just lint
 
   pyright:
     name: pyright
@@ -92,8 +94,11 @@ jobs:
         run: uv python install 3.12
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Run pyright
-        run: uv run --group test --with pyright pyright
+        # The pyright invocation lives in packages/zarr-indexing/justfile.
+        run: just typecheck
 
   docs:
     name: docs
