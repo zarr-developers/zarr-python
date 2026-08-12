@@ -89,3 +89,45 @@ def test_empty_string_kind_is_unknown_kind() -> None:
     with pytest.raises(NdselError) as excinfo:
         normalize_ndsel({"kind": ""})
     assert excinfo.value.reason == "unknown_kind"
+
+
+class TestNegativeStep:
+    """ndsel 1.0-draft.2 section 5.3: one desugaring rule, both signs."""
+
+    def test_full_reverse(self) -> None:
+        """The spec's own worked example: reversing a length-20 axis."""
+        body = normalize_ndsel({"kind": "slice", "start": [19], "stop": [-1], "step": [-1]})
+        assert body["input_inclusive_min"] == [-19]
+        assert body["input_exclusive_max"] == [1]
+        assert body["output"] == [{"offset": 0, "stride": -1, "input_dimension": 0}]
+
+    def test_trunc_origin_for_a_negative_step(self) -> None:
+        """`trunc(15 / -2) == -7`; `floor` would give -8."""
+        body = normalize_ndsel({"kind": "slice", "start": [15], "stop": [5], "step": [-2]})
+        assert body["input_inclusive_min"] == [-7]
+        assert body["input_exclusive_max"] == [-2]
+        assert body["output"] == [{"offset": 1, "stride": -2, "input_dimension": 0}]
+
+    def test_empty_is_legal_at_any_coordinate(self) -> None:
+        body = normalize_ndsel({"kind": "slice", "start": [5], "stop": [5], "step": [-1]})
+        assert body["input_inclusive_min"] == body["input_exclusive_max"] == [-5]
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            {"kind": "slice", "start": [9], "stop": [0]},
+            {"kind": "slice", "start": [9], "stop": [0], "step": [2]},
+            {"kind": "slice", "start": [5], "stop": [6], "step": [-1]},
+        ],
+        ids=["unit-step", "positive-step", "negative-step"],
+    )
+    def test_a_reversed_interval_is_an_error(self, message: dict[str, object]) -> None:
+        """Not clamped to empty: travelling the wrong way is a mistake, either sign."""
+        with pytest.raises(NdselError) as excinfo:
+            normalize_ndsel(message)
+        assert excinfo.value.reason == "bounds_out_of_order"
+
+    def test_zero_step_still_errors(self) -> None:
+        with pytest.raises(NdselError) as excinfo:
+            normalize_ndsel({"kind": "slice", "start": [0], "stop": [4], "step": [0]})
+        assert excinfo.value.reason == "step_zero"
