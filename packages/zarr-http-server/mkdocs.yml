@@ -1,13 +1,13 @@
-site_name: zarr-metadata
+site_name: zarr-http-server
 # The package lives in the zarr-python monorepo; point the header source
 # widget at the package directory rather than the repository root.
-repo_name: zarr-python/packages/zarr-metadata
-repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata
+repo_name: zarr-python/packages/zarr-http-server
+repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server
 # Absolute because mkdocs would otherwise append this to repo_url's subpath.
-edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-metadata/docs/
-site_description: Spec-defined metadata types, models, and validators for Zarr v2 and v3.
+edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-http-server/docs/
+site_description: HTTP server for Zarr stores, arrays, and groups.
 site_author: Davis Bennett
-site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io/']
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-http-server.readthedocs.io/']
 docs_dir: docs
 use_directory_urls: true
 
@@ -15,19 +15,7 @@ nav:
   - index.md
   - API Reference:
       - api/index.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/model.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/pydantic.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/v2.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3</code>':
-        - api/v3/index.md
-        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_grid</code>': api/v3/chunk_grid.md
-        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_key_encoding</code>': api/v3/chunk_key_encoding.md
-        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.codec</code>': api/v3/codec.md
-        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.data_type</code>': api/v3/data_type.md
-  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md
-  # This site is a Read the Docs subproject of zarr-python; give readers a way
-  # back to the parent docs, which list every companion package.
-  - 'zarr-python ↪': https://zarr.readthedocs.io/
+  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/CHANGELOG.md
 
 watch:
   - src
