@@ -80,6 +80,24 @@ raw-options = { root = "../..", git_describe_command = "git describe --dirty --t
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_indexing"]
 
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. The list
+# keeps an sdist self-testing: `tests/` carries the vendored ndsel conformance
+# corpus, and `tests/test_doc_examples.py` executes `docs/snippets/*.py` and
+# `examples/*/*.py`, so those are part of the suite rather than decoration.
+# `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+]
+
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py312"
