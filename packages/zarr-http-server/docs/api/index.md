@@ -28,4 +28,14 @@ and carry no compatibility guarantee.
 
 ::: zarr_http_server.HTTPMethod
 
+::: zarr_http_server.ReadOnlyHTTPMethod
+
+::: zarr_http_server.READ_ONLY_HTTP_METHODS
+
+::: zarr_http_server.READ_WRITE_HTTP_METHODS
+
+::: zarr_http_server.AUTO_PORT
+
+::: zarr_http_server.DEFAULT_PORT
+
 ::: zarr_http_server.DEFAULT_MAX_BODY_SIZE
