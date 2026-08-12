@@ -6,7 +6,7 @@ HTTP server for Zarr stores, arrays, and groups.
 ASGI app, so any HTTP-capable client (including zarr-python itself, via
 `FsspecStore` or `ObjectStore`) can read the data. The app is built on
 [Starlette](https://www.starlette.io/) and can be run with any ASGI server;
-`serve_store`/`serve_node` conveniences run it with
+the `serve` / `serve_background` helpers run it with
 [Uvicorn](https://www.uvicorn.org/).
 
 ## Installation
@@ -55,19 +55,21 @@ app = node_app(arr)
 
 ### Running the Server
 
-`serve_store` and `serve_node`
-build an ASGI app *and* start a [Uvicorn](https://www.uvicorn.org/) server.
-By default they block until the server is shut down:
+Build an app with `store_app` or `node_app`, then run it. `serve` blocks
+until the server is stopped, which is the shape for a script or a container
+entrypoint:
 
 ```python
-from zarr_http_server import serve_store
+from zarr_http_server import serve, store_app
 
-serve_store(store, host="127.0.0.1", port=8000)
+serve(store_app(store), host="127.0.0.1", port=8000)
 ```
 
-Pass `background=True` to start the server in a daemon thread and return
-immediately.  The returned `BackgroundServer`
-can be used as a context manager for automatic shutdown:
+`serve_background` instead starts the server in a daemon thread and returns a
+`BackgroundServer` as soon as the socket is listening, so the caller can carry
+on. These are two functions rather than one with a flag, because they differ
+in the only thing that matters at a call site: whether control comes back. The
+handle is also a context manager:
 
 The example below also *reads back* over HTTP, which is a client-side
 concern: `zarr.open_array(server.url)` goes through `FsspecStore`, which needs
@@ -82,14 +84,14 @@ pip install "fsspec[http]"
 import numpy as np
 
 import zarr
-from zarr_http_server import serve_node
+from zarr_http_server import node_app, serve_background
 from zarr.storage import MemoryStore
 
 store = MemoryStore()
 arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="float64")
 arr[:] = np.arange(100, dtype="float64")
 
-with serve_node(arr, host="127.0.0.1", port=8000, background=True) as server:
+with serve_background(node_app(arr), host="127.0.0.1") as server:
     # Now open the served array from another zarr client.
     remote = zarr.open_array(server.url, mode="r")
     np.testing.assert_array_equal(remote[:], arr[:])
@@ -106,49 +108,48 @@ its members, so both are reachable under one port and node scoping still
 applies to everything outside it:
 
 ```python
-server = serve_node(root, port=0, background=True)
+server = serve_background(node_app(root))
 # -> /a/zarr.json, /a/c/0, /b/zarr.json, ...
 ```
 
-If everything in the store is safe to expose, `serve_store(store)` does the
+If everything in the store is safe to expose, `store_app(store)` does the
 same for the whole key space.
 
 Otherwise — arrays in *different* stores, or nodes that are not siblings —
 `store_app` and `node_app` return plain Starlette apps, so mount them and run
-the result with `serve`:
+the result:
 
 ```python
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-from zarr_http_server import node_app, serve
+from zarr_http_server import node_app, serve_background
 
 app = Starlette(routes=[
     Mount("/first", app=node_app(one)),
     Mount("/second", app=node_app(other)),
 ])
-server = serve(app, port=0, background=True)
+server = serve_background(app)
 ```
 
 Each mount keeps its own validation, so a request under one cannot reach
 another's data — `/first/../second/zarr.json` and its percent-encoded
 spellings all return 404.
 
-`serve` runs any ASGI app; `serve_store` and `serve_node` are shorthands for
-the one-store and one-node cases. The split is that what an app *serves*
+Both runners take any ASGI app, so the split is clean: what an app *serves*
 (`methods`, `cors_options`, `max_body_size`) is settled when the app is built,
-while `serve` only decides how it runs (`host`, `port`, `background`,
+while `serve` / `serve_background` only decide how it runs (`host`, `port`,
 `shutdown_timeout`, `uvicorn_options`).
 
 ### Serving from a Notebook
 
 A notebook needs a server that outlives the cell that started it, so the
-`with serve_node(...)` form above is the wrong shape — it shuts the server down
+`with serve_background(...)` form above is the wrong shape — it shuts the server down
 as soon as the block ends. Start it, keep the handle, and stop it later:
 
 ```python
 # cell 1 — start
-server = serve_node(array, host="127.0.0.1", port=0, background=True)
+server = serve_background(node_app(array), host="127.0.0.1")
 print(server.url)          # e.g. http://127.0.0.1:54635
 
 # cell 2..n — use it, across as many cells as you like
@@ -158,13 +159,12 @@ httpx.get(f"{server.url}/zarr.json")
 server.shutdown()
 ```
 
-Two arguments do the work. `background=True` runs Uvicorn in a daemon thread
-with its own event loop, so it never touches the kernel's loop and cannot
-block it. `port=0` asks the OS for a free port, which matters because
-re-running a start cell without stopping the previous server is the classic
-notebook mistake: with a fixed port that fails with *address already in use*,
-while `port=0` just picks another one. `server.url` reports the port actually
-bound.
+Two things make this comfortable in a kernel you re-run. `serve_background`
+runs Uvicorn in a daemon thread with its own event loop, so it never touches
+the kernel's loop and cannot block it. And it defaults to `port=0`, asking the
+OS for a free port — re-running a start cell without stopping the previous
+server is the classic notebook mistake, and a fixed port fails there with
+*address already in use*. `server.url` reports the port actually bound.
 
 If you forget to stop one, the thread is a daemon, so restarting the kernel
 always clears it — and since each start takes a fresh port, a forgotten server
@@ -177,17 +177,16 @@ drift from the code.
 
 ### Uvicorn Configuration
 
-`serve_store` and `serve_node` name the options most callers need — `host`,
-`port`, `background`, `shutdown_timeout` — and forward anything else to
+`serve` and `serve_background` name the options most callers need — `host`,
+`port`, `shutdown_timeout` — and forward anything else to
 `uvicorn.Config` through `uvicorn_options`, so nothing uvicorn can do is out
 of reach:
 
 ```python
-server = serve_store(
-    store,
+server = serve_background(
+    store_app(store),
     host="0.0.0.0",
     port=8443,
-    background=True,
     uvicorn_options={
         "ssl_keyfile": "key.pem",
         "ssl_certfile": "cert.pem",
@@ -205,8 +204,7 @@ bind has no URL to report.
 
 ### CORS Support
 
-Both `store_app` and `node_app` (and their `serve_*` counterparts) accept a
-`CorsOptions` parameter to enable
+Both `store_app` and `node_app` accept a `CorsOptions` parameter to enable
 [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) middleware for
 browser-based clients:
 
@@ -266,7 +264,7 @@ for), or malformed syntax all return 200 with the full representation.
 
 ### Read-only Serving
 
-Read-only is the default. `store_app(store)` and `serve_store(store)` accept
+Read-only is the default. `store_app(store)` and `node_app(node)` accept
 `GET` and `HEAD` and answer **405** to `PUT`, `POST`, `DELETE` and `PATCH` —
 no argument is needed to get there.
 
@@ -369,14 +367,14 @@ prefer `node_app`.
 before forcing the server closed:
 
 ```python
-with serve_node(arr, background=True, shutdown_timeout=30) as server:
+with serve_background(node_app(arr), shutdown_timeout=30) as server:
     ...
 ```
 
 ## Example
 
 `examples/serve.py` creates an in-memory Zarr array, serves it over HTTP with
-`serve_node`, and fetches the `zarr.json` metadata document and a raw chunk
+`serve_background`, and fetches the `zarr.json` metadata document and a raw chunk
 using `httpx`.
 
 `examples/serve_notebook.ipynb` is the notebook equivalent, showing how to

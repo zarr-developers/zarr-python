@@ -39,7 +39,7 @@ from hypothesis import strategies as st
 from zarr.buffer import cpu
 from zarr.core.sync import sync
 
-from zarr_http_server import serve_node, serve_store
+from zarr_http_server import node_app, serve_background, store_app
 from zarr_http_server._keys import _shard_grid_shape
 
 if TYPE_CHECKING:
@@ -150,13 +150,11 @@ def served(
     sibling[:] = 1
 
     if kind == "node":
-        server = serve_node(
-            array, host="127.0.0.1", port=0, background=True, methods={"GET", "PUT"}
-        )
+        server = serve_background(node_app(array, methods={"GET", "PUT"}), host="127.0.0.1", port=0)
         http_prefix = ""
     else:
-        server = serve_store(
-            store, host="127.0.0.1", port=0, background=True, methods={"GET", "PUT"}
+        server = serve_background(
+            store_app(store, methods={"GET", "PUT"}), host="127.0.0.1", port=0
         )
         http_prefix = "inside/"
     assert server is not None

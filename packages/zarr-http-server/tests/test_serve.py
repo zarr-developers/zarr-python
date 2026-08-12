@@ -24,7 +24,7 @@ from zarr_http_server._serve import (
     _parse_range_header,
     _RangeVerdict,
     node_app,
-    serve,
+    serve_background,
     store_app,
 )
 
@@ -862,20 +862,20 @@ def _get_free_port() -> int:
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 class TestServeBackground:
-    """Test serve_store and serve_node with background=True."""
+    """Test serve_background with store- and node-scoped apps."""
 
-    def test_serve_store_background(self, store: Store) -> None:
-        """serve_store(background=True) should return a BackgroundServer
+    def test_background_server_over_a_store_app(self, store: Store) -> None:
+        """serve_background over a store app should return a BackgroundServer
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr_http_server import serve_store
+        from zarr_http_server import serve_background
 
         buf = cpu.buffer_prototype.buffer.from_bytes(b"hello")
         sync(store.set("key", buf))
 
         port = _get_free_port()
-        with serve_store(store, host="127.0.0.1", port=port, background=True) as server:
+        with serve_background(store_app(store), host="127.0.0.1", port=port) as server:
             assert server.host == "127.0.0.1"
             assert server.port == port
             assert server.url == f"http://127.0.0.1:{port}"
@@ -884,18 +884,18 @@ class TestServeBackground:
             assert response.status_code == 200
             assert response.content == b"hello"
 
-    def test_serve_node_background(self, store: Store) -> None:
-        """serve_node(background=True) should return a BackgroundServer
+    def test_background_server_over_a_node_app(self, store: Store) -> None:
+        """serve_background over a node app should return a BackgroundServer
         that responds to HTTP requests and can be used as a context manager."""
         import httpx
 
-        from zarr_http_server import serve_node
+        from zarr_http_server import serve_background
 
         arr = zarr.create_array(store, shape=(4,), chunks=(2,), dtype="f8")
         arr[:] = np.arange(4, dtype="f8")
 
         port = _get_free_port()
-        with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
+        with serve_background(node_app(arr), host="127.0.0.1", port=port) as server:
             response = httpx.get(f"{server.url}/zarr.json")
             assert response.status_code == 200
 
@@ -1162,11 +1162,11 @@ class TestBackgroundServerReportsBoundPort:
     def test_port_zero_reports_the_bound_port(self, store: Store) -> None:
         import httpx
 
-        from zarr_http_server import serve_store
+        from zarr_http_server import serve_background
 
         sync(store.set("key", cpu.buffer_prototype.buffer.from_bytes(b"hello")))
 
-        with serve_store(store, host="127.0.0.1", port=0, background=True) as server:
+        with serve_background(store_app(store), host="127.0.0.1", port=0) as server:
             assert server.port != 0
             assert server.url == f"http://127.0.0.1:{server.port}"
             # The reported URL is the one that actually serves the data.
@@ -1224,13 +1224,13 @@ class TestReadBackWithZarrClient:
         pytest.importorskip("fsspec")
         pytest.importorskip("aiohttp")
 
-        from zarr_http_server import serve_node
+        from zarr_http_server import serve_background
 
         expected = np.arange(100, dtype="uint8").reshape(10, 10)
         arr = zarr.create_array(store, data=expected, chunks=(5, 5), write_data=True)
 
         port = _get_free_port()
-        with serve_node(arr, host="127.0.0.1", port=port, background=True) as server:
+        with serve_background(node_app(arr), host="127.0.0.1", port=port) as server:
             remote = zarr.open_array(server.url, mode="r")
             np.testing.assert_array_equal(remote[:], expected)
 
@@ -1261,8 +1261,8 @@ class TestBackgroundServerBoundedShutdown:
 
         app = Starlette(routes=[Route("/slow", slow, methods=["GET"])])
         port = _get_free_port()
-        server = serve(
-            app, host="127.0.0.1", port=port, background=True, shutdown_timeout=SHUTDOWN_TIMEOUT
+        server = serve_background(
+            app, host="127.0.0.1", port=port, shutdown_timeout=SHUTDOWN_TIMEOUT
         )
         assert server is not None
 
@@ -1387,13 +1387,12 @@ class TestUvicornOptionsAreNotSealedOff:
 
     def test_options_reach_uvicorn_config(self, store: Store) -> None:
         """A key this signature does not name still lands on the Config."""
-        from zarr_http_server import serve_store
+        from zarr_http_server import serve_background
 
-        server = serve_store(
-            store,
+        server = serve_background(
+            store_app(store),
             host="127.0.0.1",
             port=0,
-            background=True,
             uvicorn_options={"root_path": "/api", "log_level": "warning"},
         )
         assert server is not None
@@ -1409,13 +1408,12 @@ class TestUvicornOptionsAreNotSealedOff:
     def test_caller_options_win_over_ours(self, store: Store) -> None:
         """The merge order is ours-then-theirs, so a caller can override even
         an option this signature sets itself."""
-        from zarr_http_server import serve_store
+        from zarr_http_server import serve_background
 
-        server = serve_store(
-            store,
+        server = serve_background(
+            store_app(store),
             host="127.0.0.1",
             port=0,
-            background=True,
             shutdown_timeout=5,
             uvicorn_options={"timeout_graceful_shutdown": 11},
         )
@@ -1431,10 +1429,10 @@ class TestUvicornOptionsAreNotSealedOff:
         than naming an address nothing is listening on."""
         import httpx
 
-        from zarr_http_server import serve_store
+        from zarr_http_server import serve_background
 
         sock = str(tmp_path / "s.sock")
-        server = serve_store(store, background=True, uvicorn_options={"uds": sock})
+        server = serve_background(store_app(store), uvicorn_options={"uds": sock})
         assert server is not None
         try:
             assert server.url is None
@@ -1734,7 +1732,7 @@ class TestServeAnyApp:
 
         app, first_chunk, second_chunk = self._two_mounted_arrays()
 
-        server = serve(app, host="127.0.0.1", port=0, background=True)
+        server = serve_background(app, host="127.0.0.1", port=0)
         try:
             assert server.url is not None
             assert httpx.get(f"{server.url}/first/c/0", timeout=30).content == first_chunk

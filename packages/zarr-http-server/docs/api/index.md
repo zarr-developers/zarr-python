@@ -16,9 +16,9 @@ and carry no compatibility guarantee.
 
 ## Running a server
 
-::: zarr_http_server.serve_store
+::: zarr_http_server.serve
 
-::: zarr_http_server.serve_node
+::: zarr_http_server.serve_background
 
 ::: zarr_http_server.BackgroundServer
 

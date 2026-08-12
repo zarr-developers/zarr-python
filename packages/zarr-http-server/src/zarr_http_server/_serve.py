@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, get_args, overload
+from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, get_args
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.buffer import cpu
@@ -35,8 +35,7 @@ __all__ = [
     "ReadOnlyHTTPMethod",
     "node_app",
     "serve",
-    "serve_node",
-    "serve_store",
+    "serve_background",
     "store_app",
 ]
 
@@ -191,7 +190,7 @@ class BackgroundServer:
 
     Examples
     --------
-    >>> with serve_node(arr, background=True) as server:  # doctest: +SKIP
+    >>> with serve_background(node_app(arr)) as server:  # doctest: +SKIP
     ...     print(f"Listening on {server.host}:{server.port}")
     ...     # server is shut down when the block exits
     """
@@ -802,105 +801,19 @@ def _reconcile_allow_methods(allow_methods: list[str], *, served: frozenset[str]
     return list(allow_methods)
 
 
-@overload
-def serve(
+def _build_server(
     app: Starlette,
     *,
-    host: str = ...,
-    port: int = ...,
-    background: Literal[False] = ...,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> None: ...
+    host: str,
+    port: int,
+    shutdown_timeout: int,
+    uvicorn_options: Mapping[str, object] | None,
+) -> tuple[uvicorn.Server, dict[str, object]]:
+    """Configure a `uvicorn.Server` for *app*, and report the options used.
 
-
-@overload
-def serve(
-    app: Starlette,
-    *,
-    host: str = ...,
-    port: int = ...,
-    background: Literal[True],
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer: ...
-
-
-@overload
-def serve(
-    app: Starlette,
-    *,
-    host: str = ...,
-    port: int = ...,
-    background: bool = ...,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer | None: ...
-
-
-def serve(
-    app: Starlette,
-    *,
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    background: bool = False,
-    shutdown_timeout: int = 5,
-    uvicorn_options: Mapping[str, object] | None = None,
-) -> BackgroundServer | None:
-    """Run any ASGI app under Uvicorn, blocking or in a daemon thread.
-
-    :func:`serve_store` and :func:`serve_node` are shorthands for the common
-    case of one store or one node. Use this when the app is something you
-    composed yourself -- most often several nodes mounted under one server:
-
-    .. code-block:: python
-
-        from starlette.applications import Starlette
-        from starlette.routing import Mount
-
-        app = Starlette(routes=[
-            Mount("/first", app=node_app(one)),
-            Mount("/second", app=node_app(other)),
-        ])
-        server = serve(app, port=0, background=True)
-
-    The two halves stay separate: what the app serves (`methods`,
-    `cors_options`, `max_body_size`) is settled when the app is built, and
-    this function only decides how it runs.
-
-    Parameters
-    ----------
-    app : Starlette
-        The ASGI app to run.
-    host : str, optional
-        The host to bind to. Defaults to ``"127.0.0.1"``.
-    port : int, optional
-        The port to bind to. Defaults to ``8000``. Pass ``0`` to let the OS
-        choose a free one, then read :attr:`BackgroundServer.url` for it.
-    background : bool, optional
-        Run in a daemon thread and return a :class:`BackgroundServer` rather
-        than blocking. Defaults to ``False``.
-    shutdown_timeout : int, optional
-        Seconds to wait for in-flight requests to finish gracefully when the
-        server is shut down. Defaults to ``5``. Bounds uvicorn's own
-        ``timeout_graceful_shutdown`` and, for a background server, the wait
-        :meth:`BackgroundServer.shutdown` uses before forcing it closed.
-    uvicorn_options : Mapping[str, object], optional
-        Extra options passed straight to `uvicorn.Config`, merged over the
-        ones set here (`host`, `port`, `timeout_graceful_shutdown`), so a
-        caller key wins. This is the escape hatch for anything uvicorn can do
-        that this signature does not name -- TLS via `ssl_keyfile` /
-        `ssl_certfile`, `proxy_headers` and `forwarded_allow_ips` behind a
-        reverse proxy, `root_path` when mounted under a prefix, `log_level`,
-        `limit_concurrency`, or a `uds` / `fd` bind. Binding somewhere other
-        than a TCP host and port leaves
-        :attr:`BackgroundServer.url` as ``None``.
-
-    Returns
-    -------
-    BackgroundServer or None
-        A handle when ``background=True``, otherwise ``None`` once the
-        blocking server has stopped.
+    The options come back so a caller can see what was actually asked for --
+    `serve_background` needs the host to build a URL, and a key from
+    `uvicorn_options` may have replaced the one passed here.
     """
     import uvicorn
 
@@ -915,12 +828,124 @@ def serve(
     # uvicorn.Config's parameters are individually typed and there are ~50 of
     # them; `Mapping[str, object]` is the honest type for the public argument,
     # so the cast is confined to the call itself.
-    config = uvicorn.Config(app, **cast("dict[str, Any]", options))
-    server = uvicorn.Server(config)
+    return uvicorn.Server(uvicorn.Config(app, **cast("dict[str, Any]", options))), options
 
-    if not background:
-        server.run()
-        return None
+
+def serve(
+    app: Starlette,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    shutdown_timeout: int = 5,
+    uvicorn_options: Mapping[str, object] | None = None,
+) -> None:
+    """Run an ASGI app under Uvicorn, blocking until it is stopped.
+
+    Returns only when the server stops, so this is the shape for a process
+    whose job is to serve -- a script, a container entrypoint. Use
+    :func:`serve_background` when the caller has more to do.
+
+    Build the app first with :func:`store_app` or :func:`node_app`, or compose
+    several of them; what an app serves is settled when it is built, and this
+    only decides how it runs.
+
+    .. code-block:: python
+
+        serve(store_app(store), host="0.0.0.0", port=8000)
+
+    Parameters
+    ----------
+    app : Starlette
+        The ASGI app to run.
+    host : str, optional
+        The host to bind to. Defaults to ``"127.0.0.1"``.
+    port : int, optional
+        The port to bind to. Defaults to ``8000``.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully when the
+        server is shut down, via uvicorn's ``timeout_graceful_shutdown``.
+        Defaults to ``5``.
+    uvicorn_options : Mapping[str, object], optional
+        Extra options passed straight to `uvicorn.Config`, merged over the
+        ones set here (`host`, `port`, `timeout_graceful_shutdown`), so a
+        caller key wins. This is the escape hatch for anything uvicorn can do
+        that this signature does not name -- TLS via `ssl_keyfile` /
+        `ssl_certfile`, `proxy_headers` and `forwarded_allow_ips` behind a
+        reverse proxy, `root_path` when mounted under a prefix, `log_level`,
+        `limit_concurrency`, or a `uds` / `fd` bind.
+    """
+    server, _ = _build_server(
+        app,
+        host=host,
+        port=port,
+        shutdown_timeout=shutdown_timeout,
+        uvicorn_options=uvicorn_options,
+    )
+    server.run()
+
+
+def serve_background(
+    app: Starlette,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    shutdown_timeout: int = 5,
+    uvicorn_options: Mapping[str, object] | None = None,
+) -> BackgroundServer:
+    """Start an ASGI app under Uvicorn in a daemon thread and return at once.
+
+    Returns once the socket is listening, so the next statement can use the
+    server. The returned handle is also a context manager:
+
+    .. code-block:: python
+
+        with serve_background(node_app(array)) as server:
+            httpx.get(f"{server.url}/zarr.json")
+
+    In a notebook, where the server must outlive the cell that started it,
+    keep the handle instead and call :meth:`BackgroundServer.shutdown` later.
+
+    Parameters
+    ----------
+    app : Starlette
+        The ASGI app to run.
+    host : str, optional
+        The host to bind to. Defaults to ``"127.0.0.1"``.
+    port : int, optional
+        The port to bind to. Defaults to ``0``, which asks the OS for a free
+        one -- unlike :func:`serve`, whose caller usually needs a port others
+        already know. A background server is normally reached through
+        :attr:`BackgroundServer.url`, and a fixed default would make starting
+        a second one, or re-running a notebook cell, fail on a port collision.
+    shutdown_timeout : int, optional
+        Seconds to wait for in-flight requests to finish gracefully, both for
+        uvicorn's ``timeout_graceful_shutdown`` and for the wait
+        :meth:`BackgroundServer.shutdown` uses before forcing the thread
+        closed. Defaults to ``5``.
+    uvicorn_options : Mapping[str, object], optional
+        Extra options passed straight to `uvicorn.Config`, merged over the
+        ones set here so a caller key wins. See :func:`serve`. Binding
+        somewhere other than a TCP host and port leaves
+        :attr:`BackgroundServer.url` as ``None``.
+
+    Returns
+    -------
+    BackgroundServer
+        A handle for the running server.
+
+    Raises
+    ------
+    RuntimeError
+        If the server does not start -- most often because the port is
+        already in use.
+    """
+    server, options = _build_server(
+        app,
+        host=host,
+        port=port,
+        shutdown_timeout=shutdown_timeout,
+        uvicorn_options=uvicorn_options,
+    )
 
     # uvicorn skips signal-handler installation off the main thread
     # (Server.capture_signals), so no workaround is needed here.
@@ -977,7 +1002,7 @@ def serve(
         thread,
         host=bound_host,
         port=bound_port,
-        scheme="https" if config.is_ssl else "http",
+        scheme="https" if server.config.is_ssl else "http",
         shutdown_timeout=shutdown_timeout,
     )
 
@@ -1069,233 +1094,3 @@ def node_app(
     app.state.prefix = node.store_path.path
     app.state.max_body_size = max_body_size
     return app
-
-
-@overload
-def serve_store(
-    store: Store,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: Literal[False] = ...,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> None: ...
-
-
-@overload
-def serve_store(
-    store: Store,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: Literal[True],
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer: ...
-
-
-@overload
-def serve_store(
-    store: Store,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: bool,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer | None: ...
-
-
-def serve_store(
-    store: Store,
-    *,
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    methods: AbstractSet[HTTPMethod] | None = None,
-    cors_options: CorsOptions | None = None,
-    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
-    background: bool = False,
-    shutdown_timeout: int = 5,
-    uvicorn_options: Mapping[str, object] | None = None,
-) -> BackgroundServer | None:
-    """Serve every key in a zarr ``Store`` over HTTP.
-
-    Builds a Starlette ASGI app (see :func:`store_app`) and starts a
-    `Uvicorn <https://www.uvicorn.org/>`_ server.
-
-    Parameters
-    ----------
-    store : Store
-        The zarr store to serve.
-    host : str, optional
-        The host to bind to. Defaults to ``"127.0.0.1"``.
-    port : int, optional
-        The port to bind to. Defaults to ``8000``.
-    methods : set of HTTPMethod, optional
-        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
-        method raises `ValueError`.
-    cors_options : CorsOptions, optional
-        If provided, CORS middleware will be added with the given options.
-    max_body_size : int or None, optional
-        Largest `PUT` body to accept, in bytes; larger requests get a 413.
-        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
-        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
-        pass `None` to lift the cap.
-    background : bool, optional
-        If ``False`` (the default), the server blocks until shut down.
-        If ``True``, the server runs in a daemon thread and this function
-        returns immediately.
-    shutdown_timeout : int, optional
-        Seconds to wait for in-flight requests to finish gracefully before
-        the server is forced closed, whether on `BackgroundServer.shutdown`
-        or (for a blocking server) on receiving a shutdown signal. Defaults
-        to ``5``.
-
-    Returns
-    -------
-    BackgroundServer or None
-        The running server when ``background=True``, or ``None`` when
-        the server has been shut down after blocking.  The
-        ``BackgroundServer`` can be used as a context manager for
-        automatic shutdown.
-    """
-    app = store_app(store, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
-    return serve(
-        app,
-        host=host,
-        port=port,
-        background=background,
-        shutdown_timeout=shutdown_timeout,
-        uvicorn_options=uvicorn_options,
-    )
-
-
-@overload
-def serve_node(
-    node: Array[Any] | Group,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: Literal[False] = ...,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> None: ...
-
-
-@overload
-def serve_node(
-    node: Array[Any] | Group,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: Literal[True],
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer: ...
-
-
-@overload
-def serve_node(
-    node: Array[Any] | Group,
-    *,
-    host: str = ...,
-    port: int = ...,
-    methods: AbstractSet[HTTPMethod] | None = ...,
-    cors_options: CorsOptions | None = ...,
-    max_body_size: int | None = ...,
-    background: bool,
-    shutdown_timeout: int = ...,
-    uvicorn_options: Mapping[str, object] | None = ...,
-) -> BackgroundServer | None: ...
-
-
-def serve_node(
-    node: Array[Any] | Group,
-    *,
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    methods: AbstractSet[HTTPMethod] | None = None,
-    cors_options: CorsOptions | None = None,
-    max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
-    background: bool = False,
-    shutdown_timeout: int = 5,
-    uvicorn_options: Mapping[str, object] | None = None,
-) -> BackgroundServer | None:
-    """Serve only the keys belonging to a zarr ``Array`` or ``Group`` over HTTP.
-
-    Builds a Starlette ASGI app (see :func:`node_app`) and starts a
-    `Uvicorn <https://www.uvicorn.org/>`_ server.
-
-    For an ``Array``, the served keys are the metadata document(s) and all
-    chunk (or shard) keys whose coordinates fall within the array's grid.
-
-    For a ``Group``, the served keys are the group's own metadata plus any
-    path that resolves through the group's members to a valid array metadata
-    document or chunk key.
-
-    Requests for keys outside this set receive a 404 response, even if the
-    underlying store contains data at that path.
-
-    Parameters
-    ----------
-    node : Array or Group
-        The zarr array or group to serve.
-    host : str, optional
-        The host to bind to. Defaults to ``"127.0.0.1"``.
-    port : int, optional
-        The port to bind to. Defaults to ``8000``.
-    methods : set of HTTPMethod, optional
-        The HTTP methods to accept: any of `"GET"`, `"HEAD"`, and `"PUT"`.
-        Defaults to `{"GET"}`, which also serves `HEAD`. Passing any other
-        method raises `ValueError`.
-    cors_options : CorsOptions, optional
-        If provided, CORS middleware will be added with the given options.
-    max_body_size : int or None, optional
-        Largest `PUT` body to accept, in bytes; larger requests get a 413.
-        `Store.set` takes a whole `Buffer`, so bodies cannot be streamed and
-        are held in memory in full. Defaults to `DEFAULT_MAX_BODY_SIZE`;
-        pass `None` to lift the cap.
-    background : bool, optional
-        If ``False`` (the default), the server blocks until shut down.
-        If ``True``, the server runs in a daemon thread and this function
-        returns immediately.
-    shutdown_timeout : int, optional
-        Seconds to wait for in-flight requests to finish gracefully before
-        the server is forced closed, whether on `BackgroundServer.shutdown`
-        or (for a blocking server) on receiving a shutdown signal. Defaults
-        to ``5``.
-
-    Returns
-    -------
-    BackgroundServer or None
-        The running server when ``background=True``, or ``None`` when
-        the server has been shut down after blocking.  The
-        ``BackgroundServer`` can be used as a context manager for
-        automatic shutdown.
-    """
-    app = node_app(node, methods=methods, cors_options=cors_options, max_body_size=max_body_size)
-    return serve(
-        app,
-        host=host,
-        port=port,
-        background=background,
-        shutdown_timeout=shutdown_timeout,
-        uvicorn_options=uvicorn_options,
-    )

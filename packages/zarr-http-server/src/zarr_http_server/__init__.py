@@ -12,8 +12,7 @@ from zarr_http_server._serve import (
     ReadOnlyHTTPMethod,
     node_app,
     serve,
-    serve_node,
-    serve_store,
+    serve_background,
     store_app,
 )
 
@@ -30,7 +29,6 @@ __all__ = [
     "__version__",
     "node_app",
     "serve",
-    "serve_node",
-    "serve_store",
+    "serve_background",
     "store_app",
 ]

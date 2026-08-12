@@ -21,16 +21,16 @@ pip install zarr-http-server
 ASGI app, so any HTTP-capable client — including zarr-python itself, via
 `FsspecStore` or `ObjectStore` — can read the data. The app is built on
 [Starlette](https://www.starlette.io/) and can be run with any ASGI server;
-the `serve_store` / `serve_node` conveniences run it with
+the `serve` / `serve_background` helpers run it with
 [Uvicorn](https://www.uvicorn.org/).
 
 Two levels of exposure are available:
 
 - **Whole store** ([`store_app`][zarr_http_server.store_app],
-  [`serve_store`][zarr_http_server.serve_store]) — serves every key in a
+  run with [`serve`][zarr_http_server.serve]) — serves every key in a
   store, exposing its entire key/value space.
 - **Single node** ([`node_app`][zarr_http_server.node_app],
-  [`serve_node`][zarr_http_server.serve_node]) — serves only the keys
+  run with [`serve_background`][zarr_http_server.serve_background]) — serves only the keys
   belonging to one `Array` or `Group`. Requests for keys outside that node
   return 404 even when those keys exist in the underlying store.
 
@@ -39,7 +39,7 @@ HTTP methods are handled by the app.
 
 !!! danger "Serving a whole store grants access to all of it"
 
-    `store_app` and `serve_store` apply no per-key filtering. Only point them
+    `store_app` applies no per-key filtering. Only point it
     at a store whose full contents are safe to serve, and note that enabling
     `PUT` grants write access to everything the store contains.
 

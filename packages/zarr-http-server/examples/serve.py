@@ -20,7 +20,7 @@ import numpy as np
 import zarr
 from zarr.storage import MemoryStore
 
-from zarr_http_server import serve_node
+from zarr_http_server import node_app, serve_background
 
 # -- create an array --------------------------------------------------------
 store = MemoryStore()
@@ -31,7 +31,7 @@ arr = zarr.create_array(store, data=data, chunks=(5, 5, 5), write_data=True, com
 # -- serve it in the background ---------------------------------------------
 # port=0 asks the OS for a free port, so running this twice -- or running it
 # while something else holds 8000 -- works. `server.url` reports what it bound.
-with serve_node(arr, host="127.0.0.1", port=0, background=True) as server:
+with serve_background(node_app(arr), host="127.0.0.1") as server:
     # -- fetch metadata ------------------------------------------------------
     resp = httpx.get(f"{server.url}/zarr.json")
     assert resp.status_code == 200
