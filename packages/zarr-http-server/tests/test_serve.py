@@ -14,6 +14,8 @@ from zarr.buffer import cpu
 from zarr.storage import LocalStore, MemoryStore
 
 from zarr_http_server._serve import (
+    READ_ONLY_METHODS,
+    READ_WRITE_METHODS,
     CorsOptions,
     _parse_range_header,
     _RangeVerdict,
@@ -1600,3 +1602,52 @@ class TestReadOnlyServing:
 
         with pytest.raises(ValueError, match="store is read-only"):
             node_app(read_only_array, methods={"GET", "PUT"})
+
+
+class TestMethodSetConstants:
+    """Named method sets let a call site state its intent, and make writable
+    deployments findable: every writable app must name one."""
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_read_only_constant_matches_the_default(self, store: Store) -> None:
+        """Passing it explicitly and omitting `methods` are the same server, so
+        saying so out loud costs nothing."""
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+
+        default = TestClient(store_app(store), raise_server_exceptions=False)
+        named = TestClient(
+            store_app(store, methods=READ_ONLY_METHODS), raise_server_exceptions=False
+        )
+
+        for method in ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"]:
+            assert default.request(method, "/k").status_code == (
+                named.request(method, "/k").status_code
+            )
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    @pytest.mark.parametrize("method", ["PUT", "POST", "DELETE", "PATCH"])
+    def test_read_only_constant_refuses_writes(self, store: Store, method: str) -> None:
+        sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
+        client = TestClient(
+            store_app(store, methods=READ_ONLY_METHODS), raise_server_exceptions=False
+        )
+
+        assert client.request(method, "/k", content=b"x").status_code == 405
+        assert sync(store.get("k", cpu.buffer_prototype)).to_bytes() == b"data"
+
+    @pytest.mark.parametrize("store", ["memory"], indirect=True)
+    def test_read_write_constant_permits_exactly_put(self, store: Store) -> None:
+        """It grants writes -- and still not POST, which has no handler."""
+        client = TestClient(
+            store_app(store, methods=READ_WRITE_METHODS), raise_server_exceptions=False
+        )
+
+        assert client.put("/k", content=b"data").status_code == 204
+        assert client.post("/k", content=b"data").status_code == 405
+        assert sync(store.get("k", cpu.buffer_prototype)).to_bytes() == b"data"
+
+    def test_constants_cannot_be_mutated_by_a_caller(self) -> None:
+        """Frozen, so one caller cannot widen the default for every other."""
+        assert isinstance(READ_ONLY_METHODS, frozenset)
+        assert isinstance(READ_WRITE_METHODS, frozenset)
+        assert "PUT" not in READ_ONLY_METHODS

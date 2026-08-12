@@ -196,6 +196,21 @@ no argument is needed to get there.
 the app is built. There is no handler behavior for `POST`, so no configuration
 can produce one.
 
+Two named sets let a call site state which it is, instead of leaving it to the
+presence or absence of an argument:
+
+```python
+from zarr_http_server import READ_ONLY_METHODS, READ_WRITE_METHODS, store_app
+
+app = store_app(store, methods=READ_ONLY_METHODS)   # GET, HEAD
+app = store_app(store, methods=READ_WRITE_METHODS)  # GET, HEAD, PUT
+```
+
+`READ_ONLY_METHODS` is exactly the default, so passing it changes nothing
+except that the intent is now written down. The practical value is the other
+direction: a writable app *must* name a method set, so
+`grep -r 'methods=' ` finds every place that opts into writes.
+
 For a guarantee that does not depend on getting `methods` right, make the
 *store* read-only. The store refuses writes itself, so no routing mistake —
 now or in a later edit — can produce one:

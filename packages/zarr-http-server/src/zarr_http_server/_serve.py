@@ -16,6 +16,7 @@ from zarr_http_server._keys import array_metadata_keys, group_metadata_keys, is_
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from collections.abc import Set as AbstractSet
 
     import uvicorn
     from starlette.applications import Starlette
@@ -26,6 +27,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_MAX_BODY_SIZE",
+    "READ_ONLY_METHODS",
+    "READ_WRITE_METHODS",
     "BackgroundServer",
     "CorsOptions",
     "HTTPMethod",
@@ -88,6 +91,26 @@ answered from the value's size rather than by building and discarding a body.
 """
 
 _SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
+
+READ_ONLY_METHODS: frozenset[HTTPMethod] = frozenset({"GET", "HEAD"})
+"""Methods that only read. The default for every app in this package.
+
+Naming the set makes a read-only deployment say so at the call site, rather
+than being the absence of an argument:
+
+    store_app(store, methods=READ_ONLY_METHODS)
+
+The stronger guarantee is a read-only store, which holds however `methods` is
+configured -- see `store.with_read_only(True)`.
+"""
+
+READ_WRITE_METHODS: frozenset[HTTPMethod] = frozenset({"GET", "HEAD", "PUT"})
+"""Methods that read and write. Serving these grants clients write access.
+
+Every writable app must name a method set, so this constant is also what makes
+writable deployments findable: grepping for `READ_WRITE_METHODS` (or for
+`methods=` generally) turns up every place that opts in.
+"""
 
 _STARTUP_TIMEOUT = 5.0
 """Seconds to wait for a background server to report that it is listening."""
@@ -626,7 +649,7 @@ async def _handle_request(request: Request) -> Response:
 
 def _make_starlette_app(
     *,
-    methods: set[HTTPMethod] | None = None,
+    methods: AbstractSet[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
 ) -> Starlette:
     """Create a Starlette app with the request handler.
@@ -641,7 +664,7 @@ def _make_starlette_app(
     from starlette.routing import Route
 
     if methods is None:
-        methods = {"GET"}
+        methods = READ_ONLY_METHODS
 
     # An empty set must not reach Starlette: `Route` treats a falsy `methods`
     # as "match every method", so asking for no methods would serve them all.
@@ -685,7 +708,9 @@ def _make_starlette_app(
     return app
 
 
-def _reject_writes_to_a_read_only_store(store: Store, methods: set[HTTPMethod] | None) -> None:
+def _reject_writes_to_a_read_only_store(
+    store: Store, methods: AbstractSet[HTTPMethod] | None
+) -> None:
     """Refuse a configuration whose writes can never succeed.
 
     A store's `read_only` is fixed when it is built, so asking to serve `PUT`
@@ -708,7 +733,7 @@ def _reject_writes_to_a_read_only_store(store: Store, methods: set[HTTPMethod] |
         )
 
 
-def _served_methods(methods: set[HTTPMethod]) -> frozenset[str]:
+def _served_methods(methods: AbstractSet[HTTPMethod]) -> frozenset[str]:
     """The methods the route will actually answer.
 
     Starlette adds `HEAD` to any route that serves `GET`, which RFC 9110
@@ -852,7 +877,7 @@ def _start_server(
 def store_app(
     store: Store,
     *,
-    methods: set[HTTPMethod] | None = None,
+    methods: AbstractSet[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
@@ -891,7 +916,7 @@ def store_app(
 def node_app(
     node: Array[Any] | Group,
     *,
-    methods: set[HTTPMethod] | None = None,
+    methods: AbstractSet[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
 ) -> Starlette:
@@ -944,7 +969,7 @@ def serve_store(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: Literal[False] = ...,
@@ -959,7 +984,7 @@ def serve_store(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: Literal[True],
@@ -974,7 +999,7 @@ def serve_store(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: bool,
@@ -988,7 +1013,7 @@ def serve_store(
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
-    methods: set[HTTPMethod] | None = None,
+    methods: AbstractSet[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
@@ -1054,7 +1079,7 @@ def serve_node(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: Literal[False] = ...,
@@ -1069,7 +1094,7 @@ def serve_node(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: Literal[True],
@@ -1084,7 +1109,7 @@ def serve_node(
     *,
     host: str = ...,
     port: int = ...,
-    methods: set[HTTPMethod] | None = ...,
+    methods: AbstractSet[HTTPMethod] | None = ...,
     cors_options: CorsOptions | None = ...,
     max_body_size: int | None = ...,
     background: bool,
@@ -1098,7 +1123,7 @@ def serve_node(
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
-    methods: set[HTTPMethod] | None = None,
+    methods: AbstractSet[HTTPMethod] | None = None,
     cors_options: CorsOptions | None = None,
     max_body_size: int | None = DEFAULT_MAX_BODY_SIZE,
     background: bool = False,
