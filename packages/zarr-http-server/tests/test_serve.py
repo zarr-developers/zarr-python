@@ -4,7 +4,7 @@ import asyncio
 import errno
 import os
 import socket
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import pytest
@@ -14,9 +14,10 @@ from zarr.buffer import cpu
 from zarr.storage import LocalStore, MemoryStore
 
 from zarr_http_server._serve import (
-    READ_ONLY_METHODS,
-    READ_WRITE_METHODS,
+    READ_ONLY_HTTP_METHODS,
+    READ_WRITE_HTTP_METHODS,
     CorsOptions,
+    ReadOnlyHTTPMethod,
     _parse_range_header,
     _RangeVerdict,
     node_app,
@@ -1616,7 +1617,7 @@ class TestMethodSetConstants:
 
         default = TestClient(store_app(store), raise_server_exceptions=False)
         named = TestClient(
-            store_app(store, methods=READ_ONLY_METHODS), raise_server_exceptions=False
+            store_app(store, methods=READ_ONLY_HTTP_METHODS), raise_server_exceptions=False
         )
 
         for method in ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"]:
@@ -1629,7 +1630,7 @@ class TestMethodSetConstants:
     def test_read_only_constant_refuses_writes(self, store: Store, method: str) -> None:
         sync(store.set("k", cpu.buffer_prototype.buffer.from_bytes(b"data")))
         client = TestClient(
-            store_app(store, methods=READ_ONLY_METHODS), raise_server_exceptions=False
+            store_app(store, methods=READ_ONLY_HTTP_METHODS), raise_server_exceptions=False
         )
 
         assert client.request(method, "/k", content=b"x").status_code == 405
@@ -1639,7 +1640,7 @@ class TestMethodSetConstants:
     def test_read_write_constant_permits_exactly_put(self, store: Store) -> None:
         """It grants writes -- and still not POST, which has no handler."""
         client = TestClient(
-            store_app(store, methods=READ_WRITE_METHODS), raise_server_exceptions=False
+            store_app(store, methods=READ_WRITE_HTTP_METHODS), raise_server_exceptions=False
         )
 
         assert client.put("/k", content=b"data").status_code == 204
@@ -1648,6 +1649,17 @@ class TestMethodSetConstants:
 
     def test_constants_cannot_be_mutated_by_a_caller(self) -> None:
         """Frozen, so one caller cannot widen the default for every other."""
-        assert isinstance(READ_ONLY_METHODS, frozenset)
-        assert isinstance(READ_WRITE_METHODS, frozenset)
-        assert "PUT" not in READ_ONLY_METHODS
+        assert isinstance(READ_ONLY_HTTP_METHODS, frozenset)
+        assert isinstance(READ_WRITE_HTTP_METHODS, frozenset)
+        assert "PUT" not in READ_ONLY_HTTP_METHODS
+
+    def test_constants_match_the_types_they_model(self) -> None:
+        """The sets are derived from the Literals, so they cannot disagree
+        about what this server serves. Pinning the contents here makes
+        widening either type a deliberate, visible edit."""
+        assert frozenset(get_args(ReadOnlyHTTPMethod)) == READ_ONLY_HTTP_METHODS
+        assert set(READ_ONLY_HTTP_METHODS) == {"GET", "HEAD"}
+        assert set(READ_WRITE_HTTP_METHODS) == {"GET", "HEAD", "PUT"}
+        # Read-only is a strict subset: the only difference is the write verb.
+        assert READ_ONLY_HTTP_METHODS < READ_WRITE_HTTP_METHODS
+        assert {"PUT"} == READ_WRITE_HTTP_METHODS - READ_ONLY_HTTP_METHODS

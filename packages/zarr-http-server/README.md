@@ -200,13 +200,28 @@ Two named sets let a call site state which it is, instead of leaving it to the
 presence or absence of an argument:
 
 ```python
-from zarr_http_server import READ_ONLY_METHODS, READ_WRITE_METHODS, store_app
+from zarr_http_server import READ_ONLY_HTTP_METHODS, READ_WRITE_HTTP_METHODS, store_app
 
-app = store_app(store, methods=READ_ONLY_METHODS)   # GET, HEAD
-app = store_app(store, methods=READ_WRITE_METHODS)  # GET, HEAD, PUT
+app = store_app(store, methods=READ_ONLY_HTTP_METHODS)   # GET, HEAD
+app = store_app(store, methods=READ_WRITE_HTTP_METHODS)  # GET, HEAD, PUT
 ```
 
-`READ_ONLY_METHODS` is exactly the default, so passing it changes nothing
+The distinction also exists in the type domain. `ReadOnlyHTTPMethod` is a
+`Literal["GET", "HEAD"]`, so a read-only set can be *declared* rather than
+merely configured — a `frozenset[ReadOnlyHTTPMethod]` containing `"PUT"` is a
+type error, not a runtime surprise:
+
+```python
+from zarr_http_server import ReadOnlyHTTPMethod
+
+reads: frozenset[ReadOnlyHTTPMethod] = frozenset({"GET", "HEAD"})  # ok
+reads = frozenset({"GET", "PUT"})                                  # type error
+```
+
+Both constants are derived from these Literals, so the runtime sets and the
+static types cannot disagree about what the server serves.
+
+`READ_ONLY_HTTP_METHODS` is exactly the default, so passing it changes nothing
 except that the intent is now written down. The practical value is the other
 direction: a writable app *must* name a method set, so
 `grep -r 'methods=' ` finds every place that opts into writes.

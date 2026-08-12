@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast, get_args, overload
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 from zarr.buffer import cpu
@@ -27,11 +27,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_MAX_BODY_SIZE",
-    "READ_ONLY_METHODS",
-    "READ_WRITE_METHODS",
+    "READ_ONLY_HTTP_METHODS",
+    "READ_WRITE_HTTP_METHODS",
     "BackgroundServer",
     "CorsOptions",
     "HTTPMethod",
+    "ReadOnlyHTTPMethod",
     "node_app",
     "serve_node",
     "serve_store",
@@ -78,39 +79,65 @@ _CORS_DEFAULTS: CorsOptions = {
 }
 
 
-HTTPMethod = Literal["GET", "PUT", "HEAD"]
+ReadOnlyHTTPMethod = Literal["GET", "HEAD"]
+"""An HTTP method that cannot modify the store.
+
+Distinguished from `HTTPMethod` in the type domain, not only at runtime, so a
+read-only interface can be *declared* rather than merely configured: a
+parameter annotated `AbstractSet[ReadOnlyHTTPMethod]` cannot be handed `"PUT"`
+without a type error, whatever the value turns out to be at runtime.
+
+`HEAD` belongs here because Starlette routes it wherever `GET` goes, which is
+what RFC 9110 §9.3.2 asks of an origin server. It is answered from the value's
+size rather than by building and discarding a body.
+"""
+
+_WriteHTTPMethod = Literal["PUT"]
+"""An HTTP method that modifies the store.
+
+Private because nothing needs to name "the write methods" on its own -- it
+exists so `HTTPMethod` can be defined as the union rather than as a third
+hand-written list of the same strings.
+"""
+
+HTTPMethod = ReadOnlyHTTPMethod | _WriteHTTPMethod
 """An HTTP method this server implements.
 
 `GET` and `HEAD` read a key; `PUT` writes one. Other verbs are not accepted:
 the handler has no behavior for them, so serving them would silently answer
 as if they were `GET`.
-
-`HEAD` is served whenever `GET` is, named or not -- Starlette routes it
-alongside `GET`, which is what RFC 9110 §9.3.2 asks of an origin server. It is
-answered from the value's size rather than by building and discarding a body.
 """
 
-_SUPPORTED_METHODS: frozenset[str] = frozenset({"GET", "PUT", "HEAD"})
-
-READ_ONLY_METHODS: frozenset[HTTPMethod] = frozenset({"GET", "HEAD"})
+# Derived from the types above rather than restated, so the runtime sets and
+# the static types cannot disagree about what this server serves. Adding a
+# method to a Literal is then the only edit needed.
+READ_ONLY_HTTP_METHODS: frozenset[ReadOnlyHTTPMethod] = frozenset(get_args(ReadOnlyHTTPMethod))
 """Methods that only read. The default for every app in this package.
 
 Naming the set makes a read-only deployment say so at the call site, rather
 than being the absence of an argument:
 
-    store_app(store, methods=READ_ONLY_METHODS)
+    store_app(store, methods=READ_ONLY_HTTP_METHODS)
+
+Typed as a set of `ReadOnlyHTTPMethod`, so a caller building on it keeps the
+static guarantee: adding `"PUT"` to a `frozenset[ReadOnlyHTTPMethod]` is a
+type error, not a runtime surprise.
 
 The stronger guarantee is a read-only store, which holds however `methods` is
 configured -- see `store.with_read_only(True)`.
 """
 
-READ_WRITE_METHODS: frozenset[HTTPMethod] = frozenset({"GET", "HEAD", "PUT"})
+READ_WRITE_HTTP_METHODS: frozenset[HTTPMethod] = frozenset(
+    get_args(ReadOnlyHTTPMethod) + get_args(_WriteHTTPMethod)
+)
 """Methods that read and write. Serving these grants clients write access.
 
 Every writable app must name a method set, so this constant is also what makes
-writable deployments findable: grepping for `READ_WRITE_METHODS` (or for
+writable deployments findable: grepping for `READ_WRITE_HTTP_METHODS` (or for
 `methods=` generally) turns up every place that opts in.
 """
+
+_SUPPORTED_METHODS: frozenset[str] = READ_WRITE_HTTP_METHODS
 
 _STARTUP_TIMEOUT = 5.0
 """Seconds to wait for a background server to report that it is listening."""
@@ -664,7 +691,7 @@ def _make_starlette_app(
     from starlette.routing import Route
 
     if methods is None:
-        methods = READ_ONLY_METHODS
+        methods = READ_ONLY_HTTP_METHODS
 
     # An empty set must not reach Starlette: `Route` treats a falsy `methods`
     # as "match every method", so asking for no methods would serve them all.
