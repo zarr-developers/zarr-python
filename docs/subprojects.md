@@ -32,4 +32,14 @@ without taking on `zarr` as a dependency.
     pip install zarr-indexing
     ```
 
+- [:material-server:{ .lg .middle } __zarr-http-server__](https://zarr.readthedocs.io/projects/zarr-http-server/)
+
+    ---
+
+    HTTP server for Zarr stores, arrays, and groups.
+
+    ```bash
+    pip install zarr-http-server
+    ```
+
 </div>
