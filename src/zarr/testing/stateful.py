@@ -154,13 +154,12 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
         # Recreate the same array in the store under test
         from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+        from zarr.testing.strategies import chunks_param_from_rectilinear
 
         chunk_grid = a.metadata.chunk_grid
-        chunks_param: tuple[int, ...] | list[list[int]]
+        chunks_param: tuple[int, ...] | list[int | list[int]]
         if isinstance(chunk_grid, RectilinearChunkGridMetadata):
-            chunks_param = [
-                list(dim) if isinstance(dim, tuple) else [dim] for dim in chunk_grid.chunk_shapes
-            ]
+            chunks_param = chunks_param_from_rectilinear(chunk_grid)
         elif isinstance(chunk_grid, RegularChunkGridMetadata):
             chunks_param = chunk_grid.chunk_shape
         else:

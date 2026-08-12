@@ -312,17 +312,14 @@ def arrays(
     # - RegularChunkGridMetadata -> flat tuple of ints
     # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
     # - v2 -> flat tuple of ints
-    chunks_param: tuple[int, ...] | list[list[int]]
+    chunks_param: tuple[int, ...] | list[int | list[int]]
     shard_shape = None
     dim_names = None
     if zarr_format == 3:
         chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
-            chunks_param = [
-                list(dim) if isinstance(dim, tuple) else [dim]
-                for dim in chunk_grid_meta.chunk_shapes
-            ]
+            chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
         else:
@@ -402,6 +399,19 @@ def simple_arrays(
             compressors=st.sampled_from([None, "default"]),
         )
     )
+
+
+def chunks_param_from_rectilinear(
+    meta: RectilinearChunkGridMetadata,
+) -> list[int | list[int]]:
+    """Convert rectilinear chunk grid metadata into a `chunks=` argument.
+
+    Explicit edge tuples become lists. Bare ints — the spec's step-size
+    shorthand meaning "repeat to cover the axis" — pass through unchanged;
+    wrapping one in a single-element list would instead declare exactly one
+    chunk, which fails normalization whenever the axis needs more than one.
+    """
+    return [list(dim) if isinstance(dim, tuple) else dim for dim in meta.chunk_shapes]
 
 
 @st.composite

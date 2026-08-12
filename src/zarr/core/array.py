@@ -43,7 +43,6 @@ from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
     _is_rectilinear_chunks,
-    as_regular_shape,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -523,7 +522,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
                 outer_chunks = normalize_chunks_nd(_raw, shape)
-            _chunks = as_regular_shape(outer_chunks)
+            _chunks = outer_chunks.chunk_shape
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -4467,7 +4466,7 @@ async def init_array(
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
 
-    # Normalize the user's chunks into canonical ChunksTuple form
+    # Normalize the user's chunks into a canonical ChunkGrid
 
     if chunks == "auto":
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
@@ -4510,7 +4509,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=as_regular_shape(outer_chunks),
+            chunks=outer_chunks.chunk_shape,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4529,7 +4528,7 @@ async def init_array(
         grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
         if inner is not None:
-            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
+            inner_chunks_flat = inner.outer_chunks.chunk_shape
             index_location: IndexLocation = "end"
             if isinstance(shards, dict):
                 index_location = cast("IndexLocation", shards.get("index_location", "end"))
