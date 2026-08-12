@@ -13,6 +13,7 @@ use_directory_urls: true
 
 nav:
   - index.md
+  - guide.md
   - API Reference:
       - api/index.md
   - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/CHANGELOG.md
