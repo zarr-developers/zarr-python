@@ -1451,7 +1451,7 @@ dev = [
     { name = "coverage", specifier = "==7.15.2" },
     { name = "fsspec", specifier = ">=2023.10.0" },
     { name = "griffe-inherited-docstrings", specifier = "==1.1.3" },
-    { name = "hypothesis", specifier = "==6.160.0" },
+    { name = "hypothesis", specifier = "==6.164.0" },
     { name = "markdown-exec", extras = ["ansi"], specifier = "==1.12.3" },
     { name = "mike", specifier = "==2.2.0" },
     { name = "mkdocs", specifier = "==1.6.1" },
@@ -1477,7 +1477,7 @@ dev = [
     { name = "tomlkit", specifier = "==0.15.1" },
     { name = "towncrier", specifier = "==25.8.0" },
     { name = "universal-pathlib" },
-    { name = "uv", specifier = "==0.11.31" },
+    { name = "uv", specifier = "==0.12.0" },
 ]
 docs = [
     { name = "astroid", specifier = "==4.1.2" },
@@ -1500,7 +1500,7 @@ remote-tests = [
     { name = "botocore" },
     { name = "coverage", specifier = "==7.15.2" },
     { name = "fsspec", specifier = ">=2023.10.0" },
-    { name = "hypothesis", specifier = "==6.160.0" },
+    { name = "hypothesis", specifier = "==6.164.0" },
     { name = "moto", extras = ["s3", "server"], specifier = "==5.2.2" },
     { name = "numpydoc", specifier = "==1.10.0" },
     { name = "obstore", specifier = ">=0.5.1" },
@@ -1514,11 +1514,11 @@ remote-tests = [
     { name = "requests", specifier = "==2.34.2" },
     { name = "s3fs", specifier = ">=2023.10.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
-    { name = "uv", specifier = "==0.11.31" },
+    { name = "uv", specifier = "==0.12.0" },
 ]
 test = [
     { name = "coverage", specifier = "==7.15.2" },
-    { name = "hypothesis", specifier = "==6.160.0" },
+    { name = "hypothesis", specifier = "==6.164.0" },
     { name = "numpydoc", specifier = "==1.10.0" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-accept", specifier = "==0.3.0" },
@@ -1528,7 +1528,7 @@ test = [
     { name = "pytest-cov", specifier = "==7.1.0" },
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
-    { name = "uv", specifier = "==0.11.31" },
+    { name = "uv", specifier = "==0.12.0" },
 ]
 
 [[package]]
