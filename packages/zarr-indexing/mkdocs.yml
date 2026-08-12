@@ -26,6 +26,9 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.messages</code>': api/messages.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.errors</code>': api/errors.md
   - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md
+  # This site is a Read the Docs subproject of zarr-python; give readers a way
+  # back to the parent docs, which list every companion package.
+  - 'zarr-python ↪': https://zarr.readthedocs.io/
 
 watch:
   - src

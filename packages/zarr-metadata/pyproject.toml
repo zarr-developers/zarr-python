@@ -71,6 +71,26 @@ raw-options = { root = "../..", git_describe_command = "git describe --dirty --t
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_metadata"]
 
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. The list
+# keeps an sdist self-testing and self-documenting: every fixture this suite
+# reads is a JSON file sitting next to the test module that loads it, so
+# `/tests` is the whole test dependency, and `/docs` plus `/mkdocs.yml` are a
+# self-contained site (mkdocstrings reads `src`, nothing reaches outside the
+# package) so `just docs-check` runs from an unpacked sdist too. `changes/`
+# and `.readthedocs.yaml` are deliberately absent: towncrier fragments are
+# repo bookkeeping, and the RTD config addresses paths from the repo root.
+# `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+]
+
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py311"
