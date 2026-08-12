@@ -58,7 +58,7 @@ conda install -c conda-forge zarr
     which parameters can be used. It assumes that you have an understanding of the
     key concepts.
 
-- [:material-package-variant:{ .lg .middle } __Related projects__](projects.md)
+- [:material-package-variant:{ .lg .middle } __Related projects__](subprojects.md)
 
     ---
 

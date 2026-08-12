@@ -33,7 +33,7 @@ nav:
       - user-guide/examples/rectilinear_chunks.md
       - user-guide/examples/codec_pipeline_performance.md
       - user-guide/examples/sharding_coalescing.md
-  - projects.md
+  - subprojects.md
   - API Reference:
       - api/zarr/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc</code>':
