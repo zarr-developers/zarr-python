@@ -1,4 +1,4 @@
-# Related Projects
+# Subprojects
 
 Alongside `zarr` itself, the
 [zarr-python repository](https://github.com/zarr-developers/zarr-python) hosts a
@@ -33,12 +33,3 @@ without taking on `zarr` as a dependency.
     ```
 
 </div>
-
-## Elsewhere in the Zarr ecosystem
-
-- [Zarr specifications](https://zarr-specs.readthedocs.io) — the format
-  specifications that `zarr-python` implements.
-- [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/) — the
-  registry of specified extensions to the Zarr v3 core format.
-- [zarr.dev](https://zarr.dev) — the Zarr project website, including
-  implementations in other languages.
