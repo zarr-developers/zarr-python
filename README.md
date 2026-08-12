@@ -43,7 +43,7 @@ conda install -c conda-forge zarr
 
 For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/stable/#installation).
 
-## Ecosystem
+## Repository sub-packages
 
 In addition to the primary `zarr` implementation, this repository contains other packages that provide specialized functionality with minimal dependencies:
 
