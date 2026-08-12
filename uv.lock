@@ -1081,6 +1081,24 @@ wheels = [
 ]
 
 [[package]]
+name = "icechunk"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zarr" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f9/ec/7d5188b499f43365af257ca2a254cd129b50fbfb60cb493a583a8dc39e9d/icechunk-2.1.2.tar.gz", hash = "sha256:762daf1ece116903b25c66555bc07bf9756de26f2e7d0cdbdb6d69530aa35f82", size = 3614380, upload-time = "2026-07-29T15:49:05.207Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/90/6b33d354836ef7bc3e4dbde5c3158e3994804481ed3739c6d64da7bae768/icechunk-2.1.2-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:1bc73fcea2411d1bab13851f46eed51cbe409b80c6b8754dbfc366f26a81a28f", size = 16422141, upload-time = "2026-07-29T15:49:11.531Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/df/e5e473dff92d15488b85cf52152608ae236d5c60d1ee9ed8a0d1438dbb96/icechunk-2.1.2-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:6e8039298886b73cb8d81fe36cab00a180cef31426f2ac3d5e7a42e47d4ff0fc", size = 15146547, upload-time = "2026-07-29T15:49:09.104Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/2f/d6843aa47e282e55280dceb48196aa90e1f102a983b7086223cc4900c13f/icechunk-2.1.2-cp312-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:499d61e24487e318986b61371cb095e926d3d8f6cc1989cd5d394b1c7887614b", size = 17062708, upload-time = "2026-07-29T15:49:06.799Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/0a/68e186bd8e80032f738e21b16f882cba2c65beb22e60187d21b3e5ad39f0/icechunk-2.1.2-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:f53f6d63da11846a1d32dd49b2cfb12f5bb6a5bca42b9b459748e8bdabb4df12", size = 16717011, upload-time = "2026-07-29T15:49:02.924Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/1f/4e2b0058c2909734b10c8761179d35adfe6aaae776b5ca90609016deb999/icechunk-2.1.2-cp312-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:f409c6e17f89f85e26e2c227938c3dd23c9e873dc72997514356174779c19557", size = 16944698, upload-time = "2026-07-29T15:49:13.68Z" },
+    { url = "https://files.pythonhosted.org/packages/24/7f/626edb15fc21c9fd596f9212db1b93c3fe5d36fc8c2eeb0b97097dd48777/icechunk-2.1.2-cp312-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:41e3881cbe704ce605c071d9522a9246efacc358700bdaf75fff80fc366e8c76", size = 17519173, upload-time = "2026-07-29T15:49:15.94Z" },
+    { url = "https://files.pythonhosted.org/packages/11/e7/907e22a3dd9ecbbd2488e1901b55e6273925549a301e2203566348078002/icechunk-2.1.2-cp312-abi3-win_amd64.whl", hash = "sha256:bf796aaa99e3ad883d2125b9388237a253eb2d326475cc3e2833786ec62cb4a8", size = 16046437, upload-time = "2026-07-29T15:49:18.929Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.15"
 source = { registry = "https://pypi.org/simple" }
@@ -3544,6 +3562,24 @@ test = [
     { name = "tomlkit" },
     { name = "uv" },
 ]
+zarrista = [
+    { name = "coverage" },
+    { name = "hypothesis" },
+    { name = "icechunk" },
+    { name = "numpydoc" },
+    { name = "obstore" },
+    { name = "pytest" },
+    { name = "pytest-accept" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "tomlkit" },
+    { name = "uv" },
+    { name = "zarr-indexing" },
+    { name = "zarrista" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3647,4 +3683,54 @@ test = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
     { name = "uv", specifier = "==0.12.0" },
+]
+zarrista = [
+    { name = "coverage", specifier = "==7.15.2" },
+    { name = "hypothesis", specifier = "==6.164.0" },
+    { name = "icechunk", specifier = ">=1.1.21" },
+    { name = "numpydoc", specifier = "==1.10.0" },
+    { name = "obstore", specifier = ">=0.10.1" },
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "pytest-accept", specifier = "==0.3.0" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "pytest-benchmark", specifier = "==5.2.3" },
+    { name = "pytest-codspeed", specifier = "==5.0.3" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "tomlkit", specifier = "==0.15.1" },
+    { name = "uv", specifier = "==0.12.0" },
+    { name = "zarr-indexing", specifier = ">=0.2.1" },
+    { name = "zarrista", git = "https://github.com/developmentseed/zarrista" },
+]
+
+[[package]]
+name = "zarr-indexing"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/b8/803a47caac58ea691a533c5ede821e6a772fc928963b5bae42bbfc82a8a8/zarr_indexing-0.2.1.tar.gz", hash = "sha256:ae8246d284d242d504698708f402db159a8ce75e8610b0a5754e03ccd7073613", size = 267699, upload-time = "2026-08-12T14:42:44.536Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/62/d0e463ac800062a509779ffb2eec3a44dba74330a0c6630852d58226a336/zarr_indexing-0.2.1-py3-none-any.whl", hash = "sha256:e607e492876c82be6d5c22904e75060fadbf2340ab4364b5bf5a0821adee625e", size = 108080, upload-time = "2026-08-12T14:42:43.138Z" },
+]
+
+[[package]]
+name = "zarr-metadata"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/76/ca9334554b9a875c2c68203e2ce8b0a3febe1c3e9efba00a57e9a12c4e40/zarr_metadata-0.4.0.tar.gz", hash = "sha256:56788af0b86ec653176410fd57e0f4815331ac61d61e562dfd020198e98ce3eb", size = 149567, upload-time = "2026-07-29T20:20:38.513Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/8b/f8594d9160f0eaae3f988eb2969bafc9db96bf3e224b8199b1bb80fa1f7a/zarr_metadata-0.4.0-py3-none-any.whl", hash = "sha256:642106291b881284d08222973d0970dd950d254b2286f36fcc269b0b1a1f4be2", size = 69750, upload-time = "2026-07-29T20:20:37.059Z" },
+]
+
+[[package]]
+name = "zarrista"
+version = "0.1.0rc1"
+source = { git = "https://github.com/developmentseed/zarrista#e2bf68a58d55f9da1c248222b479610528c75e18" }
+dependencies = [
+    { name = "zarr-metadata" },
 ]

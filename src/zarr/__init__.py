@@ -36,6 +36,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
+from zarr.core.engine import list_engines
 from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
@@ -164,6 +165,7 @@ __all__ = [
     "full",
     "full_like",
     "group",
+    "list_engines",
     "load",
     "ones",
     "ones_like",

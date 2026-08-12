@@ -53,9 +53,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
+    from zarr.abc.engine import ArrayEngine, AsyncArrayEngine
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.engine import EngineName
     from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray
@@ -915,6 +917,7 @@ async def create(
     dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     **kwargs: Any,
 ) -> AnyAsyncArray:
     """Create an array.
@@ -1035,6 +1038,12 @@ async def create(
     config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the created array: a name (`"default"`,
+        `"zarrista"`) or a pre-built engine instance. A synchronous
+        `ArrayEngine` instance only makes sense from the sync API; an
+        `AsyncArrayEngine` instance only from the async API; a name works
+        from either. When omitted, the `"default"` behavior is unchanged.
 
     Returns
     -------
@@ -1095,6 +1104,10 @@ async def create(
         dimension_names=dimension_names,
         attributes=attributes,
         config=config_parsed,
+        # `AsyncArray._create` accepts only `AsyncArrayEngine`; a wrong-kind
+        # (sync) instance is rejected downstream, when `AsyncArray.__init__`
+        # resolves it via `resolve_async_engine`.
+        engine=cast("AsyncArrayEngine | EngineName | None", engine),
         **kwargs,
     )
 
@@ -1234,6 +1247,7 @@ async def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AnyAsyncArray:
     """Open an array using file-mode-like semantics.
@@ -1251,6 +1265,13 @@ async def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    engine : ArrayEngine | AsyncArrayEngine | Literal["default", "zarrista"] | None, optional
+        The data-path engine backing the opened (or, if missing, created)
+        array: a name (`"default"`, `"zarrista"`) or a pre-built engine
+        instance. A synchronous `ArrayEngine` instance only makes sense from
+        the sync API; an `AsyncArrayEngine` instance only from the async API;
+        a name works from either. When omitted, the `"default"` behavior is
+        unchanged.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1267,7 +1288,14 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        # `AsyncArray.open` accepts only `AsyncArrayEngine`; a wrong-kind
+        # (sync) instance is rejected downstream, when `AsyncArray.__init__`
+        # resolves it via `resolve_async_engine`.
+        return await AsyncArray.open(
+            store_path,
+            zarr_format=zarr_format,
+            engine=cast("AsyncArrayEngine | EngineName | None", engine),
+        )
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
@@ -1276,6 +1304,7 @@ async def open_array(
                 store=store_path,
                 zarr_format=_zarr_format,
                 overwrite=overwrite,
+                engine=engine,
                 **kwargs,
             )
         msg = f"No array found in store {store_path.store} at path {store_path.path}"

@@ -1,0 +1,49 @@
+name: Array engine
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/zarr/**'
+      - 'tests/engine/**'
+      - 'tests/zarrista/**'
+      - 'pyproject.toml'
+      - '.github/workflows/engine.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/zarr/**'
+      - 'tests/engine/**'
+      - 'tests/zarrista/**'
+      - 'pyproject.toml'
+      - '.github/workflows/engine.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0  # hatch-vcs needs tags to compute zarr's version
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version: '3.12'
+      - name: Sync zarrista group
+        run: uv sync --group zarrista
+      - name: Run engine tests
+        # the ubuntu runner image ships a Rust toolchain; the maturin build
+        # backend for zarrista is fetched by uv on demand
+        run: uv run --group zarrista pytest tests/engine tests/zarrista -v

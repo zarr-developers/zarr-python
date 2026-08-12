@@ -145,6 +145,20 @@ dev = [
     "universal-pathlib",
     "mypy==2.3.0",
 ]
+zarrista = [
+    {include-group = "test"},
+    # Tracked from git rather than PyPI: the engine uses `store_array_subset`
+    # and the `Tensor` family, and `uv.lock` pins the exact commit.
+    "zarrista @ git+https://github.com/developmentseed/zarrista",
+    # The zarrista engine resolves selections through zarr-indexing's
+    # `LazyArray`; zarr itself does not depend on it.
+    "zarr-indexing>=0.2.1",
+    # zarrista's `store` submodule unconditionally imports both of these
+    # (for its `AsyncStore` type alias), even though neither is declared in
+    # zarrista's own package metadata as a runtime dependency.
+    "icechunk>=1.1.21",
+    "obstore>=0.10.1",
+]
 
 [tool.coverage.report]
 exclude_also = [

@@ -4,7 +4,7 @@ import math
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import InitVar, dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
 from typing import (
@@ -22,6 +22,7 @@ from typing_extensions import Sentinel, deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.engine import SelectionKind, SelectionRequest
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
@@ -82,21 +83,23 @@ from zarr.core.dtype import (
     parse_dtype,
 )
 from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
+from zarr.core.engine import (
+    adopt_codec_pipeline,
+    resolve_async_engine,
+    resolve_sync_engine,
+    route_sync_engine_arg,
+)
 from zarr.core.indexing import (
     AsyncOIndex,
     AsyncVIndex,
     BasicIndexer,
     BasicSelection,
     BlockIndex,
-    BlockIndexer,
-    CoordinateIndexer,
     CoordinateSelection,
     Fields,
     Indexer,
-    MaskIndexer,
     MaskSelection,
     OIndex,
-    OrthogonalIndexer,
     OrthogonalSelection,
     Selection,
     VIndex,
@@ -153,9 +156,12 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.abc.engine import ArrayEngine, AsyncArrayEngine
     from zarr.abc.store import Store
     from zarr.codecs.sharding import IndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.engine import EngineName
+    from zarr.core.indexing import CoordinateIndexer
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
@@ -370,6 +376,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         The codec pipeline used for encoding and decoding chunks.
     config : ArrayConfig
         The runtime configuration of the array.
+    engine : AsyncArrayEngine
+        The engine backing this array's data path.
     """
 
     metadata: T_ArrayMetadata
@@ -377,6 +385,13 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     codec_pipeline: CodecPipeline = field(init=False)
     _chunk_grid: ChunkGrid = field(init=False)
     config: ArrayConfig
+    engine: AsyncArrayEngine = field(init=False, compare=False, repr=False)
+    # The `engine=` argument as given, kept so that a derived array (`with_config`,
+    # `update_attributes`) re-resolves it rather than inheriting an engine bound to
+    # the old metadata or config.
+    _engine_spec: AsyncArrayEngine | EngineName | None = field(
+        init=False, compare=False, repr=False
+    )
 
     @overload
     def __init__(
@@ -384,6 +399,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None: ...
 
     @overload
@@ -392,6 +408,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None: ...
 
     def __init__(
@@ -399,6 +416,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> None:
         metadata_parsed = parse_array_metadata(metadata)
         config_parsed = parse_array_config(config)
@@ -412,6 +430,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             "codec_pipeline",
             create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
         )
+        object.__setattr__(self, "_engine_spec", engine)
+        resolved = resolve_async_engine(
+            engine,
+            store=store_path.store,
+            path=store_path.path,
+            metadata=metadata_parsed,
+            config=config_parsed,
+        )
+        adopt_codec_pipeline(resolved, self.codec_pipeline)
+        object.__setattr__(self, "engine", resolved)
 
     @classmethod
     async def _create(
@@ -444,6 +472,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
         Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
@@ -500,6 +529,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 overwrite=overwrite,
                 config=config_parsed,
                 chunk_grid=chunk_grid,
+                engine=engine,
             )
         elif zarr_format == 2:
             if codecs is not None:
@@ -544,6 +574,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 compressor=compressor,
                 attributes=attributes,
                 overwrite=overwrite,
+                engine=engine,
             )
         else:
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
@@ -624,6 +655,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AsyncArrayV3:
         await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
 
@@ -645,7 +677,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             attributes=attributes,
         )
 
-        array = cls(metadata=metadata, store_path=store_path, config=config)
+        array = cls(metadata=metadata, store_path=store_path, config=config, engine=engine)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -699,6 +731,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AsyncArrayV2:
         await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
 
@@ -728,7 +761,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             attributes=attributes,
         )
 
-        array = cls(metadata=metadata, store_path=store_path, config=config)
+        array = cls(metadata=metadata, store_path=store_path, config=config, engine=engine)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -737,6 +770,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """
         Create a Zarr array from a dictionary, with support for both Zarr format 2 and 3 metadata.
@@ -762,13 +796,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             If the dictionary data is invalid or incompatible with either Zarr format 2 or 3 array creation.
         """
         metadata = parse_array_metadata(data)
-        return cls(metadata=metadata, store_path=store_path)
+        return cls(metadata=metadata, store_path=store_path, engine=engine)
 
     @classmethod
     async def open(
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        engine: AsyncArrayEngine | EngineName | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -812,7 +847,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict, engine=engine)
 
     @property
     def store(self) -> Store:
@@ -1206,7 +1241,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             # Merge new config with existing config, so missing keys are inherited
             # from the current array rather than from global defaults
             new_config = ArrayConfig(**{**self.config.to_dict(), **config})  # type: ignore[arg-type]
-        return type(self)(metadata=self.metadata, store_path=self.store_path, config=new_config)
+        # `_engine_spec`, not `engine`: passing the already-resolved engine would
+        # freeze the *old* config into the copy.
+        return type(self)(
+            metadata=self.metadata,
+            store_path=self.store_path,
+            config=new_config,
+            engine=self._engine_spec,
+        )
 
     async def nchunks_initialized(self) -> int:
         """
@@ -1445,24 +1487,25 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return self.size * self.dtype.itemsize
 
+    def _request(self, kind: SelectionKind, selection: Any) -> SelectionRequest:
+        """Package a selection for this array's engine."""
+        return SelectionRequest(
+            kind=kind,
+            selection=selection,
+            shape=self.metadata.shape,
+            chunk_grid=self._chunk_grid,
+        )
+
     async def _get_selection(
         self,
-        indexer: Indexer,
+        request: SelectionRequest,
         *,
         prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLikeOrScalar:
-        return await _get_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            indexer,
-            prototype=prototype,
-            out=out,
-            fields=fields,
+        return await self.engine.read_selection(
+            request, prototype=prototype, out=out, fields=fields
         )
 
     async def getitem(
@@ -1507,15 +1550,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         np.int32(0)
         """
 
-        return await _getitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await self._get_selection(self._request("basic", selection), prototype=prototype)
 
     async def get_orthogonal_selection(
         self,
@@ -1527,14 +1564,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.metadata.shape, self._chunk_grid)
-        return await _get_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            indexer=indexer,
+        return await self._get_selection(
+            self._request("orthogonal", selection),
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1550,14 +1581,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.metadata.shape, self._chunk_grid)
-        return await _get_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            indexer=indexer,
+        return await self._get_selection(
+            self._request("mask", mask),
             out=out,
             fields=fields,
             prototype=prototype,
@@ -1573,21 +1598,19 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.metadata.shape, self._chunk_grid)
-        out_array = await _get_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            indexer=indexer,
+        request = self._request("coordinate", selection)
+        out_array = await self._get_selection(
+            request,
             out=out,
             fields=fields,
             prototype=prototype,
         )
         if hasattr(out_array, "shape"):
             # restore shape
-            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
+            out_array = cast(
+                "NDArrayLikeOrScalar",
+                np.array(out_array).reshape(cast("CoordinateIndexer", request.indexer).sel_shape),
+            )
         return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
@@ -1598,23 +1621,13 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _set_selection(
         self,
-        indexer: Indexer,
+        request: SelectionRequest,
         value: npt.ArrayLike,
         *,
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
-        return await _set_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            indexer,
-            value,
-            prototype=prototype,
-            fields=fields,
-        )
+        return await self.engine.write_selection(request, value, prototype=prototype, fields=fields)
 
     async def setitem(
         self,
@@ -1655,15 +1668,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
-        return await _setitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            value,
-            prototype=prototype,
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await self._set_selection(
+            self._request("basic", selection), value, prototype=prototype
         )
 
     @property
@@ -1850,6 +1858,69 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
 
     _async_array: AsyncArray[T_ArrayMetadata]
+    engine_spec: InitVar[ArrayEngine | EngineName | None] = None
+    _engine: ArrayEngine | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self, engine_spec: ArrayEngine | EngineName | None) -> None:
+        self._engine_spec = engine_spec
+
+    @property
+    def engine(self) -> ArrayEngine:
+        """The synchronous engine backing this array's data path.
+
+        Resolved on first access rather than at construction: the sync data
+        path must never require a running event loop, and an engine that
+        cannot serve this store should only fail when it is actually used.
+        """
+        if self._engine is None:
+            aa = self._async_array
+            self._engine = resolve_sync_engine(
+                self._engine_spec,
+                store=aa.store_path.store,
+                path=aa.store_path.path,
+                metadata=aa.metadata,
+                config=aa.config,
+            )
+            adopt_codec_pipeline(self._engine, aa.codec_pipeline)
+        return self._engine
+
+    def _rebind_engine(self) -> None:
+        """Point the resolved engine at the async array's current metadata.
+
+        Called after an in-place metadata change (`resize`, `append`). A no-op
+        if the engine has never been resolved.
+        """
+        if self._engine is not None:
+            self._engine = self._engine.with_metadata(self._async_array.metadata)
+
+    def _request(self, kind: SelectionKind, selection: Any) -> SelectionRequest:
+        """Package a selection for this array's engine."""
+        return SelectionRequest(
+            kind=kind,
+            selection=selection,
+            shape=self._async_array.metadata.shape,
+            chunk_grid=self._async_array._chunk_grid,
+        )
+
+    def _get_selection(
+        self,
+        request: SelectionRequest,
+        *,
+        prototype: BufferPrototype,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+    ) -> NDArrayLikeOrScalar:
+        return self.engine.read_selection(request, prototype=prototype, out=out, fields=fields)
+
+    def _set_selection(
+        self,
+        request: SelectionRequest,
+        value: npt.ArrayLike,
+        *,
+        prototype: BufferPrototype,
+        fields: Fields | None = None,
+    ) -> None:
+        self.engine.write_selection(request, value, prototype=prototype, fields=fields)
 
     @property
     def async_array(self) -> AsyncArray[T_ArrayMetadata]:
@@ -1909,10 +1980,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
+        engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     ) -> Self:
         """Creates a new Array instance from an initialized store.
         Deprecated in favor of [`zarr.create_array`][].
         """
+        engine_for_async, engine_for_array = route_sync_engine_arg(engine)
         async_array = sync(
             AsyncArray._create(
                 store=store,
@@ -1932,9 +2005,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 compressor=compressor,
                 overwrite=overwrite,
                 config=config,
+                engine=engine_for_async,
             ),
         )
-        return cls(async_array)
+        return cls(async_array, engine_spec=engine_for_array)
 
     @classmethod
     def from_dict(
@@ -1971,6 +2045,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
+        engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -1986,8 +2061,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
+        engine_for_async, engine_for_array = route_sync_engine_arg(engine)
+        async_array = sync(AsyncArray.open(store, engine=engine_for_async))
+        return cls(async_array, engine_spec=engine_for_array)
 
     @property
     def store(self) -> Store:
@@ -2275,7 +2351,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -------
         A new Array
         """
-        return type(self)(self._async_array.with_config(config))
+        return type(self)(self._async_array.with_config(config), engine_spec=self._engine_spec)
 
     @property
     def nbytes(self) -> int:
@@ -2875,13 +2951,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        return sync(
-            self.async_array._get_selection(
-                BasicIndexer(selection, self.shape, self._chunk_grid),
-                out=out,
-                fields=fields,
-                prototype=prototype,
-            )
+        return self._get_selection(
+            self._request("basic", selection), out=out, fields=fields, prototype=prototype
         )
 
     def set_basic_selection(
@@ -2984,8 +3055,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._set_selection(
+            self._request("basic", selection), value, fields=fields, prototype=prototype
+        )
 
     def get_orthogonal_selection(
         self,
@@ -3112,11 +3184,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+        return self._get_selection(
+            self._request("orthogonal", selection), out=out, fields=fields, prototype=prototype
         )
 
     def set_orthogonal_selection(
@@ -3230,9 +3299,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+        return self._set_selection(
+            self._request("orthogonal", selection), value, fields=fields, prototype=prototype
         )
 
     def get_mask_selection(
@@ -3318,11 +3386,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+        return self._get_selection(
+            self._request("mask", mask), out=out, fields=fields, prototype=prototype
         )
 
     def set_mask_selection(
@@ -3407,8 +3472,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._set_selection(self._request("mask", mask), value, fields=fields, prototype=prototype)
 
     def get_coordinate_selection(
         self,
@@ -3495,16 +3559,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
-        out_array = sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
-        )
+        request = self._request("coordinate", selection)
+        out_array = self._get_selection(request, out=out, fields=fields, prototype=prototype)
 
         if hasattr(out_array, "shape"):
             # restore shape
-            out_array = np.array(out_array).reshape(indexer.sel_shape)
+            out_array = np.array(out_array).reshape(
+                cast("CoordinateIndexer", request.indexer).sel_shape
+            )
         return out_array
 
     def set_coordinate_selection(
@@ -3587,7 +3649,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if prototype is None:
             prototype = default_buffer_prototype()
         # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
+        request = self._request("coordinate", selection)
+        indexer = cast("CoordinateIndexer", request.indexer)
 
         # handle value - need ndarray-like flatten value
         if not is_scalar(value, self.dtype):
@@ -3609,7 +3672,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._set_selection(request, value, fields=fields, prototype=prototype)
 
     def get_block_selection(
         self,
@@ -3708,11 +3771,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
-        return sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
-            )
+        return self._get_selection(
+            self._request("block", selection), out=out, fields=fields, prototype=prototype
         )
 
     def set_block_selection(
@@ -3808,8 +3868,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._chunk_grid)
-        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        self._set_selection(
+            self._request("block", selection), value, fields=fields, prototype=prototype
+        )
 
     @property
     def vindex(self) -> VIndex:
@@ -3874,6 +3935,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         sync(self.async_array.resize(new_shape))
+        self._rebind_engine()
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
@@ -3909,7 +3971,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self.async_array.append(data, axis=axis))
+        result = sync(self.async_array.append(data, axis=axis))
+        self._rebind_engine()
+        return result
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -3937,7 +4001,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
           overwritten by the new values.
         """
         new_array = sync(self.async_array.update_attributes(new_attributes))
-        return type(self)(new_array)
+        return type(self)(new_array, engine_spec=self._engine_spec)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -4085,6 +4149,7 @@ async def from_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
+    engine: AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create an array from an existing array or array-like.
 
@@ -4309,6 +4374,7 @@ async def from_array(
         dimension_names=dimension_names,
         overwrite=overwrite,
         config=config_parsed,
+        engine=engine,
     )
 
     if write_data:
@@ -4358,6 +4424,7 @@ async def init_array(
     dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
+    engine: AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
@@ -4558,7 +4625,7 @@ async def init_array(
             attributes=attributes,
         )
 
-    arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
+    arr = AsyncArray(metadata=meta, store_path=store_path, config=config, engine=engine)
     await arr._save_metadata(meta, ensure_parents=True)
     return arr
 
@@ -4585,6 +4652,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    engine: ArrayEngine | AsyncArrayEngine | EngineName | None = None,
 ) -> AnyAsyncArray:
     """Create an array.
 
@@ -4733,6 +4801,7 @@ async def create_array(
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
+            engine=cast("AsyncArrayEngine | EngineName | None", engine),
         )
     else:
         mode: Literal["a"] = "a"
@@ -4757,6 +4826,7 @@ async def create_array(
             dimension_names=dimension_names,
             overwrite=overwrite,
             config=config,
+            engine=cast("AsyncArrayEngine | EngineName | None", engine),
         )
 
 
@@ -5773,6 +5843,7 @@ async def _resize(
 
     # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)
+    object.__setattr__(array, "engine", array.engine.with_metadata(new_metadata))
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
 
 
