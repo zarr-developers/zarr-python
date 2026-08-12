@@ -15,13 +15,13 @@
 
 ## What is it?
 
-Zarr is a Python package providing an implementation of compressed, chunked, N-dimensional arrays, designed for use in parallel computing. See the [documentation](https://zarr.readthedocs.io/en/stable/) for more information.
+The `zarr` package is a Python implementation of the [Zarr storage format](https://zarr.dev/). `zarr` delivers compressed, chunked, N-dimensional arrays that work well for parallel computing and object storage. See the [documentation](https://zarr.readthedocs.io/en/stable/) for more information.
 
 ## Main Features
 
-- [**Create**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#creating-an-array) N-dimensional arrays with any NumPy `dtype`.
+- [**Create**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#creating-an-array) N-dimensional arrays with NumPy-compatible `dtype`s.
 - [**Chunk arrays**](https://zarr.readthedocs.io/en/stable/user-guide/performance/#chunk-optimizations) along any dimension.
-- [**Compress**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#compressors) and/or filter chunks using any NumCodecs codec.
+- [**Encode**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#compressors) chunks using a variety of useful encodings (e.g., compression).
 - [**Store arrays**](https://zarr.readthedocs.io/en/stable/user-guide/storage/) in memory, on disk, inside a zip file, on S3, etc...
 - [**Read**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#reading-and-writing-data) an array [**concurrently**](https://zarr.readthedocs.io/en/stable/user-guide/performance/#parallel-computing-and-synchronization) from multiple threads or processes.
 - [**Write**](https://zarr.readthedocs.io/en/stable/user-guide/arrays/#reading-and-writing-data) to an array concurrently from multiple threads or processes.
@@ -42,3 +42,14 @@ conda install -c conda-forge zarr
 ```
 
 For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/stable/#installation).
+
+## Ecosystem
+
+This repository contains several packages:
+
+- [`zarr`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): The Python implementation of the Zarr storage format.
+- [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata.
+- [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays.
+- [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data.
+
+For data saved in the Zarr V2 format, many chunk encoding implementations are defined in the [`numcodecs`](https://github.com/zarr-developers/numcodecs/) library.
