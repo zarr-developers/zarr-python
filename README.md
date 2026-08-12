@@ -15,7 +15,7 @@
 
 ## What is it?
 
-The `zarr` package is a Python implementation of the [Zarr storage format](https://zarr.dev/). `zarr` delivers compressed, chunked, N-dimensional arrays that work well for parallel computing and object storage. See the [documentation](https://zarr.readthedocs.io/en/stable/) for more information.
+The `zarr` library is a Python implementation of the [Zarr storage format](https://zarr.dev/). `zarr` delivers compressed, chunked, N-dimensional arrays that work well for parallel computing and object storage. See the [documentation](https://zarr.readthedocs.io/en/stable/) for more information.
 
 ## Main Features
 
