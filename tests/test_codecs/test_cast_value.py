@@ -477,3 +477,87 @@ def test_parse_scalar_map(case: Expect[Any, Any]) -> None:
     from zarr.codecs.cast_value import parse_scalar_map
 
     assert parse_scalar_map(case.input) == case.output
+
+
+# ---------------------------------------------------------------------------
+# Backend version guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input="0.4.2", output=None, id="exactly-minimum"),
+        Expect(input="0.4.3", output=None, id="newer-patch"),
+        Expect(input="0.5.0", output=None, id="newer-minor"),
+        Expect(input="1.0.0", output=None, id="newer-major"),
+        Expect(input="0.4.2.post1", output=None, id="post-release"),
+        Expect(input="0.4.0", output="0.4.0", id="known-corrupting"),
+        Expect(input="0.4.1", output="0.4.1", id="one-patch-below"),
+        Expect(input="0.3.0", output="0.3.0", id="older-minor"),
+        Expect(input="0.4.2.dev1", output="0.4.2.dev1", id="pre-release-of-minimum"),
+    ],
+    ids=lambda c: c.id,
+)
+def test_check_backend_version(
+    case: Expect[str, str | None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Versions at or above the minimum pass; older ones report the installed version."""
+    from zarr.codecs import cast_value as mod
+
+    monkeypatch.setattr(mod, "version", lambda _: case.input)
+    result = mod._check_backend_version()
+
+    if case.output is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert case.output in result
+        assert mod.CAST_VALUE_RS_MIN_VERSION in result
+
+
+def test_check_backend_version_allows_missing_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backend without distribution metadata is allowed: there is no version to compare."""
+    from importlib.metadata import PackageNotFoundError
+
+    from zarr.codecs import cast_value as mod
+
+    def raise_not_found(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr(mod, "version", raise_not_found)
+    assert mod._check_backend_version() is None
+
+
+def test_encode_rejects_outdated_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Using the codec with an outdated backend raises instead of corrupting data."""
+    from zarr.codecs import cast_value as mod
+
+    monkeypatch.setattr(mod, "_BACKEND_ERROR", "outdated backend")
+    codec = CastValue(data_type="uint16")
+
+    with pytest.raises(ImportError, match="outdated backend"):
+        codec._do_cast(
+            np.arange(4, dtype=np.float32), target_dtype=np.dtype("uint16"), scalar_map=None
+        )
+
+
+def test_min_version_matches_pyproject() -> None:
+    """The runtime floor and the packaging floor must not drift apart."""
+    import re
+    import tomllib
+    from pathlib import Path
+
+    from zarr.codecs.cast_value import CAST_VALUE_RS_MIN_VERSION
+
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    if not pyproject.is_file():
+        pytest.skip("pyproject.toml is not available in an installed checkout")
+
+    with pyproject.open("rb") as f:
+        extras = tomllib.load(f)["project"]["optional-dependencies"]
+
+    (requirement,) = extras["cast-value-rs"]
+    match = re.fullmatch(r"cast-value-rs>=(?P<version>[\w.]+)", requirement)
+    assert match is not None, f"unexpected requirement form: {requirement!r}"
+    assert match.group("version") == CAST_VALUE_RS_MIN_VERSION
