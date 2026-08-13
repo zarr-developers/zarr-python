@@ -4,10 +4,13 @@ from typing import Any
 
 import numpy as np
 import pytest
+from numpy.testing import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
+from zarr.codecs import BytesCodec, TransposeCodec
 from zarr.codecs.cast_value import CastValue
+from zarr.storage import MemoryStore
 
 try:
     import cast_value_rs  # noqa: F401
@@ -477,3 +480,45 @@ def test_parse_scalar_map(case: Expect[Any, Any]) -> None:
     from zarr.codecs.cast_value import parse_scalar_map
 
     assert parse_scalar_map(case.input) == case.output
+
+
+@requires_cast_value_rs
+def test_enforce_contiguous_arrays() -> None:
+    """
+    Transpose codec produces non-contiguous arrays.
+    Ensure cast_value makes them contiguous before processing.
+    """
+    data = np.arange(20, dtype=np.float32).reshape(5, 2, 2)
+
+    def make_array(filters: list[Any]) -> Any:
+        return zarr.create_array(
+            store=MemoryStore(),
+            shape=data.shape,
+            dtype=data.dtype,
+            chunks=data.shape,
+            filters=filters,
+            serializer=BytesCodec(endian="little"),
+            compressors=None,
+            zarr_format=3,
+        )
+
+    # Cast before transpose
+    array = make_array(
+        [
+            CastValue(data_type="uint16"),
+            TransposeCodec(order=(1, 2, 0)),
+        ]
+    )
+    array[:] = data
+    assert_array_equal(array[:], data)
+
+    # Cast after transpose
+    array = make_array(
+        [
+            TransposeCodec(order=(1, 2, 0)),
+            CastValue(data_type="uint16"),
+        ]
+    )
+
+    array[:] = data
+    assert_array_equal(array[:], data)

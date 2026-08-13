@@ -316,8 +316,10 @@ class CastValue(ArrayArrayCodec):
             to_src = int if np.issubdtype(src_dtype, np.integer) else float
             to_tgt = int if np.issubdtype(target_dtype, np.integer) else float
             scalar_map_entries = {to_src(k): to_tgt(v) for k, v in scalar_map.items()}
+        # NOTE: the use of np.ascontiguousarray below makes a copy when
+        # the input is not contiguous.
         return cast_array_rs(  # type: ignore[no-any-return]
-            arr,
+            np.ascontiguousarray(arr),
             target_dtype=target_dtype,
             rounding_mode=self.rounding,
             out_of_range_mode=self.out_of_range,
