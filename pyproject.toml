@@ -2,11 +2,27 @@
 requires = ["hatchling>=1.29.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# An allowlist, so nothing that merely happens to sit in the repository root can
+# ride along in a release. The blocklist this replaces named three directories
+# and so shipped everything else, including the entire `packages/` tree — the
+# zarr-indexing, zarr-metadata and zarr-http-server sources, each of which is
+# released separately — inside every `zarr` sdist, plus `ci/`, `design/`,
+# towncrier fragments and assorted repo furniture. The list keeps the sdist
+# self-testing:
+# `tests/test_docs.py` walks `docs/` and executes every python block it finds,
+# `testpaths` collects `docs/user-guide`, and the pages under
+# `docs/user-guide/examples/` pull their source out of `examples/` with pymdownx
+# snippet includes. `mkdocs.yml` and `mkdocs_hooks.py` come along so `mkdocs
+# build` also runs from an unpacked sdist. `pyproject.toml`, `README.md` and
+# `LICENSE.txt` are added by hatchling itself.
 [tool.hatch.build.targets.sdist]
-exclude = [
-  "/.github",
-  "/bench",
+include = [
+  "/src",
+  "/tests",
   "/docs",
+  "/examples",
+  "/mkdocs.yml",
+  "/mkdocs_hooks.py",
 ]
 
 [project]
