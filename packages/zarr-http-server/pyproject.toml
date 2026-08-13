@@ -90,6 +90,28 @@ raw-options = { root = "../..", git_describe_command = "git describe --dirty --t
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_http_server"]
 
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. With no
+# sdist section at all hatchling defaults to "everything not gitignored", which
+# is a blocklist by another name. The list keeps an sdist self-testing:
+# `tests/test_examples.py` runs `examples/serve.py` and executes every cell of
+# `examples/serve_notebook.ipynb`, so those are part of the suite rather than
+# decoration, and `/docs` plus `/mkdocs.yml` are a self-contained site.
+# `changes/` and `.readthedocs.yaml` are deliberately absent: towncrier
+# fragments are consumed into `CHANGELOG.md` at release time, and the RTD
+# config only means anything in the repository. `pyproject.toml`, `README.md`
+# and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+]
+
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py312"
