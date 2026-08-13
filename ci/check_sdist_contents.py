@@ -16,14 +16,19 @@ Wherever possible the expectations are *derived* from configuration that is
 maintained for other reasons, rather than restated here. A hand-written list of
 "files the sdist must contain" would just be a second allowlist to forget to
 update, which is the problem it is meant to solve.
+
+Everything is read out of the tarball, including the configuration the
+expectations are derived from. The check is therefore a property of the
+artifact alone: it gives the same answer against a release sdist downloaded
+from PyPI as it does against a fresh `hatch build`, with no working tree in
+the picture -- which matters, because a git checkout has files the tarball
+does not.
 """
 
 import sys
 import tarfile
 import tomllib
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 # Paths no test opens, so the sdist test run in `releases.yml` cannot vouch for
 # them, but that packagers do need. conda-forge's recipe installs the sdist
@@ -57,17 +62,31 @@ def sdist_members(sdist: Path) -> set[str]:
     return {name.split("/", 1)[1] for name in names if "/" in name}
 
 
-def testpaths() -> list[str]:
-    """`testpaths` from pyproject.toml.
+def read_member(sdist: Path, path: str) -> bytes:
+    """Read one member of the tarball, addressed relative to its top-level directory."""
+    with tarfile.open(sdist) as tar:
+        roots = {name.split("/", 1)[0] for name in tar.getnames()}
+        if len(roots) != 1:
+            raise SystemExit(f"Expected one top-level directory in {sdist}, got {sorted(roots)}")
+        member = tar.extractfile(f"{roots.pop()}/{path}")
+        if member is None:
+            raise SystemExit(f"{path} is missing from {sdist.name}")
+        return member.read()
+
+
+def testpaths(sdist: Path) -> list[str]:
+    """`testpaths` from the pyproject.toml the sdist ships.
 
     Derived rather than duplicated: adding a directory to `testpaths` without
     adding it to the sdist allowlist is exactly the mistake this catches. It is
     also the mistake that was already live -- `docs/user-guide` has been a
     testpath while `docs/` was excluded, so `pytest` on an unpacked sdist died
     at collection.
+
+    Read from the tarball rather than the working tree so the two halves of the
+    comparison always come from the same artifact.
     """
-    with (REPO_ROOT / "pyproject.toml").open("rb") as f:
-        config = tomllib.load(f)
+    config = tomllib.loads(read_member(sdist, "pyproject.toml").decode())
     return config["tool"]["pytest"]["ini_options"]["testpaths"]
 
 
@@ -79,7 +98,11 @@ def check(sdist: Path) -> int:
 
     missing_required = [p for p in REQUIRED_PATHS if p not in members]
     # A testpath is a directory; it is present if anything ships beneath it.
-    missing_testpaths = [p for p in testpaths() if not any(m.startswith(f"{p}/") for m in members)]
+    # Skipped when pyproject.toml itself did not ship: it is already reported as
+    # a missing required path, and there is nothing left to read `testpaths` out
+    # of.
+    expected = [] if "pyproject.toml" in missing_required else testpaths(sdist)
+    missing_testpaths = [p for p in expected if not any(m.startswith(f"{p}/") for m in members)]
     forbidden = sorted(m for m in members if any(m.startswith(p) for p in FORBIDDEN_PREFIXES))
 
     if not (missing_required or missing_testpaths or forbidden):

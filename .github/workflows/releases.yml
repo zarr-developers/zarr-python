@@ -93,8 +93,12 @@ jobs:
   # from conda-forge/zarr-feedstock, so a recipe change there would redden
   # unrelated PRs. On `push` to main it still catches a bad merge within
   # minutes, attributed to one commit, and it gates `upload_pypi` so no release
-  # can publish an sdist conda cannot consume. Use `workflow_dispatch` to run it
-  # against a PR branch on demand.
+  # can publish an sdist conda cannot consume.
+  #
+  # To run it against a branch before merging, use `workflow_dispatch`. Note
+  # that dispatch only offers branches of the repository it runs in, so for a
+  # pull request from a fork that means dispatching this workflow in the fork,
+  # not here.
   test_dist_conda:
     name: Test conda-forge can consume the sdist
     needs: [build_artifacts]
@@ -122,7 +126,7 @@ jobs:
 
       - name: Point the recipe at the sdist we just built
         run: |
-          python -m pip install pyyaml
+          python -m pip install pyyaml==6.0.3
           python ci/conda_recipe_for_sdist.py \
             "${RUNNER_TEMP}/recipe-upstream.yaml" \
             "$(ls dist/*.tar.gz)" \
