@@ -68,6 +68,15 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         (10, (0,), ((10,),)),
         ((5, 10), (0, 100), ((5,), (10,) * 10)),
         ((5, 10), (20, 0), ((5, 5, 5, 5), (10,))),
+        # numpy integers are accepted anywhere a python int is, whether as the scalar
+        # convenience form, as per-dimension entries, or as the `-1` sentinel.
+        (np.int64(10), (100,), ((10,) * 10,)),
+        ((np.int64(2), np.int64(2)), (4, 4), ((2, 2), (2, 2))),
+        ((1, 3, np.int64(16), np.int64(16)), (1, 3, 32, 32), ((1,), (3,), (16, 16), (16, 16))),
+        ((np.int32(30), np.int64(-1)), (100, 20), ((30, 30, 30, 30), (20,))),
+        (np.array([10, 10]), (100, 100), ((10,) * 10, (10,) * 10)),
+        # rectilinear chunks given as numpy arrays
+        ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
     ],
 )
 def test_normalize_chunks(
@@ -142,7 +151,22 @@ def test_chunk_layout_nested() -> None:
             id="negative-uniform",
             msg="Chunk size must be positive",
         ),
+        ExpectFail(
+            input=(np.int64(0), 100),
+            exception=ValueError,
+            id="zero-uniform-numpy",
+            msg="Chunk size must be positive",
+        ),
         ExpectFail(input=([], 100), exception=ValueError, id="empty-list", msg="must not be empty"),
+        # Scalars that are neither integers nor iterable name themselves in the error,
+        # rather than surfacing an opaque "object is not iterable" from `list(chunks)`.
+        ExpectFail(
+            input=(2.5, 100),
+            exception=TypeError,
+            id="non-iterable-scalar",
+            msg="must be an integer or an iterable of integers; got 2.5 of type float",
+            escape=True,
+        ),
         ExpectFail(
             input=([10, -1, 10], 100),
             exception=ValueError,

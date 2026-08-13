@@ -2,11 +2,23 @@
 requires = ["hatchling>=1.29.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# An allowlist, not a blocklist: anything new — a subpackage under `packages/`, a
+# config file in the repository root — stays out of the sdist unless it is named
+# here. Beyond `src` and `tests`, the entries are what keeps the shipped test
+# suite and docs build runnable from an unpacked sdist: `tests/test_docs.py`
+# walks `docs/` and `testpaths` collects `docs/user-guide`; the pages under
+# `docs/user-guide/examples/` pull their source out of `examples/` via pymdownx
+# snippet includes; `mkdocs.yml` and `mkdocs_hooks.py` let `mkdocs build` run
+# too. `pyproject.toml`, `README.md`, `LICENSE.txt` and `.gitignore` are added by
+# hatchling itself.
 [tool.hatch.build.targets.sdist]
-exclude = [
-  "/.github",
-  "/bench",
+include = [
+  "/src",
+  "/tests",
   "/docs",
+  "/examples",
+  "/mkdocs.yml",
+  "/mkdocs_hooks.py",
 ]
 
 [project]
@@ -95,18 +107,18 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.15.2",
+    "coverage==7.15.3",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
     "numpydoc==1.10.0",
-    "hypothesis==6.164.0",
+    "hypothesis==6.165.2",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.0",
+    "uv==0.12.2",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -130,7 +142,7 @@ docs = [
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.3",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
