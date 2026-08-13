@@ -68,7 +68,7 @@ remote = [
 gpu = [
     "cupy-cuda12x; sys_platform != 'darwin'",
 ]
-cast-value-rs = ["cast-value-rs"]
+cast-value-rs = ["cast-value-rs>=0.4.2"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
