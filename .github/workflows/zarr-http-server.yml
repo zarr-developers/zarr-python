@@ -1,0 +1,139 @@
+name: zarr-http-server
+
+# Job steps delegate to packages/zarr-http-server/justfile, the single source
+# of truth for this package's verbs; CI owns only the python matrix and
+# caching. Keeping the commands in one place is what makes `just check`
+# locally mean the same thing as a green run here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/zarr-http-server/**'
+      - '.github/workflows/zarr-http-server.yml'
+      # The package resolves zarr from the repo root for its own tests, so a
+      # core change can break it. Run this suite when core changes too.
+      - 'src/zarr/**'
+  pull_request:
+    paths:
+      - 'packages/zarr-http-server/**'
+      - '.github/workflows/zarr-http-server.yml'
+      # The package resolves zarr from the repo root for its own tests, so a
+      # core change can break it. Run this suite when core changes too.
+      - 'src/zarr/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest py=${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-http-server
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Sync test dependency groups
+        # The examples group carries the deps the README examples need, so the
+        # test that reads a served array back with a zarr client runs here
+        # instead of silently skipping.
+        run: uv sync --group test --group examples --python ${{ matrix.python-version }}
+      - name: Run pytest
+        run: just test
+
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-http-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Run ruff
+        run: just lint
+
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-http-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Sync test dependency group
+        run: uv sync --group test --python 3.12
+      - name: Run mypy
+        run: just typecheck
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-http-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Build docs
+        run: just docs-check
+
+  zarr-http-server-complete:
+    name: zarr-http-server complete
+    needs: [test, ruff, mypy, docs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check failure
+        if: |
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Success
+        run: echo Success!

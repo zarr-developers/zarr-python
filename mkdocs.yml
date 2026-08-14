@@ -33,6 +33,7 @@ nav:
       - user-guide/examples/rectilinear_chunks.md
       - user-guide/examples/codec_pipeline_performance.md
       - user-guide/examples/sharding_coalescing.md
+  - subprojects.md
   - API Reference:
       - api/zarr/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc</code>':
@@ -94,8 +95,12 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.utils</code>': api/zarr/testing/utils.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros</code>': api/zarr/functions/zeros.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros_like</code>': api/zarr/functions/zeros_like.md
-      - 'zarr-metadata ↪': https://zarr-metadata.readthedocs.io/
-      - 'zarr-indexing ↪': https://zarr-indexing.readthedocs.io/
+      # The companion packages are Read the Docs subprojects of this one; link
+      # to the /projects/ paths Read the Docs advertises as canonical rather
+      # than to their standalone *.readthedocs.io domains, so following one
+      # keeps the reader on this site's domain.
+      - 'zarr-metadata ↪': https://zarr.readthedocs.io/projects/zarr-metadata/
+      - 'zarr-indexing ↪': https://zarr.readthedocs.io/projects/zarr-indexing/
   - release-notes.md
   - contributing.md
   - Blog:
@@ -194,6 +199,7 @@ plugins:
             - https://docs.xarray.dev/en/stable/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://numcodecs.readthedocs.io/en/stable/objects.inv
+            - https://msgspec.dev/objects.inv
             - https://developmentseed.org/obstore/latest/objects.inv
             - https://filesystem-spec.readthedocs.io/en/latest/objects.inv
             - https://requests.readthedocs.io/en/latest/objects.inv

@@ -41,6 +41,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -278,9 +279,9 @@ def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
 
 
 def parse_zarr_format(data: object) -> Literal[2]:
-    if data == 2:
-        return 2
-    raise ValueError(f"Invalid value. Expected 2. Got {data}.")
+    from typing import Literal
+
+    return cast("Literal[2]", parse_field(data, Literal[2], "zarr_format"))
 
 
 def parse_filters(data: object) -> tuple[Numcodec, ...] | None:

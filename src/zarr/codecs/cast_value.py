@@ -5,16 +5,18 @@ and back to the original data type during decoding, with configurable
 rounding, out-of-range handling, and explicit scalar mappings.
 
 Requires the optional ``cast-value-rs`` package for the actual casting
-logic. Install it with: ``pip install cast-value-rs``.
+logic. Install it with: ``pip install 'cast-value-rs>=0.4.2'``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
 
 import numpy as np
+from packaging.version import Version
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -123,12 +125,40 @@ def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
 # Backend: cast-value-rs
 # ---------------------------------------------------------------------------
 
+# Versions below this silently transpose input arrays that are not row-major -
+# the layout `transpose` hands to the next codec - writing corrupted data with
+# no error. Keep in sync with the `cast-value-rs` extra in pyproject.toml.
+CAST_VALUE_RS_MIN_VERSION: Final = "0.4.2"
+
+_INSTALL_HINT: Final = f"Install it with: pip install 'cast-value-rs>={CAST_VALUE_RS_MIN_VERSION}'"
+
+
+def _check_backend_version() -> str | None:
+    """Return a message describing an unusable backend version, or `None` if it is usable."""
+    try:
+        installed = version("cast-value-rs")
+    except PackageNotFoundError:
+        # Importable but without distribution metadata, e.g. a `maturin develop`
+        # build. There is no version to compare, so let it through.
+        return None
+    if Version(installed) < Version(CAST_VALUE_RS_MIN_VERSION):
+        return (
+            f"The cast_value codec requires cast-value-rs >= {CAST_VALUE_RS_MIN_VERSION}, "
+            f"but version {installed} is installed. Earlier versions silently corrupt data "
+            f"when the input array is not row-major. {_INSTALL_HINT}"
+        )
+    return None
+
+
+# Set once at import; raised from `_do_cast`, so an unusable backend does not
+# make `import zarr` fail for users who never touch this codec.
+_BACKEND_ERROR: str | None
 try:
     from cast_value_rs import cast_array as cast_array_rs
-
-    _HAS_RUST_BACKEND = True
 except ModuleNotFoundError:
-    _HAS_RUST_BACKEND = False
+    _BACKEND_ERROR = f"The cast_value codec requires the 'cast-value-rs' package. {_INSTALL_HINT}"
+else:
+    _BACKEND_ERROR = _check_backend_version()
 
 
 def _check_representable(
@@ -305,11 +335,8 @@ class CastValue(ArrayArrayCodec):
         target_dtype: np.dtype,
         scalar_map: Mapping[str | float | int, str | float | int] | None,
     ) -> np.ndarray:
-        if not _HAS_RUST_BACKEND:
-            raise ImportError(
-                "The cast_value codec requires the 'cast-value-rs' package. "
-                "Install it with: pip install cast-value-rs"
-            )
+        if _BACKEND_ERROR is not None:
+            raise ImportError(_BACKEND_ERROR)
         scalar_map_entries: dict[float | int, float | int] | None = None
         if scalar_map is not None:
             src_dtype = arr.dtype

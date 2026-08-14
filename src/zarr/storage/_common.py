@@ -297,9 +297,8 @@ class StorePath:
         """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
-        except Exception:
-            pass
-        return False
+        except AttributeError:
+            return False
 
 
 type StoreLike = Store | StorePath | FSMap | Path | UPath | str | dict[str, Buffer]
