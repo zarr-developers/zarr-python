@@ -2,11 +2,13 @@ ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
   autofix_prs: false
-  # mypy runs as a `language: system` hook via `uv run mypy`, which needs `uv`
-  # and the repo checkout to resolve the dev environment from `uv.lock` —
-  # unavailable on pre-commit.ci's runners. It is covered instead by the Lint
-  # GitHub Actions workflow and by local prek runs.
-  skip: [mypy]
+  # Both of these are `language: system` hooks that shell out to the local
+  # toolchain — `uv` for mypy, `uv` and `just` for the docs build — and need
+  # the repo checkout to resolve their environments from `uv.lock`. Neither is
+  # available on pre-commit.ci's runners. Each is covered instead by a GitHub
+  # Actions job (Lint for mypy, zarr-http-server for the docs build) and by
+  # local prek runs.
+  skip: [mypy, zarr-http-server-docs]
 
 default_stages: [pre-commit, pre-push]
 
@@ -50,6 +52,25 @@ repos:
         pass_filenames: false
         always_run: true
         types_or: [python, pyi]
+      # Builds the zarr-http-server docs site with warnings as errors, which
+      # catches a dead cross-reference or a nav entry pointing at a file that
+      # no longer exists before it reaches CI.
+      #
+      # `stages: [pre-push]` overrides the default of running on every commit:
+      # this is a whole-site build, too slow to pay per commit and only
+      # actionable before the code leaves the machine. `files:` limits it to
+      # changes that touch the package, and `pass_filenames: false` because
+      # mkdocs builds the site, not a list of files. Delegating to the
+      # justfile keeps one definition of the build shared with CI.
+      - id: zarr-http-server-docs
+        name: zarr-http-server docs build
+        language: system
+        entry: >-
+          just --justfile packages/zarr-http-server/justfile
+          --working-directory packages/zarr-http-server docs-check
+        pass_filenames: false
+        files: ^packages/zarr-http-server/
+        stages: [pre-push]
   - repo: https://github.com/scientific-python/cookie
     rev: 2026.06.18
     hooks:

@@ -11,64 +11,106 @@ Key types:
 - `IndexTransform` — maps input coordinates to storage coordinates
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single
   output dimension can depend on the input (see `output_map.py`)
-- `compose` — chain two transforms into one
+- `IndexTransform.compose` — chain two transforms into one
 
-The chunk-resolution helpers (`iter_chunk_transforms`,
-`sub_transform_to_selections`) and `selection_to_transform` are also exported
-here: they form the surface the zarr integration layer (array indexing) depends
-on. The `*Like` grid Protocols describe the chunk-grid surface chunk resolution
+`LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
+indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
+backends use an explicit `Reader` adapter.
+
+`plan_chunks` projects a transform through a caller-selected chunk grid without
+coupling the result to a storage backend or scheduler. `selection_to_transform`
+is also exported for consumers starting with a NumPy-style selection. The
+`DimensionGridLike` Protocol describes the narrow grid surface chunk resolution
 consumes without importing zarr.
 """
 
 from importlib.metadata import version
 
 from zarr_indexing.chunk_resolution import (
-    iter_chunk_transforms,
-    sub_transform_to_selections,
+    ChunkCoverage,
+    ChunkPlan,
+    ChunkProjection,
+    plan_chunks,
 )
-from zarr_indexing.composition import compose
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.grid import DimensionGridLike
+from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
+from zarr_indexing.grid import (
+    ChunkGrid,
+    ChunkSpec,
+    DimensionGrid,
+    DimensionGridLike,
+    EdgeDimensionGrid,
+    FixedDimension,
+    VaryingDimension,
+    dimension_grids_from_chunks,
+)
 from zarr_indexing.json import (
     IndexDomainJSON,
     IndexTransformJSON,
     OutputIndexMapJSON,
-    index_domain_from_json,
-    index_domain_to_json,
-    index_transform_from_json,
-    index_transform_to_json,
-    transform_from_canonical,
-    transform_to_canonical,
 )
+from zarr_indexing.lazy_array import LazyArray, Partition
 from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
-from zarr_indexing.transform import IndexTransform, selection_to_transform
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    OutputIndexMap,
+    output_index_map_from_json,
+)
+from zarr_indexing.reader import (
+    BasicReader,
+    NumPyReader,
+    ReadContext,
+    Reader,
+    UnitStepReader,
+    basic_reader,
+    numpy_reader,
+    unit_step_reader,
+)
+from zarr_indexing.transform import (
+    IndexTransform,
+)
 
 __version__ = version("zarr-indexing")
 
 __all__ = [
     "ArrayMap",
+    "BasicReader",
+    "BoundsCheckError",
+    "ChunkCoverage",
+    "ChunkGrid",
+    "ChunkPlan",
+    "ChunkProjection",
+    "ChunkSpec",
     "ConstantMap",
+    "DimensionGrid",
     "DimensionGridLike",
     "DimensionMap",
+    "EdgeDimensionGrid",
+    "FixedDimension",
     "IndexDomain",
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
+    "LazyArray",
     "NdselError",
+    "NumPyReader",
     "OutputIndexMap",
     "OutputIndexMapJSON",
+    "Partition",
+    "ReadContext",
+    "Reader",
+    "UnitStepReader",
+    "VaryingDimension",
+    "VindexInvalidSelectionError",
     "__version__",
-    "compose",
-    "index_domain_from_json",
-    "index_domain_to_json",
-    "index_transform_from_json",
-    "index_transform_to_json",
-    "iter_chunk_transforms",
+    "basic_reader",
+    "dimension_grids_from_chunks",
     "normalize_ndsel",
+    "numpy_reader",
+    "output_index_map_from_json",
     "parse_ndsel",
-    "selection_to_transform",
-    "sub_transform_to_selections",
-    "transform_from_canonical",
-    "transform_to_canonical",
+    "plan_chunks",
+    "unit_step_reader",
 ]
