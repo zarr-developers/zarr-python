@@ -91,8 +91,9 @@ print(group)
   which will create an [FsspecStore](#remote-store).
 
 - a [universal-pathlib](https://github.com/fsspec/universal_pathlib) `UPath`, which will create an
-  [FsspecStore](#remote-store), or a [local store](#local-store) if the `UPath` is local. The
-  `UPath` carries its own storage options, so passing `storage_options` alongside one is an error:
+  [FsspecStore](#remote-store), or a [local store](#local-store) if the `UPath` is local. Put your
+  storage options on the `UPath` itself; passing a separate `storage_options` argument alongside
+  one raises `TypeError`.
 
    ```python exec="false" reason="requires universal-pathlib, which is not in the docs environment"
    from upath import UPath
