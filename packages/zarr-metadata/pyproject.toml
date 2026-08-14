@@ -137,3 +137,33 @@ underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
 issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/pull/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
+
+# Declaring any type replaces towncrier's built-in set, so all five the
+# `changes/README.md` menu offers are restated here. They are the defaults
+# verbatim except for `misc`, whose `showcontent` towncrier defaults to false:
+# a `misc` entry would render as a bare PR link, which tells a reader nothing.
+# A change worth a release note is worth a sentence, whatever its category.
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bugfixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Improved Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = true
