@@ -281,6 +281,11 @@ async def test_make_store_upath(url: str, expected: type[Store], tmp_path: Path)
         pytest.skip("No AsyncFileSystemWrapper")
     store = await make_store(upath.UPath(url.format(tmp=tmp_path)))
     assert isinstance(store, expected)
+    if isinstance(store, LocalStore):
+        # The local branch rebuilds the root from the UPath, so a mangled path would still
+        # produce a LocalStore. Pin the root down too, since "file://{tmp}" has no leading
+        # slash on Windows.
+        assert store.root == tmp_path / "foo.zarr"
 
 
 async def test_make_store_upath_storage_options_raises() -> None:

@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 if importlib.util.find_spec("upath"):
     # Re-exported for zarr.storage._common, which needs it to recognize UPath store_like values.
-    from upath.core import UPath as UPath
+    # The redundant-looking alias is the explicit re-export mypy requires under strict mode.
+    from upath.core import UPath as UPath  # noqa: PLC0414
 else:
 
     class UPath:  # type: ignore[no-redef]
