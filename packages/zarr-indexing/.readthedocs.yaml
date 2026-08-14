@@ -24,7 +24,20 @@ build:
       - pip install ./packages/zarr-indexing --group packages/zarr-indexing/pyproject.toml:docs
     build:
       html:
-        - mkdocs build --strict -f packages/zarr-indexing/mkdocs.yml --site-dir $READTHEDOCS_OUTPUT/html
+        # Build from inside the package rather than pointing `-f` at its config
+        # from the repo root. mkdocs resolves some settings relative to the
+        # current working directory rather than to the config file, so building
+        # from elsewhere looks for them in the wrong place -- and silently, since
+        # the paths are valid, just wrong. zarr-indexing hit this: with
+        # `pymdownx.snippets` and a relative `base_path`, its snippets were
+        # searched for under the repo-root docs/ and the build failed with
+        # SnippetMissingError, while `just docs-check` passed because it runs
+        # from here. Building from the package directory makes this identical to
+        # the local and CI invocations, so a green build there means a green
+        # build here.
+        #
+        # $READTHEDOCS_OUTPUT is absolute, so the cd does not affect it.
+        - cd packages/zarr-indexing && mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
 
 mkdocs:
   configuration: packages/zarr-indexing/mkdocs.yml
