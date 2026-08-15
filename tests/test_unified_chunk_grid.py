@@ -2784,8 +2784,8 @@ def test_rectilinear_roundtrip(json_input: RectilinearChunkGridMetadataJSON) -> 
 
 pytest.importorskip("hypothesis")
 
-import hypothesis.strategies as st  # noqa: E402
-from hypothesis import event, given, settings  # noqa: E402
+import hypothesis.strategies as st
+from hypothesis import event, given, settings
 
 
 @st.composite

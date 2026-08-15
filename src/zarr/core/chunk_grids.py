@@ -729,17 +729,26 @@ def normalize_chunks_1d(
     overhang the span. The actual data extent of each chunk is determined
     by the chunk grid at runtime, not by this function.
     """
-    if chunks == -1:
-        return np.array([span], dtype=np.int64)
-    if isinstance(chunks, int):
-        if chunks <= 0:
-            raise ValueError(f"Chunk size must be positive, got {chunks}")
+    # `numbers.Integral` rather than `int` so that numpy integer scalars (which are not
+    # `int` subclasses) take the uniform-chunk path instead of being treated as a sequence.
+    if isinstance(chunks, numbers.Integral):
+        chunk_size = int(chunks)
+        if chunk_size == -1:
+            return np.array([span], dtype=np.int64)
+        if chunk_size <= 0:
+            raise ValueError(f"Chunk size must be positive, got {chunk_size}")
         if span == 0:
-            return np.array([chunks], dtype=np.int64)
-        n = ceildiv(span, chunks)
-        return np.full(n, chunks, dtype=np.int64)
+            return np.array([chunk_size], dtype=np.int64)
+        n = ceildiv(span, chunk_size)
+        return np.full(n, chunk_size, dtype=np.int64)
     else:
-        chunk_list = list(chunks)
+        try:
+            chunk_list = list(chunks)  # type: ignore[arg-type]
+        except TypeError:
+            raise TypeError(
+                f"Chunk specification must be an integer or an iterable of integers; got "
+                f"{chunks!r} of type {type(chunks).__name__}."
+            ) from None
         if not chunk_list:
             raise ValueError("Chunk specification must not be empty")
         non_int = [

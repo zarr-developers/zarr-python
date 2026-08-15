@@ -1,0 +1,67 @@
+# Development verbs for the zarr-indexing package. Recipes run with this
+# directory as the working directory regardless of where `just` is invoked.
+
+# List available recipes
+default:
+    @just --list
+
+# The chunk-resolution tests exercise this package against zarr's ChunkGrid, so
+# they need an environment that has both `zarr` and this package installed.
+# `zarr` is deliberately not a dependency of this package, and the repo is not
+# a uv workspace, so run against the repo-root environment (which provides
+# `zarr`) with this package layered in as an editable overlay — the same
+# invocation CI uses.
+# Run the test suite; extra args are passed to pytest
+test *args:
+    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}
+
+# TensorStore is the oracle for the parity suites, which skip without it. It
+# ships binary wheels only, so it rides in as a run-time overlay rather than
+# joining a dependency group; if a future Python lacks a tensorstore wheel,
+# gate the CI job that calls this on the matrix version.
+# Run the tensorstore parity suites; extra args are passed to pytest
+test-tensorstore *args:
+    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py {{ args }}
+
+# Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
+# version (see pyproject.toml [dependency-groups] docs); bump together.
+lint:
+    uvx ruff@0.16.0 check .
+
+# Type-check the package sources, documentation Python, and their contract tests
+typecheck:
+    uv run --group test --with pyright pyright
+
+# Run everything CI runs for this package
+check: lint typecheck test test-tensorstore docs-check
+
+# Preview the changelog that the next release would generate
+changelog-draft:
+    uvx towncrier build --draft --version Unreleased
+
+# Build this package's documentation site, warnings as errors
+docs-check:
+    env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs build --strict
+
+# With no argument, uses port 8000 if free, otherwise an ephemeral free port;
+# an explicitly requested port is used as-is so a conflict fails loudly.
+# Serve this package's documentation site
+docs-serve port="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="{{ port }}"
+    if [ -z "$port" ]; then
+        port=$(uv run --group docs python -c '
+    import socket
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 8000))
+    except OSError:
+        s.close()
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+    s.close()
+    ')
+    fi
+    exec env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port"

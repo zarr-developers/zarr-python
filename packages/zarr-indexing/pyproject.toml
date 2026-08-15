@@ -1,0 +1,171 @@
+[build-system]
+requires = ["hatchling>=1.29.0", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr-indexing"
+dynamic = ["version"]
+description = "Composable, lazy coordinate transforms for Zarr array indexing."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [
+    { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = ["zarr"]
+dependencies = [
+    "numpy>=2",
+]
+
+[project.optional-dependencies]
+# `zarr_indexing.testing` — a Hypothesis state machine and selection strategies
+# for projects checking their own array against this package. Nothing else in
+# the package imports hypothesis.
+testing = ["hypothesis>=6.160.0"]
+
+[project.urls]
+Homepage = "https://github.com/zarr-developers/zarr-python"
+Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
+Issues = "https://github.com/zarr-developers/zarr-python/issues"
+Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md"
+Documentation = "https://zarr-indexing.readthedocs.io/"
+
+[dependency-groups]
+# The transform tests exercise chunk resolution against zarr's ChunkGrid
+# (tests/test_chunk_resolution.py) and are collected by the parent zarr-python
+# test suite, which already has zarr installed. `zarr` is intentionally NOT
+# listed here to avoid a workspace dependency cycle; run these tests from the
+# repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
+# `hypothesis` arrives via the `testing` extra, which is what
+# `zarr_indexing.testing` needs; the repo-root `test` group pins the exact
+# version CI runs against. Bump the two together.
+test = ["pytest", "hypothesis>=6.160.0"]
+docs = [
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so the two sites render with the same toolchain.
+    "mkdocs-material==9.7.7",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.6",
+    "mkdocstrings-python==2.0.5",
+    "griffe-inherited-docstrings==1.1.3",
+    # mkdocstrings uses ruff to format rendered signatures
+    "ruff==0.15.22",
+]
+
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = '^zarr_indexing-v(?P<version>.+)$'
+# `git_describe_command` ensures we get the zarr_indexing tags instead of latest.
+# `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
+# test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
+raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*", local_scheme = "no-local-version" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zarr_indexing"]
+
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. The list
+# keeps an sdist self-testing: `tests/` carries the vendored ndsel conformance
+# corpus, and `tests/test_doc_examples.py` executes `docs/snippets/*.py` and
+# `examples/*/*.py`, so those are part of the suite rather than decoration.
+# `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
+# foreign source's attributes may fail arbitrarily and discovery must degrade
+# to "no information"; a token call must never raise. Configured here (not as
+# noqa comments) because the pinned pre-commit ruff and the floating CI ruff
+# disagree on whether these rules fire, and RUF100 strips the comments.
+"src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
+
+[tool.pytest.ini_options]
+minversion = "7"
+# src is collected for its doctests: every public object's Examples section
+# executes under --doctest-modules, so the documented examples cannot rot.
+testpaths = ["tests", "src/zarr_indexing"]
+pythonpath = ["."]
+xfail_strict = true
+addopts = ["-ra", "--strict-config", "--strict-markers", "--doctest-modules"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "ELLIPSIS",
+    "IGNORE_EXCEPTION_DETAIL",
+]
+filterwarnings = [
+    "error",
+]
+
+[tool.pyright]
+include = [
+    "src",
+    "docs/snippets",
+    "tests/test_doc_examples.py",
+]
+enableExperimentalFeatures = true
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+# This strict config was written for zarr-metadata's JSON/dataclass-shaped
+# code. zarr-indexing is numpy-heavy, and numpy's stubs return partially
+# unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
+# fully-typed call sites, so the reportUnknown* family below cannot reasonably
+# be satisfied here. Downgraded to warnings (not silenced) rather than
+# disabled outright, and CI (which only fails the pyright job on errors, not
+# warnings) still surfaces them for visibility.
+reportUnknownVariableType = "warning"
+reportUnknownArgumentType = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownParameterType = "warning"
+
+[tool.numpydoc_validation]
+checks = [
+    "GL10",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
+
+[tool.towncrier]
+# Fragments for this package live alongside the package source, separate
+# from the parent zarr-python `changes/` directory, so a PR touching only
+# `packages/zarr-indexing/` produces a release note for this package only.
+directory = "changes"
+filename = "CHANGELOG.md"
+package = "zarr_indexing"
+underlines = ["", "", ""]
+title_format = "## {version} ({project_date})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+start_string = "<!-- towncrier release notes start -->\n"

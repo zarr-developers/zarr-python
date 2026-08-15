@@ -1,0 +1,155 @@
+site_name: zarr-indexing
+# The package lives in the zarr-python monorepo; point the header source
+# widget at the package directory rather than the repository root.
+repo_name: zarr-python/packages/zarr-indexing
+repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing
+# Absolute because mkdocs would otherwise append this to repo_url's subpath.
+edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-indexing/docs/
+site_description: Composable, lazy coordinate transforms for Zarr array indexing.
+site_author: Davis Bennett
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-indexing.readthedocs.io/']
+docs_dir: docs
+use_directory_urls: true
+exclude_docs: |
+  snippets/*.py
+
+# --strict promotes warnings to errors, but broken link anchors and pages
+# missing from nav are only INFO by default — a strict build passed with
+# both breakages. Warn so strict actually fails on them.
+validation:
+  links:
+    anchors: warn
+  nav:
+    omitted_files: warn
+
+# Top-level rank is consistent: collections (Guide, Examples, API Reference)
+# and standalone artifacts (landing, ndsel spec, design notes, changelog).
+# Guide mirrors the docs/guide/ directory — its three pages are one
+# collection (learn / look up / integrate), pydantic's Concepts pattern at
+# small scale; navigation.indexes makes the Guide entry itself land on the
+# visual guide. No tabs: at eight content pages, hiding sections costs more
+# than it organizes.
+nav:
+  - index.md
+  - Guide:
+      - guide/index.md
+      - Indexing patterns: guide/patterns.md
+      - Integration boundaries: guide/integrations.md
+  - Examples:
+      - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md
+      - Lazy indexing with Dask: examples/lazy_indexing_dask.md
+      - System-memory chunk cache: examples/system_memory_chunk_cache.md
+  - The ndsel wire format: ndsel.md
+  - Design notes: design-notes.md
+  - API Reference:
+      - api/index.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.transform</code>': api/transform.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.domain</code>': api/domain.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.output_map</code>': api/output_map.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.chunk_resolution</code>': api/chunk_resolution.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.grid</code>': api/grid.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.lazy_array</code>': api/lazy_array.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.reader</code>': api/reader.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.boundary</code>': api/boundary.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.json</code>': api/json.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.messages</code>': api/messages.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.errors</code>': api/errors.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.stateful</code>': api/testing_stateful.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.strategies</code>': api/testing_strategies.md
+  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md
+  # This site is a Read the Docs subproject of zarr-python; give readers a way
+  # back to the parent docs, which list every companion package.
+  - 'zarr-python ↪': https://zarr.readthedocs.io/
+
+watch:
+  - src
+
+theme:
+  language: en
+  name: material
+  logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
+
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.share
+
+plugins:
+  - autorefs
+  - search
+  - mkdocstrings:
+      enable_inventory: true
+      handlers:
+        python:
+          paths: [src]
+          options:
+            allow_inspection: true
+            docstring_section_style: list
+            docstring_style: numpy
+            inherited_members: true
+            line_length: 60
+            separate_signature: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            show_if_no_docstring: true
+            extensions:
+            - griffe_inherited_docstrings
+
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://zarr.readthedocs.io/en/stable/objects.inv
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  # Content tabs (Python/JSON pairs in the pattern matrix); content.tabs.link
+  # in the theme features keeps every pair switched together.
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: [docs, examples]
+      # Fail the build on an unresolvable include or missing region instead
+      # of silently rendering nothing. tests/test_doc_examples.py mirrors
+      # base_path when it verifies the include graph.
+      check_paths: true

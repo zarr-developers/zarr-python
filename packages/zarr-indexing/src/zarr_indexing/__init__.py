@@ -1,0 +1,116 @@
+"""Composable, lazy coordinate transforms for zarr array indexing.
+
+This package implements TensorStore-inspired index transforms. The core idea:
+every indexing operation (slicing, fancy indexing, etc.) produces a coordinate
+mapping from user space to storage space. These mappings compose lazily — no
+I/O until you explicitly read or write.
+
+Key types:
+
+- `IndexDomain` — a rectangular region of integer coordinates
+- `IndexTransform` — maps input coordinates to storage coordinates
+- `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single
+  output dimension can depend on the input (see `output_map.py`)
+- `IndexTransform.compose` — chain two transforms into one
+
+`LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
+indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
+backends use an explicit `Reader` adapter.
+
+`plan_chunks` projects a transform through a caller-selected chunk grid without
+coupling the result to a storage backend or scheduler. `selection_to_transform`
+is also exported for consumers starting with a NumPy-style selection. The
+`DimensionGridLike` Protocol describes the narrow grid surface chunk resolution
+consumes without importing zarr.
+"""
+
+from importlib.metadata import version
+
+from zarr_indexing.chunk_resolution import (
+    ChunkCoverage,
+    ChunkPlan,
+    ChunkProjection,
+    plan_chunks,
+)
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
+from zarr_indexing.grid import (
+    ChunkGrid,
+    ChunkSpec,
+    DimensionGrid,
+    DimensionGridLike,
+    EdgeDimensionGrid,
+    FixedDimension,
+    VaryingDimension,
+    dimension_grids_from_chunks,
+)
+from zarr_indexing.json import (
+    IndexDomainJSON,
+    IndexTransformJSON,
+    OutputIndexMapJSON,
+)
+from zarr_indexing.lazy_array import LazyArray, Partition
+from zarr_indexing.messages import NdselError, normalize_ndsel, parse_ndsel
+from zarr_indexing.output_map import (
+    ArrayMap,
+    ConstantMap,
+    DimensionMap,
+    OutputIndexMap,
+    output_index_map_from_json,
+)
+from zarr_indexing.reader import (
+    BasicReader,
+    NumPyReader,
+    ReadContext,
+    Reader,
+    UnitStepReader,
+    basic_reader,
+    numpy_reader,
+    unit_step_reader,
+)
+from zarr_indexing.transform import (
+    IndexTransform,
+)
+
+__version__ = version("zarr-indexing")
+
+__all__ = [
+    "ArrayMap",
+    "BasicReader",
+    "BoundsCheckError",
+    "ChunkCoverage",
+    "ChunkGrid",
+    "ChunkPlan",
+    "ChunkProjection",
+    "ChunkSpec",
+    "ConstantMap",
+    "DimensionGrid",
+    "DimensionGridLike",
+    "DimensionMap",
+    "EdgeDimensionGrid",
+    "FixedDimension",
+    "IndexDomain",
+    "IndexDomainJSON",
+    "IndexTransform",
+    "IndexTransformJSON",
+    "LazyArray",
+    "NdselError",
+    "NumPyReader",
+    "OutputIndexMap",
+    "OutputIndexMapJSON",
+    "Partition",
+    "ReadContext",
+    "Reader",
+    "UnitStepReader",
+    "VaryingDimension",
+    "VindexInvalidSelectionError",
+    "__version__",
+    "basic_reader",
+    "dimension_grids_from_chunks",
+    "normalize_ndsel",
+    "numpy_reader",
+    "output_index_map_from_json",
+    "parse_ndsel",
+    "plan_chunks",
+    "unit_step_reader",
+]

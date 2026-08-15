@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import unicodedata
 import warnings
@@ -11,7 +10,6 @@ from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
 
 import numpy as np
-import numpy.typing as npt
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
@@ -47,6 +45,8 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.dtype import parse_data_type
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
@@ -86,18 +86,15 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    if data in (2, 3):
-        return cast("ZarrFormat", data)
-    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
-    raise ValueError(msg)
+    return cast("ZarrFormat", parse_field(data, Literal[2, 3], "zarr_format"))
 
 
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
-    if data in ("array", "group"):
-        return cast("Literal['array', 'group']", data)
-    msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
-    raise MetadataValidationError(msg)
+    return cast(
+        "Literal['array', 'group']",
+        parse_field(data, Literal["array", "group"], "node_type", error=MetadataValidationError),
+    )
 
 
 # todo: convert None to empty dict
@@ -237,10 +234,12 @@ class ConsolidatedMetadata:
         # In the example, the group at `/a/b` will have consolidated metadata
         # for its children `array-0` and `array-1`.
 
-        keys = sorted(metadata, key=lambda k: k.count("/"))
-        grouped = {
-            k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
-        }
+        # Group keys by their parent path. This must not rely on same-parent keys
+        # being adjacent: the persisted key order is arbitrary, so accumulate
+        # instead of using itertools.groupby, which only groups consecutive runs.
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for k in sorted(metadata, key=lambda k: k.count("/")):
+            grouped[k.rsplit("/", 1)[0]].append(k)
 
         # we go top down and directly manipulate metadata.
         for key, children_keys in grouped.items():
@@ -1224,7 +1223,7 @@ class AsyncGroup:
         name: str,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike | None = None,
+        dtype: ZDTypeLike | None = None,
         exact: bool = False,
         **kwargs: Any,
     ) -> AnyAsyncArray:
@@ -1238,8 +1237,9 @@ class AsyncGroup:
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
+        dtype : ZDTypeLike, optional
+            The data type of the array, given as a string, a NumPy dtype, or a
+            Zarr data type.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
@@ -1257,7 +1257,11 @@ class AsyncGroup:
             if shape != ds.shape:
                 raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
 
-            dtype = np.dtype(dtype)
+            # `np.dtype(None)` used to resolve to float64 here; keep that default.
+            dtype = parse_data_type(
+                "float64" if dtype is None else dtype,
+                zarr_format=self.metadata.zarr_format,
+            ).to_native_dtype()
             if exact:
                 if ds.dtype != dtype:
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
