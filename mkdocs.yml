@@ -102,6 +102,7 @@ nav:
       - 'zarr-metadata ↪': https://zarr.readthedocs.io/projects/zarr-metadata/
       - 'zarr-indexing ↪': https://zarr.readthedocs.io/projects/zarr-indexing/
   - release-notes.md
+  - roadmap.md
   - contributing.md
   - Blog:
     - blog/index.md
@@ -221,7 +222,6 @@ plugins:
         'search.html.md': 'index.md'
         'tutorial.md': 'user-guide/installation.md'
         'getting-started.md': 'quick-start.md'
-        'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'installation.md': 'user-guide/installation.md'
         'release.md': 'release-notes.md'
         'about.html.md': 'index.md'
