@@ -171,8 +171,12 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
+        # A UPath hands back a filesystem in whatever mode it was constructed with, which is
+        # synchronous unless the caller passed asynchronous=True. Route it through _make_async so
+        # that sync-mode instances of async filesystems are re-created in async mode, and
+        # genuinely synchronous filesystems are wrapped.
         return cls(
-            fs=upath.fs,
+            fs=_make_async(upath.fs),
             path=upath.path.rstrip("/"),
             read_only=read_only,
             allowed_exceptions=allowed_exceptions,
