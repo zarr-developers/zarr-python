@@ -2,9 +2,12 @@ import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
+import numpy as np
 import pytest
 
 import zarr
+from zarr.abc.store import ByteRequest
+from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.sync import (
     SyncError,
     SyncMixin,
@@ -15,6 +18,7 @@ from zarr.core.sync import (
     loop,
     sync,
 )
+from zarr.storage import MemoryStore, WrapperStore
 
 
 @pytest.fixture(params=[True, False])
@@ -163,3 +167,66 @@ def test_cleanup_resources_idempotent() -> None:
     _get_executor()  # trigger resource creation (iothread, loop, thread-pool)
     cleanup_resources()
     cleanup_resources()
+
+
+class LoopBoundStore(WrapperStore[MemoryStore]):
+    """A store whose I/O only works on the event loop that first drove it.
+
+    Mimics fsspec/aiohttp-backed stores, whose sessions and connectors are
+    lazily bound to whichever event loop first performs I/O.
+    """
+
+    _bound_loop: asyncio.AbstractEventLoop | None = None
+
+    def _check_loop(self) -> None:
+        running = asyncio.get_running_loop()
+        if self._bound_loop is None:
+            self._bound_loop = running
+        elif running is not self._bound_loop:
+            raise RuntimeError("store I/O driven from a different event loop than it is bound to")
+
+    async def get(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    ) -> Buffer | None:
+        self._check_loop()
+        return await super().get(key, prototype, byte_range)
+
+    async def set(self, key: str, value: Buffer) -> None:
+        self._check_loop()
+        await super().set(key, value)
+
+
+@pytest.mark.skipif(
+    not hasattr(zarr.Array, "getitem_async"),
+    reason="Array.*_async methods do not exist on this version",
+)
+@pytest.mark.xfail(
+    reason=(
+        "Design-independent limitation: a store with event-loop affinity binds to "
+        "zarr's background loop during sync create/open, so awaiting Array.*_async "
+        "from a different user-owned loop trips the affinity check. Orthogonal to "
+        "keeping vs. removing AsyncArray; tracked separately."
+    ),
+    strict=True,
+)
+def test_array_async_methods_with_loop_bound_store() -> None:
+    # The supported pattern is: open an array synchronously (its I/O runs on
+    # zarr's internal background loop), then await the array's *_async methods
+    # from user-owned async code (a different loop). Stores with loop affinity
+    # must keep working across that boundary.
+    store = LoopBoundStore(MemoryStore())
+    z = zarr.create_array(store, shape=(8,), chunks=(4,), dtype="i4")
+    z[:] = np.arange(8, dtype="i4")
+
+    async def read() -> object:
+        return await z.getitem_async(slice(2, 6))
+
+    # Drive a user-owned loop explicitly and close it in `finally`, so the
+    # expected RuntimeError (xfail) doesn't leave an unclosed loop behind for
+    # the GC to report as an unraisable exception.
+    user_loop = asyncio.new_event_loop()
+    try:
+        result = user_loop.run_until_complete(read())
+    finally:
+        user_loop.close()
+    np.testing.assert_array_equal(np.arange(2, 6, dtype="i4"), result)
