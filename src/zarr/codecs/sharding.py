@@ -70,6 +70,7 @@ from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
+    evolve_and_validate_codecs,
     parse_codecs,
 )
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
@@ -613,6 +614,23 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
+        # The inner codecs see chunks of `self.chunk_shape`; validate them
+        # against that, threading the chunk spec through the chain exactly as
+        # the top-level metadata does (an inner reshape may change the rank
+        # seen by a following transpose).
+        evolve_and_validate_codecs(
+            self.codecs,
+            shape=self.chunk_shape,
+            chunk_grid=RegularChunkGridMetadata(chunk_shape=self.chunk_shape),
+            chunk_spec=ArraySpec(
+                shape=self.chunk_shape,
+                dtype=dtype,
+                fill_value=dtype.default_scalar(),
+                config=ArrayConfig.from_dict({}),
+                prototype=default_buffer_prototype(),
+            ),
+            evolve=False,
+        )
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.
