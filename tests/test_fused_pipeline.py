@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -53,6 +54,10 @@ def test_construction(codecs: tuple[Any, ...]) -> None:
     assert pipeline.codecs == codecs
 
 
+@pytest.mark.skipif(
+    IS_WASM,
+    reason="Pyodide runs to_thread inline on WebLoop, which is always the running loop",
+)
 def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     """Codec compute must never run on the thread driving the event loop.
 
@@ -361,6 +366,7 @@ _FUSED_POOL_CONFIG = {
 }
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_read_write_with_thread_pool() -> None:
     """With max_workers > 1, multi-chunk reads and writes dispatch through the
     thread pool (pool.map in read_sync/write_sync) and produce the same results
@@ -401,6 +407,7 @@ def test_read_write_with_thread_pool() -> None:
         np.testing.assert_array_equal(arr[:], data)
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_thread_pool_write_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during write_sync surfaces to
     the caller (write_sync consumes pool.map, so worker exceptions re-raise)."""
@@ -423,6 +430,7 @@ def test_thread_pool_write_worker_exception_propagates() -> None:
             arr[:] = np.arange(100, dtype="float64")
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_thread_pool_read_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during read_sync surfaces to
     the caller (read_sync consumes pool.map into a tuple)."""
@@ -461,6 +469,14 @@ def test_resolve_max_workers_warns_and_falls_back_on_invalid_config() -> None:
         with pytest.warns(ZarrUserWarning, match="max_workers"):
             result = cp_mod._resolve_max_workers()
     assert result == default
+
+
+def test_resolve_max_workers_pinned_to_one_on_wasm(monkeypatch: pytest.MonkeyPatch) -> None:
+    import zarr.core.codec_pipeline as cp_mod
+
+    monkeypatch.setattr(cp_mod, "IS_WASM", True)
+    with zarr_config.set({"codec_pipeline.max_workers": 4}):
+        assert cp_mod._resolve_max_workers() == 1
 
 
 async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -> None:
@@ -543,6 +559,7 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
     assert not write_finished, "the slow write should have been cancelled, not left running"
 
 
+@pytest.mark.skipif(IS_WASM, reason="can't start new threads in Pyodide/WASM")
 def test_concurrent_reads_shared_transform_with_pool() -> None:
     """Concurrent decode through the shared ChunkTransform produces correct data.
 
