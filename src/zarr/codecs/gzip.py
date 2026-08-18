@@ -28,6 +28,13 @@ def parse_gzip_level(data: JSON) -> int:
     return parsed
 
 
+def _gzip_streams_equal_except_mtime(a: bytes, b: bytes) -> bool:
+    if len(a) != len(b):
+        return False
+
+    return a[:4] == b[:4] and a[8:] == b[8:]
+
+
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
     """gzip codec"""

@@ -18,7 +18,7 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import Store, _store_supports_sync_io
 from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.gzip import GzipCodec, _gzip_streams_equal_except_mtime
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.codec_pipeline import FusedCodecPipeline
@@ -904,11 +904,19 @@ def test_async_chunk_transform_matches_sync(codecs: tuple[Any, ...]) -> None:
     async_bytes = asyncio.run(async_t.encode_chunk(value, spec))
     assert sync_bytes is not None
     assert async_bytes is not None
-    # Skip byte-for-byte comparison for codecs like gzip that embed
-    # wall-clock timestamps — round-trip fidelity is verified below.
+
     has_timestamp_codec = any(isinstance(c, GzipCodec) for c in evolved)
-    if not has_timestamp_codec:
-      np.testing.assert_array_equal(async_bytes.to_bytes(), sync_bytes.to_bytes())
+
+    if has_timestamp_codec:
+        assert _gzip_streams_equal_except_mtime(
+            async_bytes.to_bytes(),
+            sync_bytes.to_bytes(),
+        )
+    else:
+        np.testing.assert_array_equal(
+            async_bytes.to_bytes(),
+            sync_bytes.to_bytes(),
+        )
 
     sync_arr = sync_t.decode_chunk(async_bytes, spec)
     async_arr = asyncio.run(async_t.decode_chunk(async_bytes, spec))
