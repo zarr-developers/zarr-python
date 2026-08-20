@@ -114,6 +114,7 @@ test = [
     "pytest-accept==0.3.0",
     "numpydoc==1.10.0",
     "hypothesis==6.165.2",
+    "pytest-reportlog==0.4.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.2.3",
     "pytest-codspeed==5.0.3",

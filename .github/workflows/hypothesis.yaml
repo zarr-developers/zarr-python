@@ -25,6 +25,9 @@ jobs:
 
   hypothesis:
     name: Slow Hypothesis Tests
+    permissions:
+      contents: read
+      issues: write
     environment:
       name: codecov-upload
       deployment: false
@@ -83,6 +86,7 @@ jobs:
       id: status
       env:
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        PYTEST_ADDOPTS: "--report-log=output-${{ matrix.python-version }}-log.jsonl"
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
         hatch env run --env "$HATCH_ENV" run-hypothesis
@@ -113,4 +117,4 @@ jobs:
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"
-        issue-label: "topic-hypothesis"
+        issue-label: "automated issue"
