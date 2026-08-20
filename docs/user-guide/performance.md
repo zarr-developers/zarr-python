@@ -315,6 +315,11 @@ by an open file object also rejects pickling because it cannot reopen that objec
 a path. For parallel writes, use a store such as `LocalStore` and create the ZIP archive
 only after writing is complete.
 
+A path-backed, read-only `ZipStore` pickle is a reference to its path, not a snapshot of
+the archive. If the file changes between pickling and unpickling, the restored store
+opens the archive that exists at the path at unpickle time. If a stable view is required,
+keep the archive unchanged while it is being read.
+
 If an array or group is backed by a persistent store such as a `zarr.storage.LocalStore`,
 `zarr.storage.ZipStore` or `zarr.storage.FsspecStore` then the store data
 **are not** pickled. The only thing that is pickled is the necessary parameters to allow the store

@@ -105,6 +105,11 @@ class ZipStore(Store):
     store that supports them and create the ZIP archive after writing is
     complete.
 
+    Pickling a path-backed reader serializes the state needed to reopen its
+    path, not the archive contents or file identity. The unpickled reader opens
+    the archive that exists at that path at unpickle time; callers that require
+    a stable view must keep the archive unchanged while it is being read.
+
     Attributes
     ----------
     allowed_exceptions

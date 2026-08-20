@@ -114,6 +114,25 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         read_only.close()
         restored.close()
 
+    async def test_read_only_store_pickle_reopens_current_archive(self, tmp_path: Path) -> None:
+        path = tmp_path / "data.zip"
+        with zipfile.ZipFile(path, mode="w") as archive:
+            archive.writestr("sentinel", b"before")
+
+        read_only = await ZipStore.open(path, mode="r")
+        serialized = pickle.dumps(read_only)
+        read_only.close()
+
+        with zipfile.ZipFile(path, mode="w") as archive:
+            archive.writestr("sentinel", b"after")
+
+        restored = pickle.loads(serialized)
+        observed = await restored.get("sentinel", prototype=default_buffer_prototype())
+
+        assert observed is not None
+        assert observed.to_bytes() == b"after"
+        restored.close()
+
     # TODO: fix this warning
     @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
