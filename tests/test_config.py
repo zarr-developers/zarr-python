@@ -24,7 +24,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import ChunkNotFoundError, ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, UnknownCodecError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -334,7 +334,7 @@ def test_warning_on_missing_codec_config() -> None:
         pass
 
     # error if codec is not registered
-    with pytest.raises(KeyError):
+    with pytest.raises(UnknownCodecError):
         get_codec_class("missing_codec")
 
     # no warning if only one implementation is available

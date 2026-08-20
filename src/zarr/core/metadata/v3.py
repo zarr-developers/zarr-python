@@ -36,7 +36,7 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field, validate_json_value
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -74,10 +74,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         else:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
-            try:
-                out += (get_codec_class(name_parsed).from_dict(c),)
-            except KeyError as e:
-                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
+            out += (get_codec_class(name_parsed).from_dict(c),)
 
     return out
 

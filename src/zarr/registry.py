@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
-from zarr.errors import ZarrUserWarning
+from zarr.errors import UnknownCodecError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ZarrFormat
 
 __all__ = [
     "Registry",
@@ -38,6 +38,133 @@ __all__ = [
     "register_ndbuffer",
     "register_pipeline",
 ]
+
+_ZARR_CODEC_DOCS_URL = "https://zarr.readthedocs.io/en/stable/user-guide/extending/#custom-codecs"
+_NUMCODECS_CODEC_DOCS_URL = (
+    "https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec"
+)
+
+# Codecs zarr-python does not implement, mapped to the names of Python packages that do.
+# These tables exist purely to make the "no implementation for this codec" error actionable;
+# nothing here affects which codecs zarr can actually read or write. Values are what you would
+# pass to `pip install`. Only add an entry you have verified against the package's declared
+# entry points, and only for a package that is actually published.
+#
+# The two Zarr formats resolve codecs through different registries, so they get different
+# tables: a name can mean one thing as a Zarr format 3 codec name and another as a Zarr
+# format 2 codec id. `imagecodecs_*` is exactly that -- `virtual-tiff` declares those names
+# under `zarr.codecs`, while `imagecodecs-numcodecs` declares them under `numcodecs.codecs`.
+
+# Zarr format 3 codec names (entry point group "zarr.codecs").
+_CODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "gribberish": ("gribberish",),
+    "n5_default": ("zarr-n5",),
+}
+
+# As `_CODEC_PACKAGES`, but each key is matched against the start of the codec name. Packages
+# that provide many codecs namespace them behind a shared prefix, so one entry covers them all.
+_CODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "any-numcodecs.": ("zarr-any-numcodecs",),
+    "imagecodecs_": ("virtual-tiff",),
+    "omfiles.": ("omfiles",),
+    "virtual_tiff.": ("virtual-tiff",),
+}
+
+# Zarr format 2 codec ids (entry point group "numcodecs.codecs"). `numcodecs` itself gates
+# several of its own codecs behind optional dependencies, so the package to install for those
+# is an extra of numcodecs rather than a third-party distribution.
+_NUMCODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "FITSAscii": ("kerchunk",),
+    "FITSVarBintable": ("kerchunk",),
+    "crc32c": ("numcodecs[crc32c]",),
+    "fill_hdf_strings": ("kerchunk",),
+    "grib": ("kerchunk",),
+    "msgpack2": ("numcodecs[msgpack]",),
+    "pcodec": ("numcodecs[pcodec]",),
+    "rawgrib": ("gribscan",),
+    "record_member": ("kerchunk",),
+    "vc-delta3d": ("vc-delta3d",),
+    "wavpack": ("wavpack-numcodecs",),
+    "zfpy": ("numcodecs[zfpy]",),
+}
+
+# As `_NUMCODEC_PACKAGES`, but matched against the start of the codec id.
+_NUMCODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "gribscan.": ("gribscan",),
+    "imagecodecs_": ("imagecodecs-numcodecs",),
+}
+
+
+def _packages_for_codec(name: str, *, zarr_format: ZarrFormat) -> tuple[str, ...]:
+    """
+    Names of Python packages known to provide an implementation of the codec ``name``.
+
+    Returns an empty tuple if we don't know of any.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in.
+    """
+    if zarr_format == 2:
+        exact, prefixes = _NUMCODEC_PACKAGES, _NUMCODEC_PACKAGE_PREFIXES
+    else:
+        exact, prefixes = _CODEC_PACKAGES, _CODEC_PACKAGE_PREFIXES
+    if name in exact:
+        return exact[name]
+    for prefix, packages in prefixes.items():
+        if name.startswith(prefix):
+            return packages
+    return ()
+
+
+def _missing_codec_message(name: str, *, zarr_format: ZarrFormat) -> str:
+    """
+    Build the error message raised when no implementation of the codec ``name`` is available.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in. Zarr format 2 codecs are resolved through
+        numcodecs, so that case points at the numcodecs registry rather than at zarr's.
+    """
+    if zarr_format == 2:
+        docs_url, registry = _NUMCODECS_CODEC_DOCS_URL, "numcodecs"
+    else:
+        docs_url, registry = _ZARR_CODEC_DOCS_URL, "zarr"
+    msg = (
+        f"An implementation for codec {name!r} is not available. Register one explicitly "
+        f"using the codec registry (see {docs_url}), or install a Python package that "
+        f"registers a codec implementation with {registry}."
+    )
+    packages = _packages_for_codec(name, zarr_format=zarr_format)
+    if packages:
+        msg += f" Known packages supporting this codec: {', '.join(packages)}."
+    return msg
+
+
+def _is_missing_numcodec_error(exc: ValueError) -> bool:
+    """
+    Whether ``exc`` from ``numcodecs.registry.get_codec`` means "this codec isn't registered".
+
+    numcodecs 0.15.1 added ``numcodecs.errors.UnknownCodecError`` for this. Older versions,
+    down to the 0.14 floor zarr supports, raise a plain ``ValueError`` instead, so fall back to
+    matching the message numcodecs has used throughout.
+
+    Parameters
+    ----------
+    exc : ValueError
+        The exception ``numcodecs.registry.get_codec`` raised.
+    """
+    try:
+        from numcodecs.errors import UnknownCodecError as NumcodecsUnknownCodecError
+    except ImportError:  # pragma: no cover - numcodecs < 0.15.1
+        return str(exc).startswith("codec not available")
+    return isinstance(exc, NumcodecsUnknownCodecError)
 
 
 class Registry[T](dict[str, type[T]]):
@@ -168,7 +295,7 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 
     codec_classes = _codec_registries[key]
     if not codec_classes:
-        raise KeyError(key)
+        raise UnknownCodecError(_missing_codec_message(key, zarr_format=3))
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
@@ -179,11 +306,14 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
             category=ZarrUserWarning,
         )
         return list(codec_classes.values())[-1]
-    selected_codec_cls = codec_classes[config_entry]
-
-    if selected_codec_cls:
-        return selected_codec_cls
-    raise KeyError(key)
+    selected_codec_cls = codec_classes.get(config_entry)
+    if selected_codec_cls is None:
+        raise UnknownCodecError(
+            f"Codec {key!r} is configured to use the implementation {config_entry!r}, which is "
+            f"not registered. Registered implementations of this codec: "
+            f"{sorted(codec_classes)}."
+        )
+    return selected_codec_cls
 
 
 def _resolve_codec(data: dict[str, JSON]) -> Codec:
@@ -321,6 +451,11 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     -------
     codec : Numcodec
 
+    Raises
+    ------
+    UnknownCodecError
+        If no implementation of the codec is registered with numcodecs.
+
     Examples
     --------
     ```python
@@ -333,4 +468,13 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
 
     from numcodecs.registry import get_codec
 
-    return get_codec(data)  # type: ignore[no-any-return]
+    try:
+        return get_codec(data)  # type: ignore[no-any-return]
+    except ValueError as e:
+        # Read the codec id from the input rather than from the exception: numcodecs sets its
+        # `codec_id` attribute to the repr of the id ("'wavpack'") rather than the id itself,
+        # and older numcodecs versions raise a plain ValueError that carries no id at all.
+        codec_id = data.get("id")
+        if not _is_missing_numcodec_error(e) or not isinstance(codec_id, str):
+            raise
+        raise UnknownCodecError(_missing_codec_message(codec_id, zarr_format=2)) from e

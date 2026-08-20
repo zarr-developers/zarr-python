@@ -63,6 +63,13 @@ New codecs need to have their own unique identifier. To avoid naming collisions,
 strongly recommended to prefix the codec identifier with a unique name. For example,
 the codecs from `numcodecs` are prefixed with `numcodecs.`, e.g. `numcodecs.delta`.
 
+If someone opens an array that uses your codec without your package installed, Zarr raises
+[`zarr.errors.UnknownCodecError`][] explaining how to register an implementation. Zarr also
+keeps a small table of codec names and the published packages that provide them, and names
+those packages in that error. Once your package is on PyPI, please open a pull request adding
+it to the codec-package table in `zarr/registry.py`, so that users get a message telling them
+exactly what to install.
+
 !!! note
     Note that the extension mechanism for the Zarr format 3 is still under development.
     Requirements for custom codecs including the choice of codec identifiers might

@@ -8,15 +8,10 @@ import numpy as np
 import pytest
 from numcodecs import GZip
 
-try:
-    from numcodecs.errors import UnknownCodecError
-except ImportError:
-    # Older versions of numcodecs don't have a separate errors module
-    UnknownCodecError = ValueError
-
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
+from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class, get_numcodec
 
 if TYPE_CHECKING:
@@ -297,12 +292,7 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCodec]) -> None:
     try:
         codec_class()._codec  # noqa: B018
-    except ValueError as e:  # pragma: no cover
-        if "codec not available" in str(e):
-            pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
-        else:
-            raise
-    except ImportError as e:  # pragma: no cover
+    except (UnknownCodecError, ImportError) as e:  # pragma: no cover
         pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
 
     data = np.arange(0, 256, dtype="float32").reshape((16, 16))
