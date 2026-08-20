@@ -12,7 +12,7 @@ interpret it through this dedicated type.
 """
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
@@ -34,6 +34,16 @@ class ZarrV3ConsolidatedMetadataJSON(TypedDict):
     metadata: Mapping[str, ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON]
 
 
+ZARR_V3_CONSOLIDATED_METADATA_KEY: Final = "consolidated_metadata"
+"""The key under which consolidated metadata is embedded in a v3 group document.
+
+Unlike the v2 `.zmetadata` file, this is not a store key: consolidated metadata
+is carried as an extension field inside the group's own `zarr.json`. Like its v2
+counterpart it is a reference-implementation convention, not a spec artifact.
+"""
+
+
 __all__ = [
+    "ZARR_V3_CONSOLIDATED_METADATA_KEY",
     "ZarrV3ConsolidatedMetadataJSON",
 ]

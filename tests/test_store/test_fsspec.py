@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -248,6 +249,47 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert result.fs.endpoint_url == endpoint_url
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
+
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
+    def test_from_upath_sync_filesystem(self, endpoint_url: str) -> None:
+        """
+        A UPath built without ``asynchronous=True`` -- the common case -- yields an async-mode
+        filesystem that keeps the original storage options.
+        """
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/foo/bar/",
+            endpoint_url=endpoint_url,
+            anon=False,
+        )
+        assert not path.fs.asynchronous
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            result = FsspecStore.from_upath(path)
+        assert result.fs.asynchronous
+        assert result.fs.endpoint_url == endpoint_url
+        assert result.path == f"{test_bucket_name}/foo/bar"
+
+    async def test_open_group_from_upath(self, endpoint_url: str) -> None:
+        """
+        Passing a remote UPath to the top-level API works.
+
+        Regression test for https://github.com/zarr-developers/zarr-python/issues/4244.
+        """
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/upath-group",
+            endpoint_url=endpoint_url,
+            anon=False,
+        )
+        group = await zarr.api.asynchronous.open_group(path, mode="w", attributes={"key": "value"})
+        assert isinstance(group.store_path.store, FsspecStore)
+
+        reopened = await zarr.api.asynchronous.open_group(path, mode="r")
+        assert dict(reopened.attrs) == {"key": "value"}
 
     def test_init_warns_if_fs_asynchronous_is_false(self, endpoint_url: str) -> None:
         try:
@@ -582,6 +624,24 @@ def test_with_read_only_shares_filesystem(tmp_path: pathlib.Path) -> None:
     assert derived.fs is source.fs
     assert derived.read_only
     assert not source.read_only
+
+
+def test_make_async_preserves_unserializable_storage_options() -> None:
+    """A sync instance of an async filesystem whose storage options hold objects that
+    cannot round-trip through JSON (e.g. an Azure credential) must still convert.
+
+    See https://github.com/zarr-developers/zarr-python/issues/4220
+    """
+    pytest.importorskip("aiohttp")
+    credential = object()  # stand-in for e.g. azure.identity.DefaultAzureCredential
+    sync_fs = fsspec.filesystem("http", client_kwargs={"auth": credential})
+    assert sync_fs.async_impl
+    assert not sync_fs.asynchronous
+
+    async_fs = _make_async(sync_fs)
+
+    assert async_fs.asynchronous
+    assert async_fs.client_kwargs["auth"] is credential
 
 
 @pytest.mark.parametrize("asynchronous", [True, False])
