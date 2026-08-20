@@ -74,7 +74,17 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         else:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            codec_cls = get_codec_class(name_parsed)
+            try:
+                out += (codec_cls.from_dict(c),)
+            except KeyError as e:
+                # A codec's `from_dict` may index its configuration directly, so a malformed
+                # configuration surfaces as a KeyError. Convert it: a bare KeyError escaping
+                # metadata parsing is swallowed by the array-then-group fallback in
+                # `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+                raise MetadataValidationError(
+                    f"Invalid configuration for codec {name_parsed!r}: missing key {e.args[0]!r}."
+                ) from e
 
     return out
 

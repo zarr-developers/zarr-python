@@ -162,7 +162,7 @@ def _is_missing_numcodec_error(exc: ValueError) -> bool:
     """
     try:
         from numcodecs.errors import UnknownCodecError as NumcodecsUnknownCodecError
-    except ImportError:  # pragma: no cover - numcodecs < 0.15.1
+    except ImportError:  # numcodecs < 0.15.1
         return str(exc).startswith("codec not available")
     return isinstance(exc, NumcodecsUnknownCodecError)
 
@@ -308,7 +308,10 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
         return list(codec_classes.values())[-1]
     selected_codec_cls = codec_classes.get(config_entry)
     if selected_codec_cls is None:
-        raise UnknownCodecError(
+        # Not UnknownCodecError: the codec is known, the implementation named in the config is
+        # not registered. That is a configuration problem, which is what the sibling getters in
+        # this module raise BadConfigError for.
+        raise BadConfigError(
             f"Codec {key!r} is configured to use the implementation {config_entry!r}, which is "
             f"not registered. Registered implementations of this codec: "
             f"{sorted(codec_classes)}."
@@ -454,7 +457,9 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     Raises
     ------
     UnknownCodecError
-        If no implementation of the codec is registered with numcodecs.
+        If no implementation of the codec id in ``data`` is registered with numcodecs. When
+        ``data`` carries no string ``"id"`` there is nothing to look up, and numcodecs' own
+        error propagates unchanged instead.
 
     Examples
     --------
