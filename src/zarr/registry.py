@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any
 
@@ -52,12 +53,31 @@ _NUMCODECS_CODEC_DOCS_URL = (
 #
 # The two Zarr formats resolve codecs through different registries, so they get different
 # tables: a name can mean one thing as a Zarr format 3 codec name and another as a Zarr
-# format 2 codec id. `imagecodecs_*` is exactly that -- `virtual-tiff` declares those names
-# under `zarr.codecs`, while `imagecodecs-numcodecs` declares them under `numcodecs.codecs`.
+# format 2 codec id. `imagecodecs_*` is exactly that -- `virtual-tiff` declares 15 of those
+# names under `zarr.codecs`, while `imagecodecs-numcodecs` declares all 81 under
+# `numcodecs.codecs`, so the format 2 side can use a prefix and the format 3 side cannot.
 
 # Zarr format 3 codec names (entry point group "zarr.codecs").
 _CODEC_PACKAGES: dict[str, tuple[str, ...]] = {
     "gribberish": ("gribberish",),
+    # `virtual-tiff` declares these 15 `imagecodecs_*` names, out of the 81 that exist as
+    # numcodecs ids. They are listed exactly rather than by prefix so that the other 66 get no
+    # hint instead of a hint pointing at a package that does not provide them.
+    "imagecodecs_deflate": ("virtual-tiff",),
+    "imagecodecs_delta": ("virtual-tiff",),
+    "imagecodecs_floatpred": ("virtual-tiff",),
+    "imagecodecs_jetraw": ("virtual-tiff",),
+    "imagecodecs_jpeg": ("virtual-tiff",),
+    "imagecodecs_jpeg2k": ("virtual-tiff",),
+    "imagecodecs_jpeg8": ("virtual-tiff",),
+    "imagecodecs_jpegxl": ("virtual-tiff",),
+    "imagecodecs_jpegxr": ("virtual-tiff",),
+    "imagecodecs_lerc": ("virtual-tiff",),
+    "imagecodecs_lzw": ("virtual-tiff",),
+    "imagecodecs_packbits": ("virtual-tiff",),
+    "imagecodecs_png": ("virtual-tiff",),
+    "imagecodecs_webp": ("virtual-tiff",),
+    "imagecodecs_zstd": ("virtual-tiff",),
     "n5_default": ("zarr-n5",),
 }
 
@@ -65,7 +85,6 @@ _CODEC_PACKAGES: dict[str, tuple[str, ...]] = {
 # that provide many codecs namespace them behind a shared prefix, so one entry covers them all.
 _CODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
     "any-numcodecs.": ("zarr-any-numcodecs",),
-    "imagecodecs_": ("virtual-tiff",),
     "omfiles.": ("omfiles",),
     "virtual_tiff.": ("virtual-tiff",),
 }
@@ -145,26 +164,6 @@ def _missing_codec_message(name: str, *, zarr_format: ZarrFormat) -> str:
     if packages:
         msg += f" Known packages supporting this codec: {', '.join(packages)}."
     return msg
-
-
-def _is_missing_numcodec_error(exc: ValueError) -> bool:
-    """
-    Whether ``exc`` from ``numcodecs.registry.get_codec`` means "this codec isn't registered".
-
-    numcodecs 0.15.1 added ``numcodecs.errors.UnknownCodecError`` for this. Older versions,
-    down to the 0.14 floor zarr supports, raise a plain ``ValueError`` instead, so fall back to
-    matching the message numcodecs has used throughout.
-
-    Parameters
-    ----------
-    exc : ValueError
-        The exception ``numcodecs.registry.get_codec`` raised.
-    """
-    try:
-        from numcodecs.errors import UnknownCodecError as NumcodecsUnknownCodecError
-    except ImportError:  # numcodecs < 0.15.1
-        return str(exc).startswith("codec not available")
-    return isinstance(exc, NumcodecsUnknownCodecError)
 
 
 class Registry[T](dict[str, type[T]]):
@@ -457,9 +456,9 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     Raises
     ------
     UnknownCodecError
-        If no implementation of the codec id in ``data`` is registered with numcodecs. When
-        ``data`` carries no string ``"id"`` there is nothing to look up, and numcodecs' own
-        error propagates unchanged instead.
+        If ``data`` carries a string ``"id"`` that is not registered with numcodecs. Any other
+        failure, including a registered codec rejecting its configuration and a ``data`` that is
+        not a mapping, propagates from numcodecs unchanged.
 
     Examples
     --------
@@ -471,15 +470,19 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     ```
     """
 
-    from numcodecs.registry import get_codec
+    from numcodecs.registry import codec_registry, entries, get_codec
 
-    try:
-        return get_codec(data)  # type: ignore[no-any-return]
-    except ValueError as e:
-        # Read the codec id from the input rather than from the exception: numcodecs sets its
-        # `codec_id` attribute to the repr of the id ("'wavpack'") rather than the id itself,
-        # and older numcodecs versions raise a plain ValueError that carries no id at all.
-        codec_id = data.get("id")
-        if not _is_missing_numcodec_error(e) or not isinstance(codec_id, str):
-            raise
-        raise UnknownCodecError(_missing_codec_message(codec_id, zarr_format=2)) from e
+    # Check whether numcodecs can resolve the id *before* handing off, rather than catching what
+    # `get_codec` raises. Catching cannot tell "this id is unregistered" from "a registered codec
+    # rejected its configuration" or from "a wrapper codec failed to resolve an inner codec", and
+    # relabelling either of those with this id would attach a package hint that is simply wrong.
+    # This mirrors the two lookups `get_codec` performs (it then tests the result for
+    # truthiness rather than membership, which only differs for a falsy registry value).
+    # Widened to `object` deliberately: `data` is annotated as a TypedDict, but this is a public
+    # function and callers pass whatever they like. numcodecs coerces with `dict(config)` and
+    # raises for anything that is not a mapping, which is the behaviour to preserve.
+    raw: object = data
+    codec_id = raw.get("id") if isinstance(raw, Mapping) else None
+    if isinstance(codec_id, str) and codec_id not in codec_registry and codec_id not in entries:
+        raise UnknownCodecError(_missing_codec_message(codec_id, zarr_format=2))
+    return get_codec(data)  # type: ignore[no-any-return]

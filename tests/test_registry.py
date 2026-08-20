@@ -15,7 +15,8 @@ from zarr.registry import (
     _CODEC_PACKAGE_PREFIXES,
     _CODEC_PACKAGES,
     _NUMCODEC_PACKAGE_PREFIXES,
-    _is_missing_numcodec_error,
+    _NUMCODECS_CODEC_DOCS_URL,
+    _ZARR_CODEC_DOCS_URL,
     _missing_codec_message,
     _packages_for_codec,
     get_codec_class,
@@ -89,25 +90,34 @@ def test_packages_for_codec_is_format_specific() -> None:
 def test_missing_codec_message_with_known_packages() -> None:
     """The message names the codec, the docs page, and every known package."""
     msg = _missing_codec_message("n5_default", zarr_format=3)
-    assert "'n5_default'" in msg
-    assert "extending" in msg
-    assert "registers a codec implementation with zarr." in msg
-    assert "Known packages supporting this codec: zarr-n5" in msg
+    assert msg == (
+        "An implementation for codec 'n5_default' is not available. Register one explicitly "
+        f"using the codec registry (see {_ZARR_CODEC_DOCS_URL}), or install a Python package "
+        "that registers a codec implementation with zarr. Known packages supporting this "
+        "codec: zarr-n5."
+    )
 
 
 def test_missing_codec_message_without_known_packages() -> None:
     """With no known package we still explain how to register one by hand."""
     msg = _missing_codec_message("totally-made-up", zarr_format=3)
-    assert "'totally-made-up'" in msg
+    assert msg == (
+        "An implementation for codec 'totally-made-up' is not available. Register one "
+        f"explicitly using the codec registry (see {_ZARR_CODEC_DOCS_URL}), or install a "
+        "Python package that registers a codec implementation with zarr."
+    )
     assert "Known packages" not in msg
 
 
 def test_missing_codec_message_for_zarr_format_2() -> None:
     """Format 2 codecs live in the numcodecs registry, so the message must say so."""
     msg = _missing_codec_message("wavpack", zarr_format=2)
-    assert "numcodecs.readthedocs.io" in msg
-    assert "registers a codec implementation with numcodecs." in msg
-    assert "Known packages supporting this codec: wavpack-numcodecs" in msg
+    assert msg == (
+        "An implementation for codec 'wavpack' is not available. Register one explicitly "
+        f"using the codec registry (see {_NUMCODECS_CODEC_DOCS_URL}), or install a Python "
+        "package that registers a codec implementation with numcodecs. Known packages "
+        "supporting this codec: wavpack-numcodecs."
+    )
 
 
 def test_no_prefix_shadows_another_prefix() -> None:
@@ -176,8 +186,10 @@ def test_get_numcodec_unknown_raises_with_package_hint(unregistered_v2_codec: st
 
 def test_get_numcodec_unknown_points_at_numcodecs_registry() -> None:
     """The Zarr format 2 message links the numcodecs registry, not zarr's extending guide."""
-    with pytest.raises(UnknownCodecError, match="numcodecs.readthedocs.io"):
+    with pytest.raises(UnknownCodecError) as excinfo:
         get_numcodec({"id": "definitely-not-a-real-codec"})
+    assert _NUMCODECS_CODEC_DOCS_URL in str(excinfo.value)
+    assert _ZARR_CODEC_DOCS_URL not in str(excinfo.value)
 
 
 def test_get_numcodec_known_codec_still_works() -> None:
@@ -196,9 +208,85 @@ def test_get_numcodec_without_an_id_keeps_the_numcodecs_error() -> None:
     assert not isinstance(excinfo.value, UnknownCodecError)
 
 
-def test_is_missing_numcodec_error_ignores_unrelated_value_errors() -> None:
-    """A ValueError about a bad configuration is not a missing codec, on any numcodecs."""
-    assert not _is_missing_numcodec_error(ValueError("level must be between 0 and 9"))
+def test_get_numcodec_does_not_relabel_a_bad_configuration() -> None:
+    """A registered codec rejecting its config is not a missing codec.
+
+    Telling the user to install a package they already have would be the same misleading
+    error this module exists to remove, pointing the other way.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        get_numcodec({"id": "bitround", "keepbits": -1})  # type: ignore[typeddict-unknown-key]
+    assert not isinstance(excinfo.value, UnknownCodecError)
+    assert str(excinfo.value) == "keepbits must be zero or positive"
+
+
+@pytest.mark.parametrize("via", ["zarr", "numcodecs"])
+def test_get_numcodec_does_not_relabel_a_missing_inner_codec(via: str) -> None:
+    """A wrapper codec failing on an inner codec must not be blamed on the outer id.
+
+    The outer id is registered, so relabelling it would advertise a package the user has
+    already installed. Covers both routes a real wrapper takes to resolve its inner codec:
+    zarr's ``get_numcodec`` and numcodecs' own ``get_codec``.
+    """
+    import numcodecs.registry
+    from numcodecs.abc import Codec
+
+    resolve = get_numcodec if via == "zarr" else numcodecs.registry.get_codec
+
+    class WrapperCodec(Codec):  # type: ignore[misc]
+        codec_id = "test_wrapper"
+
+        @classmethod
+        def from_config(cls, config: dict[str, object]) -> WrapperCodec:
+            resolve({"id": "some-missing-inner-codec"})
+            return cls()
+
+        def encode(self, buf: object) -> object:
+            return buf
+
+        def decode(self, buf: object, out: object = None) -> object:
+            return buf
+
+    numcodecs.registry.register_codec(WrapperCodec, codec_id="test_wrapper")
+    try:
+        with pytest.raises(ValueError) as excinfo:
+            get_numcodec({"id": "test_wrapper"})
+        assert "some-missing-inner-codec" in str(excinfo.value)
+        assert "test_wrapper" not in str(excinfo.value)
+    finally:
+        numcodecs.registry.codec_registry.pop("test_wrapper", None)
+
+
+@pytest.mark.parametrize("data", ["abc", ["ab"]])
+def test_get_numcodec_non_mapping_input_still_raises_value_error(data: object) -> None:
+    """Input that is not a mapping must reach numcodecs rather than raising AttributeError.
+
+    Reading ``id`` off the input unconditionally turned numcodecs' ValueError into an
+    AttributeError, which is not a ValueError and so escaped handlers that caught it. Both
+    params end in a ValueError from numcodecs, by different routes: ``"abc"`` fails
+    ``dict(config)`` coercion, while ``["ab"]`` coerces to ``{"a": "b"}`` and then has no id.
+    """
+    with pytest.raises(ValueError):
+        get_numcodec(data)  # type: ignore[arg-type]
+
+
+def test_imagecodecs_prefix_does_not_over_match_in_zarr_format_3() -> None:
+    """virtual-tiff provides 15 of the 81 `imagecodecs_*` names; the rest must get no hint.
+
+    Recommending virtual-tiff for a name it does not provide is worse than saying nothing.
+    """
+    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == ("virtual-tiff",)
+    for name in ("imagecodecs_jpegls", "imagecodecs_avif", "imagecodecs_blosc"):
+        assert _packages_for_codec(name, zarr_format=3) == ()
+        assert _packages_for_codec(name, zarr_format=2) == ("imagecodecs-numcodecs",)
+
+
+def test_resolve_codec_reports_missing_codec() -> None:
+    """The other public entry point into `get_codec_class` gets the message too."""
+    import zarr
+
+    with pytest.raises(UnknownCodecError, match="Known packages supporting this codec: zarr-n5"):
+        zarr.create_array({}, shape=(4,), dtype="uint8", compressors=[{"name": "n5_default"}])
 
 
 async def test_open_array_with_missing_v3_codec_reports_package(
@@ -221,7 +309,7 @@ async def test_open_array_with_missing_v3_codec_reports_package(
         "zarr.json",
         default_buffer_prototype().buffer.from_bytes(json.dumps(metadata).encode()),
     )
-    with pytest.raises(UnknownCodecError, match="zarr-n5"):
+    with pytest.raises(UnknownCodecError, match="Known packages supporting this codec: zarr-n5"):
         zarr.open_array(store=store, mode="r")
 
 
@@ -244,7 +332,9 @@ async def test_open_array_with_missing_v2_codec_reports_package(
         ".zarray",
         default_buffer_prototype().buffer.from_bytes(json.dumps(metadata).encode()),
     )
-    with pytest.raises(UnknownCodecError, match="wavpack-numcodecs"):
+    with pytest.raises(
+        UnknownCodecError, match="Known packages supporting this codec: wavpack-numcodecs"
+    ):
         zarr.open_array(store=store, mode="r")
 
 
@@ -262,7 +352,7 @@ def test_parse_codecs_with_unregistered_config_pin_raises_bad_config_error() -> 
             parse_codecs([{"name": "bytes"}])
 
 
-def test_parse_codecs_converts_keyerror_from_from_dict() -> None:
+def test_parse_codecs_converts_keyerror_from_from_dict(monkeypatch: pytest.MonkeyPatch) -> None:
     """A codec whose from_dict indexes a malformed config must not leak a KeyError.
 
     A bare KeyError out of metadata parsing is caught by the array-then-group fallback in
@@ -278,6 +368,7 @@ def test_parse_codecs_converts_keyerror_from_from_dict() -> None:
             data["configuration"]["required_option"]  # type: ignore[index]
             return cls()
 
+    monkeypatch.setitem(zarr.registry._codec_registries, "test_picky", zarr.registry.Registry())
     register_codec("test_picky", PickyCodec)
-    with pytest.raises(MetadataValidationError, match="required_option"):
+    with pytest.raises(MetadataValidationError, match="test_picky.*required_option"):
         parse_codecs([{"name": "test_picky", "configuration": {}}])

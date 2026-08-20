@@ -67,7 +67,7 @@ If someone opens an array that uses your codec without your package installed, Z
 [`zarr.errors.UnknownCodecError`][] explaining how to register an implementation. Zarr also
 keeps a small table of codec names and the published packages that provide them, and names
 those packages in that error. Once your package is on PyPI, please open a pull request adding
-it to the codec-package table in `zarr/registry.py`, so that users get a message telling them
+it to the codec-package tables in `src/zarr/registry.py`, so that users get a message telling them
 exactly what to install.
 
 !!! note
