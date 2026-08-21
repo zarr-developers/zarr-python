@@ -207,3 +207,34 @@
     margin: 0 !important;
     min-width: auto !important;
 }
+
+/* Automatic per-page figure numbering.
+   The counter resets on each page's content root and increments once per
+   <figure>, so every figcaption is prefixed with "Figure N.". */
+.md-typeset {
+  counter-reset: figure;
+}
+
+.md-typeset figure {
+  counter-increment: figure;
+}
+
+.md-typeset figure > figcaption::before {
+  content: "Figure " counter(figure) ". ";
+  font-weight: 700;
+}
+
+/* Mermaid diagrams wrapped in a <figure>: Material sets figures to
+   width:fit-content, so a diagram with a small natural size renders tiny and
+   hard to read. For figures tagged .mermaid-figure, let the figure span the
+   content column and scale the SVG up to fill it (overriding mermaid's inline
+   max-width), keeping landscape diagrams legible. */
+.md-typeset figure.mermaid-figure {
+  width: 100%;
+}
+
+.md-typeset figure.mermaid-figure .mermaid svg {
+  width: 100%;
+  max-width: 100% !important;
+  height: auto;
+}
