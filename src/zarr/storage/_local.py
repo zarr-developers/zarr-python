@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import io
 import os
 import shutil
 import sys
 import uuid
 from pathlib import Path
+from tempfile import gettempdir
 from typing import TYPE_CHECKING, BinaryIO, Literal, Self
 
 from zarr.abc.store import (
@@ -20,6 +22,7 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
+from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
@@ -62,9 +65,10 @@ else:
 def _atomic_write(
     path: Path,
     mode: Literal["r+b", "wb"],
+    tmp_dir: Path,
     exclusive: bool = False,
 ) -> Iterator[BinaryIO]:
-    tmp_path = path.with_suffix(f".{uuid.uuid4().hex}.partial")
+    tmp_path = tmp_dir / f"{uuid.uuid4().hex}.partial"
     try:
         with tmp_path.open(mode) as f:
             yield f
@@ -72,16 +76,25 @@ def _atomic_write(
             _safe_move(tmp_path, path)
         else:
             tmp_path.replace(path)
-    except Exception:
+    except Exception as e:
         tmp_path.unlink(missing_ok=True)
+        if isinstance(e, OSError) and e.errno == errno.EXDEV:
+            msg = (
+                f"Cannot finalize atomic write {path}: tmp dir {tmp_dir} and the "
+                "store location are not on the same filesystem. Set tmp "
+                "location to a location on the same filesystem as the store "
+                "using store.local.tmp_dir config or ZARR_STORE__LOCAL__TMP_DIR."
+            )
+            raise OSError(errno.EXDEV, msg) from e
         raise
 
 
-def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
+def _put(path: Path, value: Buffer, tmp_dir: Path, exclusive: bool = False) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     # write takes any object supporting the buffer protocol
     view = value.as_buffer_like()
-    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+    with _atomic_write(path, "wb", tmp_dir, exclusive=exclusive) as f:
         return f.write(view)
 
 
@@ -95,6 +108,9 @@ class LocalStore(Store):
         Directory to use as root of store.
     read_only : bool
         Whether the store is read-only
+    tmp_dir : str or Path, optional
+        Where to write the store's temporary files during atomic write.
+        `None` defaults to value of `tempfile.gettempdir()`.
 
     Attributes
     ----------
@@ -110,7 +126,9 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
+    def __init__(
+        self, root: Path | str, *, read_only: bool = False, tmp_dir: Path | str | None = None
+    ) -> None:
         super().__init__(read_only=read_only)
         if isinstance(root, str):
             root = Path(root)
@@ -119,17 +137,28 @@ class LocalStore(Store):
                 f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
         self.root = root
+        self._tmp_dir = tmp_dir
+
+    def _resolve_tmp_dir(self) -> Path:
+        value = self._tmp_dir
+        if value is None:
+            value = zarr_config.get("store.local.tmp_dir", None)
+        if value is None:
+            value = gettempdir()
+        return Path(value)
 
     def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
-        return type(self)(
-            root=self.root,
-            read_only=read_only,
-        )
+        return type(self)(root=self.root, read_only=read_only, tmp_dir=self._tmp_dir)
 
     @classmethod
     async def open(
-        cls, root: Path | str, *, read_only: bool = False, mode: AccessModeLiteral | None = None
+        cls,
+        root: Path | str,
+        *,
+        read_only: bool = False,
+        mode: AccessModeLiteral | None = None,
+        tmp_dir: Path | str | None = None,
     ) -> Self:
         """
         Create and open the store.
@@ -144,6 +173,9 @@ class LocalStore(Store):
             Mode in which to create the store. This only affects opening the store,
             and the final read-only state of the store is controlled through the
             read_only parameter.
+        tmp_dir : str or Path, optional
+            Directory for the temporary files used by atomic writes. Must be on
+            the same filesystem as root. Defaults to system temporary directory.
 
         Returns
         -------
@@ -156,7 +188,7 @@ class LocalStore(Store):
             read_only_creation = mode in ["r", "r+"]
         else:
             read_only_creation = read_only
-        store = cls(root, read_only=read_only_creation)
+        store = cls(root, read_only=read_only_creation, tmp_dir=tmp_dir)
         await store._open()
 
         # Set read_only state
@@ -226,7 +258,7 @@ class LocalStore(Store):
                 f"Got an instance of {type(value)} instead."
             )
         path = self.root / key
-        _put(path, value)
+        _put(path, value, self._resolve_tmp_dir())
 
     def delete_sync(self, key: str) -> None:
         self._ensure_open_sync()
@@ -290,7 +322,7 @@ class LocalStore(Store):
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
         path = self.root / key
-        await asyncio.to_thread(_put, path, value, exclusive=exclusive)
+        await asyncio.to_thread(_put, path, value, self._resolve_tmp_dir(), exclusive=exclusive)
 
     async def delete(self, key: str) -> None:
         """
