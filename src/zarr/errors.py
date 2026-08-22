@@ -12,6 +12,7 @@ __all__ = [
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "URLPipelineError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
@@ -97,6 +98,12 @@ class MetadataValidationError(BaseZarrError):
 class UnknownCodecError(BaseZarrError):
     """
     Raised when an unknown codec was used.
+    """
+
+
+class URLPipelineError(BaseZarrError):
+    """
+    Raised when a URL pipeline cannot be parsed or resolved.
     """
 
 
