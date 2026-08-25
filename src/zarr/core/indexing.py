@@ -1209,7 +1209,7 @@ class CoordinateIndexer(Indexer):
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-        # after validation, so a non-integer selection still raises above
+        # keep indices integral: uint64 against a signed offset promotes to float
         selection_normalized = cast(
             "CoordinateSelectionNormalized",
             tuple(np.asarray(s, dtype=np.intp) for s in selection_normalized),
