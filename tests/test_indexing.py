@@ -937,6 +937,16 @@ def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
     assert_array_equal(expect, actual)
 
 
+@pytest.mark.parametrize("dtype", ["int8", "int64", "uint8", "uint16", "uint32", "uint64"])
+def test_unsorted_index_unsigned_dtype(store: StorePath, dtype: str) -> None:
+    a = np.arange(8).reshape(4, 2)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(2, 1))
+    rows = np.array([3, 0], dtype=dtype)
+
+    assert_array_equal(a[[3, 0], :], z[rows, :])
+    assert_array_equal(a[[3, 0], [1, 0]], z.vindex[rows, np.array([1, 0], dtype=dtype)])
+
+
 def _test_set_orthogonal_selection(
     v: npt.NDArray[np.int_], a: npt.NDArray[Any], z: Array, selection: OrthogonalSelection
 ) -> None:

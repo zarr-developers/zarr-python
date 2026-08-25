@@ -715,8 +715,8 @@ class Order(Enum):
 
     @staticmethod
     def check(a: npt.NDArray[Any]) -> Order:
-        diff = np.diff(a)
-        diff_positive = diff >= 0
+        # compare, don't subtract: np.diff wraps on unsigned dtypes
+        diff_positive = a[1:] >= a[:-1]
         n_diff_positive = np.count_nonzero(diff_positive)
         all_increasing = n_diff_positive == len(diff_positive)
         any_increasing = n_diff_positive > 0
@@ -769,6 +769,8 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
+        # uint64 promotes to float against the signed chunk offset
+        dim_sel = dim_sel.astype(np.intp, copy=False)
 
         nitems = len(dim_sel)
         g = dim_grid
@@ -1207,6 +1209,11 @@ class CoordinateIndexer(Indexer):
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
+        # after validation, so a non-integer selection still raises above
+        selection_normalized = cast(
+            "CoordinateSelectionNormalized",
+            tuple(np.asarray(s, dtype=np.intp) for s in selection_normalized),
+        )
 
         # Optimization for a single sorted, in-bounds, 1-D integer coordinate array over a
         # regular (fixed-size) chunk grid. The general path below makes several full passes over
