@@ -1262,3 +1262,37 @@ def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> N
             assert buf.to_bytes() == present[coords]
         else:
             assert buf is None
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["single", "nested"])
+def test_sharding_orthogonal_set_multiple_array_dims(nested: bool) -> None:
+    """Orthogonal set with more than one array-indexed dimension.
+
+    ``OrthogonalIndexer`` converts such a chunk selection to an ``np.ix_`` pair
+    of broadcastable arrays before handing it to the codec pipeline. The
+    sharding codec re-derives an indexer from that selection and gets a
+    ``CoordinateIndexer``, whose projections address the value buffer flat.
+    Regression test for the resulting shape mismatch on write.
+    """
+    inner = ShardingCodec(chunk_shape=(1, 1), codecs=(BytesCodec(),))
+    serializer = ShardingCodec(chunk_shape=(2, 2), codecs=((inner,) if nested else (BytesCodec(),)))
+    base = np.arange(16, dtype="int32").reshape(4, 4)
+    selection = (np.array([3, 1, 2]), np.array([0, 2]))
+    value = np.arange(6, dtype="int32").reshape(3, 2) + 100
+
+    a = zarr.create_array(
+        MemoryStore(),
+        shape=base.shape,
+        chunks=(2, 4),
+        dtype=base.dtype,
+        serializer=serializer,
+        compressors=None,
+        fill_value=0,
+    )
+    a[:] = base
+    a.oindex[selection] = value
+
+    expected = base.copy()
+    expected[np.ix_(*selection)] = value
+    assert np.array_equal(a[:], expected)
+    assert np.array_equal(a.oindex[selection], value)
