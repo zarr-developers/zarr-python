@@ -796,13 +796,18 @@ class ShardingCodec(
         chunk_spec = self._get_chunk_spec(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
-        indexer = list(
-            get_indexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
-            )
+        shard_indexer = get_indexer(
+            selection,
+            shape=shard_shape,
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
         )
+        # A coordinate indexer flattens the selection, so its projections address
+        # `value` as 1-D while the caller shaped it like `sel_shape`. Mirrors the
+        # reshape `_encode_partial_single` applies on the async path.
+        sel_shape = getattr(shard_indexer, "sel_shape", None)
+        if sel_shape is not None and value.shape == sel_shape:
+            value = value.reshape(shard_indexer.shape)
+        indexer = list(shard_indexer)
 
         is_complete = self._is_complete_shard_write(indexer, chunks_per_shard)
 
