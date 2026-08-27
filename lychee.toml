@@ -22,4 +22,6 @@ exclude = [
   '^https?://(localhost|127\.0\.0\.1)(:\d+)?',
   # SPEC 0 page times out but is valid.
   '^https://scientific-python\.org/specs/spec-0000',
+  # Stack Overflow answers link-checker requests with 403; the tag page is valid.
+  '^https://stackoverflow\.com/questions/tagged/',
 ]

@@ -322,6 +322,6 @@ that distinction with non-zero and negative-origin domains.
 
 ---
 
-<nav aria-label="Reference page navigation">
-  <strong>Next:</strong> <a href="../integrations/">Integration boundaries</a>
+<nav aria-label="Reference page navigation" markdown>
+**Next:** [Integration boundaries](integrations.md)
 </nav>
