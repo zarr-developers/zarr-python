@@ -207,8 +207,8 @@ that implementation or reproduce its full worker/GPU lifecycle.
 
 ---
 
-<nav aria-label="Reference page navigation">
-  <strong>Previous:</strong> <a href="../patterns/">Indexing pattern reference</a>
-  ·
-  <strong>API:</strong> <a href="../../api/">API reference</a>
+<nav aria-label="Reference page navigation" markdown>
+**Previous:** [Indexing pattern reference](patterns.md)
+·
+**API:** [API reference](../api/index.md)
 </nav>

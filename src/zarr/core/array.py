@@ -4179,6 +4179,8 @@ async def from_array(
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
+        Pass `None` explicitly to use the default scalar of the data type
+        (Zarr format 3) or a null fill value (Zarr format 2) instead.
     order : {"C", "F"}, optional
         The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
@@ -4192,6 +4194,7 @@ async def from_array(
     attributes : dict, optional
         Attributes for the array.
         If not specified, defaults to the attributes of the data array.
+        Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
         For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
@@ -4276,6 +4279,7 @@ async def from_array(
         zarr_format,
         chunk_key_encoding,
         dimension_names,
+        attributes,
     ) = _parse_keep_array_attr(
         data=data,
         chunks=chunks,
@@ -4288,6 +4292,7 @@ async def from_array(
         zarr_format=zarr_format,
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
+        attributes=attributes,
     )
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
@@ -4772,6 +4777,7 @@ def _parse_keep_array_attr(
     zarr_format: ZarrFormat | None,
     chunk_key_encoding: ChunkKeyEncodingLike | None,
     dimension_names: DimensionNamesLike,
+    attributes: dict[str, JSON] | None,
 ) -> tuple[
     ChunksLike | Literal["auto"],
     ShardsLike | None,
@@ -4783,6 +4789,7 @@ def _parse_keep_array_attr(
     ZarrFormat,
     ChunkKeyEncodingLike | None,
     DimensionNamesLike,
+    dict[str, JSON] | None,
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
@@ -4809,7 +4816,7 @@ def _parse_keep_array_attr(
                 serializer = cast("SerializerLike", data.serializer)
             else:
                 serializer = "auto"
-        if fill_value is None:
+        if fill_value is DEFAULT_FILL_VALUE:
             fill_value = data.fill_value
 
         if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
@@ -4830,6 +4837,8 @@ def _parse_keep_array_attr(
                 chunk_key_encoding = data.metadata.chunk_key_encoding
         if dimension_names is None and data.metadata.zarr_format == 3:
             dimension_names = data.metadata.dimension_names
+        if attributes is None:
+            attributes = dict(data.attrs)
     else:
         if chunks == "keep":
             chunks = "auto"
@@ -4856,6 +4865,7 @@ def _parse_keep_array_attr(
         zarr_format,
         chunk_key_encoding,
         dimension_names,
+        attributes,
     )
 
 
