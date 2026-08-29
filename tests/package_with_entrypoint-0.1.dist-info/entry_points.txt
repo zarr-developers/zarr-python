@@ -14,3 +14,5 @@ another_ndbuffer = package_with_entrypoint:TestEntrypointGroup.NDBuffer
 another_pipeline = package_with_entrypoint:TestEntrypointGroup.Pipeline
 [zarr.data_type]
 new_data_type = package_with_entrypoint:TestDataType
+[zarr.url_adapters]
+example-pkg.entrypoint-scheme = package_with_entrypoint:TestEntrypointURLAdapter

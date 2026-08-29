@@ -7,6 +7,7 @@ import numpy.typing as npt
 
 import zarr.core.buffer
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
+from zarr.abc.url_pipeline import AdapterResolution, URLPipelineAdapter
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.dtype.npy.bool import Bool
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Any, ClassVar, Literal, Self
 
+    from zarr.abc.url_pipeline import PipelineContext, PipelineSegment
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2
@@ -100,3 +102,16 @@ class TestDataType(Bool):
         if zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError("zarr_format must be 2 or 3")
+
+
+class TestEntrypointURLAdapter(URLPipelineAdapter):
+    """URL pipeline adapter discovered via the zarr.url_adapters entry point."""
+
+    @classmethod
+    async def open_pipeline_segment(
+        cls, segment: PipelineSegment, context: PipelineContext
+    ) -> AdapterResolution:
+        from zarr.storage import MemoryStore
+
+        store = await MemoryStore.open(read_only=context.read_only)
+        return AdapterResolution(store=store, path=segment.body)

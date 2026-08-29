@@ -103,6 +103,31 @@ print(group)
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
 
+## URL Pipelines {#user-guide-url-pipelines}
+
+Zarr supports [URL pipelines](https://github.com/jbms/url-pipeline): `|`-chained URLs
+that address zarr data through nested storage layers, read left to right. The first
+sub-URL locates a resource with a conventional URL; each subsequent sub-URL names an
+*adapter* that reinterprets everything to its left (e.g.
+`s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages through the
+`zarr.url_adapters` entry-point group — see
+[`zarr.abc.url_pipeline`][zarr.abc.url_pipeline] for the adapter interface. Builtin
+adapters (`zip:`, `zarr2:`/`zarr3:`) are under development and will expand this
+section. URLs without a `|` (and without a registered root scheme) are handled
+exactly as before.
+
+`storage_options` passed to `zarr.open` apply to the *root* sub-URL (e.g. fsspec
+options for `s3://...`); adapters may consume adapter-specific, namespaced keys.
+Non-dict forms of `storage_options` are reserved for future per-segment
+configuration.
+
+The `|` character is reserved as the pipeline delimiter in every string store
+specification, and no percent-escape is decoded: to address a local file whose
+*name* contains `|` (or `#`), pass a `pathlib.Path` instead of a string.
+Registered adapters cannot intercept zarr's native `file:` and `memory:` root
+schemes, and fsspec's chained-URL syntax (`zip::s3://...`) keeps flowing to
+fsspec.
+
 ## Explicit Store Creation
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers
