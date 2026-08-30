@@ -1105,6 +1105,8 @@ def from_array(
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
+        Pass `None` explicitly to use the default scalar of the data type
+        (Zarr format 3) or a null fill value (Zarr format 2) instead.
     order : {"C", "F"}, optional
         The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
@@ -1118,6 +1120,7 @@ def from_array(
     attributes : dict, optional
         Attributes for the array.
         If not specified, defaults to the attributes of the data array.
+        Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
         For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
