@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import itertools
 import json
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
@@ -36,7 +38,7 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, ZarrUserWarning
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -129,13 +131,41 @@ def representative_chunk_shape(chunk_grid: ChunkGridMetadata) -> tuple[int, ...]
     """A single chunk shape standing in for every chunk of ``chunk_grid``.
 
     Regular grids have exactly one chunk shape. Rectilinear grids have many;
-    the largest edge along each dimension is used, which is enough for the
-    metadata-time uses of this value (rank checks and threading a chunk spec
-    through ``Codec.resolve_metadata``).
+    the largest edge along each dimension is used. This is only suitable where
+    a single shape is structurally required (rank checks, codec evolution) —
+    size-sensitive validation must consider every distinct chunk shape, see
+    ``_distinct_chunk_shapes``.
     """
     if isinstance(chunk_grid, RegularChunkGridMetadata):
         return chunk_grid.chunk_shape
     return tuple(s if isinstance(s, int) else max(s) for s in chunk_grid.chunk_shapes)
+
+
+# Bound on the number of distinct chunk shapes threaded through codec-chain
+# validation. A rectilinear grid has prod(distinct edges per dimension)
+# distinct chunk shapes, which is unbounded in pathological grids.
+_MAX_VALIDATED_CHUNK_SHAPES = 4096
+
+
+def _distinct_chunk_shapes(
+    chunk_grid: ChunkGridMetadata, limit: int
+) -> tuple[list[tuple[int, ...]], bool]:
+    """Every distinct chunk shape occurring in ``chunk_grid``, up to ``limit``.
+
+    Returns the shapes and whether the enumeration was truncated at ``limit``.
+    For a rectilinear grid every combination of per-dimension distinct edges
+    occurs as an actual chunk shape (each edge along one dimension meets each
+    edge along every other), so this is the full cross product.
+    """
+    if isinstance(chunk_grid, RegularChunkGridMetadata):
+        return [chunk_grid.chunk_shape], False
+    per_dim = (
+        (s,) if isinstance(s, int) else tuple(dict.fromkeys(s)) for s in chunk_grid.chunk_shapes
+    )
+    shapes = list(itertools.islice(itertools.product(*per_dim), limit + 1))
+    if len(shapes) > limit:
+        return shapes[:limit], True
+    return shapes, False
 
 
 def evolve_and_validate_codecs(
@@ -157,11 +187,19 @@ def evolve_and_validate_codecs(
 
     ``shape`` and ``chunk_grid`` are the array-level values passed to
     ``Codec.validate``. They are handed unchanged to every codec until one
-    changes the chunk shape; from then on the array-level values are no longer
-    meaningful for the remaining codecs, so they are replaced by the resolved
-    chunk shape and a regular grid of that shape (the only shape-related facts
-    that survive a per-chunk reshape). ``Codec.validate`` implementations only
-    inspect these for rank and divisibility, so this keeps the checks sound.
+    changes the shape of any chunk; from then on the array-level values are no
+    longer meaningful for the remaining codecs. Because ``validate`` checks may
+    be size-sensitive (sharding divisibility), every *distinct* chunk shape of
+    the grid is threaded through ``resolve_metadata`` and validated
+    individually — for a rectilinear grid, a single representative shape would
+    not be sound: an inner chunk size that divides the largest chunk need not
+    divide the others. Each threaded shape is presented to ``validate`` as a
+    regular grid of that shape, the only shape-related facts that survive a
+    per-chunk transformation.
+
+    ``chunk_spec`` (built from the representative chunk shape) is threaded
+    separately as the single spec used for codec evolution and dtype tracking,
+    since evolution must produce one codec chain.
 
     Per-codec ``validate`` runs before ``resolve_metadata``, since the latter
     may rely on invariants the former checks (e.g. ``cast_value`` rejects
@@ -169,17 +207,34 @@ def evolve_and_validate_codecs(
     """
     out: list[Codec] = []
     spec = chunk_spec
-    stage_shape = shape
-    stage_grid = chunk_grid
+    threaded, truncated = _distinct_chunk_shapes(chunk_grid, _MAX_VALIDATED_CHUNK_SHAPES)
+    shapes_changed = False
     for codec in codecs:
         evolved = codec.evolve_from_array_spec(spec) if evolve else codec
-        evolved.validate(shape=stage_shape, dtype=spec.dtype, chunk_grid=stage_grid)
+        if not shapes_changed:
+            evolved.validate(shape=shape, dtype=spec.dtype, chunk_grid=chunk_grid)
+        else:
+            for s in threaded:
+                evolved.validate(
+                    shape=s, dtype=spec.dtype, chunk_grid=RegularChunkGridMetadata(chunk_shape=s)
+                )
         out.append(evolved)
-        next_spec = evolved.resolve_metadata(spec)
-        if next_spec.shape != spec.shape:
-            stage_shape = next_spec.shape
-            stage_grid = RegularChunkGridMetadata(chunk_shape=next_spec.shape)
-        spec = next_spec
+        resolved = list(
+            dict.fromkeys(evolved.resolve_metadata(replace(spec, shape=s)).shape for s in threaded)
+        )
+        if resolved != threaded:
+            shapes_changed = True
+            if truncated:
+                warnings.warn(
+                    f"A codec changed the chunk shape of a rectilinear grid with more than "
+                    f"{_MAX_VALIDATED_CHUNK_SHAPES} distinct chunk shapes; codec validation "
+                    "only covered a subset of the chunk shapes.",
+                    category=ZarrUserWarning,
+                    stacklevel=2,
+                )
+                truncated = False
+        threaded = resolved
+        spec = evolved.resolve_metadata(spec)
     return tuple(out)
 
 

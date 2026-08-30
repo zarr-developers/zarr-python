@@ -20,7 +20,11 @@ import zarr
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
 from zarr.core.dtype import Int32
-from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
+from zarr.core.metadata.v3 import (
+    ArrayV3Metadata,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
+)
 from zarr.registry import _codec_registries, register_codec
 
 if TYPE_CHECKING:
@@ -148,3 +152,29 @@ def test_sharding_inner_chain_is_validated() -> None:
         bad.validate(shape=SHAPE, dtype=Int32(), chunk_grid=grid)
     with pytest.raises(ValueError, match="`order` tuple must have as many entries"):
         _metadata((bad,), chunk_shape=SHAPE)
+
+
+def _rectilinear_transpose_sharding_metadata(inner: tuple[int, int]) -> ArrayV3Metadata:
+    """Rectilinear grid (chunks (4,5) and (6,5)), transposed, then sharded."""
+    return ArrayV3Metadata(
+        shape=(10, 5),
+        data_type=Int32(),
+        chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=((4, 6), 5)),
+        chunk_key_encoding={"name": "default"},
+        fill_value=0,
+        codecs=(TransposeCodec(order=(1, 0)), ShardingCodec(chunk_shape=inner)),
+        attributes=None,
+        dimension_names=None,
+    )
+
+
+def test_rectilinear_every_chunk_shape_validated() -> None:
+    """Under a rectilinear grid, size-sensitive validation after a
+    shape-changing codec must consider every distinct chunk shape, not a single
+    representative: an inner shard size dividing the largest transposed chunk
+    (5,6) but not the smaller (5,4) is rejected."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        with pytest.raises(ValueError, match="not\\s+divisible"):
+            _rectilinear_transpose_sharding_metadata((5, 3))
+        # an inner shape dividing both transposed chunk shapes is accepted
+        _rectilinear_transpose_sharding_metadata((5, 2))
