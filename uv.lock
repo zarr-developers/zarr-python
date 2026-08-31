@@ -3684,7 +3684,7 @@ requires-dist = [
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2023.10.0" },
     { name = "google-crc32c", specifier = ">=1.5" },
     { name = "msgspec", specifier = ">=0.19" },
-    { name = "numcodecs", specifier = ">=0.14" },
+    { name = "numcodecs", specifier = ">=0.16.3" },
     { name = "numpy", specifier = ">=2" },
     { name = "obstore", marker = "extra == 'remote'", specifier = ">=0.5.1" },
     { name = "packaging", specifier = ">=22.0" },
