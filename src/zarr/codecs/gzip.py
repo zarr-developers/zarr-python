@@ -28,6 +28,20 @@ def parse_gzip_level(data: JSON) -> int:
     return parsed
 
 
+def _gzip_streams_equal_except_mtime(a: bytes, b: bytes) -> bool:
+    """Compare two gzip streams, ignoring the MTIME field of the header.
+
+    Per RFC 1952 the gzip header is [magic(2)][CM(1)][FLG(1)][MTIME(4)][XFL(1)][OS(1)],
+    so bytes 4-8 are MTIME. The fixed offsets assume the standard 10-byte header
+    with no FNAME/FEXTRA/FCOMMENT flags set, which holds here because numcodecs'
+    ``GZip.encode`` wraps ``gzip.GzipFile`` without a filename.
+    """
+    if len(a) != len(b):
+        return False
+
+    return a[:4] == b[:4] and a[8:] == b[8:]
+
+
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
     """gzip codec"""

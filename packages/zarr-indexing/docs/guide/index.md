@@ -437,8 +437,8 @@ correspondence between every request position and its chunk-local source cell.
 
 ---
 
-<nav aria-label="Guide navigation">
-  <strong>Previous:</strong> <a href="../">zarr-indexing</a>
-  ·
-  <strong>Next:</strong> <a href="patterns/">Indexing patterns</a>
+<nav aria-label="Guide navigation" markdown>
+**Previous:** [zarr-indexing](../index.md)
+·
+**Next:** [Indexing patterns](patterns.md)
 </nav>

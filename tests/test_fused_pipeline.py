@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 import zarr
+from tests.conftest import Expect
 from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -18,11 +20,16 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import Store, _store_supports_sync_io
 from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.gzip import GzipCodec, _gzip_streams_equal_except_mtime
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.codec_pipeline import FusedCodecPipeline
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+from zarr.core.chunk_utils import ChunkTransform, evolve_codecs
+from zarr.core.codec_pipeline import AsyncChunkTransform, FusedCodecPipeline
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import Float32, Float64, Int32, UInt8, ZDType
 from zarr.registry import register_codec
 from zarr.storage import MemoryStore, StorePath, WrapperStore
 from zarr.storage._utils import _normalize_byte_range_index
@@ -32,8 +39,28 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterable
 
     from zarr.abc.store import ByteRequest
-    from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
+
+
+_FLOAT64 = Float64()
+
+
+def _make_spec(
+    shape: tuple[int, ...],
+    zdtype: ZDType[Any, Any] = _FLOAT64,
+    fill_value: float = 0,
+    *,
+    write_empty_chunks: bool = True,
+    prototype: BufferPrototype | None = None,
+) -> ArraySpec:
+    """An ArraySpec with the C-order defaults shared by the tests in this file."""
+    return ArraySpec(
+        shape=shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(fill_value),
+        config=ArrayConfig(order="C", write_empty_chunks=write_empty_chunks),
+        prototype=prototype if prototype is not None else default_buffer_prototype(),
+    )
 
 
 @pytest.mark.parametrize(
@@ -62,10 +89,6 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
     and the penalty grows with codec cost (observed as "fused pipeline is
     slower for zstd data" under dask-style multi-threaded single-chunk reads).
     """
-    import asyncio
-
-    from zarr.core.chunk_utils import ChunkTransform
-
     compute_on_loop = {"decode": False, "encode": False}
     calls = {"decode": 0, "encode": 0}
     real_decode = ChunkTransform.decode_chunk
@@ -116,22 +139,10 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_evolve_from_array_spec() -> None:
     """evolve_from_array_spec creates a sync transform."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
     pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     assert pipeline.sync_transform is None
 
-    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
-    spec = ArraySpec(
-        shape=(100,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
-    evolved = pipeline.evolve_from_array_spec(spec)
+    evolved = pipeline.evolve_from_array_spec(_make_spec((100,)))
     assert evolved.sync_transform is not None
 
 
@@ -147,31 +158,20 @@ def test_evolve_from_array_spec() -> None:
 
 
 @pytest.mark.parametrize(
-    ("dtype", "shape"),
+    ("zdtype", "shape"),
     [
-        ("float64", (100,)),
-        ("float32", (50,)),
-        ("int32", (200,)),
-        ("float64", (10, 10)),
+        (Float64(), (100,)),
+        (Float32(), (50,)),
+        (Int32(), (200,)),
+        (Float64(), (10, 10)),
     ],
     ids=["f64-1d", "f32-1d", "i32-1d", "f64-2d"],
 )
-def test_read_write_sync_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
+def test_read_write_sync_roundtrip(zdtype: ZDType[Any, Any], shape: tuple[int, ...]) -> None:
     """Data written via write_sync can be read back via read_sync."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
     store = MemoryStore()
-    zdtype = get_data_type_from_native_dtype(np.dtype(dtype))
-    spec = ArraySpec(
-        shape=shape,
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    dtype = zdtype.to_native_dtype()
+    spec = _make_spec(shape, zdtype)
 
     pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
@@ -200,20 +200,8 @@ def test_read_write_sync_roundtrip(dtype: str, shape: tuple[int, ...]) -> None:
 
 def test_read_sync_missing_chunk_fills() -> None:
     """Sync read of a missing chunk fills with the fill value."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
     store = MemoryStore()
-    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
-    spec = ArraySpec(
-        shape=(10,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(42.0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    spec = _make_spec((10,), fill_value=42.0)
 
     pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
@@ -232,21 +220,10 @@ def test_read_sync_missing_chunk_fills() -> None:
 
 def test_sync_write_async_read_roundtrip() -> None:
     """Data written via write_sync can be read back via async read."""
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
     from zarr.core.sync import sync
 
     store = MemoryStore()
-    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
-    spec = ArraySpec(
-        shape=(100,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    spec = _make_spec((100,))
 
     pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
     pipeline = pipeline.evolve_from_array_spec(spec)
@@ -271,17 +248,14 @@ def test_sync_write_async_read_roundtrip() -> None:
         )
     )
 
+    np.testing.assert_array_equal(data, out.as_numpy_array())
+
 
 def test_chunk_transform_uses_runtime_prototype() -> None:
     """ChunkTransform must pass each codec the prototype from the runtime chunk_spec,
     not one captured at evolve time. Constructs ChunkTransform directly (a
     Fused-internal data structure with no BatchedCodecPipeline equivalent).
     """
-    from zarr.abc.codec import BytesBytesCodec
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import BufferPrototype, default_buffer_prototype
-    from zarr.core.chunk_utils import ChunkTransform
-    from zarr.core.dtype import get_data_type_from_native_dtype
 
     class _PrototypeRecordingCodec(BytesBytesCodec):  # type: ignore[misc,unused-ignore]
         """A no-op BB codec that records the prototype it was called with."""
@@ -319,16 +293,8 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
     recording = _PrototypeRecordingCodec()
     transform = ChunkTransform(codecs=(BytesCodec(), recording))
 
-    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
-
     def _spec(prototype: BufferPrototype) -> ArraySpec:
-        return ArraySpec(
-            shape=(10,),
-            dtype=zdtype,
-            fill_value=zdtype.cast_scalar(0.0),
-            config=ArrayConfig(order="C", write_empty_chunks=False),
-            prototype=prototype,
-        )
+        return _make_spec((10,), write_empty_chunks=False, prototype=prototype)
 
     proto_default = default_buffer_prototype()
     # A distinct BufferPrototype instance with the same buffer/nd_buffer types --
@@ -371,8 +337,6 @@ def test_read_write_with_thread_pool() -> None:
     returning 1) would silently degrade all the pool tests into re-testing the
     sequential branch while staying green.
     """
-    from unittest.mock import patch
-
     import zarr.core.codec_pipeline as cp_mod
 
     with zarr_config.set(_FUSED_POOL_CONFIG):
@@ -404,8 +368,6 @@ def test_read_write_with_thread_pool() -> None:
 def test_thread_pool_write_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during write_sync surfaces to
     the caller (write_sync consumes pool.map, so worker exceptions re-raise)."""
-    from unittest.mock import patch
-
     with zarr_config.set(_FUSED_POOL_CONFIG):
         store = MemoryStore()
         arr = zarr.create_array(
@@ -426,8 +388,6 @@ def test_thread_pool_write_worker_exception_propagates() -> None:
 def test_thread_pool_read_worker_exception_propagates() -> None:
     """A store error raised inside a pool worker during read_sync surfaces to
     the caller (read_sync consumes pool.map into a tuple)."""
-    from unittest.mock import patch
-
     with zarr_config.set(_FUSED_POOL_CONFIG):
         store = MemoryStore()
         arr = zarr.create_array(
@@ -474,12 +434,7 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
     never retrieved (an unraisable "Task exception was never retrieved"
     warning if it later fails).
     """
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.chunk_utils import ChunkTransform
     from zarr.core.codec_pipeline import _encode_and_write_as_completed
-    from zarr.core.dtype import get_data_type_from_native_dtype
 
     write_started = asyncio.Event()
     write_finished = False
@@ -517,14 +472,7 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
         async def set_if_not_exists(self, default: Buffer) -> None:
             pass
 
-    zdtype = get_data_type_from_native_dtype(np.dtype("uint8"))
-    chunk_spec = ArraySpec(
-        shape=(1,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    chunk_spec = _make_spec((1,), UInt8())
     chunk_array = CPUNDBuffer.from_numpy_array(np.zeros(1, dtype="uint8"))
     transform = ChunkTransform(codecs=(BytesCodec(),))
 
@@ -598,28 +546,12 @@ def test_shared_transform_decode_alternating_specs() -> None:
     underpins that guarantee. (The concurrent counterpart is
     `test_concurrent_reads_shared_transform_with_pool`.)
     """
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.chunk_utils import ChunkTransform
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
-    def _spec(shape: tuple[int, ...]) -> ArraySpec:
-        zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
-        return ArraySpec(
-            shape=shape,
-            dtype=zdtype,
-            fill_value=zdtype.cast_scalar(0),
-            config=ArrayConfig(order="C", write_empty_chunks=True),
-            prototype=default_buffer_prototype(),
-        )
-
     transform = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec()))
 
     # two distinct specs (different shapes) sharing the one transform + cache slot
     cases = []
     for shape in [(5, 7), (3, 11)]:
-        spec = _spec(shape)
+        spec = _make_spec(shape, Int32())
         arr = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
         encoded = transform.encode_chunk(CPUNDBuffer.from_numpy_array(arr), spec)
         assert encoded is not None
@@ -643,11 +575,6 @@ def test_sharded_fallback_inner_chunks_avoid_async_transform() -> None:
     dict lookup plus an async per-chunk transform — measured at 1.5x (raw) to
     3.6x (gzip) of sharded fallback read time.
     """
-    from unittest.mock import patch
-
-    from zarr.core.codec_pipeline import AsyncChunkTransform
-    from zarr.testing.store import LatencyStore
-
     calls = {"decode": 0, "encode": 0}
     orig_decode = AsyncChunkTransform.decode_chunk
     orig_encode = AsyncChunkTransform.encode_chunk
@@ -716,22 +643,9 @@ def test_write_over_sync_byte_setter_takes_sync_path() -> None:
     directly: without it, this write degrades to the async fallback (one
     coroutine per inner chunk for an in-memory dict store).
     """
-    import asyncio
-    from unittest.mock import patch
-
     from zarr.codecs.sharding import _ShardingByteSetter
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.dtype import get_data_type_from_native_dtype
 
-    zdtype = get_data_type_from_native_dtype(np.dtype("uint8"))
-    spec = ArraySpec(
-        shape=(10,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    spec = _make_spec((10,), UInt8())
     pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
     assert pipeline.sync_transform is not None
 
@@ -839,8 +753,6 @@ def test_sharded_roundtrip_with_async_only_inner_codec() -> None:
     # The stored bytes are valid for the default pipeline too: read them back
     # under BatchedCodecPipeline (default codec_pipeline.path). Opening from
     # metadata needs the codec name in the registry.
-    from zarr.registry import register_codec
-
     register_codec("test-async-only-noop", _AsyncOnlyNoopCodec)
     reread = zarr.open_array(store=store, mode="r")
     np.testing.assert_array_equal(reread[:], data)
@@ -849,51 +761,65 @@ def test_sharded_roundtrip_with_async_only_inner_codec() -> None:
 # ---------------------------------------------------------------------------
 # AsyncChunkTransform: the async per-chunk codec chain used on the async
 # fallback path. It is the async mirror of ChunkTransform, so it must produce
-# identical bytes/arrays. The default (Fused, sync-store) path never uses it;
+# identical bytes/arrays — except for gzip's embedded 4-byte MTIME header
+# field, which the gzip case's comparator deliberately ignores.
+# The default (Fused, sync-store) path never uses it;
 # these tests drive it directly over multi-codec chains so the aa/bb loops and
 # the all-fill drop branch are exercised.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "codecs",
-    [
-        (BytesCodec(),),
-        (BytesCodec(), GzipCodec(level=1)),
-        (TransposeCodec(order=(1, 0)), BytesCodec()),
-        (TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
-    ],
-    ids=["bytes-only", "bb", "aa", "aa+ab+bb"],
-)
-def test_async_chunk_transform_matches_sync(codecs: tuple[Any, ...]) -> None:
+def _bytes_identical(a: bytes, b: bytes) -> bool:
+    return a == b
+
+
+# Each case pairs a codec chain with the expected relationship between the
+# async and sync encoders' output: byte-identical, except for a chain
+# containing gzip, whose embedded 4-byte MTIME header field varies with the
+# encode time.
+_ASYNC_SYNC_PARITY_CASES: list[Expect[tuple[Any, ...], Callable[[bytes, bytes], bool]]] = [
+    Expect(
+        input=(BytesCodec(),),
+        output=_bytes_identical,
+        id="bytes-only",
+    ),
+    Expect(
+        input=(BytesCodec(), GzipCodec(level=1)),
+        output=_gzip_streams_equal_except_mtime,
+        id="bb",
+    ),
+    Expect(
+        input=(TransposeCodec(order=(1, 0)), BytesCodec()),
+        output=_bytes_identical,
+        id="aa",
+    ),
+    Expect(
+        input=(TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
+        output=_bytes_identical,
+        id="aa+ab+bb",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", _ASYNC_SYNC_PARITY_CASES, ids=lambda c: c.id)
+def test_async_chunk_transform_matches_sync(
+    case: Expect[tuple[Any, ...], Callable[[bytes, bytes], bool]],
+) -> None:
     """`AsyncChunkTransform.decode_chunk`/`encode_chunk` must round-trip and
-    produce exactly what the synchronous `ChunkTransform` produces, across
-    array->array, array->bytes, and bytes->bytes codec combinations.
+    produce what the synchronous `ChunkTransform` produces, across
+    array->array, array->bytes, and bytes->bytes codec combinations. Each
+    case's expected output is a byte-comparison function: exact equality,
+    except for gzip, whose embedded 4-byte MTIME header field is deliberately
+    ignored.
 
     This is the async mirror of the codecs the default pipeline runs
     synchronously; a divergence here corrupts data only on the async fallback
     path (remote stores), which no end-to-end test of the default pipeline
     touches.
     """
-    import asyncio
-
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.chunk_utils import ChunkTransform, evolve_codecs
-    from zarr.core.codec_pipeline import AsyncChunkTransform
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
     shape = (4, 4)
-    zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
-    spec = ArraySpec(
-        shape=shape,
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
-    evolved = evolve_codecs(codecs, spec)
+    spec = _make_spec(shape, Int32())
+    evolved = evolve_codecs(case.input, spec)
     sync_t = ChunkTransform(codecs=evolved)
     async_t = AsyncChunkTransform(codecs=evolved)
 
@@ -904,7 +830,7 @@ def test_async_chunk_transform_matches_sync(codecs: tuple[Any, ...]) -> None:
     async_bytes = asyncio.run(async_t.encode_chunk(value, spec))
     assert sync_bytes is not None
     assert async_bytes is not None
-    np.testing.assert_array_equal(async_bytes.to_bytes(), sync_bytes.to_bytes())
+    assert case.output(async_bytes.to_bytes(), sync_bytes.to_bytes())
 
     sync_arr = sync_t.decode_chunk(async_bytes, spec)
     async_arr = asyncio.run(async_t.decode_chunk(async_bytes, spec))
@@ -916,21 +842,7 @@ def test_async_decode_encode_passes_through_none_chunks() -> None:
     """`FusedCodecPipeline.decode`/`encode` (the async batch entry points used
     on the fallback path) map a None chunk to None and leave real chunks
     untouched — pins the None-passthrough branch the default sync path skips."""
-    import asyncio
-
-    from zarr.core.array_spec import ArrayConfig, ArraySpec
-    from zarr.core.buffer import default_buffer_prototype
-    from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
-    from zarr.core.dtype import get_data_type_from_native_dtype
-
-    zdtype = get_data_type_from_native_dtype(np.dtype("int32"))
-    spec = ArraySpec(
-        shape=(4,),
-        dtype=zdtype,
-        fill_value=zdtype.cast_scalar(0),
-        config=ArrayConfig(order="C", write_empty_chunks=True),
-        prototype=default_buffer_prototype(),
-    )
+    spec = _make_spec((4,), Int32())
     pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
 
     data = np.arange(4, dtype="int32")
@@ -1187,8 +1099,6 @@ def test_sync_io_capability_gates_fused_paths(
     (read-modify-write) writes, and all-fill (delete) writes — a store with a
     partial sync surface must get a clean async fallback, never a mid-batch
     error."""
-    from unittest.mock import patch
-
     store = store_factory()
     assert _store_supports_sync_io(store) is expect_sync_path
 
