@@ -7,8 +7,8 @@ and a `parse_*` function that narrows or raises `MetadataValidationError`.
 
 Every `ValidationProblem` carries a machine-readable `kind` alongside its
 human-readable `message`, so consumers can dispatch on the failure mode
-(`missing_key`, `invalid_type`, `invalid_value`, `invalid_json`) without
-string-matching messages.
+(`missing_key`, `invalid_type`, `invalid_value`, `invalid_json`,
+`unknown_key`) without string-matching messages.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json"]
+ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -37,6 +37,15 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 - `invalid_value`: a value has an acceptable type but an invalid content
   (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
 - `invalid_json`: bytes that do not decode as JSON.
+- `unknown_key`: a member this package does not model appears inside an
+  entity whose shape it does model (e.g. an extra key in a `blosc`
+  configuration). Distinguished from `invalid_value` because the Zarr v3
+  spec does not say whether a `configuration` is closed
+  (zarr-developers/zarr-specs#270 has been open since 2023), so this is
+  the package's strict reading rather than a definite violation: a
+  document carrying one is very likely fine, just written by something
+  that models more than we do. Callers that prefer tolerance can filter
+  this kind out; the package itself never lets it mask other findings.
 """
 
 
@@ -550,16 +559,8 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
                     ("dimension_names",), "expected items of str or None", "invalid_type"
                 )
             )
-        elif _is_int_sequence(doc.get("shape")) and len(cast("Sequence[object]", names)) != len(
-            cast("Sequence[int]", doc["shape"])
-        ):
-            problems.append(
-                ValidationProblem(
-                    ("dimension_names",),
-                    "expected one name per dimension of shape",
-                    "invalid_value",
-                )
-            )
+        # Whether the names count matches shape's dimensionality is a
+        # composition judgment, owned by zarr_metadata.rules.
     return tuple(problems)
 
 
@@ -599,26 +600,10 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     # ARRAY_METADATA_STANDARD_KEYS_V2 are not problems.
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(_check_literal(doc, "zarr_format", 2))
-    shape_problems = _validate_dim_sequence(doc, "shape")
-    chunks_problems = _validate_dim_sequence(doc, "chunks")
-    problems.extend(shape_problems)
-    problems.extend(chunks_problems)
-    if (
-        len(shape_problems) == 0
-        and len(chunks_problems) == 0
-        and _is_int_sequence(doc.get("shape"))
-        and _is_int_sequence(doc.get("chunks"))
-    ):
-        shape = cast("Sequence[int]", doc["shape"])
-        chunks = cast("Sequence[int]", doc["chunks"])
-        if len(shape) != len(chunks):
-            problems.append(
-                ValidationProblem(
-                    ("chunks",),
-                    "expected the same number of dimensions as shape",
-                    "invalid_value",
-                )
-            )
+    problems.extend(_validate_dim_sequence(doc, "shape"))
+    problems.extend(_validate_dim_sequence(doc, "chunks"))
+    # Whether chunks matches shape's dimensionality is a composition
+    # judgment, owned by zarr_metadata.rules.
     if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
         problems.append(
             ValidationProblem(

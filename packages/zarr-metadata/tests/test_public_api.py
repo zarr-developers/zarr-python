@@ -281,23 +281,29 @@ _STANDALONE_VOCAB = frozenset(
         "BloscShuffle",
         "CastOutOfRangeMode",
         "CastRoundingMode",
+        "CodecKind",
         "Endianness",
         "HexFloat16",
         "HexFloat32",
         "HexFloat64",
         "JSONValue",
+        "Invalid",
         "MetadataValidationError",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
+        "Rule",
+        "RuleCheck",
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",
         "Struct",
         "StructField",
+        "Valid",
         "ValidationProblem",
+        "ValidationResult",
     }
 )
 
@@ -409,7 +415,14 @@ def _literal_backed_constants() -> list[tuple[str, str, str]]:
         for const_name, value in vars(module).items():
             if const_name.startswith("_") or not const_name.isupper():
                 continue
-            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if isinstance(value, tuple):
+                members = frozenset(value)
+            elif isinstance(value, str):
+                members = frozenset({value})
+            else:
+                # Unhashable non-value constants (rule sets, factory
+                # registries) back no Literal type and carry no signal.
+                continue
             if not all(isinstance(m, str) for m in members):
                 continue
             matches = [t for t, args in literals.items() if args == members]
@@ -441,7 +454,14 @@ def _value_tied_constants() -> set[str]:
         for const_name, value in vars(module).items():
             if const_name.startswith("_") or not const_name.isupper():
                 continue
-            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if isinstance(value, tuple):
+                members = frozenset(value)
+            elif isinstance(value, str):
+                members = frozenset({value})
+            else:
+                # Unhashable non-value constants (rule sets, factory
+                # registries) back no Literal type and carry no signal.
+                continue
             if not all(isinstance(m, str) for m in members):
                 continue
             if sum(1 for args in literals if args == members) > 1:

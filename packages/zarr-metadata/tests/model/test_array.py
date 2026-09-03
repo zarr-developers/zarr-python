@@ -1325,16 +1325,23 @@ def test_v2_filters_must_be_codec_sequence_or_none() -> None:
         assert [(p.loc, p.kind) for p in problems] == [(("filters",), "invalid_type")], bad
 
 
-def test_v2_shape_and_chunks_must_have_equal_rank() -> None:
-    """Raw v2 metadata requires one chunk length per array dimension."""
+def test_v2_shape_chunks_rank_agreement_is_not_structural() -> None:
+    """Whether chunks matches shape's dimensionality is a composition
+    judgment owned by zarr_metadata.rules; the structural validator and the
+    model classes deliberately accept the document (it is a lossless,
+    structurally well-formed representation of what a store may contain)."""
     doc = dict(ZarrV2ArrayMetadata.create_default(shape=(2, 3)).to_json())
     doc["chunks"] = (1,)
 
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
+    assert validate_array_metadata_v2(doc) == ()
+    parsed = ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+    assert parsed.chunks == (1,)
+
+    from zarr_metadata import rules
+
+    assert [(p.loc, p.kind) for p in rules.validate_array_metadata_v2(doc)] == [
         (("chunks",), "invalid_value")
     ]
-    with pytest.raises(MetadataValidationError, match="same number of dimensions"):
-        ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
 
 def test_v2_filters_may_be_empty() -> None:
@@ -1527,12 +1534,18 @@ def test_shape_rejects_negative_dimensions() -> None:
     ]
 
 
-def test_dimension_names_length_must_match_shape() -> None:
-    """dimension_names must have one entry per dimension of shape."""
+def test_dimension_names_length_is_not_structural() -> None:
+    """Whether dimension_names matches shape's dimensionality is a
+    composition judgment owned by zarr_metadata.rules; the structural
+    validator deliberately accepts the document."""
     doc = dict(ZarrV3ArrayMetadata.create_default(shape=(10,)).to_json()) | {
         "dimension_names": ("x", "y", "z")
     }
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(doc)] == [
+    assert validate_array_metadata_v3(doc) == ()
+
+    from zarr_metadata import rules
+
+    assert [(p.loc, p.kind) for p in rules.validate_array_metadata_v3(doc)] == [
         (("dimension_names",), "invalid_value")
     ]
 
