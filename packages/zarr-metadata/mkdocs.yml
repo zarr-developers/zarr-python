@@ -16,6 +16,8 @@ nav:
   - API Reference:
       - api/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/model.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.rules</code>': api/rules.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.builder</code>': api/builder.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/pydantic.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/v2.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3</code>':

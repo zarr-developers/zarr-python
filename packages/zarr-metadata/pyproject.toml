@@ -47,7 +47,7 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2.13", "jsonschema"]
+test = ["pytest", "pydantic>=2.13", "jsonschema", "hypothesis"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so the two sites render with the same toolchain.
