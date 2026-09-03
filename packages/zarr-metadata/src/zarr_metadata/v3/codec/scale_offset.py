@@ -17,7 +17,7 @@ ScaleOffsetCodecName = Literal["scale_offset"]
 """Literal type of the `name` field of the `scale_offset` codec."""
 
 
-class ScaleOffsetCodecConfiguration(TypedDict):
+class ScaleOffsetCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `scale_offset` codec.
 
@@ -32,7 +32,7 @@ class ScaleOffsetCodecConfiguration(TypedDict):
     scale: NotRequired[JSONValue]
 
 
-class ScaleOffsetCodecObject(TypedDict):
+class ScaleOffsetCodecObject(TypedDict, closed=True):
     """`scale_offset` codec metadata in object form.
 
     `configuration` is itself optional per spec — when both `offset` and
@@ -43,6 +43,7 @@ class ScaleOffsetCodecObject(TypedDict):
 
     name: ScaleOffsetCodecName
     configuration: NotRequired[ScaleOffsetCodecConfiguration]
+    must_understand: NotRequired[bool]
 
 
 ScaleOffsetCodecMetadata = ScaleOffsetCodecObject | ScaleOffsetCodecName
