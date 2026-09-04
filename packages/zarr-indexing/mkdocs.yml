@@ -23,7 +23,7 @@ validation:
     omitted_files: warn
 
 # Top-level rank is consistent: collections (Guide, Examples, API Reference)
-# and standalone artifacts (landing, ndsel spec, design notes, changelog).
+# and standalone artifacts (landing, ndsel spec, design notes, release notes).
 # Guide mirrors the docs/guide/ directory — its three pages are one
 # collection (learn / look up / integrate), pydantic's Concepts pattern at
 # small scale; navigation.indexes makes the Guide entry itself land on the
@@ -56,7 +56,7 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.errors</code>': api/errors.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.stateful</code>': api/testing_stateful.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_indexing.testing.strategies</code>': api/testing_strategies.md
-  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md
+  - Release notes: release-notes.md
   # This site is a Read the Docs subproject of zarr-python; give readers a way
   # back to the parent docs, which list every companion package.
   - 'zarr-python ↪': https://zarr.readthedocs.io/
@@ -148,7 +148,10 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.snippets:
-      base_path: [docs, examples]
+      # The package root is last so docs/release-notes.md can include the
+      # towncrier-managed CHANGELOG.md without moving it out of the package
+      # root, where PyPI and GitHub readers expect it.
+      base_path: [docs, examples, .]
       # Fail the build on an unresolvable include or missing region instead
       # of silently rendering nothing. tests/test_doc_examples.py mirrors
       # base_path when it verifies the include graph.

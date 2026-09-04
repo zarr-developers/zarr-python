@@ -328,11 +328,14 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            # Any chunk that fits the array can be sharded: shard_shapes draws a
+            # whole number of chunks per axis, one inner chunk included.
+            if all(s >= c >= 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
                 )
+                event("sharded" if shard_shape is not None else "unsharded")
                 if shard_shape is not None:
                     subchunk_write_order = draw(subchunk_write_orders)
                     inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
@@ -572,20 +575,30 @@ def basic_indices(
 @st.composite
 def orthogonal_indices(
     draw: st.DrawFn, *, shape: tuple[int, ...]
-) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+) -> tuple[tuple[int | slice | np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
     """
     Strategy that returns
-    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (1) a tuple of per-axis selectors (integer array, slice, or bare integer) for
+        orthogonal indexing of Zarr arrays.
+    (2) a tuple of broadcast integer arrays that index a numpy array to the same
+        result. A bare integer drops its axis, as ``oindex`` does, so it is
+        given as a 0-d array and does not contribute a result dimension.
     """
-    zindexer = []
-    npindexer = []
-    ndim = len(shape)
+    zindexer: list[int | slice | np.ndarray[Any, Any]] = []
+    kept: list[tuple[int, np.ndarray[Any, Any]]] = []
+    npindexer: dict[int, np.ndarray[Any, Any]] = {}
     for axis, size in enumerate(shape):
         if size != 0:
-            strategy = npst.integer_array_indices(
-                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
-            ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            strategy = (
+                npst.integer_array_indices(
+                    shape=(size,),
+                    result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1),
+                )
+                | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+                # basic_indices(min_dims=1) never yields a bare integer, so draw
+                # one explicitly: it is the only selector that drops an axis.
+                | st.integers(min_value=-size, max_value=size - 1)
+            )
         else:
             strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
 
@@ -597,19 +610,25 @@ def orthogonal_indices(
             .filter(bool)
         )
         (idxr,) = val
-        if isinstance(idxr, int):
-            idxr = np.array([idxr])
         zindexer.append(idxr)
+        if isinstance(idxr, int):
+            npindexer[axis] = np.array(idxr)
+            continue
         if isinstance(idxr, slice):
             idxr = np.arange(*idxr.indices(size))
-        elif isinstance(idxr, (tuple, int)):
+        elif isinstance(idxr, tuple):
             idxr = np.array(idxr)
-        newshape = [1] * ndim
-        newshape[axis] = idxr.size
-        npindexer.append(idxr.reshape(newshape))
+        kept.append((axis, idxr))
+
+    for pos, (axis, idxr) in enumerate(kept):
+        newshape = [1] * len(kept)
+        newshape[pos] = idxr.size
+        npindexer[axis] = idxr.reshape(newshape)
 
     # casting the output of broadcast_arrays is needed for numpy < 2
-    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
+    return tuple(zindexer), tuple(
+        np.broadcast_arrays(*(npindexer[axis] for axis in range(len(shape))))
+    )
 
 
 @st.composite

@@ -49,5 +49,5 @@ the chain stays one description, and where the materialization boundary is.
 - [Design notes](design-notes.md) — TensorStore lineage, box vs query, and
   deliberate limits.
 - [API reference](api/index.md)
-- [Changelog](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md)
+- [Release notes](release-notes.md)
   · [License (MIT)](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/LICENSE.txt)
