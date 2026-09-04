@@ -24,7 +24,7 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.chunk_key_encoding</code>': api/v3/chunk_key_encoding.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.codec</code>': api/v3/codec.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v3.data_type</code>': api/v3/data_type.md
-  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md
+  - Release notes: release-notes.md
   # This site is a Read the Docs subproject of zarr-python; give readers a way
   # back to the parent docs, which list every companion package.
   - 'zarr-python ↪': https://zarr.readthedocs.io/
@@ -109,3 +109,11 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      # The package root lets docs/release-notes.md include the
+      # towncrier-managed CHANGELOG.md without moving it out of the package
+      # root, where PyPI and GitHub readers expect it.
+      base_path: [docs, .]
+      # Fail the build on an unresolvable include instead of silently
+      # rendering nothing.
+      check_paths: true

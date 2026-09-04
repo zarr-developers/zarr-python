@@ -44,7 +44,7 @@ CACHE_EXAMPLE = STANDALONE_EXAMPLES / "system_memory_chunk_cache" / "system_memo
 
 # Mirrors `pymdownx.snippets: base_path` in mkdocs.yml. If that list changes,
 # change this one in the same commit.
-SNIPPET_BASE_PATHS = (DOCS, STANDALONE_EXAMPLES)
+SNIPPET_BASE_PATHS = (DOCS, STANDALONE_EXAMPLES, PACKAGE_ROOT)
 
 _INCLUDE = re.compile(r'--8<--\s+"(?P<target>[^":\n]+?)(?::(?P<region>[^"\n]+))?"')
 
