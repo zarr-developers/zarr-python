@@ -97,6 +97,22 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(store.path, mode="r") as archive:
             assert archive.read("sentinel") == data.to_bytes()
 
+    async def test_archive_writing_read_only_store_is_not_serializable(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "data.zip"
+        with zipfile.ZipFile(path, mode="w"):
+            pass
+
+        store = await ZipStore.open(path, mode="a", read_only=True)
+        assert store._zmode == "a"
+        assert store.read_only
+
+        with pytest.raises(TypeError, match="archive-writing mode cannot be pickled"):
+            pickle.dumps(store)
+
+        store.close()
+
     async def test_read_only_store_is_serializable(self, tmp_path: Path) -> None:
         path = tmp_path / "data.zip"
         data = cpu.Buffer.from_bytes(b"preserve me")
