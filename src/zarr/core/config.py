@@ -42,6 +42,8 @@ from dataclasses import dataclass, field, fields, is_dataclass, replace
 from types import MappingProxyType
 from typing import Any, Literal, Self, cast, overload
 
+from donfig.config_obj import canonical_name
+
 from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
 
 DEFAULT_CODECS: dict[str, str] = {
@@ -180,7 +182,8 @@ def make_default_config() -> ZarrConfig:
 
 def _resolve_field(obj: object, segment: str) -> str:
     """Translate a serialized key segment to the dataclass field name."""
-    return _FIELD_ALIASES.get(segment, segment)
+    field_name = _FIELD_ALIASES.get(segment, segment)
+    return cast(str, canonical_name(field_name, dict.fromkeys(_children(obj))))
 
 
 def get_path(cfg: ZarrConfig, key: str) -> object:
@@ -198,7 +201,7 @@ def get_path(cfg: ZarrConfig, key: str) -> object:
             # remaining segments index into an open mapping (e.g. codecs.*)
             remainder = ".".join(segments[i:])
             try:
-                return obj[remainder]
+                return obj[canonical_name(remainder, obj)]
             except KeyError:
                 raise KeyError(key) from None
         # A prior segment resolved to a scalar leaf, but the key has more
@@ -230,7 +233,7 @@ def _replace_recursive(obj: Any, segments: list[str], value: object, key: str) -
         remainder = ".".join(segments)
         # Plain dict (see the `codecs` field note); the manager property wraps
         # it read-only for public access.
-        return {**obj, remainder: value}
+        return {**obj, canonical_name(remainder, obj): value}
     if not is_dataclass(obj):
         # `key` tries to descend past a scalar leaf (e.g. `array.order.upper`).
         raise KeyError(key)
@@ -270,6 +273,7 @@ def delete_path(cfg: ZarrConfig, key: str) -> ZarrConfig:
 def _delete_recursive(obj: Any, segments: list[str], key: str) -> object:
     if isinstance(obj, Mapping):
         remainder = ".".join(segments)
+        remainder = canonical_name(remainder, obj)
         return {k: v for k, v in obj.items() if k != remainder}
     if not is_dataclass(obj):
         raise KeyError(key)
@@ -405,28 +409,6 @@ def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, object]) -> ZarrCon
 _DONFIG_META_KEYS: frozenset[str] = frozenset({"config", "root_config"})
 
 
-def _canonicalize_override_keys(overrides: Mapping[str, object]) -> dict[str, object]:
-    """Map underscore codec names onto their hyphenated built-in defaults.
-
-    Environment variables cannot contain hyphens, so ``ZARR_CODECS__VLEN_UTF8``
-    flattens to the key ``codecs.vlen_utf8``. The built-in codec is registered
-    under the hyphenated name ``vlen-utf8`` (likewise ``vlen-bytes``), so without
-    this remapping the override would land under a dead ``vlen_utf8`` key and be
-    silently ignored while the registry keeps reading the untouched default.
-    When a ``codecs.<name>`` key does not match a default but its hyphenated
-    variant does, rewrite it to the hyphenated form. New (non-default) codec
-    names and underscore-named defaults (e.g. ``sharding_indexed``) are untouched.
-    """
-    out: dict[str, object] = {}
-    for key, value in overrides.items():
-        if key.startswith("codecs."):
-            name = key[len("codecs.") :]
-            if name not in DEFAULT_CODECS and name.replace("_", "-") in DEFAULT_CODECS:
-                key = f"codecs.{name.replace('_', '-')}"
-        out[key] = value
-    return out
-
-
 def build_config() -> ZarrConfig:
     """Build the base snapshot: typed defaults overlaid with donfig's ingest.
 
@@ -441,14 +423,16 @@ def build_config() -> ZarrConfig:
     """
     import donfig
 
-    overrides = _flatten_mapping(donfig.Config("zarr").config)
+    defaults = make_default_config()
+    # Supplying defaults lets donfig resolve '-'/'_' aliases while merging
+    # YAML and environment values, before their original spelling is lost.
+    overrides = _flatten_mapping(donfig.Config("zarr", defaults=[to_nested_dict(defaults)]).config)
     overrides = {
         key: value
         for key, value in overrides.items()
         if key.split(".", 1)[0] not in _DONFIG_META_KEYS
     }
-    overrides = _canonicalize_override_keys(overrides)
-    return apply_overrides(make_default_config(), overrides)
+    return apply_overrides(defaults, overrides)
 
 
 _MISSING = object()
@@ -495,6 +479,16 @@ class ZarrConfigManager:
         # Serializes read-modify-write of the process-global `_base` so
         # concurrent `set`s / reverts to different keys don't lose updates
         # (each rebuilds a whole immutable snapshot from `_base`).
+        self._lock = threading.Lock()
+
+    def __getstate__(self) -> dict[str, Any]:
+        # Locks cannot be copied or pickled. Capture state under the lock, then
+        # let the copy/pickle protocol process the snapshot independently.
+        with self._lock:
+            return {key: value for key, value in self.__dict__.items() if key != "_lock"}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
         self._lock = threading.Lock()
 
     # --- state resolution -------------------------------------------------
@@ -649,7 +643,7 @@ class ZarrConfigManager:
         all_updates: dict[str, object] = {}
         if updates:
             all_updates.update(updates)
-        all_updates.update(kwargs)
+        all_updates.update((key.replace("__", "."), value) for key, value in kwargs.items())
         # Apply immediately and globally (donfig semantics). Hold the lock across
         # the read-modify-write of `_base` so concurrent `set`s to different keys
         # don't clobber each other (each rebuilds a full snapshot). Record how to
