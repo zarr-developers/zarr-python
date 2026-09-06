@@ -6,6 +6,11 @@ on:
       - 'packages/zarr-storage/**'
       - 'src/zarr/abc/store.py'
       - 'src/zarr/core/_coalesce.py'
+      - 'src/zarr/storage/**'
+      - 'src/zarr/testing/**'
+      - 'src/zarr/experimental/cache_store.py'
+      - 'tests/test_store/**'
+      - 'tests/test_experimental/test_cache_store.py'
       - '.github/workflows/zarr-storage-extraction.yml'
   push:
     branches: [main]
@@ -13,6 +18,11 @@ on:
       - 'packages/zarr-storage/**'
       - 'src/zarr/abc/store.py'
       - 'src/zarr/core/_coalesce.py'
+      - 'src/zarr/storage/**'
+      - 'src/zarr/testing/**'
+      - 'src/zarr/experimental/cache_store.py'
+      - 'tests/test_store/**'
+      - 'tests/test_experimental/test_cache_store.py'
       - '.github/workflows/zarr-storage-extraction.yml'
   workflow_dispatch:
 
@@ -25,7 +35,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.14']
+        include:
+          - python-version: '3.12'
+            dependencies: minimal
+          - python-version: '3.14'
+            dependencies: minimal
+          - python-version: '3.12'
+            dependencies: optional
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,7 +55,7 @@ jobs:
         env:
           PYTHONPATH: packages/zarr-storage/src
         run: >-
-          hatch run test.py${{ matrix.python-version }}-minimal:pytest
+          hatch run test.py${{ matrix.python-version }}-${{ matrix.dependencies }}:pytest
           packages/zarr-storage/tests --import-mode=importlib
       - name: Build storage distributions
         working-directory: packages/zarr-storage
@@ -48,5 +64,12 @@ jobs:
         env:
           PYTHONPATH: packages/zarr-storage/dist/zarr_storage-0.1.0-py3-none-any.whl
         run: >-
-          hatch run test.py${{ matrix.python-version }}-minimal:pytest
+          hatch run test.py${{ matrix.python-version }}-${{ matrix.dependencies }}:pytest
           packages/zarr-storage/tests --import-mode=importlib
+      - name: Run stateful store tests
+        if: matrix.dependencies == 'optional'
+        env:
+          PYTHONPATH: packages/zarr-storage/dist/zarr_storage-0.1.0-py3-none-any.whl
+        run: >-
+          hatch run test.py${{ matrix.python-version }}-${{ matrix.dependencies }}:pytest
+          packages/zarr-storage/tests/test_store/test_stateful.py --run-slow-hypothesis

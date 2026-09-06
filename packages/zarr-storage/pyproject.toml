@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "zarr-storage"
 version = "0.1.0"
-description = "Legacy Zarr storage interfaces, extracted for API evolution."
+description = "Legacy Zarr stores, interfaces, and reusable conformance tests."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -13,7 +13,11 @@ license-files = ["LICENSE.txt"]
 authors = [{ name = "Davis Bennett", email = "davis.v.bennett@gmail.com" }]
 # Temporary: legacy interfaces still consume Zarr's shared foundations.
 # Remove this dependency before making zarr depend on this distribution.
-dependencies = ["zarr>=3.3,<3.4", "typing_extensions>=4.14"]
+dependencies = ["zarr>=3.3,<3.4", "numpy>=2", "typing_extensions>=4.14"]
+
+[project.optional-dependencies]
+remote = ["fsspec>=2023.10.0", "obstore>=0.5.1"]
+testing = ["pytest>=9.1", "pytest-asyncio>=1.0", "hypothesis>=6.160.0"]
 
 [project.urls]
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-storage"
@@ -27,11 +31,44 @@ include = ["/src", "/tests", "/docs", "/CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
+strict = true
+faulthandler_timeout = 600
+faulthandler_exit_on_timeout = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "error",
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning",
+    # s3fs finalizers can fail during session cleanup when aiobotocore sessions are garbage
+    # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
+    # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
+    "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
+    # pytest-asyncio implicitly creates an event loop in _get_event_loop_no_warn during
+    # fixture setup/teardown and never closes it (allocation site verified with
+    # PYTHONTRACEMALLOC: pytest_asyncio/plugin.py). When the garbage collector reclaims
+    # that loop (and its self-pipe socketpair: AF_UNIX family=1 on POSIX, emulated with
+    # AF_INET family=2 on Windows) mid-test, the unraisable hook fails whichever unrelated
+    # test happens to be running — the long-standing "random cross-file failure" in the
+    # pipeline suites. The message contains only the __del__ repr, so these patterns cannot
+    # scope to pytest-asyncio specifically: a loop/socketpair leak in zarr's own sync
+    # machinery would also be silenced. Accepted tradeoff — revisit if zarr.core.sync grows
+    # loop-lifecycle changes.
+    "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
+]
+markers = [
+    "gpu: requires CuPy and a GPU",
+    "s3: requires a mock S3 backend via moto",
+    "slow_hypothesis: opt-in stateful tests",
+]
 
 [tool.ruff]
 extend = "../../pyproject.toml"
+
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/test_store/test_object.py" = ["E402"]
+"tests/test_store/test_local.py" = ["SIM117"]
 
 # Match the parent project's validation of the verbatim legacy docstrings.
 [tool.numpydoc_validation]
