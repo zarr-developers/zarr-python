@@ -45,7 +45,7 @@ from zarr.core.array import (
     default_serializer_v3,
 )
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
-from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, cpu, default_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     guess_chunks,
@@ -447,6 +447,8 @@ async def test_chunks_initialized(
     arr = zarr.create_array(
         store, name=path, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1"
     )
+    if path:
+        await store.set(path, cpu.Buffer.from_bytes(b""))
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_shard_keys()))
@@ -1693,7 +1695,8 @@ class TestCreateArray:
         assert endianness_from_numpy_str(byte_order) == endianness  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+# The explicit id for b"a" avoids colliding with the auto-generated id for "a".
+@pytest.mark.parametrize("value", [1, 1.4, "a", pytest.param(b"a", id="a-bytes"), np.array(1)])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
@@ -1823,6 +1826,69 @@ async def test_from_array_arraylike(
         np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
 
 
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
+def test_from_array_keeps_fill_value_and_attributes(store: Store, zarr_format: ZarrFormat) -> None:
+    """`from_array` defaults to the fill value and attributes of the source array."""
+    attributes: dict[str, JSON] = {"units": "K"}
+    src = zarr.create_array(
+        store,
+        name="src",
+        shape=(4,),
+        dtype="int32",
+        fill_value=42,
+        attributes=attributes,
+        zarr_format=zarr_format,
+    )
+    src[:] = np.arange(4, dtype="int32")
+
+    result = zarr.from_array({}, data=src)
+    assert result.fill_value == 42
+    assert dict(result.attrs) == attributes
+
+    # A metadata-only copy must read back the source's fill value, not the dtype default.
+    meta_only = zarr.from_array({}, data=src, write_data=False)
+    np.testing.assert_array_equal(meta_only[:], np.full((4,), 42, dtype="int32"))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_from_array_explicit_fill_value_and_attributes_override(
+    store: Store, zarr_format: ZarrFormat
+) -> None:
+    """Explicit `fill_value` / `attributes` arguments take precedence over the source.
+
+    An explicit ``fill_value=None`` selects the dtype's default scalar for Zarr format 3
+    and a null fill value for Zarr format 2, matching `create_array`, rather than being
+    treated as "keep the source's fill value". An empty ``attributes`` dict is likewise
+    honoured, so it is possible to drop the source's attributes.
+    """
+    src = zarr.create_array(
+        store,
+        name="src",
+        shape=(4,),
+        dtype="int32",
+        fill_value=42,
+        attributes={"units": "K"},
+        zarr_format=zarr_format,
+    )
+
+    assert zarr.from_array({}, data=src, fill_value=7).fill_value == 7
+    assert dict(zarr.from_array({}, data=src, attributes={}).attrs) == {}
+    assert dict(zarr.from_array({}, data=src, attributes={"a": 1}).attrs) == {"a": 1}
+
+    explicit_none = zarr.from_array({}, data=src, fill_value=None)
+    if zarr_format == 2:
+        assert explicit_none.fill_value is None
+    else:
+        assert explicit_none.fill_value == 0  # int32 default scalar
+
+
+def test_from_array_arraylike_gains_no_attributes() -> None:
+    """A non-Array source has no attributes or fill value to keep."""
+    result = zarr.from_array({}, data=np.arange(4, dtype="int32"))
+    assert dict(result.attrs) == {}
+    assert result.fill_value == 0
+
+
 def test_from_array_F_order() -> None:
     arr = zarr.create_array(store={}, data=np.array([1]), order="F", zarr_format=2)
     with pytest.warns(
@@ -1902,9 +1968,18 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
     [
         pytest.param(
             "fork",
-            marks=pytest.mark.skipif(
-                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
-            ),
+            marks=[
+                pytest.mark.skipif(
+                    sys.platform in ("win32", "darwin"),
+                    reason="fork not supported on Windows or OSX",
+                ),
+                # Python 3.15 deprecates fork() in multi-threaded processes, and zarr's
+                # sync event-loop thread is always running here. Fork-safety despite
+                # those threads is exactly what this test pins down, so keep running it.
+                pytest.mark.filterwarnings(
+                    r"ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning"
+                ),
+            ],
         ),
         "spawn",
         pytest.param(

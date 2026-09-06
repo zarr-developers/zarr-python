@@ -52,10 +52,11 @@ class CacheStore(WrapperStore[Store]):
     store : Store
         The underlying store to wrap with caching
     cache_store : Store
-        The store to use for caching (can be any Store implementation)
-    max_age_seconds : int | None, optional
-        Maximum age of cached entries in seconds. None means no expiration.
-        Default is None.
+        The store to use for caching (can be any Store implementation that
+        supports deletes)
+    max_age_seconds : int or "infinity", optional
+        Maximum age of cached entries in seconds. The string "infinity" means
+        entries never expire. Default is "infinity".
     max_size : int | None, optional
         Maximum size of the cache in bytes. When exceeded, least recently used
         items are evicted. None means unlimited size. Default is None.
@@ -327,6 +328,16 @@ class CacheStore(WrapperStore[Store]):
         result = await super().get(key, prototype, byte_range)
         await self._cache_miss(key, byte_range, result)
         return result
+
+    @property
+    def _supports_sync_io(self) -> bool:
+        # The caching logic lives only in the async get/set/delete overrides;
+        # the sync methods inherited from `WrapperStore` delegate straight to
+        # the source store, so a sync-capable consumer (the fused codec
+        # pipeline) would write and delete around the cache, leaving stale
+        # entries that later async reads serve as current data. Opt out of
+        # sync IO until the sync surface is cache-aware.
+        return False
 
     async def get(
         self,

@@ -9,12 +9,18 @@ This page defines key terms used throughout the zarr-python documentation and AP
 An N-dimensional typed array stored in a Zarr [store](#store). An array's
 [metadata](#metadata) defines its shape, data type, chunk layout, and codecs.
 
+### Group
+
+A container for [arrays](#array) and other groups, enabling hierarchical
+organization of data — similar to directories in a file system, or groups in
+HDF5. Like arrays, each group has its own [metadata](#metadata) and
+[attributes](#attributes). See the [groups documentation](groups.md).
+
 ### Chunk
 
 The fundamental unit of data in a Zarr array. An array is divided into chunks
-along each dimension according to the [chunk grid](#chunk-grid), which is currently
-part of Zarr's private API. Each chunk is independently compressed and encoded
-through the array's [codec](#codec) pipeline.
+along each dimension according to the [chunk grid](#chunk-grid). Each chunk is
+independently compressed and encoded through the array's [codec](#codec) pipeline.
 
 When [sharding](#shard) is used, "chunk" refers to the inner chunks within each
 shard, because those are the compressible units. The chunks are the smallest units
@@ -52,7 +58,8 @@ not the inner chunk boundaries. The inner chunk shape is defined within the
 grid. [`Array.chunks`][zarr.Array.chunks] returns the chunk shape for regular
 grids. For all grid types, `Array.read_chunk_sizes` and `Array.write_chunk_sizes`
 return the per-dimension chunk sizes in dask-style `tuple[tuple[int, ...], ...]`
-format.
+format. Note that while the chunk grid is a public concept of the Zarr format,
+the classes zarr-python uses to model chunk grids are currently private API.
 
 ### Shard
 
@@ -88,11 +95,27 @@ file) in the store, addressed by a key derived from its grid coordinates.
 
 ### Metadata
 
-The JSON document (`zarr.json`) that describes an [array](#array) or group. For
-arrays, metadata includes the shape, data type, [chunk grid](#chunk-grid), fill
+The JSON document that describes an [array](#array) or [group](#group). In Zarr
+format 3 this is a single `zarr.json` document; Zarr format 2 stores the
+equivalent information in separate `.zarray`, `.zgroup`, and `.zattrs` documents.
+For arrays, metadata includes the shape, data type, [chunk grid](#chunk-grid), fill
 value, and [codec](#codec) pipeline. Metadata is stored alongside the data in
 the [store](#store). Zarr-Python does not yet expose its internal metadata
 representation as part of its public API.
+
+### Attributes
+
+User-defined key-value pairs (any JSON-serializable values) attached to an
+[array](#array) or [group](#group). Attributes are stored in the
+[metadata](#metadata) document. See the
+[attributes documentation](attributes.md).
+
+### Consolidated Metadata
+
+A copy of the [metadata](#metadata) of every array and group in a hierarchy,
+stored in the metadata of the root group so that the entire hierarchy can be
+inspected with a single read from the [store](#store). See the
+[consolidated metadata documentation](consolidated_metadata.md).
 
 ## Codecs
 

@@ -24,7 +24,7 @@ from zarr.core.common import (
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
+from zarr.storage._utils import UPath, _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -84,11 +84,11 @@ class StorePath:
 
             The accepted values are:
 
-            - ``'r'``: read only (must exist)
-            - ``'r+'``: read/write (must exist)
-            - ``'a'``: read/write (create if doesn't exist)
-            - ``'w'``: read/write (overwrite if exists)
-            - ``'w-'``: read/write (create if doesn't exist).
+            - `'r'`: read only (must exist)
+            - `'r+'`: read/write (must exist)
+            - `'a'`: read/write (create if doesn't exist)
+            - `'w'`: read/write (overwrite if exists)
+            - `'w-'`: read/write (create if doesn't exist).
 
         Raises
         ------
@@ -209,7 +209,7 @@ class StorePath:
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         """
-        Store a key to ``value`` if the key is not already present.
+        Store a key to `value` if the key is not already present.
 
         Parameters
         ----------
@@ -250,7 +250,7 @@ class StorePath:
         prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        """Synchronous read — delegates to `self.store.get_sync(self.path, ...)`."""
         if not isinstance(self.store, SupportsGetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
         if prototype is None:
@@ -258,13 +258,13 @@ class StorePath:
         return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
 
     def set_sync(self, value: Buffer) -> None:
-        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        """Synchronous write — delegates to `self.store.set_sync(self.path, value)`."""
         if not isinstance(self.store, SupportsSetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
         self.store.set_sync(self.path, value)
 
     def delete_sync(self) -> None:
-        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        """Synchronous delete — delegates to `self.store.delete_sync(self.path)`."""
         if not isinstance(self.store, SupportsDeleteSync):
             raise TypeError(
                 f"Store {type(self.store).__name__} does not support synchronous delete."
@@ -297,12 +297,11 @@ class StorePath:
         """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
-        except Exception:
-            pass
-        return False
+        except AttributeError:
+            return False
 
 
-type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | UPath | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -322,6 +321,7 @@ async def make_store(
     - `dict[str, Buffer]` = `MemoryStore` object.
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
+    - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
 
     Parameters
     ----------
@@ -381,6 +381,17 @@ async def make_store(
     elif store_like is None:
         # Create a new in-memory store
         return await make_store({}, mode=mode, storage_options=storage_options)
+
+    elif isinstance(store_like, UPath):
+        # This must be checked before Path: in universal-pathlib < 0.3 every UPath, including
+        # remote ones like S3Path, subclasses pathlib.Path, and would otherwise be misrouted to a
+        # LocalStore. Local UPaths get a LocalStore so that UPath("/data") and Path("/data") agree,
+        # mirroring how the equivalent strings are routed below.
+        if store_like.protocol in ("", "file"):
+            return await make_store(
+                Path(store_like.path), mode=mode, storage_options=storage_options
+            )
+        return FsspecStore.from_upath(store_like, read_only=_read_only)
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore

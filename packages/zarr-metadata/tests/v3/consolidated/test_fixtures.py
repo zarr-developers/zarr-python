@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter
 
-from zarr_metadata.v3.consolidated import ConsolidatedMetadataV3
+from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
 
 FIXTURES_DIR = Path(__file__).parent
 FIXTURES = sorted(FIXTURES_DIR.glob("*.json"))
-ADAPTER = TypeAdapter(ConsolidatedMetadataV3)
+ADAPTER = TypeAdapter(ZarrV3ConsolidatedMetadataJSON)
 
 
 @pytest.mark.parametrize("fixture", FIXTURES, ids=lambda p: p.stem)

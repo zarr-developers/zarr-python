@@ -132,12 +132,25 @@ array_shapes = npst.array_shapes(max_dims=4, min_side=3, max_side=5) | npst.arra
 
 
 @st.composite
-def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
+def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[str | None] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
 
 
 subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(SUBCHUNK_WRITE_ORDER)
+
+# Inner codec chains for a ShardingCodec. We MUST sample the uncompressed,
+# single-BytesCodec configuration (no Zstd) — that is the only configuration in
+# which the FusedCodecPipeline's vectorized whole-shard "bulk decode" fast path
+# engages, so it is the only one that can exercise (and regress-guard) that path
+# against arbitrary indexing. Freezing the inner codecs to [BytesCodec, ZstdCodec]
+# silently disables the fast path under every property test.
+sharding_inner_codecs: st.SearchStrategy[list[BytesCodec | ZstdCodec]] = st.sampled_from(
+    [
+        [BytesCodec()],
+        [BytesCodec(), ZstdCodec()],
+    ]
+)
 
 
 @st.composite
@@ -279,7 +292,7 @@ def arrays(
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
-    dim_names: None | list[str | None] = None
+    dim_names: list[str | None] | None = None
     serializer: SerializerLike = "auto"
     compressors_unsearched: CompressorsLike = "auto"
 
@@ -315,16 +328,20 @@ def arrays(
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c and c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            # Any chunk that fits the array can be sharded: shard_shapes draws a
+            # whole number of chunks per axis, one inner chunk included.
+            if all(s >= c >= 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
                 )
+                event("sharded" if shard_shape is not None else "unsharded")
                 if shard_shape is not None:
                     subchunk_write_order = draw(subchunk_write_orders)
+                    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
                     serializer = ShardingCodec(
                         subchunk_write_order=subchunk_write_order,
-                        codecs=[BytesCodec(), ZstdCodec()],
+                        codecs=inner_codecs,
                         index_codecs=[BytesCodec(), Crc32cCodec()],
                         chunk_shape=chunks_param,
                     )
@@ -558,20 +575,30 @@ def basic_indices(
 @st.composite
 def orthogonal_indices(
     draw: st.DrawFn, *, shape: tuple[int, ...]
-) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+) -> tuple[tuple[int | slice | np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
     """
     Strategy that returns
-    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (1) a tuple of per-axis selectors (integer array, slice, or bare integer) for
+        orthogonal indexing of Zarr arrays.
+    (2) a tuple of broadcast integer arrays that index a numpy array to the same
+        result. A bare integer drops its axis, as ``oindex`` does, so it is
+        given as a 0-d array and does not contribute a result dimension.
     """
-    zindexer = []
-    npindexer = []
-    ndim = len(shape)
+    zindexer: list[int | slice | np.ndarray[Any, Any]] = []
+    kept: list[tuple[int, np.ndarray[Any, Any]]] = []
+    npindexer: dict[int, np.ndarray[Any, Any]] = {}
     for axis, size in enumerate(shape):
         if size != 0:
-            strategy = npst.integer_array_indices(
-                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
-            ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            strategy = (
+                npst.integer_array_indices(
+                    shape=(size,),
+                    result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1),
+                )
+                | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+                # basic_indices(min_dims=1) never yields a bare integer, so draw
+                # one explicitly: it is the only selector that drops an axis.
+                | st.integers(min_value=-size, max_value=size - 1)
+            )
         else:
             strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
 
@@ -583,19 +610,25 @@ def orthogonal_indices(
             .filter(bool)
         )
         (idxr,) = val
-        if isinstance(idxr, int):
-            idxr = np.array([idxr])
         zindexer.append(idxr)
+        if isinstance(idxr, int):
+            npindexer[axis] = np.array(idxr)
+            continue
         if isinstance(idxr, slice):
             idxr = np.arange(*idxr.indices(size))
-        elif isinstance(idxr, (tuple, int)):
+        elif isinstance(idxr, tuple):
             idxr = np.array(idxr)
-        newshape = [1] * ndim
-        newshape[axis] = idxr.size
-        npindexer.append(idxr.reshape(newshape))
+        kept.append((axis, idxr))
+
+    for pos, (axis, idxr) in enumerate(kept):
+        newshape = [1] * len(kept)
+        newshape[pos] = idxr.size
+        npindexer[axis] = idxr.reshape(newshape)
 
     # casting the output of broadcast_arrays is needed for numpy < 2
-    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
+    return tuple(zindexer), tuple(
+        np.broadcast_arrays(*(npindexer[axis] for axis in range(len(shape))))
+    )
 
 
 @st.composite

@@ -1,7 +1,7 @@
 """Decode v2 array metadata fixtures via pydantic.
 
 Each `*.json` file in this directory is a representative on-disk
-`.zarray` that should validate cleanly as `ZArrayMetadata` (the strict
+`.zarray` that should validate cleanly as `ZarrV2ZArrayJSON` (the strict
 on-disk shape). User attributes live in sibling `.zattrs` files and are
 not part of these fixtures.
 
@@ -17,11 +17,11 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter
 
-from zarr_metadata.v2.array import ZArrayMetadata
+from zarr_metadata.v2.array import ZarrV2ZArrayJSON
 
 FIXTURES_DIR = Path(__file__).parent
 FIXTURES = sorted(FIXTURES_DIR.glob("*.json"))
-ADAPTER = TypeAdapter(ZArrayMetadata)
+ADAPTER = TypeAdapter(ZarrV2ZArrayJSON)
 
 
 @pytest.mark.parametrize("fixture", FIXTURES, ids=lambda p: p.stem)

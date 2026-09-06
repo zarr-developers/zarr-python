@@ -44,6 +44,7 @@ from typing import Any, Literal, Self, cast, overload
 
 from donfig.config_obj import canonical_name
 
+from zarr.core.json_parse import parse_field
 from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
 
 DEFAULT_CODECS: dict[str, str] = {
@@ -155,8 +156,11 @@ class ThreadingSettings(_ConfigNode):
 
 @dataclass(frozen=True, slots=True)
 class CodecPipelineSettings(_ConfigNode):
+    # FusedCodecPipeline remains opt-in via codec_pipeline.path.
     path: str = "zarr.core.codec_pipeline.BatchedCodecPipeline"
     batch_size: int = 1
+    # Only read by FusedCodecPipeline; BatchedCodecPipeline ignores it.
+    max_workers: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,6 +581,8 @@ class ZarrConfigManager:
     @overload
     def get(self, key: Literal["codec_pipeline.batch_size"]) -> int: ...
     @overload
+    def get(self, key: Literal["codec_pipeline.max_workers"]) -> int | None: ...
+    @overload
     def get(self, key: Literal["buffer"]) -> str: ...
     @overload
     def get(self, key: Literal["ndbuffer"]) -> str: ...
@@ -796,8 +802,4 @@ config = ZarrConfigManager()
 
 
 def parse_indexing_order(data: object) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        # the membership check narrows `data` to Literal["C", "F"]
-        return data
-    msg = f"Expected one of ('C', 'F'), got {data} instead."
-    raise ValueError(msg)
+    return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))

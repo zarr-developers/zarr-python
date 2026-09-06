@@ -8,9 +8,10 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, gpu
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype, gpu
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
+from zarr.storage._utils import _join_paths
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
@@ -76,6 +77,55 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
 
+    @pytest.mark.parametrize("method", ["set", "set_sync", "set_if_not_exists"])
+    async def test_set_does_not_retain_caller_buffer(self, store: MemoryStore, method: str) -> None:
+        """Writing a buffer must not alias the caller's memory.
+
+        MemoryStore keeps whatever it is handed alive in a dict, so retaining
+        the caller's buffer lets a later mutation of that buffer rewrite data
+        already committed to the store.
+        """
+        source = np.frombuffer(bytearray(b"\x01\x02\x03\x04"), dtype="B")
+        value = cpu.Buffer.from_array_like(source)
+
+        if method == "set_sync":
+            store.set_sync("k", value)
+        else:
+            await getattr(store, method)("k", value)
+
+        source[:] = 0xF  # mutate the caller's memory after the write
+        stored = await store.get("k", prototype=default_buffer_prototype())
+        assert stored is not None
+        assert stored.to_bytes() == b"\x01\x02\x03\x04"
+
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            "zarr.core.codec_pipeline.BatchedCodecPipeline",
+            "zarr.core.codec_pipeline.FusedCodecPipeline",
+        ],
+    )
+    @pytest.mark.parametrize(("shape", "chunks"), [((30,), (10,)), ((8,), (4,)), ((4,), (4,))])
+    def test_write_does_not_alias_source_array(
+        self, pipeline: str, shape: tuple[int], chunks: tuple[int]
+    ) -> None:
+        """Mutating the source array after a write must not corrupt stored chunks.
+
+        Without compression the encoded buffer is a zero-copy view of the
+        caller's array all the way down to the store, so this covers both the
+        single-chunk and multi-chunk write paths.
+        """
+        with zarr.config.set({"codec_pipeline.path": pipeline}):
+            array = zarr.create_array(
+                store=MemoryStore(), shape=shape, chunks=chunks, dtype="i4", compressors=None
+            )
+            source = np.arange(shape[0], dtype="i4")
+            expected = source.copy()
+            array[:] = source
+            source[:] = -1
+
+            np.testing.assert_array_equal(array[:], expected)
+
 
 # TODO: fix this warning
 @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
@@ -131,31 +181,48 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
 
+    def test_set_sync_converts_to_gpu_buffer(self, store: GpuMemoryStore) -> None:
+        """`set_sync` must convert its value to a `gpu.Buffer`, mirroring `set`.
+
+        `GpuMemoryStore`'s invariant is that every stored value is a
+        `gpu.Buffer`. Without this override, the inherited `MemoryStore.set_sync`
+        would store the CPU buffer it was given as-is, breaking that invariant
+        for whichever code path (e.g. the fused pipeline) uses the sync API.
+        """
+        cpu_value = cpu.Buffer.from_bytes(b"aaaa")
+        msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+        with pytest.warns(ZarrUserWarning, match=msg):
+            store.set_sync("k", cpu_value)
+        assert type(store._store_dict["k"]) is gpu.Buffer
+
 
 class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
     store_cls = ManagedMemoryStore
     buffer_cls = cpu.Buffer
 
     async def set(self, store: ManagedMemoryStore, key: str, value: Buffer) -> None:
-        store._store_dict[key] = value
+        store._store_dict[_join_paths([store.path, key])] = value
 
     async def get(self, store: ManagedMemoryStore, key: str) -> Buffer:
-        return store._store_dict[key]
+        return store._store_dict[_join_paths([store.path, key])]
 
     @pytest.fixture
     def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, Any]:
         # Use a unique name per test to avoid sharing state between tests
         # but ensure the name is deterministic for equality tests
         # Replace '/' with '-' since store names cannot contain '/'
+        # A non-empty path exercises prefix handling; a store with an
+        # unprefixed key in its backing dict would pass these tests
+        # vacuously with path="".
         sanitized_name = request.node.name.replace("/", "-")
-        return {"name": f"test-{sanitized_name}"}
+        return {"name": f"test-{sanitized_name}", "path": "prefix"}
 
     @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> ManagedMemoryStore:
         return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: ManagedMemoryStore) -> None:
-        assert str(store) == f"memory://{store.name}"
+        assert str(store) == _join_paths([f"memory://{store.name}", store.path])
 
     async def test_serializable_store(self, store: ManagedMemoryStore) -> None:
         """
@@ -281,7 +348,10 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
 
     def test_from_url_with_path(self, store: ManagedMemoryStore) -> None:
         """Test that from_url extracts path component from URL."""
-        url = f"{store}/some/path"
+        # Reconnect to the fixture's dict via its name, but with an empty
+        # path, so appending "/some/path" below yields exactly that path.
+        base = ManagedMemoryStore(name=store.name)
+        url = f"{base}/some/path"
         store2 = ManagedMemoryStore.from_url(url)
         assert store2._store_dict is store._store_dict
         assert store2.path == "some/path"
@@ -410,3 +480,48 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
         # URL should no longer resolve
         with pytest.raises(ValueError, match="garbage collected"):
             ManagedMemoryStore.from_url(url)
+
+    def test_sync_methods_respect_path_prefix(self) -> None:
+        """`get_sync`/`set_sync`/`delete_sync` must prefix keys with `self.path`,
+        exactly like the async `get`/`set`/`delete` methods.
+
+        `ManagedMemoryStore` used to inherit these from `MemoryStore`, which
+        writes/reads the raw key. Two stores sharing a dict with different
+        `path` values would then cross-talk through the sync API.
+        """
+        store = ManagedMemoryStore(name="sync-prefix-test", path="subdir")
+        data_buf = self.buffer_cls.from_bytes(b"value")
+
+        store.set_sync("key", data_buf)
+        assert "subdir/key" in store._store_dict
+        assert "key" not in store._store_dict
+
+        result = store.get_sync("key")
+        assert result is not None
+        assert result.to_bytes() == b"value"
+
+        store.delete_sync("key")
+        assert "subdir/key" not in store._store_dict
+
+    def test_fused_pipeline_respects_path_prefix(self) -> None:
+        """End-to-end regression: the fused pipeline's sync store fast path must
+        write chunks under the store's path prefix.
+
+        `FusedCodecPipeline` uses `set_sync`/`get_sync` when a store implements
+        the sync protocols. If those methods skip the prefix that the async
+        methods apply, chunk data lands outside `self.path` and a fresh handle
+        re-reading through the prefix silently sees fill values instead.
+        """
+        with zarr.config.set(
+            {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+        ):
+            store = ManagedMemoryStore(name="fused-prefix-test", path="subdir")
+            arr = zarr.create_array(store, shape=(4,), chunks=(4,), dtype="uint8", zarr_format=3)
+            arr[:] = np.arange(4, dtype="uint8")
+
+        bad_keys = [k for k in store._store_dict if not k.startswith("subdir/")]
+        assert bad_keys == [], f"keys written outside the store's path prefix: {bad_keys}"
+
+        store2 = ManagedMemoryStore.from_url("memory://fused-prefix-test/subdir")
+        arr2 = zarr.open_array(store2, mode="r")
+        np.testing.assert_array_equal(arr2[:], np.arange(4, dtype="uint8"))

@@ -15,7 +15,7 @@
 
 - [ ] I am a human, these are my changes, and I have reviewed and understood every change and can explain why each is correct.
 
-AI coding assistance is welcome, but a human must be the author and is responsible for the contents of the PR. The description and any review responses must be in your own words. Please read [AI-assisted contributions](https://zarr.readthedocs.io/en/stable/contributing/#ai-assisted-contributions) before opening.
+<!-- AI coding assistance is welcome, but a human must be the author and is responsible for the contents of the PR. The description and any review responses must be in your own words. Please read [AI-assisted contributions](https://zarr.readthedocs.io/en/stable/contributing/#ai-assisted-contributions) before opening. -->
 
 ## TODO
 

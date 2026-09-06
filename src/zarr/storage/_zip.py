@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import (
     ByteRequest,
@@ -23,14 +24,67 @@ if TYPE_CHECKING:
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 
+class _RawReaderAdapter(io.RawIOBase):
+    """
+    Adapt a minimal seekable reader to the `io` interface `zipfile` needs.
+
+    Some file-like objects (e.g. `obstore.ReadableFile`) implement
+    `read`/`seek`/`tell` but are not `io.IOBase` instances, and their
+    `read` may return a buffer-protocol object rather than `bytes`.
+    Wrapping in this adapter plus `io.BufferedReader` yields real `bytes`.
+
+    Reads are clamped to the bytes remaining before EOF: some readers
+    (obstore < 0.6) raise on short reads rather than returning fewer bytes.
+    The size is cached, which is safe because the adapter is only used for
+    read-only access.
+    """
+
+    def __init__(self, fileobj: IO[bytes]) -> None:
+        self._fileobj = fileobj
+        self._size: int | None = None
+
+    def _get_size(self) -> int:
+        if self._size is None:
+            pos = self._fileobj.tell()
+            self._size = self._fileobj.seek(0, os.SEEK_END)
+            self._fileobj.seek(pos)
+        return self._size
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def seek(self, pos: int, whence: int = 0) -> int:
+        return self._fileobj.seek(pos, whence)
+
+    def tell(self) -> int:
+        return self._fileobj.tell()
+
+    def readinto(self, b: Any) -> int:
+        n_requested = min(len(b), self._get_size() - self._fileobj.tell())
+        if n_requested <= 0:
+            return 0
+        data = self._fileobj.read(n_requested)
+        n = len(data)
+        b[:n] = memoryview(data)
+        return n
+
+
 class ZipStore(Store):
     """
     Store using a ZIP file.
 
     Parameters
     ----------
-    path : str
-        Location of file.
+    path : str, Path, or IO[bytes]
+        Location of file, or an open binary file object. A file object must
+        support `read`, `seek`, and `tell`; objects that are not `io.IOBase`
+        instances (e.g. an `obstore` reader) are adapted automatically but
+        can only be used for reading (`mode="r"`). The file object must stay
+        open for the lifetime of the store, and operations that require a
+        filesystem location (`clear`, `move`, pickling) are not supported.
     mode : str, optional
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
@@ -58,16 +112,17 @@ class ZipStore(Store):
     supports_deletes: bool = False
     supports_listing: bool = True
 
-    path: Path
+    path: Path | None
     compression: int
     allowZip64: bool
 
     _zf: zipfile.ZipFile
     _lock: threading.RLock
+    _fileobj: IO[bytes] | None
 
     def __init__(
         self,
-        path: Path | str,
+        path: Path | str | IO[bytes],
         *,
         mode: ZipStoreAccessModeLiteral = "r",
         read_only: bool | None = None,
@@ -81,8 +136,28 @@ class ZipStore(Store):
 
         if isinstance(path, str):
             path = Path(path)
-        assert isinstance(path, Path)
-        self.path = path  # root?
+        if isinstance(path, Path):
+            self.path = path  # root?
+            self._fileobj = None
+        else:
+            self.path = None
+            if not isinstance(path, io.IOBase):
+                if not all(
+                    callable(getattr(path, attr, None)) for attr in ("read", "seek", "tell")
+                ):
+                    raise TypeError(
+                        f"expected a path or an open binary file object supporting "
+                        f"read/seek/tell, got {type(path).__name__}"
+                    )
+                if mode != "r":
+                    raise TypeError(
+                        f"a file object that is not an io.IOBase instance can only be "
+                        f"opened for reading (mode='r', got mode={mode!r})"
+                    )
+                # e.g. an obstore ReadableFile: readable and seekable, but
+                # not an io object and reads may not return bytes
+                path = io.BufferedReader(_RawReaderAdapter(path))
+            self._fileobj = path
 
         self._zmode = mode
         self.compression = compression
@@ -95,7 +170,7 @@ class ZipStore(Store):
         self._lock = threading.RLock()
 
         self._zf = zipfile.ZipFile(
-            self.path,
+            self.path if self.path is not None else self._fileobj,  # type: ignore[arg-type]
             mode=self._zmode,
             compression=self.compression,
             allowZip64=self.allowZip64,
@@ -107,6 +182,13 @@ class ZipStore(Store):
         self._sync_open()
 
     def __getstate__(self) -> dict[str, Any]:
+        if self.path is None:
+            # A path-backed store pickles its path and reopens the file on
+            # unpickling; an open file object cannot be serialized that way.
+            raise TypeError(
+                "cannot pickle a ZipStore backed by a file-like object; "
+                "construct the store from a path instead"
+            )
         # We need a copy to not modify the state of the original store
         state = self.__dict__.copy()
         for attr in ["_zf", "_lock"]:
@@ -130,6 +212,10 @@ class ZipStore(Store):
         # docstring inherited
         with self._lock:
             self._check_writable()
+            if self.path is None:
+                raise NotImplementedError(
+                    "clear() is not supported for a ZipStore backed by a file-like object"
+                )
             self._zf.close()
             os.remove(self.path)
             self._zf = zipfile.ZipFile(
@@ -137,13 +223,19 @@ class ZipStore(Store):
             )
 
     def __str__(self) -> str:
+        if self.path is None:
+            return f"zip://{self._fileobj!r}"
         return f"zip://{self.path}"
 
     def __repr__(self) -> str:
         return f"ZipStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, type(self)) and self.path == other.path
+        return (
+            isinstance(other, type(self))
+            and self.path == other.path
+            and self._fileobj is other._fileobj
+        )
 
     def _get(
         self,
@@ -297,6 +389,10 @@ class ZipStore(Store):
         """
         Move the store to another path.
         """
+        if self.path is None:
+            raise NotImplementedError(
+                "move() is not supported for a ZipStore backed by a file-like object"
+            )
         if isinstance(path, str):
             path = Path(path)
         self.close()

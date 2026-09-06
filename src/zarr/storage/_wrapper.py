@@ -11,7 +11,13 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
 
-from zarr.abc.store import Store
+from zarr.abc.store import (
+    Store,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
+    _store_supports_sync_io,
+)
 
 
 class WrapperStore[T_Store: Store](Store):
@@ -148,6 +154,40 @@ class WrapperStore[T_Store: Store](Store):
     @property
     def supports_deletes(self) -> bool:
         return self._store.supports_deletes
+
+    @property
+    def _supports_sync_io(self) -> bool:
+        # The delegating `*_sync` methods below make every wrapper structurally
+        # satisfy `SupportsSyncStore`; whether they can actually run depends on
+        # the wrapped store, so forward its capability (see
+        # `zarr.abc.store._store_supports_sync_io`).
+        return _store_supports_sync_io(self._store)
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Forward `get_sync` to the wrapped store."""
+        if not isinstance(self._store, SupportsGetSync):
+            raise TypeError(f"Store {type(self._store).__name__} does not support synchronous get.")
+        return self._store.get_sync(key, prototype=prototype, byte_range=byte_range)  # type: ignore[unreachable]
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        """Forward `set_sync` to the wrapped store."""
+        if not isinstance(self._store, SupportsSetSync):
+            raise TypeError(f"Store {type(self._store).__name__} does not support synchronous set.")
+        self._store.set_sync(key, value)  # type: ignore[unreachable]
+
+    def delete_sync(self, key: str) -> None:
+        """Forward `delete_sync` to the wrapped store."""
+        if not isinstance(self._store, SupportsDeleteSync):
+            raise TypeError(
+                f"Store {type(self._store).__name__} does not support synchronous delete."
+            )
+        self._store.delete_sync(key)  # type: ignore[unreachable]
 
     async def delete(self, key: str) -> None:
         await self._store.delete(key)

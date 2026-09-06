@@ -81,44 +81,44 @@ z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000,
 print(z6.info)
 ```
 
-`shards` can be `"auto"` as well, in which case the `array.target_shard_size_bytes` setting can be used to control the size of shards (i.e., the size of the chunks cumulatively and uncompressed within the shard will be as close to, without being bigger than, `array.target_shard_size_bytes`); otherwise, a default is used.
+`shards` can be `"auto"` as well, in which case Zarr chooses a shard shape for you.
+The `array.target_shard_size_bytes` configuration setting controls this choice: the
+cumulative uncompressed size of the chunks within each shard will be as close as
+possible to, without exceeding, that target. If the setting is `None` (the default),
+Zarr falls back to a built-in heuristic for choosing the shard shape.
 
 ### Chunk memory layout
 
-The order of bytes **within each chunk** of an array can be changed via the
-`order` config option, to use either C or Fortran layout. For
-multi-dimensional arrays, these two layouts may provide different compression
-ratios, depending on the correlation structure within the data. E.g.:
+The memory layout of the in-memory arrays that Zarr produces and consumes can be
+changed via the `order` config option, to use either C or Fortran layout. This can
+matter for performance when the data is passed to other libraries that expect a
+particular memory layout. E.g.:
 
 ```python exec="true" session="performance" source="above" result="ansi"
 import numpy as np
 
-a = np.arange(100000000, dtype='int32').reshape(10000, 10000).T
-c = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype, config={'order': 'C'})
-c[:] = a
-print(c.info_complete())
+c = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', config={'order': 'C'})
+print(c[:100, :100].flags.c_contiguous)
 ```
 
 ```python exec="true" session="performance" source="above" result="ansi"
 with zarr.config.set({'array.order': 'F'}):
-    f = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype)
-    f[:] = a
-print(f.info_complete())
-
+    f = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+print(f[:100, :100].flags.f_contiguous)
 ```
 
-In the above example, Fortran order gives a better compression ratio. This is an
-artificial example but illustrates the general point that changing the order of
-bytes within chunks of an array may improve the compression ratio, depending on
-the structure of the data, the compression algorithm used, and which compression
-filters (e.g., byte-shuffle) have been applied.
+Note that for Zarr format 3 arrays the `order` option only affects the in-memory
+layout: the bytes written to storage are identical for both settings. The layout of
+the serialized data is instead determined by the array's codecs (e.g. the transpose
+codec), which can change how well the data compresses depending on the correlation
+structure within the data and which compression filters (e.g., byte-shuffle) have
+been applied.
 
 ### Subchunk memory layout
 
 The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec`. That parameter is a string which must be one of `["morton", "unordered", "lexicographic", "colexicographic"]`.
 
 By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality. [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired, and `colexicographic` is its reverse. `unordered` makes no guarantee about the order in which subchunks are laid out within a shard.
-
 
 ### Empty chunks
 
@@ -142,7 +142,7 @@ assert arr.config.write_empty_chunks == False
 ```
 
 The following example illustrates the effect of the `write_empty_chunks` flag on
-the time required to write an array with different values.:
+the time required to write an array with different values:
 
 ```python exec="true" session="performance" source="above" result="ansi"
 import zarr
@@ -182,12 +182,17 @@ for write_empty_chunks in (True, False):
     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
 ```
 
-In this example, writing random data is slightly slower with `write_empty_chunks=True`,
-but writing empty data is substantially faster and generates far fewer objects in storage.
+In this example, writing random data is slightly slower with `write_empty_chunks=False`,
+because every chunk must be checked for emptiness before it is stored. Writing empty
+data with `write_empty_chunks=False` is substantially faster, however, and stores no
+objects at all.
 
 ### Changing chunk shapes (rechunking)
 
-Coming soon.
+Zarr-Python does not yet provide a built-in way to change the chunk shape of an
+existing array in place. Arrays can, however, be resized and appended to along any
+dimension — see [Resizing and appending](arrays.md#resizing-and-appending) — and data
+can be copied to a new array created with the desired chunk shape.
 
 ## Parallel computing and synchronization
 
@@ -204,7 +209,7 @@ determines the maximum number of concurrent I/O operations.
 The default value is 10, which is a conservative value. You may get improved performance by tuning
 the concurrency limit. You can adjust this value based on your specific needs:
 
-```python exec="true" session="perf-concurrency"
+```python exec="true" session="perf-concurrency" source="above"
 import zarr
 
 # Set concurrency for the current session
@@ -215,11 +220,13 @@ zarr.config.set({'async.concurrency': 128})
 ```
 
 Higher concurrency values can improve throughput when:
+
 - Working with remote storage (e.g., S3, GCS) where network latency is high
 - Reading/writing many small chunks in parallel
 - The storage backend can handle many concurrent requests
 
 Lower concurrency values may be beneficial when:
+
 - Working with local storage with limited I/O bandwidth
 - Memory is constrained (each concurrent operation requires buffer space)
 - Using Zarr within a parallel computing framework (see below)
@@ -234,7 +241,7 @@ By default it is `None`, which lets Python choose the pool size (typically
 
 You can set it explicitly when you want more predictable resource usage:
 
-```python exec="true" session="perf-workers"
+```python exec="true" session="perf-workers" source="above"
 import zarr
 
 zarr.config.set({'threading.max_workers': 8})
@@ -252,11 +259,11 @@ concurrently.
 
 **Important**: When using many Dask threads, you may need to reduce both Zarr's `async.concurrency` and `threading.max_workers` settings to avoid creating too many concurrent operations. The total number of concurrent I/O operations can be roughly estimated as:
 
-```
+```text
 total_concurrency ≈ dask_threads × zarr_async_concurrency
 ```
 
-For example, if you're running Dask with 10 threads and Zarr's default concurrency of 64, you could potentially have up to 640 concurrent operations, which may overwhelm your storage system or cause memory issues.
+For example, if you're running Dask with 10 threads and Zarr's default concurrency of 10, you could potentially have up to 100 concurrent operations, which may overwhelm your storage system or cause memory issues.
 
 **Recommendation**: When using Dask with many threads, configure Zarr's concurrency settings:
 
@@ -283,7 +290,7 @@ result = arr.mean(axis=0).compute()
 **Configuration guidelines for Dask workloads**:
 
 - `async.concurrency`: Controls the maximum number of concurrent async I/O operations. Start with a lower value (e.g., 4-8) when using many Dask threads.
-- `threading.max_workers`: Controls Zarr's internal thread pool size for blocking operations (defaults to CPU count). Reduce this to avoid thread contention with Dask's scheduler.
+- `threading.max_workers`: Controls Zarr's internal thread pool size for blocking operations (defaults to `None`, letting Python choose the pool size). Reduce this to avoid thread contention with Dask's scheduler.
 
 You may need to experiment with different values to find the optimal balance for your workload. Monitor your system's resource usage and adjust these settings based on whether your storage system or CPU is the bottleneck.
 
@@ -292,6 +299,7 @@ You may need to experiment with different values to find the optimal balance for
 Zarr arrays are designed to be thread-safe for concurrent reads and writes from multiple threads within the same process. However, proper synchronization is required when writing to overlapping regions from multiple threads.
 
 For multi-process parallelism, Zarr provides safe concurrent writes as long as:
+
 - Different processes write to different chunks
 - The storage backend supports atomic writes (most do)
 
@@ -300,13 +308,16 @@ When writing to the same chunks from multiple processes, you should use external
 ## Pickle support
 
 Zarr arrays and groups can be pickled, as long as the underlying store object can be
-pickled. With the exception of the `zarr.storage.MemoryStore`, any of the
-storage classes provided in the `zarr.storage` module can be pickled.
+pickled. All of the storage classes provided in the `zarr.storage` module can be pickled.
 
 If an array or group is backed by a persistent store such as a `zarr.storage.LocalStore`,
 `zarr.storage.ZipStore` or `zarr.storage.FsspecStore` then the store data
 **are not** pickled. The only thing that is pickled is the necessary parameters to allow the store
 to re-open any underlying files or databases upon being unpickled.
+
+Note that pickling a `zarr.storage.MemoryStore` copies the data it holds into the
+pickle stream: unpickling produces an independent in-memory copy, so a `MemoryStore`
+cannot be used to share data between processes.
 
 E.g., pickle/unpickle a local store array:
 
@@ -320,7 +331,3 @@ z2 = pickle.loads(s)
 assert z1 == z2
 print(np.all(z1[:] == z2[:]))
 ```
-
-## Configuring Blosc
-
-Coming soon.

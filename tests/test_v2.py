@@ -294,7 +294,7 @@ def test_parse_structured_fill_value_valid(
 
 
 @pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])
-def test_other_dtype_roundtrip(fill_value: None | bytes, tmp_path: Path) -> None:
+def test_other_dtype_roundtrip(fill_value: bytes | None, tmp_path: Path) -> None:
     a = np.array([b"a\0\0", b"bb", b"ccc"], dtype="V7")
     array_path = tmp_path / "data.zarr"
     za = zarr.create(

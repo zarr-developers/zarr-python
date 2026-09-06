@@ -41,6 +41,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -120,7 +121,7 @@ class ArrayV2Metadata(Metadata):
     def chunk_grid(self) -> ChunkGrid:
         """Backwards-compatible chunk grid property.
 
-        .. deprecated::
+        !!! warning "Deprecated"
             Access the chunk grid via the array layer instead.
             This property will be removed in a future release.
         """
@@ -278,9 +279,9 @@ def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
 
 
 def parse_zarr_format(data: object) -> Literal[2]:
-    if data == 2:
-        return 2
-    raise ValueError(f"Invalid value. Expected 2. Got {data}.")
+    from typing import Literal
+
+    return cast("Literal[2]", parse_field(data, Literal[2], "zarr_format"))
 
 
 def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
