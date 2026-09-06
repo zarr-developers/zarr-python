@@ -2114,6 +2114,16 @@ def test_index_array_out_of_bounds() -> None:
         array.lazy.oindex[[0, 99], :, :]
 
 
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_unsigned_index_array_beyond_intp_is_out_of_bounds(mode: str) -> None:
+    """A uint64 value past the intp range must not wrap to a negative index."""
+    array = make_source("numpy-uniform-parts")
+    index = np.array([2**64 - 1], dtype=np.uint64)
+    selection = (index, 0, 0) if mode == "vindex" else (index, slice(None), slice(None))
+    with pytest.raises(IndexError, match=f"index {2**64 - 1} is out of bounds for axis 0"):
+        getattr(array.lazy, mode)[selection]
+
+
 def test_too_many_indices() -> None:
     with pytest.raises(IndexError, match="too many indices"):
         make_source("numpy-uniform-parts").lazy[0, 0, 0, 0]

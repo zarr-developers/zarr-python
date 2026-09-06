@@ -301,11 +301,23 @@ def _partition_out_selection(
 ) -> tuple[Any, ...]:
     """Lower ``cell_transform`` to NumPy selectors on the request buffer."""
     domain = cell_transform.domain
-    if _is_correlated(cell_transform):
+    # A compact cell transform may permute a slice axis and a gather axis.
+    # NumPy's mixed basic/advanced selectors would place the gathered block
+    # differently from the synthetic domain; broadcast coordinate selectors
+    # retain that domain's axis order for scatter.
+    dependencies = [
+        m.input_dimension if isinstance(m, DimensionMap) else m.dependent_axis
+        for m in cell_transform.output
+        if not isinstance(m, ConstantMap)
+    ]
+    permuted = all(d is not None for d in dependencies) and dependencies != sorted(
+        d for d in dependencies if d is not None
+    )
+    if _is_correlated(cell_transform) or permuted:
         correlated_selectors: list[np.ndarray[Any, np.dtype[np.intp]]] = []
         for output_map in cell_transform.output:
             if isinstance(output_map, ConstantMap):
-                coordinates = np.full(domain.shape, output_map.offset, dtype=np.intp)
+                coordinates = np.full((1,) * domain.ndim, output_map.offset, dtype=np.intp)
             elif isinstance(output_map, DimensionMap):
                 input_dimension = output_map.input_dimension
                 axis = np.arange(
@@ -318,12 +330,9 @@ def _partition_out_selection(
                     + (axis.size,)
                     + ((1,) * (domain.ndim - input_dimension - 1))
                 )
-                coordinates = np.broadcast_to(axis.reshape(shape), domain.shape)
-                coordinates = output_map.offset + output_map.stride * coordinates
+                coordinates = output_map.offset + output_map.stride * axis.reshape(shape)
             else:
-                coordinates = output_map.offset + output_map.stride * np.broadcast_to(
-                    output_map.index_array, domain.shape
-                )
+                coordinates = output_map.offset + output_map.stride * output_map.index_array
             correlated_selectors.append(np.asarray(coordinates, dtype=np.intp))
         return tuple(correlated_selectors)
 

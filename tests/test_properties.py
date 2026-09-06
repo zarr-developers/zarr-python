@@ -176,9 +176,8 @@ async def test_oindex(data: st.DataObject) -> None:
     actual = await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
-    # sync get
-    assume(zarray.shards is None)  # GH2834
-    for idxr in npindexer:
+    # sync set
+    for idxr in zindexer:
         if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
             # behaviour of setitem with repeated indices is not guaranteed in practice
             assume(False)
@@ -217,13 +216,14 @@ async def test_vindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # sync set
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
+    points = np.stack([idxr.ravel() for idxr in np.broadcast_arrays(*indexer)], axis=-1)
+    if len(np.unique(points, axis=0)) != len(points):
+        # behaviour of setitem with repeated coordinates is not guaranteed in practice
+        assume(False)
+    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
+    nparray[indexer] = new_data
+    zarray.vindex[indexer] = new_data
+    assert_array_equal(nparray, zarray[:])
 
     # note: async vindex setitem not yet implemented
 
@@ -243,7 +243,6 @@ def test_mask_indexing(data: st.DataObject) -> None:
     assert_array_equal(expected, zarray.vindex[mask])
 
     # sync set, via both interfaces
-    assume(zarray.shards is None)  # GH2834
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
     nparray[mask] = new_data
     zarray.set_mask_selection(mask, new_data)
@@ -270,8 +269,7 @@ def test_block_indexing(data: st.DataObject) -> None:
     assert_array_equal(expected, zarray.blocks[block_indexer])
     assert_array_equal(expected, zarray.get_block_selection(block_indexer))
 
-    # sync set, via both interfaces; sharded set is broken upstream (GH2834)
-    assume(zarray.shards is None)
+    # sync set, via both interfaces
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
     nparray[array_indexer] = new_data
     zarray.blocks[block_indexer] = new_data

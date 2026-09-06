@@ -35,27 +35,21 @@ about the deliberately matching semantics:
   discriminator, and `tests/test_ndsel_tensorstore.py` loads our bodies into
   `tensorstore.IndexTransform(json=...)` and round-trips them back through our
   engine layer.
-
-The representations differ in one place: index arrays. Both models want an index
-array at the transform's full input rank, with singleton axes for the dimensions
-a map does not vary over. TensorStore enforces it — its JSON parser rejects a
-rank-1 array over a rank-2 domain outright, with `Index array for output
-dimension 0 has rank 1 but must have rank 2` (checked against tensorstore
-0.1.84) — while our loader is the more permissive of the two and also accepts a
-lower-rank array that broadcasts against the input domain. That is a
-compatibility affordance, not a difference in the model: ndsel leaves index-array
-rank to [the engine layer](ndsel.md#lowering-to-a-transform), and everything the
-algebra builds itself is at full rank.
-
-The reason full rank matters here is that we *derive* meaning from those
-singletons rather than merely tolerating them: an array full-sized on one axis
-and singleton elsewhere is orthogonal, and one varying over several shared axes
-is vectorized, so the distinction is readable off the shape — and the shape is
-the *only* place it lives. An earlier `ArrayMap.input_dimension` field pinned
-the orthogonal axis redundantly and was retired: the one shape it disambiguated
-(a single-coordinate array, all axes singleton) is now normalized away at
-construction, collapsed to the `ConstantMap` it equals, exactly as
-[the serializer](api/json.md) has always collapsed it on the wire.
+- **Chunk partitioning.** Both factor a transform over a grid before visiting
+  any cell, rather than intersecting the whole transform with each chunk.
+  TensorStore's `IndexTransformGridPartition` holds strided sets and index
+  array sets and derives a per-cell transform on iteration;
+  [`GridPartition`](api/chunk_resolution.md) also partitions index-array
+  dependency components. Its `StridedSet` is per storage axis, where TensorStore's
+  is per input dimension and spans every grid axis reading it (which is how
+  TensorStore factors diagonals). `joint_sets` holds one `JointSet` per
+  connected index-array component, including independent single-array
+  components within a mixed request. Both derive the per-chunk transforms
+  from the partition ([the guide](guide/index.md#a-plan-is-a-product-of-per-axis-tables)
+  shows the tables). TensorStore keeps strided sets implicit, while this
+  library materializes their per-axis rows for vectorized consumers. Diagonals are rejected here; supporting them needs a strided set per
+  *input* dimension spanning every storage axis that reads it, TensorStore's
+  representation.
 
 Four deliberate differences:
 
@@ -85,11 +79,14 @@ safe, `partial` proves it is not, and `unknown` conservatively covers fancy
 selections whose duplicates would require additional work to classify.
 
 The comparison also runs the other way. TensorStore is a mature, heavily
-optimized C++ system whose performance this library cannot approach: resolution
-here is Python-level bookkeeping over NumPy, and the per-part overhead is
-significant. This library is small and depends on nothing beyond NumPy, so the
-algebra can be adopted by a Python project that wants the model without the C++
-runtime.
+optimized C++ system whose performance this library cannot approach. Independent strided planning
+here is per axis, but each materialized `ChunkProjection` is
+Python-level bookkeeping over NumPy — two domains, two transforms and the
+projection itself — so the per-part overhead of the object view is
+significant; a consumer that reads the partition's tables directly pays no
+per-chunk object construction. This library is small and depends on nothing beyond
+NumPy, so the algebra can be adopted by a Python project that wants the model
+without the C++ runtime.
 
 ## Bounding-box selections vs query selections
 
@@ -277,15 +274,20 @@ rewritten in place. Resolution classifies the result by structure
 (`index_array_structure`): pure per-axis outer products keep the orthogonal
 resolvers, and everything else — correlated maps, mixtures, index arrays
 sharing an input axis (a diagonal gather, reachable only by hand-building a
-transform) — takes the pointwise path that collapses the joint block.
+transform) — takes the general reader/intersection path. Chunk planning
+factors index arrays into connected dependency components before flattening,
+so independent groups do not expand one another. Vectorized selection preserves
+broadcast singletons to retain those dependencies.
 
 Three limits remain, all intentional and all expected to be lifted:
 
-- **Affine diagonals.** A hand-built transform in which an *index array* and a
-  *slice map* bind the same input dimension, or two slice maps share one, is
-  rejected at resolution with `NotImplementedError`. No selection dialect
-  produces one; supporting them means lowering the slice maps into the joint
-  block too. *Planned.*
+- **Affine diagonals.** A hand-built transform in which two output maps read
+  one input dimension — two slice maps, or a slice map and an orthogonal index
+  array — is rejected at planning with `ValueError`; a correlated index array
+  varying over a dimension a slice map also reads is rejected with
+  `NotImplementedError`. No selection dialect produces either. Supporting them
+  needs a strided set per *input* dimension spanning all dependent storage
+  axes, TensorStore's connected-component representation. *Planned.*
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.
@@ -294,3 +296,8 @@ Three limits remain, all intentional and all expected to be lifted:
   dimension labels and the wire format round-trips them, but indexing
   operations build new domains without them, so a label does not survive a
   slice. *Planned.*
+
+## Selection to chunk operations
+
+[The selection-flow guide](guide/selection-flow.md) traces normalization,
+partitioning, and paired chunk-local/request projections with executable examples.
