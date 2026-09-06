@@ -23,10 +23,10 @@ from zarr_chunk_key_encoding._abc import ChunkKeyEncoding, ChunkKeyEncodingJSON
 from zarr_chunk_key_encoding._errors import ChunkKeyDecodeError
 from zarr_chunk_key_encoding._parsing import (
     Separator,
-    _parse_separator,
     normalize_chunk_coords,
     parse_grid_index,
     parse_named_config_json,
+    parse_separator,
 )
 
 
@@ -54,7 +54,7 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     separator: Separator = "/"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "separator", _parse_separator(self.separator))
+        object.__setattr__(self, "separator", parse_separator(self.separator))
 
     @classmethod
     def from_json(cls, data: ChunkKeyEncodingJSON) -> Self:
@@ -71,7 +71,7 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
             allowed_configuration_keys=("separator",),
         )
         if "separator" in configuration:
-            return cls(separator=_parse_separator(configuration["separator"]))
+            return cls(separator=parse_separator(configuration["separator"]))
         return cls()
 
     def to_json(self) -> DefaultChunkKeyEncodingObject:

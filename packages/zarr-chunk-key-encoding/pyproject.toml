@@ -35,8 +35,8 @@ dependencies = [
     # First release that ships the v3 chunk key encoding metadata types
     # (zarr_metadata.v3.chunk_key_encoding).
     "zarr-metadata>=0.4.0",
-    # TypedDict/TypeAliasType/Self imported from typing_extensions directly;
-    # the floor matches zarr-metadata's.
+    # TypeAliasType is imported from typing_extensions; the floor matches
+    # zarr-metadata's.
     "typing_extensions>=4.16",
 ]
 

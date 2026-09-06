@@ -212,7 +212,7 @@
 **Interfaces:**
 
 - Consumes: the prepared bounded API from Task 1 and the existing `zarr_metadata` JSON types.
-- Produces: the exact top-level API set from the design spec; concrete `encode` methods returning plain `str`; private `_get_chunk_key_encoding_class`; private `_parse_separator` colocated with parsing helpers.
+- Produces: the exact top-level API set from the design spec; concrete `encode` methods returning plain `str`; private `_get_chunk_key_encoding_class`; unexported `parse_separator` colocated in the private parsing module.
 
 - [ ] **Step 1: Pin the reduced API and retained JSON behavior in tests**
 
@@ -277,7 +277,7 @@
 
 - [ ] **Step 5: Fold separator validation into `_parsing.py`**
 
-  Move `Separator = Literal[".", "/"]` and separator validation into `_parsing.py` as `_parse_separator(data: object) -> Separator`. Keep the permitted tuple private. Update `_default.py`, `_v2.py`, and `_from_json.py` imports, then delete `_separator.py`.
+  Move `Separator = Literal[".", "/"]` and separator validation into the private `_parsing.py` module as `parse_separator(data: object) -> Separator`. Keep the permitted tuple private and do not re-export the validator. Update `_default.py` and `_v2.py` imports, then delete `_separator.py`.
 
 - [ ] **Step 6: Make only the top-level module declare public API**
 
@@ -380,7 +380,7 @@
 
 - [ ] **Step 2: Fix only concrete residuals found by the survey**
 
-  For each hit, classify it before editing: remove stale API/docs/tests; retain private `_get_chunk_key_encoding_class` and `_parse_separator`; retain release/CI/lockfile material. Use `apply_patch` for any textual correction, then rerun Step 1 until only intended private-name hits remain.
+  For each hit, classify it before editing: remove stale API/docs/tests; retain private `_get_chunk_key_encoding_class` and the unexported separator validator in `_parsing.py`; retain release/CI/lockfile material. Use `apply_patch` for any textual correction, then rerun Step 1 until only intended internal-name hits remain.
 
 - [ ] **Step 3: Run the full verification matrix**
 

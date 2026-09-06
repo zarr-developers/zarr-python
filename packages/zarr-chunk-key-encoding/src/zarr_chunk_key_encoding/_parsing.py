@@ -28,7 +28,7 @@ _SEPARATORS: Final = (".", "/")
 _ENVELOPE_KEYS: Final = frozenset({"name", "configuration", "must_understand"})
 
 
-def _parse_separator(data: object) -> Separator:
+def parse_separator(data: object) -> Separator:
     """Validate and narrow a chunk key separator."""
     if data not in _SEPARATORS:
         raise ChunkKeyConfigurationError(
