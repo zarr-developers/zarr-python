@@ -10,8 +10,6 @@ if you have not installed it yet.
 To get started, you can create a simple Zarr array:
 
 ```python exec="true" session="quickstart"
-import shutil
-shutil.rmtree('data', ignore_errors=True)
 import numpy as np
 from pprint import pprint
 import io
@@ -31,7 +29,7 @@ import numpy as np
 
 # Create a 2D Zarr array
 z = zarr.create_array(
-    store="data/example-1.zarr",
+    store="memory://quickstart-scale-demo",
     shape=(100, 100),
     chunks=(10, 10),
     dtype="f4"
@@ -44,7 +42,7 @@ print(z.info)
 
 Here, we created a 2D array of shape `(100, 100)`, chunked into blocks of
 `(10, 10)`, and filled it with random floating-point data. This array was
-written to a `LocalStore` in the `data/example-1.zarr` directory.
+written to the in-memory store `memory://quickstart-scale-demo`.
 
 ### Compression and Filters
 
@@ -54,7 +52,7 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
 
 # Create a 2D Zarr array with Blosc compression
 z = zarr.create_array(
-    store="data/example-2.zarr",
+    store="memory://quickstart-compression-demo",
     shape=(100, 100),
     chunks=(10, 10),
     dtype="f4",
@@ -79,7 +77,7 @@ Zarr allows you to create hierarchical groups, similar to directories:
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-3.zarr")
+root = zarr.group("memory://quickstart-groups-demo")
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -94,7 +92,7 @@ spam[:] = np.arange(10)
 print(root.tree())
 ```
 
-This creates a group hierarchy with a group (`foo`) and two arrays (`bar` and `spam`).
+This creates an in-memory group hierarchy with a group (`foo`) and two arrays (`bar` and `spam`).
 
 ### Batch Hierarchy Creation
 
@@ -104,7 +102,7 @@ Suppose we want to copy existing groups and arrays into a new storage backend:
 ```python exec="true" session="quickstart" source="above" result="code"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-4.zarr", attributes={'name': 'root'})
+root = zarr.group("memory://quickstart-hierarchy-source", attributes={'name': 'root'})
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -126,12 +124,14 @@ be done in a separate step.
 
 ## Persistent Storage
 
-Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
-utilized a [`zarr.storage.LocalStore`][], a number of other storage options are available.
+Zarr supports persistent storage to disk or cloud-compatible backends. While the examples
+above all used in-memory stores, a number of persistent storage options are available.
 
 A single-file store can also be created using the [`zarr.storage.ZipStore`][]:
 
 ```python exec="true" session="quickstart" source="above"
+from pathlib import Path
+Path("data").mkdir(exist_ok=True)
 
 # Store the array in a ZIP file
 store = zarr.storage.ZipStore("data/example-5.zip", mode="w")

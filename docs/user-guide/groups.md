@@ -86,6 +86,8 @@ re-open a group stored in a directory on the file-system, with sub-groups stored
 sub-directories, e.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
+import shutil
+shutil.rmtree('data/group.zarr', ignore_errors=True)
 root = zarr.open_group('data/group.zarr', mode='w')
 print(root)
 ```
@@ -146,7 +148,11 @@ from zarr.storage import LocalStore
 
 from pprint import pprint
 import io
+import shutil
 
+# This block deliberately demonstrates the LocalStore backend, so it writes to
+# the local `data/` directory; clean up first for a reproducible build.
+shutil.rmtree('data', ignore_errors=True)
 node_spec = {'a/b/c': GroupMetadata()}
 nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
 # Report nodes (pprint is used for cleaner rendering in the docs)
