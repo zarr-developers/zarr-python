@@ -1,64 +1,62 @@
 """Chunk resolution — mapping transforms to chunk-level I/O.
 
-Given an `IndexTransform` (which coordinates a user wants to access) and a
-`ChunkGrid` (how storage is divided into chunks), chunk resolution answers:
+Given an `IndexTransform` (which coordinates a request reads) and one grid per
+storage dimension (how storage is divided into chunks), chunk resolution
+answers:
 
     For each chunk, which storage coordinates does this transform touch,
-    and where do those values land in the output buffer?
+    and where do those values land in the request?
 
-The algorithm is:
-
-1. **Enumerate candidate chunks** — determine which chunks could possibly
-   be touched by the transform's output coordinate ranges.
-
-2. **Intersect** — for each candidate chunk, call
-   `transform.intersect(chunk_domain)` to restrict the transform to
-   coordinates within that chunk. If the intersection is empty, skip it.
-
-3. **Translate** — shift the restricted transform to chunk-local coordinates
-   via `transform.translate(-chunk_origin)`.
-
-4. **Project** — pair the chunk-local storage transform with a transform back
-   to the request's cells. Both use the same compact, zero-origin domain.
-
-Sorted one-dimensional correlated array maps can be partitioned directly
-because every touched chunk owns a contiguous slice of the index array. That
-case bypasses candidate enumeration and repeated intersection.
-
-The public result is a lazy, reusable `ChunkPlan`. Each `ChunkProjection` is
-source-independent: it identifies the chunk and expresses both sides of the
-gather without assuming NumPy selectors, a codec pipeline, or an execution
+The public result is a lazy, reusable `ChunkPlan` whose rows are
+`ChunkProjection`s. Each identifies a chunk and pairs a chunk-local transform
+with a transform back to the request's cells, over one shared zero-origin
+cell domain, without assuming NumPy selectors, a codec pipeline, or a
 scheduler.
+
+The plan is computed in factored form, the `GridPartition`. Restricting a
+transform to a chunk box distributes over output dimensions whenever each
+output map reads its own input axis — every basic and orthogonal selection —
+so each axis is resolved once against its grid into a table:
+
+- `StridedSet` — a `ConstantMap` or `DimensionMap` axis: one row per touched
+  chunk, holding the chunk-local start, the extent, the request position of
+  the first cell, and whether the row covers its chunk exactly once.
+- `IndexedSet` — an orthogonal `ArrayMap` axis: its coordinates grouped by
+  chunk in CSR form, with the request positions they fill.
+- `JointSet` — one connected index-array component. Arrays sharing input
+  axes are grouped together; independent components remain separate tables.
+
+A projection is one row of each table combined. Building the tables costs the
+sum of the touched chunks per axis rather than their product, rows are
+materialized only on request, and a consumer may read the tables directly
+instead. Two output maps that read one input axis through a `DimensionMap`
+(a diagonal, which no selection produces) have no factored form and are
+rejected with `ValueError`; a correlated index array varying over an axis a
+`DimensionMap` also reads is rejected with `NotImplementedError`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+import itertools
+import math
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
 from zarr_indexing._affine import checked_affine
 from zarr_indexing.domain import IndexDomain
-from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
+from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap, OutputIndexMap
 from zarr_indexing.transform import (
     IndexTransform,
+    _intersect_dimension_map,  # pyright: ignore[reportPrivateUsage]
+    _prepare_correlated,  # pyright: ignore[reportPrivateUsage]
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from zarr_indexing.grid import DimensionGridLike
-
-_OutIndices = (
-    dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]] | None
-)
-
-_ChunkTransformResult = tuple[
-    tuple[int, ...],
-    IndexTransform,
-    _OutIndices,
-]
 
 type ChunkCoverage = Literal["full", "partial", "unknown"]
 
@@ -129,8 +127,9 @@ class ChunkProjection:
 class ChunkPlan:
     """A reusable, lazy partition of an index transform over a chunk grid.
 
-    Construct plans with `plan_chunks`; iterating either the plan or
-    `projections()` performs a fresh chunk walk.
+    Construct plans with `plan_chunks`. The plan's factored form, a
+    `GridPartition`, is built on first use and memoized; iterating the plan
+    or `projections()` materializes fresh `ChunkProjection` rows from it.
 
     Examples
     --------
@@ -153,12 +152,30 @@ class ChunkPlan:
     dimension_grids: tuple[DimensionGridLike, ...]
     """One grid per storage dimension, defining the chunk layout the plan walks."""
 
+    # Memoized factored form; derived state, excluded from identity (see
+    # `IndexDomain._shape` for the same pattern).
+    _partition: GridPartition | None = field(default=None, init=False, repr=False, compare=False)
+
+    def partition(self) -> GridPartition:
+        """The plan in factored, columnar form: one table per axis plus connected index-array tables.
+
+        Built once per plan and memoized. Raises `ValueError` if two output
+        maps read one input axis through a `DimensionMap` (a diagonal, which
+        no selection produces): its tables are per output dimension, and a
+        diagonal needs a strided set spanning several.
+        """
+        cached = self._partition
+        if cached is None:
+            cached = _partition_transform(self.transform, self.dimension_grids)
+            object.__setattr__(self, "_partition", cached)
+        return cached
+
     def projections(self) -> Iterator[ChunkProjection]:
         """Return a fresh iterator over the chunks touched by this plan."""
-        return _iter_chunk_projections(self.transform, self.dimension_grids)
+        return iter(self.partition())
 
     def __iter__(self) -> Iterator[ChunkProjection]:
-        """Equivalent to `projections()`: each iteration performs a fresh chunk walk."""
+        """Equivalent to `projections()`."""
         return self.projections()
 
 
@@ -178,7 +195,8 @@ def plan_chunks(
     Returns
     -------
     ChunkPlan
-        A reusable plan whose projections are computed lazily.
+        A reusable plan whose projections are computed lazily; its
+        `partition()` is the factored form they are derived from.
 
     Examples
     --------
@@ -203,393 +221,943 @@ def plan_chunks(
     return ChunkPlan(transform=transform, dimension_grids=grids)
 
 
-def _one_dimensional_array_map(
-    transform: IndexTransform,
-) -> tuple[ArrayMap, np.ndarray[Any, np.dtype[np.intp]]] | None:
-    """Return a nonempty 1-D single-ArrayMap transform's map and storage coords.
+# --------------------------------------------------------------------------- #
+# Grid partition: the factored form of a plan
+# --------------------------------------------------------------------------- #
 
-    A one-dimensional array selection has no cross-dimensional correlation to
-    preserve — the orthogonal and vectorized flavors coincide there — so the
-    sorted fast path applies to either spelling. The computed storage
-    coordinates are also reused by general resolution when they are unsorted.
+
+def _dimension_map_candidates(
+    m: DimensionMap, dim_lo: int, dim_hi: int, dg: DimensionGridLike
+) -> Sequence[tuple[int, ...]]:
+    """The chunks a nonempty `DimensionMap` over input `[dim_lo, dim_hi)` can touch, ascending."""
+    first_storage = checked_affine(m.offset, m.stride, dim_lo)
+    if m.stride > 0:
+        s_min = first_storage
+        s_max = checked_affine(m.offset, m.stride, dim_hi - 1)
+    elif m.stride < 0:
+        s_min = checked_affine(m.offset, m.stride, dim_hi - 1)
+        s_max = first_storage
+    else:
+        s_min = s_max = first_storage
+    first = dg.index_to_chunk(s_min)
+    last = dg.index_to_chunk(s_max)
+    point_count = dim_hi - dim_lo
+    chunk_count = last - first + 1
+    if point_count < chunk_count:
+        steps = np.arange(point_count, dtype=np.intp)
+        storage = checked_affine(first_storage, m.stride, steps)
+        chunk_ids = dg.indices_to_chunks(storage)
+        return [(int(c),) for c in np.unique(chunk_ids)]
+    return [(c,) for c in range(first, last + 1)]
+
+
+def _own(column: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """A read-only column that cannot be made writable again.
+
+    A memoized partition must not drift under a consumer. Clearing the
+    writeable flag is advisory (`setflags(write=True)` undoes it), so a
+    column is re-homed over immutable bytes, the way `ArrayMap` owns its
+    index array; a view of such bytes is kept as is. Object columns (exact
+    ints beyond ``np.intp``) hold references and cannot live in bytes, so
+    they keep the flag only.
     """
-    if transform.input_rank != 1 or transform.output_rank != 1:
-        return None
+    if column.dtype == object:
+        column.setflags(write=False)
+        return column
+    owner: Any = column.base
+    while isinstance(owner, np.ndarray):
+        owner = owner.base
+    if isinstance(owner, bytes) and not column.flags.writeable:
+        return column
+    contiguous = np.ascontiguousarray(column)
+    return np.frombuffer(contiguous.tobytes(), dtype=contiguous.dtype).reshape(contiguous.shape)
 
-    m = transform.output[0]
-    if not isinstance(m, ArrayMap) or m.index_array.ndim != 1 or m.index_array.size == 0:
-        return None
 
-    return m, checked_affine(m.offset, m.stride, m.index_array)
+def _own_columns(table: Any, *names: str) -> None:
+    for name in names:
+        object.__setattr__(table, name, _own(getattr(table, name)))
 
 
-def _iter_sorted_1d_array_map(
-    m: ArrayMap,
-    storage: np.ndarray[Any, np.dtype[np.intp]],
-    dim_grid: DimensionGridLike,
-) -> Iterator[_ChunkTransformResult]:
-    """Resolve a sorted 1-D ArrayMap one touched chunk at a time."""
-    start = 0
-    while start < storage.size:
-        chunk = dim_grid.index_to_chunk(int(storage[start]))
-        chunk_start = dim_grid.chunk_offset(chunk)
-        chunk_stop = chunk_start + _data_size(dim_grid, chunk)
-        stop = int(np.searchsorted(storage, chunk_stop, side="left"))
+def _wide_column(values: Sequence[int]) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """An ``intp`` column, or an object column of exact ints when a value does not fit.
 
-        restricted = IndexTransform(
-            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(stop - start,)),
-            output=(
-                ArrayMap(
-                    index_array=m.index_array[start:stop],
-                    offset=m.offset,
-                    stride=m.stride,
-                ),
-            ),
+    Request-domain extents are unbounded Python ints (a zero-stride map over
+    a `(2**63,)` domain is valid and touches one storage cell), so the two
+    columns measured along the request axis keep exact integers rather than
+    imposing a domain-size limit the algebra does not have.
+    """
+    try:
+        return np.array(values, dtype=np.intp)
+    except OverflowError:
+        return cast("np.ndarray[Any, np.dtype[np.intp]]", np.array(values, dtype=object))
+
+
+def _chunk_bounds(
+    dg: DimensionGridLike, chunks: np.ndarray[Any, np.dtype[np.intp]]
+) -> tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]:
+    """Storage origin and data extent of each chunk, one grid call per touched chunk."""
+    n = int(chunks.size)
+    starts = np.fromiter((dg.chunk_offset(int(c)) for c in chunks), dtype=np.intp, count=n)
+    extents = np.fromiter((_data_size(dg, int(c)) for c in chunks), dtype=np.intp, count=n)
+    return starts, extents
+
+
+@dataclass(frozen=True, slots=True)
+class StridedSet:
+    """One output dimension read through a `ConstantMap` or `DimensionMap`, one row per chunk.
+
+    Row ``i`` is the map restricted to chunk ``chunk[i]`` and re-based to
+    chunk-local, zero-origin coordinates: the chunk-local map is
+    `DimensionMap(input_dimension, offset=local_start[i], stride=stride)` over
+    ``[0, extent[i])`` (a `ConstantMap(local_start[i])` for a constant), and
+    its cells are request positions ``[origin[i], origin[i] + extent[i])``
+    along the input axis, counted from the request domain's lower bound.
+
+    Columns are read-only NumPy arrays. `extent` and `origin` are measured
+    along the request axis, whose bounds are arbitrary Python ints; they are
+    ``intp`` unless a value does not fit, in which case they hold exact ints
+    (``dtype=object``).
+
+    Examples
+    --------
+    >>> from zarr_indexing import IndexTransform, plan_chunks
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((4,), shape=(10,))
+    >>> (axis,) = plan_chunks(IndexTransform.from_shape((10,))[1:9:2], grids).partition().sets
+    >>> axis.chunk.tolist(), axis.local_start.tolist(), axis.extent.tolist(), axis.origin.tolist()
+    ([0, 1], [1, 1], [2, 2], [0, 2])
+    """
+
+    output_dimension: int
+    """The storage axis this table describes."""
+
+    input_dimension: int | None
+    """The request axis the map reads, or `None` for a constant."""
+
+    stride: int
+    """Storage step per request cell; ``0`` for a constant."""
+
+    chunk: np.ndarray[Any, np.dtype[np.intp]]
+    """Chunk index along the axis, one per row, ascending."""
+
+    chunk_start: np.ndarray[Any, np.dtype[np.intp]]
+    """Storage origin of each chunk."""
+
+    chunk_extent: np.ndarray[Any, np.dtype[np.intp]]
+    """Data extent of each chunk (clipped at the array boundary)."""
+
+    local_start: np.ndarray[Any, np.dtype[np.intp]]
+    """Chunk-local storage coordinate of the row's first cell."""
+
+    extent: np.ndarray[Any, np.dtype[np.intp]]
+    """Cells the row selects along the request axis (``1`` for a constant)."""
+
+    origin: np.ndarray[Any, np.dtype[np.intp]]
+    """Position of the row's first cell along the request axis (``0`` for a constant)."""
+
+    full: np.ndarray[Any, np.dtype[np.bool_]]
+    """Whether the row covers its chunk's data extent exactly once (in either direction)."""
+
+    def __post_init__(self) -> None:
+        _own_columns(
+            self, "chunk", "chunk_start", "chunk_extent", "local_start", "extent", "origin", "full"
         )
-        local = restricted.translate((-chunk_start,))
-        surviving = np.arange(start, stop, dtype=np.intp)
 
-        yield (chunk,), local, surviving
-        start = stop
+    def __len__(self) -> int:
+        return int(self.chunk.size)
 
 
-def _iter_chunk_transform_results(
+@dataclass(frozen=True, slots=True)
+class IndexedSet:
+    """One output dimension read through an orthogonal `ArrayMap`, one row per chunk.
+
+    The map's coordinates are grouped by chunk in CSR form: row ``i`` owns
+    ``index[pointer[i]:pointer[i + 1]]`` (the index-array values, in request
+    order) and ``positions[pointer[i]:pointer[i + 1]]`` (their positions along
+    the request axis, ascending). `local` gives the same values as chunk-local
+    storage coordinates. Columns are read-only NumPy arrays.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from zarr_indexing import IndexTransform, plan_chunks
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((4,), shape=(10,))
+    >>> transform = IndexTransform.from_shape((10,)).oindex[np.array([9, 1, 2, 8])]
+    >>> (axis,) = plan_chunks(transform, grids).partition().sets
+    >>> axis.chunk.tolist(), axis.pointer.tolist()
+    ([0, 2], [0, 2, 4])
+    >>> axis.local.tolist(), axis.positions.tolist()
+    ([1, 2, 1, 0], [1, 2, 0, 3])
+    """
+
+    output_dimension: int
+    """The storage axis this table describes."""
+
+    input_dimension: int
+    """The request axis the index array varies over."""
+
+    offset: int
+    """The map's affine offset: storage is ``offset + stride * index``."""
+
+    stride: int
+    """The map's affine stride."""
+
+    chunk: np.ndarray[Any, np.dtype[np.intp]]
+    """Chunk index along the axis, one per row, ascending."""
+
+    chunk_start: np.ndarray[Any, np.dtype[np.intp]]
+    """Storage origin of each chunk."""
+
+    chunk_extent: np.ndarray[Any, np.dtype[np.intp]]
+    """Data extent of each chunk."""
+
+    pointer: np.ndarray[Any, np.dtype[np.intp]]
+    """CSR row pointer: row ``i`` owns entries ``pointer[i]`` to ``pointer[i + 1]``."""
+
+    index: np.ndarray[Any, np.dtype[np.intp]]
+    """Index-array values grouped by chunk."""
+
+    positions: np.ndarray[Any, np.dtype[np.intp]]
+    """Positions along the request axis, grouped by chunk, ascending within a row."""
+
+    def __post_init__(self) -> None:
+        _own_columns(self, "chunk", "chunk_start", "chunk_extent", "pointer", "index", "positions")
+
+    def __len__(self) -> int:
+        return int(self.chunk.size)
+
+    @property
+    def counts(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Entries per row."""
+        return np.diff(self.pointer)
+
+    _local: np.ndarray[Any, np.dtype[np.intp]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    @property
+    def local(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Memoized, read-only chunk-local coordinates, grouped like `index`."""
+        cached = self._local
+        if cached is None:
+            storage = checked_affine(self.offset, self.stride, self.index)
+            cached = storage - np.repeat(self.chunk_start, self.counts)
+            cached = _own(cached)
+            object.__setattr__(self, "_local", cached)
+        return cached
+
+    def run(self, row: int) -> slice:
+        """The slice of `index` / `positions` a row owns."""
+        return slice(int(self.pointer[row]), int(self.pointer[row + 1]))
+
+
+@dataclass(frozen=True, slots=True)
+class JointSet:
+    """One connected component of index arrays, grouped by the chunk each point lands in.
+
+    Arrays connected by shared input axes, possibly transitively, constrain
+    each other and are sorted into chunks together.
+    Row ``i`` is one touched chunk, `chunk[i]` its coordinates on the
+    `output_dimensions`, and CSR range ``pointer[i]:pointer[i + 1]`` its
+    points: `index` holds their index-array values per output dimension,
+    `positions` their flat positions in this component's input block, and
+    `block_coordinates` those positions unravelled over the block. Columns are
+    read-only NumPy arrays.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from zarr_indexing import IndexTransform, plan_chunks
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((3, 4), shape=(7, 9))
+    >>> transform = IndexTransform.from_shape((7, 9)).vindex[
+    ...     np.array([0, 6, 6, 1]), np.array([8, 0, 1, 8])
+    ... ]
+    >>> (joint,) = plan_chunks(transform, grids).partition().joint_sets
+    >>> joint.chunk.tolist(), joint.pointer.tolist(), joint.positions.tolist()
+    ([[0, 2], [2, 0]], [0, 2, 4], [0, 3, 1, 2])
+    """
+
+    output_dimensions: tuple[int, ...]
+    """The storage axes read by correlated index arrays."""
+
+    offsets: tuple[int, ...]
+    """Affine offset of each array's map, aligned with `output_dimensions`."""
+
+    strides: tuple[int, ...]
+    """Affine stride of each array's map."""
+
+    broadcast_axes: tuple[int, ...]
+    """The request axes the arrays broadcast over."""
+
+    broadcast_shape: tuple[int, ...]
+    """The extent of those axes."""
+
+    chunk: np.ndarray[Any, np.dtype[np.intp]]
+    """Chunk coordinates on `output_dimensions`, shape ``(rows, k)``, lexicographic."""
+
+    chunk_start: np.ndarray[Any, np.dtype[np.intp]]
+    """Storage origin of each chunk on `output_dimensions`, shape ``(rows, k)``."""
+
+    chunk_extent: np.ndarray[Any, np.dtype[np.intp]]
+    """Data extent of each chunk on `output_dimensions`, shape ``(rows, k)``."""
+
+    pointer: np.ndarray[Any, np.dtype[np.intp]]
+    """CSR row pointer into `index`, `positions` and `block_coordinates`."""
+
+    index: np.ndarray[Any, np.dtype[np.intp]]
+    """Index-array values per point and output dimension, shape ``(points, k)``."""
+
+    positions: np.ndarray[Any, np.dtype[np.intp]]
+    """Flat block position of each point, ascending within a row."""
+
+    _block_coordinates: np.ndarray[Any, np.dtype[np.intp]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        _own_columns(self, "chunk", "chunk_start", "chunk_extent", "pointer", "index", "positions")
+
+    def __len__(self) -> int:
+        return int(self.chunk.shape[0])
+
+    @property
+    def counts(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Points per row."""
+        return np.diff(self.pointer)
+
+    _local: np.ndarray[Any, np.dtype[np.intp]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    @property
+    def local(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Memoized, read-only chunk-local coordinates, shape ``(points, k)``."""
+        cached = self._local
+        if cached is None:
+            storage = np.stack(
+                [
+                    checked_affine(offset, stride, self.index[:, column])
+                    for column, (offset, stride) in enumerate(
+                        zip(self.offsets, self.strides, strict=True)
+                    )
+                ],
+                axis=1,
+            )
+            cached = storage - np.repeat(self.chunk_start, self.counts, axis=0)
+            cached = _own(cached)
+            object.__setattr__(self, "_local", cached)
+        return cached
+
+    @property
+    def block_coordinates(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Memoized `positions` unravelled over `broadcast_shape`, shape ``(points, len(broadcast_axes))``."""
+        cached = self._block_coordinates
+        if cached is None:
+            if self.broadcast_shape:
+                cached = np.stack(np.unravel_index(self.positions, self.broadcast_shape), axis=1)
+            else:
+                cached = np.empty((self.positions.size, 0), dtype=np.intp)
+            cached = _own(np.asarray(cached, dtype=np.intp))
+            object.__setattr__(self, "_block_coordinates", cached)
+        return cached
+
+    def run(self, row: int) -> slice:
+        """The slice of the point arrays a row owns."""
+        return slice(int(self.pointer[row]), int(self.pointer[row + 1]))
+
+
+def _strided_set(
+    transform: IndexTransform, out_dim: int, m: ConstantMap | DimensionMap, dg: DimensionGridLike
+) -> StridedSet:
+    domain = transform.domain
+    if isinstance(m, ConstantMap):
+        c = dg.index_to_chunk(checked_affine(m.offset, 0, 0))
+        chunks = np.array([c], dtype=np.intp)
+        starts, extents = _chunk_bounds(dg, chunks)
+        local = np.array([m.offset - int(starts[0])], dtype=np.intp)
+        return StridedSet(
+            output_dimension=out_dim,
+            input_dimension=None,
+            stride=0,
+            chunk=chunks,
+            chunk_start=starts,
+            chunk_extent=extents,
+            local_start=local,
+            extent=np.ones(1, dtype=np.intp),
+            origin=np.zeros(1, dtype=np.intp),
+            full=(extents == 1) & (local == 0),
+        )
+    k = m.input_dimension
+    lo = domain.inclusive_min[k]
+    hi = domain.exclusive_max[k]
+    stride = m.stride
+    unit = abs(stride) == 1
+    rows: list[tuple[int, int, int, int, int, int, bool]] = []
+    # Exact Python-int arithmetic per touched chunk: the request's literal
+    # coordinates can exceed np.intp before cancellation, and the number of
+    # touched chunks along one axis is a sum, not a product. Chunk-local
+    # columns fit np.intp; `extent` and `origin` scale with the request
+    # domain, which has arbitrary Python-int bounds, so they keep exact ints
+    # when they must (`_wide_column`).
+    for (c,) in _dimension_map_candidates(m, lo, hi, dg):
+        c_start = dg.chunk_offset(c)
+        c_extent = _data_size(dg, c)
+        narrowed = _intersect_dimension_map(m, lo, hi, c_start, c_start + c_extent)
+        if narrowed is None:
+            continue
+        nlo, nhi = narrowed
+        extent = nhi - nlo
+        # Chunk-local, then re-based to a zero-origin input axis.
+        local_start = m.offset - c_start + stride * nlo
+        if unit or (extent == 1 and c_extent == 1):
+            last = local_start + stride * (extent - 1)
+            full = min(local_start, last) == 0 and max(local_start, last) == c_extent - 1
+        else:
+            full = False
+        rows.append((c, c_start, c_extent, local_start, extent, nlo - lo, full))
+    columns = list(zip(*rows, strict=True)) if rows else [()] * 7
+    return StridedSet(
+        output_dimension=out_dim,
+        input_dimension=k,
+        stride=stride,
+        chunk=np.array(columns[0], dtype=np.intp),
+        chunk_start=np.array(columns[1], dtype=np.intp),
+        chunk_extent=np.array(columns[2], dtype=np.intp),
+        local_start=np.array(columns[3], dtype=np.intp),
+        extent=_wide_column(columns[4]),
+        origin=_wide_column(columns[5]),
+        full=np.array(columns[6], dtype=np.bool_),
+    )
+
+
+def _indexed_set(out_dim: int, m: ArrayMap, dg: DimensionGridLike) -> IndexedSet:
+    dependent = m.dependent_axis
+    assert dependent is not None
+    flat = m.index_array.reshape(-1)
+    n = int(flat.size)
+    storage = checked_affine(m.offset, m.stride, flat)
+    # Probe the extreme coordinates with the scalar lookup first: a grid's
+    # scalar error names the offending coordinate, where the vectorized one
+    # reports a range.
+    dg.index_to_chunk(int(storage.min()))
+    dg.index_to_chunk(int(storage.max()))
+    chunk_ids = dg.indices_to_chunks(storage)
+    # Already-sorted coordinates (the common case) need no sort.
+    if bool((chunk_ids[1:] >= chunk_ids[:-1]).all()):
+        positions = np.arange(n, dtype=np.intp)
+        sorted_ids = chunk_ids
+        index = flat
+    else:
+        positions = np.argsort(chunk_ids, kind="stable")
+        sorted_ids = chunk_ids[positions]
+        index = flat[positions]
+    boundaries = np.flatnonzero(sorted_ids[1:] != sorted_ids[:-1]) + 1
+    pointer = np.concatenate([[0], boundaries, [n]]).astype(np.intp)
+    chunks = np.asarray(sorted_ids[pointer[:-1]], dtype=np.intp)
+    starts, extents = _chunk_bounds(dg, chunks)
+    return IndexedSet(
+        output_dimension=out_dim,
+        input_dimension=dependent,
+        offset=m.offset,
+        stride=m.stride,
+        chunk=chunks,
+        chunk_start=starts,
+        chunk_extent=extents,
+        pointer=pointer,
+        index=np.asarray(index, dtype=np.intp),
+        positions=np.asarray(positions, dtype=np.intp),
+    )
+
+
+def _chunk_keys(
+    chunk_ids: Sequence[np.ndarray[Any, np.dtype[np.intp]]],
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """One sortable key per point whose order is the lexicographic chunk order."""
+    n = int(chunk_ids[0].size)
+    if len(chunk_ids) == 1:
+        return np.asarray(chunk_ids[0], dtype=np.intp)
+    # Mixed-radix key with the first dimension most significant.
+    keys = np.zeros(n, dtype=np.intp)
+    multiplier = 1
+    for ids in reversed(chunk_ids):
+        radix = int(ids.max()) + 1
+        if multiplier * radix >= 2**62:
+            stacked = np.stack([np.asarray(i, dtype=np.intp).ravel() for i in chunk_ids], axis=1)
+            _, inverse = np.unique(stacked, axis=0, return_inverse=True)
+            return np.asarray(inverse, dtype=np.intp).reshape(-1)
+        keys += np.asarray(ids, dtype=np.intp) * multiplier
+        multiplier *= radix
+    return keys
+
+
+def _joint_set(
     transform: IndexTransform,
     dim_grids: Sequence[DimensionGridLike],
-) -> Iterator[_ChunkTransformResult]:
-    """Resolve a transform into private intersection bookkeeping.
+    *,
+    output_dimensions: tuple[int, ...] | None = None,
+    input_dimensions: tuple[int, ...] | None = None,
+) -> JointSet:
+    block = _prepare_correlated(
+        transform, output_dimensions=output_dimensions, input_dimensions=input_dimensions
+    )
+    dims = block.correlated_dims
+    # Probe the extreme coordinates with the scalar lookup first: a grid's
+    # vectorized lookup need not check bounds (zarr's does not), and its
+    # scalar error names the offending coordinate.
+    for d in dims:
+        storage = block.flat_storage[d]
+        dim_grids[d].index_to_chunk(int(storage.min()))
+        dim_grids[d].index_to_chunk(int(storage.max()))
+    chunk_ids = [dim_grids[d].indices_to_chunks(block.flat_storage[d]) for d in dims]
+    n_points = int(chunk_ids[0].size)
+    keys = _chunk_keys(chunk_ids)
+    positions = np.argsort(keys, kind="stable")
+    sorted_keys = keys[positions]
+    boundaries = np.flatnonzero(sorted_keys[1:] != sorted_keys[:-1]) + 1
+    pointer = np.concatenate([[0], boundaries, [n_points]]).astype(np.intp)
+    first = positions[pointer[:-1]]
+    chunk = np.stack([np.asarray(ids, dtype=np.intp)[first] for ids in chunk_ids], axis=1)
+    index = np.stack([block.flat_index[d][positions] for d in dims], axis=1)
+    starts = np.empty_like(chunk)
+    extents = np.empty_like(chunk)
+    for column, d in enumerate(dims):
+        starts[:, column], extents[:, column] = _chunk_bounds(dim_grids[d], chunk[:, column])
+    maps = [cast("ArrayMap", transform.output[d]) for d in dims]
+    return JointSet(
+        output_dimensions=dims,
+        offsets=tuple(m.offset for m in maps),
+        strides=tuple(m.stride for m in maps),
+        broadcast_axes=block.broadcast_axes,
+        broadcast_shape=block.broadcast_shape,
+        chunk=chunk,
+        chunk_start=starts,
+        chunk_extent=extents,
+        pointer=pointer,
+        index=index,
+        positions=np.asarray(positions, dtype=np.intp),
+    )
 
-    The survivor arrays are an implementation detail immediately converted to
-    a public `cell_transform` by `_iter_chunk_projections`.
+
+# One table row's contribution to a projection: (chunk index, chunk start,
+# chunk data extent, bound input axis or None, restricted extent of that axis,
+# the rebased chunk-local map, the cell map for the axis, whole-chunk cover).
+_AxisPiece = tuple[int, int, int, int | None, int, OutputIndexMap, OutputIndexMap | None, bool]
+
+
+def _strided_piece(
+    axis: StridedSet, row: int, origin: int, input_dimension: int | None = None
+) -> _AxisPiece:
+    """One row of a strided table as maps; ``origin`` is the request axis's lower bound.
+
+    ``input_dimension`` renumbers the chunk-local map's axis for the
+    correlated walk, whose restricted domain collapses the broadcast axes
+    into one leading axis.
+    """
+    offset = int(axis.local_start[row])
+    k = axis.input_dimension
+    chunk_map: OutputIndexMap
+    cell_map: OutputIndexMap | None
+    if k is None:
+        chunk_map = ConstantMap(offset=offset)
+        cell_map = None
+    else:
+        chunk_map = DimensionMap(
+            input_dimension=k if input_dimension is None else input_dimension,
+            offset=offset,
+            stride=axis.stride,
+        )
+        cell_map = DimensionMap(input_dimension=k, offset=origin + int(axis.origin[row]))
+    return (
+        int(axis.chunk[row]),
+        int(axis.chunk_start[row]),
+        int(axis.chunk_extent[row]),
+        k,
+        int(axis.extent[row]),
+        chunk_map,
+        cell_map,
+        bool(axis.full[row]),
+    )
+
+
+def _indexed_piece(axis: IndexedSet, row: int, rank: int, origin: int) -> _AxisPiece:
+    run = axis.run(row)
+    k = axis.input_dimension
+    count = run.stop - run.start
+    shape = (1,) * k + (count,) + (1,) * (rank - k - 1)
+    c_start = int(axis.chunk_start[row])
+    return (
+        int(axis.chunk[row]),
+        c_start,
+        int(axis.chunk_extent[row]),
+        k,
+        count,
+        ArrayMap(
+            index_array=axis.index[run].reshape(shape),
+            offset=axis.offset - c_start,
+            stride=axis.stride,
+        ),
+        ArrayMap(index_array=axis.positions[run].reshape(shape), offset=origin),
+        False,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GridPartition:
+    """A plan in factored form: per-axis tables whose product is the chunk walk.
+
+    `sets` holds one `StridedSet` or `IndexedSet` per output dimension the
+    transform reads independently, in output-dimension order; `joint_sets`
+    holds the connected index-array components. A projection is one row of each
+    table, so the partition has ``prod(row_shape)`` rows, walked
+    in row-major order over `row_shape` (the component tables after `sets`). Rows are materialized into
+    `ChunkProjection` objects only on request; a vectorized consumer can read
+    the tables directly.
+
+    Take one from `ChunkPlan.partition`.
+
+    Examples
+    --------
+    `arr[1:6:2, 5:]` on a `(7, 9)` array with `(3, 4)` chunks touches two
+    chunks along each axis, so the partition has four rows:
+
+    >>> from zarr_indexing import IndexTransform, plan_chunks
+    >>> from zarr_indexing.grid import dimension_grids_from_chunks
+    >>> grids = dimension_grids_from_chunks((3, 4), shape=(7, 9))
+    >>> partition = plan_chunks(IndexTransform.from_shape((7, 9))[1:6:2, 5:], grids).partition()
+    >>> partition.row_shape, len(partition)
+    ((2, 2), 4)
+    >>> partition.chunk_coords().tolist()
+    [[0, 1], [0, 2], [1, 1], [1, 2]]
+    >>> [projection.chunk_transform.selection_repr for projection in partition][3]
+    '{ [0, 4) step 2, [0, 1) }'
     """
 
-    if any(size == 0 for size in transform.domain.shape):
-        # An empty view touches no chunk. Checked on the domain rather than on
-        # the index arrays: an axis of genuine extent 1 is stored as a broadcast
-        # singleton, so a slice that empties the domain does not shrink the
-        # array, and the emptiness shows only here.
-        return
+    transform: IndexTransform
+    """The transform this partition factors."""
 
-    array_map_1d = _one_dimensional_array_map(transform)
-    if array_map_1d is not None:
-        sorted_map, storage = array_map_1d
-        if storage[0] <= storage[-1] and bool(np.all(storage[1:] >= storage[:-1])):
-            dim_grid = dim_grids[0]
-            first_chunk = dim_grid.index_to_chunk(int(storage[0]))
-            if dim_grid.chunk_size(first_chunk) > 0:
-                yield from _iter_sorted_1d_array_map(sorted_map, storage, dim_grid)
-                return
+    dimension_grids: tuple[DimensionGridLike, ...]
+    """One grid per storage dimension."""
 
-    # Enumerate candidate chunks via the cartesian product of per-slot candidate
-    # chunk ids, then for each candidate intersect the transform with the chunk
-    # domain (`transform.intersect` handles orthogonal and vectorized cases
-    # alike, filtering out combinations it does not actually touch).
-    #
-    # A slot covers one or more output dimensions and contributes exactly the
-    # chunk-coordinate tuples those dimensions can touch:
-    #
-    # - `ConstantMap`/`DimensionMap` dims each form their own slot with a
-    #   contiguous range — a single chunk for a constant, and the span between
-    #   the first and last chunk for a slice. These are already tight (or
-    #   nearly so).
-    # - Orthogonal `ArrayMap` (fancy) dims each form their own slot with only
-    #   the *distinct* chunk ids the index array actually lands in
-    #   (`np.unique`), never the dense `range(min_chunk, max_chunk + 1)`
-    #   between them. A sparse fancy selection (e.g. two far-apart coordinates)
-    #   would otherwise enumerate every chunk in the bounding box, making
-    #   resolution scale with grid size instead of with the number of selected
-    #   coordinates.
-    # - Correlated (vindex) `ArrayMap` dims share one *joint* slot holding the
-    #   distinct chunk-coordinate tuples the points actually land in. The
-    #   cartesian product of their per-dimension distinct sets would include
-    #   combinations no point touches — quadratic in the number of selected
-    #   points for a diagonal selection — while the joint distinct set is
-    #   bounded by the point count (see zarr-python gh-4174).
-    structure = transform.index_array_structure
-    correlated_dims: list[int] = []
-    correlated_chunk_ids: list[np.ndarray[Any, np.dtype[np.intp]]] = []
-    slot_dims: list[tuple[int, ...]] = []
-    slot_candidates: list[Sequence[tuple[int, ...]]] = []
-    for out_dim, m in enumerate(transform.output):
-        dg = dim_grids[out_dim]
-        if isinstance(m, ConstantMap):
-            # Single chunk
-            coordinate = checked_affine(m.offset, 0, 0)
-            c = dg.index_to_chunk(coordinate)
-            slot_dims.append((out_dim,))
-            slot_candidates.append(((c,),))
-        elif isinstance(m, DimensionMap):
-            d = m.input_dimension
-            dim_lo = transform.domain.inclusive_min[d]
-            dim_hi = transform.domain.exclusive_max[d]
-            if dim_lo >= dim_hi:
-                return  # empty domain
-            first_storage = checked_affine(m.offset, m.stride, dim_lo)
-            if m.stride > 0:
-                s_min = first_storage
-                s_max = checked_affine(m.offset, m.stride, dim_hi - 1)
-            elif m.stride < 0:
-                s_min = checked_affine(m.offset, m.stride, dim_hi - 1)
-                s_max = first_storage
-            else:
-                s_min = s_max = first_storage
-            first = dg.index_to_chunk(s_min)
-            last = dg.index_to_chunk(s_max)
-            slot_dims.append((out_dim,))
-            point_count = dim_hi - dim_lo
-            chunk_count = last - first + 1
-            if point_count < chunk_count:
-                steps = np.arange(point_count, dtype=np.intp)
-                storage = checked_affine(first_storage, m.stride, steps)
-                chunk_ids = dg.indices_to_chunks(storage)
-                slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
-            else:
-                slot_candidates.append([(c,) for c in range(first, last + 1)])
+    sets: tuple[StridedSet | IndexedSet, ...]
+    """Independent per-axis tables, in output-dimension order."""
+
+    joint_sets: tuple[JointSet, ...]
+    """Connected index-array components, ordered by their first output dimension."""
+
+    row_shape: tuple[int, ...]
+    """Rows per table: `sets` followed by `joint_sets`, in row-major iteration order."""
+
+    def __len__(self) -> int:
+        return math.prod(self.row_shape)
+
+    def chunk_coords(self) -> np.ndarray[Any, np.dtype[np.intp]]:
+        """Chunk coordinates of every row, shape ``(len(self), output rank)``, without materializing rows."""
+        count = len(self)
+        out = np.empty((count, self.transform.output_rank), dtype=np.intp)
+        if count == 0 or not self.row_shape:
+            return out
+        indices = np.unravel_index(np.arange(count, dtype=np.intp), self.row_shape)
+        for axis, rows in zip(self.sets, indices, strict=False):
+            out[:, axis.output_dimension] = axis.chunk[rows]
+        for joint, rows in zip(self.joint_sets, indices[len(self.sets) :], strict=True):
+            out[:, list(joint.output_dimensions)] = joint.chunk[rows]
+        return out
+
+    def __iter__(self) -> Iterator[ChunkProjection]:
+        """Materialize every row in order."""
+        if math.prod(self.row_shape) == 0:
+            return
+        if not self.joint_sets:
+            yield from self._iter_factorized()
         else:
-            # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap).
-            # Storage coordinates were already computed for a correlated 1-D map.
-            storage = (
-                array_map_1d[1]
-                if array_map_1d is not None
-                else checked_affine(m.offset, m.stride, m.index_array)
+            yield from self._iter_correlated()
+
+    # -- factorized assembly ------------------------------------------------
+
+    def _pieces(self, axis: StridedSet | IndexedSet, row: int) -> _AxisPiece:
+        domain = self.transform.domain
+        if isinstance(axis, StridedSet):
+            origin = (
+                0 if axis.input_dimension is None else domain.inclusive_min[axis.input_dimension]
             )
-            if storage.size == 0:
-                # Empty fancy selection: no coordinates, so no chunks are touched.
-                return
-            # Keep the index-array shape: correlated maps broadcast against each
-            # other below, and raveling first would lose the singleton axes.
-            chunk_ids = dg.indices_to_chunks(storage)
-            if structure == "orthogonal":
-                slot_dims.append((out_dim,))
-                slot_candidates.append([(int(c),) for c in np.unique(chunk_ids)])
-            else:
-                # Every index array of a general transform joins one joint
-                # slot: their chunk ids broadcast over the shared block, so the
-                # distinct tuples enumerate only combinations some point
-                # actually touches.
-                correlated_dims.append(out_dim)
-                correlated_chunk_ids.append(chunk_ids)
+            return _strided_piece(axis, row, origin)
+        return _indexed_piece(axis, row, domain.ndim, domain.inclusive_min[axis.input_dimension])
 
-    if len(correlated_dims) == 1:
-        slot_dims.append((correlated_dims[0],))
-        slot_candidates.append([(int(c),) for c in np.unique(correlated_chunk_ids[0])])
-    elif len(correlated_dims) >= 2:
-        # Group the points jointly: distinct rows of the per-point chunk
-        # coordinates, O(points log points) regardless of grid size.
-        broadcast = np.broadcast_arrays(*correlated_chunk_ids)
-        stacked = np.stack([b.ravel() for b in broadcast], axis=1)
-        joint = np.unique(stacked, axis=0)
-        slot_dims.append(tuple(correlated_dims))
-        slot_candidates.append([tuple(int(c) for c in row) for row in joint])
+    def _unbound(self) -> tuple[list[OutputIndexMap | None], bool]:
+        """Cell maps for request axes no output reads, and whether they permit full coverage.
 
-    import itertools
+        A whole-chunk cover must biject onto the chunk, so an unread axis can
+        only be a singleton.
+        """
+        domain = self.transform.domain
+        bound = {axis.input_dimension for axis in self.sets if axis.input_dimension is not None}
+        cell_maps: list[OutputIndexMap | None] = [None] * domain.ndim
+        unbound_ok = True
+        for axis in range(domain.ndim):
+            if axis not in bound:
+                cell_maps[axis] = DimensionMap(
+                    input_dimension=axis, offset=domain.inclusive_min[axis]
+                )
+                unbound_ok = unbound_ok and domain.shape[axis] <= 1
+        return cell_maps, unbound_ok
 
-    output_rank = len(transform.output)
-    for combo in itertools.product(*slot_candidates):
-        chunk_coords_list = [0] * output_rank
-        for dims, part in zip(slot_dims, combo, strict=True):
-            for d, c in zip(dims, part, strict=True):
-                chunk_coords_list[d] = c
-        chunk_coords = tuple(chunk_coords_list)
+    def _iter_factorized(self) -> Iterator[ChunkProjection]:
+        pieces_per_set = [
+            [self._pieces(axis, row) for row in range(len(axis))] for axis in self.sets
+        ]
+        base_cell_maps, unbound_ok = self._unbound()
+        for combo in itertools.product(*pieces_per_set):
+            yield self._factorized_projection(list(combo), base_cell_maps, unbound_ok)
 
-        # Build the chunk domain in storage space
+    def _factorized_projection(
+        self,
+        pieces: list[_AxisPiece],
+        base_cell_maps: list[OutputIndexMap | None],
+        unbound_ok: bool,
+    ) -> ChunkProjection:
+        domain = self.transform.domain
+        shape = list(domain.shape)
+        cell_maps = list(base_cell_maps)
+        chunk_maps: list[OutputIndexMap] = []
+        chunk_coords: list[int] = []
         chunk_min: list[int] = []
         chunk_max: list[int] = []
-        chunk_shift: list[int] = []
-        for out_dim, c in enumerate(chunk_coords):
-            dg = dim_grids[out_dim]
-            c_start = dg.chunk_offset(c)
-            c_size = _data_size(dg, c)
+        has_array = False
+        full = unbound_ok
+        for c, c_start, c_extent, k, extent, chunk_map, cell_map, piece_full in pieces:
+            chunk_coords.append(c)
             chunk_min.append(c_start)
-            chunk_max.append(c_start + c_size)
-            chunk_shift.append(-c_start)
-
-        chunk_domain = IndexDomain(
-            inclusive_min=tuple(chunk_min),
-            exclusive_max=tuple(chunk_max),
-        )
-
-        # Intersect transform with chunk domain
-        result = transform.intersect(chunk_domain)
-        if result is None:
-            continue
-
-        restricted, surviving = result
-
-        # Translate to chunk-local coordinates
-        local = restricted.translate(tuple(chunk_shift))
-
-        yield (chunk_coords, local, surviving)
-
-
-def _covers_whole_chunk(transform: IndexTransform, chunk_shape: tuple[int, ...]) -> bool:
-    """Whether an affine chunk-local transform bijects onto every chunk cell."""
-    domain = transform.domain
-    used_nontrivial_inputs: set[int] = set()
-    for out_dim, m in enumerate(transform.output):
-        extent = chunk_shape[out_dim]
-        if isinstance(m, ConstantMap):
-            if extent != 1 or m.offset != 0:
-                return False
-        elif isinstance(m, DimensionMap):
-            if abs(m.stride) != 1:
-                return False
-            lo = domain.inclusive_min[m.input_dimension]
-            hi = domain.exclusive_max[m.input_dimension]
-            if hi <= lo:
-                if extent != 0:
-                    return False
-                continue
-            first = m.offset + m.stride * lo
-            last = m.offset + m.stride * (hi - 1)
-            if min(first, last) != 0 or max(first, last) != extent - 1:
-                return False
-            if extent > 1:
-                if m.input_dimension in used_nontrivial_inputs:
-                    return False
-                used_nontrivial_inputs.add(m.input_dimension)
-        else:
-            return False
-    nontrivial_inputs = {dimension for dimension, extent in enumerate(domain.shape) if extent > 1}
-    return used_nontrivial_inputs == nontrivial_inputs
-
-
-def _orthogonal_cell_transform(
-    original: IndexTransform,
-    restricted: IndexTransform,
-    survivors: dict[int, np.ndarray[Any, np.dtype[np.intp]]] | np.ndarray[Any, np.dtype[np.intp]],
-) -> IndexTransform:
-    """Map a compacted orthogonal intersection back to request coordinates."""
-    by_input_dimension: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
-    if isinstance(survivors, dict):
-        survivor_items = survivors.items()
-    else:
-        array_output_dimensions = [
-            output_dimension
-            for output_dimension, output_map in enumerate(original.output)
-            if isinstance(output_map, ArrayMap)
-        ]
-        if len(array_output_dimensions) != 1:
-            raise ValueError(
-                "one survivor array requires exactly one orthogonal ArrayMap; "
-                f"found output dimensions {array_output_dimensions}"
-            )
-        survivor_items = ((array_output_dimensions[0], survivors),)
-
-    for output_dimension, positions in survivor_items:
-        output_map = original.output[output_dimension]
-        if not isinstance(output_map, ArrayMap):
-            raise TypeError(
-                f"survivors for output dimension {output_dimension} do not describe an ArrayMap"
-            )
-        input_dimension = output_map.dependent_axis
-        if input_dimension is None:
-            raise ValueError(
-                f"output dimension {output_dimension} has no orthogonal input dimension"
-            )
-        by_input_dimension[input_dimension] = np.asarray(positions, dtype=np.intp)
-
-    output: list[ConstantMap | DimensionMap | ArrayMap] = []
-    rank = original.input_rank
-    for input_dimension in range(rank):
-        positions = by_input_dimension.get(input_dimension)
-        if positions is None:
-            output.append(DimensionMap(input_dimension=input_dimension))
-            continue
-        shape = (1,) * input_dimension + (positions.size,) + (1,) * (rank - input_dimension - 1)
-        output.append(
-            ArrayMap(
-                index_array=positions.reshape(shape),
-                offset=original.domain.inclusive_min[input_dimension],
-            )
-        )
-    return IndexTransform(domain=restricted.domain, output=tuple(output))
-
-
-def _correlated_cell_transform(
-    original: IndexTransform,
-    restricted: IndexTransform,
-    survivors: np.ndarray[Any, np.dtype[np.intp]],
-) -> IndexTransform:
-    """Map compacted correlated points back through the request's row-major domain."""
-    positions = np.asarray(survivors, dtype=np.intp)
-    # Correlated broadcast axes already contribute positional survivor offsets;
-    # residual affine axes still contribute literal coordinates. Remove only
-    # the latter origins before unraveling the fully positional flat offsets.
-    literal_axes = {
-        output_map.input_dimension
-        for output_map in original.output
-        if isinstance(output_map, DimensionMap)
-    }
-    origin_offset = 0
-    flat_stride = 1
-    for input_dimension in range(original.input_rank - 1, -1, -1):
-        if input_dimension in literal_axes:
-            origin_offset += original.domain.inclusive_min[input_dimension] * flat_stride
-        extent = original.domain.shape[input_dimension]
-        flat_stride *= extent
-    coordinates = np.unravel_index(
-        checked_affine(-origin_offset, 1, positions), original.domain.shape
-    )
-    output = tuple(
-        ArrayMap(
-            index_array=np.asarray(coordinate, dtype=np.intp),
-            offset=origin,
-        )
-        for coordinate, origin in zip(coordinates, original.domain.inclusive_min, strict=True)
-    )
-    return IndexTransform(domain=restricted.domain, output=output)
-
-
-def _cell_transform(
-    original: IndexTransform,
-    restricted: IndexTransform,
-    survivors: _OutIndices,
-) -> IndexTransform:
-    """Convert private survivor bookkeeping into a direction-neutral transform."""
-    if survivors is None:
-        return IndexTransform.identity(restricted.domain)
-    if original.index_array_structure == "general":
-        if isinstance(survivors, dict):
-            raise ValueError("general intersections require one shared survivor array")
-        return _correlated_cell_transform(original, restricted, survivors)
-    return _orthogonal_cell_transform(original, restricted, survivors)
-
-
-def _iter_chunk_projections(
-    transform: IndexTransform,
-    dim_grids: Sequence[DimensionGridLike],
-) -> Iterator[ChunkProjection]:
-    """Convert private intersection results into public paired projections."""
-    for chunk_coords, chunk_transform, survivors in _iter_chunk_transform_results(
-        transform, dim_grids
-    ):
-        chunk_min = tuple(
-            grid.chunk_offset(coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
-        )
-        chunk_shape = tuple(
-            _data_size(grid, coord) for grid, coord in zip(dim_grids, chunk_coords, strict=True)
-        )
-        chunk_domain = IndexDomain(
-            inclusive_min=chunk_min,
-            exclusive_max=tuple(
-                origin + extent for origin, extent in zip(chunk_min, chunk_shape, strict=True)
-            ),
-        )
-        cell_transform = _cell_transform(transform, chunk_transform, survivors)
-        synthetic_origin = (0,) * chunk_transform.input_rank
-        chunk_transform = chunk_transform.translate_domain_to(synthetic_origin)
-        cell_transform = cell_transform.translate_domain_to(synthetic_origin)
-        if survivors is not None or any(isinstance(m, ArrayMap) for m in chunk_transform.output):
+            chunk_max.append(c_start + c_extent)
+            chunk_maps.append(chunk_map)
+            if isinstance(chunk_map, ArrayMap):
+                has_array = True
+            if k is not None:
+                shape[k] = extent
+                cell_maps[k] = cell_map
+            full = full and piece_full
+        synthetic = IndexDomain._unchecked((0,) * domain.ndim, tuple(shape))  # pyright: ignore[reportPrivateUsage]
+        if has_array:
             coverage: ChunkCoverage = "unknown"
-        elif _covers_whole_chunk(chunk_transform, chunk_shape):
+        elif full:
             coverage = "full"
         else:
             coverage = "partial"
-        yield ChunkProjection(
-            chunk_coords=chunk_coords,
-            chunk_domain=chunk_domain,
-            chunk_transform=chunk_transform,
-            cell_transform=cell_transform,
+        return ChunkProjection(
+            chunk_coords=tuple(chunk_coords),
+            chunk_domain=IndexDomain._unchecked(tuple(chunk_min), tuple(chunk_max)),  # pyright: ignore[reportPrivateUsage]
+            chunk_transform=IndexTransform._unchecked(synthetic, tuple(chunk_maps)),  # pyright: ignore[reportPrivateUsage]
+            cell_transform=IndexTransform._unchecked(  # pyright: ignore[reportPrivateUsage]
+                synthetic, tuple(cast("list[OutputIndexMap]", cell_maps))
+            ),
             coverage=coverage,
         )
+
+    # -- correlated assembly ------------------------------------------------
+
+    def _slots(self) -> tuple[tuple[int | None, ...], dict[int, int]]:
+        """One synthetic axis per nonconstant component, followed by residual axes."""
+        component_slots: list[int | None] = []
+        bound: set[int] = set()
+        n_lead = 0
+        for joint in self.joint_sets:
+            bound.update(joint.broadcast_axes)
+            component_slots.append(n_lead if joint.broadcast_axes else None)
+            n_lead += bool(joint.broadcast_axes)
+        residual_axes = [axis for axis in range(self.transform.input_rank) if axis not in bound]
+        return tuple(component_slots), {
+            axis: n_lead + slot for slot, axis in enumerate(residual_axes)
+        }
+
+    def _iter_correlated(self) -> Iterator[ChunkProjection]:
+        component_slots, slot_of = self._slots()
+        lo_all = self.transform.domain.inclusive_min
+        pieces_per_set = [
+            [
+                _strided_piece(
+                    cast("StridedSet", axis),
+                    row,
+                    0 if axis.input_dimension is None else lo_all[axis.input_dimension],
+                    None if axis.input_dimension is None else slot_of[axis.input_dimension],
+                )
+                for row in range(len(axis))
+            ]
+            for axis in self.sets
+        ]
+        for residual in itertools.product(*pieces_per_set):
+            for rows in itertools.product(*(range(len(joint)) for joint in self.joint_sets)):
+                yield self._correlated_projection(list(residual), rows, component_slots, slot_of)
+
+    def _correlated_projection(
+        self,
+        residual: list[_AxisPiece],
+        rows: tuple[int, ...],
+        component_slots: tuple[int | None, ...],
+        slot_of: dict[int, int],
+    ) -> ChunkProjection:
+        transform = self.transform
+        domain = transform.domain
+        lo_all = domain.inclusive_min
+        output_rank = transform.output_rank
+        runs = tuple(joint.run(row) for joint, row in zip(self.joint_sets, rows, strict=True))
+        points_shape = tuple(
+            run.stop - run.start
+            for run, slot in zip(runs, component_slots, strict=True)
+            if slot is not None
+        )
+        n_lead = len(points_shape)
+        rank = n_lead + len(slot_of)
+        chunk_coords = [0] * output_rank
+        chunk_min = [0] * output_rank
+        chunk_max = [0] * output_rank
+        chunk_maps: list[OutputIndexMap | None] = [None] * output_rank
+        cell_maps: list[OutputIndexMap | None] = [None] * domain.ndim
+        # Unread input axes are independent repetitions, not part of an index
+        # array component. Retain their extent without expanding any arrays.
+        extents = [domain.shape[axis] for axis in slot_of]
+        for axis, slot in slot_of.items():
+            cell_maps[axis] = DimensionMap(input_dimension=slot, offset=lo_all[axis])
+        for out_dim, (c, c_start, c_extent, k, extent, chunk_map, cell_map, _full) in zip(
+            (axis.output_dimension for axis in self.sets), residual, strict=True
+        ):
+            chunk_coords[out_dim] = c
+            chunk_min[out_dim] = c_start
+            chunk_max[out_dim] = c_start + c_extent
+            chunk_maps[out_dim] = chunk_map
+            if k is not None:
+                slot = slot_of[k]
+                extents[slot - n_lead] = extent
+                cell_maps[k] = DimensionMap(
+                    input_dimension=slot, offset=cast("DimensionMap", cell_map).offset
+                )
+        for joint, row, run, component_slot in zip(
+            self.joint_sets, rows, runs, component_slots, strict=True
+        ):
+            component_shape = [1] * rank
+            if component_slot is not None:
+                component_shape[component_slot] = run.stop - run.start
+            for column, out_dim in enumerate(joint.output_dimensions):
+                c_start = int(joint.chunk_start[row, column])
+                chunk_coords[out_dim] = int(joint.chunk[row, column])
+                chunk_min[out_dim] = c_start
+                chunk_max[out_dim] = c_start + int(joint.chunk_extent[row, column])
+                chunk_maps[out_dim] = ArrayMap(
+                    index_array=joint.index[run, column].reshape(component_shape),
+                    offset=joint.offsets[column] - c_start,
+                    stride=joint.strides[column],
+                )
+            for column, axis in enumerate(joint.broadcast_axes):
+                cell_maps[axis] = ArrayMap(
+                    index_array=joint.block_coordinates[run, column].reshape(component_shape),
+                    offset=lo_all[axis],
+                )
+        synthetic = IndexDomain._unchecked((0,) * rank, points_shape + tuple(extents))  # pyright: ignore[reportPrivateUsage]
+        return ChunkProjection(
+            chunk_coords=tuple(chunk_coords),
+            chunk_domain=IndexDomain._unchecked(tuple(chunk_min), tuple(chunk_max)),  # pyright: ignore[reportPrivateUsage]
+            chunk_transform=IndexTransform._unchecked(  # pyright: ignore[reportPrivateUsage]
+                synthetic, tuple(cast("list[OutputIndexMap]", chunk_maps))
+            ),
+            cell_transform=IndexTransform._unchecked(  # pyright: ignore[reportPrivateUsage]
+                synthetic, tuple(cast("list[OutputIndexMap]", cell_maps))
+            ),
+            coverage="unknown",
+        )
+
+
+def _component_joint_sets(
+    transform: IndexTransform, grids: tuple[DimensionGridLike, ...]
+) -> tuple[JointSet, ...]:
+    """Partition the input/index-array dependency graph into connected components."""
+    affine_axes = {m.input_dimension for m in transform.output if isinstance(m, DimensionMap)}
+    # Accumulated components have disjoint input axes. A new map can bridge
+    # several of them; merging every overlap maintains that invariant.
+    components: list[tuple[set[int], list[int]]] = []
+    for dimension, m in enumerate(transform.output):
+        if not isinstance(m, ArrayMap):
+            continue
+        axes = set(m.dependency_axes)
+        if axes.intersection(affine_axes):
+            raise NotImplementedError(
+                "index array varies over an input dimension also bound by a slice map"
+            )
+        dimensions = [dimension]
+        separate = []
+        for other_axes, other_dimensions in components:
+            if axes.intersection(other_axes):
+                axes.update(other_axes)
+                dimensions.extend(other_dimensions)
+            else:
+                separate.append((other_axes, other_dimensions))
+        separate.append((axes, sorted(dimensions)))
+        components = separate
+    return tuple(
+        _joint_set(
+            transform,
+            grids,
+            output_dimensions=tuple(dimensions),
+            input_dimensions=tuple(sorted(axes)),
+        )
+        for axes, dimensions in sorted(components, key=lambda component: component[1][0])
+    )
+
+
+def _shared_input_axis(transform: IndexTransform) -> int | None:
+    """An input axis read by two output maps in a way that does not factor, if any.
+
+    Two `DimensionMap`s on one axis, or a `DimensionMap` and an orthogonal
+    `ArrayMap` on one axis, make a diagonal: neither restricts independently
+    of the other. Correlated `ArrayMap`s sharing axes are the `JointSet` case
+    and factor fine; an `ArrayMap` varying over a `DimensionMap`'s axis is
+    rejected separately by `_prepare_correlated`.
+    """
+    seen: set[int] = set()
+    correlated = transform.index_array_structure == "general"
+    for m in transform.output:
+        if isinstance(m, DimensionMap):
+            axis: int | None = m.input_dimension
+        elif isinstance(m, ArrayMap) and not correlated:
+            axis = m.dependent_axis
+        else:
+            continue
+        if axis is None:
+            continue
+        if axis in seen:
+            return axis
+        seen.add(axis)
+    return None
+
+
+def _partition_transform(
+    transform: IndexTransform, grids: tuple[DimensionGridLike, ...]
+) -> GridPartition:
+    """Factor a transform over its grids; `ChunkPlan.partition` is the public entry."""
+    shared = _shared_input_axis(transform)
+    if shared is not None:
+        raise ValueError(
+            f"two output maps read input axis {shared} (a diagonal, which no selection "
+            "produces); it has no per-output-axis factored form"
+        )
+    if any(size == 0 for size in transform.domain.shape):
+        return GridPartition(
+            transform=transform, dimension_grids=grids, sets=(), joint_sets=(), row_shape=(0,)
+        )
+    correlated = transform.index_array_structure == "general"
+    sets: list[StridedSet | IndexedSet] = []
+    for out_dim, m in enumerate(transform.output):
+        if isinstance(m, ArrayMap):
+            if correlated:
+                continue
+            sets.append(_indexed_set(out_dim, m, grids[out_dim]))
+        else:
+            sets.append(_strided_set(transform, out_dim, m, grids[out_dim]))
+    joint_sets = _component_joint_sets(transform, grids) if correlated else ()
+    row_shape = tuple(len(axis) for axis in sets) + tuple(len(joint) for joint in joint_sets)
+    return GridPartition(
+        transform=transform,
+        dimension_grids=grids,
+        sets=tuple(sets),
+        joint_sets=joint_sets,
+        row_shape=row_shape,
+    )
