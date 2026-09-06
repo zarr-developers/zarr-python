@@ -8,7 +8,7 @@ supplied to `encode`, and the textual coordinate parts consumed by `decode`.
 
 import operator
 from collections.abc import Mapping, Sequence
-from typing import Final, cast
+from typing import Final, Literal, cast
 
 from zarr_metadata import JSONValue
 
@@ -18,15 +18,23 @@ from zarr_chunk_key_encoding._errors import (
     InvalidChunkCoordsError,
 )
 
-__all__ = [
-    "normalize_chunk_coords",
-    "parse_grid_index",
-    "parse_named_config_json",
-]
+Separator = Literal[".", "/"]
+"""Literal type of the permitted chunk key separators."""
+
+_SEPARATORS: Final = (".", "/")
 
 # Keys permitted in the top-level named-configuration envelope, per the v3
 # core spec.
 _ENVELOPE_KEYS: Final = frozenset({"name", "configuration", "must_understand"})
+
+
+def _parse_separator(data: object) -> Separator:
+    """Validate and narrow a chunk key separator."""
+    if data not in _SEPARATORS:
+        raise ChunkKeyConfigurationError(
+            f"Invalid chunk key separator: {data!r}. Expected one of {_SEPARATORS}."
+        )
+    return data
 
 
 def parse_named_config_json(

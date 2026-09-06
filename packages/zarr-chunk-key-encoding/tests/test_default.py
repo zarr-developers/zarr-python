@@ -32,7 +32,9 @@ def test_encode_decode(
     spec-defined key and `decode` inverts it."""
     encoding = DefaultChunkKeyEncoding(separator=separator)
     expected_key = separator.join(expected_parts)
-    assert encoding.encode(chunk_coords) == expected_key
+    key = encoding.encode(chunk_coords)
+    assert type(key) is str
+    assert key == expected_key
     expected_roundtrip = tuple(int(c) for c in chunk_coords)
     assert encoding.decode(expected_key) == expected_roundtrip
 

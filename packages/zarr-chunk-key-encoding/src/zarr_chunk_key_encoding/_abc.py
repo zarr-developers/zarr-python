@@ -28,35 +28,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-enc
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, NewType, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 from typing_extensions import TypeAliasType
 from zarr_metadata import JSONValue
 
 if TYPE_CHECKING:
     from zarr_chunk_key_encoding._bounded import BoundedChunkKeyEncoding
-
-__all__ = [
-    "ChunkKey",
-    "ChunkKeyEncoding",
-    "ChunkKeyEncodingJSON",
-]
-
-ChunkKey = NewType("ChunkKey", str)
-"""A store key produced by a chunk key encoding.
-
-The static analogue of the validated `StoreKey` newtype in the `zarrs`
-Rust implementation: a plain `str` at runtime, but a distinct type to
-type checkers, so that key-consuming code can require proof that a string
-came out of an encoding rather than accepting any string.
-
-`encode` is the blessed producer: its output is valid by construction.
-`decode` deliberately accepts plain `str`, since its job is judging
-untrusted input. Code that has validated a candidate string by other means
-(for example a successful membership test against a
-`BoundedChunkKeyEncoding`) may brand it
-directly with `ChunkKey(candidate)`.
-"""
 
 ChunkKeyEncodingJSON = TypeAliasType("ChunkKeyEncodingJSON", str | Mapping[str, JSONValue])
 """Unvalidated JSON input for constructing a chunk key encoding.
@@ -117,7 +95,7 @@ class ChunkKeyEncoding(ABC):
         """
 
     @abstractmethod
-    def encode(self, chunk_coords: Sequence[int]) -> ChunkKey:
+    def encode(self, chunk_coords: Sequence[int]) -> str:
         """Encode chunk grid indices into a store key.
 
         Parameters
@@ -128,7 +106,7 @@ class ChunkKeyEncoding(ABC):
 
         Returns
         -------
-        ChunkKey
+        str
             The store key for the chunk, relative to the array's prefix.
 
         Raises

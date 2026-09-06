@@ -21,18 +21,15 @@ from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2ChunkKeyEncodingObject,
 )
 
-from zarr_chunk_key_encoding._abc import ChunkKey, ChunkKeyEncoding, ChunkKeyEncodingJSON
+from zarr_chunk_key_encoding._abc import ChunkKeyEncoding, ChunkKeyEncodingJSON
 from zarr_chunk_key_encoding._errors import ChunkKeyDecodeError
 from zarr_chunk_key_encoding._parsing import (
+    Separator,
+    _parse_separator,
     normalize_chunk_coords,
     parse_grid_index,
     parse_named_config_json,
 )
-from zarr_chunk_key_encoding._separator import Separator, parse_separator
-
-__all__ = [
-    "V2ChunkKeyEncoding",
-]
 
 
 @dataclass(frozen=True)
@@ -65,7 +62,7 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
     separator: Separator = "."
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "separator", parse_separator(self.separator))
+        object.__setattr__(self, "separator", _parse_separator(self.separator))
 
     @classmethod
     def from_json(cls, data: ChunkKeyEncodingJSON) -> Self:
@@ -82,7 +79,7 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
             allowed_configuration_keys=("separator",),
         )
         if "separator" in configuration:
-            return cls(separator=parse_separator(configuration["separator"]))
+            return cls(separator=_parse_separator(configuration["separator"]))
         return cls()
 
     def to_json(self) -> V2ChunkKeyEncodingObject:
@@ -92,7 +89,7 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
             configuration=V2ChunkKeyEncodingConfiguration(separator=self.separator),
         )
 
-    def encode(self, chunk_coords: Sequence[int]) -> ChunkKey:
+    def encode(self, chunk_coords: Sequence[int]) -> str:
         """Encode chunk grid indices into a store key.
 
         Raises
@@ -102,8 +99,8 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
         """
         indices = normalize_chunk_coords(chunk_coords)
         if not indices:
-            return ChunkKey("0")
-        return ChunkKey(self.separator.join(map(str, indices)))
+            return "0"
+        return self.separator.join(map(str, indices))
 
     def decode(self, chunk_key: str) -> tuple[int, ...]:
         """Decode a store key into chunk grid indices.

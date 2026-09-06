@@ -6,6 +6,27 @@ import pathlib
 
 import zarr_chunk_key_encoding
 
+EXPECTED_PUBLIC_API = {
+    "BoundedChunkKeyEncoding",
+    "ChunkKeyConfigurationError",
+    "ChunkKeyDecodeError",
+    "ChunkKeyEncoding",
+    "ChunkKeyEncodingError",
+    "ChunkKeyEncodingJSON",
+    "DefaultChunkKeyEncoding",
+    "InvalidChunkCoordsError",
+    "Separator",
+    "UnknownChunkKeyEncodingError",
+    "V2ChunkKeyEncoding",
+    "__version__",
+    "chunk_key_encoding_from_json",
+}
+
+
+def test_public_api_is_minimal() -> None:
+    """The unreleased package exposes only the behavior its core consumers need."""
+    assert set(zarr_chunk_key_encoding.__all__) == EXPECTED_PUBLIC_API
+
 
 def test_every_module_is_private() -> None:
     """`__all__` in the top-level package is the entire public API.

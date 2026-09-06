@@ -6,14 +6,6 @@ consumers can catch a single type. The leaf classes also derive from
 `ValueError` for compatibility with code that catches standard exceptions.
 """
 
-__all__ = [
-    "ChunkKeyConfigurationError",
-    "ChunkKeyDecodeError",
-    "ChunkKeyEncodingError",
-    "InvalidChunkCoordsError",
-    "UnknownChunkKeyEncodingError",
-]
-
 
 class ChunkKeyEncodingError(Exception):
     """Base class for all errors raised by this package."""
