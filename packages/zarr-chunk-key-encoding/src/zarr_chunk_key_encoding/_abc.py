@@ -164,13 +164,11 @@ class ChunkKeyEncoding(ABC):
         raise NotImplementedError(f"{type(self).__name__} does not implement decode.")
 
     def to_bounded(self, grid_shape: Sequence[int]) -> "BoundedChunkKeyEncoding":
-        """Return this encoding bound to a chunk grid, restricting its domain.
+        """Prepare this encoding for repeated use with one chunk grid.
 
-        The result is a `BoundedChunkKeyEncoding`:
-        its `encode` and `decode` reject coordinates and keys outside the
-        grid, its `decode` is a total inverse of `encode` (resolving the
-        `v2` encoding's rank-zero ambiguity), and its valid key set is a
-        finite collection supporting `in`, iteration, and `len`.
+        The returned view normalizes and validates `grid_shape` once. Its
+        `encode` and `decode` methods reject coordinates and keys outside the
+        prepared grid.
 
         Parameters
         ----------
@@ -191,4 +189,4 @@ class ChunkKeyEncoding(ABC):
         """
         from zarr_chunk_key_encoding._bounded import BoundedChunkKeyEncoding
 
-        return BoundedChunkKeyEncoding.from_unbounded(self, grid_shape)
+        return BoundedChunkKeyEncoding(self, grid_shape)
