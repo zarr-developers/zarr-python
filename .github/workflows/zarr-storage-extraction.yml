@@ -1,0 +1,52 @@
+name: zarr-storage extraction
+
+on:
+  pull_request:
+    paths:
+      - 'packages/zarr-storage/**'
+      - 'src/zarr/abc/store.py'
+      - 'src/zarr/core/_coalesce.py'
+      - '.github/workflows/zarr-storage-extraction.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/zarr-storage/**'
+      - 'src/zarr/abc/store.py'
+      - 'src/zarr/core/_coalesce.py'
+      - '.github/workflows/zarr-storage-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python and Hatch
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv tool install hatch==1.18.0
+      - name: Test extracted interfaces against this checkout
+        env:
+          PYTHONPATH: packages/zarr-storage/src
+        run: >-
+          hatch run test.py${{ matrix.python-version }}-minimal:pytest
+          packages/zarr-storage/tests --import-mode=importlib
+      - name: Build storage distributions
+        working-directory: packages/zarr-storage
+        run: hatch build
+      - name: Test built wheels
+        env:
+          PYTHONPATH: packages/zarr-storage/dist/zarr_storage-0.1.0-py3-none-any.whl
+        run: >-
+          hatch run test.py${{ matrix.python-version }}-minimal:pytest
+          packages/zarr-storage/tests --import-mode=importlib

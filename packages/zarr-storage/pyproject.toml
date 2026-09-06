@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.29.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr-storage"
+version = "0.1.0"
+description = "Legacy Zarr storage interfaces, extracted for API evolution."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [{ name = "Davis Bennett", email = "davis.v.bennett@gmail.com" }]
+# Temporary: legacy interfaces still consume Zarr's shared foundations.
+# Remove this dependency before making zarr depend on this distribution.
+dependencies = ["zarr>=3.3,<3.4", "typing_extensions>=4.14"]
+
+[project.urls]
+Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-storage"
+Issues = "https://github.com/zarr-developers/zarr-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zarr_storage"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs", "/CHANGELOG.md"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+
+# Match the parent project's validation of the verbatim legacy docstrings.
+[tool.numpydoc_validation]
+checks = ["GL10", "SS04", "PR02", "PR03", "PR05", "PR06"]
