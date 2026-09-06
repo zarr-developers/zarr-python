@@ -34,6 +34,7 @@ nav:
   - Guide:
       - guide/index.md
       - Indexing patterns: guide/patterns.md
+      - From a selection to chunk operations: guide/selection-flow.md
       - Integration boundaries: guide/integrations.md
   - Examples:
       - Lazy indexing a NumPy array: examples/lazy_indexing_numpy.md

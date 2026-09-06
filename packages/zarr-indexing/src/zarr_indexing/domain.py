@@ -79,6 +79,23 @@ class IndexDomain:
             )
 
     @classmethod
+    def _unchecked(
+        cls, inclusive_min: tuple[int, ...], exclusive_max: tuple[int, ...]
+    ) -> IndexDomain:
+        """Build an unlabeled domain from bounds the caller has already established.
+
+        Skips `__post_init__`. For internal producers that derive bounds from an
+        already-valid domain — chunk resolution builds two domains per chunk,
+        and re-validating them was a measurable share of a plan's cost.
+        """
+        domain = object.__new__(cls)
+        object.__setattr__(domain, "inclusive_min", inclusive_min)
+        object.__setattr__(domain, "exclusive_max", exclusive_max)
+        object.__setattr__(domain, "labels", None)
+        object.__setattr__(domain, "_shape", None)
+        return domain
+
+    @classmethod
     def from_shape(cls, shape: tuple[int, ...]) -> IndexDomain:
         """Create a domain with origin at zero."""
         return cls(

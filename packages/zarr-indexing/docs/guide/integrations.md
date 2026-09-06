@@ -1,5 +1,8 @@
 # Integration boundaries
 
+For the complete path from indexing syntax to chunk coordinates, local selectors,
+and result positions, start with [From a selection to chunk operations](selection-flow.md).
+
 This package supplies indexing plans. It does **not** supply scheduling,
 caching, codecs, or async orchestration. A consumer decides when projections
 run, how decoded chunks are obtained, and where completed values are retained.
@@ -26,6 +29,35 @@ The two reads are exactly `(0, 0)` and `(0, 1)`; untouched chunks `(1, 0)` and
 example intentionally begins with already decoded in-memory chunks: storage
 keys, codecs, scheduling, caching, and asynchronous orchestration remain the
 consumer's policy rather than responsibilities of the plan.
+
+## Reading the tables directly {#reading-the-tables-directly}
+
+A consumer that fetches many chunks per request — a codec pipeline, a
+prefetcher — does not need a `ChunkProjection` object per chunk. The plan's
+[factored form](index.md#a-plan-is-a-product-of-per-axis-tables) is a few
+NumPy arrays per axis, and everything a chunk copy needs is a row of each:
+the chunk index, the chunk-local start and extent, and where the cells land
+in the request. `chunk_coords()` alone answers "which chunks?" for a prefetch, without
+materializing anything.
+
+The example assembles a strided box from its `StridedSet` tables, one slice
+per chunk. Three things a real consumer also has to get right are checked at
+the end: a descending stride needs the same care with a negative stop that any
+NumPy slice does, a chunk slab comes out in storage-axis order while the
+result is in request-axis order, and a request axis no map reads (`None` in
+the selection) is a length-one axis of the result.
+
+```python
+--8<-- "snippets/grid_partition.py:table-consumer"
+```
+
+The four reads are the four chunks the two axis tables multiply out to, and no
+intermediate transform, domain, or projection was built. A gather reads its
+`IndexedSet` rows the same way — `index[pointer[i]:pointer[i + 1]]` and the
+matching `positions` — and a general selection its `joint_sets` rows, whose
+`local` coordinates already have the chunk origin subtracted. Both tables
+compute `local` once on first access and return the same read-only array
+afterward, so accessing a row does not recalculate every point.
 
 ## One slab read or many part reads
 

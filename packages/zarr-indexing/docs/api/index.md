@@ -11,9 +11,9 @@ links:
   [Lazy views compose](../guide/index.md#lazy-views-compose),
   then open [`zarr_indexing.lazy_array`](lazy_array.md) for `LazyArray`.
 - **Integrate a chunked source:** finish
-  [One cell domain, two projections](../guide/index.md#one-cell-domain-two-projections),
+  [A plan is a product of per-axis tables](../guide/index.md#a-plan-is-a-product-of-per-axis-tables),
   then open [`zarr_indexing.chunk_resolution`](chunk_resolution.md) for
-  `plan_chunks`. Start with
+  `plan_chunks` and `GridPartition`. Start with
   [Coordinates are addresses](../guide/index.md#coordinates-are-addresses) if
   literal coordinates are unfamiliar.
 
@@ -36,7 +36,10 @@ and the wire format built on top of it.
 
 - [`zarr_indexing.chunk_resolution`](chunk_resolution.md) —
   `plan_chunks`, which lazily projects a request through a caller-selected grid,
-  plus the reusable `ChunkPlan` and paired-transform `ChunkProjection` values
+  the reusable `ChunkPlan` and paired-transform `ChunkProjection` values, and
+  the plan's factored form: `GridPartition` (from `ChunkPlan.partition`),
+  holding one `StridedSet` or `IndexedSet` table per axis and `joint_sets`
+  for connected index-array components
 - [`zarr_indexing.grid`](grid.md) — `DimensionGridLike`, the Protocol
   describing the narrow chunk-grid surface chunk resolution consumes, so that
   nothing here imports `zarr`, plus `EdgeDimensionGrid` and

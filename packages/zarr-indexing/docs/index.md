@@ -38,7 +38,9 @@ the chain stays one description, and where the materialization boundary is.
   chunk plan. Using lazy indexing, start at
   [An index selects coordinates](guide/index.md#an-index-selects-coordinates);
   integrating a chunked backend, start at
-  [A request becomes a chunk plan](guide/index.md#a-request-becomes-a-chunk-plan).
+  [A request becomes a chunk plan](guide/index.md#a-request-becomes-a-chunk-plan)
+  and finish with the per-axis tables a plan is
+  [built from](guide/index.md#a-plan-is-a-product-of-per-axis-tables).
 - [Indexing pattern reference](guide/patterns.md) — every selection form with
   its NumPy-verified result.
 - [Integration boundaries](guide/integrations.md) — what a reader, writer, or

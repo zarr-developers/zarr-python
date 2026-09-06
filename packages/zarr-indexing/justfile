@@ -5,12 +5,10 @@
 default:
     @just --list
 
-# The chunk-resolution tests exercise this package against zarr's ChunkGrid, so
-# they need an environment that has both `zarr` and this package installed.
-# `zarr` is deliberately not a dependency of this package, and the repo is not
-# a uv workspace, so run against the repo-root environment (which provides
-# `zarr`) with this package layered in as an editable overlay — the same
-# invocation CI uses.
+# Nothing here imports `zarr`; the suite runs against the repo-root
+# environment so it shares the parent project's pinned test toolchain
+# (hypothesis, ruff, pyright). The repo is not a uv workspace, so this package
+# is layered in as an editable overlay — the same invocation CI uses.
 # Run the test suite; extra args are passed to pytest
 test *args:
     uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}
