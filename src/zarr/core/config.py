@@ -35,12 +35,13 @@ register the implementation in the registry first, then set the path via `config
 from __future__ import annotations
 
 import difflib
+import os
 import threading
 import warnings
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from types import MappingProxyType
-from typing import Any, Literal, Self, cast, overload
+from typing import Any, Literal, Self, TypedDict, cast, get_type_hints, overload
 
 from donfig.config_obj import canonical_name
 
@@ -377,66 +378,125 @@ def to_nested_dict(cfg: ZarrConfig) -> dict[str, Any]:
     return convert(cfg)  # type: ignore[no-any-return]
 
 
-def _flatten_mapping(data: Mapping[str, object], prefix: str = "") -> dict[str, object]:
-    out: dict[str, object] = {}
-    for k, v in data.items():
-        key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
-        if isinstance(v, Mapping):
-            out.update(_flatten_mapping(v, key))
-        else:
-            out[key] = v
-    return out
+def _config_value_type(cfg: ZarrConfig, key: str) -> Any:
+    """Resolve a schema type, including names in the open codecs mapping."""
+    node: object = cfg
+    segments = key.split(".")
+    for index, segment in enumerate(segments):
+        if isinstance(node, Mapping):
+            if not ".".join(segments[index:]):
+                raise KeyError(key)
+            return str
+        if not is_dataclass(node):
+            raise KeyError(key)
+        field_name = _resolve_field(node, segment)
+        hints = get_type_hints(type(node))
+        if field_name not in hints:
+            raise KeyError(key)
+        value_type = hints[field_name]
+        node = getattr(node, field_name)
+    return value_type
 
 
 def apply_overrides(cfg: ZarrConfig, overrides: Mapping[str, object]) -> ZarrConfig:
-    """Apply a flat dotted-key override map to a snapshot.
-
-    Used exclusively by `build_config` for env/YAML ingest.  Unknown keys are
-    skipped with a warning rather than raising, so a stray environment variable
-    or extra YAML key never prevents `import zarr` from succeeding.
-    """
+    """Validate and apply collected leaf values; unknown keys are errors here."""
     for key, value in overrides.items():
+        value_type = _config_value_type(cfg, key)
+        cfg = replace_path(cfg, key, parse_field(value, value_type, key))
+    return cfg
+
+
+# These names belong to other Zarr consumers, not the runtime config schema.
+# Donfig reads discovery controls directly from os.environ; benchmarks read
+# their cache-control flag there as well. Collection never mutates os.environ.
+_ENVIRONMENT_CONTROLS = frozenset({"ZARR_CONFIG", "ZARR_ROOT_CONFIG", "ZARR_BENCHMARK_CLEAR_CACHE"})
+
+
+class CollectedEnvironment(TypedDict):
+    config: dict[str, str]
+    controls: dict[str, str]
+
+
+def collect_environment(environment: Mapping[str, str]) -> CollectedEnvironment:
+    """Classify recognized ZARR_ names and warn about unknown environment names.
+
+    Config names are derived from the schema, with an open ``codecs.*``
+    namespace. Control values remain raw and are left to their owning consumer.
+    Parsing and value validation happen after this stage.
+    """
+    result: CollectedEnvironment = {"config": {}, "controls": {}}
+    schema = make_default_config()
+    for name, value in environment.items():
+        if not name.startswith("ZARR_"):
+            continue
+        if name in _ENVIRONMENT_CONTROLS:
+            result["controls"][name] = value
+            continue
+        key = name[len("ZARR_") :].lower().replace("__", ".")
         try:
-            cfg = replace_path(cfg, key, value)
+            _config_value_type(schema, key)
+        except KeyError:
+            warnings.warn(
+                f"Unrecognized zarr environment variable {name!r} (config key {key!r}) — ignoring.",
+                ZarrUserWarning,
+                stacklevel=2,
+            )
+        else:
+            result["config"][name] = value
+    return result
+
+
+def collect_config() -> dict[str, object]:
+    """Collect known config keys through donfig, preserving parsing and precedence.
+
+    Environment controls are recognized separately and never become config
+    values. Unknown keys in external input are warned about and skipped here;
+    recognized values are left for ``create_config`` to validate.
+    """
+    import donfig
+
+    defaults = make_default_config()
+    environment = collect_environment(os.environ)
+    # Donfig merges external sources; construction supplies typed defaults.
+    # Keeping defaults out also lets invalid leaf values reach our validator
+    # instead of failing inside donfig's recursive merge against a scalar.
+    reader = donfig.Config("zarr", env=environment["config"])
+    return _collect_config_values(defaults, reader.config)
+
+
+def _collect_config_values(
+    schema: ZarrConfig, data: Mapping[str, object], prefix: str = ""
+) -> dict[str, object]:
+    """Flatten recognized namespaces, preserving malformed leaves for validation."""
+    collected: dict[str, object] = {}
+    for name, value in data.items():
+        key = f"{prefix}.{name}" if prefix else name
+        try:
+            value_type = _config_value_type(schema, key)
         except KeyError:
             warnings.warn(
                 f"Unrecognized zarr config key {key!r} from environment or YAML — ignoring.",
                 ZarrUserWarning,
                 stacklevel=2,
             )
-    return cfg
+        else:
+            if isinstance(value, Mapping) and (
+                is_dataclass(value_type) or key == "codecs" or key.startswith("codecs.")
+            ):
+                collected.update(_collect_config_values(schema, value, key))
+            else:
+                collected[key] = value
+    return collected
 
 
-# donfig's env collection also surfaces the `ZARR_CONFIG` / `ZARR_ROOT_CONFIG`
-# path directives as if they were config values (keys `config` / `root_config`);
-# drop them so they don't trip `apply_overrides`'s unknown-key warning.
-_DONFIG_META_KEYS: frozenset[str] = frozenset({"config", "root_config"})
+def create_config(overrides: Mapping[str, object]) -> ZarrConfig:
+    """Create a typed config from collected values, without reading external state."""
+    return apply_overrides(make_default_config(), overrides)
 
 
 def build_config() -> ZarrConfig:
-    """Build the base snapshot: typed defaults overlaid with donfig's ingest.
-
-    `donfig` reads `ZARR_*` environment variables and YAML config files from its
-    standard locations
-    (https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files) and
-    merges them into a nested override mapping. That mapping is flattened to
-    dotted keys and applied on top of the typed defaults. `donfig` owns discovery,
-    parsing, and precedence; this module owns the typed representation. Unknown
-    keys are warned about and skipped by `apply_overrides`, so a stray variable or
-    a version-skewed config file never blocks `import zarr`.
-    """
-    import donfig
-
-    defaults = make_default_config()
-    # Supplying defaults lets donfig resolve '-'/'_' aliases while merging
-    # YAML and environment values, before their original spelling is lost.
-    overrides = _flatten_mapping(donfig.Config("zarr", defaults=[to_nested_dict(defaults)]).config)
-    overrides = {
-        key: value
-        for key, value in overrides.items()
-        if key.split(".", 1)[0] not in _DONFIG_META_KEYS
-    }
-    return apply_overrides(defaults, overrides)
+    """Collect external configuration, then validate and construct the snapshot."""
+    return create_config(collect_config())
 
 
 _MISSING = object()
@@ -611,8 +671,8 @@ class ZarrConfigManager:
     #
     # NOTE: `set` accepts `Mapping[str, Any]`, so — unlike `get`, which is fully
     # typed via per-key overloads — it does NOT statically validate values:
-    # `config.set({"array.order": "Q"})` is not a type error; it is caught at
-    # runtime instead. This is a deliberate, documented limitation.
+    # `config.set({"array.order": "Q"})` is not a type error; invalid values
+    # surface at use sites. External values are validated by `create_config`.
     #
     # Static value typing would require an *open* TypedDict — declared structured
     # keys validated by type, PLUS arbitrary `codecs.<name>` string keys allowed
@@ -643,8 +703,8 @@ class ZarrConfigManager:
         does **not** validate *values*: `config.set({"array.order": "Q"})` is
         accepted, and the invalid value surfaces later at its use site rather
         than here. Static value typing is prevented by the open `codecs.*`
-        namespace (see the implementation comment above); runtime value
-        validation is planned via the unified `parse_json` checker (gh-3285).
+        namespace (see the implementation comment above). Values loaded from
+        environment variables and YAML are validated by `create_config`.
         """
         all_updates: dict[str, object] = {}
         if updates:

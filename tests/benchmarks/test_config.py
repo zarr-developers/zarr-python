@@ -1,4 +1,4 @@
-"""Keep benchmark control flags compatible with strict configuration warnings."""
+"""Benchmark controls are recognized during collection; typos still warn."""
 
 import pytest
 

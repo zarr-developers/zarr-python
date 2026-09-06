@@ -17,7 +17,12 @@ import yaml
 from hypothesis import given
 from hypothesis import strategies as st
 
-from zarr.core.config import _SERIALIZED_NAMES, ZarrConfigManager, make_default_config
+from zarr.core.config import (
+    _SERIALIZED_NAMES,
+    ZarrConfigManager,
+    collect_environment,
+    make_default_config,
+)
 
 
 def _config_values(annotation: Any) -> st.SearchStrategy[object]:
@@ -70,6 +75,20 @@ def _alternate_key(key: str) -> str:
     return ".".join(
         part.replace("_", "-") if "_" in part else part.replace("-", "_") for part in key.split(".")
     )
+
+
+@given(case=_config_cases(dotted_api=True))
+def test_collect_environment_recognizes_schema_keys(
+    case: tuple[tuple[str, ...], object, object],
+) -> None:
+    path, value, _ = case
+    name = "ZARR_" + "__".join(path).replace("-", "_").upper()
+    config_environment = {name: repr(value)}
+    controls = {"ZARR_BENCHMARK_CLEAR_CACHE": "1"}
+    assert collect_environment(config_environment | controls) == {
+        "config": config_environment,
+        "controls": controls,
+    }
 
 
 @given(case=_config_cases(dotted_api=True), alternate=st.booleans())

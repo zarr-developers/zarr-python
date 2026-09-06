@@ -547,12 +547,11 @@ def test_build_config_unknown_env_key_warns_and_skips(monkeypatch: pytest.Monkey
             assert getattr(cfg, f.name) == getattr(default, f.name)
 
 
-def test_apply_overrides_unknown_key_warns_and_returns_default() -> None:
-    """apply_overrides with a totally unknown key warns and returns an otherwise-default config."""
+def test_apply_overrides_unknown_key_raises() -> None:
+    """Unknown keys must be filtered at collection, not silently dropped at construction."""
     default = make_default_config()
-    with pytest.warns(UserWarning, match="totally.bogus.key"):
-        result = apply_overrides(default, {"totally.bogus.key": 123})
-    assert result == default
+    with pytest.raises(KeyError, match="totally.bogus.key"):
+        apply_overrides(default, {"totally.bogus.key": 123})
 
 
 # ---------------------------------------------------------------------------

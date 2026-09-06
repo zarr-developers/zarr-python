@@ -31,13 +31,26 @@ Alternatively, configuration values can be set using environment variables.
 The variable name uses a `ZARR_` prefix, with `__` to denote nesting, e.g.
 `ZARR_ARRAY__ORDER=F`.
 
+External configuration is processed in two stages. Collection recognizes names
+from the configuration schema and a separate set of environment controls:
+`ZARR_CONFIG` and `ZARR_ROOT_CONFIG` control file discovery, and
+`ZARR_BENCHMARK_CLEAR_CACHE` controls benchmark cache clearing. These controls
+are left to their consumers and never become configuration fields. Unrecognized
+`ZARR_*` names produce a warning and are ignored. The `codecs` namespace is open,
+so environment variables can also select implementations for custom codec names.
+
+Config creation then validates the collected values against the schema and
+applies them to the defaults. Invalid values raise an error identifying the
+field, for example `ZARR_ARRAY__ORDER=Q`. Programmatic `config.set()` validates
+keys but continues to defer value validation to the setting's use site.
+
 The configuration can also be read from YAML files. Environment variables and
 YAML files are read by [`donfig`](https://donfig.readthedocs.io/), so zarr uses
 donfig's [standard search
 locations](https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files),
 in increasing order of precedence:
 
-- `/etc/zarr/` (override the `/etc` prefix with the `ZARR_ROOT_CONFIG`
+- `/etc/zarr/` (override this directory with the `ZARR_ROOT_CONFIG`
   environment variable),
 - `<sys.prefix>/etc/zarr/` and each entry in Python's `site.PREFIXES` (e.g.
   inside a virtual environment),
@@ -46,8 +59,10 @@ in increasing order of precedence:
   single file or a directory and takes precedence over all of the above.
 
 Place a `zarr.yaml` in any of these directories, or point `ZARR_CONFIG` at a
-specific file. Values read from these files are validated against zarr's typed
-configuration schema; unrecognized keys are ignored with a warning.
+specific file. YAML files contain configuration fields only: environment
+controls such as `benchmark_clear_cache` are not valid YAML config keys.
+Unrecognized keys are ignored with a warning during collection; recognized
+values are checked when the typed configuration is created.
 
 Configuration options include the following:
 

@@ -9,14 +9,6 @@ import pytest
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    # CI's cache-control flag is consumed by the benchmark runner, but shares
-    # the library's ZARR_ prefix. Config resets legitimately warn about it;
-    # allow that specific warning without hiding unknown configuration keys.
-    config.addinivalue_line(
-        "filterwarnings",
-        "ignore:^Unrecognized zarr config key 'benchmark_clear_cache' "
-        "from environment or YAML — ignoring\\.$:zarr.errors.ZarrUserWarning",
-    )
     config.addinivalue_line(
         "filterwarnings",
         "ignore:Failed to set executed benchmark:RuntimeWarning",
