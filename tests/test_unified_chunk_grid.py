@@ -2590,6 +2590,93 @@ def test_array_read_chunk_sizes_rectilinear() -> None:
     assert arr.write_chunk_sizes == ((10, 20, 30), (50, 50))
 
 
+def test_nested_sequence_request_stays_rectilinear_when_edges_uniform() -> None:
+    """
+    A nested-sequence chunk spec whose edges happen to be uniform-plus-a-short-tail
+    must be stored as a rectilinear grid — the form of the request decides the grid
+    kind, not the edge values.
+
+    https://github.com/zarr-developers/zarr-python/issues/4272: since 3.3.0 such a
+    spec was silently collapsed to a regular grid. The two grids behave identically
+    at creation time but diverge under ``resize``: a regular grid extends the uniform
+    pattern while a rectilinear grid appends an edge, so an append-only workload
+    gets a different (rewriting) chunk layout from the one it asked for.
+    """
+    import hashlib
+
+    def touched(store: dict[str, Any], arr: Any, start: int, stop: int, val: int) -> list[str]:
+        def snap() -> dict[str, str]:
+            return {
+                k: hashlib.md5(bytes(v.to_bytes())).hexdigest()
+                for k, v in store.items()
+                if k.startswith("c/")
+            }
+
+        before = snap()
+        arr[start:stop] = val
+        after = snap()
+        return sorted(k for k in after if after[k] != before.get(k))
+
+    store_dict: dict[str, Any] = {}
+    arr = zarr.create_array(
+        store=store_dict, shape=(24,), chunks=[[10, 10, 4]], dtype="i4", zarr_format=3
+    )
+
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGridMetadata), (
+        f"requested rectilinear [[10, 10, 4]] but got {type(arr.metadata.chunk_grid).__name__}"
+    )
+
+    # Writing inside existing chunks is unaffected either way.
+    assert touched(store_dict, arr, 20, 24, 2) == ["c/2"]
+
+    # The divergence: resize of a *regular* grid extends the uniform pattern and
+    # the appended region straddles c/2 + c/3; for the requested rectilinear grid
+    # the appended window lands in exactly one new chunk.
+    arr.resize((34,))
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGridMetadata)
+    assert arr.metadata.chunk_grid.chunk_shapes == ((10, 10, 4, 10),)
+    assert touched(store_dict, arr, 24, 34, 3) == ["c/3"]
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected_type"),
+    [
+        (True, RectilinearChunkGridMetadata),
+        (False, RegularChunkGridMetadata),
+        # None infers from the values: [[10, 10, 4]] has a short trailing chunk,
+        # which is_regular_1d counts as regular (uniform-plus-boundary).
+        (None, RegularChunkGridMetadata),
+    ],
+)
+def test_create_chunk_grid_metadata_requested_kind(
+    requested: bool | None, expected_type: type
+) -> None:
+    """create_chunk_grid_metadata honors an explicit request; None infers from values."""
+    from zarr.core.chunk_grids import normalize_chunks_nd
+    from zarr.core.metadata.v3 import create_chunk_grid_metadata
+
+    chunks = normalize_chunks_nd([[10, 10, 4]], (24,))
+    grid = create_chunk_grid_metadata(chunks, requested_rectilinear=requested)
+    assert isinstance(grid, expected_type)
+
+    # Explicit True keeps genuinely varied edges rectilinear too.
+    varied = normalize_chunks_nd([[10, 20]], (30,))
+    assert isinstance(
+        create_chunk_grid_metadata(varied, requested_rectilinear=True),
+        RectilinearChunkGridMetadata,
+    )
+
+
+def test_flat_and_auto_specs_still_infer_grid_kind_from_values() -> None:
+    """Flat / auto chunk specs keep inferring the grid kind from edge values."""
+    store = zarr.storage.MemoryStore()
+
+    # Flat spec with a short trailing chunk: inferred as regular (unchanged behavior).
+    arr = zarr.create_array(store=store, shape=(24,), chunks=(10,), dtype="i4", zarr_format=3)
+    assert isinstance(arr.metadata.chunk_grid, RegularChunkGridMetadata)
+    assert arr.metadata.chunk_grid.chunk_shape == (10,)
+
+
 def test_array_sharded_chunk_sizes() -> None:
     """Sharded array read_chunk_sizes reflects inner chunks and write_chunk_sizes reflects shards"""
     store = zarr.storage.MemoryStore()

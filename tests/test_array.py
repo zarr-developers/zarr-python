@@ -7,6 +7,7 @@ import pickle
 import re
 import sys
 from itertools import accumulate, starmap
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -72,6 +73,7 @@ from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_num
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.errors import (
     ContainsArrayError,
@@ -1887,6 +1889,35 @@ def test_from_array_arraylike_gains_no_attributes() -> None:
     result = zarr.from_array({}, data=np.arange(4, dtype="int32"))
     assert dict(result.attrs) == {}
     assert result.fill_value == 0
+
+
+@pytest.mark.parametrize("store_type", ["memory", "local"])
+def test_from_array_keeps_uniform_rectilinear_grid(
+    store_type: Literal["memory", "local"], tmp_path: Path
+) -> None:
+    """``chunks='keep'`` uses the stored v3 grid kind, not its runtime shape."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        if store_type == "memory":
+            source_store: MemoryStore | LocalStore = MemoryStore()
+            destination_store: MemoryStore | LocalStore = MemoryStore()
+        else:
+            source_store = LocalStore(tmp_path / "source.zarr")
+            destination_store = LocalStore(tmp_path / "destination.zarr")
+
+        source = zarr.create_array(
+            store=source_store,
+            shape=(24,),
+            chunks=[[10, 10, 4]],
+            dtype="i4",
+            zarr_format=3,
+        )
+        source[:] = np.arange(24, dtype="i4")
+
+        result = zarr.from_array(store=destination_store, data=source)
+
+    assert isinstance(result.metadata.chunk_grid, RectilinearChunkGridMetadata)
+    assert result.write_chunk_sizes == ((10, 10, 4),)
+    np.testing.assert_array_equal(result[:], source[:])
 
 
 def test_from_array_F_order() -> None:

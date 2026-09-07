@@ -381,6 +381,8 @@ ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 def create_chunk_grid_metadata(
     chunks: ChunksTuple,
+    *,
+    requested_rectilinear: bool | None = None,
 ) -> ChunkGridMetadata:
     """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
 
@@ -392,11 +394,32 @@ def create_chunk_grid_metadata(
     chunks : ChunksTuple
         Normalized chunk specification, as returned by
         `normalize_chunks_nd` or `guess_chunks`.
+    requested_rectilinear : bool, keyword-only, optional
+        Whether the user *requested* a rectilinear grid (a nested-sequence
+        chunk spec). When True, a rectilinear grid is produced even if the
+        requested edges happen to describe a regular layout — the stored grid
+        then matches the request instead of silently collapsing to regular,
+        so e.g. `resize` extends the requested per-chunk structure rather
+        than an inferred uniform pattern (see issue #4272). When False, a
+        regular grid is produced. When None (the default), the kind is
+        inferred from the edge values, preserving the behavior for callers
+        that only have a normalized `ChunksTuple` (e.g. auto-chunking).
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
+    if requested_rectilinear is not None:
+        # Honor the form of the request: a nested-sequence chunk spec always
+        # yields a rectilinear grid, matching zarr-python 3.2.x semantics,
+        # even when its edges happen to be uniform (issue #4272).
+        if requested_rectilinear:
+            return RectilinearChunkGridMetadata(
+                chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
+            )
+        return RegularChunkGridMetadata(
+            chunk_shape=tuple(int(dim_chunks[0]) for dim_chunks in chunks)
+        )
     if is_regular_nd(chunks):
         # If we know the chunks specification is regular, then we can take the first
         # chunk size for each dimension as the chunk shape.
