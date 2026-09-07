@@ -2,6 +2,10 @@
 # this directory as the working directory regardless of where `just` is
 # invoked.
 
+# Keep this aligned with the repo-root pre-commit environment. The docs group
+# pins its own Ruff version because mkdocstrings uses it for rendered signatures.
+ruff_version := "0.16.0"
+
 # List available recipes
 default:
     @just --list
@@ -20,10 +24,11 @@ default:
 # why it stopped overlaying zarr-metadata at all.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --group test --with-editable ../zarr-metadata python -m pytest tests {{ args }}
+    uv run --group test --with-editable ../zarr-metadata python -m pytest {{ args }}
 
-# Run the zarr parity tests against the repo-root environment, which
-# provides `zarr` (deliberately not a dependency of this package).
+# Run the zarr parity tests on Python 3.12 against the repo-root environment,
+# which provides `zarr` (deliberately not a dependency of this package). The
+# root project requires Python >=3.12 even though this package supports 3.11.
 #
 # Unlike `test`, this does not overlay the sibling zarr-metadata: resolving
 # this package's `zarr-metadata>=0.4.0` floor against an editable sibling
@@ -35,23 +40,23 @@ test *args:
 # released zarr-metadata it actually declares. Lockstep development of the two
 # packages is what `test` is for.
 test-parity *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests/test_zarr_parity.py {{ args }}
+    UV_PYTHON=3.12 ZARR_PARITY_REQUIRED=1 uv run --project ../.. --group test --with-editable . python -m pytest tests/test_zarr_parity.py {{ args }}
 
 # Lint with the same invocation CI uses
 lint:
-    uvx ruff check .
+    uvx ruff@{{ ruff_version }} check .
 
 # CI runs pyright on python 3.11, the oldest supported interpreter.
 # Type-check the package sources
 typecheck:
-    uv run --python 3.11 --group test --with pyright --with-editable ../zarr-metadata pyright src
+    uv run --python 3.11 --group test --with-editable ../zarr-metadata pyright src
 
 # Run everything CI runs for this package
-check: lint typecheck test docs-check
+check: lint typecheck test test-parity docs-check
 
 # Preview the changelog that the next release would generate
 changelog-draft:
-    uvx towncrier build --draft --version Unreleased
+    uv run --group release towncrier build --draft --version Unreleased
 
 # Build this package's documentation site, warnings as errors
 docs-check:
