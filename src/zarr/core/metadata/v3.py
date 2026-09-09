@@ -12,7 +12,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.chunk_grids import is_regular_nd
+from zarr.core.chunk_grids import FixedDimension, VaryingDimension
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -42,8 +42,9 @@ from zarr.registry import get_codec_class
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.codecs.sharding import ShardingCodec
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunksTuple
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
@@ -380,32 +381,36 @@ ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
 def create_chunk_grid_metadata(
-    chunks: ChunksTuple,
+    chunks: ChunkGrid,
 ) -> ChunkGridMetadata:
-    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
+    """Construct a chunk grid metadata object from a normalized `ChunkGrid`.
 
-    Regular chunks produce a `RegularChunkGridMetadata`.
-    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+    Regular grids produce a `RegularChunkGridMetadata`.
+    Rectilinear grids produce a `RectilinearChunkGridMetadata`.
 
     Parameters
     ----------
-    chunks : ChunksTuple
-        Normalized chunk specification, as returned by
+    chunks : ChunkGrid
+        Normalized chunk grid, as returned by
         `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    if is_regular_nd(chunks):
-        # If we know the chunks specification is regular, then we can take the first
-        # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
-        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
-    else:
-        return RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
-        )
+    if chunks.is_regular:
+        return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
+    # Uniform dimensions stay bare ints — the rectilinear grid spec treats
+    # a bare int as a step size repeating to cover the axis.
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for dim in chunks.dimensions:
+        if isinstance(dim, FixedDimension):
+            chunk_shapes.append(dim.size)
+        elif isinstance(dim, VaryingDimension):
+            chunk_shapes.append(dim.edges)
+        else:
+            raise TypeError(f"Unknown dimension grid type: {type(dim)}")
+    return RectilinearChunkGridMetadata(chunk_shapes=tuple(chunk_shapes))
 
 
 def parse_chunk_grid(
@@ -573,25 +578,31 @@ class ArrayV3Metadata(Metadata):
     # They require knowledge of codecs (ShardingCodec) and don't belong on a metadata DTO.
 
     @property
+    def sharding_codec(self) -> ShardingCodec | None:
+        """The array's sharding codec, or None if the array is not sharded."""
+        from zarr.codecs.sharding import ShardingCodec
+
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0]
+        return None
+
+    @property
     def chunks(self) -> tuple[int, ...]:
+        if (sharding_codec := self.sharding_codec) is not None:
+            # Inner chunks are always regular, whatever the shape of the outer
+            # (shard) grid.
+            return sharding_codec.chunk_shape
         if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
                 "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
             )
             raise NotImplementedError(msg)
-
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].chunk_shape
         return self.chunk_grid.chunk_shape
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+        if self.sharding_codec is not None:
             if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
                 msg = (
                     "The `shards` attribute is only defined for arrays using regular chunk grids. "
@@ -603,10 +614,8 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].codecs
+        if (sharding_codec := self.sharding_codec) is not None:
+            return sharding_codec.codecs
         return self.codecs
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:

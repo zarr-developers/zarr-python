@@ -674,8 +674,12 @@ z_regular = zarr.create_array(
 print(z_regular.write_chunk_sizes)
 ```
 
-Note that the `.chunks` property is only available for regular chunk grids. For
-rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
+Note that the `.chunks` property is not available for non-sharded rectilinear
+arrays, since there is no single uniform chunk shape — use `.write_chunk_sizes`
+(or `.read_chunk_sizes`) instead. Sharded arrays always have `.chunks`: it
+returns the inner chunk shape, which is always regular — the sharding codec
+requires a single uniform inner chunk shape, so only the shard boundaries can
+be rectilinear (see [Rectilinear shard boundaries](#rectilinear-shard-boundaries)).
 
 ### Resizing and appending
 
@@ -745,6 +749,17 @@ print(z[50:70, 40:60])
 
 Note that rectilinear inner chunks with sharding are not supported — only the
 shard boundaries can be rectilinear.
+
+For such arrays, `.chunks` returns the (regular) inner chunk shape, while
+`.shards` raises `NotImplementedError` since there is no single uniform shard
+shape — use `.write_chunk_sizes` for the per-dimension shard sizes. `.info`
+reports the shard shape as `<variable>`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+print(f"chunks={z.chunks}")
+print(f"shard sizes={z.write_chunk_sizes}")
+print(z.info)
+```
 
 ### Metadata format
 

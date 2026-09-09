@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import zarr
-from tests.conftest import Expect
+from tests.conftest import Expect, gzip_streams_equal_except_mtime
 from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -20,7 +20,7 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import Store, _store_supports_sync_io
 from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.gzip import GzipCodec, _gzip_streams_equal_except_mtime
+from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -785,7 +785,7 @@ _ASYNC_SYNC_PARITY_CASES: list[Expect[tuple[Any, ...], Callable[[bytes, bytes], 
     ),
     Expect(
         input=(BytesCodec(), GzipCodec(level=1)),
-        output=_gzip_streams_equal_except_mtime,
+        output=gzip_streams_equal_except_mtime,
         id="bb",
     ),
     Expect(
