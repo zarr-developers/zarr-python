@@ -91,9 +91,12 @@ class ArrayV2Metadata(Metadata):
         chunks_parsed = parse_shapelike(chunks)
         # Same invariant as the Zarr format 3 chunk grid metadata: every chunk edge
         # length is at least 1. zarr-python 2.x wrote `chunks: [0]` for a zero-length
-        # axis created with `chunks=False` or `chunks=(0,)`. Such an axis holds no
-        # chunks, so those documents are readable; the edge is normalized to 1 so a
-        # later resize does not divide by zero. On an axis that has data, 0 is invalid.
+        # axis created with `chunks=False`, `-1` or `(0,)`, and then could not read,
+        # write, append to or resize the array (every operation divided by zero);
+        # 3.0-3.3 opened such documents but lost data on append. The axis holds no
+        # chunks, so the edge is normalized to 1 — the grid every other "one chunk
+        # spans the axis" spelling produces — which makes the array usable at last.
+        # On an axis that has data, 0 is invalid and any data was never stored.
         normalized_chunks: list[int] = []
         for dim_idx, (extent, chunk) in enumerate(zip(shape_parsed, chunks_parsed, strict=False)):
             if chunk < 1:
