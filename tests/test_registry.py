@@ -408,8 +408,8 @@ def test_parse_codecs_converts_keyerror_from_from_dict(
 async def test_open_with_argless_keyerror_codec_raises_value_error(keyerror_codec: str) -> None:
     """`zarr.open` on an array whose codec raises a bare KeyError reports the codec, not IndexError.
 
-    Formatting the argless KeyError used to raise ``IndexError: tuple index out of range``,
-    which is not a ValueError and so escaped the array-then-group fallback in ``zarr.open``.
+    An argless KeyError must propagate as a MetadataValidationError naming the codec.
+    Opening still fails because the codec configuration could not be parsed.
     """
     from zarr.errors import MetadataValidationError
 
