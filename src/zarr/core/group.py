@@ -1261,19 +1261,23 @@ class AsyncGroup:
 
             # Existing arrays need a native dtype comparison, not storage-type
             # inference: object is valid here even though it is ambiguous for creation.
-            dtype = "float64" if dtype is None else dtype
+            dtype_spec = "float64" if dtype is None else dtype
             try:
-                dtype = np.dtype(cast("npt.DTypeLike", dtype))
+                requested_dtype = np.dtype(cast("npt.DTypeLike", dtype_spec))
             except (TypeError, ValueError):
-                dtype = parse_data_type(
-                    dtype, zarr_format=self.metadata.zarr_format
+                # NumPy cannot interpret Zarr-specific inputs such as ZDType
+                # instances or JSON dtype descriptions. Parse those using the
+                # group's storage format, then obtain their native dtype.
+                requested_dtype = parse_data_type(
+                    dtype_spec, zarr_format=self.metadata.zarr_format
                 ).to_native_dtype()
+            existing_dtype = ds.dtype
             if exact:
-                if ds.dtype != dtype:
-                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+                if existing_dtype != requested_dtype:
+                    raise TypeError(f"Incompatible dtype ({existing_dtype} vs {requested_dtype})")
             else:
-                if not np.can_cast(ds.dtype, dtype):
-                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+                if not np.can_cast(existing_dtype, requested_dtype):
+                    raise TypeError(f"Incompatible dtype ({existing_dtype} vs {requested_dtype})")
         except KeyError:
             ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
 
