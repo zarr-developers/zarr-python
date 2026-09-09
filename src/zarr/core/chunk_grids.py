@@ -808,11 +808,10 @@ def normalize_chunks_nd(
             f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
         )
 
-    # handle no chunking
+    # handle no chunking: one chunk covering every axis. Routed through the -1 sentinel so
+    # the zero-length-axis clamp lives in one place (normalize_chunks_1d).
     if chunks is False:
-        return ChunkGrid(
-            dimensions=tuple(FixedDimension(size=int(s), extent=int(s)) for s in shape)
-        )
+        chunks = -1
 
     # handle 1D convenience form. bool is excluded above so this only catches actual ints.
     if isinstance(chunks, numbers.Integral):
