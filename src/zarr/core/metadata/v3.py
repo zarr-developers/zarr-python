@@ -83,8 +83,12 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
                 # configuration surfaces as a KeyError. Convert it: a bare KeyError escaping
                 # metadata parsing is swallowed by the array-then-group fallback in
                 # `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+                # The KeyError may carry no arguments (`raise KeyError`), and it may come from
+                # an internal lookup rather than the configuration mapping itself, so name the
+                # key only when there is one and don't claim it was a missing configuration key.
+                key_text = f" {e.args[0]!r}" if e.args else ""
                 raise MetadataValidationError(
-                    f"Invalid configuration for codec {name_parsed!r}: missing key {e.args[0]!r}."
+                    f"KeyError{key_text} while parsing the configuration for codec {name_parsed!r}."
                 ) from e
 
     return out

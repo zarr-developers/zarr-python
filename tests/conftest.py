@@ -544,6 +544,20 @@ def deep_nan_equal(a: object, b: object) -> bool:
     return nan_equal(a, b)
 
 
+def gzip_streams_equal_except_mtime(a: bytes, b: bytes) -> bool:
+    """Compare two gzip streams, ignoring the MTIME field of the header.
+
+    Per RFC 1952 the gzip header is [magic(2)][CM(1)][FLG(1)][MTIME(4)][XFL(1)][OS(1)],
+    so bytes 4-8 are MTIME. The fixed offsets assume the standard 10-byte header
+    with no FNAME/FEXTRA/FCOMMENT flags set, which holds here because numcodecs'
+    ``GZip.encode`` wraps ``gzip.GzipFile`` without a filename.
+    """
+    if len(a) != len(b):
+        return False
+
+    return a[:4] == b[:4] and a[8:] == b[8:]
+
+
 # Shared mock-S3 (moto) backend. A single server is reused across the whole test session by
 # every test that needs S3 -- both the fsspec store tests and the documentation examples --
 # instead of each module standing up its own. Consumers create their own buckets and choose

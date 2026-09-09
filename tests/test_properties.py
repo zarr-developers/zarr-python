@@ -177,9 +177,10 @@ async def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[npindexer], actual)
 
     # sync set
-    for idxr in zindexer:
-        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
+    for idxr, size in zip(zindexer, nparray.shape, strict=True):
+        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr % size).size:
             # behaviour of setitem with repeated indices is not guaranteed in practice
+            # Negative and positive spellings of the same index are duplicates too.
             assume(False)
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
@@ -216,7 +217,15 @@ async def test_vindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # sync set
-    points = np.stack([idxr.ravel() for idxr in np.broadcast_arrays(*indexer)], axis=-1)
+    # Reads preserve the supplied indices; normalize negative indices explicitly when
+    # detecting repeated points rather than relying on a read to mutate the indexer.
+    points = np.stack(
+        [
+            (idxr % size).ravel()
+            for idxr, size in zip(np.broadcast_arrays(*indexer), nparray.shape, strict=True)
+        ],
+        axis=-1,
+    )
     if len(np.unique(points, axis=0)) != len(points):
         # behaviour of setitem with repeated coordinates is not guaranteed in practice
         assume(False)
