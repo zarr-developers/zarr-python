@@ -90,12 +90,26 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
         # Same invariant as the Zarr format 3 chunk grid metadata: every chunk edge
-        # length is at least 1, even on a zero-length axis.
-        for dim_idx, chunk in enumerate(chunks_parsed):
+        # length is at least 1. zarr-python 2.x wrote `chunks: [0]` for a zero-length
+        # axis created with `chunks=False` or `chunks=(0,)`. Such an axis holds no
+        # chunks, so those documents are readable; the edge is normalized to 1 so a
+        # later resize does not divide by zero. On an axis that has data, 0 is invalid.
+        normalized_chunks: list[int] = []
+        for dim_idx, (extent, chunk) in enumerate(zip(shape_parsed, chunks_parsed, strict=False)):
             if chunk < 1:
-                raise ValueError(
-                    f"Dimension {dim_idx}: chunk edge length must be >= 1, got {chunk}"
+                if chunk < 0 or extent != 0:
+                    raise ValueError(
+                        f"Dimension {dim_idx}: chunk edge length must be >= 1, got {chunk}"
+                    )
+                warnings.warn(
+                    f"Dimension {dim_idx}: chunk edge length 0 on a zero-length axis "
+                    "(as written by zarr-python 2.x) is treated as 1.",
+                    ZarrUserWarning,
+                    stacklevel=2,
                 )
+                chunk = 1
+            normalized_chunks.append(chunk)
+        chunks_parsed = tuple(normalized_chunks) + chunks_parsed[len(shape_parsed) :]
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
