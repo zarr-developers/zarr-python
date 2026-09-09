@@ -992,6 +992,52 @@ def test_unsigned_index_roundtrip(
     assert_array_equal(arr[:], expected)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("readonly", [False, True])
+@pytest.mark.parametrize("indices", [[-1, 0], [0, 3]])
+def test_index_array_preserved(
+    zarr_format: ZarrFormat, indexer: str, readonly: bool, indices: list[int]
+) -> None:
+    """Shared, strided index arrays remain unchanged after reads and writes."""
+    expected = np.arange(20).reshape(4, 5)
+    arr = zarr.create_array({}, data=expected, chunks=(2, 2), zarr_format=zarr_format)
+    backing = np.array([indices[0], 99, indices[1], 99], dtype=np.intp)
+    original = backing.copy()
+    selection = backing[::2]
+    selection.flags.writeable = not readonly
+    accessor = getattr(arr, indexer)
+    # Reuse the same array on axes of different lengths: -1 must wrap independently.
+    numpy_selection = (
+        np.ix_(selection, selection) if indexer == "oindex" else (selection, selection)
+    )
+    assert_array_equal(accessor[selection, selection], expected[numpy_selection])
+    assert_array_equal(backing, original)
+
+    accessor[selection, selection] = 99
+    expected[numpy_selection] = 99
+    assert_array_equal(arr[:], expected)
+    assert_array_equal(backing, original)
+
+
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_invalid_negative_index_array_preserved(indexer: str, operation: str) -> None:
+    """Even a rejected selection must not modify caller-owned indices or array data."""
+    expected = np.arange(4)
+    arr = zarr.create_array({}, data=expected, chunks=(2,))
+    selection = np.array([-5, 0], dtype=np.intp)
+    accessor = getattr(arr, indexer)
+    if operation == "read":
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection]
+    else:
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection] = 99
+    assert_array_equal(selection, [-5, 0])
+    assert_array_equal(arr[:], expected)
+
+
 def _test_set_orthogonal_selection(
     v: npt.NDArray[np.int_], a: npt.NDArray[Any], z: Array, selection: OrthogonalSelection
 ) -> None:

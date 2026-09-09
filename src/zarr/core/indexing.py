@@ -729,10 +729,13 @@ class Order(Enum):
         return order
 
 
-def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
+def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> npt.NDArray[Any]:
+    """Normalize negative indices, copying only when normalization is needed."""
     loc_neg = x < 0
     if np.any(loc_neg):
+        x = x.copy()
         x[loc_neg] += dim_len
+    return x
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
@@ -781,7 +784,7 @@ class IntArrayDimIndexer:
 
         # handle wraparound
         if wraparound:
-            wraparound_indices(dim_sel, dim_len)
+            dim_sel = wraparound_indices(dim_sel, dim_len)
 
         # handle out of bounds
         if boundscheck:
@@ -1275,12 +1278,12 @@ class CoordinateIndexer(Indexer):
                     object.__setattr__(self, "drop_axes", ())
                     return
 
-        # handle wraparound, boundscheck
-        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
-            # handle wraparound
+        # Normalize each axis independently without modifying caller-owned index arrays.
+        selection_normalized = tuple(
             wraparound_indices(dim_sel, dim_len)
-
-            # handle out of bounds
+            for dim_sel, dim_len in zip(selection_normalized, shape, strict=True)
+        )
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
             boundscheck_indices(dim_sel, dim_len)
 
         # compute chunk index for each point in the selection
