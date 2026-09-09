@@ -15,7 +15,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -31,6 +31,7 @@ from zarr.testing.strategies import (
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
+    sharded_arrays,
     simple_arrays,
     stores,
     zarr_formats,
@@ -158,10 +159,17 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
+    # A sharded array is drawn as its own arm: simple_arrays shards only a few
+    # percent of its draws, and the sharding codec's write path for a selection
+    # with two or more array-indexed axes (GH4284) needs real weight here. That
+    # path only exists for a value with two or more axes, hence min_dims=2.
     zarray = data.draw(
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
+            sharded_arrays(
+                shapes=npst.array_shapes(min_dims=2, max_dims=4, min_side=1, max_side=8)
+            ),
         )
     )
     nparray = zarray[:]
@@ -181,6 +189,14 @@ async def test_oindex(data: st.DataObject) -> None:
         if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
             # behaviour of setitem with repeated indices is not guaranteed in practice
             assume(False)
+    # The sharding codec sees a coordinate selection (the GH4284 path) when the
+    # chunk selection has more than one array axis or drops an integer axis.
+    n_array_axes = sum(isinstance(idxr, np.ndarray) for idxr in zindexer)
+    coordinate_path = n_array_axes > 1 or any(isinstance(idxr, int) for idxr in zindexer)
+    event(
+        f"oindex write: {'sharded' if zarray.shards is not None else 'unsharded'}, "
+        f"{'coordinate' if coordinate_path else 'orthogonal'} chunk selection"
+    )
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
@@ -197,6 +213,7 @@ async def test_vindex(data: st.DataObject) -> None:
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+            sharded_arrays(),
         )
     )
     nparray = zarray[:]

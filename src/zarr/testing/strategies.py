@@ -256,6 +256,19 @@ def shard_shapes(
 
 
 @st.composite
+def _sharding_codecs(draw: st.DrawFn, *, chunk_shape: tuple[int, ...]) -> ShardingCodec:
+    """A ``ShardingCodec`` over ``chunk_shape`` with a drawn subchunk write order and inner codec chain."""
+    subchunk_write_order = draw(subchunk_write_orders)
+    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
+    return ShardingCodec(
+        subchunk_write_order=subchunk_write_order,
+        codecs=inner_codecs,
+        index_codecs=[BytesCodec(), Crc32cCodec()],
+        chunk_shape=chunk_shape,
+    )
+
+
+@st.composite
 def np_array_and_chunks(
     draw: st.DrawFn,
     *,
@@ -334,14 +347,7 @@ def arrays(
                 )
                 event("sharded" if shard_shape is not None else "unsharded")
                 if shard_shape is not None:
-                    subchunk_write_order = draw(subchunk_write_orders)
-                    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
-                    serializer = ShardingCodec(
-                        subchunk_write_order=subchunk_write_order,
-                        codecs=inner_codecs,
-                        index_codecs=[BytesCodec(), Crc32cCodec()],
-                        chunk_shape=chunks_param,
-                    )
+                    serializer = draw(_sharding_codecs(chunk_shape=chunks_param))
                     compressors_unsearched = None
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
@@ -530,6 +536,54 @@ def rectilinear_arrays(
         )
         a[:] = nparray
 
+    return a
+
+
+# Sharded arrays need min_side >= 1: a shard must hold at least one chunk on every axis.
+_sharded_shapes = npst.array_shapes(max_dims=4, min_side=1, max_side=8)
+
+
+@st.composite
+def sharded_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = _sharded_shapes,
+) -> Any:
+    """Generate a zarr v3 array whose chunks are grouped into shards.
+
+    ``arrays`` shards only a small fraction of its draws (a v3 array with a
+    regular chunk grid, every axis larger than a chunk that is itself larger
+    than 1, and then only half the time), so a property test that must
+    exercise the sharding codec should draw from this strategy directly. Every
+    draw is sharded: the inner chunk shape and the shard shape (an integral
+    number of chunks per axis, possibly a single chunk) are drawn from
+    ``shapes``, and the codec's subchunk write order and inner codec chain are
+    drawn as in ``arrays``. ``shapes`` must generate shapes with at least one
+    element on every axis.
+    """
+    shape = draw(shapes)
+    chunk_shape = draw(chunk_shapes(shape=shape), label="chunk shape")
+    shard_shape = draw(shard_shapes(shape=shape, chunk_shape=chunk_shape), label="shard shape")
+    serializer = draw(_sharding_codecs(chunk_shape=chunk_shape))
+
+    nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+    dim_names = draw(dimension_names(ndim=len(shape)), label="dimension names")
+
+    a = zarr.create_array(
+        store=MemoryStore(),
+        shape=shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        dtype=nparray.dtype,
+        fill_value=fill_value,
+        dimension_names=dim_names,
+        serializer=serializer,
+        compressors=None,
+    )
+    assert a.shards == shard_shape
+    assert a.chunks == chunk_shape
+    a[:] = nparray
     return a
 
 
