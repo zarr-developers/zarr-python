@@ -2234,14 +2234,19 @@ def test_set_selection_rejects_value_with_wrong_rank(
     shards: tuple[int, ...] | None,
     pipeline_path: str,
 ) -> None:
-    """A value whose rank does not fit the selection raises regardless of storage layout.
+    """These wrong-rank values are rejected on chunked and sharded arrays alike.
 
     The sharding codec re-derives an indexer from the selection it is handed
     and ravels the value when it is the selection's broadcast shape minus
-    integer-indexed axes. Any other rank must fail on a sharded array exactly
-    as it does on a chunked one; an element count that happens to match is
-    not grounds to accept it. Only the rejection is asserted: a write that
-    fails inside the chunk merge may already have touched other chunks.
+    integer-indexed axes. The cases here pin that a matching element count
+    alone does not make the codec accept a value the chunked path rejects.
+    That is not a general law: storage layout can change which writes are
+    rejected. ``oindex[np.array([3, 1]), np.array([0, 2])]`` with a
+    ``(2, 2, 1)`` value is accepted on a chunked ``(4, 4)`` array with
+    ``(2, 2)`` chunks, because each chunk receives a ``(1, 1, 1)`` piece numpy
+    can broadcast, while the sharded array raises ``ValueError`` and numpy
+    rejects it outright. Only the rejection is asserted: a write that fails
+    inside the chunk merge may already have touched other chunks.
     """
     a = np.zeros((4, 4), dtype=np.int32)
     value = np.arange(np.prod(value_shape), dtype=np.int32).reshape(value_shape)
