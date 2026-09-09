@@ -1,7 +1,7 @@
 import itertools
 import math
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -12,6 +12,7 @@ from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.codec import Codec
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -256,10 +257,21 @@ def shard_shapes(
 
 
 @st.composite
-def _sharding_codecs(draw: st.DrawFn, *, chunk_shape: tuple[int, ...]) -> ShardingCodec:
-    """A ``ShardingCodec`` over ``chunk_shape`` with a drawn subchunk write order and inner codec chain."""
+def _sharding_codecs(
+    draw: st.DrawFn,
+    *,
+    chunk_shape: tuple[int, ...],
+    codecs: Sequence[Codec] | None = None,
+) -> ShardingCodec:
+    """A ``ShardingCodec`` over ``chunk_shape`` with a drawn subchunk write order.
+
+    The inner codec chain is drawn from ``sharding_inner_codecs`` unless ``codecs``
+    is given, which lets a caller nest another ``ShardingCodec`` inside.
+    """
     subchunk_write_order = draw(subchunk_write_orders)
-    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
+    inner_codecs: Sequence[Codec] = (
+        draw(sharding_inner_codecs, label="sharding inner codecs") if codecs is None else codecs
+    )
     return ShardingCodec(
         subchunk_write_order=subchunk_write_order,
         codecs=inner_codecs,
@@ -548,6 +560,7 @@ def sharded_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = _sharded_shapes,
+    nested: bool | None = None,
 ) -> Any:
     """Generate a zarr v3 array whose chunks are grouped into shards.
 
@@ -555,34 +568,62 @@ def sharded_arrays(
     regular chunk grid, every axis larger than a chunk that is itself larger
     than 1, and then only half the time), so a property test that must
     exercise the sharding codec should draw from this strategy directly. Every
-    draw is sharded: the inner chunk shape and the shard shape (an integral
-    number of chunks per axis, possibly a single chunk) are drawn from
-    ``shapes``, and the codec's subchunk write order and inner codec chain are
-    drawn as in ``arrays``. ``shapes`` must generate shapes with at least one
-    element on every axis.
+    draw is sharded: the chunk shape and the shard shape (an integral number of
+    chunks per axis, possibly a single chunk) are drawn from ``shapes``, and
+    the codec's subchunk write order and inner codec chain are drawn as in
+    ``arrays``. ``shapes`` must generate shapes with at least one element on
+    every axis.
+
+    ``nested`` selects one level of recursive sharding: the drawn chunks are
+    grouped into inner shards, which are themselves grouped into the shards
+    stored in the array, so the outer ``ShardingCodec`` wraps an inner one with
+    its own subchunk write order. ``None`` (the default) draws it, so half the
+    examples nest. For a nested array ``Array.chunks`` is the inner shard shape
+    (the outer codec's chunk shape); the innermost chunk shape is the inner
+    codec's ``chunk_shape``.
     """
     shape = draw(shapes)
     chunk_shape = draw(chunk_shapes(shape=shape), label="chunk shape")
-    shard_shape = draw(shard_shapes(shape=shape, chunk_shape=chunk_shape), label="shard shape")
     serializer = draw(_sharding_codecs(chunk_shape=chunk_shape))
+    nest = draw(st.booleans(), label="nested sharding") if nested is None else nested
+    if nest:
+        # Each level's shard is an integral number of the level below's chunks.
+        codec_chunk_shape = draw(
+            shard_shapes(shape=shape, chunk_shape=chunk_shape), label="inner shard shape"
+        )
+        serializer = draw(_sharding_codecs(chunk_shape=codec_chunk_shape, codecs=[serializer]))
+    else:
+        codec_chunk_shape = chunk_shape
+    shard_shape = draw(
+        shard_shapes(shape=shape, chunk_shape=codec_chunk_shape), label="shard shape"
+    )
+    event("nested sharding" if nest else "single-level sharding")
 
     nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     dim_names = draw(dimension_names(ndim=len(shape)), label="dimension names")
 
+    # The shard is the array's chunk grid and the drawn codec is its serializer.
+    # Passing ``shards=`` instead would make ``create_array`` wrap the codec in a
+    # second ``ShardingCodec`` of the same chunk shape, hiding the drawn write
+    # order behind a default outer one.
     a = zarr.create_array(
         store=MemoryStore(),
         shape=shape,
-        chunks=chunk_shape,
-        shards=shard_shape,
+        chunks=shard_shape,
         dtype=nparray.dtype,
         fill_value=fill_value,
         dimension_names=dim_names,
         serializer=serializer,
+        filters=None,
         compressors=None,
     )
     assert a.shards == shard_shape
-    assert a.chunks == chunk_shape
+    assert a.chunks == codec_chunk_shape
+    assert isinstance(a.metadata, ArrayV3Metadata)
+    (codec,) = a.metadata.codecs
+    assert isinstance(codec, ShardingCodec)
+    assert codec.subchunk_write_order == serializer.subchunk_write_order
     a[:] = nparray
     return a
 
