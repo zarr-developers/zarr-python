@@ -32,6 +32,7 @@ from zarr.core.array import (
     AsyncArray,
     CompressorsLike,
     FiltersLike,
+    ShardsLike,
     _iter_chunk_coords,
     _iter_chunk_regions,
     _iter_shard_coords,
@@ -53,7 +54,7 @@ from zarr.core.chunk_grids import (
     resolve_outer_and_inner_chunks,
 )
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat, ceildiv
+from zarr.core.common import JSON, ChunksLike, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -1128,14 +1129,24 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     assert all(s % c == 0 for s, c in zip(shard_shape, chunk_shape, strict=True))
 
 
-def test_chunks_and_shards() -> None:
+@pytest.mark.parametrize(
+    "chunks",
+    [(5, 5), [5, 5], np.array([5, 5]), (np.int64(5), np.int64(5))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize(
+    "shards",
+    [(10, 10), [10, 10], np.array([10, 10]), (np.int64(10), np.int64(10))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
-    chunks = (5, 5)
-    shards = (10, 10)
+    expected_chunks = normalize_chunks_nd(chunks, shape).chunk_shape
+    expected_shards = normalize_chunks_nd(shards, shape).chunk_shape
 
     arr_v3 = zarr.create_array(store=store / "v3", shape=shape, chunks=chunks, dtype="i4")
-    assert arr_v3.chunks == chunks
+    assert arr_v3.chunks == expected_chunks
     assert arr_v3.shards is None
 
     arr_v3_sharding = zarr.create_array(
@@ -1145,13 +1156,13 @@ def test_chunks_and_shards() -> None:
         shards=shards,
         dtype="i4",
     )
-    assert arr_v3_sharding.chunks == chunks
-    assert arr_v3_sharding.shards == shards
+    assert arr_v3_sharding.chunks == expected_chunks
+    assert arr_v3_sharding.shards == expected_shards
 
     arr_v2 = zarr.create_array(
         store=store / "v2", shape=shape, chunks=chunks, zarr_format=2, dtype="i4"
     )
-    assert arr_v2.chunks == chunks
+    assert arr_v2.chunks == expected_chunks
     assert arr_v2.shards is None
 
 
@@ -1757,14 +1768,26 @@ async def test_creation_from_other_zarr_format(
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 @pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
 @pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
-@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize(
+    "new_chunks", [(40, 10), (11, 50), [40, 10], np.array([11, 50]), (np.int64(40), np.int64(10))]
+)
+@pytest.mark.parametrize(
+    "new_shards",
+    [None, (440, 100), [440, 100], np.array([440, 100]), (np.int64(440), np.int64(100))],
+    ids=["none", "tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize("source_as_numpy", [False, True], ids=["zarr", "numpy"])
 async def test_from_array(
     store: Store,
     store2: Store,
     src_chunks: tuple[int, int],
-    new_chunks: tuple[int, int],
+    new_chunks: ChunksLike,
+    new_shards: ShardsLike | None,
+    source_as_numpy: bool,
     zarr_format: ZarrFormat,
 ) -> None:
+    if zarr_format == 2 and new_shards is not None:
+        pytest.skip("Zarr format 2 does not support sharding")
     src_fill_value = 2
     src_dtype = np.dtype("uint8")
     src_attributes = None
@@ -1776,6 +1799,7 @@ async def test_from_array(
         store=store,
         fill_value=src_fill_value,
         attributes=src_attributes,
+        zarr_format=zarr_format,
     )
     src[:] = np.arange(1000).reshape((100, 10))
 
@@ -1783,18 +1807,21 @@ async def test_from_array(
     new_attributes: dict[str, JSON] = {"foo": "bar"}
 
     result = zarr.from_array(
-        data=src,
+        data=np.asarray(src) if source_as_numpy else src,
         store=store2,
         chunks=new_chunks,
+        shards=new_shards,
         fill_value=new_fill_value,
         attributes=new_attributes,
+        zarr_format=zarr_format,
     )
 
     np.testing.assert_array_equal(result[:], src[:])
     assert result.fill_value == new_fill_value
     assert result.dtype == src_dtype
     assert result.attrs == new_attributes
-    assert result.chunks == new_chunks
+    np.testing.assert_array_equal(result.chunks, new_chunks)
+    np.testing.assert_array_equal(result.shards, new_shards)
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=True)
