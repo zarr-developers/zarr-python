@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from asyncio import gather
@@ -1224,9 +1225,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Calculate the number of chunks that have been initialized in storage.
 
         This value is calculated as the sum of the number of chunks in every initialized shard
-        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
-        sharding, each stored object holds one chunk, so the number of chunks initialized is the
-        same as the number of stored objects associated with an array.
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array.
 
         Returns
         -------
@@ -2347,9 +2351,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Calculate the number of chunks that have been initialized in storage.
 
         This value is calculated as the sum of the number of chunks in every initialized shard
-        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use sharding,
-        each stored object holds one chunk, so the number of chunks initialized is the same as the number
-        of stored objects associated with an array. For a direct count of the number of initialized stored objects, see `nshards_initialized`.
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array. For a direct count of the number of initialized stored
+        objects, see `nshards_initialized`.
 
         Returns
         -------
@@ -4948,7 +4956,9 @@ def _parse_keep_array_attr(
         if dimension_names is None and data.metadata.zarr_format == 3:
             dimension_names = data.metadata.dimension_names
         if attributes is None:
-            attributes = dict(data.attrs)
+            # Deep copy so nested containers are not shared between the source
+            # array's in-memory metadata and the new array's.
+            attributes = copy.deepcopy(dict(data.attrs))
     else:
         if chunks == "keep":
             chunks = "auto"
@@ -5423,9 +5433,12 @@ async def _nchunks_initialized(
     Calculate the number of chunks that have been initialized in storage.
 
     This value is calculated as the sum of the number of chunks in every initialized shard
-    (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
-    sharding, each stored object holds one chunk, so the number of chunks initialized is the
-    same as the number of stored objects associated with an array.
+    (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+    counted at its full declared size, so for an edge shard that extends beyond the array
+    extent this includes chunks that lie entirely outside the array, and the result can
+    exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+    chunk, so the number of chunks initialized is the same as the number of stored objects
+    associated with an array.
 
     Parameters
     ----------
