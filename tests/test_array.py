@@ -1155,6 +1155,50 @@ def test_chunks_and_shards() -> None:
     assert arr_v2.shards is None
 
 
+def _as_chunk_spec(kind: str, spec: tuple[int, ...]) -> Any:
+    """Express ``spec`` as one of the accepted chunk-specification forms."""
+    if kind == "int-tuple":
+        return spec
+    if kind == "numpy-array":
+        return np.array(spec)
+    assert kind == "numpy-int-tuple"
+    return tuple(np.int64(c) for c in spec)
+
+
+@pytest.mark.parametrize(
+    "entry_point", ["create_array", "group_create_array", "from_array_ndarray", "from_array_zarr"]
+)
+@pytest.mark.parametrize("spec_kind", ["int-tuple", "numpy-array", "numpy-int-tuple"])
+@pytest.mark.parametrize("with_shards", [False, True], ids=["no-shards", "shards"])
+def test_chunk_spec_forms_via_public_api(
+    entry_point: str, spec_kind: str, with_shards: bool
+) -> None:
+    """Numpy arrays and numpy integers are accepted as ``chunks`` / ``shards`` through every
+    public creation entry point, not only through the internal chunk normalizer. The entry
+    points compare the specification against the ``"auto"`` / ``"keep"`` sentinels first, and
+    a numpy array must not reach a bare ``==``-with-string test.
+    """
+    shape, chunks, shards = (8, 8), (2, 2), (4, 4)
+    kwargs: dict[str, Any] = {
+        "chunks": _as_chunk_spec(spec_kind, chunks),
+        "shards": _as_chunk_spec(spec_kind, shards) if with_shards else None,
+    }
+    if entry_point == "create_array":
+        arr = zarr.create_array({}, shape=shape, dtype="i4", **kwargs)
+    elif entry_point == "group_create_array":
+        arr = zarr.create_group({}).create_array("a", shape=shape, dtype="i4", **kwargs)
+    elif entry_point == "from_array_ndarray":
+        arr = zarr.from_array({}, data=np.zeros(shape, dtype="i4"), **kwargs)
+    else:
+        # A zarr Array source takes the branch of ``_parse_keep_array_attr`` that would
+        # otherwise inherit the source's chunks / shards.
+        assert entry_point == "from_array_zarr"
+        source = zarr.create_array({}, shape=shape, dtype="i4", chunks=(4, 4))
+        arr = zarr.from_array({}, data=source, **kwargs)
+    assert arr.chunks == chunks
+    assert arr.shards == (shards if with_shards else None)
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize(
