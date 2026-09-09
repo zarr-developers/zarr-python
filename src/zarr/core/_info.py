@@ -82,7 +82,9 @@ class ArrayInfo:
     _data_type: ZDType[TBaseDType, TBaseScalar]
     _fill_value: object
     _shape: tuple[int, ...]
-    _shard_shape: tuple[int, ...] | None = None
+    # "<variable>" marks a sharded array whose shard grid is rectilinear, so
+    # there is no uniform shard shape; None means the array is not sharded.
+    _shard_shape: tuple[int, ...] | Literal["<variable>"] | None = None
     _chunk_shape: tuple[int, ...] | None = None
     _order: Literal["C", "F"]
     _read_only: bool

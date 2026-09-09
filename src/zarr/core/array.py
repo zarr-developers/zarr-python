@@ -43,7 +43,6 @@ from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
     _is_rectilinear_chunks,
-    as_regular_shape,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -101,7 +100,6 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
-    _iter_regions,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -126,6 +124,8 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_node_type_array,
 )
@@ -154,7 +154,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
-    from zarr.codecs.sharding import IndexLocation
+    from zarr.codecs.sharding import IndexLocation, ShardingCodec
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -235,7 +235,6 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
         # re-splits the same already-warned-about chain via
         # `codecs_from_list_unchecked`, so it does not re-emit them.
         pipeline = get_pipeline_class().from_codecs(metadata.codecs)
-        from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
         # Use the regular chunk shape if available, otherwise use a
         # placeholder. The ChunkTransform is shape-agnostic — the actual
@@ -523,7 +522,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
                 outer_chunks = normalize_chunks_nd(_raw, shape)
-            _chunks = as_regular_shape(outer_chunks)
+            _chunks = outer_chunks.chunk_shape
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -848,10 +847,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
-        If sharding is used the inner chunk shape is returned.
+        If sharding is used the inner chunk shape is returned, which is defined
+        for any chunk grid (inner chunks are always regular).
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Otherwise, only defined for arrays using a regular chunk grid: for a
+        non-sharded array with a rectilinear chunk grid, `NotImplementedError`
+        is raised. Use `read_chunk_sizes` for general access.
 
         Returns
         -------
@@ -880,17 +881,23 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `read_chunk_sizes` and `write_chunk_sizes` are the same:
+
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: reads are efficient at inner-chunk
+        granularity, while writes go to storage one shard at a time:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
         """
-
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            inner_chunk_shape = codecs[0].chunk_shape
-            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        if (sharding_codec := _sharding_codec(self.metadata)) is not None:
+            return _chunk_sizes_from_shape(self.shape, sharding_codec.chunk_shape)
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -910,10 +917,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> import zarr.storage
+        Without sharding, `write_chunk_sizes` and `read_chunk_sizes` are the same:
+
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: writes go to storage one shard at a
+        time, while reads are efficient at inner-chunk granularity:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
         """
 
         return self._chunk_grid.chunk_sizes
@@ -923,8 +940,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Returns the shard shape of the Array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Only defined when the shard grid is regular: for a sharded array with a
+        rectilinear chunk grid, `NotImplementedError` is raised. Use
+        `write_chunk_sizes` for general access.
 
         Returns
         -------
@@ -1121,14 +1139,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
-        # to replace the repeated `len == 1 and isinstance` pattern.
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+        if (sharding_codec := _sharding_codec(self.metadata)) is not None:
             # When sharding, count inner chunks across the whole array
-            chunk_shape = codecs[0].chunk_shape
+            chunk_shape = sharding_codec.chunk_shape
             return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
         return self._chunk_grid.grid_shape
 
@@ -1144,11 +1157,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The shape of the shard grid for this array.
         """
-        if self.shards is None:
-            shard_shape = self.chunks
-        else:
-            shard_shape = self.shards
-        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
+        # The stored chunk grid is the shard grid when sharding is used, the
+        # chunk grid otherwise. Works for regular and rectilinear grids alike.
+        return self._chunk_grid.grid_shape
 
     @property
     def nchunks(self) -> int:
@@ -1212,10 +1223,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Calculate the number of chunks that have been initialized in storage.
 
-        This value is calculated as the product of the number of initialized shards and the number
-        of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
-        effectively 1, and in that case the number of chunks initialized is the same as the number
-        of stored objects associated with an array.
+        This value is calculated as the sum of the number of chunks in every initialized shard
+        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
+        sharding, each stored object holds one chunk, so the number of chunks initialized is the
+        same as the number of stored objects associated with an array.
 
         Returns
         -------
@@ -1822,14 +1833,27 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
+        rectilinear_grid = _stored_rectilinear_grid_or_none(self.metadata)
+        sharded = _sharding_codec(self.metadata) is not None
+        # `.chunks` (the inner chunk shape when sharded) is undefined only for a
+        # non-sharded rectilinear grid, which ArrayInfo renders as "<variable>";
+        # `.shards` is undefined for a rectilinear shard grid, where the
+        # "<variable>" sentinel keeps the array rendered as sharded.
+        chunk_shape = self.chunks if (rectilinear_grid is None or sharded) else None
+        shard_shape: tuple[int, ...] | Literal["<variable>"] | None
+        if rectilinear_grid is None:
+            shard_shape = self.shards
+        elif sharded:
+            shard_shape = "<variable>"
+        else:
+            shard_shape = None
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
             _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
-            _shard_shape=self.shards,
+            _shard_shape=shard_shape,
             _chunk_shape=chunk_shape,
             _read_only=self.read_only,
             _compressors=self.compressors,
@@ -2023,10 +2047,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def chunks(self) -> tuple[int, ...]:
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
-        If sharding is used the inner chunk shape is returned.
+        If sharding is used the inner chunk shape is returned, which is defined
+        for any chunk grid (inner chunks are always regular).
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Otherwise, only defined for arrays using a regular chunk grid: for a
+        non-sharded array with a rectilinear chunk grid, `NotImplementedError`
+        is raised. Use `read_chunk_sizes` for general access.
 
         Returns
         -------
@@ -2054,10 +2080,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `read_chunk_sizes` and `write_chunk_sizes` are the same:
+
         >>> import zarr
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: reads are efficient at inner-chunk
+        granularity, while writes go to storage one shard at a time:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
         """
         return self.async_array.read_chunk_sizes
 
@@ -2078,10 +2115,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `write_chunk_sizes` and `read_chunk_sizes` are the same:
+
         >>> import zarr
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: writes go to storage one shard at a
+        time, while reads are efficient at inner-chunk granularity:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
         """
         return self.async_array.write_chunk_sizes
 
@@ -2090,8 +2138,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Returns a tuple of integers describing the length of each dimension of a shard of the array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Only defined when the shard grid is regular: for a sharded array with a
+        rectilinear chunk grid, `NotImplementedError` is raised. Use
+        `write_chunk_sizes` for general access.
 
         Returns
         -------
@@ -2297,10 +2346,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Calculate the number of chunks that have been initialized in storage.
 
-        This value is calculated as the product of the number of initialized shards and the number of
-        chunks per shard. For arrays that do not use sharding, the number of chunks per shard is effectively 1,
-        and in that case the number of chunks initialized is the same as the number of stored objects associated with an
-        array. For a direct count of the number of initialized stored objects, see `nshards_initialized`.
+        This value is calculated as the sum of the number of chunks in every initialized shard
+        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use sharding,
+        each stored object holds one chunk, so the number of chunks initialized is the same as the number
+        of stored objects associated with an array. For a direct count of the number of initialized stored objects, see `nshards_initialized`.
 
         Returns
         -------
@@ -4062,7 +4111,13 @@ class ShardsConfigParam(TypedDict):
     index_location: IndexLocation | None
 
 
-type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
+type ShardsLike = (
+    tuple[int, ...]
+    | Sequence[int | Sequence[int]]
+    | ChunkGridMetadata
+    | ShardsConfigParam
+    | Literal["auto"]
+)
 
 
 async def from_array(
@@ -4472,7 +4527,7 @@ async def init_array(
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
 
-    # Normalize the user's chunks into canonical ChunksTuple form
+    # Normalize the user's chunks into a canonical ChunkGrid
 
     if chunks == "auto":
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
@@ -4515,7 +4570,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=as_regular_shape(outer_chunks),
+            chunks=outer_chunks.chunk_shape,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4531,10 +4586,20 @@ async def init_array(
             dtype=zdtype,
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
-        grid = create_chunk_grid_metadata(outer_chunks)
+        # A stored chunk grid passed as chunks= / shards= (e.g. by the "keep"
+        # path of from_array) becomes the stored grid verbatim, so the new
+        # array preserves the source grid exactly — including trailing edges
+        # beyond the extent left behind by a shrinking resize, and bare-int
+        # shorthand dimensions.
+        if isinstance(shards, ChunkGridMetadata):
+            grid = shards
+        elif shards is None and isinstance(chunks, ChunkGridMetadata):
+            grid = chunks
+        else:
+            grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
         if inner is not None:
-            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
+            inner_chunks_flat = inner.outer_chunks.chunk_shape
             index_location: IndexLocation = "end"
             if isinstance(shards, dict):
                 index_location = cast("IndexLocation", shards.get("index_location", "end"))
@@ -4765,6 +4830,35 @@ async def create_array(
         )
 
 
+def _sharding_codec(metadata: ArrayMetadata) -> ShardingCodec | None:
+    """The array's sharding codec, or None if the array is not sharded.
+
+    Zarr format 2 arrays are never sharded.
+    """
+    if isinstance(metadata, ArrayV3Metadata):
+        return metadata.sharding_codec
+    return None
+
+
+def _stored_rectilinear_grid_or_none(
+    metadata: ArrayMetadata,
+) -> RectilinearChunkGridMetadata | None:
+    """The *stored* rectilinear chunk grid, or None if the stored grid is regular
+    (in which case `.chunks` and `.shards` are defined).
+
+    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
+    runtime grid collapses a rectilinear dimension whose edges happen to be
+    uniform to a ``FixedDimension`` as an optimization, so it can report regular
+    for an array whose stored metadata — and therefore `.chunks` — is
+    rectilinear. Zarr format 2 grids are always regular.
+    """
+    if isinstance(metadata, ArrayV3Metadata) and isinstance(
+        metadata.chunk_grid, RectilinearChunkGridMetadata
+    ):
+        return metadata.chunk_grid
+    return None
+
+
 def _parse_keep_array_attr(
     data: AnyArray | npt.ArrayLike,
     chunks: ChunksLike | Literal["auto", "keep"],
@@ -4792,13 +4886,29 @@ def _parse_keep_array_attr(
     dict[str, JSON] | None,
 ]:
     if isinstance(data, Array):
+        rectilinear_grid = _stored_rectilinear_grid_or_none(data.metadata)
+        sharded = _sharding_codec(data.metadata) is not None
         if chunks == "keep":
-            if data._chunk_grid.is_regular:
+            if rectilinear_grid is None or sharded:
+                # `.chunks` is the inner chunk shape when sharding is used, and
+                # inner chunks are regular whatever the shape of the shard grid.
                 chunks = data.chunks
             else:
-                chunks = data.write_chunk_sizes
+                # Pass the stored grid through as-is: it is O(ndim), not
+                # O(nchunks), and init_array stores it verbatim, so the copy
+                # preserves the grid exactly — bare-int shorthand dimensions,
+                # and trailing edges beyond the extent left behind by a
+                # shrinking resize.
+                chunks = rectilinear_grid
         if shards == "keep":
-            shards = data.shards if data._chunk_grid.is_regular else None
+            if rectilinear_grid is None:
+                shards = data.shards
+            elif sharded:
+                # The stored grid is the shard grid; init_array accepts it as
+                # the `shards=` parameter and stores it verbatim.
+                shards = rectilinear_grid
+            else:
+                shards = None
         if zarr_format is None:
             zarr_format = data.metadata.zarr_format
         if filters == "keep":
@@ -5271,14 +5381,10 @@ def _iter_shard_regions(
         A tuple of slice objects representing the region spanned by each shard in the selection or chunk
         when no shards are present.
     """
-    if array.shards is None:
-        shard_shape = array.chunks
-    else:
-        shard_shape = array.shards
-
-    return _iter_regions(
-        array.shape, shard_shape, origin=origin, selection_shape=selection_shape, trim_excess=True
-    )
+    # The stored chunk grid always describes the write regions: the shard grid
+    # when sharding is used, the chunk grid otherwise. Iterating it directly
+    # works for regular and rectilinear grids alike.
+    return array._chunk_grid.iter_chunk_regions(origin=origin, selection_shape=selection_shape)
 
 
 def _iter_chunk_regions(
@@ -5316,10 +5422,10 @@ async def _nchunks_initialized(
     """
     Calculate the number of chunks that have been initialized in storage.
 
-    This value is calculated as the product of the number of initialized shards and the number
-    of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
-    effectively 1, and in that case the number of chunks initialized is the same as the number
-    of stored objects associated with an array.
+    This value is calculated as the sum of the number of chunks in every initialized shard
+    (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
+    sharding, each stored object holds one chunk, so the number of chunks initialized is the
+    same as the number of stored objects associated with an array.
 
     Parameters
     ----------
@@ -5331,13 +5437,29 @@ async def _nchunks_initialized(
     nchunks_initialized : int
         The number of chunks that have been initialized.
     """
-    if array.shards is None:
-        chunks_per_shard = 1
-    else:
+    meta = array.metadata
+    if not isinstance(meta, ArrayV3Metadata) or meta.sharding_codec is None:
+        return await _nshards_initialized(array)
+    # `.chunks` is the inner chunk shape, which is defined for any sharded array.
+    inner_chunks = array.chunks
+    if isinstance(meta.chunk_grid, RegularChunkGridMetadata):
+        # Uniform shard shape: the exact chunk count per shard is a single
+        # multiply, O(1) after the storage listing.
         chunks_per_shard = product(
-            tuple(a // b for a, b in zip(array.shards, array.chunks, strict=True))
+            tuple(a // b for a, b in zip(meta.chunk_grid.chunk_shape, inner_chunks, strict=True))
         )
-    return (await _nshards_initialized(array)) * chunks_per_shard
+        return (await _nshards_initialized(array)) * chunks_per_shard
+    # Rectilinear shard grid: the chunk count varies per shard, so decode the
+    # initialized keys and sum each shard's own count.
+    grid = array._chunk_grid
+    total = 0
+    for key in await _shards_initialized(array):
+        spec = grid[meta.chunk_key_encoding.decode_chunk_key(key)]
+        if spec is not None:
+            total += product(
+                tuple(s // c for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
+            )
+    return total
 
 
 async def _nshards_initialized(
