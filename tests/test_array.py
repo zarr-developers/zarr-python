@@ -14,11 +14,13 @@ import numcodecs
 import numpy as np
 import numpy.typing as npt
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
-from tests.conftest import skip_object_dtype
+from tests.conftest import json_attributes, skip_object_dtype
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -488,17 +490,22 @@ async def test_nbytes_stored_async() -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_update_attrs(zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("depth", [0, 1, 8, 32, 65, 100])
+@settings(max_examples=20, deadline=None)
+@given(data=st.data())
+def test_update_attrs(zarr_format: ZarrFormat, depth: int, data: st.DataObject) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()
     arr = zarr.create_array(
         store=store, shape=(5,), chunks=(5,), dtype="f8", zarr_format=zarr_format
     )
-    arr.attrs["foo"] = "bar"
-    assert arr.attrs["foo"] == "bar"
+    attributes = data.draw(json_attributes(depth=depth))
+    for key, value in attributes.items():
+        arr.attrs[key] = value
+    assert dict(arr.attrs) == attributes
 
     arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
-    assert arr2.attrs["foo"] == "bar"
+    assert dict(arr2.attrs) == attributes
 
 
 @pytest.mark.parametrize(("chunks", "shards"), [((2, 2), None), ((2, 2), (4, 4))])
