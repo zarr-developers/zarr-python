@@ -24,7 +24,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
-from zarr.core.dtype import Float64, Int32
+from zarr.core.dtype import Float64, Int32, VariableLengthBytes
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
@@ -55,6 +55,7 @@ from zarr.storage._utils import _join_paths, normalize_path
 from zarr.testing.store import LatencyStore
 
 from .conftest import meta_from_array, parse_store
+from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
     import pathlib
@@ -1460,16 +1461,22 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 
 @pytest.mark.parametrize(
     ("dtype", "expected"),
-    [
-        (Int32(), Int32()),
-        (np.dtype("int32"), Int32()),
+    [(spec, zdtype) for zdtype in zdtype_examples for spec in (zdtype, zdtype.to_native_dtype())]
+    + [
         ("int32", Int32()),
         (None, Float64()),
+        ("object", VariableLengthBytes()),
+        (object, VariableLengthBytes()),
     ],
-    ids=["zdtype", "numpy", "str", "none"],
 )
+@pytest.mark.parametrize("exact", [True, False])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_require_array_zdtype(
-    store: Store, zarr_format: ZarrFormat, dtype: ZDTypeLike | None, expected: ZDType[Any, Any]
+    store: Store,
+    zarr_format: ZarrFormat,
+    dtype: ZDTypeLike | None,
+    expected: ZDType[Any, Any],
+    exact: bool,
 ) -> None:
     """An existing array can be required with a ZDType, as well as a string, a NumPy dtype,
     or None. See https://github.com/zarr-developers/zarr-python/issues/3377
@@ -1477,7 +1484,7 @@ async def test_require_array_zdtype(
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     await root.create_array("foo", shape=(10,), dtype=expected)
 
-    foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=True)
+    foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=exact)
     assert foo._zdtype == expected
 
 

@@ -1,0 +1,1 @@
+`Group.require_array` once again accepts native NumPy object dtypes when checking an existing array, including variable-length bytes arrays. `from_array` preserves a Zarr source's explicit data type instead of trying to infer it from its NumPy dtype, allowing variable-length bytes arrays to be copied.

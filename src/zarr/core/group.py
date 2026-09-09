@@ -74,6 +74,8 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
+    import numpy.typing as npt
+
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
@@ -1257,11 +1259,15 @@ class AsyncGroup:
             if shape != ds.shape:
                 raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
 
-            # `np.dtype(None)` used to resolve to float64 here; keep that default.
-            dtype = parse_data_type(
-                "float64" if dtype is None else dtype,
-                zarr_format=self.metadata.zarr_format,
-            ).to_native_dtype()
+            # Existing arrays need a native dtype comparison, not storage-type
+            # inference: object is valid here even though it is ambiguous for creation.
+            dtype = "float64" if dtype is None else dtype
+            try:
+                dtype = np.dtype(cast("npt.DTypeLike", dtype))
+            except (TypeError, ValueError):
+                dtype = parse_data_type(
+                    dtype, zarr_format=self.metadata.zarr_format
+                ).to_native_dtype()
             if exact:
                 if ds.dtype != dtype:
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
