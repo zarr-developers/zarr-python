@@ -223,6 +223,21 @@ class ArrayMap:
             (self.index_array, self.offset, self.stride),
         )
 
+    def _with_affine(self, offset: int, stride: int) -> ArrayMap:
+        """This map's coordinates under a different affine adjustment.
+
+        The frozen index array is shared rather than copied: it is already
+        owned by immutable bytes and read-only, so the ownership invariant
+        `__post_init__` establishes holds for the new map too. Chunk
+        resolution translates every restricted map once per chunk, and
+        re-copying the array there dominated the cost of small selections.
+        """
+        new = object.__new__(ArrayMap)
+        object.__setattr__(new, "index_array", self.index_array)
+        object.__setattr__(new, "offset", offset)
+        object.__setattr__(new, "stride", stride)
+        return new
+
     def __eq__(self, other: object) -> bool:
         """Value equality, comparing index arrays element-wise.
 

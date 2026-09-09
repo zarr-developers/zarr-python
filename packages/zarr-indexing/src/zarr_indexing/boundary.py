@@ -106,8 +106,16 @@ def _normalize_int_array(
         raise IndexError(
             f"arrays used as indices must be of integer or boolean type; got dtype {arr.dtype}"
         )
-    # Cast before wrapping: an unsigned array cannot represent the intermediate
-    # negative values, and `intp` covers every index NumPy can address.
+    if arr.dtype.kind == "u":
+        # Unsigned values are never negative, so check them as they are: a
+        # value beyond the `intp` range would wrap negative on narrowing and
+        # pass as a wrapped index.
+        if arr.size > 0 and int(arr.max()) >= size:
+            raise IndexError(
+                f"index {int(arr.max())} is out of bounds for axis {axis} with size {size}"
+            )
+        return arr.astype(np.intp)
+    # Cast before wrapping: `intp` covers every index NumPy can address.
     out = arr.astype(np.intp, copy=True)
     if out.size > 0:
         negative = out < 0

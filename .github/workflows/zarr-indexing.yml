@@ -43,11 +43,10 @@ jobs:
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
-      # The transform tests exercise chunk resolution against zarr's ChunkGrid,
-      # so they run against the repo-root environment (which provides `zarr`)
-      # with this package as an editable overlay rather than in package
-      # isolation. The recipes carry that invocation; this step only fixes the
-      # interpreter the matrix asked for.
+      # The suite imports nothing from `zarr`; it runs against the repo-root
+      # environment, with this package as an editable overlay, to share the
+      # parent project's pinned test toolchain. The recipes carry that
+      # invocation; this step only fixes the interpreter the matrix asked for.
       - name: Sync test dependency group
         run: uv sync --project ../.. --group test --python ${{ matrix.python-version }}
       - name: Run pytest
