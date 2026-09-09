@@ -487,6 +487,24 @@ async def test_nbytes_stored_async() -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("depth", [0, 65, 100])
+@pytest.mark.parametrize("container", ["object", "array"])
+def test_reopen_nested_attributes(zarr_format: ZarrFormat, depth: int, container: str) -> None:
+    """Attributes accepted when creating an array must survive reopening it."""
+    value: JSON = "leaf"
+    for _ in range(depth):
+        value = {"nested": value} if container == "object" else [value]
+    attributes = {"payload": value}
+    store = MemoryStore()
+    sync_api.create_array(
+        store, shape=(1,), dtype="int32", attributes=attributes, zarr_format=zarr_format
+    )
+
+    reopened = sync_api.open_array(store, mode="r", zarr_format=zarr_format)
+    assert dict(reopened.attrs) == attributes
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_update_attrs(zarr_format: ZarrFormat) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()

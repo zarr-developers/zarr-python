@@ -34,7 +34,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
-from zarr.core.json_parse import parse_field, validate_json_value
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -673,7 +673,7 @@ class ArrayV3Metadata(Metadata):
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
-            attributes=validate_json_value(_data_typed.get("attributes", {})),  # type: ignore[arg-type]
+            attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,
             data_type=data_type,
