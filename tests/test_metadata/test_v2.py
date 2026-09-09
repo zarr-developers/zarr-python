@@ -309,6 +309,18 @@ def test_from_dict_extra_fields() -> None:
     assert result == expected
 
 
+@pytest.mark.parametrize(("shape", "chunks"), [((0,), (0,)), ((4, 0), (4, 0)), ((5,), (0,))])
+def test_zero_chunk_edge_rejected(shape: tuple[int, ...], chunks: tuple[int, ...]) -> None:
+    """A chunk edge length of 0 is invalid metadata, whatever the array shape.
+
+    Older releases could write `chunks: [0]` for a zero-length axis; such documents read
+    uninitialised memory once resized. The v2 layer now enforces the same `>= 1` rule as
+    the Zarr format 3 chunk grid.
+    """
+    with pytest.raises(ValueError, match="chunk edge length must be >= 1, got 0"):
+        ArrayV2Metadata(shape=shape, dtype=Float64(), chunks=chunks, fill_value=0.0, order="C")
+
+
 def test_eq_nan_fill_value() -> None:
     """Two metadata objects with an identical NaN fill_value compare equal.
 

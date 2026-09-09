@@ -89,6 +89,13 @@ class ArrayV2Metadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
+        # Same invariant as the Zarr format 3 chunk grid metadata: every chunk edge
+        # length is at least 1, even on a zero-length axis.
+        for dim_idx, chunk in enumerate(chunks_parsed):
+            if chunk < 1:
+                raise ValueError(
+                    f"Dimension {dim_idx}: chunk edge length must be >= 1, got {chunk}"
+                )
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
