@@ -1553,7 +1553,9 @@ def _normalize_oindex_selection(
                 (indices,) = np.nonzero(array)
                 result.append(indices.astype(np.intp))
             else:
-                result.append(checked_affine(0, 1, array))
+                # Advanced selection validation has already checked the element types.
+                integer_array = cast("npt.NDArray[np.integer[Any]]", array)
+                result.append(checked_affine(0, 1, integer_array))
         else:
             result.append(sel)
 
@@ -1745,7 +1747,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(sel, np.ndarray):
             processed.append(checked_affine(0, 1, sel))
         elif isinstance(sel, (list, tuple)):
-            processed.append(checked_affine(0, 1, np.asarray(sel)))
+            # Advanced selection validation has already checked the element types.
+            integer_array = cast("npt.NDArray[np.integer[Any]]", np.asarray(sel))
+            processed.append(checked_affine(0, 1, integer_array))
         elif (scalar := as_scalar_index(sel)) is not None:
             processed.append(np.array([scalar], dtype=np.intp))
         else:
