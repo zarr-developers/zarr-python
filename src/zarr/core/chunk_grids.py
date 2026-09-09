@@ -11,6 +11,7 @@ from functools import reduce
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     NamedTuple,
     Protocol,
     cast,
@@ -19,6 +20,7 @@ from typing import (
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import TypeIs
 
 import zarr
 from zarr.core.common import (
@@ -312,6 +314,24 @@ class ChunkSpec:
 
 # A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
 # list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
+
+
+def _is_auto(spec: object) -> TypeIs[Literal["auto"]]:
+    """Check whether a chunk or shard specification is the ``"auto"`` sentinel.
+
+    Specifications may be numpy arrays, whose ``==`` against a string is
+    elementwise and cannot be used in a boolean context, so the string check
+    must be guarded by ``isinstance``.
+    """
+    return isinstance(spec, str) and spec == "auto"
+
+
+def _is_keep(spec: object) -> TypeIs[Literal["keep"]]:
+    """Check whether a chunk or shard specification is the ``"keep"`` sentinel.
+
+    See `_is_auto` for why this is not a bare ``==`` comparison.
+    """
+    return isinstance(spec, str) and spec == "keep"
 
 
 def _is_rectilinear_chunks(chunks: Any) -> bool:
@@ -808,11 +828,10 @@ def normalize_chunks_nd(
             f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
         )
 
-    # handle no chunking
+    # handle no chunking: one chunk covering every axis. Routed through the -1 sentinel so
+    # the zero-length-axis clamp lives in one place (normalize_chunks_1d).
     if chunks is False:
-        return ChunkGrid(
-            dimensions=tuple(FixedDimension(size=int(s), extent=int(s)) for s in shape)
-        )
+        chunks = -1
 
     # handle 1D convenience form. bool is excluded above so this only catches actual ints.
     if isinstance(chunks, numbers.Integral):
@@ -941,7 +960,7 @@ def resolve_outer_and_inner_chunks(
     # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
     chunk_shape_flat = chunks.chunk_shape
 
-    if shard_shape == "auto":
+    if _is_auto(shard_shape):
         warnings.warn(
             "Automatic shard shape inference is experimental and may change without notice.",
             ZarrUserWarning,

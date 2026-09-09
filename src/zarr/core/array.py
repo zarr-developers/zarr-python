@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from asyncio import gather
@@ -42,6 +43,8 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    _is_auto,
+    _is_keep,
     _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
@@ -1224,9 +1227,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Calculate the number of chunks that have been initialized in storage.
 
         This value is calculated as the sum of the number of chunks in every initialized shard
-        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
-        sharding, each stored object holds one chunk, so the number of chunks initialized is the
-        same as the number of stored objects associated with an array.
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array.
 
         Returns
         -------
@@ -2347,9 +2353,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Calculate the number of chunks that have been initialized in storage.
 
         This value is calculated as the sum of the number of chunks in every initialized shard
-        (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use sharding,
-        each stored object holds one chunk, so the number of chunks initialized is the same as the number
-        of stored objects associated with an array. For a direct count of the number of initialized stored objects, see `nshards_initialized`.
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array. For a direct count of the number of initialized stored
+        objects, see `nshards_initialized`.
 
         Returns
         -------
@@ -4529,7 +4539,7 @@ async def init_array(
 
     # Normalize the user's chunks into a canonical ChunkGrid
 
-    if chunks == "auto":
+    if _is_auto(chunks):
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
         chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
@@ -4885,10 +4895,12 @@ def _parse_keep_array_attr(
     DimensionNamesLike,
     dict[str, JSON] | None,
 ]:
+    # chunks / shards may be numpy arrays, so their sentinel checks go through the
+    # isinstance-guarded helpers rather than a bare ``==`` against the string.
     if isinstance(data, Array):
         rectilinear_grid = _stored_rectilinear_grid_or_none(data.metadata)
         sharded = _sharding_codec(data.metadata) is not None
-        if chunks == "keep":
+        if _is_keep(chunks):
             if rectilinear_grid is None or sharded:
                 # `.chunks` is the inner chunk shape when sharding is used, and
                 # inner chunks are regular whatever the shape of the shard grid.
@@ -4900,7 +4912,7 @@ def _parse_keep_array_attr(
                 # and trailing edges beyond the extent left behind by a
                 # shrinking resize.
                 chunks = rectilinear_grid
-        if shards == "keep":
+        if _is_keep(shards):
             if rectilinear_grid is None:
                 shards = data.shards
             elif sharded:
@@ -4948,11 +4960,13 @@ def _parse_keep_array_attr(
         if dimension_names is None and data.metadata.zarr_format == 3:
             dimension_names = data.metadata.dimension_names
         if attributes is None:
-            attributes = dict(data.attrs)
+            # Deep copy so nested containers are not shared between the source
+            # array's in-memory metadata and the new array's.
+            attributes = copy.deepcopy(dict(data.attrs))
     else:
-        if chunks == "keep":
+        if _is_keep(chunks):
             chunks = "auto"
-        if shards == "keep":
+        if _is_keep(shards):
             shards = None
         if zarr_format is None:
             zarr_format = 3
@@ -5423,9 +5437,12 @@ async def _nchunks_initialized(
     Calculate the number of chunks that have been initialized in storage.
 
     This value is calculated as the sum of the number of chunks in every initialized shard
-    (shard sizes can vary when the shard grid is rectilinear). For arrays that do not use
-    sharding, each stored object holds one chunk, so the number of chunks initialized is the
-    same as the number of stored objects associated with an array.
+    (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+    counted at its full declared size, so for an edge shard that extends beyond the array
+    extent this includes chunks that lie entirely outside the array, and the result can
+    exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+    chunk, so the number of chunks initialized is the same as the number of stored objects
+    associated with an array.
 
     Parameters
     ----------
