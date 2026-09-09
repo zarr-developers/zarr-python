@@ -673,6 +673,11 @@ class ArrayV3Metadata(Metadata):
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
+            # Attributes are user data with no schema of their own: anything the
+            # JSON decoder produced is a valid value, so there is nothing to
+            # validate beyond `parse_attributes` checking that it is a mapping
+            # (done in `__init__`). Recursing into them here only to enforce a
+            # nesting limit rejected documents this library itself had written.
             attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,

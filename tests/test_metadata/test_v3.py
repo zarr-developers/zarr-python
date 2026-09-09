@@ -174,6 +174,11 @@ def test_array_metadata_keys_matches_typeddict() -> None:
 # Codecs after evolution for single-byte (uint8) and multi-byte (float64) types.
 _UINT8_CODECS = ({"name": "bytes"},)
 _FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
+# 100 alternating object/array levels: deeper than the 64-level cap that
+# from_dict once enforced on attributes.
+_DEEP_ATTRIBUTES: dict[str, Any] = {"payload": "leaf"}
+for _ in range(100):
+    _DEEP_ATTRIBUTES = {"payload": [_DEEP_ATTRIBUTES]}
 
 
 @pytest.mark.parametrize(
@@ -248,6 +253,14 @@ _FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
                 extra_fields={"my_ext": {"must_understand": False, "data": [1, 2, 3]}},
             ),
             id="extra_fields",
+        ),
+        Expect(
+            # Attributes are not depth-limited: 100 levels once tripped a 64-level
+            # cap in from_dict that create_array never applied, so arrays this
+            # library wrote could not be reopened.
+            input={"attributes": _DEEP_ATTRIBUTES},
+            output=minimal_metadata_dict_v3(attributes=_DEEP_ATTRIBUTES, codecs=_UINT8_CODECS),
+            id="deeply_nested_attributes",
         ),
     ],
     ids=lambda case: case.id,
