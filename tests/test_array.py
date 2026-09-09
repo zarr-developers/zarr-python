@@ -1142,9 +1142,11 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
 def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
+    expected_chunks = normalize_chunks_nd(chunks, shape).chunk_shape
+    expected_shards = normalize_chunks_nd(shards, shape).chunk_shape
 
     arr_v3 = zarr.create_array(store=store / "v3", shape=shape, chunks=chunks, dtype="i4")
-    assert arr_v3.chunks == (5, 5)
+    assert arr_v3.chunks == expected_chunks
     assert arr_v3.shards is None
 
     arr_v3_sharding = zarr.create_array(
@@ -1154,13 +1156,13 @@ def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
         shards=shards,
         dtype="i4",
     )
-    assert arr_v3_sharding.chunks == (5, 5)
-    assert arr_v3_sharding.shards == (10, 10)
+    assert arr_v3_sharding.chunks == expected_chunks
+    assert arr_v3_sharding.shards == expected_shards
 
     arr_v2 = zarr.create_array(
         store=store / "v2", shape=shape, chunks=chunks, zarr_format=2, dtype="i4"
     )
-    assert arr_v2.chunks == (5, 5)
+    assert arr_v2.chunks == expected_chunks
     assert arr_v2.shards is None
 
 
