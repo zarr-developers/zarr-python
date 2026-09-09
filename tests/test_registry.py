@@ -352,23 +352,82 @@ def test_parse_codecs_with_unregistered_config_pin_raises_bad_config_error() -> 
             parse_codecs([{"name": "bytes"}])
 
 
-def test_parse_codecs_converts_keyerror_from_from_dict(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A codec whose from_dict indexes a malformed config must not leak a KeyError.
+@pytest.fixture
+def keyerror_codec(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> str:
+    """Register a codec whose ``from_dict`` raises a KeyError and return its name.
 
-    A bare KeyError out of metadata parsing is caught by the array-then-group fallback in
-    `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+    Parametrize indirectly with the KeyError's args tuple: ``("required_option",)`` for a
+    codec that indexes its configuration directly, ``()`` for a bare ``raise KeyError``.
     """
     from zarr.codecs import BytesCodec
-    from zarr.errors import MetadataValidationError
     from zarr.registry import register_codec
 
-    class PickyCodec(BytesCodec):
-        @classmethod
-        def from_dict(cls, data: object) -> PickyCodec:
-            data["configuration"]["required_option"]  # type: ignore[index]
-            return cls()
+    keyerror_args: tuple[object, ...] = request.param
 
-    monkeypatch.setitem(zarr.registry._codec_registries, "test_picky", zarr.registry.Registry())
-    register_codec("test_picky", PickyCodec)
-    with pytest.raises(MetadataValidationError, match="test_picky.*required_option"):
-        parse_codecs([{"name": "test_picky", "configuration": {}}])
+    class KeyErrorCodec(BytesCodec):
+        @classmethod
+        def from_dict(cls, data: object) -> KeyErrorCodec:
+            raise KeyError(*keyerror_args)
+
+    name = "test_keyerror"
+    monkeypatch.setitem(zarr.registry._codec_registries, name, zarr.registry.Registry())
+    register_codec(name, KeyErrorCodec)
+    return name
+
+
+@pytest.mark.parametrize(
+    ("keyerror_codec", "expected_message"),
+    [
+        (
+            ("required_option",),
+            "KeyError 'required_option' while parsing the configuration for codec 'test_keyerror'.",
+        ),
+        ((), "KeyError while parsing the configuration for codec 'test_keyerror'."),
+    ],
+    indirect=["keyerror_codec"],
+    ids=["with_key", "argless"],
+)
+def test_parse_codecs_converts_keyerror_from_from_dict(
+    keyerror_codec: str, expected_message: str
+) -> None:
+    """A KeyError out of a codec's from_dict becomes a MetadataValidationError naming the codec.
+
+    A bare KeyError out of metadata parsing is caught by the array-then-group fallback in
+    `zarr.api.asynchronous.open`, which then reports an unrelated group error. The KeyError
+    may carry no arguments, in which case the message simply omits the key.
+    """
+    from zarr.errors import MetadataValidationError
+
+    with pytest.raises(MetadataValidationError) as excinfo:
+        parse_codecs([{"name": keyerror_codec, "configuration": {}}])
+    assert str(excinfo.value) == expected_message
+    assert isinstance(excinfo.value.__cause__, KeyError)
+
+
+@pytest.mark.parametrize("keyerror_codec", [()], indirect=True, ids=["argless"])
+async def test_open_with_argless_keyerror_codec_raises_value_error(keyerror_codec: str) -> None:
+    """`zarr.open` on an array whose codec raises a bare KeyError reports the codec, not IndexError.
+
+    Formatting the argless KeyError used to raise ``IndexError: tuple index out of range``,
+    which is not a ValueError and so escaped the array-then-group fallback in ``zarr.open``.
+    """
+    from zarr.errors import MetadataValidationError
+
+    store = MemoryStore()
+    metadata = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+        "chunk_key_encoding": {"name": "default"},
+        "data_type": "float64",
+        "fill_value": 0.0,
+        "codecs": [{"name": keyerror_codec}],
+        "attributes": {},
+    }
+    await store.set(
+        "zarr.json",
+        default_buffer_prototype().buffer.from_bytes(json.dumps(metadata).encode()),
+    )
+    with pytest.raises(MetadataValidationError, match=keyerror_codec):
+        zarr.open(store=store, mode="r")
