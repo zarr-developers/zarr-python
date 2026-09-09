@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from asyncio import gather
@@ -4955,7 +4956,9 @@ def _parse_keep_array_attr(
         if dimension_names is None and data.metadata.zarr_format == 3:
             dimension_names = data.metadata.dimension_names
         if attributes is None:
-            attributes = dict(data.attrs)
+            # Deep copy so nested containers are not shared between the source
+            # array's in-memory metadata and the new array's.
+            attributes = copy.deepcopy(dict(data.attrs))
     else:
         if chunks == "keep":
             chunks = "auto"

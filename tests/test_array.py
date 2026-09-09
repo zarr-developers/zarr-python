@@ -1829,7 +1829,7 @@ async def test_from_array_arraylike(
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
 def test_from_array_keeps_fill_value_and_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """`from_array` defaults to the fill value and attributes of the source array."""
-    attributes: dict[str, JSON] = {"units": "K"}
+    attributes: dict[str, JSON] = {"units": "K", "nested": {"x": [1]}, "tags": ["a"]}
     src = zarr.create_array(
         store,
         name="src",
@@ -1844,6 +1844,18 @@ def test_from_array_keeps_fill_value_and_attributes(store: Store, zarr_format: Z
     result = zarr.from_array({}, data=src)
     assert result.fill_value == 42
     assert dict(result.attrs) == attributes
+
+    # The copied attributes must not alias the source's nested containers.
+    nested = result.attrs["nested"]
+    assert isinstance(nested, dict)
+    nested_x = nested["x"]
+    assert isinstance(nested_x, list)
+    nested_x.append(99)
+    tags = result.attrs["tags"]
+    assert isinstance(tags, list)
+    tags.append("b")
+    assert src.attrs["nested"] == {"x": [1]}
+    assert src.attrs["tags"] == ["a"]
 
     # A metadata-only copy must read back the source's fill value, not the dtype default.
     meta_only = zarr.from_array({}, data=src, write_data=False)
