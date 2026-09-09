@@ -1541,7 +1541,7 @@ def _normalize_oindex_selection(
             (indices,) = np.nonzero(sel)
             result.append(indices.astype(np.intp))
         elif isinstance(sel, np.ndarray):
-            result.append(sel.astype(np.intp))
+            result.append(checked_affine(0, 1, sel))
         elif isinstance(sel, slice):
             result.append(sel)
         elif (scalar := as_scalar_index(sel)) is not None:
@@ -1553,7 +1553,7 @@ def _normalize_oindex_selection(
                 (indices,) = np.nonzero(array)
                 result.append(indices.astype(np.intp))
             else:
-                result.append(np.asarray(sel, dtype=np.intp))
+                result.append(checked_affine(0, 1, array))
         else:
             result.append(sel)
 
@@ -1743,9 +1743,9 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             indices_tuple = np.nonzero(boolean_array)
             processed.extend(indices.astype(np.intp) for indices in indices_tuple)
         elif isinstance(sel, np.ndarray):
-            processed.append(sel.astype(np.intp))
+            processed.append(checked_affine(0, 1, sel))
         elif isinstance(sel, (list, tuple)):
-            processed.append(np.asarray(sel, dtype=np.intp))
+            processed.append(checked_affine(0, 1, np.asarray(sel)))
         elif (scalar := as_scalar_index(sel)) is not None:
             processed.append(np.array([scalar], dtype=np.intp))
         else:
