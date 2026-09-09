@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
+    from zarr.core.common import ZarrFormat
 
 
 @pytest.fixture
@@ -947,6 +948,48 @@ def test_unsorted_index_unsigned_dtype(store: StorePath, dtype: str) -> None:
 
     assert_array_equal(a[[3, 0], :], z[rows, :])
     assert_array_equal(a[[3, 0], [1, 0]], z.vindex[rows, np.array([1, 0], dtype=dtype)])
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+@pytest.mark.parametrize("index", [4, 2**63, 2**64 - 4, 2**64 - 1])
+def test_unsigned_index_out_of_bounds(
+    zarr_format: ZarrFormat, indexer: str, operation: str, index: int
+) -> None:
+    """Unsigned indices must be checked before narrowing can turn them negative."""
+    data = np.arange(16).reshape(4, 4)
+    arr = zarr.create_array({}, data=data, chunks=(2, 2), zarr_format=zarr_format)
+    selection = (np.array([0, 1]), np.array([0, index], dtype="uint64"))
+    accessor = getattr(arr, indexer)
+
+    if operation == "read":
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection]
+    else:
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection] = 99
+
+    assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("dtype", ["uint8", "uint16", "uint32", "uint64"])
+@pytest.mark.parametrize("indices", [[], [3, 0], [0, 3], [0] * 16 + [3] * 16])
+def test_unsigned_index_roundtrip(
+    zarr_format: ZarrFormat, indexer: str, dtype: str, indices: list[int]
+) -> None:
+    """Valid unsigned reads and writes retain the behavior fixed by #4286."""
+    expected = np.arange(4)
+    arr = zarr.create_array({}, data=expected, chunks=(2,), zarr_format=zarr_format)
+    selection = np.array(indices, dtype=dtype)
+    accessor = getattr(arr, indexer)
+
+    assert_array_equal(accessor[selection], expected[selection])
+    accessor[selection] = 99
+    expected[selection] = 99
+    assert_array_equal(arr[:], expected)
 
 
 def _test_set_orthogonal_selection(

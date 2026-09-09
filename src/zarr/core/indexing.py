@@ -769,6 +769,9 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
+        # Check unsigned values before narrowing: uint64 can wrap to a valid negative index.
+        if boundscheck and dim_sel.dtype.kind == "u":
+            boundscheck_indices(dim_sel, dim_len)
         # uint64 promotes to float against the signed chunk offset
         dim_sel = dim_sel.astype(np.intp, copy=False)
 
@@ -1209,6 +1212,10 @@ class CoordinateIndexer(Indexer):
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
+        # Check unsigned values before narrowing can turn an out-of-bounds value negative.
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
+            if dim_sel.dtype.kind == "u":
+                boundscheck_indices(dim_sel, dim_len)
         # keep indices integral: uint64 against a signed offset promotes to float
         selection_normalized = cast(
             "CoordinateSelectionNormalized",
