@@ -4365,7 +4365,8 @@ async def from_array(
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
-        dtype=data.dtype,
+        # A native object dtype cannot identify the source's Zarr data type.
+        dtype=data._async_array._zdtype if isinstance(data, Array) else data.dtype,
         chunks=chunks,
         shards=shards,
         filters=filters,
