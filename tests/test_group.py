@@ -24,7 +24,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
-from zarr.core.dtype import Float64, Int32, VariableLengthBytes
+from zarr.core.dtype import Float64, Int32, VariableLengthBytes, VariableLengthUTF8
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
@@ -1486,6 +1486,52 @@ async def test_require_array_zdtype(
 
     foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=exact)
     assert foo._zdtype == expected
+
+
+@pytest.mark.parametrize(
+    ("existing", "requested"),
+    [(VariableLengthBytes(), VariableLengthUTF8()), (VariableLengthUTF8(), VariableLengthBytes())],
+)
+@pytest.mark.parametrize("exact", [True, False])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("as_json", [False, True])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+async def test_require_array_rejects_different_variable_length_types(
+    existing: ZDType[Any, Any],
+    requested: ZDType[Any, Any],
+    exact: bool,
+    zarr_format: ZarrFormat,
+    as_json: bool,
+) -> None:
+    root = await AsyncGroup.from_store({}, zarr_format=zarr_format)
+    await root.create_array("foo", shape=(2,), dtype=existing)
+
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array(
+            "foo",
+            shape=(2,),
+            dtype=requested.to_json(zarr_format) if as_json else requested,
+            exact=exact,
+        )
+
+
+async def test_require_array_allows_explicit_numeric_cast(zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.from_store({}, zarr_format=zarr_format)
+    await root.create_array("foo", shape=(2,), dtype=Int32())
+
+    result = await root.require_array("foo", shape=(2,), dtype=Float64(), exact=False)
+
+    assert result._zdtype == Int32()
+
+
+async def test_require_array_rejects_inexact_explicit_numeric_type(
+    zarr_format: ZarrFormat,
+) -> None:
+    root = await AsyncGroup.from_store({}, zarr_format=zarr_format)
+    await root.create_array("foo", shape=(2,), dtype=Int32())
+
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array("foo", shape=(2,), dtype=Float64(), exact=True)
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
