@@ -45,7 +45,7 @@ requires-python = ">=3.12"
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.16.3',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -276,7 +276,7 @@ dependency-groups = ["remote-tests"]
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
+    'numcodecs==0.16.3',  # 0.16.3 needed for zarr3 codecs & GCC 15+ support
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
