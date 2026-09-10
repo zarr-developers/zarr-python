@@ -45,7 +45,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.dtype import ZDType, parse_data_type
+from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
@@ -73,8 +73,6 @@ if TYPE_CHECKING:
         Mapping,
     )
     from typing import Any
-
-    import numpy.typing as npt
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -1245,10 +1243,6 @@ class AsyncGroup:
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
-            Explicit Zarr dtype requests compare complete storage types when exact.
-            For non-exact requests involving object or variable-length string dtypes,
-            explicit Zarr types must also match; NumPy castability alone is insufficient.
-            Native NumPy dtype requests use NumPy equality or castability.
 
         Returns
         -------
@@ -1263,42 +1257,17 @@ class AsyncGroup:
             if shape != ds.shape:
                 raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
 
-            dtype_spec = "float64" if dtype is None else dtype
-            requested_zdtype = None
-            if isinstance(dtype_spec, ZDType):
-                requested_zdtype = dtype_spec
-                requested_dtype = requested_zdtype.to_native_dtype()
+            # `np.dtype(None)` used to resolve to float64 here; keep that default.
+            dtype = parse_data_type(
+                "float64" if dtype is None else dtype,
+                zarr_format=self.metadata.zarr_format,
+            ).to_native_dtype()
+            if exact:
+                if ds.dtype != dtype:
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
             else:
-                try:
-                    requested_dtype = np.dtype(cast("npt.DTypeLike", dtype_spec))
-                except (TypeError, ValueError):
-                    # NumPy cannot interpret Zarr-specific dtype names or JSON
-                    # descriptions. Parse those using the group's storage format.
-                    requested_zdtype = parse_data_type(
-                        dtype_spec, zarr_format=self.metadata.zarr_format
-                    )
-                    requested_dtype = requested_zdtype.to_native_dtype()
-            existing_dtype = ds.dtype
-            if requested_zdtype is not None and (
-                exact
-                or existing_dtype.hasobject
-                or requested_dtype.hasobject
-                or existing_dtype.kind == "T"
-                or requested_dtype.kind == "T"
-            ):
-                # Explicit storage types must match exactly for exact requests.
-                # Object/string casts do not establish storage compatibility even
-                # for non-exact requests: requiring an array does not convert it.
-                if ds._zdtype != requested_zdtype:
-                    raise TypeError(f"Incompatible dtype ({ds._zdtype} vs {requested_zdtype})")
-            else:
-                compatible = (
-                    existing_dtype == requested_dtype
-                    if exact
-                    else np.can_cast(existing_dtype, requested_dtype)
-                )
-                if not compatible:
-                    raise TypeError(f"Incompatible dtype ({existing_dtype} vs {requested_dtype})")
+                if not np.can_cast(ds.dtype, dtype):
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
             ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
 
