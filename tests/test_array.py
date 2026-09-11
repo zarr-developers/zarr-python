@@ -1831,6 +1831,24 @@ async def test_from_array(
     np.testing.assert_array_equal(result.shards, new_shards)
 
 
+@pytest.mark.parametrize("zdtype", zdtype_examples, ids=str)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+def test_from_array_preserves_dtype(zdtype: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
+    source = zarr.create_array({}, shape=(4,), chunks=(2,), dtype=zdtype, zarr_format=zarr_format)
+    expected = source[:]
+    source[:] = expected
+
+    result = zarr.from_array({}, data=source)
+
+    assert result.dtype == source.dtype
+    assert result._async_array._zdtype == source._async_array._zdtype
+    np.testing.assert_array_equal(result[:], expected)
+    reopened = zarr.open_array(result.store, mode="r")
+    assert reopened._async_array._zdtype == source._async_array._zdtype
+    np.testing.assert_array_equal(reopened[:], expected)
+
+
 @pytest.mark.parametrize("store", ["local"], indirect=True)
 @pytest.mark.parametrize("chunks", ["keep", "auto"])
 @pytest.mark.parametrize("write_data", [True, False])
