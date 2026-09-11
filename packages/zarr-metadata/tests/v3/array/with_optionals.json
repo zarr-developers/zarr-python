@@ -1,0 +1,24 @@
+{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [10, 20, 30],
+  "data_type": "float64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [5, 10, 15]}
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {"separator": "/"}
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {"name": "bytes", "configuration": {"endian": "little"}}
+  ],
+  "attributes": {
+    "description": "fixture exercising optional fields",
+    "tags": ["test", "metadata"]
+  },
+  "dimension_names": ["t", "y", "x"],
+  "storage_transformers": []
+}

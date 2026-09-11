@@ -1,16 +1,24 @@
 import tempfile
-from collections.abc import Callable, Generator
+from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from _pytest.compat import LEGACY_PATH
+from packaging.version import parse as parse_version
 
 import zarr
 from zarr import Group
-from zarr.core.common import AccessModeLiteral, ZarrFormat
+from zarr.abc.store import Store
+from zarr.core.buffer import cpu
+from zarr.core.common import ZARR_JSON, AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
-from zarr.storage._common import contains_array, contains_group, make_store_path
+from zarr.storage._common import (
+    _contains_node_v3,
+    contains_array,
+    contains_group,
+    make_store,
+    make_store_path,
+)
 from zarr.storage._utils import (
     _join_paths,
     _normalize_path_keys,
@@ -19,13 +27,16 @@ from zarr.storage._utils import (
     normalize_path,
 )
 
+# contains_array and contains_group share this signature.
+_ContainsFunc = Callable[[StorePath, ZarrFormat], Awaitable[bool]]
+
 
 @pytest.fixture(
     params=["none", "temp_dir_str", "temp_dir_path", "store_path", "memory_store", "dict"]
 )
 def store_like(
     request: pytest.FixtureRequest,
-) -> Generator[None | str | Path | StorePath | MemoryStore | dict[Any, Any], None, None]:
+) -> Generator[str | Path | StorePath | MemoryStore | dict[Any, Any] | None, None, None]:
     if request.param == "none":
         yield None
     elif request.param == "temp_dir_str":
@@ -75,15 +86,86 @@ async def test_contains_array(
 
 
 @pytest.mark.parametrize("func", [contains_array, contains_group])
-async def test_contains_invalid_format_raises(
-    local_store: LocalStore, func: Callable[[Any], Any]
-) -> None:
+async def test_contains_invalid_format_raises(local_store: LocalStore, func: _ContainsFunc) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
-    with pytest.raises(ValueError):
-        assert await func(store_path, zarr_format="3.0")  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="Invalid zarr_format provided. Got 3.0, expected 2 or 3"):
+        assert await func(store_path, "3.0")  # type: ignore[arg-type]
+
+
+async def _write_zarr_json(store_path: StorePath, data: bytes) -> None:
+    """Write raw bytes to the v3 metadata key under `store_path`."""
+    await (store_path / ZARR_JSON).set(cpu.Buffer.from_bytes(data))
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_malformed_json_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is not valid JSON reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"{not valid json")
+    assert await func(store_path, 3) is False
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_non_object_json_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is valid JSON but not an object reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"[1, 2, 3]")
+    assert await func(store_path, 3) is False
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_missing_node_type_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document with no 'node_type' key reads as 'not present'."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b'{"zarr_format": 3}')
+    assert await func(store_path, 3) is False
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_non_utf8_bytes_returns_false(
+    local_store: LocalStore, func: _ContainsFunc
+) -> None:
+    """A v3 metadata document that is not valid UTF-8 reads as 'not present' (not an error)."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"\x80\x81\x82\x83")
+    assert await func(store_path, 3) is False
+
+
+async def test_contains_node_v3_malformed_json_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not valid JSON."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"{not valid json")
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_non_object_json_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not a JSON object."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"[1, 2, 3]")
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_missing_node_type_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document lacks a 'node_type' key."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b'{"zarr_format": 3}')
+    assert await _contains_node_v3(store_path) == "nothing"
+
+
+async def test_contains_node_v3_non_utf8_bytes_returns_nothing(local_store: LocalStore) -> None:
+    """`_contains_node_v3` returns 'nothing' when the document is not valid UTF-8."""
+    store_path = StorePath(local_store, path="foo")
+    await _write_zarr_json(store_path, b"\x80\x81\x82\x83")
+    assert await _contains_node_v3(store_path) == "nothing"
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -100,7 +182,7 @@ async def test_make_store_path_none(path: str) -> None:
 @pytest.mark.parametrize("store_type", [str, Path])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
-    tmpdir: LEGACY_PATH,
+    tmp_path: Path,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
     mode: AccessModeLiteral,
@@ -108,10 +190,10 @@ async def test_make_store_path_local(
     """
     Test the various ways of invoking make_store_path that create a LocalStore
     """
-    store_like = store_type(str(tmpdir))
+    store_like = store_type(str(tmp_path))
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.root) == Path(tmp_path)
     assert store_path.path == normalize_path(path)
     assert store_path.read_only == (mode == "r")
 
@@ -145,18 +227,14 @@ async def test_store_path_invalid_mode_raises(
     Test that ValueErrors are raise for invalid mode.
     """
     with pytest.raises(ValueError):
-        await StorePath.open(
-            LocalStore(str(tmp_path), read_only=modes[0]),
-            path="",
-            mode=modes[1],  # type:ignore[arg-type]
-        )
+        await StorePath.open(LocalStore(str(tmp_path), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
 async def test_make_store_path_invalid() -> None:
     """
     Test that invalid types raise TypeError
     """
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
         await make_store_path(1)
 
 
@@ -171,6 +249,50 @@ async def test_make_store_path_fsspec() -> None:
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
         await make_store_path(store_like, storage_options={"foo": "bar"})
+
+
+# universal-pathlib 0.2.x emits this from its own subclass registry when a local UPath is built.
+@pytest.mark.filterwarnings(
+    "ignore:Detected a customized `__new__` method in subclass:DeprecationWarning"
+)
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("memory://bucket/foo.zarr", FsspecStore),
+        ("s3://bucket/foo.zarr", FsspecStore),
+        ("file://{tmp}/foo.zarr", LocalStore),
+        ("{tmp}/foo.zarr", LocalStore),
+    ],
+)
+async def test_make_store_upath(url: str, expected: type[Store], tmp_path: Path) -> None:
+    """
+    A remote UPath becomes an FsspecStore, and a local one becomes a LocalStore, so that
+    UPath("/data") and Path("/data") agree. See https://github.com/zarr-developers/zarr-python/issues/4244.
+    """
+    upath = pytest.importorskip("upath")
+    fsspec = pytest.importorskip("fsspec")
+    if url.startswith("s3://"):
+        pytest.importorskip("s3fs")
+    if url.startswith("memory://") and parse_version(fsspec.__version__) < parse_version(
+        "2024.12.0"
+    ):
+        # MemoryFileSystem is synchronous, so it can only be used once fsspec is new enough to
+        # supply AsyncFileSystemWrapper.
+        pytest.skip("No AsyncFileSystemWrapper")
+    store = await make_store(upath.UPath(url.format(tmp=tmp_path)))
+    assert isinstance(store, expected)
+    if isinstance(store, LocalStore):
+        # The local branch rebuilds the root from the UPath, so a mangled path would still
+        # produce a LocalStore. Pin the root down too, since "file://{tmp}" has no leading
+        # slash on Windows.
+        assert store.root == tmp_path / "foo.zarr"
+
+
+async def test_make_store_upath_storage_options_raises() -> None:
+    """A UPath carries its own storage options, so a separate mapping is ambiguous."""
+    upath = pytest.importorskip("upath")
+    with pytest.raises(TypeError, match="storage_options"):
+        await make_store(upath.UPath("memory://bucket/foo.zarr"), storage_options={"foo": "bar"})
 
 
 async def test_unsupported() -> None:
@@ -195,7 +317,7 @@ def test_normalize_path_valid(path: str | bytes | Path) -> None:
 
 def test_normalize_path_upath() -> None:
     upath = pytest.importorskip("upath")
-    assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
+    assert normalize_path(upath.UPath("foo/bar", protocol="memory")) == "memory:/foo/bar"
 
 
 def test_normalize_path_none() -> None:
@@ -204,7 +326,7 @@ def test_normalize_path_none() -> None:
 
 @pytest.mark.parametrize("path", [".", ".."])
 def test_normalize_path_invalid(path: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="is invalid because its string representation contains"):
         normalize_path(path)
 
 
@@ -277,7 +399,7 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+def test_different_open_mode(tmp_path: Path) -> None:
     # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")

@@ -24,6 +24,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import Float64, Int32
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
@@ -41,10 +42,11 @@ from zarr.core.group import (
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
-    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -55,19 +57,20 @@ from zarr.testing.store import LatencyStore
 from .conftest import meta_from_array, parse_store
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Callable
 
-    from _pytest.compat import LEGACY_PATH
-
+    from zarr.core.array import ShardsLike
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.common import JSON, ChunksLike, ZarrFormat
+    from zarr.core.dtype import ZDType, ZDTypeLike
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
-    result = await parse_store(request.param, str(tmpdir))
+async def store(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Store:
+    result = await parse_store(request.param, str(tmp_path))
     if not isinstance(result, Store):
-        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
+        raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
 
 
@@ -103,7 +106,7 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     root = await zarr.api.asynchronous.open_group(
         store=store,
     )
-    agroup = await root.getitem("a")
+    agroup = await root.get_group("a")
     assert agroup.attrs == {"key": "value"}
 
     # create a child node with a couple intermediates
@@ -151,7 +154,7 @@ def test_group_name_properties(
     """
     root = Group.from_store(store=StorePath(store=store, path=root_name), zarr_format=zarr_format)
     assert root.path == normalize_path(root_name)
-    assert root.name == "/" + root.path
+    assert root.name == f"/{root.path}"
     assert root.basename == root.path
 
     branch = root.create_group(branch_name)
@@ -159,7 +162,7 @@ def test_group_name_properties(
         assert branch.path == normalize_path(branch_name)
     else:
         assert branch.path == "/".join([root.path, normalize_path(branch_name)])
-    assert branch.name == "/" + branch.path
+    assert branch.name == f"/{branch.path}"
     assert branch.basename == branch_name.split("/")[-1]
 
 
@@ -397,7 +400,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subgroup"]["subarray"] == subsubarray
     assert group["subgroup/subarray"] == subsubarray
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="nope"):
         group["nope"]
 
     with pytest.raises(KeyError, match="subarray/subsubarray"):
@@ -448,6 +451,77 @@ def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
     assert result.attrs["foo"] == "bar"
 
 
+def test_group_get_array(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` returns the array at the given path, for both direct child names
+    and nested paths, and the result is statically typed as an Array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+
+    observed = group.get_array("subarray")
+    assert isinstance(observed, Array)
+    assert observed == subarray
+    assert group.get_array("subgroup/subarray") == subsubarray
+
+
+def test_group_get_array_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ArrayNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(ArrayNotFoundError, match="No array found in store"):
+        group.get_array("missing")
+
+
+def test_group_get_array_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_array` raises `ContainsGroupError` when the node at the given path is a
+    group rather than an array.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_group(name="subgroup")
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+        group.get_array("subgroup")
+
+
+def test_group_get_group(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` returns the group at the given path, for both direct child names
+    and nested paths, and the result is statically typed as a Group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subsubgroup = subgroup.create_group(name="subsubgroup")
+
+    observed = group.get_group("subgroup")
+    assert isinstance(observed, Group)
+    assert observed == subgroup
+    assert group.get_group("subgroup/subsubgroup") == subsubgroup
+
+
+def test_group_get_group_missing(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `GroupNotFoundError` when no node exists at the given path.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    with pytest.raises(GroupNotFoundError, match="No group found in store"):
+        group.get_group("missing")
+
+
+def test_group_get_group_wrong_node_type(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    `Group.get_group` raises `ContainsArrayError` when the node at the given path is an
+    array rather than a group.
+    """
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+        group.get_group("subarray")
+
+
 @pytest.mark.parametrize("consolidated", [True, False])
 def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
@@ -485,11 +559,11 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subarray"] == subarray
 
     del group["subgroup"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subgroup"):
         group["subgroup"]
 
     del group["subarray"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="subarray"):
         group["subarray"]
 
 
@@ -709,53 +783,47 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
     assert new_group.attrs == new_attrs
 
 
-@pytest.mark.parametrize("method", ["create_array", "array"])
 @pytest.mark.parametrize("name", ["a", "/a"])
+@pytest.mark.parametrize(
+    "chunks",
+    [(2, 2), [2, 2], np.array([2, 2]), (np.int64(2), np.int64(2))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize(
+    "shards",
+    [None, (4, 4), [4, 4], np.array([4, 4]), (np.int64(4), np.int64(4))],
+    ids=["none", "tuple", "list", "array", "numpy-scalars"],
+)
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
-    method: Literal["create_array", "array"],
     name: str,
+    chunks: ChunksLike,
+    shards: ShardsLike | None,
 ) -> None:
     """
-    Test `Group.from_store`
+    Test `Group.create_array`
     """
+    if zarr_format == 2 and shards is not None:
+        pytest.skip("Zarr format 2 does not support sharding")
     group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    if method == "create_array":
-        array = group.create_array(name=name, shape=shape, dtype=dtype)
-        array[:] = data
-    elif method == "array":
-        with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-            with pytest.warns(
-                ZarrUserWarning,
-                match="The `compressor` argument is deprecated. Use `compressors` instead.",
-            ):
-                array = group.array(name=name, data=data, shape=shape, dtype=dtype)
-    else:
-        raise AssertionError
+    array = group.create_array(name=name, shape=shape, dtype=dtype, chunks=chunks, shards=shards)
+    array[:] = data
 
     if not overwrite:
-        if method == "create_array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                a = group.create_array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
-        elif method == "array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-                    with pytest.warns(
-                        ZarrUserWarning,
-                        match="The `compressor` argument is deprecated. Use `compressors` instead.",
-                    ):
-                        a = group.array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
+        with pytest.raises(ContainsArrayError):  # noqa: PT012
+            a = group.create_array(name=name, shape=shape, dtype=dtype)
+            a[:] = data
 
     assert array.path == normalize_path(name)
-    assert array.name == "/" + array.path
+    assert array.name == f"/{array.path}"
+    assert array.chunks == (2, 2)
+    np.testing.assert_array_equal(array.shards, shards)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -1084,7 +1152,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     assert await agroup.getitem(sub_group_path) == sub_group
 
     # check that asking for a nonexistent key raises KeyError
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="foo"):
         await agroup.getitem("foo")
 
 
@@ -1105,10 +1173,10 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
 
     #  todo: clean up the code duplication here
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zarray")
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zarray")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(f"{array_name}/zarr.json")
     else:
         raise AssertionError
 
@@ -1116,10 +1184,10 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
     await agroup.delitem(sub_group_path)
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zgroup")
-        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zgroup")
+        assert not await agroup.store_path.store.exists(f"{array_name}/.zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(f"{array_name}/zarr.json")
     else:
         raise AssertionError
 
@@ -1136,7 +1204,7 @@ async def test_asyncgroup_create_group(
 
     assert isinstance(subgroup, AsyncGroup)
     assert subgroup.path == normalize_path(name)
-    assert subgroup.name == "/" + subgroup.path
+    assert subgroup.name == f"/{subgroup.path}"
     assert subgroup.attrs == attributes
     assert subgroup.store_path.path == subgroup.path
     assert subgroup.store_path.store == store
@@ -1176,9 +1244,7 @@ async def test_asyncgroup_create_array(
     assert subnode.store_path.store == store
     assert subnode.shape == shape
     assert subnode.dtype == dtype
-    # todo: fix the type annotation of array.metadata.chunk_grid so that we get some autocomplete
-    # here.
-    assert subnode.metadata.chunk_grid.chunk_shape == chunk_shape
+    assert subnode._chunk_grid.chunk_shape == chunk_shape
     assert subnode.metadata.zarr_format == zarr_format
 
 
@@ -1342,7 +1408,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     #     await root.require_group("foo", overwrite=True)
 
     # test that requiring a group where an array is fails
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Incompatible object"):
         await foo_group.require_group("bar")
 
 
@@ -1365,38 +1431,6 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     # no names
     no_group = await root.require_groups()
     assert no_group == ()
-
-
-def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None:
-    """Check that deprecated create_dataset method allows input data.
-
-    See https://github.com/zarr-developers/zarr-python/issues/2631.
-    """
-    root = Group.from_store(store=store, zarr_format=zarr_format)
-    arr = np.random.random((5, 5))
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        data = root.create_dataset("random", data=arr, shape=arr.shape)
-    np.testing.assert_array_equal(np.asarray(data), arr)
-
-
-async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
-    assert foo.shape == (10,)
-
-    with (
-        pytest.raises(ContainsArrayError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("foo", shape=(100,), dtype="int8")
-
-    _ = await root.create_group("bar")
-    with (
-        pytest.raises(ContainsGroupError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
 async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
@@ -1422,6 +1456,29 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     _ = await root.create_group("bar")
     with pytest.raises(TypeError, match="Incompatible object"):
         await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected"),
+    [
+        (Int32(), Int32()),
+        (np.dtype("int32"), Int32()),
+        ("int32", Int32()),
+        (None, Float64()),
+    ],
+    ids=["zdtype", "numpy", "str", "none"],
+)
+async def test_require_array_zdtype(
+    store: Store, zarr_format: ZarrFormat, dtype: ZDTypeLike | None, expected: ZDType[Any, Any]
+) -> None:
+    """An existing array can be required with a ZDType, as well as a string, a NumPy dtype,
+    or None. See https://github.com/zarr-developers/zarr-python/issues/3377
+    """
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await root.create_array("foo", shape=(10,), dtype=expected)
+
+    foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=True)
+    assert foo._zdtype == expected
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
@@ -1527,7 +1584,7 @@ class TestConsolidated:
 
         # On disk, we've consolidated all the metadata in the root zarr.json
         group = await zarr.api.asynchronous.open(store=store)
-        rg0 = await group.getitem("g0")
+        rg0 = await group.get_group("g0")
 
         expected = ConsolidatedMetadata(
             metadata={
@@ -1548,10 +1605,10 @@ class TestConsolidated:
         )
         assert rg0.metadata.consolidated_metadata == expected
 
-        rg1 = await rg0.getitem("g1")
+        rg1 = await rg0.get_group("g1")
         assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
 
-        rg2 = await rg1.getitem("g2")
+        rg2 = await rg1.get_group("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_group_delitem_consolidated(self, store: Store) -> None:
@@ -1708,7 +1765,7 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="0/0"):
         g1["0/0"]
 
 
@@ -1771,6 +1828,9 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
         (zarr.core.group.get_node, zarr.core.sync_group.get_node),
     ],
+    # The default ids (from __name__) collide: the method pair and the module-level pair
+    # for create_hierarchy would both be id'd "create_hierarchy-create_hierarchy".
+    ids=lambda func: f"{func.__module__.rsplit('.', maxsplit=1)[-1]}.{func.__qualname__}",
 )
 def test_consistent_signatures(
     a_func: Callable[[object], object], b_func: Callable[[object], object]

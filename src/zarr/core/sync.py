@@ -6,9 +6,7 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, TypeVar
-
-from typing_extensions import ParamSpec
+from typing import TYPE_CHECKING
 
 from zarr.core.config import config
 
@@ -18,9 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 
@@ -95,7 +90,9 @@ def reset_resources_after_fork() -> None:
     Ensure that global resources are reset after a fork. Without this function,
     forked processes will retain invalid references to the parent process's resources.
     """
-    global loop, iothread, _executor
+    # `loop` and `iothread` are mutated in place rather than rebound, so only
+    # `_executor` needs the global declaration.
+    global _executor
     # These lines are excluded from coverage because this function only runs in a child process,
     # which is not observed by the test coverage instrumentation. Despite the apparent lack of
     # test coverage, this function should be adequately tested by any test that uses Zarr IO with
@@ -110,18 +107,18 @@ if hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=reset_resources_after_fork)
 
 
-async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
+async def _runner[T](coro: Coroutine[Any, Any, T]) -> T | BaseException:
     """
     Await a coroutine and return the result of running it. If awaiting the coroutine raises an
     exception, the exception will be returned.
     """
     try:
         return await coro
-    except Exception as ex:
+    except Exception as ex:  # noqa: BLE001 -- the caller re-raises the returned exception
         return ex
 
 
-def sync(
+def sync[T](
     coro: Coroutine[Any, Any, T],
     loop: asyncio.AbstractEventLoop | None = None,
     timeout: float | None = None,
@@ -182,7 +179,7 @@ def _get_loop() -> asyncio.AbstractEventLoop:
     return loop[0]
 
 
-async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+async def _collect_aiterator[T](data: AsyncIterator[T]) -> tuple[T, ...]:
     """
     Collect an entire async iterator into a tuple
     """
@@ -190,7 +187,7 @@ async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
     return tuple(result)
 
 
-def collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+def collect_aiterator[T](data: AsyncIterator[T]) -> tuple[T, ...]:
     """
     Synchronously collect an entire async iterator into a tuple.
     """
@@ -198,22 +195,22 @@ def collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
 
 
 class SyncMixin:
-    def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
-        # TODO: refactor this to to take *args and **kwargs and pass those to the method
+    def _sync[T](self, coroutine: Coroutine[Any, Any, T]) -> T:
+        # TODO: refactor this to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
         return sync(
             coroutine,
             timeout=config.get("async.timeout"),
         )
 
-    def _sync_iter(self, async_iterator: AsyncIterator[T]) -> list[T]:
+    def _sync_iter[T](self, async_iterator: AsyncIterator[T]) -> list[T]:
         async def iter_to_list() -> list[T]:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
 
 
-async def _with_semaphore(
+async def _with_semaphore[T](
     func: Callable[[], Awaitable[T]], semaphore: asyncio.Semaphore | None = None
 ) -> T:
     """

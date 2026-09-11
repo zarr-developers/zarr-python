@@ -8,14 +8,16 @@ import numpy as np
 import zarr
 import zarr.codecs.numcodecs as numcodecs
 
+store = zarr.storage.MemoryStore()
 array = zarr.create_array(
-  store="data_numcodecs.zarr",
-  shape=(1024, 1024),
-  chunks=(64, 64),
-  dtype="uint32",
-  filters=[numcodecs.Delta(dtype="uint32")],
-  compressors=[numcodecs.BZ2(level=5)],
-  overwrite=True)
+    store=store,
+    shape=(1024, 1024),
+    chunks=(64, 64),
+    dtype="uint32",
+    filters=[numcodecs.Delta(dtype="uint32")],
+    compressors=[numcodecs.BZ2(level=5)],
+    overwrite=True
+)
 array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
 ```
 
@@ -32,7 +34,6 @@ import math
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
-from warnings import warn
 
 import numpy as np
 
@@ -41,13 +42,12 @@ from zarr.abc.metadata import Metadata
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration, product
 from zarr.dtype import UInt8, ZDType, parse_dtype
-from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
 
 CODEC_PREFIX = "numcodecs."
 
@@ -102,12 +102,6 @@ class _NumcodecsCodec(Metadata):
             )  # pragma: no cover
 
         object.__setattr__(self, "codec_config", codec_config)
-        warn(
-            "Numcodecs codecs are not in the Zarr version 3 specification and "
-            "may not be supported by other zarr implementations.",
-            category=ZarrUserWarning,
-            stacklevel=2,
-        )
 
     @cached_property
     def _codec(self) -> Numcodec:
@@ -140,52 +134,66 @@ class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
-        return await asyncio.to_thread(
-            as_numpy_array_wrapper,
-            self._codec.decode,
-            chunk_data,
-            chunk_spec.prototype,
-        )
+    def _decode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return as_numpy_array_wrapper(self._codec.decode, chunk_data, chunk_spec.prototype)
 
-    def _encode(self, chunk_data: Buffer, prototype: BufferPrototype) -> Buffer:
+    def _encode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         encoded = self._codec.encode(chunk_data.as_array_like())
         if isinstance(encoded, np.ndarray):  # Required for checksum codecs
-            return prototype.buffer.from_bytes(encoded.tobytes())
-        return prototype.buffer.from_bytes(encoded)
+            return chunk_spec.prototype.buffer.from_bytes(encoded.tobytes())
+        return chunk_spec.prototype.buffer.from_bytes(encoded)
+
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
 
     async def _encode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
-        return await asyncio.to_thread(self._encode, chunk_data, chunk_spec.prototype)
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
 
 
 class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.decode, chunk_ndarray)
+        out = self._codec.decode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
-        chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+    def _encode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
+        out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
+
+    async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
 
 
 class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
     def __init__(self, **codec_config: JSON) -> None:
         super().__init__(**codec_config)
 
-    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_bytes = chunk_data.to_bytes()
-        out = await asyncio.to_thread(self._codec.decode, chunk_bytes)
+        out = self._codec.decode(chunk_bytes)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
-    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
-        chunk_ndarray = chunk_data.as_ndarray_like()
-        out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
+    def _encode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        # numcodecs codecs flatten with order="A", so an F-contiguous chunk
+        # would be encoded in transposed element order (gh-3558)
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
+        out = self._codec.encode(chunk_ndarray)
         return chunk_spec.prototype.buffer.from_bytes(out)
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)
+
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_data, chunk_spec)
 
 
 # bytes-to-bytes codecs

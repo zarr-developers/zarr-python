@@ -6,15 +6,13 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 
-from zarr.core.dtype.common import (
-    DataTypeValidationError,
-    DTypeJSON,
-)
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
@@ -161,6 +159,10 @@ class DataTypeRegistry:
             raise ValueError(msg)
         matched: list[ZDType[TBaseDType, TBaseScalar]] = []
         for val in self.contents.values():
+            # DataTypeValidationError means "this dtype doesn't match me", which is
+            # expected and suppressed. Other exceptions (e.g. ValueError for a dtype
+            # that matches the type but has an invalid configuration) are propagated
+            # to the caller.
             with contextlib.suppress(DataTypeValidationError):
                 matched.append(val.from_native_dtype(dtype))
         if len(matched) == 1:

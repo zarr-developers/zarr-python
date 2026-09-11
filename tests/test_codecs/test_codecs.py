@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -18,11 +19,11 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import BasicSelection, morton_order_iter
+from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
-from zarr.storage import StorePath
+from zarr.storage import MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -171,9 +172,10 @@ def test_open(store: Store) -> None:
     assert a.metadata == b.metadata
 
 
-def test_morton() -> None:
-    assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
-    assert list(morton_order_iter((2, 2, 2))) == [
+def test_morton_exact_order() -> None:
+    """Test exact morton ordering for power-of-2 shapes."""
+    assert list(morton_order_coords((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
+    assert list(morton_order_coords((2, 2, 2))) == [
         (0, 0, 0),
         (1, 0, 0),
         (0, 1, 0),
@@ -183,7 +185,7 @@ def test_morton() -> None:
         (0, 1, 1),
         (1, 1, 1),
     ]
-    assert list(morton_order_iter((2, 2, 2, 2))) == [
+    assert list(morton_order_coords((2, 2, 2, 2))) == [
         (0, 0, 0, 0),
         (1, 0, 0, 0),
         (0, 1, 0, 0),
@@ -206,21 +208,59 @@ def test_morton() -> None:
 @pytest.mark.parametrize(
     "shape",
     [
-        [2, 2, 2],
-        [5, 2],
-        [2, 5],
-        [2, 9, 2],
-        [3, 2, 12],
-        [2, 5, 1],
-        [4, 3, 6, 2, 7],
-        [3, 2, 1, 6, 4, 5, 2],
+        (2, 2, 2),
+        (5, 2),
+        (2, 5),
+        (2, 9, 2),
+        (3, 2, 12),
+        (2, 5, 1),
+        (4, 3, 6, 2, 7),
+        (3, 2, 1, 6, 4, 5, 2),
+        (1,),
+        (1, 1),
+        (5, 1, 3),
+        (1, 4, 1, 2),
+        (5, 5, 5),  # triggers argsort strategy (n_z/n_total > 4)
     ],
 )
-def test_morton2(shape: tuple[int, ...]) -> None:
-    order = list(morton_order_iter(shape))
-    for i, x in enumerate(order):
-        assert x not in order[:i]  # no duplicates
-        assert all(x[j] < shape[j] for j in range(len(shape)))  # all indices are within bounds
+def test_morton_is_permutation(shape: tuple[int, ...]) -> None:
+    """Test that morton_order_coords produces every valid coordinate exactly once."""
+    import itertools
+
+    from zarr.core.common import product
+
+    order = list(morton_order_coords(shape))
+    expected_len = product(shape)
+    # completeness: every valid coordinate is present
+    assert len(order) == expected_len
+    # no duplicates
+    assert len(set(order)) == expected_len
+    # all coordinates are within bounds
+    assert all(all(c < s for c, s in zip(coord, shape, strict=True)) for coord in order)
+    # the set of coordinates equals the full cartesian product
+    assert set(order) == set(itertools.product(*(range(s) for s in shape)))
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 2),
+        (4, 4),
+        (2, 2, 2),
+        (4, 4, 4),
+        (2, 2, 2, 2),
+    ],
+)
+def test_morton_ordering(shape: tuple[int, ...]) -> None:
+    """Test that the iteration order matches consecutive decode_morton outputs.
+
+    For power-of-2 shapes, every decode_morton output is in-bounds,
+    so the ordering should be exactly decode_morton(0), decode_morton(1), ...
+    """
+
+    order = list(morton_order_coords(shape))
+    for i, coord in enumerate(order):
+        assert coord == decode_morton(i, shape)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -336,6 +376,49 @@ def test_invalid_metadata_create_array() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+    ],
+)
+def test_sharding_warning_fires_once_per_open(pipeline_path: str) -> None:
+    """Construction-time codec warnings (e.g. sharding's partial-reads warning)
+    must fire exactly once per array open, not once per internal codec-chain
+    reconstruction.
+
+    `create_codec_pipeline` builds a throwaway pipeline via `from_codecs` (which
+    warns) and then calls `evolve_from_array_spec` on it, which re-splits the
+    (already-warned-about) codec chain against the evolved spec. That re-split
+    goes through `codecs_from_list_unchecked` rather than `codecs_from_list`, so
+    it does not re-emit the warning. `FusedCodecPipeline` additionally builds a
+    `ChunkTransform` (and, on the async fallback path, an `AsyncChunkTransform`
+    per call) from the same evolved codec chain, which must use the same quiet
+    variant.
+    """
+    with config.set({"codec_pipeline.path": pipeline_path}):
+        store = MemoryStore()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            zarr.create_array(
+                store,
+                shape=(16, 16),
+                chunks=(16, 16),
+                dtype=np.dtype("uint8"),
+                fill_value=0,
+                serializer=ShardingCodec(chunk_shape=(8, 8)),
+                compressors=[GzipCodec()],
+            )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            zarr.open_array(store, mode="r")
+
+        matches = [w for w in caught if "disables partial reads" in str(w.message)]
+        assert len(matches) == 1
+
+
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
@@ -363,3 +446,41 @@ async def test_resize(store: Store) -> None:
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
     assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None
+
+
+def _resolve_metadata_codecs() -> list[Codec]:
+    from zarr.codecs.crc32c_ import Crc32cCodec
+    from zarr.codecs.zstd import ZstdCodec
+
+    return [
+        BytesCodec(),
+        GzipCodec(level=1),
+        TransposeCodec(order=(0,)),
+        Crc32cCodec(),
+        ZstdCodec(level=1),
+    ]
+
+
+@pytest.mark.parametrize("codec", _resolve_metadata_codecs(), ids=lambda c: type(c).__name__)
+def test_resolve_metadata_only_mutates_shape(codec: Codec) -> None:
+    """A codec's resolve_metadata may change a chunk's `shape` but must leave the
+    prototype, dtype, fill_value, and config untouched -- the pipeline relies on
+    those being stable across the codec chain.
+    """
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.dtype import get_data_type_from_native_dtype
+
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec_in = ArraySpec(
+        shape=(10,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0.0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    spec_out = codec.resolve_metadata(spec_in)
+    name = type(codec).__name__
+    assert spec_out.prototype is spec_in.prototype, f"{name} changed prototype"
+    assert spec_out.dtype == spec_in.dtype, f"{name} changed dtype"
+    assert spec_out.fill_value == spec_in.fill_value, f"{name} changed fill_value"
+    assert spec_out.config == spec_in.config, f"{name} changed config"

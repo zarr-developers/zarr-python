@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
-from zarr.errors import ZarrUserWarning
+from zarr.errors import UnknownCodecError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ZarrFormat
 
 __all__ = [
     "Registry",
@@ -39,10 +40,133 @@ __all__ = [
     "register_pipeline",
 ]
 
-T = TypeVar("T")
+_ZARR_CODEC_DOCS_URL = "https://zarr.readthedocs.io/en/stable/user-guide/extending/#custom-codecs"
+_NUMCODECS_CODEC_DOCS_URL = (
+    "https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec"
+)
+
+# Codecs zarr-python does not implement, mapped to the names of Python packages that do.
+# These tables exist purely to make the "no implementation for this codec" error actionable;
+# nothing here affects which codecs zarr can actually read or write. Values are what you would
+# pass to `pip install`. Only add an entry you have verified against the package's declared
+# entry points, and only for a package that is actually published.
+#
+# The two Zarr formats resolve codecs through different registries, so they get different
+# tables: a name can mean one thing as a Zarr format 3 codec name and another as a Zarr
+# format 2 codec id. `imagecodecs_*` is exactly that -- `virtual-tiff` declares 15 of those
+# names under `zarr.codecs`, while `imagecodecs-numcodecs` declares all 81 under
+# `numcodecs.codecs`, so the format 2 side can use a prefix and the format 3 side cannot.
+
+# Zarr format 3 codec names (entry point group "zarr.codecs").
+_CODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "gribberish": ("gribberish",),
+    # `virtual-tiff` declares these 15 `imagecodecs_*` names, out of the 81 that exist as
+    # numcodecs ids. They are listed exactly rather than by prefix so that the other 66 get no
+    # hint instead of a hint pointing at a package that does not provide them.
+    "imagecodecs_deflate": ("virtual-tiff",),
+    "imagecodecs_delta": ("virtual-tiff",),
+    "imagecodecs_floatpred": ("virtual-tiff",),
+    "imagecodecs_jetraw": ("virtual-tiff",),
+    "imagecodecs_jpeg": ("virtual-tiff",),
+    "imagecodecs_jpeg2k": ("virtual-tiff",),
+    "imagecodecs_jpeg8": ("virtual-tiff",),
+    "imagecodecs_jpegxl": ("virtual-tiff",),
+    "imagecodecs_jpegxr": ("virtual-tiff",),
+    "imagecodecs_lerc": ("virtual-tiff",),
+    "imagecodecs_lzw": ("virtual-tiff",),
+    "imagecodecs_packbits": ("virtual-tiff",),
+    "imagecodecs_png": ("virtual-tiff",),
+    "imagecodecs_webp": ("virtual-tiff",),
+    "imagecodecs_zstd": ("virtual-tiff",),
+    "n5_default": ("zarr-n5",),
+}
+
+# As `_CODEC_PACKAGES`, but each key is matched against the start of the codec name. Packages
+# that provide many codecs namespace them behind a shared prefix, so one entry covers them all.
+_CODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "any-numcodecs.": ("zarr-any-numcodecs",),
+    "omfiles.": ("omfiles",),
+    "virtual_tiff.": ("virtual-tiff",),
+}
+
+# Zarr format 2 codec ids (entry point group "numcodecs.codecs"). `numcodecs` itself gates
+# several of its own codecs behind optional dependencies, so the package to install for those
+# is an extra of numcodecs rather than a third-party distribution.
+_NUMCODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "FITSAscii": ("kerchunk",),
+    "FITSVarBintable": ("kerchunk",),
+    "crc32c": ("numcodecs[crc32c]",),
+    "fill_hdf_strings": ("kerchunk",),
+    "grib": ("kerchunk",),
+    "msgpack2": ("numcodecs[msgpack]",),
+    "pcodec": ("numcodecs[pcodec]",),
+    "rawgrib": ("gribscan",),
+    "record_member": ("kerchunk",),
+    "vc-delta3d": ("vc-delta3d",),
+    "wavpack": ("wavpack-numcodecs",),
+    "zfpy": ("numcodecs[zfpy]",),
+}
+
+# As `_NUMCODEC_PACKAGES`, but matched against the start of the codec id.
+_NUMCODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "gribscan.": ("gribscan",),
+    "imagecodecs_": ("imagecodecs-numcodecs",),
+}
 
 
-class Registry(dict[str, type[T]], Generic[T]):
+def _packages_for_codec(name: str, *, zarr_format: ZarrFormat) -> tuple[str, ...]:
+    """
+    Names of Python packages known to provide an implementation of the codec ``name``.
+
+    Returns an empty tuple if we don't know of any.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in.
+    """
+    if zarr_format == 2:
+        exact, prefixes = _NUMCODEC_PACKAGES, _NUMCODEC_PACKAGE_PREFIXES
+    else:
+        exact, prefixes = _CODEC_PACKAGES, _CODEC_PACKAGE_PREFIXES
+    if name in exact:
+        return exact[name]
+    for prefix, packages in prefixes.items():
+        if name.startswith(prefix):
+            return packages
+    return ()
+
+
+def _missing_codec_message(name: str, *, zarr_format: ZarrFormat) -> str:
+    """
+    Build the error message raised when no implementation of the codec ``name`` is available.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in. Zarr format 2 codecs are resolved through
+        numcodecs, so that case points at the numcodecs registry rather than at zarr's.
+    """
+    if zarr_format == 2:
+        docs_url, registry = _NUMCODECS_CODEC_DOCS_URL, "numcodecs"
+    else:
+        docs_url, registry = _ZARR_CODEC_DOCS_URL, "zarr"
+    msg = (
+        f"An implementation for codec {name!r} is not available. Register one explicitly "
+        f"using the codec registry (see {docs_url}), or install a Python package that "
+        f"registers a codec implementation with {registry}."
+    )
+    packages = _packages_for_codec(name, zarr_format=zarr_format)
+    if packages:
+        msg += f" Known packages supporting this codec: {', '.join(packages)}."
+    return msg
+
+
+class Registry[T](dict[str, type[T]]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
@@ -59,11 +183,11 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
-__codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
-__pipeline_registry: Registry[CodecPipeline] = Registry()
-__buffer_registry: Registry[Buffer] = Registry()
-__ndbuffer_registry: Registry[NDBuffer] = Registry()
-__chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
+_codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
+_pipeline_registry: Registry[CodecPipeline] = Registry()
+_buffer_registry: Registry[Buffer] = Registry()
+_ndbuffer_registry: Registry[NDBuffer] = Registry()
+_chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
 
 """
 The registry module is responsible for managing implementations of codecs,
@@ -95,37 +219,37 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     """
     entry_points = get_entry_points()
 
-    __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.buffer"))
-    __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="buffer"))
-    __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
-    __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
+    _buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.buffer"))
+    _buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="buffer"))
+    _ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
+    _ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
-    __chunk_key_encoding_registry.lazy_load_list.extend(
+    _chunk_key_encoding_registry.lazy_load_list.extend(
         entry_points.select(group="zarr.chunk_key_encoding")
     )
-    __chunk_key_encoding_registry.lazy_load_list.extend(
+    _chunk_key_encoding_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="chunk_key_encoding")
     )
 
-    __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
-    __pipeline_registry.lazy_load_list.extend(
+    _pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
+    _pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
     )
     for e in entry_points.select(group="zarr.codecs"):
-        __codec_registries[e.name].lazy_load_list.append(e)
+        _codec_registries[e.name].lazy_load_list.append(e)
     for group in entry_points.groups:
         if group.startswith("zarr.codecs."):
             codec_name = group.split(".")[2]
-            __codec_registries[codec_name].lazy_load_list.extend(entry_points.select(group=group))
+            _codec_registries[codec_name].lazy_load_list.extend(entry_points.select(group=group))
     return [
-        *__codec_registries.values(),
-        __pipeline_registry,
-        __buffer_registry,
-        __ndbuffer_registry,
-        __chunk_key_encoding_registry,
+        *_codec_registries.values(),
+        _pipeline_registry,
+        _buffer_registry,
+        _ndbuffer_registry,
+        _chunk_key_encoding_registry,
     ]
 
 
@@ -135,42 +259,42 @@ def _reload_config() -> None:
 
 def fully_qualified_name(cls: type) -> str:
     module = cls.__module__
-    return module + "." + cls.__qualname__
+    return f"{module}.{cls.__qualname__}"
 
 
 def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:
-    if key not in __codec_registries:
-        __codec_registries[key] = Registry()
-    __codec_registries[key].register(codec_cls, qualname=qualname)
+    if key not in _codec_registries:
+        _codec_registries[key] = Registry()
+    _codec_registries[key].register(codec_cls, qualname=qualname)
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
-    __pipeline_registry.register(pipe_cls)
+    _pipeline_registry.register(pipe_cls)
 
 
 def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
-    __ndbuffer_registry.register(cls, qualname)
+    _ndbuffer_registry.register(cls, qualname)
 
 
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
-    __buffer_registry.register(cls, qualname)
+    _buffer_registry.register(cls, qualname)
 
 
 def register_chunk_key_encoding(key: str, cls: type) -> None:
-    __chunk_key_encoding_registry.register(cls, key)
+    _chunk_key_encoding_registry.register(cls, key)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     if reload_config:
         _reload_config()
 
-    if key in __codec_registries:
+    if key in _codec_registries:
         # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
-        __codec_registries[key].lazy_load()
+        _codec_registries[key].lazy_load()
 
-    codec_classes = __codec_registries[key]
+    codec_classes = _codec_registries[key]
     if not codec_classes:
-        raise KeyError(key)
+        raise UnknownCodecError(_missing_codec_message(key, zarr_format=3))
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
@@ -181,11 +305,17 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
             category=ZarrUserWarning,
         )
         return list(codec_classes.values())[-1]
-    selected_codec_cls = codec_classes[config_entry]
-
-    if selected_codec_cls:
-        return selected_codec_cls
-    raise KeyError(key)
+    selected_codec_cls = codec_classes.get(config_entry)
+    if selected_codec_cls is None:
+        # Not UnknownCodecError: the codec is known, the implementation named in the config is
+        # not registered. That is a configuration problem, which is what the sibling getters in
+        # this module raise BadConfigError for.
+        raise BadConfigError(
+            f"Codec {key!r} is configured to use the implementation {config_entry!r}, which is "
+            f"not registered. Registered implementations of this codec: "
+            f"{sorted(codec_classes)}."
+        )
+    return selected_codec_cls
 
 
 def _resolve_codec(data: dict[str, JSON]) -> Codec:
@@ -198,9 +328,9 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
-    Normalize the input to a ``BytesBytesCodec`` instance.
-    If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `BytesBytesCodec` instance.
+    If the input is already a `BytesBytesCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `BytesBytesCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import BytesBytesCodec
 
@@ -218,9 +348,9 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
 
 def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
-    Normalize the input to a ``ArrayBytesCodec`` instance.
-    If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `ArrayBytesCodec` instance.
+    If the input is already a `ArrayBytesCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `ArrayBytesCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import ArrayBytesCodec
 
@@ -238,9 +368,9 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
 
 def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
-    Normalize the input to a ``ArrayArrayCodec`` instance.
-    If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
+    Normalize the input to a `ArrayArrayCodec` instance.
+    If the input is already a `ArrayArrayCodec`, it is returned as is. If the input is a dict, it
+    is converted to a `ArrayArrayCodec` instance via the `_resolve_codec` function.
     """
     from zarr.abc.codec import ArrayArrayCodec
 
@@ -259,50 +389,50 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
 def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     if reload_config:
         _reload_config()
-    __pipeline_registry.lazy_load()
+    _pipeline_registry.lazy_load()
     path = config.get("codec_pipeline.path")
-    pipeline_class = __pipeline_registry.get(path)
+    pipeline_class = _pipeline_registry.get(path)
     if pipeline_class:
         return pipeline_class
     raise BadConfigError(
-        f"Pipeline class '{path}' not found in registered pipelines: {list(__pipeline_registry)}."
+        f"Pipeline class '{path}' not found in registered pipelines: {list(_pipeline_registry)}."
     )
 
 
 def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
     if reload_config:
         _reload_config()
-    __buffer_registry.lazy_load()
+    _buffer_registry.lazy_load()
 
     path = config.get("buffer")
-    buffer_class = __buffer_registry.get(path)
+    buffer_class = _buffer_registry.get(path)
     if buffer_class:
         return buffer_class
     raise BadConfigError(
-        f"Buffer class '{path}' not found in registered buffers: {list(__buffer_registry)}."
+        f"Buffer class '{path}' not found in registered buffers: {list(_buffer_registry)}."
     )
 
 
 def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     if reload_config:
         _reload_config()
-    __ndbuffer_registry.lazy_load()
+    _ndbuffer_registry.lazy_load()
     path = config.get("ndbuffer")
-    ndbuffer_class = __ndbuffer_registry.get(path)
+    ndbuffer_class = _ndbuffer_registry.get(path)
     if ndbuffer_class:
         return ndbuffer_class
     raise BadConfigError(
-        f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
+        f"NDBuffer class '{path}' not found in registered buffers: {list(_ndbuffer_registry)}."
     )
 
 
 def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
-    __chunk_key_encoding_registry.lazy_load(use_entrypoint_name=True)
-    if key not in __chunk_key_encoding_registry:
+    _chunk_key_encoding_registry.lazy_load(use_entrypoint_name=True)
+    if key not in _chunk_key_encoding_registry:
         raise KeyError(
-            f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(__chunk_key_encoding_registry)}."
+            f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(_chunk_key_encoding_registry)}."
         )
-    return __chunk_key_encoding_registry[key]
+    return _chunk_key_encoding_registry[key]
 
 
 _collect_entrypoints()
@@ -323,6 +453,13 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     -------
     codec : Numcodec
 
+    Raises
+    ------
+    UnknownCodecError
+        If ``data`` carries a string ``"id"`` that is not registered with numcodecs. Any other
+        failure, including a registered codec rejecting its configuration and a ``data`` that is
+        not a mapping, propagates from numcodecs unchanged.
+
     Examples
     --------
     ```python
@@ -333,6 +470,19 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     ```
     """
 
-    from numcodecs.registry import get_codec
+    from numcodecs.registry import codec_registry, entries, get_codec
 
+    # Check whether numcodecs can resolve the id *before* handing off, rather than catching what
+    # `get_codec` raises. Catching cannot tell "this id is unregistered" from "a registered codec
+    # rejected its configuration" or from "a wrapper codec failed to resolve an inner codec", and
+    # relabelling either of those with this id would attach a package hint that is simply wrong.
+    # This mirrors the two lookups `get_codec` performs (it then tests the result for
+    # truthiness rather than membership, which only differs for a falsy registry value).
+    # Widened to `object` deliberately: `data` is annotated as a TypedDict, but this is a public
+    # function and callers pass whatever they like. numcodecs coerces with `dict(config)` and
+    # raises for anything that is not a mapping, which is the behaviour to preserve.
+    raw: object = data
+    codec_id = raw.get("id") if isinstance(raw, Mapping) else None
+    if isinstance(codec_id, str) and codec_id not in codec_registry and codec_id not in entries:
+        raise UnknownCodecError(_missing_codec_message(codec_id, zarr_format=2))
     return get_codec(data)  # type: ignore[no-any-return]

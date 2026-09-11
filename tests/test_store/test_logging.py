@@ -86,6 +86,46 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
         ):
             store._is_open = True
 
+    async def test_with_read_only_round_trip(self, local_store: LocalStore) -> None:
+        """
+        Ensure that LoggingStore.with_read_only returns another LoggingStore with
+        the requested read_only state, preserves logging configuration, and does
+        not change the original store.
+        """
+        # Start from a read-only underlying store
+        ro_store = local_store.with_read_only(read_only=True)
+        wrapped_ro = LoggingStore(store=ro_store, log_level="INFO")
+        assert wrapped_ro.read_only
+
+        buf = default_buffer_prototype().buffer.from_bytes(b"0123")
+
+        # Cannot write through the read-only wrapper
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await wrapped_ro.set("foo", buf)
+
+        # Create a writable wrapper
+        writer = wrapped_ro.with_read_only(read_only=False)
+        assert isinstance(writer, LoggingStore)
+        assert not writer.read_only
+        # logging configuration is preserved
+        assert writer.log_level == wrapped_ro.log_level
+        assert writer.log_handler == wrapped_ro.log_handler
+
+        # Writes via the writable wrapper succeed
+        await writer.set("foo", buf)
+        out = await writer.get("foo", prototype=default_buffer_prototype())
+        assert out is not None
+        assert out.to_bytes() == buf.to_bytes()
+
+        # The original wrapper remains read-only
+        assert wrapped_ro.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await wrapped_ro.set("bar", buf)
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store(store: Store, caplog: pytest.LogCaptureFixture) -> None:

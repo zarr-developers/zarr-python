@@ -70,7 +70,7 @@ def test_script_paths() -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform in ("win32",), reason="This test fails due for unknown reasons on Windows in CI."
+    sys.platform == "win32", reason="This test fails for unknown reasons on Windows in CI."
 )
 @pytest.mark.parametrize("script_path", script_paths)
 def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:
@@ -80,7 +80,7 @@ def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:
     # This allows the example to be useful to users who don't have Zarr installed, but also testable.
     resave_script(script_path, dest_path)
     result = subprocess.run(
-        ["uv", "run", "--refresh", str(dest_path)], capture_output=True, text=True
+        ["uv", "run", "--refresh", str(dest_path)], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, (
         f"Script at {script_path} failed to run. Output: {result.stdout} Error: {result.stderr}"

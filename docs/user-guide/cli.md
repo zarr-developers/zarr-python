@@ -2,8 +2,21 @@
 
 Zarr-Python provides a command-line interface that enables:
 
-- migration of Zarr v2 metadata to v3
+- migration of Zarr v2 metadata to v3 (see the [3.0 Migration Guide](v3_migration.md) for
+  migrating your *code* from the Zarr-Python 2 API to the Zarr-Python 3 API)
 - removal of v2 or v3 metadata
+
+## Installation
+
+The command-line interface requires the `cli` optional dependencies. Install them with:
+
+```bash
+pip install "zarr[cli]"
+```
+
+Without this extra, running `zarr` in a terminal will fail with `ModuleNotFoundError`.
+
+## Getting help
 
 To see available commands run the following in a terminal:
 
@@ -45,9 +58,13 @@ This will write new `zarr.json` files to `input.zarr`, leaving the existing v2 m
 
 To open the array/group using the new metadata use:
 
-```python
+```python exec="true" session="cli-open" source="above"
 import zarr
-zarr_with_v3_metadata = zarr.open('path/to/input.zarr', zarr_format=3)
+
+# create a small array to open (stands in for the migrated store)
+zarr.create_array("data/cli-demo.zarr", shape=(4, 4), chunks=(2, 2), dtype="i4", overwrite=True)
+
+zarr_with_v3_metadata = zarr.open("data/cli-demo.zarr", zarr_format=3)
 ```
 
 Once you are happy with the conversion, you can run the following to remove the old v2 metadata:
@@ -79,7 +96,7 @@ zarr remove-metadata v3 path/to/input.zarr
 By default, this will only allow removal of metadata if a valid alternative exists. For example, you can't
 remove v2 metadata unless v3 metadata exists at that location.
 
-To override this behaviour use `--force`:
+To override this behavior use `--force`:
 
 ```bash
 zarr remove-metadata v3 path/to/input.zarr --force
@@ -94,7 +111,7 @@ or modifying any files.
 zarr migrate v3 path/to/input.zarr --dry-run
 
 Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:
-Saving metadata to path/to/input.zarr/zarr.json
+Saving metadata to file://path/to/input.zarr/zarr.json
 ```
 
 ## Verbose
@@ -109,5 +126,8 @@ zarr --verbose remove-metadata v2 path/to/input.zarr
 
 ## Equivalent functions
 
-All features of the command-line interface are also available via functions under
-`zarr.metadata`.
+All features of the command-line interface are also available as functions in the
+`zarr.metadata.migrate_v3` module:
+[`migrate_v2_to_v3`][zarr.metadata.migrate_v3.migrate_v2_to_v3] and
+[`remove_metadata`][zarr.metadata.migrate_v3.remove_metadata].
+See the [`zarr.metadata` API reference](../api/zarr/metadata.md) for details.

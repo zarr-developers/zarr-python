@@ -1,0 +1,1144 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Literal, cast
+from unittest.mock import AsyncMock
+
+import numpy as np
+import numpy.typing as npt
+import pytest
+
+import zarr
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.sharding import (
+    MAX_UINT_64,
+    ShardingCodec,
+    _ShardIndex,
+    _ShardingByteGetter,
+    _ShardReader,
+)
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import Buffer as ABCBuffer
+from zarr.core.buffer import NDBuffer, default_buffer_prototype
+from zarr.core.buffer.cpu import Buffer
+from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.config import config
+from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.indexing import BasicIndexer
+from zarr.storage._common import StorePath
+from zarr.storage._memory import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.core.array import ShardsConfigParam
+    from zarr.core.array_spec import ArrayConfigParams
+
+# ============================================================================
+# _ShardIndex tests
+# ============================================================================
+
+
+def test_shard_index_create_empty() -> None:
+    """Test that create_empty creates an index filled with MAX_UINT_64."""
+    chunks_per_shard = (2, 3)
+    index = _ShardIndex.create_empty(chunks_per_shard)
+
+    assert index.chunks_per_shard == chunks_per_shard
+    assert index.offsets_and_lengths.shape == (2, 3, 2)
+    assert index.offsets_and_lengths.dtype == np.dtype("<u8")
+    assert np.all(index.offsets_and_lengths == MAX_UINT_64)
+
+
+def test_shard_index_create_empty_1d() -> None:
+    """Test create_empty with 1D chunks_per_shard."""
+    chunks_per_shard = (4,)
+    index = _ShardIndex.create_empty(chunks_per_shard)
+
+    assert index.chunks_per_shard == chunks_per_shard
+    assert index.offsets_and_lengths.shape == (4, 2)
+
+
+def test_shard_index_is_all_empty_true() -> None:
+    """Test is_all_empty returns True for a freshly created empty index."""
+    index = _ShardIndex.create_empty((2, 2))
+    assert index.is_all_empty() is True
+
+
+def test_shard_index_is_all_empty_false() -> None:
+    """Test is_all_empty returns False when at least one chunk is set."""
+    index = _ShardIndex.create_empty((2, 2))
+    index.set_chunk_slice((0, 0), slice(0, 100))
+    assert index.is_all_empty() is False
+
+
+def test_shard_index_get_chunk_slice_empty() -> None:
+    """Test get_chunk_slice returns None for empty chunks."""
+    index = _ShardIndex.create_empty((2, 2))
+    assert index.get_chunk_slice((0, 0)) is None
+    assert index.get_chunk_slice((1, 1)) is None
+
+
+def test_shard_index_get_chunk_slice_set() -> None:
+    """Test get_chunk_slice returns correct (start, end) tuple after setting."""
+    index = _ShardIndex.create_empty((2, 2))
+    index.set_chunk_slice((0, 1), slice(100, 200))
+
+    result = index.get_chunk_slice((0, 1))
+    assert result == (100, 200)
+
+
+def test_shard_index_set_chunk_slice() -> None:
+    """Test set_chunk_slice correctly sets offset and length."""
+    index = _ShardIndex.create_empty((3, 3))
+
+    # Set a chunk slice
+    index.set_chunk_slice((1, 2), slice(50, 150))
+
+    # Verify the underlying array
+    assert index.offsets_and_lengths[1, 2, 0] == 50  # offset
+    assert index.offsets_and_lengths[1, 2, 1] == 100  # length (150 - 50)
+
+
+def test_shard_index_set_chunk_slice_none() -> None:
+    """Test set_chunk_slice with None marks chunk as empty."""
+    index = _ShardIndex.create_empty((2, 2))
+
+    # First set a value
+    index.set_chunk_slice((0, 0), slice(0, 100))
+    assert index.get_chunk_slice((0, 0)) == (0, 100)
+
+    # Then clear it
+    index.set_chunk_slice((0, 0), None)
+    assert index.get_chunk_slice((0, 0)) is None
+    assert index.offsets_and_lengths[0, 0, 0] == MAX_UINT_64
+    assert index.offsets_and_lengths[0, 0, 1] == MAX_UINT_64
+
+
+def test_shard_index_get_full_chunk_map() -> None:
+    """Test get_full_chunk_map returns correct boolean array."""
+    index = _ShardIndex.create_empty((2, 3))
+
+    # Set some chunks
+    index.set_chunk_slice((0, 0), slice(0, 10))
+    index.set_chunk_slice((1, 2), slice(10, 20))
+
+    chunk_map = index.get_full_chunk_map()
+
+    assert chunk_map.shape == (2, 3)
+    assert chunk_map.dtype == np.bool_
+    assert chunk_map[0, 0] is np.True_
+    assert chunk_map[0, 1] is np.False_
+    assert chunk_map[0, 2] is np.False_
+    assert chunk_map[1, 0] is np.False_
+    assert chunk_map[1, 1] is np.False_
+    assert chunk_map[1, 2] is np.True_
+
+
+def test_shard_index_localize_chunk() -> None:
+    """Test _localize_chunk maps global coords to local shard coords via modulo."""
+    index = _ShardIndex.create_empty((2, 3))
+
+    # Within bounds - should return same coords
+    assert index._localize_chunk((0, 0)) == (0, 0)
+    assert index._localize_chunk((1, 2)) == (1, 2)
+
+    # Out of bounds - should wrap via modulo
+    assert index._localize_chunk((2, 0)) == (0, 0)  # 2 % 2 = 0
+    assert index._localize_chunk((3, 5)) == (1, 2)  # 3 % 2 = 1, 5 % 3 = 2
+    assert index._localize_chunk((4, 6)) == (0, 0)  # 4 % 2 = 0, 6 % 3 = 0
+
+
+# ============================================================================
+# _load_partial_shard_maybe tests
+#
+# These exercise the partial-shard read path against a real MemoryStore wrapped
+# in a StorePath (the external-store branch in `_load_partial_shard_maybe`),
+# plus one test against a real `_ShardingByteGetter` (the in-memory branch used
+# by nested sharding).
+# ============================================================================
+
+
+async def _store_path_with_blob(key: str, blob: bytes) -> StorePath:
+    """Build a `StorePath` over a fresh `MemoryStore` containing `blob` at `key`."""
+    store = MemoryStore()
+    await store.set(key, Buffer.from_bytes(blob))
+    return StorePath(store, key)
+
+
+async def test_load_partial_shard_maybe_index_load_fails() -> None:
+    """Returns None when the shard key is absent (index load fails)."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    byte_getter = StorePath(MemoryStore(), "missing")
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=(2,),
+        all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result is None
+
+
+async def test_load_partial_shard_maybe_with_empty_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chunks whose index entry is empty are silently skipped."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    # Index where chunk (1,) is empty; the others point into the stored blob.
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(100, 200))
+    index.set_chunk_slice((3,), slice(200, 300))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    byte_getter = await _store_path_with_blob("shard", b"x" * 300)
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (1,), (2,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result is not None
+    assert (0,) in result
+    assert (1,) not in result  # empty in index
+    assert (2,) in result
+
+
+async def test_load_partial_shard_maybe_all_chunks_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returns an empty dict when all requested chunks are empty (no I/O issued)."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    # Fully-empty index — `get_chunk_slice` returns None for every coord.
+    index = _ShardIndex.create_empty(chunks_per_shard)
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Empty store is fine — we never reach the chunk-read path when all are empty.
+    byte_getter = StorePath(MemoryStore(), "shard")
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (1,), (2,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result == {}
+
+
+async def test_load_partial_shard_returns_chunk_contents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returns the correct bytes for each requested chunk."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    blob = b"A" * 100 + b"B" * 100
+    byte_getter = await _store_path_with_blob("shard", blob)
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (1,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result is not None
+    buf_0, buf_1 = result[(0,)], result[(1,)]
+    assert buf_0 is not None
+    assert buf_1 is not None
+    assert buf_0.to_bytes() == b"A" * 100
+    assert buf_1.to_bytes() == b"B" * 100
+
+
+async def test_load_partial_shard_shard_disappears_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the shard key is missing when chunk reads run, returns None.
+
+    This models a race: the index loaded successfully, but the shard was deleted
+    before the chunk-byte fetches landed. `Store.get_ranges` surfaces this as a
+    `BaseExceptionGroup` containing `FileNotFoundError`, which the codec catches
+    and converts to None to match the index-missing branch's behavior.
+    """
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Store has no value for "shard" — `get_ranges` will raise FileNotFoundError.
+    byte_getter = StorePath(MemoryStore(), "shard")
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result is None
+
+
+async def test_load_partial_shard_non_fnf_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-FileNotFoundError errors from get_ranges are re-raised, not swallowed.
+
+    Our `BaseExceptionGroup.split(FileNotFoundError)` keeps the "shard gone"
+    behavior for FNF only; anything else (e.g. an OSError from the underlying
+    fetch) must bubble up.
+    """
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Make the underlying store.get raise OSError. The default Store.get_ranges
+    # impl routes through self.get; coalesced_get wraps the failure in a
+    # BaseExceptionGroup, which our code re-raises (minus FNF leaves, of which
+    # there are none here).
+    async def boom(*args: object, **kwargs: object) -> Buffer | None:
+        raise OSError("injected disk error")
+
+    store = MemoryStore()
+    monkeypatch.setattr(store, "get", boom)
+    byte_getter = StorePath(store, "shard")
+
+    with pytest.RaisesGroup(pytest.RaisesExc(OSError, match="injected disk error")):
+        await codec._load_partial_shard_maybe(
+            byte_getter=byte_getter,
+            prototype=default_buffer_prototype(),
+            chunks_per_shard=chunks_per_shard,
+            all_chunk_coords={(0,)},
+            max_gap_bytes=1 << 20,
+            max_coalesced_bytes=16 << 20,
+        )
+
+
+async def test_load_partial_shard_nested_sharding_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested sharding: byte_getter is a `_ShardingByteGetter` over an in-memory dict."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: _ShardingByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # The "store" for an inner shard is a dict keyed by outer-chunk coords; the
+    # byte_getter reads ranges out of one entry of that dict.
+    blob = b"A" * 100 + b"B" * 100
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {(0,): Buffer.from_bytes(blob)}
+    byte_getter = _ShardingByteGetter(shard_dict, (0,))
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (1,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result is not None
+    buf_0, buf_1 = result[(0,)], result[(1,)]
+    assert buf_0 is not None
+    assert buf_1 is not None
+    assert buf_0.to_bytes() == b"A" * 100
+    assert buf_1.to_bytes() == b"B" * 100
+
+
+async def test_load_partial_shard_nested_sharding_missing_outer_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested sharding: outer chunk absent → `_ShardingByteGetter.get` returns None
+    → chunks are silently skipped, yielding an empty shard_dict."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: _ShardingByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Empty outer dict — _ShardingByteGetter.get(...) returns None for any range.
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {}
+    byte_getter = _ShardingByteGetter(shard_dict, (0,))
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,)},
+        max_gap_bytes=1 << 20,
+        max_coalesced_bytes=16 << 20,
+    )
+
+    assert result == {}
+
+
+# ============================================================================
+# Supporting class tests (_ShardReader, _is_total_shard)
+# ============================================================================
+
+
+def test_shard_reader_create_empty() -> None:
+    """Test _ShardReader.create_empty creates reader with empty index."""
+    chunks_per_shard = (2, 3)
+    reader = _ShardReader.create_empty(chunks_per_shard)
+
+    assert reader.index.is_all_empty()
+    assert len(reader.buf) == 0
+    assert len(reader) == 2 * 3
+
+
+def test_shard_reader_iteration() -> None:
+    """Test _ShardReader iteration yields all chunk coordinates."""
+    chunks_per_shard = (2, 2)
+    reader = _ShardReader.create_empty(chunks_per_shard)
+
+    coords = list(reader)
+
+    assert len(coords) == 4
+    assert (0, 0) in coords
+    assert (0, 1) in coords
+    assert (1, 0) in coords
+    assert (1, 1) in coords
+
+
+def test_shard_reader_getitem_raises_for_empty() -> None:
+    """Test _ShardReader.__getitem__ raises KeyError for empty chunks."""
+    chunks_per_shard = (2,)
+    reader = _ShardReader.create_empty(chunks_per_shard)
+
+    with pytest.raises(KeyError):
+        _ = reader[(0,)]
+
+
+def test_is_total_shard_full() -> None:
+    """Test _is_total_shard returns True when all chunk coords are present."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (2, 2)
+    all_chunk_coords: set[tuple[int, ...]] = {(0, 0), (0, 1), (1, 0), (1, 1)}
+
+    assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is True
+
+
+def test_is_total_shard_partial() -> None:
+    """Test _is_total_shard returns False for partial chunk coords."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (2, 2)
+    all_chunk_coords: set[tuple[int, ...]] = {(0, 0), (1, 1)}  # Missing (0, 1) and (1, 0)
+
+    assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is False
+
+
+def test_is_total_shard_empty() -> None:
+    """Test _is_total_shard returns False for empty chunk coords."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (2, 2)
+    all_chunk_coords: set[tuple[int, ...]] = set()
+
+    assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is False
+
+
+def test_is_total_shard_1d() -> None:
+    """Test _is_total_shard works with 1D shards."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,), (3,)}
+
+    assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is True
+
+    # Partial
+    partial_coords: set[tuple[int, ...]] = {(0,), (2,)}
+    assert codec._is_total_shard(partial_coords, chunks_per_shard) is False
+
+
+# ============================================================================
+# _inner_codecs_fixed_size tests
+# ============================================================================
+
+
+def test_inner_codecs_fixed_size_no_compression() -> None:
+    """Inner codecs without compression should be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    assert codec._inner_codecs_fixed_size is True
+
+
+def test_inner_codecs_fixed_size_with_compression() -> None:
+    """Inner codecs with compression should NOT be fixed-size."""
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
+    assert codec._inner_codecs_fixed_size is False
+
+
+# ============================================================================
+# inner-chain spec threading
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class _WidenToInt16(ArrayArrayCodec):
+    """Test-only sync-capable AA codec that reports its output dtype as int16."""
+
+    is_fixed_size = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "_widen_to_int16"}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> _WidenToInt16:
+        return cls()
+
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        return replace(chunk_spec, dtype=get_data_type_from_native_dtype(np.dtype("int16")))
+
+    def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+        return input_byte_length
+
+    def _encode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    def _decode_sync(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    async def _encode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+    async def _decode_single(self, chunk_array: Any, chunk_spec: ArraySpec) -> Any:
+        return chunk_array  # pragma: no cover
+
+
+def _int8_spec(shape: tuple[int, ...]) -> ArraySpec:
+    zdtype = get_data_type_from_native_dtype(np.dtype("int8"))  # single-byte source
+    return ArraySpec(
+        shape=shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+
+
+def test_inner_chunk_transform_threads_spec() -> None:
+    """The inner codec chain must be evolved with the spec threaded forward.
+
+    A dtype-widening inner array->array codec means the BytesCodec serializer
+    is evolved against the WIDENED dtype, not the single-byte source —
+    otherwise it strips its `endian` to None and fails to decode multi-byte
+    inner chunks. Same contract as the pipeline-level `evolve_codecs`
+    regression test, applied to `_get_inner_chunk_transform`.
+    """
+    codec = ShardingCodec(chunk_shape=(4,), codecs=[_WidenToInt16(), BytesCodec(endian="little")])
+    shard_spec = _int8_spec((8,))
+
+    transform = codec._get_inner_chunk_transform(shard_spec)
+    serializer = transform._ab_codec
+    assert isinstance(serializer, BytesCodec)
+    assert serializer.endian is not None, (
+        "inner BytesCodec lost its `endian` — _get_inner_chunk_transform did not "
+        "thread the dtype-widening codec's spec into the serializer"
+    )
+
+
+def test_evolve_from_array_spec_threads_spec() -> None:
+    """`ShardingCodec.evolve_from_array_spec` must thread the spec through the
+    inner chain, like `_get_inner_chunk_transform` does.
+
+    This method runs EARLIER, on the real array-creation path (the outer
+    pipeline evolves the sharding codec itself), so an unthreaded evolve here
+    bakes an endian-stripped BytesCodec into the evolved instance's `codecs`
+    before the transform builders ever run — and the later threaded evolve then
+    raises instead of recovering. Calling `_get_inner_chunk_transform` on the
+    EVOLVED instance pins the full real path.
+    """
+    codec = ShardingCodec(chunk_shape=(4,), codecs=[_WidenToInt16(), BytesCodec(endian="little")])
+    # the array spec the OUTER pipeline evolves the sharding codec against
+    array_spec = _int8_spec((8,))
+
+    evolved = codec.evolve_from_array_spec(array_spec)
+    inner_serializer = next(c for c in evolved.codecs if isinstance(c, BytesCodec))
+    assert inner_serializer.endian is not None, (
+        "evolve_from_array_spec evolved the inner BytesCodec against the "
+        "un-widened spec, stripping its `endian`"
+    )
+
+    # and the evolved instance must still build a working inner transform
+    transform = evolved._get_inner_chunk_transform(array_spec)
+    serializer = transform._ab_codec
+    assert isinstance(serializer, BytesCodec)
+    assert serializer.endian is not None
+
+
+# ============================================================================
+# async whole-shard codec methods
+#
+# `ShardingCodec` advertises partial decode/encode, so the codec pipeline
+# always routes sharded reads/writes through `_decode_partial_single` /
+# `_encode_partial_single`. The whole-shard async methods `_decode_single` /
+# `_encode_single` are reached only via the direct `ArrayBytesCodec` API (e.g.
+# a consumer that calls the codec outside a pipeline), so they get no coverage
+# from end-to-end array tests. Pin them with a direct round-trip.
+# ============================================================================
+
+
+@pytest.mark.parametrize("write_empty_chunks", [True, False])
+def test_decode_single_encode_single_roundtrip(write_empty_chunks: bool) -> None:
+    """`ShardingCodec._encode_single` then `_decode_single` round-trips a whole
+    shard. Covers the async whole-shard path the pipeline bypasses in favor of
+    the partial methods."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=write_empty_chunks),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    data = np.arange(50, dtype="float64")
+    value = CPUNDBuffer.from_numpy_array(data)
+
+    encoded = asyncio.run(codec._encode_single(value, spec))
+    assert encoded is not None  # data is non-empty -> a shard is always produced
+    decoded = asyncio.run(codec._decode_single(encoded, spec))
+    np.testing.assert_array_equal(decoded.as_numpy_array(), data)
+
+
+def test_encode_single_all_empty_returns_none() -> None:
+    """`_encode_single` of an all-fill shard under write_empty_chunks=False
+    elides every inner chunk and returns None (the all-empty branch)."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    fill = CPUNDBuffer.from_numpy_array(np.zeros(50, dtype="float64"))
+
+    assert asyncio.run(codec._encode_single(fill, spec)) is None
+
+
+def test_decode_single_all_empty_fills() -> None:
+    """`_decode_single` of a shard whose index is all-empty fills the output
+    with the fill value (the is_all_empty fast path)."""
+    zdtype = get_data_type_from_native_dtype(np.dtype("float64"))
+    spec = ArraySpec(
+        shape=(50,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(-1.0),
+        config=ArrayConfig(order="C", write_empty_chunks=False),
+        prototype=default_buffer_prototype(),
+    )
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    # an empty shard is just the encoded empty index
+    empty_index = asyncio.run(codec._encode_shard_index(_ShardIndex.create_empty((5,))))
+    decoded = asyncio.run(codec._decode_single(empty_index, spec))
+    np.testing.assert_array_equal(decoded.as_numpy_array(), np.full(50, -1.0))
+
+
+# ============================================================================
+# async-only index codec fallback (#269)
+#
+# `_decode_shard_index` / `_encode_shard_index` delegate to their sync twins
+# when every index codec is sync-capable, and otherwise fall back to the async
+# pipeline. The default index chain (bytes + crc32c) is sync-capable, so the
+# fallback is exercised only by an async-only index codec.
+# ============================================================================
+
+
+class _AsyncOnlyBytesCodec(ArrayBytesCodec):
+    """An array<->bytes codec that implements ONLY the async per-chunk methods.
+
+    Wraps a real `BytesCodec` for the actual conversion but deliberately omits
+    `_encode_sync`/`_decode_sync`, so it is NOT a `SupportsSyncCodec`. Used as
+    an index codec to force the async-pipeline fallback in
+    `_decode_shard_index`/`_encode_shard_index`.
+    """
+
+    _inner = BytesCodec()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": "_async_only_bytes"}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> _AsyncOnlyBytesCodec:
+        return cls()
+
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> _AsyncOnlyBytesCodec:
+        return self
+
+    def compute_encoded_size(self, input_byte_length: int, _spec: ArraySpec) -> int:
+        return input_byte_length
+
+    async def _decode_single(self, chunk_bytes: ABCBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        return await self._inner._decode_single(chunk_bytes, chunk_spec)
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> ABCBuffer:
+        result = await self._inner._encode_single(chunk_array, chunk_spec)
+        assert result is not None
+        return result
+
+
+def test_shard_index_async_fallback_for_async_only_index_codec() -> None:
+    """An async-only index codec is not sync-capable, so `_encode_shard_index`
+    and `_decode_shard_index` must take the async-pipeline fallback (#269)
+    instead of the sync twins — and still round-trip."""
+    from zarr.abc.codec import SupportsSyncCodec
+
+    codec = ShardingCodec(
+        chunk_shape=(10,),
+        codecs=[BytesCodec()],
+        index_codecs=[_AsyncOnlyBytesCodec(), Crc32cCodec()],
+    )
+    assert not codec._index_codecs_sync_capable()
+    assert not isinstance(_AsyncOnlyBytesCodec(), SupportsSyncCodec)
+
+    chunks_per_shard = (5,)
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 42))
+
+    encoded = asyncio.run(codec._encode_shard_index(index))
+    decoded = asyncio.run(codec._decode_shard_index(encoded, chunks_per_shard))
+    np.testing.assert_array_equal(decoded.offsets_and_lengths, index.offsets_and_lengths)
+
+
+# ============================================================================
+# Coalescing config option tests
+#
+# Assert that the `array.sharding_coalesce_max_gap_bytes` and
+# `array.sharding_coalesce_max_bytes` global config keys flow through
+# `ArrayConfig` to `Store.get_ranges` as `max_gap_bytes` /
+# `max_coalesced_bytes` kwargs, and that per-array `config={...}` overrides
+# the global default.
+# ============================================================================
+
+
+def _trigger_partial_shard_read(array_config: ArrayConfigParams | None = None) -> AsyncMock:
+    """Build a sharded array on a mocked `MemoryStore`, trigger a partial-shard
+    read via the public read path, and return the `get_ranges` mock.
+    """
+    import zarr
+
+    chunk_shape = (2,)
+    shard_shape = (8,)
+    data = np.arange(8, dtype="int32")
+
+    store = MemoryStore()
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+
+    shards: ShardsConfigParam = {
+        "shape": shard_shape,
+        "index_location": "end",
+    }
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=(8,),
+        chunks=chunk_shape,
+        shards=shards,
+        dtype=data.dtype,
+        fill_value=-1,
+        config=array_config,
+    )
+    a[:] = data
+
+    store_mock.reset_mock()
+
+    # Read a strict subset of chunks to take the partial-shard read path.
+    _ = a[0:4]
+
+    return cast(AsyncMock, store_mock.get_ranges)
+
+
+def test_load_partial_shard_forwards_global_config_to_get_ranges() -> None:
+    """Global `array.sharding_coalesce_*` values flow into ArrayConfig at
+    array-creation time and are forwarded to `Store.get_ranges`."""
+    with config.set(
+        {
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
+        }
+    ):
+        get_ranges_mock = _trigger_partial_shard_read()
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == 4242
+        assert kwargs["max_coalesced_bytes"] == 424242
+
+
+def test_load_partial_shard_per_array_config_overrides_global() -> None:
+    """Per-array `config={...}` passed to `create_array` takes precedence over
+    the global config and is forwarded to `Store.get_ranges`."""
+    with config.set(
+        {
+            "array.sharding_coalesce_max_gap_bytes": 4242,
+            "array.sharding_coalesce_max_bytes": 424242,
+        }
+    ):
+        get_ranges_mock = _trigger_partial_shard_read(
+            array_config={
+                "sharding_coalesce_max_gap_bytes": 99,
+                "sharding_coalesce_max_bytes": 9999,
+            },
+        )
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == 99
+        assert kwargs["max_coalesced_bytes"] == 9999
+
+
+def test_load_partial_shard_uses_config_defaults() -> None:
+    """Without explicit config, defaults from `zarr.config` are forwarded."""
+    get_ranges_mock = _trigger_partial_shard_read()
+
+    assert get_ranges_mock.call_count >= 1
+    for call in get_ranges_mock.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs["max_gap_bytes"] == config.get("array.sharding_coalesce_max_gap_bytes")
+        assert kwargs["max_coalesced_bytes"] == config.get("array.sharding_coalesce_max_bytes")
+
+
+async def test_load_partial_shard_explicit_kwargs_passthrough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_load_partial_shard_maybe` forwards its explicit kwargs to `get_ranges`."""
+    codec = ShardingCodec(chunk_shape=(2,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(200, 300))
+
+    store = MemoryStore()
+    await store.set("shard", Buffer.from_bytes(b"x" * 300))
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    byte_getter = StorePath(store_mock, "shard")
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: StorePath, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords={(0,), (2,)},
+        max_gap_bytes=12345,
+        max_coalesced_bytes=67890,
+    )
+
+    store_mock.get_ranges.assert_called_once()
+    kwargs = store_mock.get_ranges.call_args.kwargs
+    assert kwargs["max_gap_bytes"] == 12345
+    assert kwargs["max_coalesced_bytes"] == 67890
+
+
+# ============================================================================
+# Bulk full-shard decode: identity-read gating and dtype gating
+# ============================================================================
+
+_FUSED_PIPELINE = "zarr.core.codec_pipeline.FusedCodecPipeline"
+
+
+def _fused_uncompressed_array(
+    index_location: Literal["start", "end"],
+) -> tuple[Any, npt.NDArray[np.int32]]:
+    """Sharded `(8, 8)` array whose inner chain is a bare BytesCodec (no crc),
+    one shard covering the whole array, filled with `arange` data. Callers must
+    be inside a config context selecting the fused pipeline."""
+    shards: ShardsConfigParam = {"shape": (8, 8), "index_location": index_location}
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(8, 8),
+        chunks=(2, 2),
+        shards=shards,
+        dtype="int32",
+        compressors=None,
+        filters=None,
+        fill_value=0,
+        config={"write_empty_chunks": True},
+    )
+    ref = np.arange(64, dtype="int32").reshape(8, 8)
+    arr[:] = ref
+    return arr, ref
+
+
+def _spy_on_bulk_decode(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """Record, per call, whether `_decode_full_shard_bulk_if_uncompressed`
+    engaged (returned non-None)."""
+    engaged: list[bool] = []
+    orig = ShardingCodec._decode_full_shard_bulk_if_uncompressed
+
+    def spy(self: ShardingCodec, shard_bytes: Any, shard_spec: Any, indexer: Any) -> Any:
+        result = orig(self, shard_bytes, shard_spec, indexer)
+        engaged.append(result is not None)
+        return result
+
+    monkeypatch.setattr(ShardingCodec, "_decode_full_shard_bulk_if_uncompressed", spy)
+    return engaged
+
+
+_PERM_8 = np.array([7, 2, 5, 0, 3, 6, 1, 4])
+_DUP_8 = np.array([0, 0, 1, 2, 3, 4, 5, 6])
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize(
+    ("read", "expected", "expect_bulk"),
+    [
+        pytest.param(lambda a: a[:], lambda r: r, True, id="full-slice"),
+        pytest.param(lambda a: a[...], lambda r: r, True, id="ellipsis"),
+        pytest.param(
+            lambda a: a[_PERM_8, :], lambda r: r[_PERM_8, :], False, id="fancy-permutation"
+        ),
+        pytest.param(lambda a: a[_DUP_8, :], lambda r: r[_DUP_8, :], False, id="fancy-duplicates"),
+        pytest.param(
+            lambda a: a.oindex[_PERM_8, :],
+            lambda r: r[_PERM_8, :],
+            False,
+            id="oindex-permutation",
+        ),
+        pytest.param(
+            lambda a: a.oindex[_DUP_8, :], lambda r: r[_DUP_8, :], False, id="oindex-duplicates"
+        ),
+        pytest.param(lambda a: a[1:7, :], lambda r: r[1:7, :], False, id="subset-slice"),
+    ],
+)
+def test_bulk_decode_engagement_and_correctness(
+    monkeypatch: pytest.MonkeyPatch,
+    index_location: Literal["start", "end"],
+    read: Any,
+    expected: Any,
+    expect_bulk: bool,
+) -> None:
+    """Under the fused pipeline on an uncompressed crc-free shard, the bulk
+    whole-shard decode fires exactly for identity full reads — and every read
+    returns what numpy returns. The engagement assertions keep the correctness
+    half non-vacuous: a gate that simply disabled the fast path would pass the
+    value checks but fail here."""
+    engaged = _spy_on_bulk_decode(monkeypatch)
+    with config.set({"codec_pipeline.path": _FUSED_PIPELINE}):
+        arr, ref = _fused_uncompressed_array(index_location)
+        engaged.clear()
+        np.testing.assert_array_equal(read(arr), expected(ref))
+    if expect_bulk:
+        assert len(engaged) > 0, "bulk fast path was never reached for a full read"
+        assert all(engaged), "bulk fast path did not engage for a full read"
+    else:
+        assert not any(engaged), "bulk fast path engaged for a non-identity selection"
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+def test_multi_shard_permutation_read(index_location: Literal["start", "end"]) -> None:
+    """A row permutation crossing shard boundaries must return permuted data
+    under the fused pipeline (each shard sees a gather selection whose shape
+    coincides with the shard shape)."""
+    shards: ShardsConfigParam = {"shape": (8, 8), "index_location": index_location}
+    with config.set({"codec_pipeline.path": _FUSED_PIPELINE}):
+        arr = zarr.create_array(
+            store=MemoryStore(),
+            shape=(16, 16),
+            chunks=(2, 2),
+            shards=shards,
+            dtype="int32",
+            compressors=None,
+            filters=None,
+            fill_value=0,
+            config={"write_empty_chunks": True},
+        )
+        ref = np.arange(256, dtype="int32").reshape(16, 16)
+        arr[:] = ref
+        perm = np.array([9, 3, 12, 0, 15, 6, 10, 1, 14, 5, 8, 2, 13, 7, 11, 4])
+        np.testing.assert_array_equal(arr[perm, :8], ref[perm, :8])
+        np.testing.assert_array_equal(arr.oindex[perm, :8], ref[perm, :8])
+
+
+def _dense_shard_blob(
+    codec: ShardingCodec, data: np.ndarray[Any, np.dtype[Any]], chunk_len: int
+) -> Buffer:
+    """Hand-assemble a dense `index_location="end"` shard blob for 1-D `data`:
+    natural-order chunk payloads followed by the encoded index."""
+    n_chunks = data.shape[0] // chunk_len
+    chunk_nbytes = chunk_len * data.dtype.itemsize
+    index = _ShardIndex.create_empty((n_chunks,))
+    for i in range(n_chunks):
+        index.set_chunk_slice((i,), slice(i * chunk_nbytes, (i + 1) * chunk_nbytes))
+    index_bytes = codec._encode_shard_index_sync(index)
+    return Buffer.from_bytes(data.tobytes() + index_bytes.to_bytes())
+
+
+def _identity_indexer(shape: tuple[int, ...], chunk_shape: tuple[int, ...]) -> BasicIndexer:
+    return BasicIndexer(
+        tuple(slice(0, s) for s in shape),
+        shape=shape,
+        chunk_grid=ChunkGrid.from_sizes(shape, chunk_shape),
+    )
+
+
+def _spec_for(data: np.ndarray[Any, np.dtype[Any]]) -> ArraySpec:
+    zdt = get_data_type_from_native_dtype(data.dtype)
+    return ArraySpec(
+        shape=data.shape,
+        dtype=zdt,
+        fill_value=zdt.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+
+
+def test_bulk_decode_declines_structured_dtype() -> None:
+    """The bulk path has no structured-dtype byte-order handling (the `Struct`
+    branch of `BytesCodec._decode_sync`), so it must decline structured specs.
+    The plain-dtype control on an identically constructed blob proves the
+    decline comes from the dtype gate, not from a malformed blob."""
+    codec = ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec(endian="little")])
+
+    # control: same construction with a plain dtype engages the bulk path
+    plain = np.arange(4, dtype="<i4")
+    bulk = codec._decode_full_shard_bulk_if_uncompressed(
+        _dense_shard_blob(codec, plain, 2), _spec_for(plain), _identity_indexer((4,), (2,))
+    )
+    assert bulk is not None
+    np.testing.assert_array_equal(bulk.as_numpy_array(), plain)
+
+    struct_data = np.zeros(4, dtype=np.dtype([("a", "<i4"), ("b", "<f8")]))
+    struct_data["a"] = np.arange(4)
+    result = codec._decode_full_shard_bulk_if_uncompressed(
+        _dense_shard_blob(codec, struct_data, 2),
+        _spec_for(struct_data),
+        _identity_indexer((4,), (2,)),
+    )
+    assert result is None
+
+
+# ============================================================================
+# _ShardIndex.is_dense: offsets must tile the data section exactly
+# ============================================================================
+
+
+@pytest.mark.parametrize("chunks_per_shard", [(4,), (2, 2)])
+@pytest.mark.parametrize("data_section_start", [0, 32])
+@pytest.mark.parametrize("layout_order", ["natural", "reversed"])
+def test_shard_index_is_dense_accepts_tiling_layouts(
+    chunks_per_shard: tuple[int, ...], data_section_start: int, layout_order: str
+) -> None:
+    """`is_dense` accepts every layout whose fixed-size payloads exactly tile
+    the data section, wherever that section starts and in whatever order the
+    chunks were laid out."""
+    chunk_len = 24
+    n = int(np.prod(chunks_per_shard))
+    slots = np.arange(n)
+    if layout_order == "reversed":
+        slots = slots[::-1]
+    offsets = data_section_start + slots * chunk_len
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    for coord, off in zip(np.ndindex(chunks_per_shard), offsets, strict=True):
+        index.set_chunk_slice(tuple(coord), slice(int(off), int(off) + chunk_len))
+    assert index.is_dense(chunk_len, data_section_start=data_section_start) is True
+
+
+def test_shard_index_is_dense_rejects_overlapping_offsets() -> None:
+    """Unique but overlapping offsets (second payload starts inside the first)
+    are not dense."""
+    chunk_len = 24
+    index = _ShardIndex.create_empty((2,))
+    index.set_chunk_slice((0,), slice(0, chunk_len))
+    index.set_chunk_slice((1,), slice(12, 12 + chunk_len))
+    assert index.is_dense(chunk_len, data_section_start=0) is False
+
+
+def test_shard_index_is_dense_rejects_out_of_range_offsets() -> None:
+    """An offset outside the data section (here: chunk 0 pointing into an
+    `index_location="start"` index region) is not dense, even though offsets
+    are unique and non-overlapping."""
+    chunk_len = 24
+    data_section_start = 16
+    index = _ShardIndex.create_empty((2,))
+    index.set_chunk_slice((0,), slice(0, chunk_len))
+    index.set_chunk_slice(
+        (1,), slice(data_section_start + chunk_len, data_section_start + 2 * chunk_len)
+    )
+    assert index.is_dense(chunk_len, data_section_start=data_section_start) is False

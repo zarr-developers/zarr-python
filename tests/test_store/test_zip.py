@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import os
+import pickle
 import shutil
 import tempfile
 import zipfile
@@ -8,11 +10,19 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from hypothesis import settings
+from hypothesis.stateful import (
+    RuleBasedStateMachine,
+    initialize,
+    precondition,
+    rule,
+    run_state_machine_as_test,
+)
 
 import zarr
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.core.group import Group
+from zarr.core.sync import sync
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
@@ -130,14 +140,39 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         zarr_path = tmp_path / "foo.zarr"
         root = zarr.open_group(store=zarr_path, mode="w")
         root.require_group("foo")
-        assert isinstance(foo := root["foo"], Group)  # noqa: RUF018
+        foo = root.get_group("foo")
         foo["bar"] = np.array([1])
         shutil.make_archive(str(zarr_path), "zip", zarr_path)
         zip_path = tmp_path / "foo.zarr.zip"
         zipped = zarr.open_group(ZipStore(zip_path, mode="r"), mode="r")
         assert list(zipped.keys()) == list(root.keys())
-        assert isinstance(group := zipped["foo"], Group)
+        group = zipped.get_group("foo")
         assert list(group.keys()) == list(group.keys())
+
+    async def test_list_without_explicit_open(self, tmp_path: Path) -> None:
+        # ZipStore.list(), list_dir(), and exists() should auto-open
+        # the zip file just like _get() and _set() do.
+        zip_path = tmp_path / "data.zip"
+        zarr_path = tmp_path / "foo.zarr"
+        root = zarr.open_group(store=zarr_path, mode="w")
+        root["x"] = np.array([1, 2, 3])
+        shutil.make_archive(str(zarr_path), "zip", zarr_path)
+        shutil.move(f"{zarr_path}.zip", zip_path)
+
+        store = ZipStore(zip_path, mode="r")
+        assert not store._is_open
+
+        keys = [k async for k in store.list()]
+        assert len(keys) > 0
+
+        store2 = ZipStore(zip_path, mode="r")
+        assert not store2._is_open
+        assert await store2.exists(keys[0])
+
+        store3 = ZipStore(zip_path, mode="r")
+        assert not store3._is_open
+        dir_keys = [k async for k in store3.list_dir("")]
+        assert len(dir_keys) > 0
 
     async def test_move(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin.zip"
@@ -152,3 +187,223 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+
+class TestZipStoreFileObj:
+    """ZipStore backed by an open binary file-like object instead of a path."""
+
+    @pytest.fixture
+    def zip_bytes(self, tmp_path: Path) -> bytes:
+        path = tmp_path / "data.zip"
+        store = ZipStore(path, mode="w")
+        zarr.create_array(store, data=np.arange(10), chunks=(5,))
+        store.close()
+        return path.read_bytes()
+
+    def test_read_from_fileobj(self, zip_bytes: bytes) -> None:
+        # an existing archive can be read through any seekable binary reader
+        store = ZipStore(io.BytesIO(zip_bytes), mode="r")
+        array = zarr.open_array(store, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+        assert store.path is None
+
+    def test_write_to_fileobj(self) -> None:
+        # a writable file object receives the archive; the bytes it holds
+        # after close() are a complete, reopenable zip
+        buffer = io.BytesIO()
+        store = ZipStore(buffer, mode="w", read_only=False)
+        zarr.create_array(store, data=np.arange(4))
+        store.close()
+
+        roundtrip = ZipStore(io.BytesIO(buffer.getvalue()), mode="r")
+        array = zarr.open_array(roundtrip, mode="r")
+        assert np.array_equal(array[...], np.arange(4))
+
+    async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
+        # clear() requires a filesystem location, so it raises a clear error
+        # for file-object-backed stores
+        store = ZipStore(io.BytesIO(zip_bytes), mode="a", read_only=False)
+        store._sync_open()
+        with pytest.raises(NotImplementedError, match="clear.*file-like"):
+            await store.clear()
+
+    async def test_move_unsupported(self, zip_bytes: bytes) -> None:
+        # move() requires a filesystem location, so it raises a clear error
+        # for file-object-backed stores
+        store = ZipStore(io.BytesIO(zip_bytes), mode="a", read_only=False)
+        store._sync_open()
+        with pytest.raises(NotImplementedError, match="move.*file-like"):
+            await store.move("elsewhere.zip")
+
+    def test_invalid_file_object_rejected(self) -> None:
+        # objects without read/seek/tell are rejected at construction, not
+        # deep inside zipfile
+        with pytest.raises(TypeError, match="read/seek/tell"):
+            ZipStore(42, mode="r")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("mode", ["w", "a", "x"])
+    def test_non_iobase_reader_write_modes_rejected(self, zip_bytes: bytes, mode: str) -> None:
+        # readers that are not io.IOBase instances are adapted for reading
+        # only; write modes are rejected at construction with a clear error
+        class MinimalReader:
+            def __init__(self, data: bytes) -> None:
+                self._buffer = io.BytesIO(data)
+
+            def read(self, size: int, /) -> bytes:
+                return self._buffer.read(size)
+
+            def seek(self, pos: int, whence: int = 0, /) -> int:
+                return self._buffer.seek(pos, whence)
+
+            def tell(self) -> int:
+                return self._buffer.tell()
+
+        with pytest.raises(TypeError, match="opened for reading"):
+            ZipStore(MinimalReader(zip_bytes), mode=mode, read_only=False)  # type: ignore[arg-type]
+
+    def test_fsspec_file(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # a file opened through fsspec (already an io.IOBase) is used directly;
+        # fsspec's local filesystem stands in for a remote one
+        fsspec = pytest.importorskip("fsspec")
+
+        path = tmp_path / "fsspec.zip"
+        path.write_bytes(zip_bytes)
+        with fsspec.open(f"local://{path}", "rb") as fileobj:
+            store = ZipStore(fileobj, mode="r")
+            array = zarr.open_array(store, mode="r")
+            assert np.array_equal(array[...], np.arange(10))
+            assert store.path is None
+
+    def test_obstore_reader(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # obstore's ReadableFile is not an io.IOBase and its read() returns a
+        # buffer-protocol object; ZipStore adapts it via _RawReaderAdapter
+        obstore = pytest.importorskip("obstore")
+        from obstore.store import LocalStore as ObstoreLocalStore
+
+        (tmp_path / "obstore.zip").write_bytes(zip_bytes)
+        reader = obstore.open_reader(ObstoreLocalStore(str(tmp_path)), "obstore.zip")
+        store = ZipStore(reader, mode="r")
+        array = zarr.open_array(store, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+
+    def test_raw_reader_adapter_eof(self) -> None:
+        from zarr.storage._zip import _RawReaderAdapter
+
+        class MinimalReader:
+            """Non-io.IOBase reader exposing only read/seek/tell, like obstore."""
+
+            def __init__(self, data: bytes) -> None:
+                self._buffer = io.BytesIO(data)
+
+            def read(self, size: int, /) -> bytes:
+                return self._buffer.read(size)
+
+            def seek(self, pos: int, whence: int = 0, /) -> int:
+                return self._buffer.seek(pos, whence)
+
+            def tell(self) -> int:
+                return self._buffer.tell()
+
+        # the adapter must clamp reads to EOF: some readers (obstore < 0.6)
+        # raise on short reads instead of returning fewer bytes
+        data = b"0123456789"
+        adapter = _RawReaderAdapter(MinimalReader(data))  # type: ignore[arg-type]
+
+        # A read straddling EOF returns only the remaining bytes.
+        adapter.seek(len(data) - 3)
+        buf = bytearray(8)
+        assert adapter.readinto(buf) == 3
+        assert bytes(buf[:3]) == data[-3:]
+
+        # A read at EOF returns 0.
+        assert adapter.tell() == len(data)
+        assert adapter.readinto(bytearray(8)) == 0
+
+    def test_pickle_fileobj_raises(self, zip_bytes: bytes) -> None:
+        # an open file object cannot be reliably serialized, so pickling a
+        # file-object-backed store raises with a pointer at the alternative
+        store = ZipStore(io.BytesIO(zip_bytes), mode="r")
+        with pytest.raises(TypeError, match="cannot pickle a ZipStore backed by a file-like"):
+            pickle.dumps(store)
+
+    def test_pickle_path_backed_roundtrip(self, tmp_path: Path, zip_bytes: bytes) -> None:
+        # path-backed stores remain picklable: the path is serialized and the
+        # archive is reopened on unpickling
+        path = tmp_path / "pickled.zip"
+        path.write_bytes(zip_bytes)
+        store = ZipStore(path, mode="r")
+        unpickled = pickle.loads(pickle.dumps(store))
+        array = zarr.open_array(unpickled, mode="r")
+        assert np.array_equal(array[...], np.arange(10))
+
+    def test_str_and_eq(self, zip_bytes: bytes) -> None:
+        # file-object-backed stores stringify with the object repr and
+        # compare equal only when backed by the very same file object
+        fileobj = io.BytesIO(zip_bytes)
+        store = ZipStore(fileobj, mode="r")
+        assert str(store).startswith("zip://<")
+        assert store == ZipStore(fileobj, mode="r")
+        assert store != ZipStore(io.BytesIO(zip_bytes), mode="r")
+
+
+class ZipStoreLifecycleMachine(RuleBasedStateMachine):
+    """Drive a ZipStore through construct / open / write / close transitions.
+
+    Invariant under test: a constructed ZipStore can always be closed without
+    raising, regardless of whether it was ever opened or did any I/O. This is a
+    property-based generalization of the former example-based regression tests
+    for ZipStore.close() being called on a never-opened store (which raised
+    AttributeError because ``_lock`` is created lazily in ``_sync_open``).
+    """
+
+    def __init__(self, tmp_path: Path) -> None:
+        super().__init__()
+        self._tmp_path = tmp_path
+        self._counter = 0
+        self.store: ZipStore | None = None
+        self._opened = False
+
+    @initialize()
+    def start(self) -> None:
+        self.store = None
+        self._opened = False
+
+    @precondition(lambda self: self.store is None)
+    @rule()
+    def construct(self) -> None:
+        # Fresh path each time so mode="w" never clobbers a closed archive.
+        self._counter += 1
+        self.store = ZipStore(self._tmp_path / f"s{self._counter}.zip", mode="w")
+        self._opened = False
+
+    @precondition(lambda self: self.store is not None and not self._opened)
+    @rule()
+    def open(self) -> None:
+        assert self.store is not None
+        self.store._sync_open()
+        self._opened = True
+
+    @precondition(lambda self: self.store is not None and not self._opened)
+    @rule()
+    def write(self) -> None:
+        assert self.store is not None
+        # store.set auto-opens the store.
+        sync(self.store.set("a", cpu.Buffer.from_bytes(b"hi")))
+        self._opened = True
+
+    @precondition(lambda self: self.store is not None)
+    @rule()
+    def close(self) -> None:
+        assert self.store is not None
+        # The property under test: close() must never raise, even with no
+        # prior open or I/O.
+        self.store.close()
+        self.store = None
+        self._opened = False
+
+
+def test_zipstore_close_lifecycle(tmp_path: Path) -> None:
+    run_state_machine_as_test(  # type: ignore[no-untyped-call]
+        lambda: ZipStoreLifecycleMachine(tmp_path),
+        settings=settings(max_examples=50, deadline=None),
+    )

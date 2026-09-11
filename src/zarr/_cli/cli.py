@@ -1,5 +1,5 @@
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Literal, cast
 
 import typer
@@ -24,12 +24,12 @@ def _set_logging_level(*, verbose: bool) -> None:
     zarr.set_format("%(message)s")
 
 
-class CLIZarrFormat(str, Enum):
+class CLIZarrFormat(StrEnum):
     v2 = "v2"
     v3 = "v3"
 
 
-class CLIZarrFormatV3(str, Enum):
+class CLIZarrFormatV3(StrEnum):
     """Limit CLI choice to only v3"""
 
     v3 = "v3"

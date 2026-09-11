@@ -1,13 +1,15 @@
-This section  will help you get up and running with
-the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+# Quick start
 
-### Creating an Array
+This page will help you get up and running with
+the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+Zarr must be installed first -- see the [installation guide](user-guide/installation.md)
+if you have not installed it yet.
+
+## Creating an Array
 
 To get started, you can create a simple Zarr array:
 
 ```python exec="true" session="quickstart"
-import shutil
-shutil.rmtree('data', ignore_errors=True)
 import numpy as np
 from pprint import pprint
 import io
@@ -30,7 +32,8 @@ z = zarr.create_array(
     store="data/example-1.zarr",
     shape=(100, 100),
     chunks=(10, 10),
-    dtype="f4"
+    dtype="f4",
+    overwrite=True,
 )
 
 # Assign data to the array
@@ -42,12 +45,11 @@ Here, we created a 2D array of shape `(100, 100)`, chunked into blocks of
 `(10, 10)`, and filled it with random floating-point data. This array was
 written to a `LocalStore` in the `data/example-1.zarr` directory.
 
-#### Compression and Filters
+### Compression and Filters
 
 Zarr supports data compression and filters. For example, to use Blosc compression:
 
-
-```python exec="true" session="quickstart" source="above" result="code"
+```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create a 2D Zarr array with Blosc compression
 z = zarr.create_array(
@@ -55,10 +57,11 @@ z = zarr.create_array(
     shape=(100, 100),
     chunks=(10, 10),
     dtype="f4",
+    overwrite=True,
     compressors=zarr.codecs.BloscCodec(
         cname="zstd",
         clevel=3,
-        shuffle=zarr.codecs.BloscShuffle.shuffle
+        shuffle="shuffle"
     )
 )
 
@@ -69,15 +72,14 @@ print(z.info)
 
 This compresses the data using the Blosc codec with shuffle enabled for better compression.
 
-
-### Hierarchical Groups
+## Hierarchical Groups
 
 Zarr allows you to create hierarchical groups, similar to directories:
 
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-3.zarr")
+root = zarr.group("data/example-3.zarr", overwrite=True)
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -92,17 +94,17 @@ spam[:] = np.arange(10)
 print(root.tree())
 ```
 
-This creates a group with two datasets: `foo` and `bar`.
+This creates a group hierarchy with a group (`foo`) and two arrays (`bar` and `spam`).
 
-#### Batch Hierarchy Creation
+### Batch Hierarchy Creation
 
 Zarr provides tools for creating a collection of arrays and groups with a single function call.
 Suppose we want to copy existing groups and arrays into a new storage backend:
 
-```python exec="true" session="quickstart" source="above" result="html"
+```python exec="true" session="quickstart" source="above" result="code"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-4.zarr", attributes={'name': 'root'})
+root = zarr.group("data/example-4.zarr", attributes={'name': 'root'}, overwrite=True)
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -122,22 +124,10 @@ assert new_root.attrs == root.attrs
 Note that [`zarr.create_hierarchy`][] will only initialize arrays and groups -- copying array data must
 be done in a separate step.
 
-### Persistent Storage
+## Persistent Storage
 
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
 utilized a [`zarr.storage.LocalStore`][], a number of other storage options are available.
-
-Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
-using external libraries like [s3fs](https://s3fs.readthedocs.io) or
-[gcsfs](https://gcsfs.readthedocs.io):
-
-```python
-
-import s3fs
-
-z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4")
-z[:, :] = np.random.random((100, 100))
-```
 
 A single-file store can also be created using the [`zarr.storage.ZipStore`][]:
 
@@ -162,7 +152,7 @@ store.close()
 
 To open an existing array from a ZIP file:
 
-```python exec="true" session="quickstart" source="above" result="code"
+```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Open the ZipStore in read-only mode
 store = zarr.storage.ZipStore("data/example-5.zip", read_only=True)
@@ -173,4 +163,29 @@ z = zarr.open_array(store, mode='r')
 print(z[:])
 ```
 
-Read more about Zarr's storage options in the [User Guide](user-guide/index.md).
+Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google
+Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io/en/latest/) or
+[gcsfs](https://gcsfs.readthedocs.io/en/latest/). Remote storage support requires the `remote`
+optional dependencies (`pip install "zarr[remote]"`) as well as a filesystem library
+for your storage service, such as `s3fs` for S3:
+
+```python test="true" session="s3demo" markers="s3" source="above"
+import zarr
+import numpy as np
+
+z = zarr.create_array(
+    "s3://example-bucket/foo", shape=(100, 100), chunks=(10, 10), dtype="f4"
+)
+z[:, :] = np.random.random((100, 100))
+```
+
+See the [Remote Store](user-guide/storage.md#remote-store) section of the storage guide
+for more detail, including how to configure the underlying filesystem with `storage_options`.
+
+## Next steps
+
+This page only scratches the surface. Continue with the [User Guide](user-guide/index.md), in particular:
+
+- **[Arrays](user-guide/arrays.md)** - creating, reading, and writing arrays in depth
+- **[Groups](user-guide/groups.md)** - organizing arrays into hierarchies
+- **[Storage](user-guide/storage.md)** - the full range of local, remote, and in-memory storage options

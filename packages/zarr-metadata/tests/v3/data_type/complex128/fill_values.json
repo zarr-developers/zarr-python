@@ -1,0 +1,7 @@
+{
+  "numeric": [1.5, 2.5],
+  "zero": [0.0, 0.0],
+  "with_sentinel_components": ["-Infinity", "NaN"],
+  "mixed_numeric_and_sentinel": [1.0, "Infinity"],
+  "with_hex_components": ["0x7ff8000000000000", "0x0000000000000000"]
+}

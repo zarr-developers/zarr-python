@@ -3,13 +3,16 @@ __all__ = [
     "ArrayNotFoundError",
     "BaseZarrError",
     "BoundsCheckError",
+    "ChunkNotFoundError",
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
+    "DataTypeValidationError",
     "GroupNotFoundError",
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
@@ -83,6 +86,9 @@ class ContainsArrayAndGroupError(BaseZarrError):
     )
 
 
+class DataTypeValidationError(ValueError): ...
+
+
 class MetadataValidationError(BaseZarrError):
     """Raised when the Zarr metadata is invalid in some way"""
 
@@ -144,3 +150,9 @@ class BoundsCheckError(IndexError): ...
 
 
 class ArrayIndexError(IndexError): ...
+
+
+class ChunkNotFoundError(BaseZarrError):
+    """
+    Raised when a chunk that was expected to exist in storage was not retrieved successfully.
+    """

@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import pickle
+import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Self
+
+import numpy as np
 
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterable, Sequence
     from typing import Any
 
-    from zarr.abc.store import ByteRequest
     from zarr.core.buffer.core import BufferPrototype
 
 import pytest
@@ -22,6 +24,9 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
@@ -31,13 +36,30 @@ from zarr.testing.utils import assert_bytes_equal
 __all__ = ["StoreTests"]
 
 
-S = TypeVar("S", bound=Store)
-B = TypeVar("B", bound=Buffer)
-
-
-class StoreTests(Generic[S, B]):
+class StoreTests[S: Store, B: Buffer]:
     store_cls: type[S]
     buffer_cls: type[B]
+
+    @staticmethod
+    def _require_get_sync(store: S) -> SupportsGetSync:
+        """Skip unless *store* implements [`SupportsGetSync`][zarr.abc.store.SupportsGetSync]."""
+        if not isinstance(store, SupportsGetSync):
+            pytest.skip("store does not implement SupportsGetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_set_sync(store: S) -> SupportsSetSync:
+        """Skip unless *store* implements [`SupportsSetSync`][zarr.abc.store.SupportsSetSync]."""
+        if not isinstance(store, SupportsSetSync):
+            pytest.skip("store does not implement SupportsSetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_delete_sync(store: S) -> SupportsDeleteSync:
+        """Skip unless *store* implements [`SupportsDeleteSync`][zarr.abc.store.SupportsDeleteSync]."""
+        if not isinstance(store, SupportsDeleteSync):
+            pytest.skip("store does not implement SupportsDeleteSync")
+        return store  # type: ignore[unreachable]
 
     @abstractmethod
     async def set(self, store: S, key: str, value: Buffer) -> None:
@@ -93,7 +115,7 @@ class StoreTests(Generic[S, B]):
 
     def test_store_eq(self, store: S, store_kwargs: dict[str, Any]) -> None:
         # check self equality
-        assert store == store
+        assert store == store  # noqa: PLR0124 -- self-equality is the property under test
 
         # check store equality with same inputs
         # asserting this is important for being able to compare (de)serialized stores
@@ -281,10 +303,16 @@ class StoreTests(Generic[S, B]):
     async def test_getsize_prefix(self, store: S) -> None:
         """
         Test the result of store.getsize_prefix().
+
+        Includes a sibling key ("cc/0") that shares the string prefix "c" but
+        belongs to a different directory: getsize_prefix("c") must not count it,
+        i.e. the prefix is matched as a directory ("c/...") not a raw substring.
         """
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         keys = ["c/0/0", "c/0/1", "c/1/0", "c/1/1"]
-        keys_values = [(k, data_buf) for k in keys]
+        # Sibling directory sharing the "c" string prefix; must be excluded.
+        sibling_keys = ["cc/0"]
+        keys_values = [(k, data_buf) for k in keys + sibling_keys]
         await store._set_many(keys_values)
         expected = len(data_buf) * len(keys)
         observed = await store.getsize_prefix("c")
@@ -352,10 +380,18 @@ class StoreTests(Generic[S, B]):
         for key, _ in key_ranges:
             await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
-        # read back just part of it
+        # read back just part of it. Pass key_ranges as a one-shot generator
+        # (a valid Iterable per the method signature) to ensure stores and
+        # wrappers do not exhaust the iterable before handing it to the backend.
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype(), key_ranges=key_ranges
+            prototype=default_buffer_prototype(),
+            key_ranges=(kr for kr in key_ranges),
         )
+
+        # One result must be returned per requested key range. Checking this
+        # explicitly guards against a store/wrapper exhausting the key_ranges
+        # iterable early and silently returning fewer (or no) results.
+        assert len(observed_maybe) == len(key_ranges)
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -364,8 +400,7 @@ class StoreTests(Generic[S, B]):
             assert obs is not None
             observed.append(obs)
 
-        for idx in range(len(observed)):
-            key, byte_range = key_ranges[idx]
+        for key, byte_range in key_ranges:
             result = await store.get(
                 key, prototype=default_buffer_prototype(), byte_range=byte_range
             )
@@ -430,8 +465,8 @@ class StoreTests(Generic[S, B]):
         prefix = "foo"
         data = self.buffer_cls.from_bytes(b"")
         store_dict = {
-            prefix + "/zarr.json": data,
-            **{prefix + f"/c/{idx}": data for idx in range(10)},
+            f"{prefix}/zarr.json": data,
+            **{f"{prefix}/c/{idx}": data for idx in range(10)},
         }
         await store._set_many(store_dict.items())
         expected_sorted = sorted(store_dict.keys())
@@ -492,24 +527,36 @@ class StoreTests(Generic[S, B]):
         assert observed_prefix_sorted == expected_prefix_sorted
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
-        store_dict = {
-            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
-            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
-        }
+        roots_and_keys: list[tuple[str, dict[str, Buffer]]] = [
+            (
+                "foo",
+                {
+                    "foo/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+                    "foo/c/1": self.buffer_cls.from_bytes(b"\x01"),
+                },
+            ),
+            (
+                "foo/bar",
+                {
+                    "foo/bar/foobar_first_child": self.buffer_cls.from_bytes(b"1"),
+                    "foo/bar/foobar_second_child/zarr.json": self.buffer_cls.from_bytes(b"2"),
+                },
+            ),
+        ]
 
         assert await _collect_aiterator(store.list_dir("")) == ()
-        assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        await store._set_many(store_dict.items())
+        for root, store_dict in roots_and_keys:
+            assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            await store._set_many(store_dict.items())
 
-        assert sorted(keys_observed) == sorted(keys_expected)
+            keys_observed = await _collect_aiterator(store.list_dir(root))
+            keys_expected = {k.removeprefix(f"{root}/").split("/")[0] for k in store_dict}
+            assert sorted(keys_observed) == sorted(keys_expected)
 
-        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
-        assert sorted(keys_expected) == sorted(keys_observed)
+            keys_observed = await _collect_aiterator(store.list_dir(f"{root}/"))
+            assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
@@ -527,45 +574,116 @@ class StoreTests(Generic[S, B]):
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
 
-    async def test_get_bytes(self, store: S) -> None:
-        """
-        Test that the get_bytes method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
-        with pytest.raises(FileNotFoundError):
-            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
+    # -------------------------------------------------------------------
+    # Synchronous store methods (SupportsSyncStore protocol)
+    # -------------------------------------------------------------------
 
-    def test_get_bytes_sync(self, store: S) -> None:
-        """
-        Test that the get_bytes_sync method reads bytes.
-        """
-        data = b"hello world"
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
+    def test_get_sync(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_get"
+        sync(self.set(store, key, data_buf))
+        result = getter.get_sync(key)
+        assert result is not None
+        assert_bytes_equal(result, data_buf)
 
-    async def test_get_json(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
+    def test_get_sync_missing(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        result = getter.get_sync("nonexistent")
+        assert result is None
 
-    def test_get_json_sync(self, store: S) -> None:
-        """
-        Test that the get_json method reads json.
-        """
-        data = {"foo": "bar"}
-        data_bytes = json.dumps(data).encode("utf-8")
-        key = "zarr.json"
-        sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
+    def test_set_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_set"
+        setter.set_sync(key, data_buf)
+        result = sync(self.get(store, key))
+        assert_bytes_equal(result, data_buf)
+
+    def test_delete_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        deleter = self._require_delete_sync(store)
+        getter = self._require_get_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_delete"
+        setter.set_sync(key, data_buf)
+        deleter.delete_sync(key)
+        result = getter.get_sync(key)
+        assert result is None
+
+    def test_delete_sync_missing(self, store: S) -> None:
+        deleter = self._require_delete_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        # should not raise
+        deleter.delete_sync("nonexistent_sync")
+
+    # -------------------------------------------------------------------
+    # Sync/async parity laws
+    # -------------------------------------------------------------------
+    # A store's sync and async methods must observe the same key the same
+    # way. This is stronger than the individual test_get_sync/test_set_sync/
+    # test_delete_sync tests above: those write and read back through the
+    # *same* API (sync-only or, via `self.set`/`self.get`, bypassing the
+    # store entirely), so a sync method that skips logic the async method
+    # applies (e.g. a path prefix) can still pass them. These laws write
+    # through one API and observe through the other.
+
+    @pytest.mark.parametrize("direction", ["set_async_get_sync", "set_sync_get_async"])
+    async def test_sync_async_set_get_parity(self, store: S, direction: str) -> None:
+        setter = self._require_set_sync(store)
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_set_get"
+        if direction == "set_async_get_sync":
+            await store.set(key, data_buf)
+            result = getter.get_sync(key)
+        else:
+            setter.set_sync(key, data_buf)
+            result = await store.get(key, prototype=default_buffer_prototype())
+        assert result is not None
+        assert_bytes_equal(result, data_buf)
+
+    async def test_delete_sync_visible_to_async_get(self, store: S) -> None:
+        deleter = self._require_delete_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_delete"
+        await store.set(key, data_buf)
+        deleter.delete_sync(key)
+        result = await store.get(key, prototype=default_buffer_prototype())
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "byte_range",
+        [
+            None,
+            RangeByteRequest(1, 4),
+            OffsetByteRequest(1),
+            SuffixByteRequest(1),
+            RangeByteRequest(10, 20),
+        ],
+        ids=["none", "range", "offset", "suffix", "range-past-eof"],
+    )
+    async def test_get_sync_byte_range_parity(
+        self, store: S, byte_range: ByteRequest | None
+    ) -> None:
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "parity_byte_range"
+        await store.set(key, data_buf)
+        sync_result = getter.get_sync(key, byte_range=byte_range)
+        async_result = await store.get(
+            key, prototype=default_buffer_prototype(), byte_range=byte_range
+        )
+        if async_result is None:
+            assert sync_result is None
+        else:
+            assert sync_result is not None
+            assert_bytes_equal(sync_result, async_result)
 
 
 class LatencyStore(WrapperStore[Store]):
@@ -575,13 +693,37 @@ class LatencyStore(WrapperStore[Store]):
     performance testing.
     """
 
-    get_latency: float
-    set_latency: float
+    _get_latency: float | tuple[float, float]
+    _set_latency: float | tuple[float, float]
 
-    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
-        self.get_latency = float(get_latency)
-        self.set_latency = float(set_latency)
-        self._store = cls
+    def __init__(
+        self,
+        store: Store,
+        *,
+        get_latency: float | tuple[float, float] = 0,
+        set_latency: float | tuple[float, float] = 0,
+    ) -> None:
+        super().__init__(store)
+        self._get_latency = get_latency if isinstance(get_latency, tuple) else float(get_latency)
+        self._set_latency = set_latency if isinstance(set_latency, tuple) else float(set_latency)
+
+    @property
+    def get_latency(self) -> float:
+        if isinstance(self._get_latency, float):
+            return self._get_latency
+        return max(0.0, np.random.normal(loc=self._get_latency[0], scale=self._get_latency[1]))
+
+    @property
+    def set_latency(self) -> float:
+        if isinstance(self._set_latency, float):
+            return self._set_latency
+        return max(0.0, np.random.normal(loc=self._set_latency[0], scale=self._set_latency[1]))
+
+    def _with_store(self, store: Store) -> Self:
+        # Pass the raw latency config, not the sampled `get_latency`/`set_latency`
+        # properties — sampling would freeze a `(loc, scale)` distribution into
+        # one fixed float on derived stores (e.g. via `with_read_only`).
+        return type(self)(store, get_latency=self._get_latency, set_latency=self._set_latency)
 
     async def set(self, key: str, value: Buffer) -> None:
         """
@@ -626,3 +768,76 @@ class LatencyStore(WrapperStore[Store]):
         """
         await asyncio.sleep(self.get_latency)
         return await self._store.get(key, prototype=prototype, byte_range=byte_range)
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Add latency to `get_sync`.
+
+        Sleeps `self.get_latency` on the calling thread (the sync path runs on
+        worker threads, not the event loop) before delegating to the wrapped
+        store.
+        """
+        time.sleep(self.get_latency)
+        return super().get_sync(key, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        """Add latency to `set_sync`.
+
+        Sleeps `self.set_latency` on the calling thread (the sync path runs on
+        worker threads, not the event loop) before delegating to the wrapped
+        store.
+        """
+        time.sleep(self.set_latency)
+        super().set_sync(key, value)
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Byte-range reads built on `self.get`, so each fetch pays latency.
+
+        Routes through the coalescing `Store.get_ranges` default instead of the
+        `WrapperStore` delegation, which would bypass this wrapper's `get` and
+        therefore the synthetic latency. `None` for a coalescing kwarg means
+        "use the `Store` default".
+        """
+        kwargs: dict[str, int] = {}
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
+        async for group in Store.get_ranges(self, key, byte_ranges, prototype=prototype, **kwargs):
+            yield group
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
+    ) -> list[Buffer | None]:
+        """Partial-value reads built on `self.get`, so each fetch pays latency.
+
+        Issues one `self.get` per `(key, byte_range)` pair instead of the
+        `WrapperStore` delegation, which would bypass this wrapper's `get` and
+        therefore the synthetic latency.
+        """
+        return list(
+            await asyncio.gather(
+                *(
+                    self.get(key, prototype=prototype, byte_range=byte_range)
+                    for key, byte_range in key_ranges
+                )
+            )
+        )
