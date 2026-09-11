@@ -79,6 +79,7 @@ def print_debug_info() -> None:
         "gcsfs",
         "universal-pathlib",
         "obstore",
+        "obspec",
     ]
 
     print(f"platform: {platform.platform()}")

@@ -79,7 +79,7 @@ class TestObjectStore(StoreTests[ObjectStore[LocalStore], cpu.Buffer]):
 
     def test_store_init_raises(self) -> None:
         """Test __init__ raises appropriate error for improper store type"""
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="missing the following methods: delete_async"):
             ObjectStore("path/to/store")  # type: ignore[type-var]
 
     async def test_store_getsize(self, store: ObjectStore[LocalStore]) -> None:

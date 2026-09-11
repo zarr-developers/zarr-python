@@ -23,7 +23,7 @@ pip install zarr
 There are a number of optional dependency groups you can install for extra functionality.
 These can be installed using `pip install "zarr[<extra>]"`, e.g. `pip install "zarr[gpu]"`
 
-- `remote`: support for reading/writing to remote data stores (fsspec, obstore)
+- `remote`: support for reading/writing to remote data stores (fsspec, obstore, obspec)
 - `gpu`: support for GPUs (cupy)
 - `cli`: support for the `zarr` [command-line interface](cli.md) (typer)
 - `optional`: support for path-like access to local and remote stores (universal-pathlib)

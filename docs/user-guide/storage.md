@@ -193,9 +193,14 @@ print(array)
 
 ### Object Store
 
-[`zarr.storage.ObjectStore`][] stores the contents of the Zarr hierarchy using any ObjectStore
-[storage implementation](https://developmentseed.org/obstore/latest/api/store/), including AWS S3 ([`obstore.store.S3Store`][]), Google Cloud Storage ([`obstore.store.GCSStore`][]), and Azure Blob Storage ([`obstore.store.AzureStore`][]). This store is backed by [obstore](https://developmentseed.org/obstore/latest/), which
-builds on the production quality Rust library [object_store](https://docs.rs/object_store/latest/object_store/).
+[`zarr.storage.ObjectStore`][] stores the contents of the Zarr hierarchy using any object store
+that implements the async [obspec](https://developmentseed.org/obspec/latest/) protocols. The
+[obstore](https://developmentseed.org/obstore/latest/) stores are the usual choice: they cover AWS S3
+([`obstore.store.S3Store`][]), Google Cloud Storage ([`obstore.store.GCSStore`][]) and Azure Blob Storage
+([`obstore.store.AzureStore`][]), and build on the production quality Rust library
+[object_store](https://docs.rs/object_store/latest/object_store/). Because the requirement is structural
+(the store only has to provide the obspec methods, not inherit from anything), middleware that wraps a
+store, such as a cache or a request logger, works just as well.
 
 ```python exec="true" session="storage" source="above" result="ansi"
 from zarr.storage import ObjectStore
