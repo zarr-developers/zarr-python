@@ -4258,7 +4258,10 @@ async def from_array(
         If not specified, defaults to the zarr format of the data array.
     attributes : dict, optional
         Attributes for the array.
-        If not specified, defaults to the attributes of the data array.
+        If not specified, the source Zarr array's attributes are deep-copied so
+        nested containers are independent. Deeply nested attributes can raise
+        `RecursionError` during copying even if they can be stored and reopened;
+        the threshold depends on Python's recursion limit and the current call stack.
         Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
@@ -4365,7 +4368,8 @@ async def from_array(
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
-        dtype=data.dtype,
+        # A native object dtype cannot identify the source's Zarr data type.
+        dtype=data._async_array._zdtype if isinstance(data, Array) else data.dtype,
         chunks=chunks,
         shards=shards,
         filters=filters,
