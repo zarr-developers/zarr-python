@@ -184,3 +184,23 @@ def test_rectilinear_transpose_sharding_matches_oracle(
         else:
             with pytest.raises(ValueError, match="not\\s+divisible"):
                 build()
+
+
+@given(offset=st.integers(min_value=1, max_value=254), sharded=st.booleans())
+def test_inner_validation_uses_the_actual_fill_value(offset: int, sharded: bool) -> None:
+    """Shard validation must not resolve a fill-changing codec against a made-up zero."""
+    from zarr.codecs.scale_offset import ScaleOffset
+
+    array = zarr.create_array(
+        {},
+        shape=(8,),
+        chunks=(2,),
+        shards=(4,) if sharded else None,
+        dtype="u1",
+        fill_value=offset,
+        filters=[ScaleOffset(offset=offset)],
+    )
+    array[:] = offset + 1
+    assert np.array_equal(array[:], np.full((8,), offset + 1, dtype="u1"))
+    reloaded = zarr.open_array(array.store, mode="r")
+    assert np.array_equal(reloaded[:], array[:])

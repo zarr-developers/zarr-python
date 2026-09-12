@@ -577,10 +577,13 @@ class ShardingCodec(
         -------
             This codec with the evolved code chain.
         """
-        from zarr.core.chunk_utils import evolve_codecs
-
-        shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = evolve_codecs(self.codecs, shard_spec)
+        chunk_spec = self._get_chunk_spec(array_spec)
+        evolved_codecs = evolve_and_validate_codecs(
+            self.codecs,
+            shape=self.chunk_shape,
+            chunk_grid=RegularChunkGridMetadata(chunk_shape=self.chunk_shape),
+            chunk_spec=chunk_spec,
+        )
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
@@ -614,23 +617,6 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
-        # The inner codecs see chunks of `self.chunk_shape`; validate them
-        # against that, threading the chunk spec through the chain exactly as
-        # the top-level metadata does (an inner reshape may change the rank
-        # seen by a following transpose).
-        evolve_and_validate_codecs(
-            self.codecs,
-            shape=self.chunk_shape,
-            chunk_grid=RegularChunkGridMetadata(chunk_shape=self.chunk_shape),
-            chunk_spec=ArraySpec(
-                shape=self.chunk_shape,
-                dtype=dtype,
-                fill_value=dtype.default_scalar(),
-                config=ArrayConfig.from_dict({}),
-                prototype=default_buffer_prototype(),
-            ),
-            evolve=False,
-        )
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.

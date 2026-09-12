@@ -138,8 +138,11 @@ def test_reshape_validated_against_chunk_shape() -> None:
 
 
 def test_sharding_inner_chain_is_validated() -> None:
-    """``ShardingCodec.validate`` validates its inner chain against the inner
-    chunk shape, threading the spec through rank-changing codecs."""
+    """Metadata construction validates inner codecs with the real chunk spec.
+
+    Direct ``validate`` only has geometry and dtype, not the fill value needed
+    to resolve arbitrary inner codecs; evolution supplies that full context.
+    """
     grid = RegularChunkGridMetadata(chunk_shape=SHAPE)
     ok = ShardingCodec(chunk_shape=CHUNKS, codecs=RESHAPE_THEN_TRANSPOSE)
     ok.validate(shape=SHAPE, dtype=Int32(), chunk_grid=grid)
@@ -148,8 +151,6 @@ def test_sharding_inner_chain_is_validated() -> None:
         chunk_shape=CHUNKS,
         codecs=(ReshapeCodec(shape=(2, 3, 2, 2)), TransposeCodec(order=(2, 1, 0))),
     )
-    with pytest.raises(ValueError, match="`order` tuple must have as many entries"):
-        bad.validate(shape=SHAPE, dtype=Int32(), chunk_grid=grid)
     with pytest.raises(ValueError, match="`order` tuple must have as many entries"):
         _metadata((bad,), chunk_shape=SHAPE)
 
