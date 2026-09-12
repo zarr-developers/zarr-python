@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
@@ -22,7 +23,7 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -32,18 +33,15 @@ StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 
 def _check_representable(dtype: np.dtype[np.void]) -> str | None:
     """
-    Check whether a structured NumPy dtype can be represented by the Zarr struct data type.
+    Check for field features that the Zarr struct data type cannot represent.
 
     The Zarr struct metadata records only `(name, dtype)` pairs and reconstructs the native
-    dtype by packing those fields contiguously (see `Structured.to_native_dtype`). Anything
-    NumPy allows beyond that is lost on the round trip and would silently change how stored
-    bytes are interpreted. This function rejects three such features, recursing into nested
-    fields so that a problem inside a nested field dtype is caught even when the outer dtype
-    is fine:
+    dtype by packing those fields contiguously (see `Structured.to_native_dtype`). Padding
+    can be removed while preserving field values, but titles and subarray fields would lose
+    field information. This function rejects those features, including in nested fields:
 
     - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
     - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
-    - non-default field layouts, e.g. `np.dtype(..., align=True)` or explicit offsets
 
     Returns
     -------
@@ -64,14 +62,6 @@ def _check_representable(dtype: np.dtype[np.void]) -> str | None:
             reason = _check_representable(field_dtype)
             if reason is not None:
                 return f"within field {name!r}: {reason}"
-    # NumPy dtype equality compares field offsets and itemsize, so rebuilding the dtype from
-    # its (name, dtype) pairs and comparing detects any padding, alignment or explicit offsets.
-    repacked = np.dtype([(name, fields[name][0]) for name in names])
-    if repacked != dtype:
-        return (
-            "it uses a non-default field layout (e.g. it was created with align=True, or has "
-            "explicit field offsets or padding)"
-        )
     return None
 
 
@@ -222,8 +212,13 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             ``fields`` attribute.
         ValueError
             If the input is a structured dtype that this data type cannot represent faithfully:
-            one with field titles, subarray fields, or a non-default (aligned, padded or
-            explicitly offset) field layout.
+            one with field titles or subarray fields.
+
+        Warns
+        -----
+        ZarrUserWarning
+            If a non-default field layout is converted to a packed layout. Field values are
+            preserved when writing arrays, but offsets and itemsize may change.
 
         Notes
         -----
@@ -246,8 +241,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                     "struct data type records only field names and field data types, and "
                     "fields are always packed contiguously on read, so serializing this dtype "
                     "would silently change how the stored bytes are interpreted. Use a packed "
-                    "structured dtype without titles, subarray fields, align=True or explicit "
-                    "offsets instead."
+                    "structured dtype without titles or subarray fields instead."
                 )
             # Iterate over `names` rather than `fields`: the `fields` mapping also
             # contains an entry for every field title, which would duplicate titled fields.
@@ -255,7 +249,17 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 dtype_wrapped = get_data_type_from_native_dtype(dtype.fields[key][0])  # type: ignore[index]
                 fields.append((key, dtype_wrapped))
 
-            return cls(fields=tuple(fields))
+            result = cls(fields=tuple(fields))
+            if result.to_native_dtype() != dtype:
+                warnings.warn(
+                    "The structured dtype is converted to a packed field layout. "
+                    "Field values are preserved when writing arrays, but field offsets and "
+                    "itemsize may change. To pack explicitly, use "
+                    "numpy.lib.recfunctions.repack_fields(data, recurse=True).",
+                    ZarrUserWarning,
+                    stacklevel=2,
+                )
+            return result
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )

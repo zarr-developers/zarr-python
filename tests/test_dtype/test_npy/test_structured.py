@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
+from numpy.lib.recfunctions import repack_fields
 
 import zarr
 from tests.test_dtype.test_wrapper import BaseTestZDType
@@ -17,6 +18,7 @@ from zarr.core.dtype import (
     UInt8,
     get_data_type_from_json,
 )
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -334,17 +336,25 @@ def test_nested_structured_v2_array_round_trip() -> None:
         np.dtype({"names": ["a", "b"], "formats": ["i1", "i1"], "offsets": [0, 4], "itemsize": 8}),
     ],
 )
-def test_padded_structured_dtype_raises(dtype: np.dtype[np.void]) -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+def test_padded_structured_dtype_warns_and_preserves_values(
+    dtype: np.dtype[np.void], zarr_format: ZarrFormat
+) -> None:
     """
-    Structured dtypes with non-default (padded / aligned / explicitly offset) field layouts must
-    fail loudly rather than silently dropping the padding.
-
-    The Zarr struct metadata records only `(name, dtype)` pairs and re-packs fields
-    contiguously on read, so a padded dtype would round-trip to a different itemsize and
-    silently misinterpret stored chunk bytes.
+    Preserve the existing conversion of padded records to packed records, with a warning.
+    The layout changes, but field values must survive writing and reopening the array.
     """
-    with pytest.raises(ValueError, match="non-default field layout"):
-        Struct.from_native_dtype(dtype)
+    data = np.ones(3, dtype=dtype)
+    data["a"] = [1, 2, 3]
+    expected = repack_fields(data, recurse=True)
+    store = zarr.storage.MemoryStore()
+    with pytest.warns(ZarrUserWarning, match="packed.*layout"):
+        zarr.create_array(store, data=data, chunks=(2,), zarr_format=zarr_format)
+    reopened = zarr.open_array(store)
+    assert reopened.dtype == expected.dtype
+    assert reopened.dtype.itemsize == expected.dtype.itemsize
+    np.testing.assert_array_equal(reopened[:], expected)
 
 
 def test_titled_structured_dtype_raises() -> None:

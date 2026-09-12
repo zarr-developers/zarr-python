@@ -1,11 +1,13 @@
 import itertools
 import json
 import numbers
+import warnings
 from collections.abc import Generator
 from typing import Any
 
 import numpy as np
 import pytest
+from numpy.lib.recfunctions import repack_fields
 from numpy.testing import assert_array_equal
 
 import zarr
@@ -25,6 +27,7 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
+from zarr.errors import ZarrUserWarning
 from zarr.testing.strategies import (
     array_metadata,
     arrays,
@@ -421,19 +424,23 @@ def test_zdtype_native_roundtrip(zdtype: ZDType[Any, Any]) -> None:
 def test_structured_dtype_never_silently_changes(dtype: np.dtype[np.void]) -> None:
     """
     For any native structured dtype, including ones with field titles, subarray fields or
-    aligned layouts, resolving a Zarr data type either raises `ValueError` or yields a data type
-    whose native form is exactly the input: same field names, offsets and itemsize.
-
-    This is the property that the silent-corruption bugs in structured dtype handling violated:
-    a dtype was accepted but came back with different fields, offsets or itemsize.
+    aligned layouts, resolution either rejects unsupported field features or preserves the
+    fields in a packed layout. Any layout change must emit a warning.
     """
     try:
-        zdtype = get_data_type_from_native_dtype(dtype)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ZarrUserWarning)
+            zdtype = get_data_type_from_native_dtype(dtype)
     except ValueError:
         event("outcome=rejected")
         return
     event("outcome=accepted")
-    assert zdtype.to_native_dtype() == dtype
+    native = zdtype.to_native_dtype()
+    assert native == repack_fields(dtype, recurse=True)
+    layout_warnings = [
+        w for w in caught if issubclass(w.category, ZarrUserWarning) and "packed" in str(w.message)
+    ]
+    assert bool(layout_warnings) == (native != dtype)
 
 
 # @st.composite
