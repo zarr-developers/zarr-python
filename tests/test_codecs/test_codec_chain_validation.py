@@ -138,21 +138,19 @@ def test_reshape_validated_against_chunk_shape() -> None:
 
 
 def test_sharding_inner_chain_is_validated() -> None:
-    """Metadata construction validates inner codecs with the real chunk spec.
-
-    Direct ``validate`` only has geometry and dtype, not the fill value needed
-    to resolve arbitrary inner codecs; evolution supplies that full context.
-    """
-    grid = RegularChunkGridMetadata(chunk_shape=SHAPE)
-    ok = ShardingCodec(chunk_shape=CHUNKS, codecs=RESHAPE_THEN_TRANSPOSE)
-    ok.validate(shape=SHAPE, dtype=Int32(), chunk_grid=grid)
-
+    """Metadata construction validates a sharding codec's inner chain against
+    the inner chunk spec (the accepted case is `test_rank_changing_chain_roundtrip`
+    with `shards`). Direct `ShardingCodec.validate` only has geometry and dtype,
+    not the fill value needed to resolve arbitrary inner codecs, so the inner
+    chain is validated during evolution, which has the full spec."""
     bad = ShardingCodec(
         chunk_shape=CHUNKS,
         codecs=(ReshapeCodec(shape=(2, 3, 2, 2)), TransposeCodec(order=(2, 1, 0))),
     )
-    with pytest.raises(ValueError, match="`order` tuple must have as many entries"):
+    with pytest.raises(ValueError, match="`order` tuple must have as many entries") as exc_info:
         _metadata((bad,), chunk_shape=SHAPE)
+    # the error names the codec that raised and the shape it was checked against
+    assert any("TransposeCodec" in n and "(2, 3, 2, 2)" in n for n in exc_info.value.__notes__)
 
 
 def _rectilinear_transpose_sharding_metadata(inner: tuple[int, int]) -> ArrayV3Metadata:
@@ -169,13 +167,24 @@ def _rectilinear_transpose_sharding_metadata(inner: tuple[int, int]) -> ArrayV3M
     )
 
 
+@pytest.mark.parametrize("inner", [(5, 2), (5, 1), (1, 2)])
+def test_rectilinear_shape_change_accepts_inner_dividing_every_chunk(
+    inner: tuple[int, int],
+) -> None:
+    """After a shape-changing codec on a rectilinear grid, an inner shard shape
+    dividing every transposed chunk shape ((5,4) and (5,6)) is accepted."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        meta = _rectilinear_transpose_sharding_metadata(inner)
+        assert ArrayV3Metadata.from_dict(meta.to_dict()) == meta
+
+
 def test_rectilinear_every_chunk_shape_validated() -> None:
     """Under a rectilinear grid, size-sensitive validation after a
     shape-changing codec must consider every distinct chunk shape, not a single
     representative: an inner shard size dividing the largest transposed chunk
     (5,6) but not the smaller (5,4) is rejected."""
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        with pytest.raises(ValueError, match="not\\s+divisible"):
-            _rectilinear_transpose_sharding_metadata((5, 3))
-        # an inner shape dividing both transposed chunk shapes is accepted
-        _rectilinear_transpose_sharding_metadata((5, 2))
+    with (
+        zarr.config.set({"array.rectilinear_chunks": True}),
+        pytest.raises(ValueError, match="not\\s+divisible"),
+    ):
+        _rectilinear_transpose_sharding_metadata((5, 3))

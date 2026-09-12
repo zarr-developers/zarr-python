@@ -560,13 +560,20 @@ class ShardingCodec(
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        """Thread the spec through the inner chain.
+        """Thread the spec through the inner chain, evolving and validating it.
 
         Each codec is evolved against the spec produced by the previous one.
         Evolving every codec against the same unthreaded spec is the bug shape that
         strips `BytesCodec.endian` behind a dtype-changing codec — and this
         method runs on the real array-creation path, baking the damaged chain
         into the evolved instance before the transform builders ever run.
+
+        The inner chain is validated here rather than in `validate`, because
+        only the array spec carries the fill value some inner codecs need to
+        resolve their metadata (e.g. `scale_offset`); `validate` only has the
+        geometry and dtype. Inner codecs see chunks of `chunk_shape`, so that
+        is the shape and (regular) grid they are validated against, threaded
+        through any shape-changing inner codec as at the top level.
 
         Parameters
         ----------
