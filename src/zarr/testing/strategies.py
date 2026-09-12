@@ -95,21 +95,19 @@ def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[
     if "length" in params:
         kwargs["length"] = st.integers(min_value=1, max_value=16)
     if "unit" in params:
-        # NumPy spells the microsecond unit "us", so the "μs" alias never round-trips as-is.
-        kwargs["unit"] = st.sampled_from([u for u in DATETIME_UNIT if u != "μs"])
-        kwargs["scale_factor"] = st.integers(min_value=1, max_value=2**31 - 1)
-        return st.builds(cls, **kwargs).map(_normalize_generic_scale_factor)
+        # The constructor normalizes the "μs" alias to "us", so every unit is safe to draw, but
+        # the generic unit only accepts scale_factor=1, so the scale factor depends on the unit.
+        return st.sampled_from(DATETIME_UNIT).flatmap(
+            lambda unit: st.builds(
+                cls,
+                unit=st.just(unit),
+                scale_factor=st.just(1)
+                if unit == "generic"
+                else st.integers(min_value=1, max_value=2**31 - 1),
+                **kwargs,
+            )
+        )
     return st.builds(cls, **kwargs)
-
-
-def _normalize_generic_scale_factor(zdtype: Any) -> Any:
-    """
-    NumPy's generic time unit carries no scale factor, so only ``scale_factor=1`` has a native
-    representation for it.
-    """
-    if zdtype.unit == "generic":
-        return dataclasses.replace(zdtype, scale_factor=1)
-    return zdtype
 
 
 def _struct_zdtypes(
