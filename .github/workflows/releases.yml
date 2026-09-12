@@ -48,24 +48,102 @@ jobs:
           name: releases
           path: dist
 
+  # The sdist contents are defined by an allowlist in pyproject.toml, so the
+  # failure mode to guard against is shipping too little: a new file that
+  # consumers need, added without a matching allowlist entry. This job and
+  # `test_dist_conda` below inspect the built artifact rather than the working
+  # tree, because a git checkout has files the tarball does not.
+  #
+  # Seconds, no network beyond the artifact download, so it runs everywhere the
+  # workflow does -- including pull requests.
   test_dist_pypi:
     name: Test distribution artifacts
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: releases
           path: dist
 
-      - name: test
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        name: Install Python
+        with:
+          python-version: '3.12'
+
+      # Catches what the conda build cannot: paths that no test opens and no
+      # build step reads, and paths that must never ship (packages/, which is
+      # three separately released distributions -- conda would not object to
+      # those, but we do).
+      - name: Check sdist contents
+        run: python ci/check_sdist_contents.py dist
+
+  # conda-forge is the consumer most exposed to a missing file: it builds from
+  # the sdist rather than the wheel, and runs our suite from a directory holding
+  # only what its recipe copies out of the tarball. Run the real recipe rather
+  # than a copy of it -- a copy would go stale the moment the feedstock changed,
+  # and silently, which is the same class of bug this job exists to catch.
+  #
+  # Not on pull requests. It runs the whole suite from an unpacked sdist, which
+  # is ~10 minutes whether or not conda is involved, and it depends on a fetch
+  # from conda-forge/zarr-feedstock, so a recipe change there would redden
+  # unrelated PRs. On `push` to main it still catches a bad merge within
+  # minutes, attributed to one commit, and it gates `upload_pypi` so no release
+  # can publish an sdist conda cannot consume.
+  #
+  # To run it against a branch before merging, use `workflow_dispatch`. Note
+  # that dispatch only offers branches of the repository it runs in, so for a
+  # pull request from a fork that means dispatching this workflow in the fork,
+  # not here.
+  test_dist_conda:
+    name: Test conda-forge can consume the sdist
+    needs: [build_artifacts]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: releases
+          path: dist
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        name: Install Python
+        with:
+          python-version: '3.12'
+
+      - name: Fetch the conda-forge recipe
         run: |
-          ls
-          ls dist
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/recipe-upstream.yaml" \
+            https://raw.githubusercontent.com/conda-forge/zarr-feedstock/main/recipe/recipe.yaml
+
+      - name: Point the recipe at the sdist we just built
+        run: |
+          python -m pip install pyyaml==6.0.3
+          python ci/conda_recipe_for_sdist.py \
+            "${RUNNER_TEMP}/recipe-upstream.yaml" \
+            "$(ls dist/*.tar.gz)" \
+            conda.recipe/recipe.yaml
+
+      # Runs the recipe's own `tests:` block: an import check, `pip check`, and
+      # our suite from a tree containing only the recipe's `files.source`.
+      - uses: prefix-dev/rattler-build-action@1ca5f45832f419a46d1326ccc5861d7e14d67c44 # v0.2.39
+        with:
+          rattler-build-version: v0.73.0
+          recipe-path: conda.recipe/recipe.yaml
+          upload-artifact: false
+          build-args: -c conda-forge --output-dir ${{ runner.temp }}/conda-build
 
   upload_pypi:
     name: Upload to PyPI
-    needs: [build_artifacts, test_dist_pypi]
+    needs: [build_artifacts, test_dist_pypi, test_dist_conda]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     environment:
